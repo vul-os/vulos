@@ -1,5 +1,5 @@
 import { useShell } from '../providers/ShellProvider'
-import AppIcon from '../core/AppIcons'
+import AppIcon, { APP_LOGOS, APP_COLORS } from '../core/AppIcons'
 import './shell-chrome.css'
 
 // Dock — a bottom-center taskbar of the windows open on the active desktop.
@@ -52,7 +52,9 @@ export default function Dock() {
                 className={`vshell-dock-tile flex items-center justify-center w-11 h-11 rounded-[13px]
                   ${win.minimized ? 'opacity-45 hover:opacity-90' : 'opacity-100'}`}
               >
-                <AppIcon id={win.appId} size={24} />
+                {APP_LOGOS[win.appId]
+                  ? <img src={APP_LOGOS[win.appId]} alt="" className="w-[26px] h-[26px] object-contain" loading="lazy" />
+                  : <AppIcon id={win.appId} size={26} color={APP_COLORS[win.appId]} />}
               </span>
               {/* Running indicator — a dot under the icon; accent when focused. */}
               <span

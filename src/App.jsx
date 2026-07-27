@@ -23,6 +23,7 @@ import SessionTakeoverModal from './auth/SessionTakeoverModal'
 import { loadOriginConfig } from './core/AppOrigins'
 import { startNotificationBridge } from './core/notificationBridge'
 import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
+import { refreshInstalled, refreshAIApps } from './core/AppRegistry'
 import { startLocationReporting, stopLocationReporting } from './core/location/reporter.js'
 
 function DesktopShortcuts() {
@@ -135,6 +136,11 @@ function Shell() {
   useEffect(() => {
     const stopBridge = startNotificationBridge()
     const stopNotifier = startAttentionNotifier()
+    // Load the installed-app list (and AI-generated apps) once at boot so the
+    // launcher and Home surface show them immediately — previously they only
+    // populated after the user opened App Hub.
+    refreshInstalled()
+    refreshAIApps()
     // LOCATION-01: resume opt-in location reporting if the user enabled it
     // (Settings → Devices → Location). Off by default; never starts unarmed.
     let locationOn = false

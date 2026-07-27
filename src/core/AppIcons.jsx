@@ -42,16 +42,46 @@ export const APP_LOGOS = {
   blender: '/icons/blender.svg',
   inkscape: '/icons/inkscape.svg',
   libreoffice: '/icons/libreoffice.svg',
+  // First-party Vulos-ecosystem apps ship their own coloured brand marks under
+  // public/product-logos/ (same-origin, redistributable — they're ours). These
+  // are the recognizable logos people expect to see in the launcher/App Hub and
+  // in screenshots (Ofisi, lilmail, envoir, …). A brand mark WINS over the
+  // monochrome glyph in AppIconTile so the app reads as itself, not a generic
+  // system tile.
+  ofisi: '/product-logos/ofisi.svg',
+  lilmail: '/product-logos/lilmail.svg',
+  mail: '/product-logos/lilmail.svg',
+  envoir: '/product-logos/envoir.svg',
+  kerf: '/product-logos/kerf.svg',
+  llmux: '/product-logos/llmux.svg',
+  kotva: '/product-logos/kotva.svg',
+  aql: '/product-logos/aql.svg',
+  vuna: '/product-logos/vuna.svg',
+  kilio: '/product-logos/kilio.svg',
+  soko: '/product-logos/soko.svg',
+  gitstate: '/product-logos/gitstate.svg',
+  wede: '/product-logos/wede.svg',
+  flowstock: '/product-logos/flowstock.svg',
+  magnetite: '/product-logos/magnetite.svg',
 }
 
-// Kept for backwards-compat (App Hub still reads it for its own tinting). The
-// OS shell no longer uses these hues — its icon tiles are monochrome and only
-// pick up the accent on hover. Retained so external callers don't break.
+// Per-app hue. The shell tints each first-party glyph tile with a RESTRAINED
+// wash of its app colour (the glyph carries the hue; the tile stays near-neutral)
+// so the launcher reads as "considered colour", not a rainbow icon pack. The
+// hues below are a deliberately harmonious spread — distinct enough to tell apps
+// apart at a glance, muted enough to sit together. App Hub also reads this map.
 // eslint-disable-next-line react-refresh/only-export-components
 export const APP_COLORS = {
-  terminal: '#4EC9B0', activity: '#3B82F6', files: '#F59E0B', persona: '#8B5CF6',
-  browser: '#4285F4', 'browser-stream': '#4285F4', apphub: '#EC4899', library: '#F97316', gallery: '#06B6D4',
-  disks: '#EF4444', packages: '#10B981', drivers: '#6366F1', chat: '#3B82F6',
+  // Core builtins — one coherent, distinguishable palette.
+  terminal: '#14B8A6', activity: '#22D3EE', files: '#F59E0B', drive: '#3B82F6',
+  assistant: '#8B5CF6', dashboard: '#6366F1', apphub: '#EC4899', persona: '#94A3B8',
+  settings: '#94A3B8', disks: '#EF4444', packages: '#10B981', drivers: '#818CF8',
+  authenticator: '#22C55E', vault: '#64748B', messages: '#38BDF8', peering: '#38BDF8',
+  relay: '#38BDF8', mail: '#2563EB', lilmail: '#F2674E', compose: '#2563EB',
+  calendar: '#F97316', 'vulos-calendar': '#F97316', contacts: '#F43F5E',
+  'vulos-contacts': '#F43F5E', office: '#DC2626', library: '#F97316', gallery: '#06B6D4',
+  chat: '#38BDF8',
+  browser: '#4285F4', 'browser-stream': '#4285F4',
   firefox: '#FF7139', gimp: '#5C5543', blender: '#EA7600',
   inkscape: '#000', libreoffice: '#18A303', vlc: '#FF8800', audacity: '#0000CC',
   kicad: '#314CB0', keepassxc: '#6CAC4D', filezilla: '#BF0000', transmission: '#B91C1C',
@@ -104,9 +134,45 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
     [data-theme="light"] .vula-itile:hover, [data-theme="light"] .vula-itile.is-hover{
       box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 26px -10px color-mix(in srgb, var(--accent) 38%, transparent);
     }
-    @media (prefers-reduced-motion: reduce){ .vula-itile:hover, .vula-itile.is-hover{ transform:none; } }
+    .vula-itile:active{ transform: translateY(-1px) scale(.955); transition-duration: .06s; }
+    @media (prefers-reduced-motion: reduce){ .vula-itile:hover, .vula-itile.is-hover, .vula-itile:active{ transform:none; } }
     .vula-itile svg{ display:block; }
     .vula-itile-img{ object-fit:contain; }
+
+    /* ── Tinted variant — a restrained wash of the app's hue. The glyph carries
+          the colour; the tile stays near-neutral so a grid of them reads as one
+          considered set, not a rainbow. Hue arrives via the --tile-accent var. */
+    .vula-itile[data-tint]{
+      background: linear-gradient(160deg,
+        color-mix(in srgb, var(--tile-accent) 13%, var(--bg-elevated)),
+        color-mix(in srgb, var(--tile-accent) 4%, var(--bg-surface)));
+      border-color: color-mix(in srgb, var(--tile-accent) 24%, var(--border-strong));
+      color: color-mix(in srgb, var(--tile-accent) 72%, var(--text-secondary));
+    }
+    .vula-itile[data-tint]:hover, .vula-itile[data-tint].is-hover{
+      color: color-mix(in srgb, var(--tile-accent) 90%, var(--text-primary));
+      border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--border-strong));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06),
+                  0 12px 30px -12px color-mix(in srgb, var(--tile-accent) 60%, transparent);
+    }
+    [data-theme="light"] .vula-itile[data-tint]{
+      color: color-mix(in srgb, var(--tile-accent) 68%, var(--text-secondary));
+      background: linear-gradient(160deg,
+        color-mix(in srgb, var(--tile-accent) 15%, #fff),
+        color-mix(in srgb, var(--tile-accent) 5%, var(--bg-surface)));
+      border-color: color-mix(in srgb, var(--tile-accent) 26%, var(--border-strong));
+    }
+    [data-theme="light"] .vula-itile[data-tint]:hover, [data-theme="light"] .vula-itile[data-tint].is-hover{
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.9),
+                  0 12px 30px -12px color-mix(in srgb, var(--tile-accent) 45%, transparent);
+    }
+
+    /* Launcher entrance — a gentle staggered rise. Opt-in via .vula-tile-in with
+       a per-item --tile-i index for the delay; honours reduced-motion. */
+    @keyframes vula-tile-rise{ from{ opacity:0; transform: translateY(10px) scale(.94); } to{ opacity:1; transform:none; } }
+    .vula-tile-in{ animation: vula-tile-rise .42s var(--ease-out, cubic-bezier(.16,1,.3,1)) both;
+                   animation-delay: calc(var(--tile-i, 0) * 22ms); }
+    @media (prefers-reduced-motion: reduce){ .vula-tile-in{ animation: none; } }
   `
   document.head.appendChild(style)
 }
@@ -635,7 +701,8 @@ export default function AppIcon({ id, size = 16, color, style }) {
 // locally-installed system icon, then a monochrome letter tile.
 export function AppIconTile({ id, size = 48, unicode }) {
   const node = icons[id]
-  const logo = APP_LOGOS[id]
+  const brandLogo = APP_LOGOS[id]
+  const tint = APP_COLORS[id]
   const [logoFailed, setLogoFailed] = useState(false)
   const [hover, setHover] = useState(false)
   const radius = Math.round(size * 0.28)
@@ -648,16 +715,17 @@ export function AppIconTile({ id, size = 48, unicode }) {
     style: { width: size, height: size, borderRadius: radius },
   }
 
-  // Browser (both the iframe Smart Browser and streaming Chrome) shows the
-  // recognizable Chrome mark on the neutral tile.
-  if ((id === 'browser' || id === 'browser-stream') && logo && !logoFailed) {
+  // 1. A first-party (or bundled) brand mark WINS — the app should read as
+  //    itself. Ofisi/lilmail/envoir/Chrome/… render their own coloured artwork
+  //    on the neutral tile so the surface still reads as one coherent set.
+  if (brandLogo && !logoFailed) {
     return (
       <div {...tileProps}>
         <img
-          src={logo}
+          src={brandLogo}
           alt=""
           className="vula-itile-img"
-          style={{ width: '68%', height: '68%' }}
+          style={{ width: '70%', height: '70%' }}
           onError={() => setLogoFailed(true)}
           loading="lazy"
         />
@@ -665,14 +733,25 @@ export function AppIconTile({ id, size = 48, unicode }) {
     )
   }
 
-  // Bundled brand logo, or the locally-installed desktop system icon, for apps
-  // without a first-party glyph.
-  const imgSrc = (logo && !logoFailed) ? logo : (!logoFailed ? `/api/desktop/icon/${id}` : null)
-  if (imgSrc && !node) {
+  // 2. First-party glyph — tinted with the app's restrained hue via --tile-accent.
+  if (node) {
+    const tinted = tint
+      ? { ...tileProps, 'data-tint': '', style: { ...tileProps.style, '--tile-accent': tint } }
+      : tileProps
+    return (
+      <div {...tinted}>
+        <GlyphSvg node={node} size={glyphSize} />
+      </div>
+    )
+  }
+
+  // 3. Locally-installed desktop system icon (Debian icon theme) for apps
+  //    without a first-party glyph or brand mark.
+  if (!logoFailed) {
     return (
       <div {...tileProps}>
         <img
-          src={imgSrc}
+          src={`/api/desktop/icon/${id}`}
           alt=""
           className="vula-itile-img"
           style={{ width: '66%', height: '66%' }}
@@ -683,16 +762,7 @@ export function AppIconTile({ id, size = 48, unicode }) {
     )
   }
 
-  // First-party monochrome glyph.
-  if (node) {
-    return (
-      <div {...tileProps}>
-        <GlyphSvg node={node} size={glyphSize} />
-      </div>
-    )
-  }
-
-  // Letter fallback — monochrome, token-driven (no rainbow gradient).
+  // 4. Letter fallback — monochrome, token-driven (no rainbow gradient).
   const letter = APP_LETTERS[id] || (unicode || id || '?')[0].toUpperCase()
   return (
     <div {...tileProps} style={{ ...tileProps.style, fontWeight: 600, fontSize: Math.round(size * 0.4), letterSpacing: '-0.01em' }}>

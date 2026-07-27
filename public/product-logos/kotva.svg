@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40" role="img">
+  <title>Kotva</title>
+  <rect width="40" height="40" rx="8" fill="#0f0d0b"/>
+  <g fill="none" stroke="#cb7245" stroke-width="2.4" stroke-linecap="round">
+    <circle cx="20" cy="9.5" r="3.6"/>
+    <line x1="20" y1="13.1" x2="20" y2="32"/>
+    <line x1="12" y1="17" x2="28" y2="17"/>
+    <path d="M8 21c0 7 5.4 11.5 12 11.5S32 28 32 21"/>
+    <path d="M8 21l-2.4 2.7M8 21l3.2.8"/>
+    <path d="M32 21l2.4 2.7M32 21l-3.2.8"/>
+  </g>
+</svg>

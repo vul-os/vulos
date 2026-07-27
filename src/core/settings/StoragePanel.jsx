@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Section, Card, Field, InfoList, InfoRow, Banner, Pill } from './ui.jsx'
 
 // ---------------------------------------------------------------------------
 // STORE-BYO-01: Per-account storage-backend selector
@@ -8,37 +9,6 @@ import { useState, useEffect, useCallback } from 'react'
 //
 // The anchor inbox is ALWAYS on Tigris regardless of the mode selected here.
 // ---------------------------------------------------------------------------
-
-function Section({ title, desc, children }) {
-  return (
-    <div>
-      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
-        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
-        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
-      </header>
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, hint, children }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
-      {children}
-      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-      <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      <span className="text-sm text-[var(--text-secondary)]">{value || '—'}</span>
-    </div>
-  )
-}
 
 const MODES = [
   {
@@ -124,164 +94,105 @@ export default function StoragePanel() {
   // Render
   // -------------------------------------------------------------------------
   return (
-    <Section title="Storage Backend">
-      <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
-        Choose where Vulos stores your mail, files, and office data on this device.
-        The <strong className="text-[var(--text-tertiary)]">anchor inbox</strong> is always kept
-        on Tigris regardless of this setting, guaranteeing a reliable landing zone.
-      </p>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Backend selector                                                     */}
-      {/* ------------------------------------------------------------------ */}
-      <Field label="Storage backend">
+    <Section
+      icon="storagemode"
+      title="Storage Backend"
+      desc="Choose where Vulos stores your mail, files, and office data on this device. The anchor inbox is always kept on Tigris regardless of this setting, guaranteeing a reliable landing zone."
+    >
+      <Card
+        icon="storagemode"
+        title="Backend"
+        desc="Tigris keeps everything on the hosted bucket. Local MinIO makes a co-located node the source of truth and replicates over CRDT sync."
+        footer={
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-[var(--text-tertiary)]">
+              The anchor inbox always uses Tigris regardless of the backend selected.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={load} disabled={loading || saving} className="btn-ghost text-sm">Refresh</button>
+              <button onClick={handleSave} disabled={saving || loading} className="btn-primary text-sm">
+                {saving ? 'Saving…' : saved ? 'Saved' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        }
+      >
         <div className="space-y-2">
-          {MODES.map(opt => (
-            <label
-              key={opt.value}
-              htmlFor={`storage-mode-${opt.value}`}
-              className={`flex items-start gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
-                mode === opt.value
-                  ? 'accent-border bg-[var(--accent-soft)]'
-                  : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)]'
-              }`}
-            >
-              <input
-                id={`storage-mode-${opt.value}`}
-                type="radio"
-                name="storage-mode-radio"
-                value={opt.value}
-                checked={mode === opt.value}
-                onChange={() => setMode(opt.value)}
-                className="mt-1 accent-blue-500"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[var(--text-primary)]">{opt.label}</span>
-                  {cfg?.mode === opt.value && (
-                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">
-                      Active
-                    </span>
-                  )}
+          {MODES.map(opt => {
+            const selected = mode === opt.value
+            return (
+              <label
+                key={opt.value}
+                htmlFor={`storage-mode-${opt.value}`}
+                className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors duration-[var(--motion-base)] ${
+                  selected
+                    ? 'accent-border accent-bg-soft'
+                    : 'border-[var(--border-default)] bg-[var(--bg-elevated)]/40 hover:border-[var(--border-strong)]'
+                }`}
+              >
+                <input
+                  id={`storage-mode-${opt.value}`}
+                  type="radio"
+                  name="storage-mode-radio"
+                  value={opt.value}
+                  checked={selected}
+                  onChange={() => setMode(opt.value)}
+                  className="mt-1 accent-blue-500"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[var(--text-primary)]">{opt.label}</span>
+                    {cfg?.mode === opt.value && <Pill tone="success">Active</Pill>}
+                  </div>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-0.5 leading-relaxed">{opt.desc}</p>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-0.5">{opt.desc}</p>
-              </div>
-            </label>
-          ))}
+              </label>
+            )
+          })}
         </div>
-      </Field>
+      </Card>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* MinIO fields — only shown when local-minio-sync is selected          */}
-      {/* ------------------------------------------------------------------ */}
+      {/* MinIO fields — only shown when local-minio-sync is selected */}
       {mode === 'local-minio-sync' && (
-        <div className="mt-4 pt-4 border-t border-[var(--border-default)] space-y-0">
-          <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-4">MinIO connection</h3>
-
-          <Field
-            label="Endpoint"
-            hint="The URL of your co-located MinIO server, e.g. http://localhost:9000"
-          >
-            <input
-              value={endpoint}
-              onChange={e => setEndpoint(e.target.value)}
-              placeholder="http://localhost:9000"
-              className="input"
-            />
+        <Card icon="storage" title="MinIO connection" desc="Point Vulos at your co-located MinIO server. Credentials are read from the referenced file — they are never stored here.">
+          <Field label="Endpoint" hint="The URL of your co-located MinIO server, e.g. http://localhost:9000">
+            <input value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="http://localhost:9000" className="input" />
           </Field>
-
-          <Field
-            label="Bucket"
-            hint="The MinIO bucket that stores this device's data."
-          >
-            <input
-              value={bucket}
-              onChange={e => setBucket(e.target.value)}
-              placeholder="vulos-local"
-              className="input"
-            />
+          <Field label="Bucket" hint="The MinIO bucket that stores this device's data.">
+            <input value={bucket} onChange={e => setBucket(e.target.value)} placeholder="vulos-local" className="input" />
           </Field>
-
-          <Field
-            label="Region"
-            hint="Leave blank to use 'auto'. Only required for some MinIO configurations."
-          >
-            <input
-              value={region}
-              onChange={e => setRegion(e.target.value)}
-              placeholder="auto"
-              className="input"
-            />
+          <Field label="Region" hint="Leave blank to use 'auto'. Only required for some MinIO configurations.">
+            <input value={region} onChange={e => setRegion(e.target.value)} placeholder="auto" className="input" />
           </Field>
-
-          <Field
-            label="Credentials reference"
-            hint="Path to the credentials file written by the installer (e.g. /data/minio/.minio_secret). The credentials themselves are never stored here."
-          >
-            <input
-              value={credsRef}
-              onChange={e => setCredsRef(e.target.value)}
-              placeholder="/data/minio/.minio_secret"
-              className="input"
-            />
+          <Field label="Credentials reference" hint="Path to the credentials file written by the installer (e.g. /data/minio/.minio_secret). The credentials themselves are never stored here.">
+            <input value={credsRef} onChange={e => setCredsRef(e.target.value)} placeholder="/data/minio/.minio_secret" className="input" />
           </Field>
-        </div>
+        </Card>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Status summary                                                       */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Status summary */}
       {cfg && !loading && (
-        <div className="mt-5 pt-4 border-t border-[var(--border-default)]">
-          <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)]">
+        <Card title="Active configuration">
+          <InfoList>
             <InfoRow label="Active backend" value={cfg.mode || '—'} />
             {cfg.mode === 'local-minio-sync' && (
               <>
-                <InfoRow label="MinIO endpoint" value={cfg.minio_endpoint || '—'} />
-                <InfoRow label="Bucket" value={cfg.minio_bucket || '—'} />
+                <InfoRow label="MinIO endpoint" value={cfg.minio_endpoint || '—'} mono />
+                <InfoRow label="Bucket" value={cfg.minio_bucket || '—'} mono />
                 <InfoRow label="Region" value={cfg.minio_region || '—'} />
               </>
             )}
-          </div>
-          <p className="text-[11px] text-[var(--text-faint)] mt-2 leading-relaxed">
-            The anchor inbox always uses Tigris regardless of the backend selected above.
-          </p>
-        </div>
+          </InfoList>
+        </Card>
       )}
 
       {!loading && !cfg && (
-        <div className="mt-4 p-3 rounded-lg bg-[var(--status-warning-soft)] border border-warning-soft">
-          <p className="text-xs text-[var(--status-warning)]">
-            Storage backend not yet reachable — configuration will be applied when available.
-          </p>
-        </div>
+        <Banner tone="warning">
+          Storage backend not yet reachable — configuration will be applied when available.
+        </Banner>
       )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Save bar                                                             */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="flex gap-3 items-center mt-5">
-        <button
-          onClick={handleSave}
-          disabled={saving || loading}
-          className="btn text-sm disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
-        </button>
-        <button
-          onClick={load}
-          disabled={loading || saving}
-          className="btn-ghost text-sm"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {error && (
-        <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
     </Section>
   )
 }

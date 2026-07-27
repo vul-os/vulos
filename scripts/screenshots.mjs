@@ -171,9 +171,30 @@ async function buildStoreFixtures() {
     homepage: a.homepage || '',
     license: a.license || '',
   }))
-  const installed = registry
-    .filter((a) => installedSet.has(a.id))
-    .map((a) => ({ id: a.id, name: a.name, description: a.description, category: a.category, icon: a.icon }))
+  // Vulos first-party apps — these live outside the third-party FOSS registry
+  // and render with their own coloured brand marks (public/product-logos/*).
+  // Showing them installed is what makes the launcher/App Hub look like a real
+  // Vulos box rather than a generic app store.
+  const FIRST_PARTY = [
+    { id: 'ofisi', name: 'Ofisi', description: 'Documents, sheets & slides — on your box', category: 'productivity' },
+    { id: 'lilmail', name: 'lilmail', description: 'Your mail, hosted on your own server', category: 'productivity' },
+    { id: 'envoir', name: 'envoir', description: 'Private messaging & portable identity', category: 'internet' },
+    { id: 'llmux', name: 'llmux', description: 'Private AI gateway — your models, your keys', category: 'productivity' },
+    { id: 'kerf', name: 'Kerf', description: 'Version-controlled notes & knowledge base', category: 'productivity' },
+    { id: 'soko', name: 'Soko', description: 'Your own storefront & catalog', category: 'internet' },
+    { id: 'gitstate', name: 'GitState', description: 'Local-first project & repo dashboard', category: 'development' },
+    { id: 'vuna', name: 'Vuna', description: 'Crawl, extract & search the open web', category: 'internet' },
+  ]
+  const installed = [
+    ...FIRST_PARTY,
+    ...registry
+      .filter((a) => installedSet.has(a.id))
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, category: a.category, icon: a.icon })),
+  ]
+  // Also surface the first-party apps in the Browse catalogue.
+  for (const fp of FIRST_PARTY) {
+    registry.unshift({ id: fp.id, name: fp.name, type: 'web', arch: [], flatpak_id: '', description: fp.description, category: fp.category, author: 'Vulos', icon: fp.id, vetted: true, versions: ['latest'], latest: 'latest', installed: true, homepage: '', license: '' })
+  }
   return { registry, installed }
 }
 
@@ -404,6 +425,20 @@ const SHOTS = [
       // "Select a contact" empty state.
       await page.getByRole('button', { name: /Priya Menon/ }).first().click().catch(() => {})
       await page.waitForTimeout(400)
+    },
+  },
+  {
+    name: 'launchpad',
+    light: false,
+    dsf: 2,
+    desc: 'Launchpad — the full colourful app grid (built-ins + installed apps)',
+    async drive(page) {
+      // Open the app grid via the menu-bar "Applications" button. Give the
+      // installed-app list (loaded async at boot) a beat to populate, then let
+      // the staggered tile entrance settle before capture.
+      await page.waitForTimeout(800)
+      await page.getByRole('button', { name: 'Applications' }).first().click().catch(() => {})
+      await page.waitForTimeout(1_100)
     },
   },
   {

@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useShell } from '../providers/ShellProvider'
-import { getApps, searchApps } from '../core/AppRegistry'
+import { getApps, searchApps, subscribeApps, getAppsVersion } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { AppIconTile } from '../core/AppIcons'
 import { useFocusTrap } from './useFocusTrap'
@@ -59,6 +59,10 @@ export default function Launchpad() {
     return () => window.removeEventListener('keydown', handler, true)
   }, [launchpadOpen, setLaunchpad])
 
+  // Re-render when the installed/AI app lists populate after boot. MUST be
+  // called before the early return below — hooks run unconditionally.
+  useSyncExternalStore(subscribeApps, getAppsVersion, getAppsVersion)
+
   if (!launchpadOpen) return null
 
   const close = () => { setLaunchpad(false); setSearch(''); setChatInput('') }
@@ -114,7 +118,7 @@ export default function Launchpad() {
       role="dialog"
       aria-modal="true"
       aria-label="Application launcher"
-      className="vshell-scrim fixed inset-0 z-50 flex flex-col"
+      className="vshell-scrim vshell-scrim-strong fixed inset-0 z-50 flex flex-col"
       onClick={(e) => { if (e.target === e.currentTarget) close() }}
     >
       {/* Search bar */}
@@ -254,24 +258,25 @@ function groupByCategory(apps) {
 // wider row gap than column gap so labels breathe without drifting apart.
 function AppGrid({ apps, onLaunch }) {
   return (
-    <div className="grid grid-cols-4 gap-x-1.5 gap-y-4 min-[520px]:grid-cols-5 min-[720px]:grid-cols-6 min-[920px]:grid-cols-7">
-      {apps.map(app => (
-        <AppTile key={app.id} app={app} onLaunch={onLaunch} />
+    <div className="grid grid-cols-4 gap-x-2 gap-y-5 min-[520px]:grid-cols-5 min-[720px]:grid-cols-6 min-[920px]:grid-cols-7">
+      {apps.map((app, i) => (
+        <AppTile key={app.id} app={app} onLaunch={onLaunch} index={i} />
       ))}
     </div>
   )
 }
 
-function AppTile({ app, onLaunch }) {
+function AppTile({ app, onLaunch, index = 0 }) {
   return (
     <button
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
       title={app.name}
-      className="vshell-tile focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
+      className="vshell-tile vula-tile-in focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
+      style={{ '--tile-i': Math.min(index, 28) }}
     >
-      <AppIconTile id={app.id} size={54} unicode={app.icon} />
-      <span className="vshell-tile-label max-w-[76px] truncate text-center text-[11.5px] leading-tight">
+      <AppIconTile id={app.id} size={60} unicode={app.icon} />
+      <span className="vshell-tile-label max-w-[80px] truncate text-center text-[11.5px] leading-tight">
         {app.name}
       </span>
     </button>

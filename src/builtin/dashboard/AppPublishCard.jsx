@@ -5,6 +5,7 @@
  * /api/apps/{id}/deployment (public URL) every 5 s.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Meter, Pill, EmptyState, Banner } from '../../core/settings/ui.jsx'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -51,22 +52,18 @@ async function apcPurgeCache(appId) {
 
 function ResourceBar({ label, pct, warn }) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
-  const barColor = warn
-    ? 'bg-warning'
-    : clamp > 60
-    ? 'accent-bg'
-    : 'bg-neutral-600'
+  const barColor = warn ? 'bg-[var(--status-warning)]' : clamp > 60 ? 'accent-bg' : 'bg-[var(--text-ghost)]'
 
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[10px] text-neutral-500 w-8 shrink-0 font-mono">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-neutral-800 overflow-hidden">
+    <div className="flex items-center gap-2.5 min-w-0">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] w-8 shrink-0 font-medium">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+          className={`h-full rounded-full transition-[width] duration-500 ${barColor}`}
           style={{ width: `${clamp}%` }}
         />
       </div>
-      <span className={`text-[10px] w-8 text-right shrink-0 font-mono ${warn ? 'text-warning' : 'text-neutral-500'}`}>
+      <span className={`text-[11px] w-9 text-right shrink-0 mono tabular-nums ${warn ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
         {Math.round(clamp)}%
       </span>
     </div>
@@ -78,13 +75,8 @@ function ResourceBar({ label, pct, warn }) {
 function MemWarningBanner({ appId, memPct }) {
   if (memPct < APC_WARN_THRESHOLD * 100) return null
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-warning-soft border border-warning-soft">
-      <svg viewBox="0 0 16 16" className="w-3 h-3 text-warning shrink-0" fill="currentColor">
-        <path d="M8 1L1 14h14L8 1zm0 3.5l4.5 8H3.5L8 4.5zm-.75 3v3h1.5V7.5h-1.5zm0 3.75v1.5h1.5v-1.5h-1.5z"/>
-      </svg>
-      <span className="text-[10px] text-warning leading-tight">
-        {appId} is approaching its memory limit ({Math.round(memPct)}%)
-      </span>
+    <div className="mt-2">
+      <Banner tone="warning">{appId} is approaching its memory limit ({Math.round(memPct)}%)</Banner>
     </div>
   )
 }
@@ -143,21 +135,20 @@ function AppCard({ app, cgroupInfo, onToggle }) {
   const memWarn = memPct >= APC_WARN_THRESHOLD * 100
 
   return (
-    <div className={`rounded-xl border p-3 transition-all hover:border-neutral-600/50 ${
+    <div className={`rounded-xl border p-3.5 transition-all hover:shadow-md ${
       isPublic
-        ? 'bg-neutral-900/70 border-success-soft'
-        : 'bg-neutral-900/40 border-neutral-800/40'
+        ? 'bg-[var(--bg-surface)] border-success-soft'
+        : 'bg-[var(--bg-surface)]/60 border-[var(--border-default)] hover:border-[var(--border-strong)]'
     }`}>
       {/* Header row */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Published badge */}
-          {isPublic && (
-            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-success-soft text-success border border-success-soft">
-              Public
-            </span>
+          <span className="text-sm font-semibold text-[var(--text-primary)] truncate">{app.app_id}</span>
+          {isPublic ? (
+            <Pill tone="success">Public</Pill>
+          ) : (
+            <Pill tone="neutral" dot={false}>Private</Pill>
           )}
-          <span className="text-sm font-medium text-neutral-200 truncate">{app.app_id}</span>
         </div>
 
         {/* Publish toggle */}
@@ -166,18 +157,18 @@ function AppCard({ app, cgroupInfo, onToggle }) {
           disabled={toggling}
           title={isPublic ? 'Make private' : 'Publish to web'}
           aria-pressed={isPublic}
-          className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-primary disabled:opacity-50 ${
-            isPublic ? 'bg-success' : 'bg-neutral-700'
+          className={`shrink-0 relative inline-flex h-[22px] w-[40px] items-center rounded-full transition-colors focus-primary disabled:opacity-50 ${
+            isPublic ? 'bg-[var(--status-success)]' : 'bg-[var(--border-emphasis)]'
           }`}
         >
-          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-            isPublic ? 'translate-x-4' : 'translate-x-0.5'
+          <span className={`inline-block h-[16px] w-[16px] transform rounded-full bg-white shadow transition-transform ${
+            isPublic ? 'translate-x-[21px]' : 'translate-x-[3px]'
           }`} />
         </button>
       </div>
 
       {/* Resource bars */}
-      <div className="mt-2 space-y-1">
+      <div className="mt-3 space-y-1.5">
         <ResourceBar label="CPU" pct={cpuPct} warn={false} />
         <ResourceBar label="RAM" pct={memPct} warn={memWarn} />
       </div>
@@ -187,19 +178,19 @@ function AppCard({ app, cgroupInfo, onToggle }) {
 
       {/* Public URL + actions */}
       {isPublic && (
-        <div className="mt-2 pt-2 border-t border-neutral-800/40 space-y-1.5">
+        <div className="mt-3 pt-3 border-t border-[var(--border-subtle)] space-y-1.5">
           {loadingDeploy && (
-            <span className="text-[10px] text-neutral-600">Loading URL...</span>
+            <span className="text-[11px] text-[var(--text-muted)]">Loading URL…</span>
           )}
           {!loadingDeploy && deployment?.fqdn && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-neutral-400 truncate flex-1 font-mono">
+              <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1 mono">
                 {deployment.fqdn}
               </span>
               <button
                 onClick={handleCopy}
                 title="Copy link"
-                className="shrink-0 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               >
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -207,14 +198,14 @@ function AppCard({ app, cgroupInfo, onToggle }) {
                 onClick={handlePurge}
                 disabled={purging}
                 title="Purge cache"
-                className="shrink-0 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors disabled:opacity-40"
+                className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
               >
-                {purging ? '...' : 'Purge'}
+                {purging ? '…' : 'Purge'}
               </button>
             </div>
           )}
           {!loadingDeploy && !deployment?.fqdn && (
-            <span className="text-[10px] text-neutral-600 italic">Subdomain provisioning...</span>
+            <span className="text-[11px] text-[var(--text-muted)] italic">Subdomain provisioning…</span>
           )}
         </div>
       )}
@@ -266,46 +257,45 @@ export default function AppPublishCard() {
   const privateApps = (apps || []).filter(a => a.visibility !== 'public')
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950 text-neutral-200 overflow-y-auto">
+    <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-y-auto">
       {/* Section header */}
-      <div className="px-5 pt-5 pb-3 border-b border-neutral-800/50">
-        <h2 className="text-base font-semibold text-neutral-100">Web Publishing</h2>
-        <p className="text-xs text-neutral-500 mt-0.5">
-          Toggle per-app visibility and monitor resource usage. Updates every 5 s.
-        </p>
+      <div className="px-5 pt-5 pb-4 border-b border-[var(--border-default)]">
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden="true" className="grid place-items-center w-8 h-8 rounded-xl accent-bg-soft accent-text">
+            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2.5 12h19M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+          </span>
+          <div>
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)] tracking-tight">Web Publishing</h2>
+            <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+              Toggle per-app visibility and monitor resource usage. Live, every 5 s.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 px-5 py-4 space-y-5 overflow-y-auto">
+      <div className="flex-1 px-5 py-5 space-y-6 overflow-y-auto">
         {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-soft border border-danger-soft">
-            <span className="text-xs text-danger">{error}</span>
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
 
         {/* Loading */}
         {apps === null && !error && (
-          <div className="flex items-center gap-2 py-10 justify-center text-neutral-600 text-xs">
+          <div className="flex items-center gap-2 py-10 justify-center text-[var(--text-muted)] text-xs">
             <span className="w-3.5 h-3.5 spinner" />
-            Loading apps...
+            Loading apps…
           </div>
         )}
 
         {/* Published apps */}
         {apps !== null && publicApps.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">
-              Published ({publicApps.length})
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+              Published
+              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{publicApps.length}</span>
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {publicApps.map(app => (
-                <AppCard
-                  key={app.app_id}
-                  app={app}
-                  cgroupInfo={cgroups[app.app_id]}
-                  onToggle={loadData}
-                />
+                <AppCard key={app.app_id} app={app} cgroupInfo={cgroups[app.app_id]} onToggle={loadData} />
               ))}
             </div>
           </section>
@@ -314,17 +304,13 @@ export default function AppPublishCard() {
         {/* Private apps */}
         {apps !== null && privateApps.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">
-              Private ({privateApps.length})
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+              Private
+              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{privateApps.length}</span>
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {privateApps.map(app => (
-                <AppCard
-                  key={app.app_id}
-                  app={app}
-                  cgroupInfo={cgroups[app.app_id]}
-                  onToggle={loadData}
-                />
+                <AppCard key={app.app_id} app={app} cgroupInfo={cgroups[app.app_id]} onToggle={loadData} />
               ))}
             </div>
           </section>
@@ -332,13 +318,11 @@ export default function AppPublishCard() {
 
         {/* Empty state */}
         {apps !== null && apps.length === 0 && !error && (
-          <div className="py-16 text-center animate-[fadeIn_0.2s_ease-out]">
-            <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800 text-neutral-600">
-              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
-            </div>
-            <p className="text-sm text-neutral-400">No apps found.</p>
-            <p className="text-xs text-neutral-600 mt-1.5 max-w-xs mx-auto leading-relaxed">Install apps from the App Hub to manage their visibility here.</p>
-          </div>
+          <EmptyState
+            icon="network"
+            title="No apps found"
+            hint="Install apps from the App Hub to manage their web visibility and resources here."
+          />
         )}
       </div>
     </div>

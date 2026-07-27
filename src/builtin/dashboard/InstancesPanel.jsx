@@ -4,6 +4,7 @@
  * Polls /api/instances every 10 s; fetches /api/routing/apps per instance on demand.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Pill, EmptyState, Banner } from '../../core/settings/ui.jsx'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -103,34 +104,23 @@ function truncateId(id) {
 // ── OnlineBadge ───────────────────────────────────────────────────────────────
 
 function OnlineBadge({ online }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium border ${
-        online
-          ? 'bg-success-soft text-success border-success-soft'
-          : 'bg-neutral-800/60 text-neutral-500 border-neutral-700/40'
-      }`}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-neutral-600'}`}
-      />
-      {online ? 'Online' : 'Offline'}
-    </span>
-  )
+  return online
+    ? <Pill tone="success" pulse>Online</Pill>
+    : <Pill tone="neutral">Offline</Pill>
 }
 
 // ── ResourceMiniBar ──────────────────────────────────────────────────────────
 
 function ResourceMiniBar({ label, pct }) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
-  const color = clamp > 80 ? 'bg-warning' : clamp > 60 ? 'accent-bg' : 'bg-neutral-600'
+  const color = clamp > 80 ? 'bg-[var(--status-warning)]' : clamp > 60 ? 'accent-bg' : 'bg-[var(--text-ghost)]'
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <span className="text-[10px] text-neutral-500 w-7 shrink-0 font-mono">{label}</span>
-      <div className="flex-1 h-1 rounded-full bg-neutral-800 overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${clamp}%` }} />
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] w-7 shrink-0 font-medium">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+        <div className={`h-full rounded-full transition-[width] duration-500 ${color}`} style={{ width: `${clamp}%` }} />
       </div>
-      <span className="text-[10px] text-neutral-500 w-7 text-right shrink-0 font-mono">{Math.round(clamp)}%</span>
+      <span className="text-[11px] text-[var(--text-tertiary)] w-8 text-right shrink-0 mono tabular-nums">{Math.round(clamp)}%</span>
     </div>
   )
 }
@@ -159,10 +149,10 @@ function RenameModal({ instance, onSave, onCancel }) {
   }, [instance.id, name, saving, onSave])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
-      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-3">
-          <span className="w-1.5 h-4 rounded-full accent-bg" /> Rename Instance
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-[var(--text-primary)] mb-4">
+          <span aria-hidden="true" className="w-1 h-4 rounded-full accent-bg" /> Rename instance
         </h3>
         <input
           ref={inputRef}
@@ -170,23 +160,14 @@ function RenameModal({ instance, onSave, onCancel }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onCancel() }}
-          className="w-full bg-neutral-800 border border-neutral-700/60 rounded-lg px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500/70 transition-colors focus-primary"
+          className="input"
           placeholder="Instance name"
         />
         {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
         <div className="flex gap-2 mt-4 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors focus-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!name.trim() || saving}
-            className="px-3 py-1.5 text-xs rounded-lg accent-bg text-white font-medium hover:brightness-110 active:scale-[0.97] disabled:opacity-40 transition-all focus-primary"
-          >
-            {saving ? 'Saving...' : 'Save'}
+          <button onClick={onCancel} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
+          <button onClick={handleSave} disabled={!name.trim() || saving} className="btn-primary text-xs px-3 py-1.5 active:scale-[0.97]">
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>
@@ -215,29 +196,24 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
   }, [instance.id, removing, onConfirm])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
-      <div className="bg-neutral-900 border border-neutral-700/50 rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-100 mb-2">
-          <span className="w-1.5 h-4 rounded-full bg-danger" /> Remove Instance?
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl p-5 w-80 max-w-full shadow-2xl anim-sheet-up">
+        <h3 className="flex items-center gap-2.5 text-sm font-semibold text-[var(--text-primary)] mb-2">
+          <span aria-hidden="true" className="w-1 h-4 rounded-full bg-danger" /> Remove instance?
         </h3>
-        <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
-          Remove <span className="text-neutral-200 font-medium">{instance.display_name || truncateId(instance.id)}</span> from your account?
+        <p className="text-xs text-[var(--text-tertiary)] mb-4 leading-relaxed">
+          Remove <span className="text-[var(--text-primary)] font-medium">{instance.display_name || truncateId(instance.id)}</span> from your account?
           This cannot be undone.
         </p>
         {error && <p className="text-[11px] text-danger mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors focus-primary"
-          >
-            Cancel
-          </button>
+          <button onClick={onCancel} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
           <button
             onClick={handleConfirm}
             disabled={removing}
             className="px-3 py-1.5 text-xs rounded-lg bg-danger text-white font-medium hover:brightness-110 active:scale-[0.97] disabled:opacity-40 transition-all focus-primary"
           >
-            {removing ? 'Removing...' : 'Remove'}
+            {removing ? 'Removing…' : 'Remove'}
           </button>
         </div>
       </div>
@@ -270,52 +246,54 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
   }, [instance.id, instance.store_only, toggling, onStoreOnlyChanged])
 
   const typeLabel = instance.type === 'cloud' ? 'Cloud' : 'Device'
-  const typeColor = instance.type === 'cloud'
-    ? 'accent-bg-soft accent-text accent-border-soft'
-    : 'bg-neutral-800/60 text-neutral-400 border-neutral-700/40'
 
   return (
-    <div className={`rounded-xl border transition-all hover:border-neutral-600/60 ${
+    <div className={`rounded-xl border transition-all hover:shadow-md ${
       instance.online
-        ? 'bg-neutral-900/70 border-neutral-700/50'
-        : 'bg-neutral-900/30 border-neutral-800/30'
+        ? 'bg-[var(--bg-surface)] border-[var(--border-default)] hover:border-[var(--border-strong)]'
+        : 'bg-[var(--bg-surface)]/50 border-[var(--border-subtle)]'
     }`}>
       {/* Header */}
-      <div className="p-3">
+      <div className="p-3.5">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            {/* Type badge */}
-            <span className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${typeColor}`}>
-              {typeLabel}
+            <span aria-hidden="true" className={`shrink-0 grid place-items-center w-8 h-8 rounded-xl ${instance.type === 'cloud' ? 'accent-bg-soft accent-text' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'}`}>
+              {instance.type === 'cloud'
+                ? <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.34 9.4 4 4 0 0 0 7 17h10.5Z"/></svg>
+                : <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>}
             </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                  {instance.display_name || truncateId(instance.id)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[11px] text-[var(--text-muted)]">{typeLabel}</span>
+                <span aria-hidden="true" className="w-0.5 h-0.5 rounded-full bg-[var(--text-ghost)]" />
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  {instance.online ? 'Active now' : `Last seen ${formatLastSeen(instance.last_seen)}`}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* NODE-CAP-01: store-only members sync but never serve routed traffic. */}
             {instance.store_only && (
-              <span
-                className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold border bg-warning-soft text-warning border-warning-soft"
-                title="Syncs data but does not serve app traffic — never a route target"
-              >
-                Sync-only
+              <span title="Syncs data but does not serve app traffic — never a route target">
+                <Pill tone="warning" dot={false}>Sync-only</Pill>
               </span>
             )}
-            {/* Name */}
-            <span className="text-sm font-medium text-neutral-200 truncate">
-              {instance.display_name || truncateId(instance.id)}
-            </span>
+            <OnlineBadge online={instance.online} />
           </div>
-          <OnlineBadge online={instance.online} />
         </div>
 
-        {/* ULID + last seen */}
-        <div className="mt-1.5 flex items-center gap-3">
-          <span className="text-[10px] font-mono text-neutral-600">{truncateId(instance.id)}</span>
-          <span className="text-[10px] text-neutral-600">
-            {instance.online ? 'Active now' : `Last seen ${formatLastSeen(instance.last_seen)}`}
-          </span>
-        </div>
+        {/* ULID */}
+        <div className="mt-2 text-[10px] mono text-[var(--text-ghost)]">{truncateId(instance.id)}</div>
 
         {/* Resource bars — only when online */}
         {instance.online && (instance.cpu_pct != null || instance.ram_pct != null) && (
-          <div className="mt-2 space-y-1">
+          <div className="mt-2.5 space-y-1.5">
             {instance.cpu_pct != null && <ResourceMiniBar label="CPU" pct={instance.cpu_pct} />}
             {instance.ram_pct != null && <ResourceMiniBar label="RAM" pct={instance.ram_pct} />}
           </div>
@@ -325,9 +303,9 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
         {instanceApps.length > 0 && (
           <button
             onClick={() => setExpanded(v => !v)}
-            className="mt-2 text-[10px] text-neutral-500 hover:text-neutral-300 flex items-center gap-1 transition-colors"
+            className="mt-2.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] flex items-center gap-1.5 transition-colors"
           >
-            <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
+            <span aria-hidden="true" className={`transition-transform text-[8px] ${expanded ? 'rotate-90' : ''}`}>▶</span>
             {instanceApps.length} app{instanceApps.length !== 1 ? 's' : ''}
           </button>
         )}
@@ -335,16 +313,16 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
 
       {/* Apps list (expanded) */}
       {expanded && instanceApps.length > 0 && (
-        <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-neutral-800/40">
+        <div className="px-3.5 pb-3.5 pt-0 space-y-1.5 border-t border-[var(--border-subtle)] mt-1">
           {instanceApps.map(app => (
-            <div key={app.app_id} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-neutral-400 truncate">{app.app_id}</span>
+            <div key={app.app_id} className="flex items-center justify-between gap-2 pt-1.5">
+              <span className="text-xs text-[var(--text-secondary)] truncate">{app.app_id}</span>
               {app.fqdn && (
                 <a
                   href={`https://${app.fqdn}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 hover:bg-neutral-700 accent-text transition-colors focus-primary"
+                  className="shrink-0 text-[11px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] accent-text transition-colors focus-primary"
                   title={`Open ${app.app_id} on this instance`}
                 >
                   Open ↗
@@ -357,10 +335,10 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
 
       {/* Actions — the owner instance is this box: it cannot remove itself from
           its own fleet (the box refuses with a 409), so it is not offered. */}
-      <div className="px-3 pb-3 flex flex-wrap items-center gap-2">
+      <div className="px-3.5 pb-3.5 flex flex-wrap items-center gap-2">
         <button
           onClick={onRename}
-          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors focus-primary"
+          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary"
         >
           Rename
         </button>
@@ -374,19 +352,19 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
           title={instance.store_only
             ? 'Currently sync-only. Make this device serve app traffic to the cluster.'
             : 'Currently serving. Make this device sync data only — never a route target.'}
-          className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors focus-primary disabled:opacity-40"
+          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary disabled:opacity-40"
         >
           {toggling ? 'Updating…' : instance.store_only ? 'Make serving' : 'Make sync-only'}
         </button>
         {!instance.is_owner && (
           <button
             onClick={onRemove}
-            className="text-[10px] px-2.5 py-1 rounded-lg bg-neutral-800 hover:bg-danger-soft text-neutral-500 hover:text-danger transition-colors focus-primary"
+            className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-danger-soft text-[var(--text-muted)] hover:text-danger transition-colors focus-primary"
           >
             Remove
           </button>
         )}
-        {toggleErr && <span role="alert" className="text-[10px] text-danger w-full">{toggleErr}</span>}
+        {toggleErr && <span role="alert" className="text-[11px] text-danger w-full">{toggleErr}</span>}
       </div>
     </div>
   )
@@ -471,8 +449,10 @@ export default function InstancesPanel() {
   const online = (instances || []).filter(i => i.online)
   const offline = (instances || []).filter(i => !i.online)
 
+  const total = (instances || []).length
+
   return (
-    <div className="flex flex-col h-full bg-neutral-950 text-neutral-200 overflow-y-auto">
+    <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-y-auto">
       {/* Modals */}
       {renaming && (
         <RenameModal
@@ -490,37 +470,49 @@ export default function InstancesPanel() {
       )}
 
       {/* Section header */}
-      <div className="px-5 pt-5 pb-3 border-b border-neutral-800/50">
-        <h2 className="text-base font-semibold text-neutral-100">Instances</h2>
-        <p className="text-xs text-neutral-500 mt-0.5">
-          All devices and cloud nodes in your account. Updates every 10 s.
-        </p>
+      <div className="px-5 pt-5 pb-4 border-b border-[var(--border-default)]">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span aria-hidden="true" className="grid place-items-center w-8 h-8 rounded-xl accent-bg-soft accent-text">
+              <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+            </span>
+            <div>
+              <h2 className="text-[15px] font-semibold text-[var(--text-primary)] tracking-tight">Instances</h2>
+              <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                All devices and cloud nodes in your account. Live, every 10 s.
+              </p>
+            </div>
+          </div>
+          {total > 0 && (
+            <div className="hidden sm:flex items-center gap-2">
+              <Pill tone="success" pulse>{online.length} online</Pill>
+              {offline.length > 0 && <Pill tone="neutral">{offline.length} offline</Pill>}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 px-5 py-4 space-y-5 overflow-y-auto">
+      <div className="flex-1 px-5 py-5 space-y-6 overflow-y-auto">
         {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-danger-soft border border-danger-soft">
-            <span className="text-xs text-danger">{error}</span>
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
 
         {/* Loading */}
         {instances === null && !error && (
-          <div className="flex items-center gap-2 py-10 justify-center text-neutral-600 text-xs">
+          <div className="flex items-center gap-2 py-10 justify-center text-[var(--text-muted)] text-xs">
             <span className="w-3.5 h-3.5 spinner" />
-            Loading instances...
+            Loading instances…
           </div>
         )}
 
         {/* Online instances */}
         {instances !== null && online.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">
-              Online ({online.length})
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+              Online
+              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{online.length}</span>
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {online.map(inst => (
                 <InstanceCard
                   key={inst.id}
@@ -538,10 +530,11 @@ export default function InstancesPanel() {
         {/* Offline instances */}
         {instances !== null && offline.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">
-              Offline ({offline.length})
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+              Offline
+              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{offline.length}</span>
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {offline.map(inst => (
                 <InstanceCard
                   key={inst.id}
@@ -558,16 +551,11 @@ export default function InstancesPanel() {
 
         {/* Empty state */}
         {instances !== null && instances.length === 0 && !error && (
-          <div className="py-16 text-center animate-[fadeIn_0.2s_ease-out]">
-            <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800 text-neutral-600">
-              <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-            </div>
-            <p className="text-sm text-neutral-400">No instances found.</p>
-            <p className="text-xs text-neutral-600 mt-1.5 max-w-xs mx-auto leading-relaxed">
-              A new device joins this account from its own setup wizard — choose
-              “Join an existing system” there, and it appears here.
-            </p>
-          </div>
+          <EmptyState
+            icon="storagemode"
+            title="No instances found"
+            hint="A new device joins this account from its own setup wizard — choose “Join an existing system” there, and it appears here."
+          />
         )}
       </div>
     </div>

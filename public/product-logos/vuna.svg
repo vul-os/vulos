@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Vuna">
+  <defs>
+    <linearGradient id="vuna-bg" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2a1810"/>
+      <stop offset="1" stop-color="#1a0f09"/>
+    </linearGradient>
+    <linearGradient id="vuna-gold" x1="43" y1="20" x2="57" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0cd7e"/>
+      <stop offset="1" stop-color="#c68f2e"/>
+    </linearGradient>
+  </defs>
+  <!-- tile -->
+  <rect width="100" height="100" rx="22" fill="url(#vuna-bg)"/>
+  <!-- wheat sheaf: three blades bound by a band, echoing the desktop app's mark -->
+  <path d="M50 19 L58 47 L42 47 Z" fill="url(#vuna-gold)"/>
+  <path d="M31 27 L49 51 L35 53 Z" fill="#e2762f"/>
+  <path d="M69 27 L51 51 L65 53 Z" fill="#e2762f"/>
+  <ellipse cx="50" cy="65" rx="21" ry="10.5" fill="#7a3a0b"/>
+  <path d="M31 61 A21 10.5 0 0 0 50 73" stroke="#f0cd7e" stroke-width="2.6" fill="none" stroke-linecap="round" opacity="0.85"/>
+</svg>

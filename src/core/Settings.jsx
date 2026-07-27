@@ -22,6 +22,10 @@ import DomainPanel from './settings/DomainPanel.jsx'
 import CDNPanel from './settings/CDNPanel.jsx'
 import LocationPanel from './settings/LocationPanel.jsx'
 import { SettingsIcon } from './AppIcons.jsx'
+import {
+  Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
+  StatTile, InfoList, InfoRow, EmptyState, Banner, humanBytes,
+} from './settings/ui.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
@@ -173,22 +177,22 @@ function SettingsNav({ active, onSelect, idPrefix, groups }) {
                   id={idPrefix ? `${idPrefix}-${s.id}` : undefined}
                   onClick={() => onSelect(s.id)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`group relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors
+                  className={`group relative flex w-full items-center gap-3 rounded-lg pl-3 pr-2.5 py-2 text-[13.5px] transition-colors
                     ${isActive
                       ? 'accent-bg-soft accent-text font-medium'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}`}
                 >
                   <span
                     aria-hidden="true"
-                    className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 rounded-full transition-all
-                      ${isActive ? 'h-5 accent-bg' : 'h-0'}`}
+                    className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full transition-all
+                      ${isActive ? 'h-6 accent-bg' : 'h-0'}`}
                   />
                   <span
                     aria-hidden="true"
-                    className={`shrink-0 flex items-center justify-center w-4 transition-opacity
-                      ${isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-95'}`}
+                    className={`shrink-0 flex items-center justify-center w-5 transition-opacity
+                      ${isActive ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'}`}
                   >
-                    <SettingsIcon name={s.id} size={16} />
+                    <SettingsIcon name={s.id} size={20} />
                   </span>
                   <span className="truncate">{s.label}</span>
                 </button>
@@ -334,28 +338,64 @@ function AISettings({ profile, updateProfile }) {
 
   const save = () => updateProfile({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined })
 
+  const isLocal = provider === 'ollama'
+  const providerLabel = { ollama: 'Ollama (on-device)', claude: 'Claude (Anthropic)', openai: 'OpenAI', custom: 'Custom (OpenAI-compatible)' }[provider]
+
   return (
-    <Section title="AI Assistant">
-      <Field label="Provider">
-        <select value={provider} onChange={e => setProvider(e.target.value)} className="input">
-          <option value="ollama">Ollama (local)</option>
-          <option value="claude">Claude (Anthropic)</option>
-          <option value="openai">OpenAI</option>
-          <option value="custom">Custom (OpenAI-compatible)</option>
-        </select>
-      </Field>
-      <Field label="Model">
-        <input value={model} onChange={e => setModel(e.target.value)} placeholder={provider === 'ollama' ? 'llama3' : provider === 'claude' ? 'claude-sonnet-4-20250514' : 'gpt-4o'} className="input" />
-      </Field>
-      <Field label="API Key">
-        <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="••••••" className="input" />
-      </Field>
-      {status && (
-        <div className={`text-xs mt-2 ${status.available ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'}`}>
-          {status.available ? `Connected: ${status.provider} / ${status.model}` : `Not available: ${status.error || 'check config'}`}
-        </div>
+    <Section
+      icon="ai"
+      title="AI Assistant"
+      desc="Choose the model that powers your private assistant. Run it fully on-device with Ollama, or bring your own hosted key — your prompts and data never leave your box unless you pick a hosted provider."
+      actions={status && (
+        <Pill tone={status.available ? 'success' : 'danger'}>
+          {status.available ? 'Connected' : 'Unavailable'}
+        </Pill>
       )}
-      <button onClick={save} className="btn mt-4">Save</button>
+    >
+      <Card
+        icon="ai"
+        title="Model provider"
+        desc="Ollama keeps everything local. Hosted providers send prompts to that vendor over your key."
+        footer={
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-[var(--text-tertiary)]">
+              {isLocal ? 'Running on-device — sovereign by default.' : `Using your ${providerLabel} key.`}
+            </span>
+            <button onClick={save} className="btn-primary text-sm">Save changes</button>
+          </div>
+        }
+      >
+        <Field label="Provider" htmlFor="ai-provider">
+          <select id="ai-provider" value={provider} onChange={e => setProvider(e.target.value)} className="input">
+            <option value="ollama">Ollama (on-device)</option>
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">Custom (OpenAI-compatible)</option>
+          </select>
+        </Field>
+        <Field label="Model" htmlFor="ai-model">
+          <input id="ai-model" value={model} onChange={e => setModel(e.target.value)} placeholder={isLocal ? 'llama3' : provider === 'claude' ? 'claude-sonnet-4-20250514' : 'gpt-4o'} className="input" />
+        </Field>
+        {!isLocal && (
+          <Field label="API key" htmlFor="ai-key" hint="Stored on your box and used only to reach the provider. Write-only — it is never shown again.">
+            <input id="ai-key" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="••••••••••••" className="input" />
+          </Field>
+        )}
+      </Card>
+
+      <Card title="Status">
+        {status ? (
+          <InfoList>
+            <InfoRow label="Availability" value={status.available ? 'Reachable' : (status.error || 'Not reachable')} />
+            <InfoRow label="Active provider" value={status.provider || provider} />
+            <InfoRow label="Active model" value={status.model || model || '—'} mono />
+          </InfoList>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] py-1">
+            <span className="w-3.5 h-3.5 spinner" /> Checking model availability…
+          </div>
+        )}
+      </Card>
     </Section>
   )
 }
@@ -2707,16 +2747,7 @@ function AboutSettings() {
   )
 }
 
-function InfoRow({ label, value, ok }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-      <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      <span className={`text-sm ${ok != null ? (ok ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]') : 'text-[var(--text-secondary)]'}`}>
-        {value || '—'}
-      </span>
-    </div>
-  )
-}
+// InfoRow now comes from ./settings/ui.jsx (shared kit). Local copy removed.
 
 // --- Shared UI components ---
 // --- Notifications (WAVE-13) ---
@@ -2769,42 +2800,6 @@ function NotificationsSettings() {
 // Section — the shared panel header + body wrapper. A prominent title, an
 // optional one-line description, and a hairline divider give every panel a
 // consistent, premium masthead. `desc` is optional and back-compatible.
-function Section({ title, desc, children }) {
-  return (
-    <div>
-      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
-        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
-        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
-      </header>
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <div className="mb-4">
-      <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1.5">{label}</label>
-      {children}
-    </div>
-  )
-}
-
-// Toggle — accent-driven switch so it retints with the chosen --accent.
-function Toggle({ label, checked, onChange }) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-2.5">
-      <span className="text-sm text-[var(--text-primary)]">{label}</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={!!checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        style={checked ? { background: 'var(--accent)' } : undefined}
-        className={`shrink-0 w-11 h-6 rounded-full transition-colors relative ${checked ? '' : 'bg-[var(--border-emphasis)]'}`}>
-        <span aria-hidden="true" className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${checked ? 'left-[1.375rem]' : 'left-0.5'}`} />
-      </button>
-    </div>
-  )
-}
+// Section, Field and Toggle now live in ./settings/ui.jsx (the shared kit) and
+// are imported at the top of this file — the local copies were removed so every
+// pane shares one design language.

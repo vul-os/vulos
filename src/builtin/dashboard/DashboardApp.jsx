@@ -13,7 +13,7 @@ const TABS = [
 ]
 
 const Spinner = () => (
-  <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-600 text-xs gap-2">
+  <div className="flex items-center justify-center h-full bg-[var(--bg-base)] text-[var(--text-muted)] text-xs gap-2">
     <span className="w-3.5 h-3.5 spinner" />
     Loading...
   </div>
@@ -23,24 +23,30 @@ export default function DashboardApp({ initialTab }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'web')
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950 overflow-hidden">
+    <div className="flex flex-col h-full bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden">
       {/* Tab bar */}
-      <div className="flex-shrink-0 flex border-b border-neutral-800/60 bg-neutral-950 px-4 pt-2">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            aria-pressed={activeTab === tab.id}
-            style={activeTab === tab.id ? { borderColor: 'var(--accent)' } : undefined}
-            className={`px-4 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 -mb-px ${
-              activeTab === tab.id
-                ? 'text-neutral-100 bg-neutral-900/60'
-                : 'text-neutral-500 border-transparent hover:text-neutral-300 hover:bg-neutral-800/30'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex-shrink-0 flex items-center gap-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]/60 px-3 pt-2.5 pb-0">
+        {TABS.map(tab => {
+          const on = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              aria-pressed={on}
+              className={`relative px-3.5 py-2 text-[13px] font-medium rounded-t-lg transition-colors ${
+                on
+                  ? 'text-[var(--text-primary)]'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]/50'
+              }`}
+            >
+              {tab.label}
+              <span
+                aria-hidden="true"
+                className={`absolute left-2 right-2 -bottom-px h-0.5 rounded-full transition-all ${on ? 'accent-bg opacity-100' : 'opacity-0'}`}
+              />
+            </button>
+          )
+        })}
       </div>
 
       {/* Tab panels */}

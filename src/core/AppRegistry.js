@@ -466,6 +466,18 @@ function suiteAppEnabled(id) {
   return true
 }
 
+// ── App-list change subscription ─────────────────────────────────────────
+// getApps() reads module-level state (installed + AI apps) that arrives async
+// after boot. Components that render the app list (Launchpad, mobile grid,
+// Home) subscribe here so they re-render when the list actually populates,
+// instead of being stuck with the boot-time snapshot. Pairs with
+// useSyncExternalStore(subscribeApps, getAppsVersion).
+let appsVersion = 0
+const appListeners = new Set()
+export function subscribeApps(fn) { appListeners.add(fn); return () => { appListeners.delete(fn) } }
+export function getAppsVersion() { return appsVersion }
+function notifyApps() { appsVersion++; for (const fn of appListeners) fn() }
+
 // Dynamic installed apps from backend
 let installedApps = []
 let fetchPromise = null
@@ -494,6 +506,7 @@ export function refreshInstalled() {
           needsSameOrigin: !!a.needs_same_origin,
           installed: true,
         }))
+      notifyApps()
       return installedApps
     })
     .catch(() => { installedApps = [] })
@@ -521,6 +534,7 @@ export function refreshAIApps() {
           url: `/api/ai-apps/${a.id}/html`,
           ai5AIApp: true,
         }))
+      notifyApps()
       return ai5AIApps
     })
     .catch(() => { ai5AIApps = [] })

@@ -82,6 +82,8 @@ function defaults() {
     'GET /api/router/classify': json({ lane: 'WebApp' }),
     'POST /api/apps/launch': json({ ok: true }),
     'POST /api/apps/stop': json({ ok: true }),
+    // Empty by default; the screenshot harness overrides this with a real
+    // installed list (built in scripts/screenshots.mjs → demoOverrides).
     'GET /api/store/installed': json([]),
     'GET /api/ai-apps': json([]),
     'GET /api/ai/status': json({ available: true, mode: 'byo', provider: 'ollama', model: 'llama3', providers: [], tier: 'local' }),

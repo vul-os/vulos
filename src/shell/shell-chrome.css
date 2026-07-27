@@ -156,6 +156,15 @@
   -webkit-backdrop-filter: blur(10px) saturate(118%);
   animation: vshellScrimIn var(--motion-base) var(--ease-standard);
 }
+/* Full-screen overlays (the Launchpad app grid) want an almost-opaque backdrop
+   so the grid reads on its own — and so it still dims the desktop where the GPU
+   blur is unavailable (e.g. screenshot capture). A faint top-lit wash keeps it
+   from being a flat black sheet. */
+.vshell-scrim-strong {
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--bg-elevated) 55%, transparent), transparent 60%),
+    color-mix(in srgb, var(--bg-base) 97%, transparent);
+}
 @keyframes vshellScrimIn {
   from {
     opacity: 0;

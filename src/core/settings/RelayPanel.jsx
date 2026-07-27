@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { requireStepUp } from '../../lib/stepup'
+import { Section, Field, Card, InfoList, InfoRow, Pill, Banner } from './ui.jsx'
 
 // ---------------------------------------------------------------------------
 // RelayPanel — Settings -> Network -> Relay & Reachability (box-owner only
@@ -27,28 +28,6 @@ import { requireStepUp } from '../../lib/stepup'
 //   POST /api/relayconfig/reset      — (step-up) revert to the default
 //   POST /api/relayconfig/test       — TCP-probe the active provider's endpoint
 // ---------------------------------------------------------------------------
-
-function Section({ title, desc, children }) {
-  return (
-    <div>
-      <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
-        <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
-        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
-      </header>
-      {children}
-    </div>
-  )
-}
-
-function Field({ label, hint, children }) {
-  return (
-    <div className="mb-3">
-      <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
-      {children}
-      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1">{hint}</p>}
-    </div>
-  )
-}
 
 async function jsonFetch(url, opts) {
   const r = await fetch(url, { credentials: 'same-origin', ...opts })
@@ -198,57 +177,56 @@ export default function RelayPanel() {
 
   return (
     <Section
+      icon="relay"
       title="Relay & Reachability"
-      desc="Ephor is Vulos's default relay/TURN path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP."
+      desc="The built-in Vulos relay is the default reachability path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP. Ephor is a supported alternative relay."
+      actions={config && <Pill tone="accent">{activeMeta?.label?.replace(/ \(default\)/, '') || config.provider}</Pill>}
     >
-      {loadError && (
-        <div className="rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-4 py-3 mb-5 text-sm" role="alert">
-          {loadError}
-        </div>
-      )}
+      {loadError && <Banner tone="info">{loadError}</Banner>}
 
       {config && (
-        <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">
-          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Active provider</span>
-            <span className="text-sm text-[var(--text-primary)]">{activeMeta?.label || config.provider}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Box ingress</span>
-            <span className="text-sm text-[var(--text-secondary)] text-right">{effective?.ingress?.mode}{effective?.ingress?.detail ? ` — ${effective.ingress.detail}` : ''}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">Call media (ICE) servers</span>
-            <span className="text-sm text-[var(--text-secondary)]">{effective?.ice_servers?.length ?? 0} configured</span>
-          </div>
-        </div>
+        <Card title="Current reachability" desc="What is resolving right now across the three reachability concerns.">
+          <InfoList>
+            <InfoRow label="Active provider" value={activeMeta?.label || config.provider} />
+            <InfoRow label="Box ingress" value={`${effective?.ingress?.mode || '—'}${effective?.ingress?.detail ? ` — ${effective.ingress.detail}` : ''}`} />
+            <InfoRow label="Call media (ICE) servers" value={`${effective?.ice_servers?.length ?? 0} configured`} />
+          </InfoList>
+        </Card>
       )}
 
-      <div className="space-y-2 mb-5">
-        {PROVIDERS.map(p => (
-          <label
-            key={p.value}
-            className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
-              provider === p.value
-                ? 'border-[var(--accent)] bg-[var(--bg-elevated)]'
-                : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:border-[var(--border-strong)]'
-            }`}
-          >
-            <input
-              type="radio"
-              name="relay-provider"
-              value={p.value}
-              checked={provider === p.value}
-              onChange={() => { setProvider(p.value); setSaveMsg(null) }}
-              className="mt-1"
-            />
-            <span>
-              <span className="block text-sm font-medium text-[var(--text-primary)]">{p.label}</span>
-              <span className="block text-xs text-[var(--text-faint)] mt-0.5 leading-relaxed">{p.blurb}</span>
-            </span>
-          </label>
-        ))}
-      </div>
+      <Card title="Reachability provider" desc="Ingress and rendezvous only — call media (ICE) is never broken by switching here.">
+        <div className="space-y-2.5">
+        {PROVIDERS.map(p => {
+          const on = provider === p.value
+          return (
+            <label
+              key={p.value}
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3.5 cursor-pointer transition-all ${
+                on
+                  ? 'accent-border bg-[var(--accent-soft)] shadow-sm'
+                  : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]/40'
+              }`}
+            >
+              <input
+                type="radio"
+                name="relay-provider"
+                value={p.value}
+                checked={on}
+                onChange={() => { setProvider(p.value); setSaveMsg(null) }}
+                className="mt-0.5 accent-[var(--accent)]"
+              />
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                  {p.label}
+                  {config?.provider === p.value && <Pill tone="success">Active</Pill>}
+                </span>
+                <span className="block text-xs text-[var(--text-tertiary)] mt-1 leading-relaxed">{p.blurb}</span>
+              </span>
+            </label>
+          )
+        })}
+        </div>
+      </Card>
 
       {provider === 'turn' && (
         <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 mb-5">
