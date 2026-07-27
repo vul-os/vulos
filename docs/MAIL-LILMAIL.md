@@ -1,5 +1,10 @@
 # Mail (LilMail connector)
 
+> This page is the wiring/config reference for the **Mail app** (the embedded
+> lilmail iframe). For the user-facing overview of mail **and** the
+> credential-brokering proxy behind **Calendar/Contacts**, see
+> [MAIL-CALENDAR-CONTACTS.md](MAIL-CALENDAR-CONTACTS.md).
+
 **Mail in Vulos is a connector, not a service Vulos runs.** The OS's built-in
 inbox connects to whatever mailbox the user already has — Gmail, Outlook, or
 any IMAP/SMTP account. There is no requirement to host mail on the box, and a
