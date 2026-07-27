@@ -90,7 +90,7 @@ const HOME_PAYLOAD = {
   focus: [
     { uid: 'f1', subject: 'Re: Q3 roadmap sign-off', from_name: 'Priya Menon',
       preview: 'Looks good — just need your ack on the timeline before I send it upstairs.' },
-    { uid: 'f2', subject: 'Invoice #2043 is due Friday', from_name: 'Billing · Hetzner',
+    { uid: 'f2', subject: 'Invoice #2043 is due Friday', from_name: 'Nadia Rahman',
       preview: 'Your monthly invoice is ready. Auto-pay is on, no action needed unless you want to review.' },
   ],
   agenda: [
@@ -249,7 +249,7 @@ const CONTACTS_CARDS = [
 // across shots.
 const ASSISTANT_ATTENTION_ANSWER =
   "You're mostly clear this morning. Priya is waiting on your ack on the Q3 " +
-  "roadmap timeline, and the Hetzner invoice is due Friday — auto-pay is on, so " +
+  "roadmap timeline, and the studio invoice is due Friday — auto-pay is on, so " +
   "no action needed unless you want to review it. Design review moved to 2pm. " +
   "Nothing else is on fire."
 
