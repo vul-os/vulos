@@ -8,6 +8,11 @@ Sections marked **owner only** below are hidden from the nav entirely for non-ad
 
 For background on accounts, roles, and the desktop shell that surrounds Settings, see [USER-GUIDE.md](USER-GUIDE.md). For the operator-side environment variables that some of these panes read and write, see [CONFIGURATION.md](CONFIGURATION.md).
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-light.png" />
+  <img src="screenshots/settings.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
+</picture>
+
 ---
 
 ## Intelligence
@@ -24,6 +29,11 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 |---|---|
 | **Appearance** | Theme (Light / Dark / System / Schedule, with a dark-from/light-from time picker under Schedule), Night Shift (off / sunset-to-sunrise / a custom time window, plus a warmth slider), an accent colour (ten presets or a custom hex value, live-previewed on a sample button), density (Comfortable / Compact spacing across the whole shell), and wallpaper (upload an image or reset to default). |
 | **Notifications** | Do Not Disturb and notification-sound toggles, the per-device Web Push toggle for this browser, and per-source toggles (Mail, Assistant, System, …) that stop a source being collected at all, not just silenced. See [Notifications](USER-GUIDE.md#notifications) in the User Guide. |
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-appearance-light.png" />
+  <img src="screenshots/settings-appearance.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
+</picture>
 
 ## Devices
 

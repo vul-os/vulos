@@ -4,6 +4,10 @@ Vulos OS ships with a built-in AI assistant that runs against your own mail, cal
 
 For install and first boot, start with [GETTING-STARTED.md](GETTING-STARTED.md). Environment variables referenced here are collected in [CONFIGURATION.md](CONFIGURATION.md); the system-level picture is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
+<picture>
+  <img src="screenshots/assistant.png" alt="The assistant answering a question, with its sovereignty tier shown" width="880" />
+</picture>
+
 ---
 
 ## What the assistant is

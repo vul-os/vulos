@@ -125,6 +125,11 @@ Choosing **Join** instead skips straight to picking up an existing installation'
 
 After setup you land on the desktop shell. The dock at the bottom holds your running apps. Press **F3** for Mission Control (overview of all windows). Open **Settings** to configure WiFi, display, audio, and more.
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/hero-light.png" />
+  <img src="screenshots/hero.png" alt="The Vulos desktop after first-boot setup: menu bar, Home brief with agenda and assistant composer, and quick-launch tiles" width="880" />
+</picture>
+
 ---
 
 ## Verifying the install

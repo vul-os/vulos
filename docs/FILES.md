@@ -2,6 +2,11 @@
 
 How Vulos OS stores your files: the Files (Drive) app, resumable uploads, the viewer/editor/owner sharing model, external drives (Google Drive, Dropbox, GCS), and where your bytes actually live — on disk and in the object store.
 
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="screenshots/files-light.png" />
+  <img src="screenshots/files.png" alt="The Files (Drive) app browsing a folder of documents" width="880" />
+</picture>
+
 ---
 
 ## The two file apps, at a glance

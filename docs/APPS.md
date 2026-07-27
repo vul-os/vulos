@@ -104,6 +104,10 @@ require the Chromium + Xvfb/GStreamer streaming stack to be present on the box.
 
 The **App Hub** app in the shell is the store front. It lists a curated registry of installable self-hosted apps (Navidrome, Gitea, Jellyfin, Grafana, Jupyter, draw.io, Cockpit, Firefox via Flatpak, and others) — including the chat/video answer, Element/Cinny (Matrix) and Jitsi Meet/Element Call (video), covered in full in [COMMS.md](COMMS.md) — shows what's installed, and installs or removes with one click and a progress bar.
 
+<picture>
+  <img src="screenshots/apphub.png" alt="The App Hub browsing the app catalogue" width="880" />
+</picture>
+
 Behind the UI:
 
 | Endpoint | Purpose |

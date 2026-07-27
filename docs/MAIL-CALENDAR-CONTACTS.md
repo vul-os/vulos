@@ -28,6 +28,10 @@ source is vendored into the OS. An on-box mail *server* engine exists but is
 dormant and experimental; the default and expected setup is **bring-your-own
 mailbox**.
 
+<picture>
+  <img src="screenshots/calendar.png" alt="The Calendar month view with events" width="880" />
+</picture>
+
 ---
 
 ## Calendar and Contacts — credentials stay on the box
@@ -63,6 +67,10 @@ cookie.
 
 The Contacts app doesn't only show your CardDAV/Vulos cards. It shows a single,
 de-duplicated address book merged from every place your contacts actually live:
+
+<picture>
+  <img src="screenshots/contacts.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
+</picture>
 
 - **Vulos / CardDAV** — the cards behind the proxy above.
 - **Device + phone SIM** — the contacts on your Android phone. The Vulos app
