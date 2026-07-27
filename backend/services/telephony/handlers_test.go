@@ -32,6 +32,15 @@ var teleRoutes = []struct {
 	{"POST", "/api/telephony/call/decline"},
 	{"POST", "/api/telephony/call/answer"},
 	{"GET", "/api/telephony/ws"},
+	// Second/throwaway-number (Provider) line — owner-gated exactly like the SIM
+	// line. NB: /api/telephony/provider/inbound is intentionally absent here — it
+	// is the provider-facing webhook, authenticated by HMAC rather than the owner
+	// gate, and is covered by the webhook tests in provider_test.go.
+	{"GET", "/api/telephony/virtual/status"},
+	{"GET", "/api/telephony/virtual/sms/threads"},
+	{"GET", "/api/telephony/virtual/sms/thread/+15551234567"},
+	{"POST", "/api/telephony/virtual/sms/send"},
+	{"POST", "/api/telephony/virtual/call"},
 }
 
 // A non-owner (or an unauthenticated request with no X-User-ID) must be rejected on

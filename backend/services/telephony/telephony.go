@@ -42,11 +42,25 @@ type Service struct {
 	ownerID func() string
 	hub     *wsHub
 
+	// provider is the SECOND / THROWAWAY-number line: a swappable virtual-number
+	// backend (BYO, env-configured) that is entirely separate from the box SIM
+	// above. Never nil — an unconfigured box gets a noopProvider that fails closed
+	// (Configured()==false, every action returns ErrNoProvider), so telephony never
+	// silently dials or sends over a default vendor.
+	provider Provider
+
 	mu       sync.Mutex
 	modemID  string          // cached modem index ("0")
 	modemAt  time.Time       // when modemID was last resolved
 	seenSMS  map[string]bool // SMS object paths already delivered as notifications
 	pollStop chan struct{}
+
+	// vmu guards the virtual-line message log. The provider (unlike the SIM's
+	// ModemManager inbox) keeps no queryable store on the box, so the box records
+	// the virtual line's own sent/received messages here to back the over-internet
+	// threads view. Bounded to maxVirtualMsgs.
+	vmu   sync.Mutex
+	vmsgs []sms
 }
 
 // New creates the service. notifier may be nil (no notifications fired). ownerID
@@ -60,6 +74,7 @@ func New(notifier Notifier, ownerID func() string) *Service {
 		ownerID:  ownerID,
 		hub:      newWSHub(),
 		seenSMS:  map[string]bool{},
+		provider: providerFromEnv(),
 	}
 }
 

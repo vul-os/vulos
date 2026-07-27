@@ -86,4 +86,58 @@ func RegisterHandlers(mux *http.ServeMux, s *Service) {
 	}))
 
 	mux.HandleFunc("GET /api/telephony/ws", s.serveWS)
+
+	registerVirtualHandlers(mux, s)
+}
+
+// registerVirtualHandlers wires the SECOND / THROWAWAY-number (Provider) surface.
+// The owner-facing routes mirror the SIM line's shapes so the phone app can render
+// either line with the same components, and are owner-gated identically (the
+// second number is still the owner's line). The one exception is the inbound
+// webhook, which the provider/adapter calls — it is authenticated by HMAC inside
+// the handler, not by the owner gate, since the caller is not a browser user.
+func registerVirtualHandlers(mux *http.ServeMux, s *Service) {
+	mux.HandleFunc("GET /api/telephony/virtual/status", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.VirtualStatus())
+	}))
+	mux.HandleFunc("GET /api/telephony/virtual/sms/threads", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.VirtualThreads())
+	}))
+	mux.HandleFunc("GET /api/telephony/virtual/sms/thread/{number}", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.VirtualThreadFor(r.PathValue("number")))
+	}))
+	mux.HandleFunc("POST /api/telephony/virtual/sms/send", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			To     string `json:"to"`
+			Number string `json:"number"`
+			Body   string `json:"body"`
+			Text   string `json:"text"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+			return
+		}
+		if err := s.VirtualSend(firstNonEmpty(body.To, body.Number), firstNonEmpty(body.Body, body.Text)); err != nil {
+			writeJSON(w, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("POST /api/telephony/virtual/call", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			To     string `json:"to"`
+			Number string `json:"number"`
+		}
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body)
+		callID, err := s.VirtualPlaceCall(firstNonEmpty(body.To, body.Number))
+		if err != nil {
+			writeJSON(w, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "call_id": callID})
+	}))
+
+	// Internet-facing inbound webhook — HMAC-authenticated inside the handler
+	// (fail-closed when the provider can't verify), NOT owner-gated.
+	mux.HandleFunc("POST /api/telephony/provider/inbound", s.handleProviderInbound)
 }
