@@ -34,6 +34,10 @@ import { useState } from 'react'
 // may redistribute it. A generic icon is the safe default.
 // eslint-disable-next-line react-refresh/only-export-components
 export const APP_LOGOS = {
+  // Classic black terminal tile (near-black squircle + light prompt glyph) —
+  // wins over the monochrome G.terminal glyph in AppIconTile/Dock so the
+  // launcher, dock, and App Hub all show the recognizable black terminal mark.
+  terminal: '/icons/terminal.svg',
   chrome: '/icons/chrome.svg',
   browser: '/icons/chrome.svg',
   'browser-stream': '/icons/chrome.svg',
@@ -271,14 +275,18 @@ const G = {
   ),
   assistant: (
     <>
-      <path d="M12 3.3l1.7 5.1 5.1 1.6-5.1 1.7L12 16.7l-1.7-5-5.1-1.7 5.1-1.6z" />
-      <path d="M18.4 5l.55 1.6 1.6.55-1.6.55-.55 1.6-.55-1.6-1.6-.55 1.6-.55z" />
+      <path d="M9.9 15.5A2 2 0 008.5 14.1l-6.1-1.6a.5.5 0 010-1L8.5 9.9A2 2 0 009.9 8.5l1.6-6.1a.5.5 0 01.96 0L14.1 8.5a2 2 0 001.4 1.4l6.1 1.6a.5.5 0 010 1L15.5 14.1a2 2 0 00-1.4 1.4l-1.6 6.1a.5.5 0 01-.96 0z" />
+      <path d="M19 3.4v2.4M17.8 4.6h2.4" />
     </>
   ),
   settings: (
     <>
-      <circle cx="12" cy="12" r="3.1" />
-      <path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M18.9 5.1l-2.1 2.1M7.2 16.8l-2.1 2.1" />
+      <path d="M3.5 6h3.3M11.2 6H20.5" />
+      <circle cx="9" cy="6" r="2" />
+      <path d="M3.5 12h8.3M16.2 12H20.5" />
+      <circle cx="14" cy="12" r="2" />
+      <path d="M3.5 18h2.1M10 18H20.5" />
+      <circle cx="7.8" cy="18" r="2" />
     </>
   ),
   apphub: (

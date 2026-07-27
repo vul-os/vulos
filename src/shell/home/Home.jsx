@@ -56,7 +56,7 @@ const TIER_DOT = {
 // user's accent. Kept as constants (not ad-hoc repeated strings) so the whole
 // surface stays coherent and is retuned in one place.
 const CARD = 'rounded-[var(--radius-xl)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_80%,transparent)] backdrop-blur-xl'
-const CARD_ROW = `${CARD} px-3.5 py-3 transition-[background-color,border-color] duration-200 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_72%,transparent)]`
+const CARD_ROW = `${CARD} px-4 py-3 shadow-[var(--shadow-sm)] transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] hover:shadow-[var(--shadow-md)]`
 const BTN = 'text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-hover)_50%,transparent)] text-[color:var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[color:var(--text-primary)] transition-colors disabled:opacity-40 disabled:hover:text-[color:var(--text-secondary)]'
 const LINK = 'text-[11.5px] font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors'
 
@@ -104,12 +104,12 @@ function reminderWhen(iso) {
 function Section({ label, right, children, className = '' }) {
   return (
     <section className={className}>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.09em] text-[color:var(--text-tertiary)]">
-          <span aria-hidden="true" className="inline-block h-[2px] w-4 rounded-full" style={{ background: 'var(--accent)' }} />
-          {label}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3.5">
+        <h2 className="flex items-center gap-2.5 min-w-0 text-[11px] font-semibold uppercase tracking-[0.09em] text-[color:var(--text-tertiary)]">
+          <span aria-hidden="true" className="inline-block h-[2px] w-4 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
+          <span className="truncate">{label}</span>
         </h2>
-        {right}
+        {right && <div className="flex-shrink-0">{right}</div>}
       </div>
       {children}
     </section>
@@ -387,16 +387,23 @@ export default function Home() {
           {data?.agenda_error ? 'Calendar unavailable right now.' : 'Nothing on your calendar for the week ahead.'}
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2.5">
           {agenda.map((ev, i) => (
-            <li key={ev.id || i} className={`flex items-center gap-3.5 ${CARD_ROW}`}>
-              <div className="flex-shrink-0 w-[62px] rounded-[var(--radius-md)] px-2 py-1.5 text-center" style={{ background: 'var(--accent-soft)' }}>
-                <div className="text-[12.5px] font-semibold tabular-nums text-[color:var(--text-primary)] leading-tight">{ev.all_day ? 'All day' : eventTime(ev.start)}</div>
-                <div className="text-[9.5px] font-semibold uppercase tracking-[0.06em] text-[color:var(--text-tertiary)] mt-0.5">{relDay(ev.start)}</div>
+            <li key={ev.id || i} className={`flex items-center gap-4 ${CARD_ROW} py-3`}>
+              {/* Date rail — time on top, relative day below as a small pill so
+                  both a short time ("9:00 AM") and a longer label ("Thu, Jul 30")
+                  always have room; never a fixed too-narrow chip. */}
+              <div className="flex-shrink-0 flex flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] w-[92px] sm:w-[100px] py-2 px-1.5 text-center" style={{ background: 'var(--accent-soft)' }}>
+                <div className="text-[13.5px] font-semibold tabular-nums text-[color:var(--text-primary)] leading-tight whitespace-nowrap">
+                  {ev.all_day ? 'All day' : eventTime(ev.start)}
+                </div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-[color:var(--text-tertiary)] leading-tight px-1">
+                  {relDay(ev.start)}
+                </div>
               </div>
               <div className="min-w-0">
-                <div className="text-[13px] text-[color:var(--text-primary)] truncate">{ev.title || '(untitled)'}</div>
-                {ev.location && <div className="text-[11.5px] text-[color:var(--text-muted)] truncate">{ev.location}</div>}
+                <div className="text-[14px] font-medium text-[color:var(--text-primary)] truncate leading-snug">{ev.title || '(untitled)'}</div>
+                {ev.location && <div className="text-[12px] text-[color:var(--text-muted)] truncate mt-0.5">{ev.location}</div>}
               </div>
             </li>
           ))}
@@ -486,10 +493,10 @@ export default function Home() {
       ) : activity.length === 0 ? (
         <p className="text-[13.5px] text-[color:var(--text-muted)]">{data?.mail_error ? 'Mail unavailable right now.' : 'No recent activity.'}</p>
       ) : (
-        <ul className={`${CARD} divide-y divide-[var(--border-subtle)] overflow-hidden`}>
+        <ul className={`${CARD} divide-y divide-[var(--border-subtle)] shadow-[var(--shadow-sm)] overflow-hidden`}>
           {activity.map((a, i) => (
             <li key={a.uid || i}>
-              <button onClick={openMail} className="w-full text-left px-3.5 py-2.5 hover:bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] transition-colors flex items-center gap-3">
+              <button onClick={openMail} className="w-full text-left px-4 py-3 hover:bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] transition-colors flex items-center gap-3">
                 <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-emphasis)' }} />
                 <div className="min-w-0 flex-1">
                   <div className={`text-[13px] truncate ${a.unread ? 'text-[color:var(--text-primary)] font-medium' : 'text-[color:var(--text-secondary)]'}`}>{a.title}</div>
@@ -506,13 +513,13 @@ export default function Home() {
   const quickLaunchSection = (
     <Section label="Quick launch"
       right={<button onClick={() => setLaunchpad(true)} className={LINK}>All apps →</button>}>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {QUICK_LAUNCH.map(id => {
           const app = getAppById(id)
           if (!app) return null
           return (
             <button key={id} onClick={() => openApp(id)}
-              className="group flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_70%,transparent)] px-3 py-2.5 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] transition-[background-color,border-color]">
+              className="group flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_70%,transparent)] px-3.5 py-3 shadow-[var(--shadow-sm)] hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_75%,transparent)] hover:shadow-[var(--shadow-md)] transition-[background-color,border-color,box-shadow]">
               <AppIconTile id={id} size={38} unicode={app.icon} />
               <span className="min-w-0 text-[12.5px] font-medium text-[color:var(--text-secondary)] group-hover:text-[color:var(--text-primary)] truncate transition-colors">{app.name}</span>
             </button>
@@ -536,14 +543,14 @@ export default function Home() {
           style={{ background: 'radial-gradient(50% 60% at 50% 0%, var(--accent-soft), transparent 72%)' }} />
 
         {/* Header — greeting + live clock + sovereignty posture */}
-        <header className="relative mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <header className="relative mb-9 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1
-              className="text-[clamp(26px,5vw,38px)] font-semibold leading-[1.05] tracking-[-0.022em] text-transparent bg-clip-text"
+              className="text-[clamp(26px,5vw,38px)] font-semibold leading-[1.08] tracking-[-0.022em] text-transparent bg-clip-text break-words"
               style={{ backgroundImage: 'linear-gradient(135deg, var(--text-primary) 0%, color-mix(in srgb, var(--text-primary) 52%, var(--text-tertiary)) 100%)' }}>
               {data?.greeting || 'Welcome'}
             </h1>
-            <div className="mt-1.5 text-[12.5px] text-[color:var(--text-muted)] tabular-nums">
+            <div className="mt-2 text-[12.5px] text-[color:var(--text-muted)] tabular-nums">
               {fmtDate(clock)} · {fmtTime(clock)}
             </div>
           </div>
@@ -573,7 +580,7 @@ export default function Home() {
 
         {/* Ask / act — the always-there composer that opens the agent. The hero
             control: elevated, glowing, unmissable. */}
-        <div ref={composerRef} className="relative mb-9">
+        <div ref={composerRef} className="relative mb-10">
           <div className="relative">
             <div aria-hidden="true"
               className="pointer-events-none absolute -inset-x-3 -top-2 -bottom-2 rounded-[var(--radius-2xl)] opacity-70"
@@ -581,7 +588,7 @@ export default function Home() {
             <form onSubmit={submitAsk}
               className="relative rounded-[var(--radius-xl)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_78%,transparent)] backdrop-blur-xl px-4 py-3.5 shadow-[var(--shadow-lg)] transition-[border-color,box-shadow] focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_var(--accent-soft)]">
               <div className="flex items-end gap-3">
-                <span className="text-lg leading-none mb-1 select-none" style={{ color: 'var(--accent)' }}>✦</span>
+                <span className="text-lg leading-none mb-1 select-none flex-shrink-0" style={{ color: 'var(--accent)' }}>✦</span>
                 <textarea
                   ref={inputRef}
                   rows={1}
@@ -635,11 +642,11 @@ export default function Home() {
         {/* Bento split — the assistant brief + focus items lead; the day's
             schedule (agenda / invites / reminders) stacks alongside. Collapses to
             one column below lg. */}
-        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-12">
-          <div className="lg:col-span-7">
+        <div className="grid gap-x-12 gap-y-9 lg:grid-cols-12">
+          <div className="lg:col-span-7 min-w-0">
             {briefSection}
           </div>
-          <div className="lg:col-span-5 space-y-8">
+          <div className="lg:col-span-5 min-w-0 space-y-9">
             {agendaSection}
             {invitesSection}
             {remindersSection}
@@ -647,11 +654,11 @@ export default function Home() {
         </div>
 
         {/* Lower row — recent activity + quick launch anchor the canvas. */}
-        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-12">
-          <div className="lg:col-span-7">
+        <div className="mt-10 grid gap-x-12 gap-y-9 lg:grid-cols-12">
+          <div className="lg:col-span-7 min-w-0">
             {activitySection}
           </div>
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 min-w-0">
             {quickLaunchSection}
           </div>
         </div>

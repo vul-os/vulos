@@ -410,7 +410,7 @@ const SHOTS = [
   },
   {
     name: 'calendar',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'Calendar — month view, a lived-in schedule over connected accounts',
     async drive(page) {
@@ -420,7 +420,7 @@ const SHOTS = [
   },
   {
     name: 'assistant',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'Assistant — private AI over your mail, with the sovereignty badge and a real answer',
     async drive(page) {
@@ -431,7 +431,7 @@ const SHOTS = [
   },
   {
     name: 'contacts',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'Contacts — the address book over your connected accounts',
     async drive(page) {
@@ -444,7 +444,7 @@ const SHOTS = [
   },
   {
     name: 'launchpad',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'Launchpad — the full colourful app grid (built-ins + installed apps)',
     async drive(page) {
@@ -458,13 +458,13 @@ const SHOTS = [
   },
   {
     name: 'apphub',
-    light: false,
+    light: true,
     desc: 'App Hub — Browse (populated catalogue)',
     async drive(page) { await launchApp(page, 'App Hub') },
   },
   {
     name: 'apphub-installed',
-    light: false,
+    light: true,
     desc: 'App Hub — Installed (18 apps)',
     async drive(page) {
       await launchApp(page, 'App Hub')
@@ -474,13 +474,13 @@ const SHOTS = [
   },
   {
     name: 'dashboard',
-    light: false,
+    light: true,
     desc: 'Dashboard — Web publishing + per-app resources',
     async drive(page) { await launchApp(page, 'Dashboard') },
   },
   {
     name: 'instances',
-    light: false,
+    light: true,
     desc: 'Dashboard — Instances (routing across device + cloud)',
     async drive(page) {
       await launchApp(page, 'Dashboard')
@@ -490,7 +490,7 @@ const SHOTS = [
   },
   {
     name: 'terminal',
-    light: false,
+    light: true,
     desc: 'Terminal — real xterm over a scripted demo PTY',
     async drive(page) {
       await launchApp(page, 'Terminal')
@@ -514,7 +514,7 @@ const SHOTS = [
   },
   {
     name: 'mobile',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'MobileStack — File Explorer running fullscreen on a phone',
     // MOBILE-06 (src/App.jsx): `layout` comes from useViewport(), purely a
@@ -539,7 +539,7 @@ const SHOTS = [
   },
   {
     name: 'mobile-apps',
-    light: false,
+    light: true,
     dsf: 2,
     desc: 'MobileStack — the full app grid (Library) on a phone',
     viewport: { width: 390, height: 844 },
@@ -549,6 +549,44 @@ const SHOTS = [
       // overlay — a richer, more representative phone view than the sparse
       // assistant-first home.
       await page.getByRole('button', { name: 'Library' }).first().click().catch(() => {})
+      await page.waitForTimeout(700)
+    },
+  },
+  {
+    name: 'mobile-windows',
+    light: false,
+    dsf: 2,
+    desc: 'MobileStack — the phone app switcher, several running apps open as cards at once',
+    // MissionControl (F3 / the desktop TopBar's "Mission Control" button) is
+    // only ever mounted inside DesktopCanvas (see src/layouts/DesktopCanvas.jsx)
+    // — it does not exist in MobileStack, so it is unreachable at phone size.
+    // MobileStack's own analogue is the bottom dock's "Apps" button, which
+    // flips to the `switcher` view (MobileSwitcher) and lists every open
+    // window as a large card (see src/layouts/MobileStack.jsx). Reproduce that:
+    // launch a few real apps one at a time via ⌘K — same reliable launchApp()
+    // path the other shots use — returning Home between launches so the
+    // command palette's focus-the-desktop click lands on the main document
+    // rather than a fullscreen app iframe, then open the switcher so all of
+    // them appear as cards together.
+    viewport: { width: 390, height: 844 },
+    async drive(page) {
+      await page.waitForTimeout(700)
+      for (const name of ['File Explorer', 'Terminal', 'Contacts']) {
+        await launchApp(page, name, { maximize: false })
+        await page.waitForTimeout(300)
+        await page.getByRole('button', { name: 'Home' }).first().click().catch(() => {})
+        await page.waitForTimeout(300)
+      }
+      // Open the phone-style running-apps switcher — the dock's "Apps" button
+      // (badge shows the open-window count). Wait for it to be ready, then wait
+      // for the switcher overlay to actually mount before capturing.
+      const appsBtn = page.locator('button[aria-label="Apps"]:not([disabled])').first()
+      await appsBtn.waitFor({ state: 'visible', timeout: 6_000 }).catch(() => {})
+      for (let i = 0; i < 3; i++) {
+        await appsBtn.click({ force: true }).catch(() => {})
+        await page.waitForTimeout(500)
+        if (await page.locator('.vmob-switcher').isVisible().catch(() => false)) break
+      }
       await page.waitForTimeout(700)
     },
   },
@@ -582,6 +620,7 @@ function run(cmd, args, opts = {}) {
 async function captureTheme(browser, theme, overrides, results) {
   const suffix = theme === 'light' ? '-light' : ''
   for (const shot of SHOTS) {
+    if (process.env.SHOT && shot.name !== process.env.SHOT) continue
     if (theme === 'light' && !shot.light) continue
     // FRESH context per shot: the shell persists open-window state to
     // localStorage, so a shared context would restore prior shots' windows.
