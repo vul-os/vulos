@@ -25,6 +25,8 @@
 //     origin:  'local' | 'remote'   local = client notify(); remote = bridged
 //   }
 
+import { nativeBridge } from './nativeBridge'
+
 // ── constants ────────────────────────────────────────────────────────────────
 export const LEVELS = ['info', 'warning', 'urgent', 'critical']
 const LEVEL_SET = new Set(LEVELS)
@@ -177,6 +179,7 @@ export function notify(input) {
     lastToastAt.set(n.source, n.ts)
     toasts = [...toasts.filter(t => t.notif.id !== n.id), { key: `${n.id}:${n.ts}`, notif: n }].slice(-MAX_TOASTS)
     emitToasts()
+    nativeAlert(n)
   }
 
   return { id: n.id, dismiss: () => dismiss(n.id) }
@@ -185,6 +188,17 @@ export function notify(input) {
 function rateLimited(source, now) {
   const last = lastToastAt.get(source)
   return last != null && (now - last) < RATE_MS
+}
+
+// In the Vulos Android app, ALSO surface anything that earned an in-shell
+// toast as a native tray alert (the foreground service keeps the box reachable
+// even when the app isn't in the foreground). Trivial 'info' toasts stay
+// in-shell only — tasteful, not a mirror of every ping. tag = id so re-posting
+// the same notification replaces its native alert instead of doubling it. A
+// plain browser/PWA has no Notify bridge, so this is a total no-op there.
+function nativeAlert(n) {
+  if (!nativeBridge.notify.available || n.level === 'info') return
+  nativeBridge.notify.alert({ title: n.title, text: n.body || n.title, tag: n.id }).catch(() => {})
 }
 
 /**

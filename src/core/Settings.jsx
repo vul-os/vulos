@@ -21,10 +21,12 @@ import DeveloperPanel from './settings/DeveloperPanel.jsx'
 import DomainPanel from './settings/DomainPanel.jsx'
 import CDNPanel from './settings/CDNPanel.jsx'
 import LocationPanel from './settings/LocationPanel.jsx'
+import DevicePanel from './settings/DevicePanel.jsx'
+import { nativeBridge } from './nativeBridge'
 import { SettingsIcon } from './AppIcons.jsx'
 import {
   Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
-  StatTile, InfoList, InfoRow, EmptyState, Banner, humanBytes,
+  StatTile, InfoList, InfoRow, EmptyState, Banner,
 } from './settings/ui.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
@@ -56,6 +58,7 @@ const sectionGroups = [
       { id: 'display', label: 'Display' },
       { id: 'energy', label: 'Battery & Energy' },
       { id: 'location', label: 'Location' },
+      { id: 'device', label: 'This device', nativeOnly: true },
     ],
   },
   {
@@ -115,15 +118,21 @@ const baseSections = sectionGroups.flatMap(g => g.items)
 // (marked owner:true) are hidden from non-owners so the surface stays owner-
 // facing; the backend independently 403s their endpoints, so this is UX, not
 // the security boundary.
+// visible — owner-gate AND the nativeOnly gate (Android-app-only sections,
+// e.g. "This device", stay hidden in a plain browser/PWA).
+function visible(s, isOwner) {
+  return (!s.owner || isOwner) && (!s.nativeOnly || nativeBridge.inApp)
+}
+
 function sectionsFor(isOwner) {
-  return baseSections.filter(s => !s.owner || isOwner)
+  return baseSections.filter(s => visible(s, isOwner))
 }
 
 // groupsFor returns the section groups visible to a given role, dropping any
-// group left empty after owner-only filtering.
+// group left empty after owner-only/native-only filtering.
 function groupsFor(isOwner) {
   return sectionGroups
-    .map(g => ({ ...g, items: g.items.filter(s => !s.owner || isOwner) }))
+    .map(g => ({ ...g, items: g.items.filter(s => visible(s, isOwner)) }))
     .filter(g => g.items.length > 0)
 }
 
@@ -313,6 +322,7 @@ export default function Settings({ initialSection } = {}) {
         {active === 'fingerprint' && <FingerprintSettings />}
         {active === 'account' && <AccountSettings profile={profile} updateProfile={updateProfile} logout={logout} />}
         {active === 'location' && <LocationPanel />}
+        {active === 'device' && <DevicePanel />}
         {active === 'offlinedata' && <OfflineDataPanel />}
         {active === 'dataexport' && <DataExportPanel />}
         {active === 'security' && <SecurityPanel />}

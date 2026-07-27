@@ -5,6 +5,12 @@ import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
+import { nativeBridge } from '../core/nativeBridge'
+
+// NATIVE-QR-01: a join code from GET /api/cluster/join-code looks like
+// VULOS-XXXX-XXXX-XXXX (backend/services/joincode). The QR payload may carry
+// the bare code or wrap it in a URL — either way we just need the token.
+const JOIN_CODE_RE = /VULOS-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}/i
 
 // Vulos is free, self-hosted software — there is no Vulos Cloud account, no
 // sign-in/enrolment, and no paid add-on tier. The only account concept is the
@@ -569,6 +575,54 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
   const [IS09_passphrase, IS09_setPassphrase] = useState('')
   const [IS09_joining, IS09_setJoining] = useState(false)
   const [IS09_error, IS09_setError] = useState('')
+  const [IS09_joinCode, IS09_setJoinCode] = useState('')
+  const [IS09_redeeming, IS09_setRedeeming] = useState(false)
+  const [IS09_redeemMsg, IS09_setRedeemMsg] = useState('')
+
+  // NATIVE-QR-01: redeem a VULOS-XXXX-XXXX-XXXX short code → autofills the S3
+  // fields below. Shared by the manual "Redeem" button and the QR scan path.
+  const IS09_redeemJoinCode = async (codeArg) => {
+    const code = (codeArg ?? IS09_joinCode).trim().toUpperCase()
+    if (!code) return
+    IS09_setRedeeming(true)
+    IS09_setRedeemMsg('')
+    try {
+      const res = await fetch('/api/setup/join-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ short_code: code }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        IS09_setRedeemMsg(data.error || `Could not redeem code (${res.status}).`)
+        return
+      }
+      IS09_setS3Bucket(data.bucket || '')
+      IS09_setS3Region(data.region || '')
+      IS09_setS3AccessKey(data.access_key || '')
+      IS09_setS3SecretKey(data.secret_key || '')
+      IS09_setRedeemMsg('Storage details filled in — add your encryption passphrase below.')
+    } catch {
+      IS09_setRedeemMsg('Could not reach the server to redeem the code.')
+    } finally {
+      IS09_setRedeeming(false)
+    }
+  }
+
+  // NATIVE-QR-01: scan the pairing QR (Android bridge only — no-op/invisible
+  // elsewhere). Cancel/error falls back to manual code entry silently.
+  const IS09_handleScanQR = async () => {
+    try {
+      const { text } = await nativeBridge.camera.scanQR('Scan the pairing code')
+      const match = text && text.match(JOIN_CODE_RE)
+      if (!match) return
+      const code = match[0].toUpperCase()
+      IS09_setJoinCode(code)
+      IS09_redeemJoinCode(code)
+    } catch {
+      // Cancelled or native error — user can still type the code.
+    }
+  }
 
   const IS09_handleJoin = async () => {
     if (!IS09_s3Bucket || !IS09_s3AccessKey || !IS09_s3SecretKey || !IS09_passphrase) {
@@ -615,6 +669,26 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
         subtitle="Provide your S3-compatible storage credentials and encryption passphrase"
       />
       <div className="space-y-3">
+        <div>
+          <label className="block text-xs text-neutral-500 mb-1.5">Join code (optional quick-fill)</label>
+          <div className="flex items-center gap-2">
+            <input
+              value={IS09_joinCode}
+              onChange={e => IS09_setJoinCode(e.target.value.toUpperCase())}
+              placeholder="VULOS-XXXX-XXXX-XXXX"
+              className="input text-sm py-2.5 font-mono flex-1"
+            />
+            <button type="button" onClick={() => IS09_redeemJoinCode()} disabled={IS09_redeeming || !IS09_joinCode.trim()} className="btn-secondary text-sm py-2.5 px-3 whitespace-nowrap disabled:opacity-50">
+              {IS09_redeeming ? 'Redeeming…' : 'Redeem'}
+            </button>
+            {nativeBridge.camera.available && (
+              <button type="button" onClick={IS09_handleScanQR} className="btn-secondary text-sm py-2.5 px-3 whitespace-nowrap">
+                Scan QR
+              </button>
+            )}
+          </div>
+          {IS09_redeemMsg && <p className="text-xs text-neutral-500 mt-1.5">{IS09_redeemMsg}</p>}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-neutral-500 mb-1.5">S3 Bucket <span className="text-danger">*</span></label>

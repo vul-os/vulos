@@ -27,6 +27,7 @@ const DashboardApp = lazy(() => import('../builtin/dashboard/DashboardApp'))
 const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
 const Calendar = lazy(() => import('../builtin/calendar/Calendar'))
 const Contacts = lazy(() => import('../builtin/contacts/Contacts'))
+const Phone = lazy(() => import('../builtin/phone/Phone'))
 
 const loadingEl = () => createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
 const wrap = (Cmp, props) => createElement(Suspense, { fallback: loadingEl() }, createElement(Cmp, props))
@@ -53,6 +54,9 @@ export const BUILTIN_COMPONENTS = {
   // so a later plain launch opens the plain month view.
   'vulos-calendar': () => wrap(Calendar, { initialQuery: consumePendingLaunchQuery('vulos-calendar') }),
   'vulos-contacts': () => wrap(Contacts),
+  // Android Telephony bridge (SMS + calls) — only live inside the Vulos app on
+  // a device with a GSM SIM; feature-detects nativeBridge.telephony itself.
+  'vulos-phone': () => wrap(Phone),
 }
 
 // Apps that should only ever have one window open at a time.

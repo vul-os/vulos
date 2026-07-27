@@ -1,4 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
+import { nativeBridge } from '../core/nativeBridge'
+
+// NATIVE-BIO-01: biometric unlock is a LOCAL convenience gate, never a bypass.
+// It re-submits the SAME password through the SAME onUnlock() crypto unwrap —
+// so it only ever "works" once a password has been typed correctly at least
+// once this runtime session. Module-scoped (not component state) so it
+// survives this screen unmounting on success and remounting on the next lock.
+let NATIVE_BIO_cachedPassword = null
+const NATIVE_BIO_PREF_KEY = 'vulos.biometric.unlock'
+function NATIVE_BIO_optedIn() {
+  try { return localStorage.getItem(NATIVE_BIO_PREF_KEY) === 'on' } catch { return false }
+}
 
 // OfflineLockScreen — the OS auth gate when the box is unreachable (OFFLINE-AUTH-01).
 //
@@ -25,9 +37,11 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [wiped, setWiped] = useState(false)
+  const [bioBusy, setBioBusy] = useState(false)
   const inputRef = useRef(null)
   const errorTimer = useRef(null)
   const now = useClock()
+  const canBiometric = nativeBridge.biometric.available && NATIVE_BIO_optedIn() && !!NATIVE_BIO_cachedPassword
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50) }, [])
   useEffect(() => () => clearTimeout(errorTimer.current), [])
@@ -52,6 +66,7 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
     try {
       await onUnlock(password)
       // Success: AuthProvider flips to the offline session and this screen unmounts.
+      if (NATIVE_BIO_optedIn()) NATIVE_BIO_cachedPassword = password
     } catch (err) {
       if (err?.code === 'WIPED') {
         flash('Too many attempts — offline data on this device was wiped. Sign in online to restore it.', true)
@@ -66,6 +81,26 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
       }
     } finally {
       setBusy(false)
+    }
+  }
+
+  // NATIVE-BIO-01: re-submit the cached password through the exact same
+  // onUnlock() unwrap — biometrics gate reuse, they never substitute for it.
+  const handleBiometricUnlock = async () => {
+    if (busy || wiped || bioBusy || !NATIVE_BIO_cachedPassword) return
+    setBioBusy(true)
+    try {
+      const ok = await nativeBridge.biometric.authenticate({ title: 'Unlock Vulos', allowDeviceCredential: true })
+      if (ok) {
+        setBusy(true)
+        try { await onUnlock(NATIVE_BIO_cachedPassword) }
+        catch { NATIVE_BIO_cachedPassword = null } // stale/rotated — fall back to typing
+        finally { setBusy(false) }
+      }
+    } catch {
+      // Cancelled or unenrolled — fall back to the passphrase field silently.
+    } finally {
+      setBioBusy(false)
     }
   }
 
@@ -120,6 +155,16 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
         >
           {busy ? 'Unlocking…' : wiped ? 'Offline data wiped' : 'Unlock'}
         </button>
+        {canBiometric && (
+          <button
+            type="button"
+            onClick={handleBiometricUnlock}
+            disabled={busy || bioBusy || wiped}
+            className="focus-primary rounded text-xs text-neutral-600 hover:text-neutral-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {bioBusy ? 'Verifying…' : 'Unlock with biometrics'}
+          </button>
+        )}
       </form>
     </div>
   )

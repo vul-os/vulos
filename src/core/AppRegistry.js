@@ -262,6 +262,20 @@ const builtinRegistry = [
     category: 'productivity',
     builtin: true,
   },
+  // Android Telephony bridge (TEL-01): SMS + calls over the phone's own GSM
+  // SIM, via the Vulos Android app's native bridge. Feature-detects itself
+  // (nativeBridge.telephony.available) — an honest no-op outside the app or
+  // on a box with no SIM, never fake data. Distinct from the legacy `phone`
+  // ModemManager web app below (a box-attached modem, not an Android SIM).
+  {
+    id: 'vulos-phone',
+    name: 'Phone',
+    icon: '📱',
+    description: 'SMS + calls on the GSM SIM in your Vulos Android phone',
+    keywords: ['phone', 'sms', 'text', 'calls', 'dial', 'telephony', 'sim', 'android'],
+    category: 'internet',
+    builtin: true,
+  },
 ]
 
 // Default web apps shipped under apps/ — surfaced as launcher entries.

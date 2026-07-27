@@ -1,4 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
+import { nativeBridge } from '../core/nativeBridge'
+
+// NATIVE-BIO-01: biometric unlock is a LOCAL convenience gate, never a
+// bypass — it re-submits the SAME pin through the SAME server-verified
+// /api/auth/pin/validate call. Module-scoped so the cache survives this
+// screen's mount/unmount across lock cycles within one runtime session.
+let NATIVE_BIO_cachedPin = null
+const NATIVE_BIO_PREF_KEY = 'vulos.biometric.unlock'
+function NATIVE_BIO_optedIn() {
+  try { return localStorage.getItem(NATIVE_BIO_PREF_KEY) === 'on' } catch { return false }
+}
 
 function useTime() {
   const [now, setNow] = useState(new Date())
@@ -54,14 +65,15 @@ export default function LockScreen({ onUnlock, userName }) {
     errorTimer.current = setTimeout(() => setError(false), 1500)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const [bioBusy, setBioBusy] = useState(false)
+
+  const trySubmit = async (pinValue) => {
     if (locked) return
     try {
       const res = await fetch('/api/auth/pin/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ pin: pinValue }),
       })
       const data = await res.json().catch(() => ({}))
       if (data.valid) {
@@ -69,6 +81,7 @@ export default function LockScreen({ onUnlock, userName }) {
         // ValidatePIN contract (SEC-PIN-01) legitimately reports valid:true —
         // that is an intentional "quick lock, no credential" product decision,
         // not a client-side bypass. We never decide validity on the client.
+        if (pinValue && NATIVE_BIO_optedIn()) NATIVE_BIO_cachedPin = pinValue
         onUnlock()
       } else if (data.permanent_lock) {
         // Server has permanently locked this device after repeated failures —
@@ -91,6 +104,24 @@ export default function LockScreen({ onUnlock, userName }) {
       // "no PIN configured" passthrough) without the server, so never unlock
       // here regardless of what — if anything — was typed.
       flashError('Can’t reach the server. Try again.')
+    }
+  }
+
+  const handleSubmit = (e) => { e.preventDefault(); trySubmit(pin) }
+
+  // NATIVE-BIO-01: re-submit the cached PIN through the exact same
+  // /api/auth/pin/validate call — biometrics gate reuse, they never
+  // substitute for server verification.
+  const handleBiometricUnlock = async () => {
+    if (locked || bioBusy || !NATIVE_BIO_cachedPin) return
+    setBioBusy(true)
+    try {
+      const ok = await nativeBridge.biometric.authenticate({ title: 'Unlock Vulos', allowDeviceCredential: true })
+      if (ok) await trySubmit(NATIVE_BIO_cachedPin)
+    } catch {
+      // Cancelled or unenrolled — fall back to typing the PIN silently.
+    } finally {
+      setBioBusy(false)
     }
   }
 
@@ -154,6 +185,16 @@ export default function LockScreen({ onUnlock, userName }) {
           >
             {locked ? 'Locked' : pin.length > 0 ? 'Unlock' : 'Enter without PIN'}
           </button>
+          {nativeBridge.biometric.available && NATIVE_BIO_optedIn() && !!NATIVE_BIO_cachedPin && (
+            <button
+              type="button"
+              onClick={handleBiometricUnlock}
+              disabled={locked || bioBusy}
+              className="focus-primary rounded text-xs text-neutral-700 hover:text-neutral-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {bioBusy ? 'Verifying…' : 'Unlock with biometrics'}
+            </button>
+          )}
         </form>
       ) : (
         <p className="text-sm text-neutral-700 animate-pulse">

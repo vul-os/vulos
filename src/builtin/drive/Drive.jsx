@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { request, rawFetch, apiUrl } from '../../lib/api'
 import { useFocusTrap } from '../../shell/useFocusTrap'
 import { uploadRowView } from './uploadRowView'
+import { nativeBridge } from '../../core/nativeBridge'
 
 // putWithProgress: PUT a file's bytes with byte-level upload progress via XHR
 // (fetch() exposes no upload progress). `onProgress(fraction)` receives 0..1 as
@@ -440,6 +441,42 @@ async function extractSealedFolderToDrive(rootName, tarBytes, parentId) {
     files++
   }
   return files
+}
+
+// ── native-bridge byte<->base64 helpers (Vulos Android app only) ───────────
+// dataUrlToBytes decodes a `data:<mime>;base64,<...>` URL (as returned by
+// nativeBridge.files.open) into raw bytes.
+function dataUrlToBytes(dataUrl) {
+  const comma = dataUrl.indexOf(',')
+  const bin = atob(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return bytes
+}
+
+// bytesToBase64 encodes raw bytes as plain base64 (no data: prefix) for
+// nativeBridge.files.save/share, which take `dataBase64`. Chunked to avoid
+// blowing the call stack on String.fromCharCode.apply for large files.
+function bytesToBase64(bytes) {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+// nodeFileBytes fetches + (content-blind) decrypts a file node's bytes for a
+// device-native action (save/share), reusing the same download path the web
+// "Download" action uses. Folders are out of scope for these two actions.
+async function nodeFileBytes(node) {
+  const { bytes, meta } = await maybeDecrypt(await downloadNodeBytes(node))
+  if (meta && meta.is_dir) throw new Error('Folders aren’t supported for this action yet')
+  return {
+    bytes,
+    name: (meta && meta.name) || node.name,
+    mime: (meta && meta.content_type) || node.content_type || 'application/octet-stream',
+  }
 }
 
 function saveBlob(bytes, name) {
@@ -1060,8 +1097,14 @@ function RowMenu({ node, onAction, onClose }) {
     window.addEventListener('click', h)
     return () => window.removeEventListener('click', h)
   }, [onClose])
+  // Native-only rows: only in the Vulos Android app (nativeBridge.files
+  // .available), invisible in a plain browser/PWA — the web download/share
+  // rows above stay the default there.
+  const nativeFiles = nativeBridge.files.available
   const items = [
     !node.is_dir && ['download', 'Download'],
+    !node.is_dir && nativeFiles && ['savedevice', 'Save to device'],
+    !node.is_dir && nativeFiles && ['sharedevice', 'Share to app…'],
     ['rename', 'Rename'],
     ['move', 'Move…'],
     ['share', 'Share…'],
@@ -1355,6 +1398,35 @@ export default function Drive() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // Native share-target: the Vulos Android app forwards inbound system shares
+  // (share sheet → Vulos) here. Each item uploads via the SAME uploadOne path
+  // as a normal upload, landing in whatever folder is open when it arrives.
+  // No-op (subscribe() itself no-ops) in a plain browser/PWA.
+  useEffect(() => {
+    if (!nativeBridge.files.available) return
+    const off = nativeBridge.files.onShareIn(async (msg) => {
+      const items = msg.items || []
+      let count = 0
+      try {
+        for (const it of items) {
+          const bytes = it.dataUrl ? dataUrlToBytes(it.dataUrl) : new Uint8Array(await (await fetch(it.uri)).arrayBuffer())
+          await uploadOne(view === 'shared' ? '' : cur.id, new File([bytes], it.name || 'shared-file', { type: it.mime || 'application/octet-stream' }))
+          count++
+        }
+        if (count === 0 && msg.text) {
+          await uploadOne(view === 'shared' ? '' : cur.id, new File([msg.text], 'Shared text.txt', { type: 'text/plain' }))
+          count = 1
+        }
+        if (count > 0) {
+          setBusy(`Received ${count} item${count > 1 ? 's' : ''} via share`)
+          setTimeout(() => setBusy(null), 2500)
+          await refresh()
+        }
+      } catch (e) { setError(e.message || 'Could not save the shared item') }
+    })
+    return off
+  }, [cur.id, view, refresh])
+
   const openFolder = (node) => setTrail([...trail, { id: node.id, name: node.name }])
   const gotoCrumb = (i) => setTrail(trail.slice(0, i + 1))
   const VIEW_NAMES = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
@@ -1415,6 +1487,16 @@ export default function Drive() {
       } catch (e) { setError(e.message || 'Download failed') } finally { setBusy(null) }
       return
     }
+    if (kind === 'savedevice' || kind === 'sharedevice') {
+      setBusy(`Preparing ${node.name}…`)
+      try {
+        const f = await nodeFileBytes(node)
+        const dataBase64 = bytesToBase64(f.bytes)
+        if (kind === 'savedevice') await nativeBridge.files.save({ name: f.name, mime: f.mime, dataBase64 })
+        else await nativeBridge.files.share({ name: f.name, mime: f.mime, dataBase64 })
+      } catch (e) { setError(e.message || `${kind === 'savedevice' ? 'Save' : 'Share'} failed`) } finally { setBusy(null) }
+      return
+    }
     if (kind === 'delete') {
       if (!window.confirm(`Delete “${node.name}”${node.is_dir ? ' and its contents' : ''}?`)) return
       setBusy('Deleting…')
@@ -1460,6 +1542,20 @@ export default function Drive() {
     // little longer so the failure is noticed).
     setTimeout(() => setUploads([]), anyError ? 5000 : 1400)
     await refresh()
+  }
+
+  // doUploadFromDevice: SAF-pick a file on the device (Vulos Android app only)
+  // and feed it through the SAME upload path as the web <input type=file> —
+  // the returned dataUrl is decoded to a Blob/File and handed to doUpload.
+  const doUploadFromDevice = async () => {
+    try {
+      const picked = await nativeBridge.files.open({})
+      if (!picked || !picked.dataUrl) { setError('That file is too large to open here'); return }
+      const file = new File([dataUrlToBytes(picked.dataUrl)], picked.name || 'file', { type: picked.mime || 'application/octet-stream' })
+      await doUpload([file])
+    } catch (e) {
+      if (e && e.message !== 'cancelled') setError(e.message || 'Could not open file')
+    }
   }
 
   // Where uploads/new-folder are allowed: My Drive, or a writable external mount.
@@ -1621,6 +1717,8 @@ export default function Drive() {
               <Btn small onClick={() => setModal({ kind: 'newfolder' })}>+ Folder</Btn>
               <Btn small primary onClick={() => fileInputRef.current?.click()}>↑ Upload</Btn>
               <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => { doUpload(e.target.files); e.target.value = '' }} />
+              {/* Native-only: SAF file picker, invisible in a plain browser/PWA. */}
+              {nativeBridge.files.available && <Btn small onClick={doUploadFromDevice}>From device</Btn>}
             </>
           )}
         </div>
