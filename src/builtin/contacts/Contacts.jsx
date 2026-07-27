@@ -18,6 +18,7 @@ import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
 import { useNarrow } from '../../shell/useNarrow'
 import { listContacts, createContact, updateContact, deleteContact } from './contactsApi'
+import { nativeBridge } from '../../core/nativeBridge'
 
 // Back chevron for the mobile single-pane view.
 function BackChevron() {
@@ -181,6 +182,33 @@ export default function Contacts() {
     if (app) launchApp(app, { openWindow })
   }
 
+  // NATIVE (Android app only): read the phone's device + SIM address book via the
+  // native bridge and push it to the box, which merges it into the unified list
+  // (see backend/services/contacts). No-op / hidden in a plain browser.
+  const [syncingPhone, setSyncingPhone] = useState(false)
+  const canSyncPhone = nativeBridge.contacts.available
+  const syncPhone = async () => {
+    setSyncingPhone(true)
+    try {
+      const [device, sim] = await Promise.all([
+        nativeBridge.contacts.list().catch(() => []),
+        nativeBridge.contacts.sim().catch(() => []),
+      ])
+      const contacts = [...device, ...sim].filter((c) => c && (c.name || (c.phones && c.phones.length)))
+      const res = await fetch('/api/contacts/ingest/device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts }),
+      })
+      if (!res.ok) throw new Error('sync failed')
+      load()
+    } catch (e) {
+      setError(e?.message === 'native-unavailable' ? 'Phone sync is only available in the Vulos app.' : 'Could not sync phone contacts.')
+    } finally {
+      setSyncingPhone(false)
+    }
+  }
+
   const unavailable = !!error && contacts.length === 0
 
   // MOBILE-ADAPTIVE: below `sm` show ONE pane — the list, or the detail/editor
@@ -229,6 +257,15 @@ export default function Contacts() {
               className="w-full min-w-0 bg-neutral-800/60 border border-neutral-700/80 rounded-md pl-8 pr-2.5 py-2 text-[12px] focus-primary transition-colors focus:border-neutral-600"
             />
           </div>
+          {canSyncPhone && (
+            <button type="button" onClick={syncPhone} disabled={syncingPhone} aria-label="Sync phone contacts"
+              title="Sync your phone's device + SIM contacts into this box"
+              className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md border border-neutral-700 text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100 active:scale-95 focus-primary transition-colors disabled:opacity-50">
+              {syncingPhone
+                ? <span className="w-4 h-4 spinner" />
+                : <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg>}
+            </button>
+          )}
           <button type="button" onClick={startCreate} aria-label="New contact"
             className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md text-white text-lg transition-all hover:brightness-110 active:scale-95 focus-primary shadow-sm"
             style={{ background: 'var(--accent)' }}>+</button>
