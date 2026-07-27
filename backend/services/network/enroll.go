@@ -31,7 +31,9 @@ import (
 
 const (
 	defaultIPEchoURL    = "https://api.ipify.org"
-	defaultControlURL   = "https://control.vulos.org"
+	// Vulos the org operates no hosted control plane; a Direct-mode enroller must
+	// be pointed at one the operator runs via VULOS_CONTROL_URL. No hosted default.
+	defaultControlURL   = ""
 	defaultPollInterval = 5 * time.Minute
 )
 

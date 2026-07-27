@@ -143,7 +143,11 @@ func NewLANCertPuller(cfg PullerConfig) (*LANCertPuller, error) {
 		return nil, errors.New("lan: PullerConfig.BoxID is required")
 	}
 	if cfg.CloudBaseURL == "" {
-		cfg.CloudBaseURL = "https://cp.vulos.org"
+		// Vulos the org operates NO LAN-cert control plane. When the (opt-in)
+		// puller is enabled it MUST be pointed at a control plane the operator
+		// runs, via VULOS_CLOUD_BASE_URL — there is no hosted default. Empty ⇒
+		// the puller stays disabled (the caller logs it), never dialing vulos.org.
+		return nil, errors.New("lan: CloudBaseURL is required (set VULOS_CLOUD_BASE_URL) — Vulos operates no hosted control plane")
 	}
 	if cfg.SharedSecret == "" {
 		cfg.SharedSecret = os.Getenv("CP_SHARED_SECRET")
