@@ -52,8 +52,18 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-    // ── Telephony (TEL-01): origin-gated SMS + calling bridge. ───────────────────
+    // ── Native bridges — one coherent, origin-gated surface. ─────────────────────
+    // Each is a WebViewCompat.WebMessageListener (NOT a blanket
+    // addJavascriptInterface) restricted to the SAME narrow Vulos origins, so
+    // untrusted web content can never reach any of them. All are opt-in and gate
+    // their sensitive actions behind CONTEXTUAL runtime permissions (BridgeBase).
     private val telephony = TelephonyBridge(this)
+    private val contacts = ContactsBridge(this)
+    private val camera = CameraBridge(this)
+    private val notify = NotifyBridge(this)
+    private val files = FilesBridge(this)
+    private val biometric = BiometricBridge(this)
+    private val launcher = LauncherBridge(this)
 
     // Runtime permission plumbing for the bridge. A single ActivityResultLauncher
     // can only have ONE request in flight, so overlapping requests are SERIALIZED
@@ -83,6 +93,41 @@ class MainActivity : AppCompatActivity() {
         val next = permQueue.removeFirstOrNull() ?: return
         permCurrent = next
         requestPerm.launch(next.first)
+    }
+
+    // ── Shared startActivityForResult plumbing for the bridges ───────────────────
+    // Camera capture, QR scan, SAF open/save and the launcher-role request all need
+    // an Activity result. A single launcher serves them all; requests are SERIALIZED
+    // through a queue (each result is a modal, user-driven flow, so one-at-a-time is
+    // correct) and each keeps its own callback, so no reply is ever dropped.
+    private val resultQueue = ArrayDeque<Pair<Intent, (Int, Intent?) -> Unit>>()
+    private var resultCurrent: ((Int, Intent?) -> Unit)? = null
+    private val activityResult =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val cb = resultCurrent
+            resultCurrent = null
+            cb?.invoke(result.resultCode, result.data)
+            pumpResultQueue()
+        }
+
+    /** Launch [intent] for a result and deliver (resultCode, data) to [onResult]. */
+    fun launchForResult(intent: Intent, onResult: (Int, Intent?) -> Unit) {
+        resultQueue.addLast(intent to onResult)
+        pumpResultQueue()
+    }
+
+    private fun pumpResultQueue() {
+        if (resultCurrent != null) return
+        val next = resultQueue.removeFirstOrNull() ?: return
+        resultCurrent = next.second
+        try {
+            activityResult.launch(next.first)
+        } catch (_: Exception) {
+            // No app to handle it (e.g. no camera) — report cancelled and move on.
+            resultCurrent = null
+            next.second(android.app.Activity.RESULT_CANCELED, null)
+            pumpResultQueue()
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -128,9 +173,14 @@ class MainActivity : AppCompatActivity() {
         // origin restriction — remote/untrusted content can't reach it). The shell
         // talks to it via the injected `vulosTelephony` object (postMessage).
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            WebViewCompat.addWebMessageListener(
-                webView, "vulosTelephony", telephonyOriginRules(), telephony,
-            )
+            val rules = bridgeOriginRules()
+            WebViewCompat.addWebMessageListener(webView, "vulosTelephony", rules, telephony)
+            WebViewCompat.addWebMessageListener(webView, "vulosContacts", rules, contacts)
+            WebViewCompat.addWebMessageListener(webView, "vulosCamera", rules, camera)
+            WebViewCompat.addWebMessageListener(webView, "vulosNotify", rules, notify)
+            WebViewCompat.addWebMessageListener(webView, "vulosFiles", rules, files)
+            WebViewCompat.addWebMessageListener(webView, "vulosBiometric", rules, biometric)
+            WebViewCompat.addWebMessageListener(webView, "vulosLauncher", rules, launcher)
         }
 
         // Predictive back: walk the SPA history, then leave.
@@ -141,6 +191,25 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (savedInstanceState == null) webView.loadUrl(localShell)
+
+        // A share (ACTION_SEND) may have cold-started us; hand it to the files bridge,
+        // which buffers until the shell subscribes.
+        handleShareIntent(intent)
+    }
+
+    // singleTask: a new share while already running arrives here, not a fresh
+    // onCreate. setIntent so downstream getIntent() sees the latest.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    private fun handleShareIntent(intent: Intent?) {
+        intent ?: return
+        when (intent.action) {
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> files.onShareIntent(intent)
+        }
     }
 
     // Route inbound SMS to the shell only while foregrounded (the bridge does the
@@ -160,25 +229,31 @@ class MainActivity : AppCompatActivity() {
         // recreation (e.g. a locale change not covered by configChanges) doesn't leak
         // the old instance's thread + WebView.
         telephony.shutdown()
+        contacts.shutdown()
+        camera.shutdown()
+        notify.shutdown()
+        files.shutdown()
+        biometric.shutdown()
+        launcher.shutdown()
         TelephonyEvents.onSms = null
         webView.destroy()
         super.onDestroy()
     }
 
     /**
-     * Origins allowed to reach the telephony bridge: the local shell, `os.vulos.org`
-     * and its subdomains, the build-time instance host and the paired instance.
-     * The `*.` wildcard matches subdomains only (never a suffix like
-     * `evil-os.vulos.org`).
+     * Origins allowed to reach EVERY native bridge (telephony, contacts, camera,
+     * notify, files, biometric, launcher): the local shell, the build-time instance
+     * host and the paired instance (+ their app subdomains). The `*.` wildcard
+     * matches subdomains only (never a suffix like `evil-os.vulos.org`).
      */
-    private fun telephonyOriginRules(): Set<String> {
-        // NARROW on purpose (security): telephony (send SMS / place calls) is granted
-        // ONLY to the local shell and THIS device's own instance (+ its app
-        // subdomains) — never a blanket `*.os.vulos.org`, which would hand the
-        // capability to every tenant/product under that domain, so one XSS anywhere
-        // in the namespace becomes an SMS-send primitive. The paired instance is the
-        // authoritative scope; the build-time INSTANCE_HOST is the default until
-        // enrolment sets the paired host.
+    private fun bridgeOriginRules(): Set<String> {
+        // NARROW on purpose (security): native capabilities (send SMS, place calls,
+        // read contacts, camera, files, biometric) are granted ONLY to the local
+        // shell and THIS device's own instance (+ its app subdomains) — never a
+        // blanket `*.os.vulos.org`, which would hand these to every tenant/product
+        // under that domain, so one XSS anywhere in the namespace becomes a native
+        // primitive. The paired instance is the authoritative scope; the build-time
+        // INSTANCE_HOST is the default until enrolment sets the paired host.
         val rules = linkedSetOf("https://$ASSET_HOST")
         BuildConfig.INSTANCE_HOST.takeIf { it.isNotBlank() }?.let {
             rules.add("https://$it"); rules.add("https://*.$it")

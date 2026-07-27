@@ -14,6 +14,9 @@ import android.webkit.WebView
 class VulosApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Notification channels (box connection + alerts) must exist before any
+        // notification is posted; creating them here is idempotent and cheap.
+        VulosNotifications.ensureChannels(this)
         try {
             WebView(this).destroy()
         } catch (_: Throwable) {

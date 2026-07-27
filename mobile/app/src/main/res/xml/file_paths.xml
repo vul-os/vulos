@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider scope. Only the app's internal cache dir is exposed (camera
+     capture → capture/, inbound shares → shared/, share-out → share_out/). Nothing
+     outside cache is ever shareable through this provider. -->
+<paths>
+    <cache-path name="cache" path="." />
+</paths>

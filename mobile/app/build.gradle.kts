@@ -53,6 +53,13 @@ dependencies {
     // ServiceWorkerControllerCompat (so the service worker's fetches resolve to
     // bundled assets — without it, offline silently fails in the APK).
     implementation("androidx.webkit:webkit:1.12.0")
+    // FileProvider + NotificationCompat (transitive via appcompat, pinned explicitly).
+    implementation("androidx.core:core-ktx:1.13.1")
+    // Biometric unlock (BiometricPrompt / BiometricManager) — no Play Services.
+    implementation("androidx.biometric:biometric:1.1.0")
+    // QR / barcode scanning. Pure ZXing (no Play Services) so it stays F-Droid /
+    // sovereign friendly; ships its own CaptureActivity via manifest merge.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
 
 // ── syncShell ────────────────────────────────────────────────────────────────

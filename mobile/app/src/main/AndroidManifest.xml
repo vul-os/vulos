@@ -14,6 +14,23 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
 
+    <!-- Native capabilities added in CONTACTS/CAM/NOTIFY/BIO/FILES/LAUNCH-01. All
+         dangerous permissions are RUNTIME-requested CONTEXTUALLY on first use (see
+         BridgeBase.withPerm), never at install; every feature degrades gracefully to
+         the PWA path when denied. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Android 13+ notification permission (auto-granted below 13). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Foreground service that keeps the box connection alive (user-toggled only). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Camera is optional hardware: a device without one still installs and uses the
+         rest of the app (photo/video/QR just report unavailable). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <application
         android:name=".VulosApplication"
         android:allowBackup="false"
@@ -37,17 +54,58 @@
             </intent-filter>
 
             <!-- Launcher role ENABLED (TEL-01/LAUNCH-01, revising MOB-05). Vulos
-                 becomes a selectable home app; the user still chooses it as default.
-                 Safe because: the home surface paints from the locally-bundled shell
-                 (no network on cold start), the WebView is pre-warmed in
-                 VulosApplication.onCreate(), and windowBackground is a dark
-                 shell-colored drawable (no white flash). -->
+                 becomes a SELECTABLE home app; it is NEVER made default here — the
+                 user opts in through vulosLauncher (LauncherBridge), which only opens
+                 the system chooser, and can revert at any time. Safe because: the
+                 home surface paints from the locally-bundled shell (no network on
+                 cold start), the WebView is pre-warmed in VulosApplication.onCreate(),
+                 and windowBackground is a dark shell-colored drawable (no white flash). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+
+            <!-- Share target (FILES-01): receive text and files shared from other
+                 apps. MainActivity forwards them to the files bridge, which buffers
+                 until the shell subscribes. singleTask + onNewIntent handle the
+                 already-running case. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/*" />
+            </intent-filter>
         </activity>
+
+        <!-- Foreground service (NOTIFY-01). type=dataSync: keeps the box connection
+             alive for reliable notifications. Started/stopped ONLY by the user via
+             the notify bridge — never auto-started. Not exported. -->
+        <service
+            android:name=".BoxConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider for camera capture + share-out (grants scoped, temporary
+             read/write on cache/* files only; see res/xml/file_paths.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- Incoming SMS. android:permission="BROADCAST_SMS" means ONLY the system
              (which holds that signature permission) can deliver here — no other app

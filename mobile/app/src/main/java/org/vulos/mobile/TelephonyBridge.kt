@@ -19,7 +19,7 @@ import java.util.concurrent.Executors
 /**
  * Origin-gated native telephony bridge (TEL-01). Reached ONLY from trusted Vulos
  * origins: it is registered via WebViewCompat.addWebMessageListener with
- * allowed-origin rules (see MainActivity.telephonyOriginRules), so remote /
+ * allowed-origin rules (see MainActivity.bridgeOriginRules), so remote /
  * untrusted web content cannot invoke it. Each action additionally requires the
  * MAIN frame (a trusted page's cross-origin iframe cannot act) AND a runtime
  * permission grant. A telephony bridge exposed to arbitrary web content would be
