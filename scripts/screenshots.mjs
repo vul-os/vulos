@@ -239,7 +239,7 @@ const CONTACTS_CARDS = [
   { uid: 'c1', name: 'Priya Menon', org: 'Acme, Inc.', title: 'Head of Product', emails: ['priya@acme.io'], phones: ['+1 415 555 0134'] },
   { uid: 'c2', name: 'Sam Okafor', org: 'Acme, Inc.', title: 'Engineering Lead', emails: ['sam@acme.io'], phones: ['+1 415 555 0198'] },
   { uid: 'c3', name: 'Marta Costa', org: 'Lisbon Design Collective', title: 'Creative Director', emails: ['marta@lisbondesign.pt'], phones: ['+351 21 555 0198'] },
-  { uid: 'c4', name: 'Billing · Hetzner', org: 'Hetzner Online GmbH', title: '', emails: ['billing@hetzner.com'], phones: [] },
+  { uid: 'c4', name: 'Nadia Rahman', org: 'Northwind Studio', title: 'Studio Manager', emails: ['nadia@northwind.studio'], phones: ['+44 20 7946 0102'] },
   { uid: 'c5', name: 'Events Team', org: 'Acme, Inc.', title: '', emails: ['events@acme.io'], phones: [] },
 ]
 
