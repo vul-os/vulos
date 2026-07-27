@@ -198,10 +198,20 @@ func registerReachStatus(mux *http.ServeMux, rt *reachRuntime) {
 	})
 }
 
-// reachRelayBaseURLs returns the configured relay base URLs, in preference
-// order, for the consumers that make plain HTTP calls to a relay rather than
-// holding a tunnel to it — peer-reachability resolve and cross-instance
-// notify fan-out.
+// reachRelayBaseURLs returns EVERY configured relay base URL, for the
+// consumers that make plain HTTP calls to a relay rather than holding a tunnel
+// to it — peer-reachability resolve and cross-instance notify fan-out.
+//
+// It returns Set.All() rather than Set.Ordered() on purpose: the primary
+// consumer, peer-reachability resolve, fans out to ALL of these and
+// cross-checks their answers for equivocation (KOTVA §4.2.1(3)). That check
+// needs every source, not just the ones currently healthy for tunnel
+// purposes — a relay in tunnel-backoff can still answer a read correctly, and
+// dropping it would both weaken the cross-check quorum and let a relay that
+// deliberately flaps its tunnel exclude itself from being caught equivocating.
+// A mixed set (a built-in Vulos relay AND an Ephor relay together) is returned
+// as one flat list; both speak the same resolve contract, so the fan-out and
+// cross-check treat them uniformly.
 //
 // It reloads from the environment rather than closing over the set built at
 // startup, because these callers run before (and independently of) the tunnel
@@ -212,8 +222,9 @@ func reachRelayBaseURLs() []string {
 	if err != nil || set.Len() == 0 {
 		return nil
 	}
-	out := make([]string, 0, set.Len())
-	for _, ep := range set.Ordered() {
+	all := set.All()
+	out := make([]string, 0, len(all))
+	for _, ep := range all {
 		out = append(out, ep.BaseURL)
 	}
 	return out

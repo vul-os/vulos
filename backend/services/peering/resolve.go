@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,6 +49,12 @@ import (
 
 	"vulos/backend/internal/safedial"
 )
+
+// reachabilityLogf logs operator-facing reachability notes — most importantly a
+// SUSPECTED equivocation, where configured relays disagree about a peer's
+// verified-direct endpoint. It is a package var so a test can capture the line;
+// it defaults to log.Printf.
+var reachabilityLogf = log.Printf
 
 // relayResolvePath is the relay's peer-reachability resolve endpoint. It
 // shares the "_vulos-direct" path family with internal/directlisten.ProbePath
@@ -147,24 +154,26 @@ func reachabilityCachePut(vulaID string, direct, relay string) {
 	reachCache[vulaID] = reachabilityEntry{direct: direct, relay: relay, fetchedAt: time.Now()}
 }
 
-// RefreshPeerReachability queries the operator-configured relay's
-// peer-reachability resolve endpoint for vulaID and updates the in-process
-// cache resolvePeerBaseURL consults. A 404 (no reachability information
-// published — the peer's box has no relay agent, or is offline) is cached as
-// a negative result so the ladder degrades to the contact.Server fallback
-// without hammering the relay every call. Errors are returned for the caller
-// to log; they leave any existing cache entry untouched (stale-but-usable is
-// better than evicting a good entry on a transient relay hiccup).
-func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) error {
+// fetchPeerReachability performs ONE peer-reachability resolve against a
+// single relay and returns the decoded answer WITHOUT touching the cache. It
+// is the per-relay primitive the single-relay (RefreshPeerReachability) and
+// cross-checked (refreshPeerReachabilityCrossChecked) paths both build on, so
+// the SSRF guard, the bounded read, and the 404-is-negative semantics live in
+// exactly one place.
+//
+// found is false for a 404 — the relay published nothing for this peer (its
+// box has no relay agent, or is offline). That is a definitive answer, not an
+// error, so the caller records a negative result rather than retrying.
+func fetchPeerReachability(ctx context.Context, relayBaseURL, vulaID string) (resp relayResolveResponse, found bool, err error) {
 	relayBaseURL = strings.TrimRight(strings.TrimSpace(relayBaseURL), "/")
 	if relayBaseURL == "" || vulaID == "" {
-		return fmt.Errorf("peering: reachability resolve requires a relay base URL and a vula id")
+		return relayResolveResponse{}, false, fmt.Errorf("peering: reachability resolve requires a relay base URL and a vula id")
 	}
 
 	endpoint := relayBaseURL + relayResolvePath + "?vula_id=" + url.QueryEscape(vulaID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("peering: build reachability resolve request: %w", err)
+		return relayResolveResponse{}, false, fmt.Errorf("peering: build reachability resolve request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
@@ -177,18 +186,17 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 		client.Transport = &http.Transport{DialContext: safedial.New(false).DialContext}
 	}
 
-	resp, err := client.Do(req)
+	httpResp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("peering: reachability resolve request: %w", err)
+		return relayResolveResponse{}, false, fmt.Errorf("peering: reachability resolve request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	if resp.StatusCode == http.StatusNotFound {
-		reachabilityCachePut(vulaID, "", "")
-		return nil
+	if httpResp.StatusCode == http.StatusNotFound {
+		return relayResolveResponse{}, false, nil
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("peering: reachability resolve: relay returned %d", resp.StatusCode)
+	if httpResp.StatusCode != http.StatusOK {
+		return relayResolveResponse{}, false, fmt.Errorf("peering: reachability resolve: relay returned %d", httpResp.StatusCode)
 	}
 
 	// Bound the response body read: the relay is operator-configured, not
@@ -197,10 +205,135 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 	// consistent with the SSRF-guarded dial above and the rest of this
 	// package's outbound fetches, e.g. bandwidth.go/discovery.go).
 	var out relayResolveResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, reachabilityResolveMaxBytes)).Decode(&out); err != nil {
-		return fmt.Errorf("peering: decode reachability resolve response: %w", err)
+	if err := json.NewDecoder(io.LimitReader(httpResp.Body, reachabilityResolveMaxBytes)).Decode(&out); err != nil {
+		return relayResolveResponse{}, false, fmt.Errorf("peering: decode reachability resolve response: %w", err)
+	}
+	return out, true, nil
+}
+
+// RefreshPeerReachability queries a SINGLE operator-configured relay's
+// peer-reachability resolve endpoint for vulaID and updates the in-process
+// cache resolvePeerBaseURL consults. A 404 (no reachability information
+// published — the peer's box has no relay agent, or is offline) is cached as
+// a negative result so the ladder degrades to the contact.Server fallback
+// without hammering the relay every call. Errors are returned for the caller
+// to log; they leave any existing cache entry untouched (stale-but-usable is
+// better than evicting a good entry on a transient relay hiccup).
+//
+// With a single relay there is nothing to cross-check against; the multi-relay
+// path (refreshPeerReachabilityCrossChecked, used by StartReachabilityRefresh)
+// is the one that guards against an equivocating relay. This entry point is
+// kept for callers that genuinely have one relay and for direct testing.
+func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) error {
+	out, found, err := fetchPeerReachability(ctx, relayBaseURL, vulaID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		reachabilityCachePut(vulaID, "", "")
+		return nil
 	}
 	reachabilityCachePut(vulaID, out.Direct, out.Relay)
+	return nil
+}
+
+// refreshPeerReachabilityCrossChecked resolves ONE peer across SEVERAL relays
+// and CROSS-CHECKS their answers before trusting any, rather than believing
+// whichever relay answers first.
+//
+// # What it defends, and why "first answer wins" was not enough
+//
+// The verified-direct endpoint (tier 1 of resolvePeerBaseURL's ladder) is the
+// dangerous field: it is where this box sends the peer's traffic at HIGHEST
+// preference, BYPASSING every relay and the tunnel's header-trust boundary
+// entirely. A single compromised or hostile relay that answers with a direct
+// endpoint IT controls — it can pass its own ownership probe on an
+// attacker-run box — would silently redirect the peer's traffic there, and a
+// first-answer-wins resolver would follow it without a second opinion.
+//
+// The substrate spec's answer (KOTVA §4.2.1(3): a rendezvous set of >= 3 nodes
+// under DISJOINT operators, cross-checked) is that no single operator may
+// equivocate about where a peer is. Applied here: ask EVERY configured relay
+// (a mixed set of built-in Vulos and Ephor relays is fine — same wire
+// contract) and compare their `direct` answers. Honest relays agree — a peer
+// has one real verified-direct endpoint, or none — so a DISAGREEMENT means at
+// least one relay is equivocating. We cannot tell which, so we treat the
+// direct field as SUSPECT and DROP it, failing closed to the relay-tunnel tier
+// or the last-known address. Never follow a contested direct endpoint.
+//
+// The relay-tunnel field is deliberately NOT cross-checked the same way: each
+// relay legitimately answers with the peer's tunnel URL ON ITSELF (a different
+// host per relay by construction), so there is no cross-relay agreement to
+// test, and that URL points back at a relay the OWNER configured. The first
+// relay that offers one wins, exactly as before.
+//
+// With one relay this is a no-op cross-check (nothing to compare) and behaves
+// exactly like RefreshPeerReachability — which is precisely why the docs push
+// for two relays under different operators: a box with one relay never had
+// this protection to begin with.
+func refreshPeerReachabilityCrossChecked(ctx context.Context, relays []string, vulaID string) error {
+	if strings.TrimSpace(vulaID) == "" {
+		return fmt.Errorf("peering: reachability resolve requires a vula id")
+	}
+
+	var (
+		directVals []string // DISTINCT non-empty direct answers, in first-seen order
+		directSeen = map[string]bool{}
+		relayURL   string // first non-empty relay-tunnel answer
+		answered   bool   // at least one relay gave a definitive answer (200 or 404)
+		lastErr    error
+	)
+
+	for _, relay := range relays {
+		if strings.TrimSpace(relay) == "" {
+			continue
+		}
+		tctx, cancel := context.WithTimeout(ctx, reachabilityHTTPTimeout)
+		resp, found, err := fetchPeerReachability(tctx, relay, vulaID)
+		cancel()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		answered = true
+		if !found {
+			continue
+		}
+		if d := strings.TrimSpace(resp.Direct); d != "" && !directSeen[d] {
+			directSeen[d] = true
+			directVals = append(directVals, d)
+		}
+		if relayURL == "" {
+			relayURL = strings.TrimSpace(resp.Relay)
+		}
+	}
+
+	if !answered {
+		// Every relay errored — a transient outage, not a resolution. Leave any
+		// existing cache entry in place (stale-but-usable beats evicting a good
+		// answer on a blip) and surface the last error for the caller to log.
+		if lastErr != nil {
+			return lastErr
+		}
+		return nil
+	}
+
+	direct := ""
+	switch len(directVals) {
+	case 0:
+		// No relay knows a verified-direct endpoint — fine, use the relay tier.
+	case 1:
+		direct = directVals[0]
+	default:
+		// EQUIVOCATION. Relays disagree about the peer's direct endpoint, so at
+		// least one is lying or misinformed. We cannot tell which, so we trust
+		// NONE of them and fall back to the relay tier / last-known address.
+		// Fail closed: a contested direct endpoint is never followed.
+		reachabilityLogf("peering: SUSPECT reachability for %s — %d relays gave conflicting verified-direct endpoints (%s); ignoring the direct tier for this peer",
+			vulaID, len(directVals), strings.Join(directVals, ", "))
+	}
+
+	reachabilityCachePut(vulaID, direct, relayURL)
 	return nil
 }
 
@@ -212,21 +345,29 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 // pass-through) when relayBaseURL is empty — i.e. a box that hasn't
 // configured VULOS_RELAY_BASE_URL sees EXACTLY the original B-0 behavior.
 // The goroutine exits when ctx is cancelled.
-// StartReachabilityRefresh accepts SEVERAL relay base URLs and tries them in
-// order for each peer, stopping at the first that answers.
+// StartReachabilityRefresh accepts SEVERAL relay base URLs and, for each peer,
+// queries ALL of them and CROSS-CHECKS their answers (see
+// refreshPeerReachabilityCrossChecked) rather than stopping at the first that
+// answers.
 //
-// # Why several
+// # Why several, and why cross-check rather than first-answer-wins
 //
 // Peer reachability is the one lookup an established relationship still
 // depends on, so a single relay holding the only answer makes that relay a
-// single point of failure for every cross-NAT peer this box has. Trying a
+// single point of failure for every cross-NAT peer this box has. Querying a
 // list means one relay being down, seized, or simply not knowing about a
-// peer costs nothing as long as another does — the substrate spec's
-// disjoint-operator posture (KOTVA 4.2.1(3)), applied to the one path that
-// would otherwise ignore it.
+// peer costs nothing as long as another does.
 //
-// A single URL is just a one-element list and behaves exactly as before; an
-// empty list disables the refresher, exactly as an empty string did.
+// But a list also enables the stronger guarantee the substrate spec actually
+// asks for (KOTVA §4.2.1(3): a set of nodes under DISJOINT operators,
+// cross-checked): a relay must not be able to EQUIVOCATE about where a peer
+// is. So instead of trusting the first relay to answer, this fans out to every
+// relay and treats a disagreement about the peer's verified-direct endpoint as
+// suspect, dropping it. A hostile relay that alone claims a false direct
+// endpoint is outvoted rather than obeyed.
+//
+// A single URL is just a one-element list (no cross-check possible, behaves as
+// before); an empty list disables the refresher, exactly as an empty list did.
 func StartReachabilityRefresh(ctx context.Context, relayBaseURLs []string, listApproved func() []WKApprovedPeer) {
 	var relays []string
 	for _, u := range relayBaseURLs {
@@ -242,18 +383,14 @@ func StartReachabilityRefresh(ctx context.Context, relayBaseURLs []string, listA
 			if p.VulaID == "" {
 				continue
 			}
-			// First answer wins. A relay that does not know this peer is not
-			// an error worth escalating — the next one may, and if none do,
-			// the ladder degrades to the peer's last-known address exactly as
-			// it does with no relay configured at all.
-			for _, relay := range relays {
-				tctx, cancel := context.WithTimeout(ctx, reachabilityHTTPTimeout)
-				err := RefreshPeerReachability(tctx, relay, p.VulaID)
-				cancel()
-				if err == nil {
-					break
-				}
-			}
+			// CROSS-CHECK across every relay rather than trusting whichever
+			// answers first — see refreshPeerReachabilityCrossChecked. A relay
+			// that does not know this peer is not an error worth escalating; a
+			// relay that DISAGREES about the peer's verified-direct endpoint is
+			// caught and its answer dropped. If every relay errors, the ladder
+			// degrades to the peer's last-known address exactly as it does with
+			// no relay configured at all, so a transient failure is silent.
+			_ = refreshPeerReachabilityCrossChecked(ctx, relays, p.VulaID)
 		}
 	}
 	go func() {

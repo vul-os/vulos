@@ -528,6 +528,60 @@ func TestIngressInfo_None(t *testing.T) {
 	}
 }
 
+// TestIngress_EphorReportsLiveMultiRelayState is the dual-provider keystone:
+// selecting Ephor as the provider must NOT regress ingress reporting to a
+// single VULOS_RELAY_BASE_URL. Both the built-in Vulos provider and the Ephor
+// provider report the SAME live tunnel state from the shared reporter, because
+// the embedded agent holds one link per relay regardless of who operates it —
+// which is exactly what lets an owner run a Vulos relay and an Ephor relay at
+// the same time and see both.
+func TestIngress_EphorReportsLiveMultiRelayState(t *testing.T) {
+	resetState(t)
+	// The composition root reports TWO live links: one Vulos relay, one Ephor
+	// relay, held simultaneously by the one agent.
+	SetIngressReporter(func() IngressDescriptor {
+		return IngressDescriptor{
+			Mode:   "relay-tunnel",
+			Detail: "https://box1.vulos-relay.example.com, https://box1.ephor-relay.example.net",
+		}
+	})
+	t.Cleanup(func() { SetIngressReporter(nil) })
+
+	vulos := vulosProvider{}.Ingress()
+	ephor := ephorProvider{}.Ingress()
+
+	if vulos != ephor {
+		t.Fatalf("vulos and ephor ingress disagree:\n vulos=%+v\n ephor=%+v", vulos, ephor)
+	}
+	if ephor.Mode != "relay-tunnel" {
+		t.Fatalf("ephor Ingress().Mode = %q, want relay-tunnel from the live reporter", ephor.Mode)
+	}
+	if !strings.Contains(ephor.Detail, "ephor-relay.example.net") ||
+		!strings.Contains(ephor.Detail, "vulos-relay.example.com") {
+		t.Errorf("ephor Ingress().Detail = %q, want BOTH the Vulos and Ephor live links (coexistence)", ephor.Detail)
+	}
+}
+
+// TestIngress_EphorHonestWhenNoTunnelUp is the anti-false-confidence rule for
+// the Ephor provider — the same guarantee vulosProvider already had. With no
+// live tunnel reported it must NOT invent a URL from a stale env var; it says
+// "none".
+func TestIngress_EphorHonestWhenNoTunnelUp(t *testing.T) {
+	resetState(t)
+	// A leftover legacy single-relay env var must not resurrect the old
+	// single-URL behaviour now that both providers report from the live agent.
+	t.Setenv("VULOS_RELAY_BASE_URL", "https://stale.example.com")
+	SetIngressReporter(nil)
+
+	ing := ephorProvider{}.Ingress()
+	if ing.Mode != "none" {
+		t.Errorf("ephor Ingress().Mode = %q, want none when no tunnel is up", ing.Mode)
+	}
+	if strings.Contains(ing.Detail, "stale.example.com") {
+		t.Errorf("ephor Ingress().Detail leaked the stale legacy env URL: %q", ing.Detail)
+	}
+}
+
 func TestResolvePeer_FallsBackWhenUnclaimed(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()

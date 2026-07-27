@@ -139,6 +139,54 @@ func TestFromEnvInlineJSONMultiEndpoint(t *testing.T) {
 	}
 }
 
+// TestMixedVulosAndEphorEndpointsCoexist is the dual-provider case: a box may
+// list a built-in Vulos relay AND an Ephor relay in ONE endpoint set and hold
+// a tunnel to BOTH at once, for versatile/redundant access. This package has
+// no notion of "provider" — a relay is just an https base URL and a per-relay
+// grant — so the two coexist by construction rather than being mutually
+// exclusive. All() returns every one, which is what the tunnel wiring and the
+// peer-resolve cross-check both iterate.
+func TestMixedVulosAndEphorEndpointsCoexist(t *testing.T) {
+	clearEnv(t)
+	t.Setenv(EnvEndpoints, `[
+	  {"url":"https://relay.vulos.example.com","name":"box1","token":"tv","region":"vulos"},
+	  {"url":"https://relay.ephor.example.net","name":"box1","token":"te","region":"ephor"}
+	]`)
+
+	set, _, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv: %v", err)
+	}
+	if set.Len() != 2 {
+		t.Fatalf("Len = %d, want 2 (a Vulos relay AND an Ephor relay held at once)", set.Len())
+	}
+	all := set.All()
+	var haveVulos, haveEphor bool
+	for _, e := range all {
+		switch e.BaseURL {
+		case "https://relay.vulos.example.com":
+			haveVulos = true
+		case "https://relay.ephor.example.net":
+			haveEphor = true
+		}
+		// Each is dialable as a tunnel target — wss control channel, per-relay grant.
+		if !strings.HasPrefix(e.WSURL(), "wss://") {
+			t.Errorf("endpoint %s WSURL = %q, want a wss:// control channel", e.BaseURL, e.WSURL())
+		}
+		if e.Token == "" {
+			t.Errorf("endpoint %s lost its per-relay grant", e.BaseURL)
+		}
+	}
+	if !haveVulos || !haveEphor {
+		t.Fatalf("mixed set dropped a provider: vulos=%v ephor=%v", haveVulos, haveEphor)
+	}
+	// Ordered() (the tunnel-preference view) and All() (the fan-out/cross-check
+	// view) must both surface both relays — neither provider is second-class.
+	if len(set.Ordered()) != 2 {
+		t.Errorf("Ordered() dropped an endpoint from the mixed set: %v", set.Ordered())
+	}
+}
+
 // TestFileFormWinsOverInlineAndLegacy: the forms must not merge, or an
 // operator can end up with the accidental union of two configurations.
 func TestFileFormWinsOverInlineAndLegacy(t *testing.T) {

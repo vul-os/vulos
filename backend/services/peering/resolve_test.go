@@ -156,22 +156,29 @@ func TestRefreshPeerReachability_RequiresRelayBaseURLAndVulaID(t *testing.T) {
 	}
 }
 
-// TestStartReachabilityRefresh_EmptyRelayIsNoop verifies that leaving
-// VULOS_RELAY_BASE_URL unset (relayBaseURL == "") never touches the network
-// or the cache — self-host boxes without a relay see zero behavior change.
+// TestStartReachabilityRefresh_EmptyRelayIsNoop verifies that configuring no
+// relays (an empty list) never touches the network or the cache — self-host
+// boxes without a relay see zero behavior change.
+//
+// NOTE: this package's test binary currently fails to build because of a
+// PRE-EXISTING import cycle unrelated to reachability (peering -> auth -> ... ->
+// fleetid -> peering, via vouch.go / e2e_session_stack_test.go), so these tests
+// cannot be executed with `go test ./services/peering/` today. They are kept
+// correct against the live signatures so coverage exists the moment that cycle
+// is broken.
 func TestStartReachabilityRefresh_EmptyRelayIsNoop(t *testing.T) {
 	resetReachabilityCache(t)
 	called := false
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartReachabilityRefresh(ctx, "", func() []WKApprovedPeer {
+	StartReachabilityRefresh(ctx, nil, func() []WKApprovedPeer {
 		called = true
 		return nil
 	})
 	// Give any (incorrectly) spawned goroutine a moment to misbehave.
 	time.Sleep(50 * time.Millisecond)
 	if called {
-		t.Fatal("StartReachabilityRefresh must not call listApproved when relayBaseURL is empty")
+		t.Fatal("StartReachabilityRefresh must not call listApproved when no relays are configured")
 	}
 }
 
@@ -187,7 +194,7 @@ func TestStartReachabilityRefresh_WarmsCacheImmediately(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	StartReachabilityRefresh(ctx, srv.URL, func() []WKApprovedPeer {
+	StartReachabilityRefresh(ctx, []string{srv.URL}, func() []WKApprovedPeer {
 		return []WKApprovedPeer{{VulaID: "vula:ed25519:grace", ServerAddr: "grace.example.org"}}
 	})
 
@@ -199,4 +206,77 @@ func TestStartReachabilityRefresh_WarmsCacheImmediately(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("cache was not warmed by StartReachabilityRefresh within the deadline")
+}
+
+// TestCrossCheck_AgreeingRelaysTrustDirect verifies that when every relay
+// reports the SAME verified-direct endpoint, it is trusted.
+func TestCrossCheck_AgreeingRelaysTrustDirect(t *testing.T) {
+	resetReachabilityCache(t)
+	mk := func(direct string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(relayResolveResponse{Direct: direct}) //nolint:errcheck
+		}))
+	}
+	a := mk("https://hank-direct.example.net")
+	defer a.Close()
+	b := mk("https://hank-direct.example.net")
+	defer b.Close()
+
+	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{a.URL, b.URL}, "vula:ed25519:hank"); err != nil {
+		t.Fatalf("cross-check: %v", err)
+	}
+	if got := resolvePeerBaseURL("vula:ed25519:hank", "hank.example.org"); got != "https://hank-direct.example.net" {
+		t.Fatalf("got %q, want the agreed verified-direct endpoint", got)
+	}
+}
+
+// TestCrossCheck_EquivocatingRelaysDropDirect is the security case: two relays
+// disagree about the peer's verified-direct endpoint (one is lying). The
+// direct tier must be DROPPED (fail closed) and the ladder must degrade to the
+// contact.Server fallback rather than follow either contested endpoint.
+func TestCrossCheck_EquivocatingRelaysDropDirect(t *testing.T) {
+	resetReachabilityCache(t)
+	honest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(relayResolveResponse{Direct: "https://ivy-real.example.net"}) //nolint:errcheck
+	}))
+	defer honest.Close()
+	liar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(relayResolveResponse{Direct: "https://ivy-attacker.evil.example"}) //nolint:errcheck
+	}))
+	defer liar.Close()
+
+	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{honest.URL, liar.URL}, "vula:ed25519:ivy"); err != nil {
+		t.Fatalf("cross-check: %v", err)
+	}
+	got := resolvePeerBaseURL("vula:ed25519:ivy", "ivy.example.org")
+	if got == "https://ivy-attacker.evil.example" || got == "https://ivy-real.example.net" {
+		t.Fatalf("cross-check followed a CONTESTED direct endpoint: %q", got)
+	}
+	if got != "https://ivy.example.org" {
+		t.Fatalf("got %q, want the contact.Server fallback after equivocation drops the direct tier", got)
+	}
+}
+
+// TestCrossCheck_AllRelaysDownLeavesCacheUntouched verifies that when every
+// relay errors, an existing good cache entry is NOT evicted (stale-but-usable
+// beats a transient blip), and the error is surfaced.
+func TestCrossCheck_AllRelaysDownLeavesCacheUntouched(t *testing.T) {
+	resetReachabilityCache(t)
+	reachabilityCachePut("vula:ed25519:jack", "https://jack-direct.example.net", "")
+
+	// Two relays that are refused/unreachable: point at a closed server.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close() // now nothing is listening
+
+	err := refreshPeerReachabilityCrossChecked(context.Background(), []string{deadURL}, "vula:ed25519:jack")
+	if err == nil {
+		t.Fatal("expected an error when every relay is unreachable")
+	}
+	if got := resolvePeerBaseURL("vula:ed25519:jack", "jack.example.org"); got != "https://jack-direct.example.net" {
+		t.Fatalf("got %q, want the pre-existing cached direct endpoint left untouched", got)
+	}
 }
