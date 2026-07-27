@@ -7,6 +7,11 @@ own bucket: the box only ever needs an **endpoint**, a **bucket name**, an
 **encryption passphrase**. Vulos operates no storage of its own — the store is
 always something you rent from a third party or run yourself.
 
+> **Vulos is free and open-source — we charge nothing, ever.** There is no Vulos
+> subscription, licence, or pricing. Every figure in this guide is a *third-party
+> infrastructure* cost you pay **directly to the storage provider you choose** (or
+> nothing at all, if you self-host the store). None of it goes to Vulos.
+
 This guide helps you pick that provider and, just as importantly, understand
 where the bill comes from. Object storage pricing has a few well-known traps —
 egress fees and minimum-duration charges chief among them — and this document

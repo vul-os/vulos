@@ -5,6 +5,11 @@ document is about *where* to run a relay and *what it costs*. For *how* to stand
 up, see [RELAY-SELF-HOST.md](RELAY-SELF-HOST.md); for *what a relay is and why it is
 built this way*, see [REACH.md](REACH.md).
 
+> **Vulos is free and open-source — we charge nothing, ever.** There is no Vulos
+> subscription, licence, or pricing. Every cost below is a *third-party* hosting
+> cost you pay **directly to the VPS provider you choose** (or nothing, if you run
+> the relay on hardware you already own). None of it goes to Vulos.
+
 ---
 
 ## Table of contents
