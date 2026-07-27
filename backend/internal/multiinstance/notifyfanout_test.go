@@ -97,7 +97,7 @@ func TestNotify_RelayEnvelopeCarriesAuthAndRouting(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000099",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://peerbox.relay.vulos.org",
+		EndpointURL: "https://peerbox.relay.example.com",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestNotify_SkippedWithoutSenderIdentity(t *testing.T) {
 		ULID:        "01HWZNOTIF0000000000000098",
 		Kind:        multiinstance.KindCloud,
 		Status:      multiinstance.StatusOnline,
-		EndpointURL: "https://peerbox.relay.vulos.org",
+		EndpointURL: "https://peerbox.relay.example.com",
 	}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 // Facet is a bitmask of the three orthogonal reachability concerns a
@@ -39,7 +40,7 @@ type IngressDescriptor struct {
 // turn/libp2p/wireguard/none). A provider only needs to behave sensibly for
 // the facets it claims via Capabilities() — callers (ICEServers/IngressInfo/
 // ResolvePeer below) never invoke a provider for a facet it doesn't claim;
-// that facet instead falls back to ephor's own gate. Implementations for
+// that facet instead falls back to the built-in provider's own gate. Implementations for
 // unclaimed facets simply return zero values and are never reached.
 type ReachabilityProvider interface {
 	Name() Provider
@@ -50,10 +51,13 @@ type ReachabilityProvider interface {
 }
 
 // providerFor constructs the ReachabilityProvider for name, closing over
-// cfg's per-provider sections. ephor needs no config (it reads env/the
-// injected TURNStore); an unrecognised name fails safe to ephor.
+// cfg's per-provider sections. The built-in provider needs no config here (it
+// reads env / the injected TURNStore / the injected ingress reporter); an
+// unrecognised name fails safe to the built-in default.
 func providerFor(name Provider, cfg Config) ReachabilityProvider {
 	switch name {
+	case ProviderEphor:
+		return ephorProvider{}
 	case ProviderNone:
 		return noneProvider{}
 	case ProviderTURN:
@@ -63,7 +67,7 @@ func providerFor(name Provider, cfg Config) ReachabilityProvider {
 	case ProviderWireGuard:
 		return wireguardProvider{cfg: cfg.WireGuard}
 	default:
-		return ephorProvider{}
+		return vulosProvider{}
 	}
 }
 
@@ -77,19 +81,18 @@ func activeProvider() ReachabilityProvider {
 // instead of hardcoding STUN/TURN. It NEVER goes dark just because the
 // active provider covers ingress/rendezvous but not ICE (none/libp2p/
 // wireguard): those providers don't claim FacetICE, so this automatically
-// falls back to ephor's ICE default. Callers must not branch on provider
+// falls back to the built-in ICE default. Callers must not branch on provider
 // name; the returned list is already the right one.
 func ICEServers(ctx context.Context, userID string) []ICEServer {
 	p := activeProvider()
 	if p.Capabilities().Has(FacetICE) {
 		return p.ICEServers(ctx, userID)
 	}
-	return ephorProvider{}.ICEServers(ctx, userID)
+	return vulosProvider{}.ICEServers(ctx, userID)
 }
 
 // IngressInfo reports how the box is currently reachable from outside NAT —
-// the active provider if it claims FacetIngress, else ephor's default
-// (relay tunnel).
+// the active provider if it claims FacetIngress, else the built-in default.
 //
 // HONESTY NOTE: for libp2p/wireguard this is REPORT-ONLY today — it
 // describes what the operator configured, not a live re-route of real HTTP
@@ -102,11 +105,11 @@ func IngressInfo() IngressDescriptor {
 	if p.Capabilities().Has(FacetIngress) {
 		return p.Ingress()
 	}
-	return ephorProvider{}.Ingress()
+	return vulosProvider{}.Ingress()
 }
 
 // ResolvePeer resolves peerID to a base URL via the active rendezvous
-// provider, if it claims FacetRendezvous, else via ephor's default (the
+// provider, if it claims FacetRendezvous, else via the built-in default (the
 // existing peering.resolve.go cache/HTTP path, which this package does not
 // duplicate — see ephorProvider.ResolvePeer).
 func ResolvePeer(ctx context.Context, peerID string) (string, bool) {
@@ -114,7 +117,7 @@ func ResolvePeer(ctx context.Context, peerID string) (string, bool) {
 	if p.Capabilities().Has(FacetRendezvous) {
 		return p.ResolvePeer(ctx, peerID)
 	}
-	return ephorProvider{}.ResolvePeer(ctx, peerID)
+	return vulosProvider{}.ResolvePeer(ctx, peerID)
 }
 
 // EffectiveRelay is the resolved, ready-to-display relay/reachability
@@ -148,8 +151,84 @@ func Effective(ctx context.Context, userID string) EffectiveRelay {
 	return eff
 }
 
-// --- ephor: the default. No special privilege — registered and dispatched
-// exactly like every other provider. ---
+// --- vulos: the built-in default. No special privilege — registered and
+// dispatched exactly like every other provider. ---
+
+// ingressReporter is injected at startup by the composition root so this
+// package can report the LIVE state of the built-in reverse tunnel without
+// importing it (services/reach/tunnel would be an import cycle through the
+// wiring layer, and this package must stay dependency-light — every other
+// service imports it for ICE).
+//
+// Nil means "nothing has reported", which is the correct state before startup
+// finishes and on a box that runs no tunnel at all.
+var (
+	ingressMu       sync.RWMutex
+	ingressReporter func() IngressDescriptor
+)
+
+// SetIngressReporter injects the live reachability reporter. Call once at
+// startup, from the same place that starts the tunnel agent. Passing nil
+// clears it, which is what a box with no relays configured should do.
+func SetIngressReporter(fn func() IngressDescriptor) {
+	ingressMu.Lock()
+	defer ingressMu.Unlock()
+	ingressReporter = fn
+}
+
+func reportedIngress() (IngressDescriptor, bool) {
+	ingressMu.RLock()
+	fn := ingressReporter
+	ingressMu.RUnlock()
+	if fn == nil {
+		return IngressDescriptor{}, false
+	}
+	d := fn()
+	return d, d.Mode != ""
+}
+
+type vulosProvider struct{}
+
+func (vulosProvider) Name() Provider      { return ProviderVulos }
+func (vulosProvider) Capabilities() Facet { return FacetICE | FacetIngress | FacetRendezvous }
+
+func (vulosProvider) ICEServers(_ context.Context, userID string) []ICEServer {
+	return builtinICEServers(userID)
+}
+
+// Ingress reports the LIVE state of the built-in reverse tunnel, not a guess.
+//
+// The previous implementation returned a hardcoded relay hostname whether or
+// not anything was actually running there, which meant Settings could show a
+// confident "relay-tunnel https://…" for a box that was in fact unreachable
+// from the internet. Reporting "no relay configured" when that is the truth
+// is more useful than reporting a URL nobody is serving.
+func (vulosProvider) Ingress() IngressDescriptor {
+	if d, ok := reportedIngress(); ok {
+		return d
+	}
+	return IngressDescriptor{
+		Mode:   "none",
+		Detail: "no relay endpoint configured — this box is reachable on its LAN, and publicly only if the DIRECT-IP listener is enabled",
+	}
+}
+
+// ResolvePeer intentionally returns not-ok: the built-in rendezvous facet is
+// already served live by backend/services/peering/resolve.go's existing
+// cache/HTTP path. This package does not duplicate that logic (and must not
+// import the peering package — peering imports THIS package for ICE, and a
+// reverse import would cycle); ResolvePeer exists on this interface purely
+// so an alternative rendezvous provider (libp2p) can be swapped in without
+// peering.go ever branching on provider name.
+func (vulosProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
+
+// --- ephor: the supported ALTERNATIVE relay. ---
+//
+// Ephor (github.com/vul-os/ephor) speaks the same rendezvous contract and
+// serves the same purpose. Selecting it is a genuine swap, not a downgrade —
+// which is the whole point of the coordinator being hired rather than
+// depended on. ICE resolves identically either way: which relay carries HTTP
+// ingress has nothing to do with which STUN/TURN servers call media uses.
 
 type ephorProvider struct{}
 
@@ -157,24 +236,20 @@ func (ephorProvider) Name() Provider      { return ProviderEphor }
 func (ephorProvider) Capabilities() Facet { return FacetICE | FacetIngress | FacetRendezvous }
 
 func (ephorProvider) ICEServers(_ context.Context, userID string) []ICEServer {
-	return ephorICEServers(userID)
+	return builtinICEServers(userID)
 }
 
 func (ephorProvider) Ingress() IngressDescriptor {
 	relay := strings.TrimSpace(os.Getenv("VULOS_RELAY_BASE_URL"))
 	if relay == "" {
-		relay = "https://relay.vulos.org"
+		return IngressDescriptor{
+			Mode:   "none",
+			Detail: "Ephor selected but no relay configured — set VULOS_RELAY_BASE_URL (and run the Ephor agent alongside the OS)",
+		}
 	}
 	return IngressDescriptor{Mode: "relay-tunnel", Detail: relay}
 }
 
-// ResolvePeer intentionally returns not-ok: ephor's rendezvous facet is
-// already served live by backend/services/peering/resolve.go's existing
-// cache/HTTP path. This package does not duplicate that logic (and must not
-// import the peering package — peering imports THIS package for ICE, and a
-// reverse import would cycle); ResolvePeer exists on this interface purely
-// so an alternative rendezvous provider (libp2p) can be swapped in without
-// peering.go ever branching on provider name.
 func (ephorProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
 
 // --- none: opts ingress out of the relay tunnel. Facets A/C untouched. ---

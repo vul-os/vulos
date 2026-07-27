@@ -54,7 +54,7 @@ func TestResolvePeerBaseURL_PassThrough(t *testing.T) {
 // contact.Server fallback.
 func TestResolvePeerBaseURL_PrefersVerifiedDirect(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:alice", "https://alice-direct.example.net", "https://alice.relay.vulos.org")
+	reachabilityCachePut("vula:ed25519:alice", "https://alice-direct.example.net", "https://alice.relay.example.com")
 	got := resolvePeerBaseURL("vula:ed25519:alice", "stale.example.org:8080")
 	if got != "https://alice-direct.example.net" {
 		t.Fatalf("got %q, want the cached verified-direct endpoint", got)
@@ -66,9 +66,9 @@ func TestResolvePeerBaseURL_PrefersVerifiedDirect(t *testing.T) {
 // over contact.Server.
 func TestResolvePeerBaseURL_FallsBackToRelayTunnel(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:bob", "", "https://bob.relay.vulos.org")
+	reachabilityCachePut("vula:ed25519:bob", "", "https://bob.relay.example.com")
 	got := resolvePeerBaseURL("vula:ed25519:bob", "stale.example.org:8080")
-	if got != "https://bob.relay.vulos.org" {
+	if got != "https://bob.relay.example.com" {
 		t.Fatalf("got %q, want the cached relay-tunnel endpoint", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestRefreshPeerReachability_PopulatesCache(t *testing.T) {
 			t.Fatalf("vula_id query = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(relayResolveResponse{Relay: "https://erin.relay.vulos.org"}) //nolint:errcheck
+		json.NewEncoder(w).Encode(relayResolveResponse{Relay: "https://erin.relay.example.com"}) //nolint:errcheck
 	}))
 	defer srv.Close()
 
@@ -122,7 +122,7 @@ func TestRefreshPeerReachability_PopulatesCache(t *testing.T) {
 		t.Fatalf("RefreshPeerReachability: %v", err)
 	}
 	got := resolvePeerBaseURL("vula:ed25519:erin", "erin.example.org")
-	if got != "https://erin.relay.vulos.org" {
+	if got != "https://erin.relay.example.com" {
 		t.Fatalf("got %q, want the relay-resolved endpoint", got)
 	}
 }

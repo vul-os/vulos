@@ -52,14 +52,14 @@ func selfHostedSTUNURL(tc network.TURNConfig) []string {
 	return []string{fmt.Sprintf("stun:%s:%d", host, tc.Port)}
 }
 
-// ephorICEServers builds the ephor-default ICE server list for userID:
+// builtinICEServers builds the built-in default ICE server list for userID:
 // public STUN (unless disabled) + this box's own coturn STUN/TURN. The TURN
 // config itself comes from effectiveTURNConfig() — the admin-configured
 // network.TURNStore (Settings' "TURN / WebRTC" panel) when set, else the env
 // (TURN_HOST/TURN_PORT/TURN_SECRET/TURN_REALM) — with fresh short-lived HMAC
 // credentials (<=1h, see network.TURNConfig.GenerateCredentials) whenever
 // TURN is enabled.
-func ephorICEServers(userID string) []ICEServer {
+func builtinICEServers(userID string) []ICEServer {
 	var servers []ICEServer
 	if urls := publicSTUNURLs(); len(urls) > 0 {
 		servers = append(servers, ICEServer{URLs: urls})

@@ -117,13 +117,60 @@ and every one of those seams stays inert.
 
 ---
 
-## Relay, streaming & real-time
+## Reachability: relay, streaming & real-time
+
+Full reference: **[REACH.md](REACH.md)**. Setup recipes:
+**[RELAY-SELF-HOST.md](RELAY-SELF-HOST.md)**.
+
+### Box side — relay endpoints
+
+Endpoints come from **one** of these sources, highest precedence first. They do
+**not** merge: a box configured with a file ignores the others entirely.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_RELAY_BASE_URL` | _(empty; feature disabled)_ | Reachability broker (Ephor) endpoint used for GPU streaming registration, peering federation/resolve, and push fan-out |
-| `VULOS_RELAY_NAME` | _(empty)_ | This box's advertised name on the relay |
-| `VULOS_RELAY_TOKEN` | _(empty)_ | Auth token presented to the relay |
+| `VULOS_RELAY_ENDPOINTS_FILE` | _(empty)_ | **Preferred.** Path to a JSON array of `{"url","name","token","region","priority"}` objects. Must be mode **0600** — the box refuses to start otherwise, because the file holds bearer tokens. |
+| `VULOS_RELAY_ENDPOINTS` | _(empty)_ | The same JSON array inline, for platforms whose secret channel is the environment (Fly, Docker, Kubernetes). |
+| `VULOS_RELAY_BASE_URL` | _(empty; no relay)_ | Legacy single-endpoint form. Still fully supported. Also read by GPU-streaming registration and cross-instance notify fan-out. |
+| `VULOS_RELAY_NAME` | _(empty)_ | Legacy form: this box's name on the relay (one DNS label). |
+| `VULOS_RELAY_TOKEN` | _(empty)_ | Legacy form: the bearer grant presented to the relay. |
+| `VULOS_RELAY_ALLOW_INSECURE` | off | Permits a plaintext `http://` relay URL, **loopback hosts only**. Development affordance; unreachable from any HTTP surface. |
+| `VULOS_RENDEZVOUS_URL` | _(empty; mDNS only)_ | **Comma-separated** list of rendezvous prefixes for cross-internet box discovery. Each becomes its own source; one that errors is skipped rather than failing the set. |
+
+A box with none of these has **no relay** — the expected posture for a box with a
+public IP or one that only needs its LAN. One bad entry refuses the whole set (with
+an error naming the index) rather than silently starting with a subset.
+
+Status: `GET /api/network/reach` (session-authed, never contains a token).
+
+### Relay side — `vulos relay serve`
+
+| Variable | Flag | Default | Description |
+|----------|------|---------|-------------|
+| `VULOS_RELAY_ADDR` | `-addr` | `:8443` | Listen address. Bind loopback when a TLS proxy fronts it. |
+| `VULOS_RELAY_DOMAIN` | `-domain` | — | **Required.** Base domain; tunnels serve at `<name>.<domain>`. |
+| `VULOS_RELAY_GRANTS_FILE` | `-grants-file` | _(empty)_ | JSON grants file, mode **0600**. |
+| `VULOS_RELAY_GRANTS` | — | _(empty)_ | The same grants inline. **A relay with neither refuses to start** — it never runs open. |
+| `VULOS_RELAY_REVOKED_FILE` | `-revoked-file` | _(empty)_ | Revocation list. Applied to **live** tunnels within 20s, not only to new ones. |
+| — | `-cert` / `-key` | _(empty)_ | Terminate TLS in-process. Must be given together, or startup fails. |
+| `VULOS_RELAY_PATH_MODE` | `-path-mode` | off | Also serve `/t/<name>/` for operators without wildcard DNS. Rewrites the path only — apps emitting absolute asset paths (including the Vulos shell) will break under it. |
+| `VULOS_RELAY_TRUST_PROXY_HEADERS` | `-trust-proxy-headers` | **off** | Believe `X-Forwarded-For` (rightmost entry). Turn on **only** behind a trusted TLS terminator; an internet-facing relay that believes it lets any client choose its own source IP. |
+| `VULOS_RELAY_ADMIN_ADDR` | `-admin-addr` | `127.0.0.1:9090` | Admin/status listener. Serves `/tunnels` (the roster) and `/tls-ask` (the automatic-TLS gate). |
+| `VULOS_RELAY_ADMIN_TOKEN` | `-admin-token` | _(empty)_ | **Required** for a non-loopback admin bind — the roster names every registered box. |
+| — | `-max-agents` | 64 | Concurrent tunnel cap. |
+| `VULOS_RELAY_NODE_ID` | `-node-id` | _(empty)_ | Stable identifier shown to agents. |
+| `VULOS_RELAY_DIRECT_PROBE` | `-direct-probe` | off | Let agents advertise a direct endpoint, verified by an SSRF-guarded nonce-echo ownership probe before it is ever published. |
+| `VULOS_RELAY_RENDEZVOUS` | `-rendezvous` | off | Also serve the discovery role (apex host only). |
+| `VULOS_RELAY_RENDEZVOUS_PREFIX` | `-rendezvous-prefix` | `/rendezvous` | Mount prefix for the discovery role. |
+| `VULOS_RELAY_RENDEZVOUS_ORIGINS` | `-rendezvous-origins` | _(any)_ | Comma-separated browser origins for the discovery role. Not access control — writes are signature-gated. |
+| — | `-grace` | `20s` | Graceful-shutdown budget. `SIGTERM` drains first: no new tunnels, existing ones keep serving. |
+
+Mint a grant with `vulos relay grant <name>`.
+
+### Other reachability & streaming variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `VULOS_GPU_HOST` | disabled | Set truthy (`1`/`true`/`yes`) to enable direct-IP GPU streaming host mode |
 | `VULOS_GPU_ADVERTISE_HOST` | _(empty)_ | Hostname the GPU host advertises to the relay |
 | `VULOS_GPU_VENDOR` | auto-detected | GPU vendor hint |

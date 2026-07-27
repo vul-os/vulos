@@ -111,7 +111,7 @@ func TestSetStoreOnly_PreservesOtherFields(t *testing.T) {
 		ULID:        ulid,
 		DisplayName: "Studio Laptop",
 		Kind:        multiinstance.KindDevice,
-		EndpointURL: "https://laptop.relay.vulos.org",
+		EndpointURL: "https://laptop.relay.example.com",
 		Role:        multiinstance.RolePeer,
 		Status:      multiinstance.StatusOnline,
 	}
@@ -122,7 +122,7 @@ func TestSetStoreOnly_PreservesOtherFields(t *testing.T) {
 		t.Fatalf("SetStoreOnly: %v", err)
 	}
 	got, _ := r.Get(ulid)
-	if got.DisplayName != "Studio Laptop" || got.EndpointURL != "https://laptop.relay.vulos.org" ||
+	if got.DisplayName != "Studio Laptop" || got.EndpointURL != "https://laptop.relay.example.com" ||
 		got.Role != multiinstance.RolePeer || got.Status != multiinstance.StatusOnline {
 		t.Errorf("SetStoreOnly disturbed other fields: %+v", got)
 	}
@@ -185,13 +185,13 @@ func TestFanOut_ExcludesStoreOnly(t *testing.T) {
 	reg := openTempRegistry(t)
 	if err := reg.Upsert(multiinstance.Instance{
 		ULID: "01HWZSTOR000000000FANSERVE1", Kind: multiinstance.KindDevice,
-		Status: multiinstance.StatusOnline, EndpointURL: "https://serving.relay.vulos.org",
+		Status: multiinstance.StatusOnline, EndpointURL: "https://serving.relay.example.com",
 	}); err != nil {
 		t.Fatalf("Upsert serving: %v", err)
 	}
 	if err := reg.Upsert(multiinstance.Instance{
 		ULID: "01HWZSTOR000000000FANSTORE1", Kind: multiinstance.KindDevice,
-		Status: multiinstance.StatusOnline, EndpointURL: "https://storeonly.relay.vulos.org", StoreOnly: true,
+		Status: multiinstance.StatusOnline, EndpointURL: "https://storeonly.relay.example.com", StoreOnly: true,
 	}); err != nil {
 		t.Fatalf("Upsert store-only: %v", err)
 	}

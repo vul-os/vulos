@@ -112,7 +112,18 @@ Vulos accounts are local to your box — email/password, passkey (WebAuthn/FIDO2
 
 ## Box not reachable remotely (relay and direct)
 
-Default reachability is via **Ephor** (`github.com/vul-os/ephor`), an open-source, self-hostable broker: a relay agent (a separate binary, not embedded in the OS server) dials **out** and keeps a tunnel open to an Ephor instance, and clients fall back to that tunnel whenever a direct connection is not available. The agent is configured through `VULOS_RELAY_BASE_URL` (the Ephor endpoint — defaults to Vulos's own hosted instance at `https://relay.vulos.org`; point it at your own self-hosted Ephor or anyone else's instead), `VULOS_RELAY_NAME`, and `VULOS_RELAY_TOKEN` — if remote access fails entirely, check the relay agent's own logs and those variables first. See [NETWORKING.md](NETWORKING.md) for the full reachability model.
+A box behind NAT is reached through a **relay**: the box dials **out**, holds the connection open, and the relay forwards traffic back down it. Vulos ships its own — `vulos relay serve`, the same binary in a different role — and the box-side agent is **embedded in the OS process**, so there is no separate agent binary or log to check.
+
+**Nobody runs a relay on your behalf**, so a box with nothing configured has no relay: it is LAN-reachable, and publicly reachable only in direct mode. Configure relays with `VULOS_RELAY_ENDPOINTS_FILE` (preferred, mode 0600) or `VULOS_RELAY_ENDPOINTS`; the legacy `VULOS_RELAY_BASE_URL` / `VULOS_RELAY_NAME` / `VULOS_RELAY_TOKEN` form still works. [Ephor](https://github.com/vul-os/ephor) is a supported alternative relay.
+
+If remote access fails, start here:
+
+```bash
+curl -s localhost:8443/api/network/reach | jq   # on the box: endpoint health + per-link state
+curl -s https://relay.example.com/_vulos-reach/v1/health   # is the relay alive?
+```
+
+`state: "refused"` with `unauthorized` means the relay's grant does not authorise that name; `state: "backoff"` means the relay is unreachable from the box. See [REACH.md](REACH.md#status-and-troubleshooting) for the full symptom table, and [NETWORKING.md](NETWORKING.md) for the reachability model.
 
 The **direct fast path** (`VULOS_DIRECT_ENABLE=1`) is opt-in and only for boxes with a real public endpoint. Clients try direct first and fall back to the relay on failure, so a broken direct listener degrades speed, not access. Its status:
 

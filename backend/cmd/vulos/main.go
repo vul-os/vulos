@@ -17,6 +17,15 @@
 //	vulos web domain status <site> <domain>   Show a domain's activation status.
 //	vulos web domain rm <site> <domain>       Detach a custom domain.
 //
+//	vulos relay serve [flags]                 Run the RELAY ROLE: the public half
+//	                                          of a Vulos reverse tunnel, so boxes
+//	                                          with no public IP are reachable.
+//	vulos relay grant <name> [name...]        Mint a grant entry with a fresh
+//	                                          random token.
+//
+// The relay subcommand is the one part of this binary that does NOT talk to a
+// box: it IS a server. See docs/REACH.md.
+//
 // # Authentication
 //
 // The box authenticates every /api/web route from the X-User-ID header its auth
@@ -49,6 +58,9 @@ Usage:
   vulos web domain status <site> <domain>   check a domain's activation status
   vulos web domain rm <site> <domain>       detach a custom domain
 
+  vulos relay serve [flags]                 run the public half of a reverse tunnel
+  vulos relay grant <name> [name...]        mint a relay grant with a fresh token
+
 Environment:
   VULOS_BOX_URL   box base URL (default http://localhost:8080)
   VULOS_TOKEN     bearer token for your box session (required for all commands)
@@ -64,6 +76,15 @@ func main() {
 	switch args[0] {
 	case "web":
 		if err := runWeb(args[1:]); err != nil {
+			if _, isUsage := err.(usageError); isUsage {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
+	case "relay":
+		if err := runRelay(args[1:]); err != nil {
 			if _, isUsage := err.(usageError); isUsage {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)

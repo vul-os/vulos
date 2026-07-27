@@ -74,7 +74,7 @@ const reachabilityResolveMaxBytes = 8 * 1024
 // reachabilityEntry is the cached result of resolving one peer's reachability.
 type reachabilityEntry struct {
 	direct    string // verified-direct base URL, e.g. "https://box1.example.net"
-	relay     string // relay-tunnel base URL, e.g. "https://<id>.relay.vulos.org"
+	relay     string // relay-tunnel base URL, e.g. "https://<id>.relay.example.com"
 	fetchedAt time.Time
 }
 
@@ -212,9 +212,29 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 // pass-through) when relayBaseURL is empty — i.e. a box that hasn't
 // configured VULOS_RELAY_BASE_URL sees EXACTLY the original B-0 behavior.
 // The goroutine exits when ctx is cancelled.
-func StartReachabilityRefresh(ctx context.Context, relayBaseURL string, listApproved func() []WKApprovedPeer) {
-	relayBaseURL = strings.TrimSpace(relayBaseURL)
-	if relayBaseURL == "" {
+// StartReachabilityRefresh accepts SEVERAL relay base URLs and tries them in
+// order for each peer, stopping at the first that answers.
+//
+// # Why several
+//
+// Peer reachability is the one lookup an established relationship still
+// depends on, so a single relay holding the only answer makes that relay a
+// single point of failure for every cross-NAT peer this box has. Trying a
+// list means one relay being down, seized, or simply not knowing about a
+// peer costs nothing as long as another does — the substrate spec's
+// disjoint-operator posture (KOTVA 4.2.1(3)), applied to the one path that
+// would otherwise ignore it.
+//
+// A single URL is just a one-element list and behaves exactly as before; an
+// empty list disables the refresher, exactly as an empty string did.
+func StartReachabilityRefresh(ctx context.Context, relayBaseURLs []string, listApproved func() []WKApprovedPeer) {
+	var relays []string
+	for _, u := range relayBaseURLs {
+		if u = strings.TrimSpace(u); u != "" {
+			relays = append(relays, u)
+		}
+	}
+	if len(relays) == 0 {
 		return
 	}
 	refresh := func() {
@@ -222,9 +242,18 @@ func StartReachabilityRefresh(ctx context.Context, relayBaseURL string, listAppr
 			if p.VulaID == "" {
 				continue
 			}
-			tctx, cancel := context.WithTimeout(ctx, reachabilityHTTPTimeout)
-			_ = RefreshPeerReachability(tctx, relayBaseURL, p.VulaID)
-			cancel()
+			// First answer wins. A relay that does not know this peer is not
+			// an error worth escalating — the next one may, and if none do,
+			// the ladder degrades to the peer's last-known address exactly as
+			// it does with no relay configured at all.
+			for _, relay := range relays {
+				tctx, cancel := context.WithTimeout(ctx, reachabilityHTTPTimeout)
+				err := RefreshPeerReachability(tctx, relay, p.VulaID)
+				cancel()
+				if err == nil {
+					break
+				}
+			}
 		}
 	}
 	go func() {

@@ -1,6 +1,6 @@
 // Package relayconfig is the SINGLE source of truth for the box's
 // relay/reachability + TURN "provider" — the concrete answer to "you use
-// Ephor OR bring your own relay".
+// Vulos's own relay, an Ephor relay, or bring your own".
 //
 // # Why this exists
 //
@@ -29,7 +29,7 @@
 // thing the owner currently has selected", and that thing declares which of
 // three independent facets it actually covers (ReachabilityProvider.
 // Capabilities). A facet a provider doesn't cover keeps using its EXISTING
-// independent gate (Ephor's own default) instead of going dark:
+// independent gate (the built-in default) instead of going dark:
 //
 //	Facet A — app-media ICE (STUN/TURN for browser WebRTC)
 //	Facet B — box HTTP ingress (reaching the box's HTTP surface from outside NAT)
@@ -40,8 +40,8 @@
 // would break Meet/Talk media while looking, from Settings, like a
 // perfectly reasonable choice). ICEServers() enforces this: it only ever
 // consults the active provider for ICE if that provider actually claims
-// FacetICE (ephor, turn); everything else still resolves through ephor's
-// ICE default. Callers must never branch on provider name — call
+// FacetICE (vulos, ephor, turn); everything else still resolves through the
+// built-in ICE default. Callers must never branch on provider name — call
 // ICEServers()/IngressInfo()/ResolvePeer() and use the result.
 //
 // # Persistence + fail-safe
@@ -49,7 +49,7 @@
 // Config is persisted as a single JSON file (<dbDir>/relayconfig.json),
 // mirroring gwurl's pattern: Init loads it once at startup, Set
 // validates-then-optionally-probes-then-persists-then-swaps atomically, and
-// any load/parse/validation failure fails SAFE to the ephor default rather
+// any load/parse/validation failure fails SAFE to the default rather
 // than bricking reachability or serving a malformed config. Set itself
 // validates (and, for turn/wireguard, health-probes) BEFORE touching any
 // persisted or in-memory state, so a rejected or unreachable change never
@@ -72,7 +72,8 @@
 //     own keys; this seam just points at the coordinator).
 //   - Get() (the safe public view) NEVER returns a TURN credential — only
 //     whether one is set (HasCredential), matching network.TURNStore's
-//     existing write-only secret handling. Credentials generated for ephor
+//     existing write-only secret handling. Credentials generated for the
+//     built-in provider
 //     are short-lived HMAC (<=1h, see network.TURNConfig.GenerateCredentials).
 //   - Changing the provider is a reachability + security-relevant action
 //     (see backend/cmd/server/routes_relayconfig.go): gated owner/admin +
@@ -98,7 +99,12 @@ import (
 type Provider string
 
 const (
-	// ProviderEphor is the DEFAULT: Vulos's own relay/TURN/rendezvous path.
+	// ProviderVulos is the DEFAULT: Vulos's OWN built-in reachability stack —
+	// the reverse tunnel in services/reach/tunnel, plus public STUN and this
+	// box's own TURN for call media. Nothing external is required to run it
+	// beyond a relay endpoint, and a relay is `vulos relay serve`: the same
+	// binary, in a role. See docs/REACH.md.
+	//
 	// It has NO special privilege in the resolver — it is registered and
 	// dispatched exactly like every other provider — it simply happens to be
 	// the one every facet falls back to when nothing else claims them.
@@ -106,10 +112,18 @@ const (
 	// NOTE ON THE STRING VALUE: changing this persisted string is safe by
 	// construction — see providerFor's default case and Init's fail-safe
 	// fallback below: ANY unrecognised persisted provider name resolves to
-	// this same DefaultConfig() / ephorProvider at both load time and
-	// dispatch time, so a box carrying a stale on-disk value reads as "using
-	// the default provider" exactly as it did before — it just logs a
-	// one-line "unknown relay provider" warning on Init.
+	// this same DefaultConfig() / vulosProvider at both load time and
+	// dispatch time, so a box carrying a stale on-disk value (including the
+	// pre-rename "ephor" default) reads as "using the default provider"
+	// exactly as it did before — it just logs a one-line "unknown relay
+	// provider" warning on Init.
+	ProviderVulos Provider = "vulos"
+	// ProviderEphor points reachability at an Ephor relay
+	// (github.com/vul-os/ephor) instead of Vulos's own. Ephor is a fully
+	// supported ALTERNATIVE, not a dependency: it speaks the same rendezvous
+	// contract, so this is a genuine swap rather than a downgrade. Facet A
+	// (ICE) resolves identically either way — STUN/TURN is not something a
+	// relay choice should change.
 	ProviderEphor Provider = "ephor"
 	// ProviderNone opts the box's HTTP ingress OUT of the relay tunnel
 	// (static IP / port-forward setups). Facets A/C are unaffected (they
@@ -130,7 +144,7 @@ const (
 // Valid reports whether p is one of the known providers.
 func (p Provider) Valid() bool {
 	switch p {
-	case ProviderEphor, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard:
+	case ProviderVulos, ProviderEphor, ProviderNone, ProviderTURN, ProviderLibp2p, ProviderWireGuard:
 		return true
 	}
 	return false
@@ -189,10 +203,10 @@ type Config struct {
 	UpdatedAt string                  `json:"updated_at,omitempty"`
 }
 
-// DefaultConfig is ephor with no BYO sections configured — the box's
-// out-of-the-box posture.
+// DefaultConfig is Vulos's own reachability stack with no BYO sections
+// configured — the box's out-of-the-box posture.
 func DefaultConfig() Config {
-	return Config{Provider: ProviderEphor}
+	return Config{Provider: ProviderVulos}
 }
 
 var (
@@ -210,9 +224,9 @@ var (
 // Init points the resolver at dbDir for persistence and loads any previously
 // saved provider config. Call once at startup (mirrors gwurl.Init). Idempotent.
 //
-// Fail-safe: a missing file is not an error (ephor default). A corrupt file
+// Fail-safe: a missing file is not an error (the default provider). A corrupt file
 // or a persisted config that no longer validates leaves the resolver on the
-// ephor default IN MEMORY (never bricking reachability) but does NOT delete
+// default provider IN MEMORY (never bricking reachability) but does NOT delete
 // the on-disk file, so the owner can see/fix it from Settings rather than
 // silently losing their configuration. Either way the error is returned for
 // the caller to log.
@@ -227,16 +241,16 @@ func Init(dbDir string) error {
 	}
 	if err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: read %s: %w (fell back to ephor default)", persistPath, err)
+		return fmt.Errorf("relayconfig: read %s: %w (fell back to the default provider)", persistPath, err)
 	}
 	var loaded Config
 	if err := json.Unmarshal(raw, &loaded); err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: parse %s: %w (fell back to ephor default)", persistPath, err)
+		return fmt.Errorf("relayconfig: parse %s: %w (fell back to the default provider)", persistPath, err)
 	}
 	if err := Validate(loaded); err != nil {
 		state = DefaultConfig()
-		return fmt.Errorf("relayconfig: persisted config is no longer valid: %w (fell back to ephor default)", err)
+		return fmt.Errorf("relayconfig: persisted config is no longer valid: %w (fell back to the default provider)", err)
 	}
 	state = loaded
 	return nil
@@ -302,7 +316,7 @@ func currentConfig() Config {
 	return state
 }
 
-// CurrentProvider returns the active provider (defaults to ephor before
+// CurrentProvider returns the active provider (defaults to ProviderVulos before
 // Init or when nothing has ever been configured).
 func CurrentProvider() Provider {
 	return currentConfig().Provider
@@ -346,13 +360,17 @@ func Set(newCfg Config, force bool) (PublicView, error) {
 	return buildPublicView(toPersist), nil
 }
 
-// ResetToEphor clears any BYO configuration and reverts to the ephor
-// default. Equivalent to Set(DefaultConfig(), true) but named for the common
-// "go back to the default relay" action in Settings. Never probed — ephor
-// is always assumed safe to return to.
-func ResetToEphor() (PublicView, error) {
+// ResetToDefault clears any BYO configuration and reverts to Vulos's own
+// reachability stack. Equivalent to Set(DefaultConfig(), true) but named for
+// the common "go back to the default" action in Settings. Never probed — the
+// default is always safe to return to.
+func ResetToDefault() (PublicView, error) {
 	return Set(DefaultConfig(), true)
 }
+
+// ResetToEphor is the previous name for ResetToDefault, kept so existing
+// callers keep compiling. Deprecated: use ResetToDefault.
+func ResetToEphor() (PublicView, error) { return ResetToDefault() }
 
 // PublicICEServer is the credential-redacted view of an ICEServer returned by
 // Get() — the shared secret / long-term credential is write-only, matching

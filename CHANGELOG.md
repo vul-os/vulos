@@ -13,6 +13,102 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Reach — Vulos's own reachability stack.** A box behind NAT is now reachable
+  from anywhere using only software in this repository: no third-party tunnel
+  service and no dependency on an external relay project. See
+  [docs/REACH.md](docs/REACH.md) and
+  [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
+  - **`vulos relay serve`** — the relay is a ROLE of the same binary, not a
+    separate product. Any Vulos install with a public IP can be one, so standing
+    one up introduces no new vendor and no new supply chain.
+    `vulos relay grant <name>` mints a grant with a fresh random token.
+  - **Embedded agent.** The box-side tunnel agent runs IN the OS process and
+    serves the OS's own `http.Handler` directly — no sidecar binary to install
+    or supervise, and no loopback listener (and therefore no loopback SSRF
+    surface). A tunnelled request runs the identical auth/session/CSRF/rate-limit
+    /security-header chain as one on the box's own listener.
+  - **Multi-relay by construction.** `VULOS_RELAY_ENDPOINTS_FILE` (preferred,
+    mode 0600) or `VULOS_RELAY_ENDPOINTS` (inline JSON) configure a SET of
+    relays, and the agent holds a live tunnel to every one at once — relay
+    tunnels are affinity-bound, so a warm standby would not actually be
+    redundant. Links fail independently with per-endpoint health and jittered
+    backoff. The legacy `VULOS_RELAY_BASE_URL`/`_NAME`/`_TOKEN` form still works
+    verbatim.
+  - **Discovery role** (`-rendezvous`) — Ed25519-signed announce/resolve so two
+    boxes in different houses find each other. **Wire-compatible with Ephor**: a
+    test drives the real box-side client against this implementation, so the two
+    can be mixed in one list.
+  - **Automatic TLS without wildcard certificates.** The relay exposes a
+    loopback `/tls-ask` gate answering from grants, so Caddy's on-demand TLS
+    issues one certificate per box with no DNS-01 challenge and no DNS API
+    credentials.
+
+- **`GET /api/network/reach`** — session-authed reachability status (endpoint
+  health, per-link state, public URLs). Token-free by construction.
+
+### Changed
+
+- **`VULOS_RENDEZVOUS_URL` accepts a comma-separated LIST**, and peer-reachability
+  resolve now tries several relays in order. Each rendezvous entry becomes its own
+  discovery source and a source that errors is skipped rather than failing the
+  set, so listing two or three under different operators removes discovery as a
+  single point of failure — the substrate spec's shape (KOTVA §4.2.1(3)). A single
+  URL is a one-element list and behaves exactly as before.
+
+- **The default relay provider is now `vulos`, not `ephor`.** Ephor remains a
+  fully supported alternative — it speaks the same rendezvous contract, so
+  selecting it is a genuine swap rather than a downgrade. Any unrecognised
+  persisted provider name (including the old `"ephor"` default) fails safe to the
+  new default exactly as before.
+
+- **Ingress status reports what is TRUE.** `relayconfig.IngressInfo()` previously
+  returned a hardcoded `https://relay.vulos.org` whether or not anything was
+  running there, so Settings could show a confident "relay-tunnel" for a box that
+  was in fact unreachable from the internet. It now reports the live tunnel state,
+  or says plainly that no relay is configured.
+
+### Security
+
+- **Header-trust boundary between relay and box.** The relay strips every
+  `X-Vulos-Reach-*` header from inbound client requests — unconditionally and by
+  prefix, so a header added later is covered automatically — then sets the ones it
+  vouches for; the agent translates those into `r.RemoteAddr` and a synthetic
+  `r.TLS` state and strips them again before any OS handler sees them. Without the
+  translation every tunnelled client would share one rate-limit bucket and session
+  cookies would lose `Secure` on exactly the requests that crossed the public
+  internet. An unparseable vouched client IP **fails closed**.
+- **A relay never runs open.** No grants configured is a startup refusal, not a
+  permissive default: an open relay is an open proxy under the operator's own
+  domain and certificate.
+- **Revocation reaches ESTABLISHED tunnels**, swept every 20s. A working tunnel
+  never reconnects, so a revocation applying only to new connections would leave a
+  compromised box connected indefinitely.
+- **Reconnect without hijack.** A re-registration presenting the same credential
+  evicts the stale session immediately (so a rebooted box is not unreachable while
+  a half-open TCP connection times out); one presenting a *different* credential is
+  refused, even when both grants list the name.
+- **Direct-endpoint ownership probe** — an advertised direct endpoint must echo a
+  one-time nonce before the relay will publish it, so an agent cannot point clients
+  at a third party. The probe is the relay's only agent-influenced outbound request
+  and is SSRF-screened at connect time against the resolved IP (defeating DNS
+  rebinding), refuses redirects, and is off by default.
+- **Secret-bearing files must be mode 0600** — both the box's endpoints file and
+  the relay's grants file are refused, not warned about, if world-accessible.
+- **Uniform rejections.** Tunnel-registration and rendezvous-announce failures
+  answer identically regardless of cause, so probing cannot reveal which part of a
+  forgery to fix.
+
+### Fixed
+
+- **Data race and handshake desync in the tunnel control channel.** The yamux
+  session was constructed before the relay finished writing its `ready` frame, so
+  two goroutines could write the same WebSocket concurrently and a peer could read
+  a binary frame where it expected the text handshake. The handshake now completes
+  fully before the connection is handed to yamux. Caught by the package's own
+  race-enabled tests.
+
 ### Changed
 
 - **ESLint cleanup + wired into CI.** An independent verification pass found

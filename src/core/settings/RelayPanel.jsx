@@ -5,11 +5,13 @@ import { requireStepUp } from '../../lib/stepup'
 // RelayPanel — Settings -> Network -> Relay & Reachability (box-owner only
 // to CHANGE; any signed-in user can view).
 //
-// RELAY-01: lets the owner pick the box's relay/TURN/rendezvous provider —
-// Ephor (Vulos's own relay) is the DEFAULT, not a requirement. Bring your
-// own STUN/TURN, a libp2p Circuit Relay v2 peer, a Tailscale/Headscale/
-// Nebula WireGuard mesh, or turn the relay tunnel off entirely if this box
-// has a static IP / port-forward.
+// RELAY-01: lets the owner pick the box's relay/TURN/rendezvous provider.
+// Vulos's OWN built-in reverse tunnel (docs/REACH.md) is the DEFAULT and
+// needs nothing external — a relay is `vulos relay serve`, the same binary in
+// a role. Ephor is a supported alternative. You can also bring your own
+// STUN/TURN, a libp2p Circuit Relay v2 peer, a Tailscale/Headscale/Nebula
+// WireGuard mesh, or turn the relay tunnel off entirely if this box has a
+// static IP / port-forward.
 //
 // Reachability is really three independent concerns — app-media ICE (what
 // makes Meet/Talk calls connect), box HTTP ingress (reaching this box from
@@ -22,7 +24,7 @@ import { requireStepUp } from '../../lib/stepup'
 // Endpoints (backend/cmd/server/routes_relayconfig.go):
 //   GET  /api/relayconfig            — { config, effective }
 //   POST /api/relayconfig            — (step-up) { provider, turn?, libp2p?, wireguard?, force? }
-//   POST /api/relayconfig/reset      — (step-up) revert to ephor
+//   POST /api/relayconfig/reset      — (step-up) revert to the default
 //   POST /api/relayconfig/test       — TCP-probe the active provider's endpoint
 // ---------------------------------------------------------------------------
 
@@ -56,11 +58,22 @@ async function jsonFetch(url, opts) {
 }
 
 const PROVIDERS = [
-  { value: 'ephor', label: 'Ephor (default)', blurb: "Vulos's own relay: public STUN + this box's TURN + relay tunnel + rendezvous. Nothing to configure." },
-  { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on ephor.' },
-  { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) still uses ephor.' },
-  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Reach this box over your own mesh instead of the relay tunnel. Call media (ICE) still uses ephor.' },
-  { value: 'none', label: 'None (static IP / port-forward)', blurb: 'No relay tunnel — you manage your own inbound path. Call media (ICE) still uses ephor.' },
+  {
+    value: 'vulos',
+    label: 'Vulos relay (default)',
+    blurb:
+      "Vulos's own built-in reverse tunnel: this box dials out to your relay and is reachable from anywhere, with no inbound ports. Plus public STUN and this box's TURN for calls. Configure relay endpoints with VULOS_RELAY_ENDPOINTS — list two under different operators and the box holds a tunnel to both at once.",
+  },
+  {
+    value: 'ephor',
+    label: 'Ephor relay',
+    blurb:
+      'Use an Ephor relay (github.com/vul-os/ephor) instead of the built-in one. A supported alternative, not a dependency — it speaks the same rendezvous contract, so switching is a config change.',
+  },
+  { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on the built-in provider.' },
+  { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) is unaffected.' },
+  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Reach this box over your own mesh instead of the relay tunnel. Call media (ICE) is unaffected.' },
+  { value: 'none', label: 'None (static IP / port-forward)', blurb: 'No relay tunnel — you manage your own inbound path. Call media (ICE) is unaffected.' },
 ]
 
 function emptyTurnServer() {

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"vulos/backend/services/network"
@@ -34,25 +35,25 @@ func resetState(t *testing.T) {
 
 var bg = context.Background()
 
-func TestDefaultConfig_IsEphor(t *testing.T) {
+func TestDefaultConfig_IsVulosBuiltIn(t *testing.T) {
 	resetState(t)
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("CurrentProvider() = %q before Init, want ephor", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("CurrentProvider() = %q before Init, want vulos", CurrentProvider())
 	}
 }
 
-func TestInit_MissingFile_DefaultsToEphor(t *testing.T) {
+func TestInit_MissingFile_DefaultsToBuiltIn(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init on empty dir: %v", err)
 	}
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("CurrentProvider() = %q, want ephor", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("CurrentProvider() = %q, want vulos", CurrentProvider())
 	}
 }
 
-func TestInit_CorruptFile_FailsSafeToEphor(t *testing.T) {
+func TestInit_CorruptFile_FailsSafeToBuiltIn(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "relayconfig.json"), []byte("{not json"), 0o600); err != nil {
@@ -62,8 +63,8 @@ func TestInit_CorruptFile_FailsSafeToEphor(t *testing.T) {
 	if err == nil {
 		t.Fatal("Init with corrupt file: want error")
 	}
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("after corrupt-file Init, CurrentProvider() = %q, want ephor (fail-safe)", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("after corrupt-file Init, CurrentProvider() = %q, want vulos (fail-safe)", CurrentProvider())
 	}
 	// The corrupt file must NOT be silently deleted — the owner should be
 	// able to see/fix it.
@@ -72,7 +73,7 @@ func TestInit_CorruptFile_FailsSafeToEphor(t *testing.T) {
 	}
 }
 
-func TestInit_InvalidPersistedProvider_FailsSafeToEphor(t *testing.T) {
+func TestInit_InvalidPersistedProvider_FailsSafeToBuiltIn(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	// Structurally valid JSON, but provider=turn with no ICE servers — invalid.
@@ -84,8 +85,8 @@ func TestInit_InvalidPersistedProvider_FailsSafeToEphor(t *testing.T) {
 	if err == nil {
 		t.Fatal("Init with invalid persisted config: want error")
 	}
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("after invalid-config Init, CurrentProvider() = %q, want ephor (fail-safe)", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("after invalid-config Init, CurrentProvider() = %q, want vulos (fail-safe)", CurrentProvider())
 	}
 }
 
@@ -196,8 +197,8 @@ func TestSet_ProbeFailure_RejectedWithoutForce(t *testing.T) {
 	if err == nil {
 		t.Fatal("Set with an unreachable TURN endpoint (force=false) succeeded, want rejection")
 	}
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("after rejected probe, CurrentProvider() = %q, want ephor (unchanged — never locked into a broken provider)", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("after rejected probe, CurrentProvider() = %q, want vulos (unchanged — never locked into a broken provider)", CurrentProvider())
 	}
 }
 
@@ -266,7 +267,7 @@ func TestSet_EphorAndNone_NeverProbed(t *testing.T) {
 	}
 }
 
-func TestResetToEphor(t *testing.T) {
+func TestResetToDefault(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
@@ -276,15 +277,15 @@ func TestResetToEphor(t *testing.T) {
 	if _, err := Set(turnCfg, true); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	view, err := ResetToEphor()
+	view, err := ResetToDefault()
 	if err != nil {
 		t.Fatalf("ResetToEphor: %v", err)
 	}
-	if view.Provider != ProviderEphor {
-		t.Fatalf("ResetToEphor provider = %q, want ephor", view.Provider)
+	if view.Provider != ProviderVulos {
+		t.Fatalf("ResetToEphor provider = %q, want vulos", view.Provider)
 	}
-	if CurrentProvider() != ProviderEphor {
-		t.Fatalf("CurrentProvider() after reset = %q, want ephor", CurrentProvider())
+	if CurrentProvider() != ProviderVulos {
+		t.Fatalf("CurrentProvider() after reset = %q, want vulos", CurrentProvider())
 	}
 }
 
@@ -461,13 +462,20 @@ func TestICEServers_TURN_ReplacesEphorICE(t *testing.T) {
 	}
 }
 
-func TestIngressInfo_FallsBackToEphorWhenUnclaimed(t *testing.T) {
+func TestIngressInfo_FallsBackToBuiltInWhenUnclaimed(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// turn only claims facet A — ingress must fall back to ephor's relay-tunnel.
+	// A live tunnel is up, as reported by the composition root.
+	SetIngressReporter(func() IngressDescriptor {
+		return IngressDescriptor{Mode: "relay-tunnel", Detail: "https://box1.relay.example.com"}
+	})
+	t.Cleanup(func() { SetIngressReporter(nil) })
+
+	// turn only claims facet A — ingress must fall back to the built-in
+	// provider, which reports the LIVE tunnel rather than going dark.
 	if _, err := Set(Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
 		{URLs: []string{"turn:relay.example.org:3478"}},
 	}}}, true); err != nil {
@@ -475,7 +483,33 @@ func TestIngressInfo_FallsBackToEphorWhenUnclaimed(t *testing.T) {
 	}
 	ing := IngressInfo()
 	if ing.Mode != "relay-tunnel" {
-		t.Fatalf("IngressInfo().Mode = %q, want relay-tunnel (ephor fallback) when turn doesn't claim ingress", ing.Mode)
+		t.Fatalf("IngressInfo().Mode = %q, want relay-tunnel (built-in fallback) when turn doesn't claim ingress", ing.Mode)
+	}
+	if ing.Detail != "https://box1.relay.example.com" {
+		t.Errorf("IngressInfo().Detail = %q, want the live tunnel URL", ing.Detail)
+	}
+}
+
+// TestIngressInfo_HonestWhenNoRelayConfigured is the anti-false-confidence
+// rule. The previous implementation returned a hardcoded relay hostname
+// whether or not anything was running there, so Settings could show a
+// confident "relay-tunnel https://…" for a box that was in fact unreachable
+// from the internet. Reporting the truth is more useful than reporting a URL
+// nobody serves.
+func TestIngressInfo_HonestWhenNoRelayConfigured(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	SetIngressReporter(nil)
+
+	ing := IngressInfo()
+	if ing.Mode != "none" {
+		t.Errorf("IngressInfo().Mode = %q, want none when no relay is configured", ing.Mode)
+	}
+	if strings.Contains(ing.Detail, "https://") {
+		t.Errorf("IngressInfo().Detail invented a URL: %q", ing.Detail)
 	}
 }
 
@@ -589,23 +623,24 @@ func TestEffective_WireGuard(t *testing.T) {
 	}
 }
 
-func TestEffective_Ephor_Default(t *testing.T) {
+func TestEffective_BuiltIn_Default(t *testing.T) {
 	resetState(t)
 	dir := t.TempDir()
 	if err := Init(dir); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	eff := Effective(bg, "user-1")
-	if eff.Provider != ProviderEphor {
-		t.Fatalf("Provider = %q, want ephor (default)", eff.Provider)
+	if eff.Provider != ProviderVulos {
+		t.Fatalf("Provider = %q, want vulos (default)", eff.Provider)
 	}
-	if eff.Ingress.Mode != "relay-tunnel" {
-		t.Fatalf("Ingress.Mode = %q, want relay-tunnel", eff.Ingress.Mode)
+	// No tunnel has been reported in this test, so the honest answer is none.
+	if eff.Ingress.Mode != "none" {
+		t.Fatalf("Ingress.Mode = %q, want none (no relay configured in this test)", eff.Ingress.Mode)
 	}
 	// Public STUN should be present unless VULOS_STUN_DISABLE_PUBLIC is set in
 	// this test environment (it shouldn't be by default).
 	if os.Getenv("VULOS_STUN_DISABLE_PUBLIC") == "" && len(eff.ICEServers) == 0 {
-		t.Fatal("ephor Effective() returned no ICE servers, want at least public STUN")
+		t.Fatal("Effective() returned no ICE servers, want at least public STUN")
 	}
 }
 
@@ -632,7 +667,7 @@ func TestSetTURNStore_MakesAdminConfigAuthoritative(t *testing.T) {
 	}
 
 	// And it must actually reach ephor's ICE list (the split-brain fix).
-	ice := ephorICEServers("user-1")
+	ice := builtinICEServers("user-1")
 	found := false
 	for _, s := range ice {
 		for _, u := range s.URLs {
@@ -642,7 +677,7 @@ func TestSetTURNStore_MakesAdminConfigAuthoritative(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("ephorICEServers() = %+v, want an entry referencing the admin-configured TURN host", ice)
+		t.Fatalf("builtinICEServers() = %+v, want an entry referencing the admin-configured TURN host", ice)
 	}
 }
 

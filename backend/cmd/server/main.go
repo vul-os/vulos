@@ -74,6 +74,7 @@ import (
 	"vulos/backend/services/peering/sfu"
 	bprofiles "vulos/backend/services/profiles"
 	ptyservice "vulos/backend/services/pty"
+	"vulos/backend/services/reach"
 	"vulos/backend/services/recall"
 	"vulos/backend/services/relayconfig"
 	"vulos/backend/services/sandbox"
@@ -2776,7 +2777,7 @@ func main() {
 			// possibly-stale contact.Server, without adding a synchronous network
 			// call to the hot delivery path. A no-op when VULOS_RELAY_BASE_URL is
 			// unset (self-host boxes without a relay see unchanged B-0 behavior).
-			peering.StartReachabilityRefresh(ctx, os.Getenv("VULOS_RELAY_BASE_URL"), approvedPeers)
+			peering.StartReachabilityRefresh(ctx, reachRelayBaseURLs(), approvedPeers)
 
 			// Messaging (conversations + inbound/message).
 			if inboxStore != nil {
@@ -4437,19 +4438,37 @@ func main() {
 			// house is still found by multicast with no round trip to anyone, and
 			// the same peer moved behind a different NAT is found through the
 			// relay. Either source failing does not cost you the other.
-			if rdvURL := strings.TrimSpace(os.Getenv("VULOS_RENDEZVOUS_URL")); rdvURL != "" {
+			//
+			// VULOS_RENDEZVOUS_URL accepts a COMMA-SEPARATED LIST, and every
+			// entry becomes its own discoverer merged into the same
+			// MultiDiscoverer. That is the substrate spec's shape (KOTVA
+			// 4.2.1(3): a home rendezvous set of >= 3 nodes under disjoint
+			// operators): MultiDiscoverer skips a source that errors rather
+			// than failing the set, so one node being down, seized, or lying
+			// by omission costs you nothing as long as another still answers.
+			// A single URL — the previous behaviour — is just a one-element
+			// list and works exactly as before.
+			if rdvURLs := reach.SplitList(os.Getenv("VULOS_RENDEZVOUS_URL")); len(rdvURLs) > 0 {
 				if fabricSigner == nil {
 					log.Printf("[fabric] rendezvous disabled: no per-instance signing identity — a peer could not be addressed by key")
 				} else {
-					rdv := &fabric.RendezvousDiscoverer{
-						BaseURL:       rdvURL,
-						Key:           fabricSigner,
-						SelfEndpoints: fabricSelfEndpoints(httpsAddr),
-						PeerKeys:      fabricAppSync.PeerPublicKeys(cfg.InstanceID),
-						HTTPClient:    fabric.NewLANClient(10 * time.Second),
+					discoverers := []fabric.Discoverer{disc}
+					for _, rdvURL := range rdvURLs {
+						rdv := &fabric.RendezvousDiscoverer{
+							BaseURL:       rdvURL,
+							Key:           fabricSigner,
+							SelfEndpoints: fabricSelfEndpoints(httpsAddr),
+							PeerKeys:      fabricAppSync.PeerPublicKeys(cfg.InstanceID),
+							HTTPClient:    fabric.NewLANClient(10 * time.Second),
+						}
+						discoverers = append(discoverers, rdv)
+						log.Printf("[fabric] rendezvous discovery active via %s (WAN peers; self key %s)", rdvURL, rdv.SelfKey())
 					}
-					disc = fabric.NewMultiDiscoverer(disc, rdv)
-					log.Printf("[fabric] rendezvous discovery active via %s (WAN peers; self key %s)", rdvURL, rdv.SelfKey())
+					disc = fabric.NewMultiDiscoverer(discoverers...)
+					if len(rdvURLs) == 1 {
+						log.Printf("[fabric] NOTE: one rendezvous node configured. Listing two or three under " +
+							"different operators in VULOS_RENDEZVOUS_URL (comma-separated) removes it as a single point of failure.")
+					}
 				}
 			}
 
@@ -4598,6 +4617,23 @@ func main() {
 		}
 	}
 	// DIRECT_IP_WIRE END
+
+	// REACH_WIRE BEGIN — Vulos's OWN reverse tunnel (docs/REACH.md).
+	//
+	// Brings up one embedded tunnel agent per configured relay, each serving
+	// this same `handler`. Ordering matters: this runs AFTER the direct
+	// listener so that, when direct mode is up, its verified public origin is
+	// offered to the relays — a relay that accepts it advertises it and
+	// clients bypass the tunnel entirely, falling back to it on failure.
+	//
+	// A box with no relay endpoints configured gets a no-op agent and a
+	// status route reporting exactly that.
+	var reachDirectEndpoint string
+	if directSvc != nil {
+		reachDirectEndpoint = directSvc.Endpoint()
+	}
+	reachRT := startReachAgent(ctx, mux, handler, reachDirectEndpoint, Version)
+	defer reachRT.Close()
 
 	// GPUHOST_WIRE BEGIN — FIX-GPUHOST-WIRE-01
 	//
