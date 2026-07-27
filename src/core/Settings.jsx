@@ -21,6 +21,7 @@ import DeveloperPanel from './settings/DeveloperPanel.jsx'
 import DomainPanel from './settings/DomainPanel.jsx'
 import CDNPanel from './settings/CDNPanel.jsx'
 import LocationPanel from './settings/LocationPanel.jsx'
+import { SettingsIcon } from './AppIcons.jsx'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
@@ -30,74 +31,74 @@ const sectionGroups = [
   {
     label: 'Intelligence',
     items: [
-      { id: 'ai', label: 'AI Assistant', icon: '\u{2728}' },
-      { id: 'models', label: 'AI Models', owner: true, icon: '\u{25C8}' },
-      { id: 'aiapps', label: 'AI Apps', icon: '\u{25A6}' },
+      { id: 'ai', label: 'AI Assistant' },
+      { id: 'models', label: 'AI Models', owner: true },
+      { id: 'aiapps', label: 'AI Apps' },
     ],
   },
   {
     label: 'Appearance',
     items: [
-      { id: 'appearance', label: 'Appearance', icon: '\u{25D0}' },
-      { id: 'notifications', label: 'Notifications', icon: '\u{1F514}' },
+      { id: 'appearance', label: 'Appearance' },
+      { id: 'notifications', label: 'Notifications' },
     ],
   },
   {
     label: 'Devices',
     items: [
-      { id: 'wifi', label: 'WiFi', icon: '\u{1F4F6}' },
-      { id: 'bluetooth', label: 'Bluetooth', icon: '\u{223F}' },
-      { id: 'audio', label: 'Sound', icon: '\u{1F509}' },
-      { id: 'display', label: 'Display', icon: '\u{25AD}' },
-      { id: 'energy', label: 'Battery & Energy', icon: '\u{26A1}' },
-      { id: 'location', label: 'Location', icon: '\u{25C9}' },
+      { id: 'wifi', label: 'WiFi' },
+      { id: 'bluetooth', label: 'Bluetooth' },
+      { id: 'audio', label: 'Sound' },
+      { id: 'display', label: 'Display' },
+      { id: 'energy', label: 'Battery & Energy' },
+      { id: 'location', label: 'Location' },
     ],
   },
   {
     label: 'Data',
     items: [
-      { id: 'vault', label: 'Backup & Sync', icon: '\u{21BB}' },
-      { id: 'recall', label: 'Search & Index', icon: '\u{1F50D}' },
-      { id: 'storage', label: 'Storage', icon: '\u{25F4}' },
-      { id: 'storagemode', label: 'Storage Mode', icon: '\u{25F1}' },
+      { id: 'vault', label: 'Backup & Sync' },
+      { id: 'recall', label: 'Search & Index' },
+      { id: 'storage', label: 'Storage' },
+      { id: 'storagemode', label: 'Storage Mode' },
     ],
   },
   {
     label: 'Network',
     items: [
-      { id: 'connmode', label: 'Connection Mode', icon: '\u{29C9}' },
-      { id: 'network', label: 'Remote Access', icon: '\u{1F310}' },
-      { id: 'domain', label: 'Custom Domain', icon: '\u{1F517}' },
-      { id: 'relay', label: 'Relay & Reachability', owner: true, icon: '⇆' },
-      { id: 'cdn', label: 'CDN', owner: true, icon: '\u{25C7}' },
-      { id: 'turnSettings', label: 'TURN / WebRTC', icon: '\u{21C4}' },
+      { id: 'connmode', label: 'Connection Mode' },
+      { id: 'network', label: 'Remote Access' },
+      { id: 'domain', label: 'Custom Domain' },
+      { id: 'relay', label: 'Relay & Reachability', owner: true },
+      { id: 'cdn', label: 'CDN', owner: true },
+      { id: 'turnSettings', label: 'TURN / WebRTC' },
     ],
   },
   {
     label: 'Developer',
     items: [
-      { id: 'webhooks', label: 'Webhooks', owner: true, icon: '\u{2197}' },
-      { id: 'developer', label: 'Developer', icon: '\u{2328}' },
+      { id: 'webhooks', label: 'Webhooks', owner: true },
+      { id: 'developer', label: 'Developer' },
     ],
   },
   {
     label: 'Account & Security',
     items: [
-      { id: 'users', label: 'Users & Profiles', icon: '\u{1F464}' },
-      { id: 'pin', label: 'Device PIN', icon: '\u{25A3}' },
-      { id: 'fingerprint', label: 'Fingerprint', icon: '\u{25CC}' },
-      { id: 'account', label: 'Account', icon: '\u{2699}' },
-      { id: 'offlinedata', label: 'Offline Data', icon: '\u{2601}' },
-      { id: 'dataexport', label: 'Export My Data', icon: '\u{2913}' },
-      { id: 'security', label: 'Sign-in security', icon: '\u{1F6E1}' },
+      { id: 'users', label: 'Users & Profiles' },
+      { id: 'pin', label: 'Device PIN' },
+      { id: 'fingerprint', label: 'Fingerprint' },
+      { id: 'account', label: 'Account' },
+      { id: 'offlinedata', label: 'Offline Data' },
+      { id: 'dataexport', label: 'Export My Data' },
+      { id: 'security', label: 'Sign-in security' },
     ],
   },
   {
     label: 'System',
     items: [
-      { id: 'osupdate', label: 'OS Update', icon: '\u{2B06}' },
-      { id: 'boxhealth', label: 'Box Health', owner: true, icon: '\u{2665}' },
-      { id: 'about', label: 'About', icon: '\u{24D8}' },
+      { id: 'osupdate', label: 'OS Update' },
+      { id: 'boxhealth', label: 'Box Health', owner: true },
+      { id: 'about', label: 'About' },
     ],
   },
 ]
@@ -184,10 +185,10 @@ function SettingsNav({ active, onSelect, idPrefix, groups }) {
                   />
                   <span
                     aria-hidden="true"
-                    className={`shrink-0 w-4 text-center text-[13px] leading-none transition-opacity
-                      ${isActive ? 'opacity-100' : 'opacity-55 group-hover:opacity-90'}`}
+                    className={`shrink-0 flex items-center justify-center w-4 transition-opacity
+                      ${isActive ? 'opacity-100' : 'opacity-60 group-hover:opacity-95'}`}
                   >
-                    {s.icon}
+                    <SettingsIcon name={s.id} size={16} />
                   </span>
                   <span className="truncate">{s.label}</span>
                 </button>
@@ -377,10 +378,10 @@ function AppearanceSettings() {
       <Field label="Theme">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Theme mode">
           {[
-            { value: 'light', label: 'Light', icon: '\u{2600}' },
-            { value: 'dark', label: 'Dark', icon: '\u{263E}' },
-            { value: 'auto', label: 'System', icon: '\u{1F5A5}' },
-            { value: 'schedule', label: 'Schedule', icon: '\u{23F0}' },
+            { value: 'light', label: 'Light', icon: 'sun' },
+            { value: 'dark', label: 'Dark', icon: 'moon' },
+            { value: 'auto', label: 'System', icon: 'display' },
+            { value: 'schedule', label: 'Schedule', icon: 'clock' },
           ].map(opt => (
             <button
               key={opt.value}
@@ -392,8 +393,8 @@ function AppearanceSettings() {
                   ? 'accent-bg-soft accent-border accent-text font-medium'
                   : 'bg-[var(--bg-surface)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
             >
-              <div className="text-center">
-                <div className="text-lg mb-1">{opt.icon}</div>
+              <div className="flex flex-col items-center gap-1.5">
+                <SettingsIcon name={opt.icon} size={20} />
                 {opt.label}
               </div>
             </button>
