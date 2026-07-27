@@ -433,6 +433,58 @@ func BreakGlassRevoke(ks KeyStore, store *RevocationStore, reason, subjectID, re
 	return cert, nil
 }
 
+// BreakGlassRevokePubKey revokes an ARBITRARY device identity key
+// (targetPubDER, PKIX DER) by fleet quorum, WITHOUT that key's own signature —
+// the sole sanctioned way to remove a COMPROMISED SECONDARY device whose
+// private key the operator does not control (a paired device that was lost or
+// stolen). BreakGlassRevoke targets THIS box's own active key; this targets a
+// supplied key, which is what "approve a device from device A, later remove the
+// compromised device B" requires.
+//
+// Authorization is identical to BreakGlassRevoke: a fleetid.VerifyQuorum quorum
+// of OTHER boxes, re-verified inside MergeVerified (via
+// DeviceRevocationCert.Verify). There is no path here that skips it — an
+// insufficient, invalid, or self-vouched quorum simply means MergeVerified
+// returns an error and the fingerprint is never recorded. The hard rule holds:
+// no single box (even a compromised one) can unilaterally revoke a device; at
+// least two OTHER rostered boxes must vouch, bound to hash(requestID ||
+// Fingerprint(targetPubDER)).
+//
+// On success the revocation is enforced everywhere the process-wide checker is
+// wired (IsDeviceKeyRevoked / VerifyDeviceSignatureChecked) and propagated
+// fleet-wide through the RevocationStore's List / MergeVerified gossip surface
+// (propagation.go): a revoked device is locked out.
+//
+// It requires NO KeyStore — we are retiring someone else's key and never sign
+// with the local device's key. targetPubDER must be a well-formed PKIX ECDSA
+// public key (device identities are ECDSA P-256), so a revocation is never
+// recorded for the fingerprint of un-parseable bytes.
+func BreakGlassRevokePubKey(store *RevocationStore, targetPubDER []byte, reason, subjectID, requestID string, certs []fleetid.VouchCert, roster fleetid.Roster, threshold int, now time.Time) (*DeviceRevocationCert, error) {
+	if store == nil {
+		return nil, errors.New("devicekey: BreakGlassRevokePubKey: nil revocation store")
+	}
+	if len(targetPubDER) == 0 {
+		return nil, errors.New("devicekey: BreakGlassRevokePubKey: empty target public key")
+	}
+	pubAny, err := x509.ParsePKIXPublicKey(targetPubDER)
+	if err != nil {
+		return nil, fmt.Errorf("devicekey: BreakGlassRevokePubKey: parse target pubkey: %w", err)
+	}
+	if _, ok := pubAny.(*ecdsa.PublicKey); !ok {
+		return nil, errors.New("devicekey: BreakGlassRevokePubKey: target pubkey is not ECDSA")
+	}
+	cert := newDeviceRevocationCert(RevocationMethodBreakGlass, targetPubDER, reason)
+	cert.QuorumSubjectID = subjectID
+	cert.QuorumRequestID = requestID
+	cert.QuorumCerts = certs
+	// MergeVerified independently re-verifies the quorum against roster — this
+	// is the actual chokepoint; nothing above this call authorizes anything.
+	if err := store.MergeVerified(cert, roster, threshold, now); err != nil {
+		return nil, fmt.Errorf("devicekey: BreakGlassRevokePubKey: %w", err)
+	}
+	return cert, nil
+}
+
 // ─── Global admission gate (mirrors services/peering's isVulaIDRevoked) ─────────
 
 var (
