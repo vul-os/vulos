@@ -8,17 +8,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
-// discoveryDefaultBaseURL is the default vulos.org API base URL used for
-// discovery lookups. Override with the VULOS_VERIFY_URL environment variable
-// (same variable as used by VerifyService so both share one config knob).
-const discoveryDefaultBaseURL = "https://vulos.org"
+// discoveryDefaultBaseURL is the default directory API base URL. It is
+// intentionally EMPTY: Vulos the org operates no hosted directory, so there is
+// no central endpoint to point at by default. An operator opts in by setting
+// the VULOS_VERIFY_URL environment variable to their own directory (the same
+// variable VerifyService uses, so both share one config knob). When it is
+// unset, discovery degrades honestly — lookups return "not found"/empty
+// without any network call (see DiscoveryLookupByEmail / DiscoverySearchByName).
+const discoveryDefaultBaseURL = ""
+
+// discoveryDisabledLogOnce ensures the "discovery not configured" notice is
+// logged at most once at startup rather than on every service construction.
+var discoveryDisabledLogOnce sync.Once
 
 // discoveryHTTPTimeout caps individual outbound lookup requests.
 const discoveryHTTPTimeout = 10 * time.Second
@@ -56,13 +66,20 @@ type DiscoveryService struct {
 
 // DiscoveryNewService returns a DiscoveryService ready for use.
 //
-// The API base URL is read from VULOS_VERIFY_URL (trimmed of trailing slashes);
-// if the variable is unset the production vulos.org endpoint is used.
+// The API base URL is read from VULOS_VERIFY_URL (trimmed of trailing slashes).
+// If the variable is unset there is NO default endpoint (Vulos operates no
+// hosted directory): the service is left unconfigured and every lookup returns
+// a clean "not found"/empty result without touching the network.
 // An injectable *http.Client may be passed for tests; pass nil for the default.
 func DiscoveryNewService(client *http.Client) *DiscoveryService {
 	baseURL := strings.TrimRight(os.Getenv("VULOS_VERIFY_URL"), "/")
 	if baseURL == "" {
 		baseURL = discoveryDefaultBaseURL
+	}
+	if baseURL == "" {
+		discoveryDisabledLogOnce.Do(func() {
+			log.Printf("[peering] no directory configured — people discovery disabled (set VULOS_VERIFY_URL)")
+		})
 	}
 	if client == nil {
 		client = &http.Client{Timeout: discoveryHTTPTimeout}
@@ -79,6 +96,11 @@ func (ds *DiscoveryService) DiscoveryLookupByEmail(ctx context.Context, email st
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return nil, fmt.Errorf("discovery: email must not be empty")
+	}
+	if ds.baseURL == "" {
+		// No directory configured — degrade honestly as "not found" without
+		// any network call. Callers already treat a nil result as not-found.
+		return nil, nil
 	}
 
 	endpoint := ds.baseURL + "/api/verify/lookup?email=" + url.QueryEscape(email)
@@ -121,6 +143,11 @@ func (ds *DiscoveryService) DiscoverySearchByName(ctx context.Context, name stri
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("discovery: name must not be empty")
+	}
+	if ds.baseURL == "" {
+		// No directory configured — degrade honestly as "no matches" without
+		// any network call.
+		return []DiscoveryResult{}, nil
 	}
 
 	endpoint := ds.baseURL + "/api/verify/search?name=" + url.QueryEscape(name)

@@ -147,6 +147,17 @@ func registerOTARoutes(mux *http.ServeMux, notifySvc *notify.Service, authStore 
 
 	// Background poll loop: verify-only, never stages. StartPolling runs the
 	// first check immediately so /status has real data shortly after boot.
+	//
+	// Honest degradation: when no update channel is configured (VULOS_UPDATE_URL
+	// unset — Vulos operates no hosted release channel), updates are disabled.
+	// We do NOT start the poll loop and never reach out to any central service;
+	// the routes stay mounted and report the disabled state (/status carries the
+	// reason, /stage cleanly refuses with 503).
+	if !client.Enabled() {
+		log.Printf("[ota] no update channel configured — OS update checks disabled (set VULOS_UPDATE_URL)")
+		return client
+	}
+
 	client.StartPolling(context.Background(), ota.DefaultPollInterval, onCheck)
 	log.Printf("[ota] update client started (channel=%s, running=%s)", client.ChannelURL(), os.Getenv("VULOS_OS_VERSION"))
 
@@ -160,7 +171,7 @@ func otaStageStatus(err error) int {
 	switch {
 	case errors.Is(err, ota.ErrAlreadyUpToDate), errors.Is(err, ota.ErrNotImageInstall):
 		return http.StatusConflict
-	case errors.Is(err, ota.ErrStagingNotConfigured):
+	case errors.Is(err, ota.ErrStagingNotConfigured), errors.Is(err, ota.ErrUpdatesDisabled):
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusBadGateway

@@ -847,8 +847,9 @@ func main() {
 			}
 			// ACCOUNT-SHARE: wire share-by-email resolution + locality routing
 			// (Contract 2 + 3). Co-cloud recipients (a local OS account) take the
-			// ACL grant path; remote recipients resolve via the vulos.org directory
-			// to a {VulaID, server} and take the peershare capability path, with the
+			// ACL grant path; remote recipients resolve via the configured directory
+			// (VULOS_VERIFY_URL; none by default) to a {VulaID, server} and take the
+			// peershare capability path, with the
 			// minted capability delivered to the recipient's server intake.
 			filesSvc.WithShareResolver(
 				&osShareResolver{
@@ -2894,7 +2895,9 @@ func main() {
 			peering.RegisterVerifyHandlers(peeringMux, vfySvc)
 		}
 
-		// Directory discovery (lookup/search via vulos.org).
+		// Directory discovery (lookup/search). No hosted directory by default —
+		// disabled unless the operator sets VULOS_VERIFY_URL; when unset, lookups
+		// return "not found"/empty cleanly with no outbound call.
 		peering.RegisterDiscoveryHandlers(peeringMux, peering.DiscoveryNewService(nil))
 
 		// ICE / TURN config for WebRTC.

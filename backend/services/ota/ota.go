@@ -2,9 +2,12 @@
 //
 // # Model
 //
-// Vulos publishes each OS release to a public channel (by default the
-// vulos.org release manifest, overridable via VULOS_UPDATE_URL). Every box
-// periodically POLLS that channel for a new manifest, VERIFIES it against the
+// Vulos publishes each OS release to a public channel, but Vulos the org
+// operates no hosted release channel, so there is NO default endpoint: an
+// operator opts in by setting VULOS_UPDATE_URL to their own channel. When it is
+// unset, OS update checks are disabled (see ResolveChannelURL / Check) — the
+// box never polls a service that may not exist. When a channel IS configured,
+// every box periodically POLLS it for a new manifest, VERIFIES it against the
 // baked release-signing trust chain, and reports the result. The box owner
 // decides whether to download-and-stage a verified update from the
 // Settings → OS Update screen (POST /api/os/update/stage, see
@@ -94,12 +97,14 @@ import (
 // ChannelURLEnvKey is the runtime override for the update channel base URL.
 const ChannelURLEnvKey = "VULOS_UPDATE_URL"
 
-// DefaultChannelURL is the public vulos.org release manifest used when no
-// override is configured. Like osdist's OS-bucket URL, this location is SOFT
-// configuration only — trust comes entirely from the release-cert/anchor
-// signature chain below, never from the URL, so pointing this at a mirror or
-// accelerator is always safe.
-const DefaultChannelURL = "https://vulos.org/dl/os"
+// DefaultChannelURL is intentionally EMPTY: Vulos the org operates no hosted
+// release channel, so there is no central endpoint to point at by default. An
+// operator opts in via VULOS_UPDATE_URL (or ClientConfig.ChannelURL). When it
+// is unset, update checks are disabled and no network request is made. The
+// channel location is SOFT configuration only regardless — trust comes
+// entirely from the release-cert/anchor signature chain below, never from the
+// URL, so pointing a configured channel at a mirror or accelerator is safe.
+const DefaultChannelURL = ""
 
 const (
 	manifestName    = "stable.json"
@@ -124,6 +129,12 @@ func ResolveChannelURL(explicit string) string {
 // ─── Sentinel errors (all fail-closed) ───────────────────────────────────────
 
 var (
+	// ErrUpdatesDisabled means no update channel is configured (VULOS_UPDATE_URL
+	// unset and no explicit ClientConfig.ChannelURL). Update checks are disabled
+	// and no network request is made — the honest degraded state when Vulos the
+	// org operates no hosted release channel and the operator has set none.
+	ErrUpdatesDisabled = errors.New("ota: update checks disabled (no channel configured — set VULOS_UPDATE_URL)")
+
 	// ErrAnchorUnavailable means the baked root trust-anchor public key could
 	// not be loaded. Without it nothing can be authenticated, so every check
 	// fails closed rather than trusting an unauthenticated manifest.
@@ -351,6 +362,11 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 // ChannelURL returns the resolved channel base URL this Client polls.
 func (c *Client) ChannelURL() string { return c.channelURL }
 
+// Enabled reports whether an update channel is configured. When false, update
+// checks are disabled: Check returns ErrUpdatesDisabled and never touches the
+// network, and callers should not bother starting the background poll loop.
+func (c *Client) Enabled() bool { return c.channelURL != "" }
+
 // ─── fetch ────────────────────────────────────────────────────────────────────
 
 func (c *Client) fetch(ctx context.Context, relPath string) ([]byte, error) {
@@ -390,6 +406,11 @@ func (c *Client) fetch(ctx context.Context, relPath string) ([]byte, error) {
 // (if any) with LastError set — it never reports an update as available based
 // on unverified data.
 func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
+	if c.channelURL == "" {
+		// No channel configured — updates are disabled. Degrade honestly: no
+		// network call, status carries the disabled reason via LastError.
+		return c.recordFailure(ErrUpdatesDisabled)
+	}
 	anchorPub, err := signing.LoadAnchor(c.anchorPath)
 	if err != nil {
 		return c.recordFailure(fmt.Errorf("%w: %v", ErrAnchorUnavailable, err))
