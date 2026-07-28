@@ -159,7 +159,7 @@ type ClaimResult struct {
 
 // PairedDevice is the audit record of one enrolled device.
 type PairedDevice struct {
-	DeviceID       string     `json:"device_id"`  // sha256 fingerprint of PublicKey
+	DeviceID       string     `json:"device_id"` // sha256 fingerprint of PublicKey
 	Name           string     `json:"name,omitempty"`
 	PublicKey      string     `json:"public_key"` // base64, exactly as submitted (PKIX DER)
 	IssuerDeviceID string     `json:"issuer_device_id,omitempty"`

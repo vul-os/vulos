@@ -62,6 +62,17 @@ function mockBox({ rename, remove, storeOnly, rows } = {}) {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 beforeEach(() => { vi.useRealTimers() })
 
+// sectionCount returns the count badge text for a roster section heading
+// ("Online" / "Offline"). The heading renders the label and the count as two
+// sibling elements, so there is no single "Online (1)" text node to match.
+// Returns null when the section is not rendered at all.
+function sectionCount(label) {
+  const heading = screen.queryAllByRole('heading')
+    .find(h => h.textContent.trim().startsWith(label))
+  if (!heading) return null
+  return heading.textContent.trim().slice(label.length).trim()
+}
+
 describe('InstancesPanel — fleet roster', () => {
   it('renders the registry wire shape (ulid/kind/status), not a guessed one', async () => {
     mockBox()
@@ -70,8 +81,11 @@ describe('InstancesPanel — fleet roster', () => {
     expect(await screen.findByText('This Box')).toBeInTheDocument()
     expect(screen.getByText('Cloud Node')).toBeInTheDocument()
     // status → online/offline sections; kind → the type badge.
-    expect(screen.getByText('Online (1)')).toBeInTheDocument()
-    expect(screen.getByText('Offline (1)')).toBeInTheDocument()
+    // The section heading renders the label and its count as two elements
+    // ("Online" + a count badge), so assert on the heading's combined text
+    // rather than a literal "Online (1)" string.
+    expect(sectionCount('Online')).toBe('1')
+    expect(sectionCount('Offline')).toBe('1')
     expect(screen.getByText('Cloud')).toBeInTheDocument()
   })
 
@@ -132,9 +146,16 @@ describe('InstancesPanel — rename', () => {
 
 // confirmRemove opens the confirm modal from the peer card's Remove button and
 // clicks Remove INSIDE the modal (the card's button of the same name is not it).
+//
+// The modal heading is "Remove instance?" — it is composed of a decorative
+// aria-hidden marker span plus the text, so match on the heading element's
+// normalised text content.
 async function confirmRemove(user) {
   await user.click(screen.getByRole('button', { name: 'Remove' }))
-  const modal = (await screen.findByText('Remove Instance?')).closest('div')
+  const heading = await screen.findByText(
+    (_, el) => el?.textContent?.trim() === 'Remove instance?',
+  )
+  const modal = heading.closest('div')
   await user.click(within(modal).getByRole('button', { name: 'Remove' }))
 }
 
@@ -166,7 +187,7 @@ describe('InstancesPanel — remove', () => {
     expect(await screen.findByText('cannot remove this instance')).toBeInTheDocument()
     // Still on the roster (the modal names it too, hence getAllByText).
     expect(screen.getAllByText('Cloud Node').length).toBeGreaterThan(0)
-    expect(screen.getByText('Offline (1)')).toBeInTheDocument()
+    expect(sectionCount('Offline')).toBe('1')
   })
 })
 

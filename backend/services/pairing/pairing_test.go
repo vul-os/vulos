@@ -142,14 +142,16 @@ func TestVerifyTicket_DetectsTampering(t *testing.T) {
 		t.Fatalf("genuine ticket should verify: %v", err)
 	}
 	cases := []struct {
-		name  string
-		mut   func(*Ticket)
+		name string
+		mut  func(*Ticket)
 	}{
 		{"token", func(tk *Ticket) { tk.Token += "x" }},
 		{"issuer", func(tk *Ticket) { tk.IssuerDeviceID = "someone-else" }},
 		{"expiry", func(tk *Ticket) { tk.ExpiresAt = tk.ExpiresAt.Add(time.Hour) }},
 		{"device_name", func(tk *Ticket) { tk.DeviceName = "Attacker" }},
-		{"sig", func(tk *Ticket) { tk.Sig = base64.RawURLEncoding.EncodeToString([]byte("not a real signature at all!!")) }},
+		{"sig", func(tk *Ticket) {
+			tk.Sig = base64.RawURLEncoding.EncodeToString([]byte("not a real signature at all!!"))
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

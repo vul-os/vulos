@@ -149,7 +149,16 @@ export function startLocationReporting(opts = {}) {
       return false
     }
 
-    const fetchImpl = opts.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null)
+    // NOTE: the global fetch MUST be bound. It is stored on cfg and later called
+    // as `cfg.fetchImpl(...)`, which sets `this` to cfg — and the browser's
+    // fetch refuses to run unless `this` is the Window:
+    //   TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation
+    // That rejection was swallowed by handlePosition's .catch, so every fix
+    // silently failed to send while the reporter still reported itself active.
+    // Unit tests did not catch it because they inject opts.fetchImpl, which is a
+    // plain function with no receiver requirement; only the real browser does.
+    const fetchImpl =
+      opts.fetchImpl || (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : null)
     if (!fetchImpl) {
       status = { active: false, lastError: 'no_fetch', lastSentTs: status.lastSentTs }
       return false

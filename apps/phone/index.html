@@ -400,8 +400,15 @@ function renderThreads(filter) {
     const time = t.last_ts ? fmtTime(t.last_ts) : '';
     const initials = name.slice(0, 2).toUpperCase();
     const unread = t.unread_count > 0;
+    // esc() around JSON.stringify is REQUIRED, not decorative. JSON.stringify
+    // emits double quotes, and these onclick attributes are themselves
+    // double-quoted: without escaping, the attribute terminates at the first
+    // inner quote and the handler becomes the fragment `selectThread(`, so
+    // every click threw "Unexpected end of input" and opening a thread did
+    // nothing. esc() turns the quotes into &quot;, which the HTML parser
+    // decodes back to a valid JS string literal.
     return `<div class="thread-item ${activeThread === t.number ? 'active' : ''} ${unread ? 'unread' : ''}"
-               onclick="selectThread(${JSON.stringify(t.number)}, ${JSON.stringify(name)})">
+               onclick="selectThread(${esc(JSON.stringify(t.number))}, ${esc(JSON.stringify(name))})">
       <div class="avatar">${initials}</div>
       <div class="info">
         <div class="name">${esc(name)}</div>
@@ -439,7 +446,7 @@ async function loadMessages(number, name) {
         <div class="number">${esc(number)}</div>
       </div>
       <div class="actions">
-        <button onclick="dialNumber(${JSON.stringify(number)})">📞 Call</button>
+        <button onclick="dialNumber(${esc(JSON.stringify(number))})">📞 Call</button>
       </div>
     </div>
     <div class="messages-scroll" id="msgs-scroll">
@@ -687,7 +694,7 @@ async function loadCallHistory() {
           <div class="htype">${esc(dir)}${c.duration ? ' · ' + fmtDuration(c.duration) : ''}</div>
         </div>
         <div class="htime">${esc(time)}</div>
-        <button class="redial" onclick="dialNumber(${JSON.stringify(c.number || '')})" title="Redial">📞</button>
+        <button class="redial" onclick="dialNumber(${esc(JSON.stringify(c.number || ''))})" title="Redial">📞</button>
       </div>`;
     }).join('');
   } catch {
