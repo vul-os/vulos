@@ -1,23 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <linearGradient id="fs-box" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3b82f6"/>
-      <stop offset="1" stop-color="#1d4ed8"/>
-    </linearGradient>
-  </defs>
-  <!-- isometric stock crate -->
-  <g>
-    <polygon points="512,320 672,406 512,492 352,406" fill="url(#fs-box)"/>
-    <polygon points="352,406 512,492 512,678 352,592" fill="#2563eb" opacity="0.82"/>
-    <polygon points="672,406 512,492 512,678 672,592" fill="#1e40af" opacity="0.9"/>
-    <polygon points="486,334 646,420 672,406 512,320" fill="#bfdbfe" opacity="0.9"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="FlowStock">
+  <title>FlowStock</title>
+  <rect width="1024" height="1024" rx="225" fill="#0B1B3A"/>
+  <!-- isometric stock crate — one accent hue, seams drawn in the tile colour -->
+  <g fill="#5B9DFF" stroke="#0B1B3A" stroke-width="6" stroke-linejoin="round">
+    <polygon points="512,320 672,406 512,492 352,406"/>
+    <polygon points="352,406 512,492 512,678 352,592"/>
+    <polygon points="672,406 512,492 512,678 672,592"/>
   </g>
   <!-- sync flow arcs -->
-  <g stroke="#2563eb" stroke-width="58" fill="none" stroke-linecap="round">
+  <g stroke="#5B9DFF" stroke-width="58" fill="none" stroke-linecap="round">
     <path d="M 208 396 A 332 332 0 0 1 802 372"/>
     <path d="M 816 628 A 332 332 0 0 1 222 652"/>
   </g>
-  <g fill="#2563eb">
+  <g fill="#5B9DFF">
     <path d="M 0 -62 L 50 40 L -50 40 Z" transform="translate(824,404) rotate(152)"/>
     <path d="M 0 -62 L 50 40 L -50 40 Z" transform="translate(200,620) rotate(-28)"/>
   </g>

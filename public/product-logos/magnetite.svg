@@ -1,26 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <defs>
-    <linearGradient id="magnetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f59e0b"/>
-      <stop offset="100%" stop-color="#ea580c"/>
-    </linearGradient>
-    <linearGradient id="poleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#fcd34d"/>
-      <stop offset="100%" stop-color="#f59e0b"/>
-    </linearGradient>
-  </defs>
-  <circle cx="60" cy="60" r="55" fill="#1a1a25" stroke="url(#magnetGrad)" stroke-width="3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Magnetite">
+  <title>Magnetite</title>
+  <rect width="120" height="120" rx="26" fill="#1A1A25"/>
   <g transform="translate(60,60)">
-    <rect x="-30" y="-8" width="24" height="16" rx="3" fill="url(#poleGrad)"/>
-    <rect x="6" y="-8" width="24" height="16" rx="3" fill="#27272a"/>
-    <path d="M-6,-8 L-6,8" stroke="#0a0a0f" stroke-width="2"/>
-    <circle cx="-42" cy="-20" r="4" fill="#f59e0b"/>
-    <circle cx="-42" cy="20" r="4" fill="#f59e0b"/>
-    <circle cx="42" cy="-20" r="4" fill="#71717a"/>
-    <circle cx="42" cy="20" r="4" fill="#71717a"/>
-    <path d="M-38,-20 Q-25,-15 -18,-4" stroke="#f59e0b" stroke-width="1.5" fill="none" opacity="0.6"/>
-    <path d="M-38,20 Q-25,15 -18,4" stroke="#f59e0b" stroke-width="1.5" fill="none" opacity="0.6"/>
-    <path d="M38,-20 Q25,-15 18,-4" stroke="#71717a" stroke-width="1.5" fill="none" opacity="0.4"/>
-    <path d="M38,20 Q25,15 18,4" stroke="#71717a" stroke-width="1.5" fill="none" opacity="0.4"/>
+    <path d="M -22 -6 V -24 A 22 22 0 0 1 22 -24 V -6" fill="none" stroke="#F5A524" stroke-width="16" stroke-linecap="round"/>
+    <rect x="-30" y="-6" width="16" height="20" rx="4" fill="#F5A524"/>
+    <rect x="14" y="-6" width="16" height="20" rx="4" fill="#9CA3AF"/>
   </g>
 </svg>

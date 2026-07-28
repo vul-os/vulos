@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Soko">
+  <title>Soko</title>
+  <rect width="128" height="128" rx="28" fill="#07140E"/>
   <!-- hexagon shield — shape language carried over from the predecessor -->
   <path d="M64 12 L109 38 L109 90 L64 116 L19 90 L19 38 Z" fill="#16D97F"/>
   <!-- market canopy: scalloped awning over three stalls — many sellers, one view -->

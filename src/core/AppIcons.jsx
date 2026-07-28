@@ -39,7 +39,9 @@ export const APP_LOGOS = {
   // launcher, dock, and App Hub all show the recognizable black terminal mark.
   terminal: '/icons/terminal.svg',
   chrome: '/icons/chrome.svg',
-  browser: '/icons/chrome.svg',
+  // Smart Browser is a first-party web-app browser, NOT Chrome — it uses the
+  // neutral globe glyph (icons.browser), not the Chrome mark. Only Streaming
+  // Chrome (a real streamed Chromium) legitimately wears the Chrome logo.
   'browser-stream': '/icons/chrome.svg',
   firefox: '/icons/firefox.svg',
   gimp: '/icons/gimp.svg',

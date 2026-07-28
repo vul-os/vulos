@@ -6,7 +6,7 @@
        Keystone: dark-theme terracotta #E0896A. Every value comes from the warm
        palette in docs/DESIGN-SYSTEM.md §1; the mark is a permanently dark
        surface, so it uses the dark-theme tunings of ink and terracotta. -->
-  <rect width="64" height="64" rx="13" fill="#141210"/>
+  <rect width="64" height="64" rx="14" fill="#141210"/>
 
   <path
     d="M14 50 V32 a18 18 0 0 1 36 0 V50 H40 V32 a8 8 0 0 0 -16 0 V50 Z"

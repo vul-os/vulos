@@ -1,17 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="kilio">
+  <title>kilio</title>
   <!-- Concept: "Sealed Cry" — a wax-seal medallion holding one contained
-       voice-drop. The circle reads as a seal/coin (permanence, protection,
-       dignity), the pressed inner rim reads as an impression, and the
-       leaning drop reads as a single outcry, held safely and witnessed by
-       its own faint echo. -->
+       voice-drop, now a full-bleed rounded-square tile like the rest of the
+       suite. The leaning drop reads as a single outcry, held safely and
+       witnessed by its own faint echo. -->
   <defs>
     <linearGradient id="kilioSeal" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#7B6BF0"/>
       <stop offset="1" stop-color="#4B3BCF"/>
     </linearGradient>
   </defs>
-  <circle cx="32" cy="32" r="30" fill="url(#kilioSeal)"/>
-  <circle cx="32" cy="32" r="25.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1"/>
+  <rect width="64" height="64" rx="14" fill="url(#kilioSeal)"/>
   <g transform="rotate(-13 32 32)">
     <path d="M32 13 C38.5 20.5 41.5 26.3 41.5 33.5 A9.5 9.5 0 1 1 22.5 33.5 C22.5 26.3 25.5 20.5 32 13 Z" fill="#FBFAF6"/>
     <path d="M36 24 C38.5 27 39.5 30 39 33" fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="1.1" stroke-linecap="round"/>
