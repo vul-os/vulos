@@ -29,7 +29,7 @@ dormant and experimental; the default and expected setup is **bring-your-own
 mailbox**.
 
 <picture>
-  <img src="screenshots/calendar.png" alt="The Calendar month view with events" width="880" />
+  <img src="screenshots/calendar-light.png" alt="The Calendar month view with events" width="880" />
 </picture>
 
 ---
@@ -69,7 +69,7 @@ The Contacts app doesn't only show your CardDAV/Vulos cards. It shows a single,
 de-duplicated address book merged from every place your contacts actually live:
 
 <picture>
-  <img src="screenshots/contacts.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
+  <img src="screenshots/contacts-light.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
 </picture>
 
 - **Vulos / CardDAV** — the cards behind the proxy above.

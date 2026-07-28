@@ -15,6 +15,10 @@ rationale see [SECURITY.md](SECURITY.md) and [THREAT-MODEL.md](THREAT-MODEL.md).
 
 ## Layer 1 — Remove the instance from your fleet
 
+<picture>
+  <img src="screenshots/instances-light.png" alt="The Dashboard's Instances panel, listing every box and cloud node on the account" width="880" />
+</picture>
+
 The **Dashboard → Instances** panel lists every box and cloud instance on your
 account. From it the owner can **Remove** an instance
 (`DELETE /api/instances/{ulid}`).

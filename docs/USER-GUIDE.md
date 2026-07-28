@@ -51,8 +51,7 @@ Right before you enter the desktop, the wizard offers to download an on-box embe
 After signing in you land on the desktop shell: a wallpaper, a translucent **menu bar** across the top, the **Home** surface behind everything, and windows stacking above it.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/hero-light.png" />
-  <img src="screenshots/hero.png" alt="The Vulos desktop: menu bar, Home brief with agenda and assistant composer, and quick-launch tiles" width="880" />
+  <img src="screenshots/hero-light.png" alt="The Vulos desktop: menu bar, Home brief with agenda and assistant composer, and quick-launch tiles" width="880" />
 </picture>
 
 ### The menu bar
@@ -104,6 +103,10 @@ Three equivalent front doors:
 2. **Command palette** — press **Cmd-K / Ctrl-K**, type a few letters of the app's name, Enter. The fastest path once you know it.
 3. **Home quick launch** — the curated tiles on the Home surface.
 
+<picture>
+  <img src="screenshots/launchpad-light.png" alt="The Launchpad: a fullscreen app grid grouped by category, with search" width="880" />
+</picture>
+
 What's installed and how the App Hub works is its own section below, and in full in [APPS.md](APPS.md).
 
 ---
@@ -129,8 +132,7 @@ Halves and quarters tile the usable area exactly, with no seams, below the menu 
 `Alt+`\` (backtick) cycles through windows; add Shift to cycle backwards. `Ctrl/Cmd+W` closes the active window. None of these fire while you're typing in a text field.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/tiled-light.png" />
-  <img src="screenshots/tiled.png" alt="Multiple windows tiled side by side on the Vulos desktop" width="880" />
+  <img src="screenshots/tiled-light.png" alt="Multiple windows tiled side by side on the Vulos desktop" width="880" />
 </picture>
 
 ### Window sessions persist
@@ -176,8 +178,7 @@ Vulos ships two apps that deal with files, and it's worth knowing them apart:
 - **File Explorer** (app id `files`) is a system file manager for browsing the box's own local filesystem — useful if you're the admin poking at the machine itself, not where your documents live.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/files-light.png" />
-  <img src="screenshots/files.png" alt="The Files app browsing a folder of documents" width="880" />
+  <img src="screenshots/files-light.png" alt="The Files app browsing a folder of documents" width="880" />
 </picture>
 
 Files has three views in its sidebar:
@@ -214,7 +215,7 @@ Full detail on roles, sealed (content-blind) sharing, and external drive mounts 
 The **App Hub** is the store front for everything installable beyond what ships by default — Navidrome, Gitea, Jellyfin, Grafana, Jupyter, draw.io, Cockpit, Firefox, and dozens more.
 
 <picture>
-  <img src="screenshots/apphub.png" alt="The App Hub browsing the app catalogue" width="880" />
+  <img src="screenshots/apphub-light.png" alt="The App Hub browsing the app catalogue" width="880" />
 </picture>
 
 ### Finding and installing an app
@@ -229,7 +230,7 @@ The **App Hub** is the store front for everything installable beyond what ships 
 Switch to the **Installed** tab to see everything currently on your box, with a count badge. From here you can launch an installed app or remove it — removal shows the same kind of in-progress state as install.
 
 <picture>
-  <img src="screenshots/apphub-installed.png" alt="The App Hub's Installed tab listing apps already on the box" width="880" />
+  <img src="screenshots/apphub-installed-light.png" alt="The App Hub's Installed tab listing apps already on the box" width="880" />
 </picture>
 
 Installing and removing apps is admin-gated — a non-admin account on the box can't add or remove software. Every registry entry is checksum-pinned and Ed25519-signed before it's allowed to install; the full supply-chain story, the sandboxing every app runs under, and publishing an app of your own to a subdomain are in [APPS.md](APPS.md).
@@ -241,7 +242,7 @@ Installing and removing apps is admin-gated — a non-admin account on the box c
 The assistant is a private AI that runs over your **mail**, on your own instance, with the headline being honesty about where it runs and what leaves the box.
 
 <picture>
-  <img src="screenshots/assistant.png" alt="The assistant answering a question, with its sovereignty tier shown" width="880" />
+  <img src="screenshots/assistant-light.png" alt="The assistant answering a question, with its sovereignty tier shown" width="880" />
 </picture>
 
 ### Talking to it
@@ -263,7 +264,7 @@ Full detail on tiers, egress, and the assistant's mail integration is in [ASSIST
 Calendar and Contacts are thin, standalone apps over a mailbox you already own (Gmail, Outlook, or any IMAP/CalDAV/CardDAV account) — they store nothing of their own; connect a mailbox once in Mail and both come alive. If no mailbox is connected yet, each shows an honest **"Connect Mail"** state rather than an error.
 
 <picture>
-  <img src="screenshots/calendar.png" alt="The Calendar month view with events" width="880" />
+  <img src="screenshots/calendar-light.png" alt="The Calendar month view with events" width="880" />
 </picture>
 
 ### Calendar
@@ -278,7 +279,7 @@ Cmd-K's "New event" action deep-links straight into Calendar with the editor pre
 ### Contacts
 
 <picture>
-  <img src="screenshots/contacts.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
+  <img src="screenshots/contacts-light.png" alt="A contact selected in the Contacts app, showing name, title, and details" width="880" />
 </picture>
 
 1. Open **Contacts**. The list pane on the left is searchable; select anyone to see their detail card on the right.
@@ -318,8 +319,7 @@ Notification preferences live on this device (browser storage), matching the per
 Open **Settings** from the Launchpad, Home quick launch, or Cmd-K (palette actions can deep-link straight to a section). Panes are grouped in the sidebar:
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-light.png" />
-  <img src="screenshots/settings.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
+  <img src="screenshots/settings-light.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
 </picture>
 
 | Group | Panes |
@@ -340,8 +340,7 @@ A few worth calling out:
 - **Appearance** — theme (Dark / Light / Auto / Schedule), night light (off / sunset-to-sunrise / custom), accent color, density (Comfortable / Compact), and wallpaper.
 
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-appearance-light.png" />
-    <img src="screenshots/settings-appearance.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
+    <img src="screenshots/settings-appearance-light.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
   </picture>
 
 - **Sign-in security** watches for account-takeover patterns on your own profile — a burst of sensitive changes (password, recovery key, passkeys, role, a bulk export or mass download), or one from an unfamiliar device or network. A flagged alert lets you say "this was me" and dismiss it, or "this wasn't me" and sign every device out.
@@ -396,7 +395,7 @@ You're not locked to a single machine. Run Vulos on an always-on home box **and*
 Terminal opens a **real shell into the machine itself** — the same account, the same `sudo` credentials you signed in with, over a live PTY (`/api/pty`), not a sandboxed toy.
 
 <picture>
-  <img src="screenshots/terminal.png" alt="The built-in terminal running a real shell session" width="880" />
+  <img src="screenshots/terminal-light.png" alt="The built-in terminal running a real shell session" width="880" />
 </picture>
 
 1. Open **Terminal** from the Launchpad, Home, or Cmd-K.
@@ -413,8 +412,8 @@ Vulos is the same box, the same URL, the same account — open it in your phone'
 
 <table>
   <tr>
-    <td width="50%"><img src="screenshots/mobile.png" alt="The Vulos Home surface on a phone" width="100%" /></td>
-    <td width="50%"><img src="screenshots/mobile-apps.png" alt="An app running fullscreen on a phone, reached from the bottom dock" width="100%" /></td>
+    <td width="50%"><img src="screenshots/mobile-light.png" alt="The Vulos Home surface on a phone" width="100%" /></td>
+    <td width="50%"><img src="screenshots/mobile-apps-light.png" alt="An app running fullscreen on a phone, reached from the bottom dock" width="100%" /></td>
   </tr>
 </table>
 

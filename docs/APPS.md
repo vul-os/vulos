@@ -105,7 +105,7 @@ require the Chromium + Xvfb/GStreamer streaming stack to be present on the box.
 The **App Hub** app in the shell is the store front. It lists a curated registry of installable self-hosted apps (Navidrome, Gitea, Jellyfin, Grafana, Jupyter, draw.io, Cockpit, Firefox via Flatpak, and others) — including the chat/video answer, Element/Cinny (Matrix) and Jitsi Meet/Element Call (video), covered in full in [COMMS.md](COMMS.md) — shows what's installed, and installs or removes with one click and a progress bar.
 
 <picture>
-  <img src="screenshots/apphub.png" alt="The App Hub browsing the app catalogue" width="880" />
+  <img src="screenshots/apphub-light.png" alt="The App Hub browsing the app catalogue" width="880" />
 </picture>
 
 Behind the UI:
@@ -204,6 +204,10 @@ For the box's own network posture (ports, TLS, tunnels) see [NETWORKING.md](NETW
 ---
 
 ## Publishing an app to the internet
+
+<picture>
+  <img src="screenshots/dashboard-light.png" alt="The Dashboard's Web publishing view: published/private apps with per-app CPU and RAM" width="880" />
+</picture>
 
 By default every app is `private` — reachable only by signed-in users of your box. You can change that per app:
 

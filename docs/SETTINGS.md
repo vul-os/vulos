@@ -9,8 +9,7 @@ Sections marked **owner only** below are hidden from the nav entirely for non-ad
 For background on accounts, roles, and the desktop shell that surrounds Settings, see [USER-GUIDE.md](USER-GUIDE.md). For the operator-side environment variables that some of these panes read and write, see [CONFIGURATION.md](CONFIGURATION.md).
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-light.png" />
-  <img src="screenshots/settings.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
+  <img src="screenshots/settings-light.png" alt="Settings, showing the AI Assistant panel and the full section sidebar" width="880" />
 </picture>
 
 ---
@@ -31,8 +30,7 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 | **Notifications** | Do Not Disturb and notification-sound toggles, the per-device Web Push toggle for this browser, and per-source toggles (Mail, Assistant, System, …) that stop a source being collected at all, not just silenced. See [Notifications](USER-GUIDE.md#notifications) in the User Guide. |
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="screenshots/settings-appearance-light.png" />
-  <img src="screenshots/settings-appearance.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
+  <img src="screenshots/settings-appearance-light.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />
 </picture>
 
 ## Devices

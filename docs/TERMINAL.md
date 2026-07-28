@@ -2,7 +2,7 @@
 
 A real Linux shell on your box, running in the browser. Vulos is the OS you run on your own hardware or any cloud VPS — there is no sandboxed "cloud shell" behind this: the Terminal app opens a genuine PTY (pseudo-terminal) on the machine the backend is running on, and whatever you type runs exactly as if you had SSH'd in.
 
-![Terminal](screenshots/terminal.png)
+![Terminal](screenshots/terminal-light.png)
 
 ## What it is
 

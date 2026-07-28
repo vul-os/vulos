@@ -37,6 +37,10 @@ already trust, then finish it on the new device.
 
 ### On your existing box (the owner does this)
 
+<picture>
+  <img src="screenshots/instances-light.png" alt="The Dashboard's Instances panel, listing every box and cloud node on the account" width="880" />
+</picture>
+
 1. Open the **Dashboard → Instances** panel (or Settings, depending on your
    build).
 2. Generate a **join code**. This calls `GET /api/cluster/join-code`, which is
