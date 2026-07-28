@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="BeepBite">
+  <title>BeepBite</title>
+  <rect width="128" height="128" rx="28" fill="#231207"/>
+  <!-- signal: the "beep" arriving at the pass -->
+  <g fill="none" stroke="#FF6B3D" stroke-width="6" stroke-linecap="round">
+    <path d="M50 44 A18 18 0 0 0 78 44"/>
+    <path d="M40 35 A30 30 0 0 0 88 35"/>
+  </g>
+  <circle cx="64" cy="50" r="5" fill="#FF6B3D"/>
+  <!-- the cloche + plate: the "bite" -->
+  <path d="M34 86 A30 30 0 0 1 94 86 Z" fill="#FF6B3D"/>
+  <rect x="24" y="86" width="80" height="10" rx="5" fill="#FF6B3D"/>
+</svg>

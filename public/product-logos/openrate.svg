@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="openrate">
+  <title>openrate</title>
+  <rect width="128" height="128" rx="28" fill="#0F1D2E"/>
+  <!-- exchange: two arrows swapping — the rate between two currencies -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="8">
+    <path d="M40 51 H86" stroke="#3B82F6"/>
+    <path d="M76 41 L88 51 L76 61" stroke="#3B82F6"/>
+    <path d="M88 77 H42" stroke="#14B8A6"/>
+    <path d="M52 67 L40 77 L52 87" stroke="#14B8A6"/>
+  </g>
+</svg>
