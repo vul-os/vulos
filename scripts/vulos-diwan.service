@@ -2,9 +2,6 @@
 # Diwan — collaborative office suite backend (github.com/vul-os/diwan).
 # Listens on port 8445. No raw network capabilities required.
 #
-# Renamed from Ofisi: the product, repo, Go module, and built binary are all
-# "Diwan" now (formerly Ofisi / vulos-office).
-#
 # Install path:  /etc/systemd/system/vulos-diwan.service
 # Written by:    scripts/install-vulos.sh
 
