@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="diwan-title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="diwan-title">
   <title id="diwan-title">Diwan</title>
-  <!-- An iwan — the vaulted portal. A quarter turn makes it a D. -->
-  <path d="M12 55 L12 31 A22.1 22.1 0 0 1 32 9 A22.1 22.1 0 0 1 52 31 L52 55 L44 55 L44 31 A14.17 14.17 0 0 0 32 17 A14.17 14.17 0 0 0 20 31 L20 55 Z" fill="#D0471F"/>
-  <rect x="20" y="47" width="24" height="8" fill="#0E8B86"/>
+  <rect width="128" height="128" rx="28" fill="#1B130E"/>
+  <!-- an iwan — the vaulted portal; a quarter turn makes it a D -->
+  <path d="M24 110 L24 62 A44.2 44.2 0 0 1 64 18 A44.2 44.2 0 0 1 104 62 L104 110 L88 110 L88 62 A28.34 28.34 0 0 0 64 34 A28.34 28.34 0 0 0 40 62 L40 110 Z" fill="#D0471F"/>
+  <rect x="40" y="94" width="48" height="16" fill="#0E8B86"/>
 </svg>

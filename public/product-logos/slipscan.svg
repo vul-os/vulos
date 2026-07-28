@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="SlipScan">
+  <title>SlipScan</title>
+  <rect width="128" height="128" rx="28" fill="#0B120A"/>
+  <!-- a receipt slip with a torn bottom edge -->
+  <path d="M40 40 a8 8 0 0 1 8 -8 h32 a8 8 0 0 1 8 8 v52 l-8 6 -8 -6 -8 6 -8 -6 -8 6 -8 -6 z" fill="#33422C"/>
+  <!-- ledger lines on the slip -->
+  <g stroke="#5A6B4E" stroke-width="3" stroke-linecap="round">
+    <path d="M48 46 h24"/>
+    <path d="M48 56 h24"/>
+    <path d="M48 66 h16"/>
+  </g>
+  <!-- the scan stroke -->
+  <path d="M76 26 L88 26 L54 104 L42 104 Z" fill="#C8FF00"/>
+</svg>
