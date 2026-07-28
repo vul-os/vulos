@@ -376,7 +376,18 @@ async function loadThreads() {
 
 function renderThreads(filter) {
   const container = document.getElementById('threads-scroll');
-  const empty = document.getElementById('threads-empty');
+  // #threads-empty is authored INSIDE #threads-scroll, so the
+  // `container.innerHTML = ...` below destroys it on the first render that has
+  // any threads. Every later call then dereferenced null and threw
+  // "Cannot read properties of null (reading 'style')" — which killed
+  // selectThread() (it calls renderThreads first), so clicking a conversation
+  // never opened it. Recreate the node when it has been wiped.
+  let empty = document.getElementById('threads-empty');
+  if (!empty) {
+    empty = document.createElement('div');
+    empty.id = 'threads-empty';
+    empty.className = 'thread-empty';
+  }
   let list = threads;
   if (filter) {
     const q = filter.toLowerCase();
@@ -461,7 +472,12 @@ async function loadMessages(number, name) {
   try {
     const res = await fetch(API + '/api/telephony/sms/thread/' + encodeURIComponent(number));
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    messages = await res.json() || [];
+    // Must be an ARRAY. `await res.json() || []` accepted any truthy body, so a
+    // non-array response (an error envelope, a shape change) was assigned
+    // straight through — then renderMessages' messages.map() and sendMessage's
+    // messages.push() threw, which silently broke sending, not just rendering.
+    const data = await res.json();
+    messages = Array.isArray(data) ? data : [];
   } catch {
     messages = [];
   }

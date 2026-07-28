@@ -1,17 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Diwan">
-  <title>Diwan</title>
-  <defs>
-    <!-- A soft sheen so the tile reads like warm, lit material, not flat paint -->
-    <linearGradient id="diwan-sheen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20"/>
-      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
-  </defs>
-  <!-- Full-bleed ember tile -->
-  <rect width="512" height="512" rx="113" fill="#D0471F"/>
-  <rect width="512" height="512" rx="113" fill="url(#diwan-sheen)"/>
-  <!-- Ring mark, centred (geometry kept as-is; the mark is being redesigned separately) -->
-  <circle cx="256" cy="256" r="134" fill="none" stroke="#FBF3E9" stroke-width="70"/>
-  <!-- Ember bead centred in the counter -->
-  <circle cx="256" cy="256" r="35" fill="#FBF3E9"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="diwan-title">
+  <title id="diwan-title">Diwan</title>
+  <!-- An iwan — the vaulted portal. A quarter turn makes it a D. -->
+  <path d="M12 55 L12 31 A22.1 22.1 0 0 1 32 9 A22.1 22.1 0 0 1 52 31 L52 55 L44 55 L44 31 A14.17 14.17 0 0 0 32 17 A14.17 14.17 0 0 0 20 31 L20 55 Z" fill="#D0471F"/>
+  <rect x="20" y="47" width="24" height="8" fill="#0E8B86"/>
 </svg>
