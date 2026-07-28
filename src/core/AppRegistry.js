@@ -137,7 +137,7 @@ const builtinRegistry = [
     builtin: true,
   },
 
-  // Mail is the gateway-proxied `lilmail` connector; Ofisi is the standalone
+  // Mail is the gateway-proxied `lilmail` connector; Diwan is the standalone
   // office app; Calendar/Contacts are standalone OS builtins over lilmail's /v1
   // (see the MAIL-PIM block below).
   //
@@ -226,11 +226,11 @@ const builtinRegistry = [
   // WORKSPACE REMOVED: the standalone "Workspace" shell app is dead — the OS IS
   // the shell. Its launcher tile, gateway deep-link, and hub embedding are gone.
   //
-  // BOARD FOLDED INTO OFISI: the standalone "Board" app is gone as its own
-  // launcher tile — a whiteboard is now just another Ofisi document type
+  // BOARD FOLDED INTO DIWAN: the standalone "Board" app is gone as its own
+  // launcher tile — a whiteboard is now just another Diwan document type
   // (docs/sheets/slides/pdf/whiteboards), so there is ONE productivity app.
-  // Its keywords (whiteboard/canvas/draw/diagram) are folded into Ofisi above so
-  // searching "whiteboard" still surfaces Ofisi.
+  // Its keywords (whiteboard/canvas/draw/diagram) are folded into Diwan above so
+  // searching "whiteboard" still surfaces Diwan.
   //
   // COMMS ARE THIRD-PARTY: Talk and Meet are no longer first-party built-ins.
   // Real-time chat/video is delegated to established third-party platforms
@@ -428,7 +428,7 @@ const defaultWebApps = [
 //
 // At install/onboarding the user gets EVERYTHING pre-selected. A lean user can
 // OPT OUT of Mail (declining the mail connector) and/or the productivity app
-// bundle (→ drops the owned Ofisi app). This map records which tiles
+// bundle (→ drops the owned Diwan app). This map records which tiles
 // belong to which opt-out group so getApps() can hide them. The persisted flag
 // for the productivity group is still named `workspace` for backend-contract
 // compatibility, but there is no "Workspace" shell any more — the OS IS the shell.
@@ -436,7 +436,7 @@ const defaultWebApps = [
 //   - 'email'     — Mail (lilmail connector). Also the backend for the built-in
 //                   Calendar/Contacts PIM widgets, which are always shown and
 //                   degrade honestly to "Connect Mail" when no account is linked.
-//   - 'workspace' — the owned productivity app (Ofisi/Docs, which now includes
+//   - 'workspace' — the owned productivity app (Diwan/Docs, which now includes
 //                   whiteboards as a document type; Board is no longer separate).
 //
 // Anything not listed here (Files/Drive, Assistant, Calendar, Contacts, Messages,

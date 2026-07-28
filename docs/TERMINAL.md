@@ -40,7 +40,7 @@ sudo systemctl status vulos.service              # just the OS backend
 ```bash
 sudo journalctl -u vulos -n 200 --no-pager        # OS backend, last 200 lines
 sudo journalctl -u vulos -f                       # follow live
-sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100   # mail + office together
+sudo journalctl -u vulos -u vulos-lilmail -u vulos-diwan -n 100   # mail + office together
 ```
 
 If you're running under Docker instead of the systemd bundle:

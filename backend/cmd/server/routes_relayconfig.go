@@ -5,7 +5,7 @@ package main
 // default; the owner may instead bring their own STUN/TURN, libp2p Circuit
 // Relay v2 peers, a WireGuard/Tailscale/Headscale/Nebula endpoint, or turn
 // the relay tunnel off entirely ("none" — static IP / port-forward). Every
-// app-facing surface (Meet/Talk/ofisi's WebRTC, peering/ice.go, the SFU, and
+// app-facing surface (Meet/Talk/diwan's WebRTC, peering/ice.go, the SFU, and
 // generic app streaming) reads relayconfig.ICEServers instead of hardcoding
 // STUN/TURN, so a change here is instant and suite-wide.
 //

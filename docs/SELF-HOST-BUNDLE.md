@@ -1,6 +1,6 @@
 # Vulos Bundle — Self-Host Guide
 
-One command installs the **Vulos OS backend + Ofisi** (`vulos-office`) on a single Linux
+One command installs the **Vulos OS backend + Diwan** (`diwan`) on a single Linux
 machine, supervised by systemd (or OpenRC on Alpine), sharing one config dir,
 one data dir, one fabric identity, and one S3 storage backend.
 
@@ -37,12 +37,12 @@ curl -fsSL https://get.vulos.org | sudo bash
 | Service | Binary | Port(s) | Purpose |
 |---|---|---|---|
 | vulos | `/usr/local/bin/vulos` | 8443 | OS backend — API gateway, app fabric |
-| vulos-office | `/usr/local/bin/vulos-office` | 8445 | Ofisi — collaborative office suite (Docs / Sheets / Slides / PDF / Whiteboard) |
+| vulos-diwan | `/usr/local/bin/diwan` | 8445 | Diwan — collaborative office suite (Docs / Sheets / Slides / PDF / Whiteboard) |
 | vulos-lilmail | `/usr/local/bin/lilmail` | 3000 | LilMail — mail/calendar/contacts client for your own mailbox |
 | minio (optional) | `/usr/local/bin/minio` | 9000 (loopback) | Local S3-compatible storage |
 
 All services run as the `vulos` system user (UID < 1000, no login shell).
-The bundle installs all three services — `vulos`, `lilmail`, and `vulos-office`.
+The bundle installs all three services — `vulos`, `lilmail`, and `diwan`.
 LilMail is a client for a mailbox you already own, so it hosts nothing itself.
 
 ---
@@ -194,7 +194,7 @@ All three services share the same config and data roots:
   vulos.yaml        — OS backend config (inherits from fabric + storage)
   lilmail/
     config.toml     — LilMail config (point [imap] at your own mailbox)
-  office.yaml       — Ofisi config (inherits from fabric + storage)
+  office.yaml       — Diwan config (inherits from fabric + storage)
   bundle.yaml       — installer metadata (arch, distro, storage mode)
 
 /var/lib/vulos/
@@ -226,7 +226,7 @@ flowchart TD
     Fabric["vulos-fabric.service<br/>(oneshot — generates keypairs if absent)"]
     OS["vulos.service<br/>(OS backend, port 8443)"]
     Mail["vulos-lilmail.service<br/>(LilMail mail client, port 3000)"]
-    Office["vulos-ofisi.service<br/>(office backend, port 8445)"]
+    Office["vulos-diwan.service<br/>(office backend, port 8445)"]
     Bundle["vulos-bundle.target<br/>(all-up sentinel)"]
 
     Net --> Minio --> Fabric
@@ -255,13 +255,13 @@ sudo systemctl restart vulos-lilmail.service
 ### OpenRC (Alpine)
 
 On Alpine Linux the installer writes init scripts to `/etc/init.d/vulos`,
-`/etc/init.d/vulos-lilmail`, and `/etc/init.d/vulos-ofisi`. Each script
+`/etc/init.d/vulos-lilmail`, and `/etc/init.d/vulos-diwan`. Each script
 declares `need net` and `after vulos-fabric` ordering.
 
 ```bash
 sudo rc-update add vulos default
 sudo rc-update add vulos-lilmail default
-sudo rc-update add vulos-ofisi default
+sudo rc-update add vulos-diwan default
 sudo rc-service vulos start
 ```
 
@@ -354,7 +354,7 @@ sudo systemctl restart vulos-lilmail.service
 
 ```bash
 sudo systemctl status vulos-bundle.target
-sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100
+sudo journalctl -u vulos -u vulos-lilmail -u vulos-diwan -n 100
 ```
 
 ### LilMail can't reach your mailbox

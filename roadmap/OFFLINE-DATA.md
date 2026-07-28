@@ -6,11 +6,11 @@
 
 ---
 
-## Grounding: what ofisi and flowstock already do
+## Grounding: what diwan and flowstock already do
 
 Both reference apps already embody this exact philosophy — the library generalizes them rather than inventing:
 
-| | **ofisi** (Office) | **flowstock** (inventory) |
+| | **diwan** (Office) | **flowstock** (inventory) |
 |---|---|---|
 | Model | Browser-CRDT (Yjs + hand-rolled) + server-authoritative baseline | Local **Go server** + SQLite + append-only **oplog** + HLC + version-vector |
 | Offline | app-shell PWA + IndexedDB drafts + localStorage CRDT snapshots | the whole node runs locally; browser is a thin HTTP client |
@@ -18,7 +18,7 @@ Both reference apps already embody this exact philosophy — the library general
 | Merge | CRDT **union-merge, never count-gated** (offline edits on both sides preserved) | LWW register (catalog) + add-only set (ledgers) |
 | At rest | **plaintext**, relies on device encryption; SW refuses to cache doc bytes | **plaintext** SQLite, relies on device encryption |
 
-**Two models, not one.** ofisi is browser-CRDT; flowstock is local-server. They don't collapse into a single library. `@vulos/offline` targets the **browser-CRDT** case (ofisi, Notes, whiteboards); the local-server case (flowstock) already *is* its own offline node and needs nothing from us.
+**Two models, not one.** diwan is browser-CRDT; flowstock is local-server. They don't collapse into a single library. `@vulos/offline` targets the **browser-CRDT** case (diwan, Notes, whiteboards); the local-server case (flowstock) already *is* its own offline node and needs nothing from us.
 
 **The shared, liftable philosophy** (identical in both): self-contained by default; *optional* host seams that light up under Vulos and degrade safely without it; CRDT convergence so offline never loses writes; content-blind sync.
 
@@ -46,7 +46,7 @@ await p.whenSynced                             // local state loaded into ydoc
 
 ### Safety posture (honest, fail-safe not fail-open)
 
-- **Standalone / no Vulos:** plaintext IndexedDB, protected by the device's own encryption — the *same* posture ofisi/flowstock already ship, now explicit. Never described as more than it is (`offlineStatus().encryptedAtRest === false`).
+- **Standalone / no Vulos:** plaintext IndexedDB, protected by the device's own encryption — the *same* posture diwan/flowstock already ship, now explicit. Never described as more than it is (`offlineStatus().encryptedAtRest === false`).
 - **Under Vulos:** the cache is sealed with the app's per-app `appKey` (non-extractable, HKDF-scoped to the app by the OS from the trusted frame identity — an app can only ever seal/open its own cache). Combine with `isUnlocked()` to gate cached UI.
 - **Encryption absence never blocks the app.** Offline access must not depend on a host that may not be there. A missing/locked host → plaintext, app keeps working. An app that *requires* the encrypted cache checks `offlineStatus()` and shows its own gate — the library doesn't force one.
 - A wrong/undecryptable key **fails closed for the data** (can't read the sealed cache) but **starts clean rather than throwing**, so a corrupt cache never bricks the app.
@@ -56,7 +56,7 @@ await p.whenSynced                             // local state loaded into ydoc
 ## Adoption
 
 - **Notes** (Yjs already, `apps/notes/collab.js`) — first target: persist the collab `Y.Doc` locally via `persistYDoc` so edits survive a reload / dead zone and re-converge on reconnect. Under Vulos the cache is sealed with the Notes app key.
-- Any Yjs app vendors the module and calls the same three functions. ofisi could adopt it to replace its plaintext localStorage snapshots with the encrypted-optional provider.
+- Any Yjs app vendors the module and calls the same three functions. diwan could adopt it to replace its plaintext localStorage snapshots with the encrypted-optional provider.
 
 ---
 
@@ -66,7 +66,7 @@ await p.whenSynced                             // local state loaded into ydoc
 - **Cross-tab lost-update** — two tabs on the same note share one IndexedDB name and each debounce-writes a full snapshot; last writer wins with no `BroadcastChannel`/lock coordination. IndexedDB itself stays uncorrupted, but an offline divergent sibling tab's snapshot can be overwritten. Add tab coordination if it matters.
 - **Key doesn't hot-swap mid-session** — `resolveOfflineKey()` is resolved once per `persistYDoc` call; if the host unlocks *after* start, the cache stays plaintext for that session (the downgrade guard still prevents overwriting a previously-sealed cache). Re-key path is deferred.
 - **Debounce durability** — a hard close within the ~400ms debounce can lose the last edit from the *local* cache; `persistYDoc` now flushes best-effort on `pagehide`/`visibilitychange` and on `destroy()`, but an async write may not complete on a hard unload.
-- **Incremental append-log** (ofisi's `updateLog.js` `{load, append}` seam) instead of a full-snapshot rewrite — better for large docs. The snapshot model is correct and simple for v1.
-- **Outbox for non-CRDT / server-authoritative apps** (queued writes with retry, per [OFFLINE.md](OFFLINE.md)) — Yjs apps get convergence for free; REST apps need the outbox. ofisi's `draftStore.js` is the template.
+- **Incremental append-log** (diwan's `updateLog.js` `{load, append}` seam) instead of a full-snapshot rewrite — better for large docs. The snapshot model is correct and simple for v1.
+- **Outbox for non-CRDT / server-authoritative apps** (queued writes with retry, per [OFFLINE.md](OFFLINE.md)) — Yjs apps get convergence for free; REST apps need the outbox. diwan's `draftStore.js` is the template.
 - **Search-index-at-rest leak** — if an app builds a local search index over encrypted content, the index is plaintext next to the ciphertext (see [OFFLINE.md](OFFLINE.md#search)); decide per app.
 - **The local-server model** (flowstock) is out of scope here — it is already its own offline node.

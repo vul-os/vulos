@@ -60,11 +60,16 @@ export default defineConfig([
   },
   // Node-context files — config, build scripts, and service worker tests read
   // from the filesystem and use CommonJS/Node globals.
+  //
+  // e2e/ belongs here too: the Playwright specs and the mock backend run in
+  // Node (not the browser) and use Node globals such as Buffer. Without this
+  // they lint as browser code and fail on `no-undef`.
   {
     files: [
       '*.config.js',
       'scripts/**/*.{js,mjs}',
       'public/**/*.js',
+      'e2e/**/*.{js,mjs}',
     ],
     languageOptions: {
       globals: {

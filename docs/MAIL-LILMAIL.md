@@ -20,7 +20,7 @@ primary mail server and not the default. Most people bring their own mailbox and
 never run one.
 
 LilMail lives in its own repository (github.com/vul-os/lilmail) and is consumed
-by the OS as a service, the same way Ofisi is kept separate. No LilMail source is
+by the OS as a service, the same way Diwan is kept separate. No LilMail source is
 vendored into this repo.
 
 ## How it is wired

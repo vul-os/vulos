@@ -12,7 +12,7 @@ fresh shell in another. This file is the cross-repo coordination point.
 | Repo | Service worker | `CACHE_NAME` (current) |
 | --- | --- | --- |
 | `vulos` (OS shell) | `public/sw.js` | `vulos-os-shell-v1` |
-| `vulos-office` (Spaces / Office) | `public/sw.js` | `vulos-office-v1` |
+| `diwan` (Spaces / Office) | `public/sw.js` | `diwan-v1` |
 
 Source paths are stable; grep `CACHE_NAME` inside each repo to confirm the
 current value before bumping.
@@ -50,7 +50,7 @@ trivially diffable in code review.
 ## Pointers
 
 - `vulos/public/sw.js` — OS shell SW.
-- `vulos-office/public/sw.js` — Ofisi (Docs / Sheets / Slides / PDF / Whiteboard) SW. (Spaces, Calendar, and Talk were extracted/retired and no longer live in this shell — Calendar is now a standalone OS builtin, and Talk is a retired product; see README.md.)
+- `diwan/public/sw.js` — Diwan (Docs / Sheets / Slides / PDF / Whiteboard) SW. (Spaces, Calendar, and Talk were extracted/retired and no longer live in this shell — Calendar is now a standalone OS builtin, and Talk is a retired product; see README.md.)
 LilMail (github.com/vul-os/lilmail) also registers a service worker
 (`assets/sw.js`), but it is push-only with no caching or offline logic, so it
 has no `CACHE_NAME` to coordinate here.

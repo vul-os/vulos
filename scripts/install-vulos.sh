@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-vulos.sh — idempotent meta-bundle installer for Vulos (OS + lilmail + Ofisi)
+# install-vulos.sh — idempotent meta-bundle installer for Vulos (OS + lilmail + Diwan)
 # Usage:  curl -fsSL https://get.vulos.org | sudo bash
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
@@ -9,9 +9,7 @@
 #   2. lilmail  — self-hosted mail/calendar/contacts CLIENT (github.com/vul-os/lilmail)
 #                 — connects OUTBOUND to the box owner's OWN IMAP/SMTP/CalDAV/
 #                   CardDAV account; it hosts no mail and binds no privileged port.
-#   3. ofisi    — collaborative office suite backend (github.com/vul-os/ofisi)
-#                 — binary/module name is still literally "vulos-office" (kept
-#                   deliberately by upstream to avoid a churny rename)
+#   3. diwan    — collaborative office suite backend (github.com/vul-os/diwan)
 #
 # Shared infrastructure:
 #   /etc/vulos/            — unified config directory
@@ -37,7 +35,7 @@
 #   - Services run as non-root 'vulos' system account (UID < 1000)
 #   - UID-collision guard: aborts if 'vulos' maps to a non-system account
 #   - Symlink-safe directory creation (aborts on /etc/vulos symlink)
-#   - No capabilities for vulos, lilmail, or ofisi — none of the three binds a
+#   - No capabilities for vulos, lilmail, or diwan — none of the three binds a
 #     privileged (< 1024) port, so CapabilityBoundingSet is empty for all three
 #   - ProtectSystem=strict, PrivateTmp=yes, NoNewPrivileges=yes for all units
 
@@ -81,11 +79,20 @@ else
   RED='' GRN='' YEL='' CYN='' BLD='' RST=''
 fi
 
-info()  { printf "${GRN}[vulos]${RST} %s\n" "$*"; }
-warn()  { printf "${YEL}[vulos] WARN:${RST} %s\n" "$*" >&2; }
-fatal() { printf "${RED}[vulos] FATAL:${RST} %s\n" "$*" >&2; exit 1; }
-step()  { printf "\n${BLD}${CYN}==> %s${RST}\n" "$*"; }
-plan()  { printf "${YEL}  [DRY-RUN]${RST} %s\n" "$*"; }
+# Log helpers.
+#
+# Two deliberate choices here, both load-bearing:
+#   1. The colour codes are printf *arguments*, never part of the format string.
+#      A variable format string is SC2059 and would let a stray '%' in a
+#      message (a path, a checksum line echoed back) corrupt the output.
+#   2. The message is rendered with %b, not %s, so the "\n" sequences embedded
+#      in the multi-line security messages below (mismatch reports, tamper
+#      warnings) actually break lines instead of printing a literal "\n".
+info()  { printf "%s[vulos]%s %b\n"       "${GRN}" "${RST}" "$*"; }
+warn()  { printf "%s[vulos] WARN:%s %b\n" "${YEL}" "${RST}" "$*" >&2; }
+fatal() { printf "%s[vulos] FATAL:%s %b\n" "${RED}" "${RST}" "$*" >&2; exit 1; }
+step()  { printf "\n%s%s==> %s%s\n"       "${BLD}" "${CYN}" "$*" "${RST}"; }
+plan()  { printf "%s  [DRY-RUN]%s %b\n"   "${YEL}" "${RST}" "$*"; }
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -100,7 +107,7 @@ DATA_DIR="/var/lib/vulos"
 FABRIC_CONFIG="${CONFIG_DIR}/fabric.yaml"
 STORAGE_CONFIG="${CONFIG_DIR}/storage.yaml"
 OS_CONFIG="${CONFIG_DIR}/vulos.yaml"
-OFISI_CONFIG="${CONFIG_DIR}/office.yaml"
+DIWAN_CONFIG="${CONFIG_DIR}/office.yaml"
 BUNDLE_CONFIG="${CONFIG_DIR}/bundle.yaml"
 
 # lilmail is a client, not a server: it hard-codes a literal "config.toml" in
@@ -112,31 +119,30 @@ LILMAIL_CONFIG="${LILMAIL_CONFIG_DIR}/config.toml"
 # Binary install paths
 BIN_VULOS="/usr/local/bin/vulos"
 BIN_LILMAIL="/usr/local/bin/lilmail"
-# Ofisi's binary is still literally named "vulos-office" upstream (kept
-# deliberately to avoid a churny module/binary rename) — see github.com/vul-os/ofisi.
-BIN_OFISI="/usr/local/bin/vulos-office"
+# Diwan's binary/module — see github.com/vul-os/diwan.
+BIN_DIWAN="/usr/local/bin/diwan"
 
 # GitHub release endpoints. The OS backend is fetched as a signed release
-# artefact; lilmail and ofisi are built from source (REPO_* below).
+# artefact; lilmail and diwan are built from source (REPO_* below).
 GITHUB_VULOS="https://github.com/vul-os/vulos/releases"
 
 API_VULOS="https://api.github.com/repos/vul-os/vulos/releases/latest"
 API_LILMAIL="https://api.github.com/repos/vul-os/lilmail/releases/latest"
-API_OFISI="https://api.github.com/repos/vul-os/ofisi/releases/latest"
+API_DIWAN="https://api.github.com/repos/vul-os/diwan/releases/latest"
 
-# Source repositories. lilmail and ofisi ship source releases (their embedded
+# Source repositories. lilmail and diwan ship source releases (their embedded
 # assets are committed at the tag), so the bundle builds them from a pinned tag
 # on the box — the same binary you would build by hand. Requires the Go
 # toolchain and git; both are checked in preflight.
 REPO_LILMAIL="https://github.com/vul-os/lilmail.git"
-REPO_OFISI="https://github.com/vul-os/ofisi.git"
+REPO_DIWAN="https://github.com/vul-os/diwan.git"
 
 # systemd unit files
 SYSTEMD_DIR="/etc/systemd/system"
 UNIT_FABRIC="${SYSTEMD_DIR}/vulos-fabric.service"
 UNIT_OS="${SYSTEMD_DIR}/vulos.service"
 UNIT_LILMAIL="${SYSTEMD_DIR}/vulos-lilmail.service"
-UNIT_OFISI="${SYSTEMD_DIR}/vulos-ofisi.service"
+UNIT_DIWAN="${SYSTEMD_DIR}/vulos-diwan.service"
 UNIT_MINIO="${SYSTEMD_DIR}/vulos-minio.service"
 UNIT_BUNDLE="${SYSTEMD_DIR}/vulos-bundle.target"
 
@@ -153,7 +159,7 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "vulos          — OS backend API gateway (port 8443)"
   plan "lilmail        — mail/calendar/contacts client, connects to your OWN"
   plan "                 IMAP/SMTP/CalDAV/CardDAV account (no inbound ports)"
-  plan "ofisi          — office suite backend (port 8445)"
+  plan "diwan          — office suite backend (port 8445)"
   if [ "${INSTALL_MINIO}" = "true" ]; then
     plan "minio          — local S3-compatible object storage (port 9000)"
   fi
@@ -173,7 +179,7 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "${STORAGE_CONFIG}  — S3 backend selector: ${STORAGE_MODE}"
   plan "${OS_CONFIG}        — vulos OS backend config"
   plan "${LILMAIL_CONFIG}  — lilmail config (your IMAP/SMTP account — edit before starting)"
-  plan "${OFISI_CONFIG}    — ofisi config"
+  plan "${DIWAN_CONFIG}    — diwan config"
   plan "${BUNDLE_CONFIG}    — bundle-level metadata"
 
   printf "\n${BLD}Storage backend:${RST}\n"
@@ -194,13 +200,13 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "  → vulos-fabric.service  (shared mesh identity / fabric)"
   plan "  → vulos.service         (OS backend)"
   plan "  → vulos-lilmail.service (mail/calendar/contacts client — no capabilities)"
-  plan "  → vulos-ofisi.service   (office backend)"
+  plan "  → vulos-diwan.service   (office backend)"
   plan "  → vulos-bundle.target   (all-up sentinel)"
 
   printf "\n${BLD}Security hardening:${RST}\n"
   plan "All services run as non-root user '${VULOS_USER}' (system UID < 1000)"
   plan "NoNewPrivileges=yes, ProtectSystem=strict, PrivateTmp=yes"
-  plan "No capabilities — vulos, lilmail, ofisi, fabric (none binds a privileged port)"
+  plan "No capabilities — vulos, lilmail, diwan, fabric (none binds a privileged port)"
   plan "SHA-256 checksum mandatory for every binary (no skip path)"
   plan "Symlink-safe directory creation (abort on /etc/vulos symlink)"
   plan "UID-collision guard: abort if 'vulos' maps to UID >= 1000"
@@ -330,7 +336,7 @@ for tool in curl sha256sum; do
   fi
 done
 
-# lilmail and ofisi are built from source on the box, so the Go toolchain and
+# lilmail and diwan are built from source on the box, so the Go toolchain and
 # git must be present. These are not auto-installed: a distro's `go` package is
 # often older than the module's `go` directive, which fails the build in a
 # confusing way — better to ask the operator to install a current toolchain.
@@ -363,13 +369,39 @@ resolve_tag() {
 
 TAG_VULOS="$(resolve_tag "${API_VULOS}" "v0.1.0")"
 TAG_LILMAIL="$(resolve_tag "${API_LILMAIL}" "v0.1.0")"
-TAG_OFISI="$(resolve_tag "${API_OFISI}" "v0.1.0")"
+TAG_DIWAN="$(resolve_tag "${API_DIWAN}" "v0.1.0")"
 
 info "vulos        release: ${TAG_VULOS}"
 info "lilmail      release: ${TAG_LILMAIL}"
-info "ofisi        release: ${TAG_OFISI}"
+info "diwan        release: ${TAG_DIWAN}"
 
 # ── Download + verify helper ──────────────────────────────────────────────────
+
+# checksum_for <artefact_name> <checksums_file>
+#
+# Prints the SHA-256 recorded for exactly <artefact_name>, lowercased, or
+# prints nothing at all.  Callers MUST treat empty output as "unverifiable"
+# and abort.
+#
+# Two things this deliberately does not do:
+#
+#   1. It does not substring-grep. The name is matched against field 2 of the
+#      sha256sum format ("<hex>  name", or "<hex> *name" in binary mode), not
+#      anywhere on the line. A substring grep also treats the name as a regex —
+#      every "." in "release-cert.json" is a wildcard — and would return the
+#      digest of "vulos_linux_amd64.sig" when asked for "vulos_linux_amd64",
+#      whichever happened to be listed first.
+#
+#   2. It does not trust the field it found. The value must be exactly 64 hex
+#      characters. A checksums file that is empty, truncated, HTML (a captive
+#      portal, or a CDN that answers 200 with an error page for a missing key),
+#      or in a foreign format therefore yields nothing and the caller aborts,
+#      instead of an empty or garbage value being fed into the comparison.
+checksum_for() {
+  local want="$1" file="$2" found
+  found="$(awk -v w="${want}" '$2 == w || $2 == "*" w { print $1; exit }' "${file}" 2>/dev/null || true)"
+  printf '%s' "${found}" | tr 'A-F' 'a-f' | grep -Ex '[0-9a-f]{64}' || true
+}
 
 # download_and_verify <binary_name> <binary_url> <checksum_url> <dest_path>
 #
@@ -396,13 +428,13 @@ download_and_verify() {
   fi
 
   local expected
-  expected="$(grep "${binary_name}" "${tmp_checksum}" | awk '{print $1}' | head -1)"
+  expected="$(checksum_for "${binary_name}" "${tmp_checksum}")"
   if [ -z "${expected}" ]; then
-    fatal "No checksum entry for '${binary_name}' in checksums.txt — aborting.\nThis may indicate a release packaging error or tampered artefact."
+    fatal "No usable SHA-256 entry for '${binary_name}' in the checksums file — aborting.\nThe file was fetched but contains no valid 64-hex-character digest for this\nartefact. This may indicate a release packaging error or a tampered artefact."
   fi
 
   local actual
-  actual="$(sha256sum "${tmp_binary}" | awk '{print $1}')"
+  actual="$(sha256sum "${tmp_binary}" | awk '{print $1}' | tr 'A-F' 'a-f')"
 
   if [ "${actual}" != "${expected}" ]; then
     fatal "SHA-256 mismatch for ${binary_name}!\n  Expected: ${expected}\n  Got:      ${actual}\nDO NOT use this binary — aborting for security."
@@ -434,10 +466,15 @@ build_from_source() {
   rm -rf "${src}"
 
   info "Cloning ${name} ${tag} from ${repo_url}"
+  # SECURITY: the pinned tag is the ONLY trust anchor for a source-built
+  # service — there is no checksummed artefact to fall back on. So a missing
+  # tag aborts. It must not degrade to the default branch: resolve_tag() falls
+  # back to a hard-coded tag whenever the GitHub API is unreachable, so a
+  # transient API failure would otherwise silently turn a pinned install into
+  # "build whatever is on the default branch right now", under `sudo`, on two
+  # of the three services. Fail closed and let the operator pin explicitly.
   if ! git clone --depth 1 --branch "${tag}" "${repo_url}" "${src}" >/dev/null 2>&1; then
-    warn "Tag ${tag} not found for ${name}; cloning the default branch instead."
-    git clone --depth 1 "${repo_url}" "${src}" >/dev/null 2>&1 \
-      || fatal "Could not clone ${name} from ${repo_url} — check network and the repository URL."
+    fatal "Could not clone ${name} at tag '${tag}' from ${repo_url}.\nThe tag is the trust anchor for a source-built service, so this installer\nwill NOT fall back to the default branch. Check network access, then confirm\nthe tag exists:\n  git ls-remote --tags ${repo_url}"
   fi
 
   info "Building ${name} (this can take a few minutes on first run)…"
@@ -476,13 +513,13 @@ download_data_and_verify() {
   fi
 
   local expected
-  expected="$(grep "${name}" "${tmp_checksum}" | awk '{print $1}' | head -1)"
+  expected="$(checksum_for "${name}" "${tmp_checksum}")"
   if [ -z "${expected}" ]; then
-    fatal "No checksum entry for '${name}' in checksums.txt — aborting.\nThis may indicate a release packaging error or tampered artefact."
+    fatal "No usable SHA-256 entry for '${name}' in the checksums file — aborting.\nThe file was fetched but contains no valid 64-hex-character digest for this\nartefact. This may indicate a release packaging error or a tampered artefact."
   fi
 
   local actual
-  actual="$(sha256sum "${tmp_file}" | awk '{print $1}')"
+  actual="$(sha256sum "${tmp_file}" | awk '{print $1}' | tr 'A-F' 'a-f')"
 
   if [ "${actual}" != "${expected}" ]; then
     fatal "SHA-256 mismatch for ${name}!\n  Expected: ${expected}\n  Got:      ${actual}\nDO NOT use this file — aborting for security."
@@ -565,7 +602,7 @@ step "Writing shared fabric config"
 if [ ! -f "${FABRIC_CONFIG}" ]; then
   cat > "${FABRIC_CONFIG}" <<'YAML'
 # /etc/vulos/fabric.yaml — shared fabric identity and mesh config
-# Shared by vulos, lilmail, and ofisi.
+# Shared by vulos, lilmail, and diwan.
 # Edit then restart the vulos-fabric service (or all bundle services).
 #
 # Full reference: https://docs.vulos.org/self-host/bundle#fabric
@@ -606,7 +643,7 @@ if [ ! -f "${STORAGE_CONFIG}" ]; then
   if [ "${STORAGE_MODE}" = "tigris" ]; then
     cat > "${STORAGE_CONFIG}" <<'YAML'
 # /etc/vulos/storage.yaml — shared S3 storage selector
-# Shared by vulos, lilmail, and ofisi.
+# Shared by vulos, lilmail, and diwan.
 #
 # backend: tigris   — Tigris hosted S3-compatible storage (recommended)
 # backend: minio    — local MinIO running on this machine
@@ -623,7 +660,7 @@ YAML
   else
     cat > "${STORAGE_CONFIG}" <<YAML
 # /etc/vulos/storage.yaml — shared S3 storage selector (local MinIO)
-# Shared by vulos, lilmail, and ofisi.
+# Shared by vulos, lilmail, and diwan.
 
 backend: "minio"
 
@@ -676,9 +713,6 @@ if [ ! -f "${LILMAIL_CONFIG}" ]; then
   # own and reads config.toml from its working directory. The [imap] block must
   # point at your own account before the service is useful.
   MAIL_JWT_SECRET="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-  # 32-byte (64 hex chars) key lilmail uses to encrypt stored IMAP credentials;
-  # without it, login fails. Truncated to 32 chars so it is exactly 32 bytes.
-  MAIL_ENC_KEY="$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   cat > "${LILMAIL_CONFIG}" <<TOML
 # /etc/vulos/lilmail/config.toml — lilmail (mail + calendar + contacts client).
 # lilmail connects OUTBOUND to a mailbox you already own; it hosts no mail and
@@ -716,11 +750,11 @@ fi
 
 mkdir -p "${DATA_DIR}/office/uploads"
 chown -R "${VULOS_USER}:${VULOS_GROUP}" "${DATA_DIR}/office" 2>/dev/null || true
-if [ ! -f "${OFISI_CONFIG}" ]; then
+if [ ! -f "${DIWAN_CONFIG}" ]; then
   OFFICE_PASSWORD="$(openssl rand -hex 12 2>/dev/null || head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-  cat > "${OFISI_CONFIG}" <<YAML
-# /etc/vulos/office.yaml — Ofisi (vulos-office binary) config.
-# Ofisi serves the collaborative office suite from its own store on this box.
+  cat > "${DIWAN_CONFIG}" <<YAML
+# /etc/vulos/office.yaml — Diwan config.
+# Diwan serves the collaborative office suite from its own store on this box.
 
 server:
   addr: ":8445"
@@ -739,11 +773,11 @@ storage:
 
 log_level: "info"
 YAML
-  chmod 640 "${OFISI_CONFIG}"
-  chown root:"${VULOS_GROUP}" "${OFISI_CONFIG}"
-  info "Ofisi config written: ${OFISI_CONFIG} (login password: ${OFFICE_PASSWORD})"
+  chmod 640 "${DIWAN_CONFIG}"
+  chown root:"${VULOS_GROUP}" "${DIWAN_CONFIG}"
+  info "Diwan config written: ${DIWAN_CONFIG} (login password: ${OFFICE_PASSWORD})"
 else
-  info "Ofisi config already exists — not overwriting."
+  info "Diwan config already exists — not overwriting."
 fi
 
 if [ ! -f "${BUNDLE_CONFIG}" ]; then
@@ -831,13 +865,13 @@ build_from_source \
   "lilmail" \
   "${BIN_LILMAIL}"
 
-step "Building ofisi ${TAG_OFISI} from source"
+step "Building diwan ${TAG_DIWAN} from source"
 build_from_source \
-  "ofisi" \
-  "${REPO_OFISI}" \
-  "${TAG_OFISI}" \
-  "vulos-office" \
-  "${BIN_OFISI}"
+  "diwan" \
+  "${REPO_DIWAN}" \
+  "${TAG_DIWAN}" \
+  "diwan" \
+  "${BIN_DIWAN}"
 
 # ── Install MinIO if requested ────────────────────────────────────────────────
 
@@ -864,8 +898,16 @@ if [ "${INSTALL_MINIO}" = "true" ]; then
       fatal "Could not fetch MinIO checksum — aborting for security."
     fi
 
-    MINIO_EXPECTED="$(awk '{print $1}' "${MINIO_CS_TMP}")"
-    MINIO_ACTUAL="$(sha256sum "${MINIO_TMP}" | awk '{print $1}')"
+    # Upstream's minio.sha256sum is a single line whose *name* field is the
+    # versioned artefact ("<hex> minio.RELEASE.2025-09-07T16-13-09Z"), not
+    # "minio" — so this cannot use checksum_for, which matches the name field.
+    # Take the digest of the first entry and validate its shape instead, so an
+    # empty or non-checksum response can never reach the comparison as "".
+    MINIO_EXPECTED="$(awk 'NF { print $1; exit }' "${MINIO_CS_TMP}" | tr 'A-F' 'a-f' | grep -Ex '[0-9a-f]{64}' || true)"
+    if [ -z "${MINIO_EXPECTED}" ]; then
+      fatal "MinIO checksum file contained no valid SHA-256 digest — aborting for security.\nFetched from: ${MINIO_CHECKSUM_URL}"
+    fi
+    MINIO_ACTUAL="$(sha256sum "${MINIO_TMP}" | awk '{print $1}' | tr 'A-F' 'a-f')"
     if [ "${MINIO_ACTUAL}" != "${MINIO_EXPECTED}" ]; then
       fatal "MinIO SHA-256 mismatch!\n  Expected: ${MINIO_EXPECTED}\n  Got:      ${MINIO_ACTUAL}\nAborted for security."
     fi
@@ -1057,12 +1099,12 @@ UNIT
     chmod 644 "${UNIT_LILMAIL}"
     info "systemd unit installed: ${UNIT_LILMAIL}"
 
-    # ── ofisi (vulos-office binary) ─────────────────────────────────────────
+    # ── diwan ────────────────────────────────────────────────────────
     # The CLI takes server flags directly; a positional "serve" would make
     # flag.Parse() stop before it sees -config, so config.yaml would be ignored.
-    cat > "${UNIT_OFISI}" <<UNIT
+    cat > "${UNIT_DIWAN}" <<UNIT
 [Unit]
-Description=Vulos — Ofisi collaborative office suite backend
+Description=Vulos — Diwan collaborative office suite backend
 Documentation=https://docs.vulos.org/self-host/bundle
 After=network-online.target vulos-fabric.service vulos.service
 Wants=network-online.target
@@ -1072,7 +1114,7 @@ Requires=vulos-fabric.service
 Type=simple
 User=${VULOS_USER}
 Group=${VULOS_GROUP}
-ExecStart=${BIN_OFISI} -config ${OFISI_CONFIG}
+ExecStart=${BIN_DIWAN} -config ${DIWAN_CONFIG}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=60s
@@ -1091,16 +1133,16 @@ AmbientCapabilities=
 [Install]
 WantedBy=multi-user.target vulos-bundle.target
 UNIT
-    chmod 644 "${UNIT_OFISI}"
-    info "systemd unit installed: ${UNIT_OFISI}"
+    chmod 644 "${UNIT_DIWAN}"
+    info "systemd unit installed: ${UNIT_DIWAN}"
 
     # ── vulos-bundle.target ─────────────────────────────────────────────────
     cat > "${UNIT_BUNDLE}" <<UNIT
 [Unit]
 Description=Vulos Bundle — OS + Mail + Office (all-up sentinel)
 Documentation=https://docs.vulos.org/self-host/bundle
-Wants=vulos.service vulos-lilmail.service vulos-ofisi.service
-After=vulos.service vulos-lilmail.service vulos-ofisi.service
+Wants=vulos.service vulos-lilmail.service vulos-diwan.service
+After=vulos.service vulos-lilmail.service vulos-diwan.service
 
 [Install]
 WantedBy=multi-user.target
@@ -1119,7 +1161,7 @@ UNIT
       systemctl enable vulos-fabric.service
       systemctl enable vulos.service
       systemctl enable vulos-lilmail.service
-      systemctl enable vulos-ofisi.service
+      systemctl enable vulos-diwan.service
       systemctl enable vulos-bundle.target
       info "All services enabled. Start with: systemctl start vulos-bundle.target"
     else
@@ -1175,12 +1217,12 @@ start_pre() {
 SCRIPT
     chmod 755 "${OPENRC_DIR}/vulos-lilmail"
 
-    # ofisi — office suite backend; the CLI takes -config directly (no "serve").
-    cat > "${OPENRC_DIR}/vulos-ofisi" <<'SCRIPT'
+    # diwan — office suite backend; the CLI takes -config directly (no "serve").
+    cat > "${OPENRC_DIR}/vulos-diwan" <<'SCRIPT'
 #!/sbin/openrc-run
-description="Vulos — Ofisi collaborative office suite backend"
+description="Vulos — Diwan collaborative office suite backend"
 
-command="/usr/local/bin/vulos-office"
+command="/usr/local/bin/diwan"
 command_args="-config /etc/vulos/office.yaml"
 command_user="vulos:vulos"
 command_background=true
@@ -1195,9 +1237,9 @@ start_pre() {
   checkpath --directory --owner vulos:vulos --mode 0750 /var/lib/vulos/office
 }
 SCRIPT
-    chmod 755 "${OPENRC_DIR}/vulos-ofisi"
+    chmod 755 "${OPENRC_DIR}/vulos-diwan"
 
-    info "OpenRC init scripts installed: ${OPENRC_DIR}/vulos{,-lilmail,-ofisi}"
+    info "OpenRC init scripts installed: ${OPENRC_DIR}/vulos{,-lilmail,-diwan}"
     ;;
 
   none)
@@ -1216,7 +1258,7 @@ printf "\n"
 printf "${BLD}Versions:${RST}\n"
 printf "  vulos          %s\n" "${TAG_VULOS}"
 printf "  lilmail        %s\n" "${TAG_LILMAIL}"
-printf "  ofisi          %s\n" "${TAG_OFISI}"
+printf "  diwan          %s\n" "${TAG_DIWAN}"
 printf "  Storage:       %s\n" "${STORAGE_MODE}"
 printf "\n"
 printf "${BLD}Next steps:${RST}\n\n"
@@ -1253,16 +1295,16 @@ case "${INIT_SYSTEM}" in
     printf "  4. ${BLD}Start the bundle:${RST}\n"
     printf "     ${CYN}sudo rc-update add vulos default${RST}\n"
     printf "     ${CYN}sudo rc-update add vulos-lilmail default${RST}\n"
-    printf "     ${CYN}sudo rc-update add vulos-ofisi default${RST}\n"
+    printf "     ${CYN}sudo rc-update add vulos-diwan default${RST}\n"
     printf "     ${CYN}sudo rc-service vulos start${RST}\n"
     printf "     ${CYN}sudo rc-service vulos-lilmail start${RST}\n"
-    printf "     ${CYN}sudo rc-service vulos-ofisi start${RST}\n\n"
+    printf "     ${CYN}sudo rc-service vulos-diwan start${RST}\n\n"
     ;;
   none)
     printf "  4. ${BLD}Start the services manually:${RST}\n"
     printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} serve --config ${OS_CONFIG}${RST}\n"
     printf "     ${CYN}cd ${LILMAIL_CONFIG_DIR} \&\& sudo -u ${VULOS_USER} ${BIN_LILMAIL}${RST}\n"
-    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_OFISI} -config ${OFISI_CONFIG}${RST}\n\n"
+    printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_DIWAN} -config ${DIWAN_CONFIG}${RST}\n\n"
     ;;
 esac
 

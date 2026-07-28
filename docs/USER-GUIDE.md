@@ -26,7 +26,7 @@ A **New system** setup walks through these steps, most skippable:
 | Network | Scan and join WiFi, or skip if you're on Ethernet. |
 | Your account | Display name, username, password. This becomes the **administrator** account — the same credentials you'll use for `sudo` in the Terminal. |
 | Lock Screen PIN | Optional 4–8 digit PIN for the lock screen. Skippable; set it later in Settings. |
-| Your apps | Two toggles, both on by default: claiming your Vulos username (which enables the Mail connector), and installing the Ofisi productivity app. Uncheck either for a leaner install. **Files, Calendar and Contacts are always included.** |
+| Your apps | Two toggles, both on by default: claiming your Vulos username (which enables the Mail connector), and installing the Diwan productivity app. Uncheck either for a leaner install. **Files, Calendar and Contacts are always included.** |
 | Appearance | Dark / Light / Auto theme. |
 | Node identity | Shows your instance's read-only ULID and lets you set a hostname (lowercase letters, numbers, hyphens). |
 | Storage | Optionally connect S3-compatible storage with an encryption passphrase. |

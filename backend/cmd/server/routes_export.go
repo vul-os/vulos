@@ -25,7 +25,7 @@ package main
 //                 API keys, PIN hashes and password hashes are NEVER included.
 //
 // NOT covered (and the manifest says so, rather than faking completeness):
-//   - Ofisi documents (docs/sheets/slides/PDF/whiteboards), app data, and
+//   - Diwan documents (docs/sheets/slides/PDF/whiteboards), app data, and
 //     anything held only on a peer instance (content-blind shares we cannot
 //     decrypt server-side). Chat/video history from third-party comms apps
 //     (Cinny/Element, Jitsi Meet/Element Call) lives with those services, not
@@ -402,7 +402,7 @@ func buildManifest(userID, ts string, notes []string) string {
 		b.WriteString("\r\n")
 	}
 	b.WriteString("\r\nNOT INCLUDED (honest boundaries)\r\n--------------------------------\r\n")
-	b.WriteString("  - Ofisi documents and per-app data are not yet exportable\r\n")
+	b.WriteString("  - Diwan documents and per-app data are not yet exportable\r\n")
 	b.WriteString("    through this endpoint.\r\n")
 	b.WriteString("  - Chat/video call history from third-party comms apps (Cinny/Element,\r\n")
 	b.WriteString("    Jitsi Meet/Element Call) lives with those services, not Vulos, so\r\n")

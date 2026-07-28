@@ -176,7 +176,7 @@ async function buildStoreFixtures() {
   // Showing them installed is what makes the launcher/App Hub look like a real
   // Vulos box rather than a generic app store.
   const FIRST_PARTY = [
-    { id: 'ofisi', name: 'Ofisi', description: 'Documents, sheets & slides — on your box', category: 'productivity' },
+    { id: 'diwan', name: 'Diwan', description: 'Documents, sheets & slides — on your box', category: 'productivity' },
     { id: 'lilmail', name: 'lilmail', description: 'Your mail, hosted on your own server', category: 'productivity' },
     { id: 'envoir', name: 'envoir', description: 'Private messaging & portable identity', category: 'internet' },
     { id: 'llmux', name: 'llmux', description: 'Private AI gateway — your models, your keys', category: 'productivity' },
@@ -718,6 +718,39 @@ async function main() {
   const failed = results.filter((r) => r.status === 'failed')
   console.log(`\n${ok.length} captured, ${failed.length} failed`)
   for (const r of failed) console.log(`  - ${r.name}: ${r.error}`)
+
+  // COVERAGE ASSERTION.
+  //
+  // Without this, a run that captures NOTHING exits 0: SHOT could name a shot
+  // that does not exist, a bad edit could empty SHOTS, or a refactor could make
+  // every entry skip. The summary then reads "0 captured, 0 failed" and the
+  // caller treats stale docs assets as freshly regenerated.
+  //
+  // Expected count is derived from SHOTS rather than hard-coded, so adding or
+  // removing a shot needs no edit here — but capturing fewer than expected,
+  // for any reason, is a failure.
+  const expected = process.env.SHOT
+    ? SHOTS.filter((s) => s.name === process.env.SHOT).length +
+      SHOTS.filter((s) => s.name === process.env.SHOT && s.light).length
+    : SHOTS.length + SHOTS.filter((s) => s.light).length
+
+  if (process.env.SHOT && expected === 0) {
+    console.error(
+      `\nSHOT="${process.env.SHOT}" matched no shot. Known shots:\n` +
+      SHOTS.map((s) => `  ${s.name}`).join('\n'),
+    )
+    process.exit(1)
+  }
+
+  if (ok.length !== expected) {
+    console.error(
+      `\nCoverage check FAILED: captured ${ok.length} image(s), expected ${expected}.` +
+      `\nThe docs assets on disk are NOT a complete regeneration — do not treat them as current.`,
+    )
+    process.exit(1)
+  }
+
+  console.log(`Coverage check OK: ${ok.length}/${expected} expected images captured.`)
   process.exit(failed.length ? 1 : 0)
 }
 

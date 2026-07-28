@@ -51,10 +51,10 @@ export const APP_LOGOS = {
   // First-party Vulos-ecosystem apps ship their own coloured brand marks under
   // public/product-logos/ (same-origin, redistributable — they're ours). These
   // are the recognizable logos people expect to see in the launcher/App Hub and
-  // in screenshots (Ofisi, lilmail, envoir, …). A brand mark WINS over the
+  // in screenshots (Diwan, lilmail, envoir, …). A brand mark WINS over the
   // monochrome glyph in AppIconTile so the app reads as itself, not a generic
   // system tile.
-  ofisi: '/product-logos/ofisi.svg',
+  diwan: '/product-logos/diwan.svg',
   lilmail: '/product-logos/lilmail.svg',
   mail: '/product-logos/lilmail.svg',
   envoir: '/product-logos/envoir.svg',
@@ -794,7 +794,7 @@ export function AppIconTile({ id, size = 48, unicode }) {
   }
 
   // 1. A first-party (or bundled) brand mark WINS — the app should read as
-  //    itself. Ofisi/lilmail/envoir/Chrome/… render their own coloured artwork
+  //    itself. Diwan/lilmail/envoir/Chrome/… render their own coloured artwork
   //    on the neutral tile so the surface still reads as one coherent set.
   if (brandLogo && !logoFailed) {
     return (

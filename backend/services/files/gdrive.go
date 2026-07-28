@@ -61,7 +61,7 @@ var gdriveExportMap = map[string]struct {
 // gdriveImportExportMap maps Google-native doc mime types to the portable Office
 // (or image) format used ON IMPORT. Unlike gdriveExportMap (which uses PDF for
 // the live-view mount download), import preserves an EDITABLE format so the owned
-// copy round-trips into Ofisi: Docs→docx, Sheets→xlsx, Slides→pptx,
+// copy round-trips into Diwan: Docs→docx, Sheets→xlsx, Slides→pptx,
 // Drawings→png. A native doc has no media bytes, so it MUST be exported; regular
 // files are copied as-is.
 var gdriveImportExportMap = map[string]struct {

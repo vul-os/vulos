@@ -305,7 +305,7 @@ Config for the self-hosted mail-server option (see [SELF-HOST-BUNDLE.md](SELF-HO
 
 ### `/etc/vulos/office.yaml`
 
-Ofisi (office suite) config. Inherits from `fabric.yaml` and `storage.yaml`.
+Diwan (office suite) config. Inherits from `fabric.yaml` and `storage.yaml`.
 
 ---
 
@@ -337,7 +337,7 @@ curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
   storage.yaml      — S3/MinIO credentials and backend selector
   vulos.yaml        — OS backend config
   mail.yaml         — self-hosted mail-server config
-  office.yaml       — Ofisi (office suite) config
+  office.yaml       — Diwan (office suite) config
   bundle.yaml       — installer metadata (arch, distro, storage mode)
 
 /var/lib/vulos/

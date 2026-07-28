@@ -1,5 +1,5 @@
 # /etc/systemd/system/vulos-bundle.target
-# Vulos Bundle — all-up sentinel target for the co-located OS + lilmail + Ofisi stack.
+# Vulos Bundle — all-up sentinel target for the co-located OS + lilmail + Diwan stack.
 #
 # This target is reached when all three application services are running.
 # Use it to start, stop, or check the entire bundle atomically:
@@ -15,17 +15,17 @@
 #           └─> vulos-fabric.service   (shared fabric identity init — oneshot)
 #                 ├─> vulos.service          (OS backend, port 8443)
 #                 ├─> vulos-lilmail.service  (mail/calendar/contacts client, no inbound ports)
-#                 └─> vulos-ofisi.service    (office backend, port 8445)
+#                 └─> vulos-diwan.service    (office backend, port 8445)
 #                       └─> vulos-bundle.target  ← YOU ARE HERE
 #
 # Install path:  /etc/systemd/system/vulos-bundle.target
 # Written by:    scripts/install-vulos.sh
 
 [Unit]
-Description=Vulos Bundle — OS + lilmail + Ofisi (all-up sentinel)
+Description=Vulos Bundle — OS + lilmail + Diwan (all-up sentinel)
 Documentation=https://docs.vulos.org/self-host/bundle
-Wants=vulos.service vulos-lilmail.service vulos-ofisi.service
-After=vulos.service vulos-lilmail.service vulos-ofisi.service
+Wants=vulos.service vulos-lilmail.service vulos-diwan.service
+After=vulos.service vulos-lilmail.service vulos-diwan.service
 
 [Install]
 WantedBy=multi-user.target

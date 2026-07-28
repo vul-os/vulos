@@ -6,10 +6,10 @@ package main
 // The founder-confirmed model: the OS ships batteries-included. At first boot the
 // user gets EVERYTHING pre-selected — a Vulos account handle (which also enables
 // the Mail app; Mail itself stays a bring-your-own connector, no mailbox is
-// provisioned) plus the full productivity bundle (Calendar, Files, Ofisi/Docs,
-// unified Home + Search — whiteboards are an Ofisi document type, not a separate
+// provisioned) plus the full productivity bundle (Calendar, Files, Diwan/Docs,
+// unified Home + Search — whiteboards are a Diwan document type, not a separate
 // Board app). A lean user (e.g. a gamer) can OPT OUT: uncheck the productivity
-// bundle to drop Ofisi/Calendar/Contacts, and/or decline the account handle to
+// bundle to drop Diwan/Calendar/Contacts, and/or decline the account handle to
 // drop Mail. Mail is coupled to the handle — declining it is the only way to
 // drop Mail.
 //
@@ -23,7 +23,7 @@ package main
 //   - The selection is a preference, not a security boundary. The backend suite
 //     apps (lilmail/office/board/…) are always compiled in and reachable via the
 //     gateway; this only governs whether the launcher SHOWS their tiles. (Board
-//     has no launcher tile of its own — Ofisi embeds it as the whiteboard
+//     has no launcher tile of its own — Diwan embeds it as the whiteboard
 //     document type — but its backend route is still live.)
 //
 // Wiring: registerSuiteAppsRoutes(mux, home) is called from main.go alongside the
@@ -45,9 +45,9 @@ import (
 //	the handle keeps Mail enabled; declining it is how Mail is dropped. Mail
 //	itself stays a bring-your-own connector — no mailbox is provisioned here.
 //
-// Workspace  — the user kept the full productivity bundle (Ofisi/Docs, Calendar,
+// Workspace  — the user kept the full productivity bundle (Diwan/Docs, Calendar,
 //
-//	Contacts). Unchecking it drops those tiles. Ofisi lives in this bundle,
+//	Contacts). Unchecking it drops those tiles. Diwan lives in this bundle,
 //	NOT stapled to the email/handle.
 type suiteSelection struct {
 	Email     bool `json:"email"`

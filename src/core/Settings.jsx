@@ -1156,7 +1156,11 @@ function NetworkSettings() {
         placeholder="http://localhost:8080"
         className="w-full bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded px-3 py-1.5 text-sm mb-1"
       />
-      <p className="text-xs text-[var(--text-faint)] mb-5">The address used to reach this device. For local use, leave as localhost. For remote access, set to your IP or domain (e.g. http://41.193.144.126:8080).</p>
+      {/* The example address is RFC 5737 TEST-NET-3 (203.0.113.0/24), which is
+          reserved for documentation and is not routable. It replaces a real,
+          routable public IP that was shipped here as the "e.g." — that address
+          belonged to a live host and had no business in the product UI. */}
+      <p className="text-xs text-[var(--text-faint)] mb-5">The address used to reach this device. For local use, leave as localhost. For remote access, set to your IP or domain (e.g. http://203.0.113.10:8080).</p>
 
       <button onClick={saveConfig} disabled={saving} className="btn text-sm">
         {saving ? 'Saving...' : saved ? 'Saved' : 'Save'}
@@ -2129,7 +2133,7 @@ function StorageSettings() {
 // --- Storage Mode (STORE-LOCAL-01) ---
 // Bundle-wide selector between central Tigris (default) and a local
 // MinIO-with-sync source-of-truth. Toggling to local-minio-sync passes the
-// endpoint + bucket + creds-ref to the co-located lilmail and ofisi
+// endpoint + bucket + creds-ref to the co-located lilmail and diwan
 // services via VULOS_STORAGE_MODE / VULOS_MINIO_* env vars. The CRDT sync
 // layer (STORE-SYNC-01 / OFFICE-SYNC-01 / SYNC-P2P-01) lives in the sibling
 // repos and is engaged purely by the mode flip — no UI plumbing required.

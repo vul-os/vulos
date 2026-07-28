@@ -1,13 +1,13 @@
 // @vulos/offline — generic, host-agnostic offline persistence for local-first apps.
 //
-// DESIGN (generalized from ofisi + flowstock, roadmap/OFFLINE-DATA.md):
+// DESIGN (generalized from diwan + flowstock, roadmap/OFFLINE-DATA.md):
 //   - Works STANDALONE on any host — no Vulos, no shell, no network. An app that
 //     vendors this module gets offline-first local persistence for a Yjs doc.
 //   - Lights up EXTRA safety under Vulos: if the OS offline gate is present
 //     (window.vulos.offline, OFFLINE-AUTH-01), the local cache is encrypted at
 //     rest with a per-app key and can be gated on unlock. Without Vulos it stores
 //     plaintext and relies on the device's own encryption — the SAME honest
-//     posture ofisi/flowstock already ship, just made explicit and swappable.
+//     posture diwan/flowstock already ship, just made explicit and swappable.
 //   - Fail-safe, not fail-open: encryption is used WHEN a key is available; its
 //     absence never blocks the app from working (offline access must not depend
 //     on a host that may not be there). The app can query offlineStatus() and
@@ -117,7 +117,7 @@ async function open(key, rec) {
 //   p.destroy()          // stop persisting (call on teardown)
 //
 // Model: a single debounced snapshot (Y.encodeStateAsUpdate) per doc. Simple and
-// correct; an incremental append-log (ofisi-style) is a future optimization. If
+// correct; an incremental append-log (diwan-style) is a future optimization. If
 // `key` is provided the snapshot is AES-GCM sealed at rest; otherwise it is
 // stored plaintext (device-encryption reliant — offlineStatus() reports which).
 //

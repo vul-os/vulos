@@ -13,7 +13,24 @@
 // The existing e2e_peering_test.go fixture wires ONLY InboundMiddleware (no
 // session gate), which is why it stayed green while production was broken — this
 // test closes that blind spot by stacking the real session middleware in front.
-package peering
+//
+// ── Why this file is `package peering_test` ──────────────────────────────────
+//
+// It must import services/auth to stack the REAL session middleware, and
+// auth → devicekey → fleetid → peering. As an in-package (`package peering`)
+// test that is an import cycle, which Go rejects at compile time:
+//
+//	imports vulos/backend/services/auth from e2e_session_stack_test.go
+//	imports .../devicekey → .../fleetid → .../peering: import cycle not allowed in test
+//
+// That was not a soft failure. It made the whole `peering` test binary fail to
+// build, so EVERY test in this package — not just these three — silently stopped
+// running while still looking like coverage. An external test package breaks the
+// cycle (peering_test may import both peering and auth), at the cost of using
+// only peering's exported API. The local fixture below does exactly that; it
+// deliberately does not reuse newTestPeer(), which is in-package and therefore
+// not visible from here.
+package peering_test
 
 import (
 	"bytes"
@@ -23,22 +40,45 @@ import (
 	"testing"
 
 	authsvc "vulos/backend/services/auth"
+	"vulos/backend/services/peering"
 )
+
+// sessionStackPeer is a receiving peer built entirely from peering's exported
+// API (see the package comment above for why newTestPeer is not reused).
+type sessionStackPeer struct {
+	svc      *peering.Service
+	contacts *peering.ContactStore
+}
 
 // newSessionStackServer builds a receiving peer whose HTTP handler is the
 // PRODUCTION composition: authsvc.Handler.Middleware( mux ), where mux mounts
 // /api/peering/inbound/ behind InboundMiddleware. No OS user/session exists on
 // this box, matching a real remote-peer delivery.
-func newSessionStackServer(t *testing.T) (recv *testPeer, srv *httptest.Server) {
+func newSessionStackServer(t *testing.T) (*sessionStackPeer, *httptest.Server) {
 	t.Helper()
-	recv = newTestPeer(t)
+
+	home := t.TempDir()
+	svc := peering.New(home)
+
+	contacts, err := peering.NewContactStore(home)
+	if err != nil {
+		t.Fatalf("NewContactStore: %v", err)
+	}
+	inbox, err := peering.NewInboxStore(home)
+	if err != nil {
+		t.Fatalf("NewInboxStore: %v", err)
+	}
+
+	msgAPI := peering.NewMessageAPI(
+		contacts, inbox, peering.NewPeerClient(), nil, svc.PrivateKey(), svc.VulaID(),
+	)
 
 	// Inner inbound mux: the message handler behind InboundMiddleware.
 	inner := http.NewServeMux()
-	recv.msgAPI.RegisterMessageHandlers(inner)
+	msgAPI.RegisterMessageHandlers(inner)
 
 	mux := http.NewServeMux()
-	mux.Handle("/api/peering/inbound/", InboundMiddleware(recv.contacts, inner))
+	mux.Handle("/api/peering/inbound/", peering.InboundMiddleware(contacts, inner))
 
 	// Real OS session middleware in front, with an EMPTY auth store (no users, no
 	// sessions) — a remote peer never has a session on the receiving box.
@@ -47,32 +87,38 @@ func newSessionStackServer(t *testing.T) (recv *testPeer, srv *httptest.Server) 
 		t.Fatalf("auth.NewStore: %v", err)
 	}
 	authHandler := authsvc.NewHandler(authStore)
-	full := authHandler.Middleware(mux)
 
-	srv = httptest.NewServer(full)
+	srv := httptest.NewServer(authHandler.Middleware(mux))
 	t.Cleanup(srv.Close)
-	return recv, srv
+
+	return &sessionStackPeer{svc: svc, contacts: contacts}, srv
+}
+
+// newSenderPeer is a minimal sending identity — it only ever signs envelopes.
+func newSenderPeer(t *testing.T) *peering.Service {
+	t.Helper()
+	return peering.New(t.TempDir())
 }
 
 // signedMessageEnvelope builds and signs a TypeMessage envelope from sender to
 // recipient.
-func signedMessageEnvelope(t *testing.T, sender *testPeer, toVulaID, body string) *Envelope {
+func signedMessageEnvelope(t *testing.T, sender *peering.Service, toVulaID, body string) *peering.Envelope {
 	t.Helper()
-	payload, err := json.Marshal(MessagePayload{Type: "text", Body: body})
+	payload, err := json.Marshal(peering.MessagePayload{Type: "text", Body: body})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	env, err := NewEnvelope("msg-"+body, sender.svc.VulaID(), toVulaID, TypeMessage, payload)
+	env, err := peering.NewEnvelope("msg-"+body, sender.VulaID(), toVulaID, peering.TypeMessage, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
-	if err := env.Sign(sender.svc.PrivateKey()); err != nil {
+	if err := env.Sign(sender.PrivateKey()); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
 	return env
 }
 
-func postEnvelope(t *testing.T, srvURL, envType string, env *Envelope) *http.Response {
+func postEnvelope(t *testing.T, srvURL, envType string, env *peering.Envelope) *http.Response {
 	t.Helper()
 	raw, err := json.Marshal(env)
 	if err != nil {
@@ -97,13 +143,13 @@ func postEnvelope(t *testing.T, srvURL, envType string, env *Envelope) *http.Res
 // the receiving box.
 func TestE2E_FullStack_SignedEnvelopeDeliversThroughSessionGate(t *testing.T) {
 	recv, srv := newSessionStackServer(t)
-	sender := newTestPeer(t)
+	sender := newSenderPeer(t)
 
 	// Recipient approves the sender as a contact (mutual-trust precondition).
-	if err := recv.contacts.Add(sender.svc.VulaID(), "sender", "sender.example:443"); err != nil {
+	if err := recv.contacts.Add(sender.VulaID(), "sender", "sender.example:443"); err != nil {
 		t.Fatalf("contacts.Add: %v", err)
 	}
-	if err := recv.contacts.Approve(sender.svc.VulaID(), DefaultPerms()); err != nil {
+	if err := recv.contacts.Approve(sender.VulaID(), peering.DefaultPerms()); err != nil {
 		t.Fatalf("contacts.Approve: %v", err)
 	}
 
@@ -122,17 +168,17 @@ func TestE2E_FullStack_SignedEnvelopeDeliversThroughSessionGate(t *testing.T) {
 // by the session middleware.
 func TestE2E_FullStack_UnsignedEnvelopeRejectedByInbound(t *testing.T) {
 	recv, srv := newSessionStackServer(t)
-	sender := newTestPeer(t)
-	if err := recv.contacts.Add(sender.svc.VulaID(), "sender", "sender.example:443"); err != nil {
+	sender := newSenderPeer(t)
+	if err := recv.contacts.Add(sender.VulaID(), "sender", "sender.example:443"); err != nil {
 		t.Fatalf("contacts.Add: %v", err)
 	}
-	if err := recv.contacts.Approve(sender.svc.VulaID(), DefaultPerms()); err != nil {
+	if err := recv.contacts.Approve(sender.VulaID(), peering.DefaultPerms()); err != nil {
 		t.Fatalf("contacts.Approve: %v", err)
 	}
 
 	// Build the envelope but do NOT sign it.
-	payload, _ := json.Marshal(MessagePayload{Type: "text", Body: "unsigned"})
-	env, _ := NewEnvelope("msg-unsigned", sender.svc.VulaID(), recv.svc.VulaID(), TypeMessage, payload)
+	payload, _ := json.Marshal(peering.MessagePayload{Type: "text", Body: "unsigned"})
+	env, _ := peering.NewEnvelope("msg-unsigned", sender.VulaID(), recv.svc.VulaID(), peering.TypeMessage, payload)
 	resp := postEnvelope(t, srv.URL, "message", env)
 	defer resp.Body.Close()
 
@@ -154,7 +200,7 @@ func TestE2E_FullStack_UnsignedEnvelopeRejectedByInbound(t *testing.T) {
 // peering gate through the (now-public) S2S session path.
 func TestE2E_FullStack_UnapprovedSenderRejectedByInbound(t *testing.T) {
 	recv, srv := newSessionStackServer(t)
-	stranger := newTestPeer(t) // never approved on recv
+	stranger := newSenderPeer(t) // never approved on recv
 
 	env := signedMessageEnvelope(t, stranger, recv.svc.VulaID(), "stranger")
 	resp := postEnvelope(t, srv.URL, "message", env)

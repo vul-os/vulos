@@ -36,6 +36,7 @@ TIMEOUT=360
 SHOW=0
 REBUILD=0
 NO_BUILD=0
+SKIP_IF_UNAVAILABLE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,6 +45,12 @@ while [ $# -gt 0 ]; do
     --no-build)  NO_BUILD=1; shift ;;
     --timeout)   TIMEOUT="$2"; shift 2 ;;
     --arch)      ARCH="$2"; shift 2 ;;
+    # For CI on runners that cannot host a VM. Turns a MISSING-TOOL condition
+    # (and only that) into a loud, itemised skip that exits 0. Every other
+    # failure — a build error, a boot hang, a failed assertion — still exits 1.
+    # This exists so the CI step does not need `|| true`, which would swallow
+    # real regressions along with the unavailability.
+    --skip-if-unavailable) SKIP_IF_UNAVAILABLE=1; shift ;;
     -h|--help)   grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -54,6 +61,30 @@ c_b='\033[0;34m'; c_g='\033[0;32m'; c_r='\033[0;31m'; c_d='\033[2m'; c_n='\033[0
 say()  { printf "${c_b}▸ %s${c_n}\n" "$*"; }
 ok()   { printf "${c_g}✓ %s${c_n}\n" "$*"; }
 die()  { printf "${c_r}✗ %s${c_n}\n" "$*" >&2; exit 1; }
+
+# unavailable <what-is-missing> — the environment cannot host this test.
+#
+# Without --skip-if-unavailable this is a hard failure, exactly like die().
+# With it, the test is skipped — but LOUDLY: it names the missing tool and
+# spells out every assertion that was therefore NOT checked, so a green CI run
+# can never be mistaken for "the live USB image boots".
+unavailable() {
+  if [ "$SKIP_IF_UNAVAILABLE" != "1" ]; then
+    die "$*"
+  fi
+  printf "\n${c_r}%s${c_n}\n" "════════════════════════════════════════════════════════════════"
+  printf "${c_r}SKIPPED — SMOKE-02 (live-USB QEMU boot) DID NOT RUN${c_n}\n"
+  printf "${c_r}%s${c_n}\n" "════════════════════════════════════════════════════════════════"
+  printf "Reason: %s\n\n" "$*"
+  printf "The following were NOT verified by this run:\n"
+  printf "  - the live image boots under UEFI to a usable state\n"
+  printf "  - vulos-init runs and the backend reaches /health\n"
+  printf "  - the seeded first-boot flow completes\n"
+  printf "  - no kernel panic or boot hang on the target arch (%s)\n\n" "$ARCH"
+  printf "Run on a host with QEMU + OVMF for real coverage:\n"
+  printf "  bash scripts/smoke-liveusb.sh\n\n"
+  exit 0
+}
 
 # ── Per-arch knobs ────────────────────────────────────────────────────────────
 case "$ARCH" in
@@ -83,19 +114,19 @@ QMP="$OUTDIR/_live-qmp.sock"
 # ── Tool-guard ────────────────────────────────────────────────────────────────
 # QEMU binary
 command -v "$QEMU_BIN" >/dev/null 2>&1 \
-  || die "$QEMU_BIN not found — install QEMU (e.g. brew install qemu)"
+  || unavailable "$QEMU_BIN not found — install QEMU (e.g. brew install qemu)"
 
 # UEFI/OVMF firmware
 [ -f "$EDK2_CODE" ] \
-  || die "UEFI firmware not found: $EDK2_CODE — install QEMU with OVMF firmware (e.g. brew install qemu)"
+  || unavailable "UEFI firmware not found: $EDK2_CODE — install QEMU with OVMF firmware (e.g. brew install qemu)"
 
 [ -f "$EDK2_VARS_SRC" ] \
-  || die "UEFI vars template not found: $EDK2_VARS_SRC"
+  || unavailable "UEFI vars template not found: $EDK2_VARS_SRC"
 
 # docker (only needed for the build step)
 if [ "$NO_BUILD" = "0" ]; then
   command -v docker >/dev/null 2>&1 \
-    || die "docker not found — needed to build the live image (OrbStack or Docker Desktop)"
+    || unavailable "docker not found — needed to build the live image (OrbStack or Docker Desktop)"
 fi
 
 # ── 1. Build ──────────────────────────────────────────────────────────────────

@@ -45,7 +45,7 @@ const AT_REST = [
     note: 'Content-blind end-to-end — including filenames — for cross-instance shares.' },
   { label: 'Mail', state: 'readable',
     note: 'Provider-readable on your instance, by design, so your assistant can read and act on it.' },
-  { label: 'Docs / Ofisi', state: 'readable',
+  { label: 'Docs / Diwan', state: 'readable',
     note: 'Provider-readable on your instance, so it can be indexed, searched and edited.' },
 ]
 
@@ -55,7 +55,7 @@ const EXPORT_COVERS = [
   'Calendar (.ics) & Contacts (.vcf) — if your mail service exposes them',
 ]
 const EXPORT_NOT = [
-  'Ofisi documents (docs, sheets, slides, whiteboards) — not yet exportable here',
+  'Diwan documents (docs, sheets, slides, whiteboards) — not yet exportable here',
   'Chat/video history from third-party comms apps (Cinny/Element, Jitsi Meet/Element Call) — lives with those services, not Vulos',
   'Content held only on a peer instance behind an end-to-end share — that stays',
   'encrypted server-side, so you export it from the box that holds the keys',

@@ -77,7 +77,7 @@ Vulos boots into a fullscreen kiosk browser running the React shell. Native Linu
 curl -fsSL https://get.vulos.org | sudo bash
 ```
 
-Installs `vulos`, `lilmail`, and `vulos-office` (Ofisi, the office suite) as systemd services with shared config under `/etc/vulos/`. LilMail is a mail/calendar/contacts client for a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) — it hosts no mail; point its config at your own account. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup and post-install steps.
+Installs `vulos`, `lilmail`, and `diwan` (the office suite) as systemd services with shared config under `/etc/vulos/`. LilMail is a mail/calendar/contacts client for a mailbox you already own (Gmail/Outlook/any IMAP/SMTP) — it hosts no mail; point its config at your own account. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) for full setup and post-install steps.
 
 ### Option 5 — Build from source (development)
 
@@ -116,7 +116,7 @@ you through:
 4. **Account** — create your admin account (display name, `@vulos` username, password). This is a local account only — Vulos has no cloud sign-in step. Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
 5. **Device PIN** — optional quick-unlock PIN for the lock screen.
 6. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
-7. **Apps** — the default-everything bundle (the owned productivity app **Ofisi** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
+7. **Apps** — the default-everything bundle (the owned productivity app **Diwan** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own (via lilmail) — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
 8. **Appearance**, **Identity** (display name), **Storage** — optionally connect an S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
 9. **SSH** and **Recovery kit** — download your account recovery material.
 10. **Ready** — setup completes and you land on the desktop.

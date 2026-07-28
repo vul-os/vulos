@@ -300,6 +300,24 @@ EOF
 echo ""
 say "Checked ${TOTAL} peering routes."
 
+# COVERAGE ASSERTION.
+#
+# Without this, a routes() table that failed to parse — a mangled heredoc, a
+# tab converted to spaces by an editor, a bad `grep` filter — yields TOTAL=0,
+# FAILURES=0, and this script prints "PASS — all 0 peering routes are wired"
+# and exits 0. That is a gate that passes by doing nothing.
+#
+# The floor is deliberately well below the current route count so that removing
+# a route does not trip it, while a wholesale parse failure does. Raise it if
+# the table grows substantially.
+MIN_ROUTES=40
+if [ "$TOTAL" -lt "$MIN_ROUTES" ]; then
+  err "FAIL — only ${TOTAL} routes were probed, expected at least ${MIN_ROUTES}."
+  err "The route table did not parse correctly, so this run verified almost"
+  err "nothing. Check the routes() heredoc in $0 (it is TAB-separated)."
+  exit 1
+fi
+
 if [ "$FAILURES" -gt 0 ]; then
   err "FAIL — ${FAILURES} route(s) returned 501 (not implemented / not wired)"
   exit 1

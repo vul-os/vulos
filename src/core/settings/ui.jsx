@@ -280,11 +280,10 @@ export function Banner({ tone = 'info', title, children, icon = true }) {
   )
 }
 
-// ── humanBytes — shared byte formatter for meters/readouts. ──────────────────
-export function humanBytes(n) {
-  if (n == null) return '—'
-  const u = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0, v = n
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
-  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`
-}
+// NOTE: a `humanBytes` formatter was exported from here as the "shared" byte
+// formatter, but nothing ever imported it — BoxHealthPanel.jsx and
+// ModelsPanel.jsx each define their own. It was dead code, and being a
+// non-component export it also broke the react-refresh lint rule for this
+// module, so it was removed. The two panel copies are deliberately NOT merged:
+// ModelsPanel's variant renders 0 as "—" and stops at GB, which is different
+// observable behaviour, not a duplicate.

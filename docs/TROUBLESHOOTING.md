@@ -16,7 +16,7 @@ The Go backend writes everything to standard output/error. Where that ends up de
 |------|------------|
 | `vulos.service` | OS backend (port 8443) |
 | `vulos-lilmail.service` | Mail server (ports 25, 587, 8444) |
-| `vulos-ofisi.service` | Office backend (port 8445) |
+| `vulos-diwan.service` | Office backend (port 8445) |
 | `vulos-fabric.service` | Shared fabric identity init (oneshot, runs first) |
 | `vulos-minio.service` | Local object store (only if you chose local MinIO) |
 | `vulos-bundle.target` | Sentinel target for the whole stack |
@@ -24,7 +24,7 @@ The Go backend writes everything to standard output/error. Where that ends up de
 ```bash
 sudo systemctl status vulos-bundle.target        # everything up?
 sudo journalctl -u vulos -n 200 --no-pager       # OS backend log
-sudo journalctl -u vulos -u vulos-lilmail -u vulos-ofisi -n 100
+sudo journalctl -u vulos -u vulos-lilmail -u vulos-diwan -n 100
 sudo journalctl -u vulos -f                      # follow live
 ```
 

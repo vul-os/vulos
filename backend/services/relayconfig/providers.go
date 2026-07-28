@@ -74,7 +74,7 @@ func activeProvider() ReachabilityProvider {
 	return providerFor(cfg.Provider, cfg)
 }
 
-// ICEServers is the ONLY producer of app-media ICE config — Meet/Talk/ofisi
+// ICEServers is the ONLY producer of app-media ICE config — Meet/Talk/diwan
 // (and anything else that opens an RTCPeerConnection) should call this
 // instead of hardcoding STUN/TURN. It NEVER goes dark just because the
 // active provider covers ingress/rendezvous but not ICE (none/libp2p/

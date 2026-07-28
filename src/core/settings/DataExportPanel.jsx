@@ -10,7 +10,7 @@ import { useState, useCallback, useRef } from 'react'
 // STANDARD portable formats that need nothing Vulos to read back.
 //
 // Honesty is a feature here: the panel states plainly what the archive covers
-// AND what it does not (Ofisi docs, chat/video history that lives with
+// AND what it does not (Diwan docs, chat/video history that lives with
 // third-party comms apps rather than Vulos, and content held only on a peer
 // via an end-to-end share), rather than implying completeness. The
 // MANIFEST.txt inside the zip says the same.

@@ -1,7 +1,7 @@
 /**
  * OfflineIndicator.jsx — visible offline banner for Vulos OS (OFFLINE-02 / -03).
  *
- * Consistent with lilmail's OfflineIndicator (MAIL-OFFLINE-01) and Ofisi's
+ * Consistent with lilmail's OfflineIndicator (MAIL-OFFLINE-01) and Diwan's
  * offline UX so the user sees the same chrome wherever the outage hits:
  *
  *   • navigator offline           → "Offline — using local box"

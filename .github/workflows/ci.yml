@@ -190,9 +190,15 @@ jobs:
 
       - name: Run live-USB QEMU smoke test (SMOKE-02)
         # Requires: qemu-system-x86_64, OVMF firmware, docker.
-        # The script is tool-guarded — it exits 0 if QEMU is absent (so the
-        # job does not hard-fail on runners without hardware virtualization).
-        run: bash scripts/smoke-liveusb.sh --no-build || true
+        #
+        # --skip-if-unavailable makes a MISSING TOOL (and only that) a loud,
+        # itemised skip that exits 0 — the log names every assertion that was
+        # not checked. A build error, boot hang, or failed assertion still
+        # exits 1 and fails this job.
+        #
+        # Deliberately NOT `|| true`: that swallowed real boot regressions as
+        # well as unavailability, so this step could never fail for any reason.
+        run: bash scripts/smoke-liveusb.sh --no-build --skip-if-unavailable
 
   docker:
     name: Docker Build

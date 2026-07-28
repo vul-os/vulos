@@ -17,7 +17,7 @@ const JOIN_CODE_RE = /VULOS-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}/i
 // user's own local account on their own box.
 // BUNDLE-01: the 'apps' step ("Your apps") reflects the default-everything
 // (batteries-included, opt-out) bundling model. It is pre-checked for EVERYTHING
-// — a Vulos account handle (enables Mail, still bring-your-own) + the full Ofisi
+// — a Vulos account handle (enables Mail, still bring-your-own) + the full Diwan
 // productivity suite — and lets a lean user opt out. Inserted after 'account' and
 // before 'appearance' so it shows in every new-system flow.
 const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
@@ -165,7 +165,7 @@ export default function Setup({ onComplete }) {
     // Everything is pre-selected; a lean user can uncheck these to trim down.
     //   suiteEmail     — claim a Vulos account handle (also enables the Mail app; Mail itself
     //                    stays a bring-your-own connector, no mailbox is provisioned)
-    //   suiteWorkspace — install the Ofisi productivity app (Docs/Sheets/Slides/PDF/Whiteboards)
+    //   suiteWorkspace — install the Diwan productivity app (Docs/Sheets/Slides/PDF/Whiteboards)
     suiteEmail: true,
     suiteWorkspace: true,
   })
@@ -1314,10 +1314,10 @@ function PinStep({ config, update, onNext, onPrev }) {
 //
 // The founder-confirmed model: the OS ships batteries-included. EVERYTHING is
 // pre-checked — Mail (the lilmail connector, which also backs the built-in
-// Calendar/Contacts widgets) plus the owned productivity app (Ofisi/Docs,
+// Calendar/Contacts widgets) plus the owned productivity app (Diwan/Docs,
 // which now includes whiteboards as a document type). A lean user (e.g. a
 // gamer) can OPT OUT here:
-//   - uncheck productivity apps → drops Ofisi/Docs
+//   - uncheck productivity apps → drops Diwan/Docs
 //   - uncheck Mail              → drops the Mail connector
 // There is no "Workspace" shell — the OS IS the shell. Files, Calendar and
 // Contacts are always present (Calendar/Contacts degrade to "Connect Mail" when
@@ -1391,8 +1391,8 @@ function AppsStep({ config, update, onNext, onPrev }) {
         <OptRow
           checked={workspace}
           onToggle={() => update('suiteWorkspace', !workspace)}
-          title="Install the productivity app — Ofisi"
-          desc="Ofisi — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
+          title="Install the productivity app — Diwan"
+          desc="Diwan — Docs, Sheets, Slides, PDF and Whiteboards. Uncheck for a lean OS without the productivity app. Files, Calendar and Contacts are always included."
           accent="accent-border accent-bg-soft"
         />
       </div>
