@@ -1,11 +1,17 @@
 # Storage Providers — Choosing a Bucket for Your Box
 
-Every Vulos box keeps its object data — Files/Drive, app storage, and the
-encrypted backup vault — on an **S3-compatible object store**. You bring your
-own bucket: the box only ever needs an **endpoint**, a **bucket name**, an
-**access key**, a **secret key**, a **region**, and (for the backup vault) an
-**encryption passphrase**. Vulos operates no storage of its own — the store is
-always something you rent from a third party or run yourself.
+**You do not need a storage provider to run a Vulos box.** By default a box
+keeps its object data — Files/Drive and app storage — as plain files on its own
+disk (`/var/lib/vulos/storage`), with no endpoint, no bucket, no credentials
+and no third-party service involved. This guide is for the case where you
+*choose* to add an **S3-compatible object store**: a second node that must
+serve the same data, or an off-box copy of the bytes.
+
+When you do, you bring your own bucket: the box only ever needs an
+**endpoint**, a **bucket name**, an **access key**, a **secret key**, a
+**region**, and (for the backup vault) an **encryption passphrase**. Vulos
+operates no storage of its own — the store is always something you rent from a
+third party or run yourself.
 
 > **Vulos is free and open-source — we charge nothing, ever.** There is no Vulos
 > subscription, licence, or pricing. Every figure in this guide is a *third-party
@@ -246,6 +252,11 @@ See [GETTING-STARTED.md](GETTING-STARTED.md).
 If you installed with the bundle, edit `/etc/vulos/storage.yaml`:
 
 ```yaml
+# This box's own filesystem — the DEFAULT a new install writes. No provider.
+backend: local
+local:
+  root: /var/lib/vulos/storage
+
 # A hosted S3-compatible provider (R2 / B2 / Wasabi / AWS / Tigris)
 backend: tigris                 # backend selector
 endpoint: https://<your-provider-endpoint>

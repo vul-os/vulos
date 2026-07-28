@@ -1,55 +1,5 @@
 {
   "apps": {
-    "android": {
-      "_note": "OPT-IN / ADVANCED. Runs Android apps with no web/Linux client inside a redroid (github.com/remote-android/redroid-doc) container, managed by the box's backend/services/android Go service. HARDWARE/KERNEL-GATED: needs Docker plus the host kernel's binder+ashmem drivers (built in or modprobe'd); the service reports available:false with the specific missing prerequisite otherwise rather than pretending to work. This install recipe only ensures Docker is present and pre-pulls the image — actual container start/stop and GNSS injection are NOT driven by the generic app launcher's command/port fields, they go through the android service's own owner-gated /api/android/start|stop|location endpoints. Location injection is MOCK-LOCATION ONLY (Android's Location.isMock=true, detectable) via the open-source io.appium.settings helper app; a genuine non-mock GNSS/NMEA HAL feed would require a custom redroid image build and is not implemented. Does NOT unlock banking, tap-to-pay, SafetyNet/Play-Integrity-gated, or attestation-locked apps like ride-hailing — those remain phone-only. UNVERIFIED: authored without access to a real Docker daemon, binder/ashmem kernel modules, or an actual redroid image; needs real-hardware validation before being trusted in production. Registry signature is intentionally blank — this entry is inert until a maintainer runs `go run ./backend/cmd/sign sign-registry -release-priv <key>` (REGISTRY-SIGN-01: VerifyEntrySignature fails closed on an empty/invalid signature).",
-      "admin_only": true,
-      "arch": [
-        "amd64"
-      ],
-      "author": "remote-android/redroid-doc community (container image); Vulos android service (lifecycle management)",
-      "category": "utilities",
-      "description": "Run Android apps that have no web/Linux version, in a container. Opt-in/advanced. Does NOT unlock banking, tap-to-pay, or attestation-locked apps like ride-hailing — those stay phone-only.",
-      "homepage": "https://github.com/remote-android/redroid-doc",
-      "icon": "android",
-      "icon_url": "",
-      "keywords": [
-        "android",
-        "redroid",
-        "compatibility",
-        "container",
-        "docker",
-        "apk",
-        "emulation",
-        "mock-location",
-        "gnss"
-      ],
-      "license": "Apache-2.0",
-      "name": "Android (redroid)",
-      "signature": "",
-      "type": "service",
-      "versions": {
-        "latest": {
-          "install": "apt-get install -y --no-install-recommends docker.io && docker pull redroid/redroid:11.0.0-latest",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
-          "command": "",
-          "port": 0,
-          "post_install": "",
-          "deps": [
-            "docker.io"
-          ],
-          "env": null,
-          "permissions": [
-            "filesystem"
-          ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
-        }
-      },
-      "vetted": true
-    },
     "ardour": {
       "name": "Ardour",
       "vetted": true,

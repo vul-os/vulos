@@ -260,6 +260,63 @@ git commit -am "registry: add <app>"
 If you add an app and forget to sign it, CI fails with the app's name. It cannot
 ship unsigned.
 
+### 5.1 Entries that are not ready to be signed — `registry-unverified.json`
+
+Sometimes an entry is written before it can be validated: the recipe exists, but
+nobody has run it on hardware that has the prerequisites, so its own `_note`
+says **UNVERIFIED**. Signing it would be a lie — a signature says "the trusted
+publisher vouches for this", not "someone typed it out". Excusing it inside
+`make verify-registry` would be worse: an exception path in a security gate is
+how an unsigned entry eventually ships.
+
+So neither happens. `registry.json` stays the **signed set, with no exception
+path**, and an entry that is not fit to sign lives in `registry-unverified.json`
+instead:
+
+| | `registry.json` | `registry-unverified.json` |
+|---|---|---|
+| Signed by the release key | **every entry** | **no entry** (a signature here is a hard failure) |
+| Loaded by the box | yes | **no** — `appnet.LoadRegistry` refuses it |
+| Copied into the image | yes (`Dockerfile`, `build.sh`) | no |
+| Checked by `make verify-registry` | every entry must verify | cross-checked: disjoint, unsigned, marked |
+
+Two independent things keep it out of the trusted path: the filename, and the
+`"_unverified": true` marker inside the file. Either one is enough for
+`LoadRegistry` to refuse it, so neither renaming the file nor stripping the
+marker launders it into the App Hub. The single deliberate way to read it is
+`appnet.LoadUnverifiedRegistry`, which no runtime path calls, logs a banner
+naming every entry it returns, and is refused outright under `VULOS_ENV=prod`
+(which is also the default when `VULOS_ENV` is unset).
+
+`make verify-registry` fails closed if the quarantine file exists and an app ID
+appears in both files, an entry in it carries a signature, it has lost its
+marker, or it is empty (an empty quarantine must be deleted, not left as a
+check that passes by doing nothing). If the file does not exist at all — every
+entry promoted — the run says so explicitly and names what it therefore did not
+cross-check.
+
+#### Promotion — the only route into the signed registry
+
+1. **Validate on real hardware.** Discharge the caveat in the entry's own
+   `_note`: run the install recipe end to end on a box that has the
+   prerequisites. Record what was exercised, on what kernel and host, in the PR.
+2. **Rewrite the caveat.** Edit `_note` so it states what was actually verified.
+   Never promote an entry whose `_note` still says UNVERIFIED — that is the
+   exact state the quarantine exists to keep out of the signed set.
+3. **Move the entry** into `registry.json`'s `apps` object and delete it from
+   `registry-unverified.json`. Delete the whole file once it would be empty.
+4. **Sign**, on the signing machine — CI never holds a private key:
+   ```bash
+   make sign-registry RELEASE_PRIV=/path/to/release.priv.json
+   ```
+5. **Prove it.** `make verify-registry` must report the new entry count and a
+   matching coverage line, and `cd backend && go test ./services/appnet/` must
+   pass. The gate is what promotes the entry; this list is only how you get
+   there.
+
+Demoting is the same in reverse: move the entry out, delete its signature, and
+re-run `make verify-registry`.
+
 ---
 
 ## 6. Rotation and revocation

@@ -21,6 +21,11 @@ CERT         := $(KEYS)/release-cert.json
 RELEASE_PRIV := $(KEYS)/release.priv.json
 REGISTRY     := registry.json
 REGISTRY_FEED := registry-feed.json
+# REGISTRY_UNVERIFIED — the quarantine registry. NOT signed, NOT loaded by the
+# box, NOT copied into the image. verify-registry cross-checks it: the two files
+# must stay disjoint and nothing in here may carry a signature. See the
+# _promotion notes inside the file and docs/KEY-CEREMONY.md.
+REGISTRY_UNVERIFIED := registry-unverified.json
 
 .PHONY: build test-local test-dev test-all coverage help \
         dev-keys sign-registry verify-registry verify-registry-prod \
@@ -86,9 +91,16 @@ sign-registry:
 
 ## verify-registry: verify every registry.json entry against the shipped anchor.
 ## Public keys only — no private key required. This is what CI runs.
+##
+## ABSOLUTE, no exception path: every entry in registry.json must be signed.
+## Entries not yet fit to sign live in $(REGISTRY_UNVERIFIED) instead, which this
+## target cross-checks (disjoint from the signed set, all entries unsigned,
+## refused by appnet.LoadRegistry) — plus a coverage assertion that the number of
+## entries verified is every app ID the file actually contains.
 verify-registry:
 	cd $(BACKEND) && go run ./cmd/sign verify-registry \
-	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
+	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY) \
+	  -unverified ../$(REGISTRY_UNVERIFIED)
 
 ## verify-registry-prod: as above, but REFUSES the dev keypair. Run by the release
 ## workflow so a tag cannot ship an image whose registry is signed by a key whose
@@ -96,7 +108,8 @@ verify-registry:
 ## founder runs the ceremony — the same contract as netboot's os-core.roothash.sig.
 verify-registry-prod:
 	cd $(BACKEND) && go run ./cmd/sign verify-registry -require-prod-keys \
-	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY)
+	  -anchor ../$(ANCHOR) -cert ../$(CERT) -registry ../$(REGISTRY) \
+	  -unverified ../$(REGISTRY_UNVERIFIED)
 
 ## publish-feed: append a signed entry to registry-feed.json recording this
 ## publication of registry.json (anti-rollback distribution, phase 1 — see

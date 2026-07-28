@@ -23,6 +23,27 @@
 //     certain your Tigris account overrides the bucket type at the control plane.
 //   - ConsistencyStrict (StrictMode=true): returns ErrUnsafeBucket and refuses to
 //     construct the Manager.  Recommended for production deployments.
+//
+// # Reachability of the strict path — read this before trusting the guard
+//
+// Both inputs to the strict path are caller-supplied fields on lease.S3Config
+// (BucketType, StrictConsistency), and as of this commit NO production caller
+// sets either one:
+//
+//	services/cluster.(*Cluster).InitLeases   — builds S3Config, sets neither
+//	cmd/server/main.go (backupLeaseCfg)      — builds S3Config, sets neither
+//	cmd/server/cmd_backup.go (leaseCfgFromS3) — builds S3Config, sets neither
+//
+// So in a running box CheckConsistency always takes the "BucketType unknown"
+// branch: it logs and returns nil.  It has never refused anything outside its
+// own tests.  Treat it as a warning, NOT as an enforcement point, until the
+// three call sites above are given a way to populate the two fields (they are
+// outside this package; see the note in the unknown-type warning below).
+//
+// This does not affect the default storage mode: since D-STORE-LOCAL-DEFAULT a
+// box stores its bytes locally, no lease manager is constructed against a
+// hosted bucket at all, and this guard is only reached by an operator who has
+// explicitly opted into a hosted S3 backend.
 package lease
 
 import (
@@ -137,10 +158,19 @@ func CheckConsistency(cfg ConsistencyConfig) error {
 	if cfg.BucketType == "" {
 		// Type is unknown — we cannot prove safety.  Warn and allow, because the
 		// operator may be using a Single/Multi-region bucket without having
-		// configured BucketType.  They should set TIGRIS_BUCKET_TYPE explicitly.
-		log.Printf("[lease WARNING] Tigris endpoint detected (%s) but bucket type is not configured. "+
-			"Set TIGRIS_BUCKET_TYPE=single-region or multi-region to confirm CAS safety. "+
-			"Global and Dual-region buckets are eventually consistent and unsafe for leasing.",
+		// configured BucketType.
+		//
+		// HONESTY NOTE: earlier text here told operators to "set
+		// TIGRIS_BUCKET_TYPE".  Nothing in this repo reads that environment
+		// variable — S3Config.BucketType is populated by the caller and no
+		// production caller populates it — so following that advice changed
+		// nothing.  The message below states what is actually true.
+		log.Printf("[lease WARNING] Tigris endpoint detected (%s) but the bucket's consistency "+
+			"class is unknown to this process, so CAS-lease safety CANNOT be verified here. "+
+			"Global and Dual-region Tigris buckets are eventually consistent and unsafe for "+
+			"leasing; use a Single-region or Multi-region bucket. "+
+			"(Populating lease.S3Config.BucketType/StrictConsistency is not yet wired up at any "+
+			"call site — see the reachability note in guard.go.)",
 			cfg.Endpoint)
 		return nil
 	}

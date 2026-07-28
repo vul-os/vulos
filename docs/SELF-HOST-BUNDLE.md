@@ -130,29 +130,39 @@ curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
 
 ## Storage backends
 
-The bundle supports two storage modes for S3-compatible object storage.
+The bundle supports three storage modes. **The default is your own disk.** No
+hosted storage vendor is contacted, and no credentials are needed, unless you
+ask for one.
 
-### Tigris (default — recommended)
+| Mode | Flag | Where your bytes live | Who can read the disk |
+|---|---|---|---|
+| **Local filesystem** | *(default)* `--storage=local-fs` | `/var/lib/vulos/storage` on this box | you |
+| Co-located MinIO | `--storage=minio` | MinIO on this box, `127.0.0.1:9000` | you |
+| Tigris (hosted) | `--storage=tigris` | a third party's bucket | you and Tigris |
 
-[Tigris](https://www.tigrisdata.com) is an S3-compatible hosted object store
-that runs close to your users. It requires no local disk for object data.
+### Local filesystem (default)
 
 ```bash
-# Default — uses Tigris
+# Default — nothing to configure, nothing to sign up for
 curl -fsSL https://get.vulos.org | sudo bash
-
-# Then edit:
-sudo nano /etc/vulos/storage.yaml
-# → Set access_key, secret_key, and bucket
 ```
 
-Create a bucket directly at [storage.tigris.dev](https://storage.tigris.dev).
-Tigris is S3-compatible and works from anywhere over the public network ($0 egress).
+The OS stores object bytes as plain files under `/var/lib/vulos/storage`,
+mirroring the bucket/key layout an object store would have used. There is no
+endpoint, no access key, and no network call in the storage path at all. Back
+it up like any other directory — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
-### Local MinIO (complete BYO / air-gap)
+Choose one of the other two when you have an actual reason to:
 
-MinIO provides S3-compatible storage on your own disk. Choose this for
-complete self-hosting with no external dependencies.
+- **more than one node** must serve the same data → co-located MinIO plus the
+  sync layer;
+- you want an **off-box copy** of the bytes and accept that a third party holds
+  them → a hosted S3 provider.
+
+### Local MinIO (multi-node, S3 API on your own hardware)
+
+MinIO provides S3-compatible storage on your own disk. Choose it when
+something needs a real S3 API — chiefly replication between your own nodes.
 
 ```bash
 curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
@@ -169,6 +179,37 @@ download and uses the existing binary. Set `--storage=minio` to point the
 bundle at it; then configure `/etc/vulos/storage.yaml` with the existing
 endpoint and credentials.
 
+### Tigris (hosted — opt in)
+
+[Tigris](https://www.tigrisdata.com) is an S3-compatible **hosted** object
+store. Choosing it means a company other than you stores your box's object
+data. It is a legitimate choice — off-box durability without running storage
+hardware — but it is a choice, not the default.
+
+```bash
+curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=tigris
+
+# Then edit:
+sudo nano /etc/vulos/storage.yaml
+# → Set access_key, secret_key, and bucket
+```
+
+Create a bucket directly at [storage.tigris.dev](https://storage.tigris.dev).
+Tigris works from anywhere over the public network ($0 egress). Note the
+consistency caveat in [COORDINATION.md](../roadmap/COORDINATION.md): only
+Single-region and Multi-region Tigris buckets are strongly consistent, and the
+bucket lease refuses/warns on the eventually-consistent classes.
+
+### Changing backends later
+
+The installer **never** rewrites an existing `/etc/vulos/storage.yaml` and
+**never** migrates data between backends. Re-running it on a box that already
+has one reports the backend it found and leaves it alone — including when a
+`--storage=` flag disagrees, which it reports rather than half-applies.
+
+To move deliberately: stop the bundle, copy the bytes to the new backend
+yourself, then edit `/etc/vulos/storage.yaml`.
+
 ---
 
 ## Installer flags
@@ -176,10 +217,13 @@ endpoint and credentials.
 | Flag | Default | Description |
 |---|---|---|
 | `--dry-run` | off | Print the install plan without making changes |
-| `--storage=tigris` | on | Use Tigris S3-compatible hosted storage |
-| `--storage=minio` | off | Install + use local MinIO (`--storage=local` is an alias) |
+| `--storage=local-fs` | **on** | Store object data on this box's filesystem — no object store, no credentials, no third-party service |
+| `--storage=minio` | off | Install + use co-located MinIO (`--storage=local` is a legacy alias for this) |
+| `--storage=tigris` | off | Opt in to hosted Tigris S3 storage (a third party holds your data) |
 | `--no-enable` | off | Install units but do not enable/start services (useful in CI or containers) |
 | `--help` | — | Print usage and exit |
+
+An existing `/etc/vulos/storage.yaml` outranks every `--storage=` flag.
 
 ---
 
@@ -190,7 +234,7 @@ All three services share the same config and data roots:
 ```
 /etc/vulos/
   fabric.yaml       — shared mesh identity, domain, TLS
-  storage.yaml      — S3/MinIO credentials and backend selector
+  storage.yaml      — storage backend selector (local by default; S3/MinIO credentials when used)
   vulos.yaml        — OS backend config (inherits from fabric + storage)
   lilmail/
     config.toml     — LilMail config (point [imap] at your own mailbox)
@@ -205,6 +249,7 @@ All three services share the same config and data roots:
     cache/              — LilMail durable store (bbolt) + attachment staging
   office/
     uploads/            — office file uploads
+  storage/            — object bytes (default local-fs backend)
   minio/              — MinIO data (only when --storage=minio)
     .minio_secret     — MinIO root password (mode 600)
 ```

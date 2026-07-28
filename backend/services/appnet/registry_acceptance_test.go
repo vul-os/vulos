@@ -17,6 +17,11 @@ package appnet
 // Both halves stage the trust anchor + release cert into a temp directory and
 // point the resolver at it, which is exactly what /etc/vulos looks like on a
 // real box (see Dockerfile and scripts/seed/embed-anchor.sh).
+//
+// "EVERY entry signed" here is absolute and has no quarantine or pending state.
+// An entry not yet fit to be signed is not excused — it is moved out of
+// registry.json entirely, into registry-unverified.json, which nothing loads.
+// See registry_quarantine_test.go and docs/KEY-CEREMONY.md § 5.1.
 
 import (
 	"context"

@@ -4,6 +4,12 @@
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
 #
+# Storage default (D-STORE-LOCAL-DEFAULT): a new install stores its bytes on
+# THIS box's filesystem. No hosted object-storage vendor is contacted, and no
+# credentials are needed, unless the operator asks for one with --storage=.
+# An install that already has /etc/vulos/storage.yaml keeps whatever that file
+# says — see the "Storage mode selection" section below.
+#
 # Installs and supervises three co-located services on one machine:
 #   1. vulos    — Vulos OS backend (API gateway + app fabric)
 #   2. lilmail  — self-hosted mail/calendar/contacts CLIENT (github.com/vul-os/lilmail)
@@ -44,19 +50,42 @@ set -euo pipefail
 # ── Flags ─────────────────────────────────────────────────────────────────────
 
 DRY_RUN=false
-STORAGE_MODE="tigris"    # tigris | minio | local
+# Storage backend for this box. DEFAULT: local-fs — the box's own disk. The
+# hosted option (tigris) is opt-in only; the suite's posture is self-hosted
+# with no hosted third-party service as a default.
+#   local-fs — this box's filesystem (${DATA_DIR}/storage). No vendor, no creds.
+#   minio    — co-located MinIO object store on this box (still self-hosted).
+#   tigris   — HOSTED, third-party S3 (tigrisdata.com). Explicit opt-in.
+STORAGE_MODE="local-fs"
+# How STORAGE_MODE was arrived at ("default" | "flag" | "existing config").
+# Filled in by the storage-mode selection block below and printed verbatim so
+# the choice is legible rather than implicit.
+STORAGE_MODE_SOURCE="default"
+STORAGE_MODE_WHY=""
 INSTALL_MINIO=false
 SKIP_ENABLE=false        # do not enable/start services (CI / container use)
 
 for arg in "$@"; do
   case "${arg}" in
     --dry-run)           DRY_RUN=true ;;
-    --storage=minio)     STORAGE_MODE="minio"; INSTALL_MINIO=true ;;
-    --storage=local)     STORAGE_MODE="minio"; INSTALL_MINIO=true ;;  # alias
-    --storage=tigris)    STORAGE_MODE="tigris" ;;
+    --storage=local-fs)  STORAGE_MODE="local-fs"; STORAGE_MODE_SOURCE="flag" ;;
+    --storage=minio)     STORAGE_MODE="minio";  INSTALL_MINIO=true; STORAGE_MODE_SOURCE="flag" ;;
+    # Legacy alias, kept so existing invocations keep meaning what they meant:
+    # --storage=local has always installed MinIO. Use --storage=local-fs for
+    # the plain-filesystem mode (which is now the default anyway).
+    --storage=local)     STORAGE_MODE="minio";  INSTALL_MINIO=true; STORAGE_MODE_SOURCE="flag" ;;
+    --storage=tigris)    STORAGE_MODE="tigris"; STORAGE_MODE_SOURCE="flag" ;;
     --no-enable)         SKIP_ENABLE=true ;;
     --help|-h)
-      printf "Usage: install-vulos.sh [--dry-run] [--storage=tigris|minio] [--no-enable]\n"
+      printf "Usage: install-vulos.sh [--dry-run] [--storage=local-fs|minio|tigris] [--no-enable]\n\n"
+      printf "  --storage=local-fs  (DEFAULT) store data on this box's filesystem.\n"
+      printf "                      No object store, no credentials, no third-party service.\n"
+      printf "  --storage=minio     install and use a co-located MinIO object store\n"
+      printf "                      on this box (self-hosted; '--storage=local' is an alias).\n"
+      printf "  --storage=tigris    OPT-IN: use hosted Tigris S3 (a third-party service\n"
+      printf "                      that will hold your data). Requires your own credentials.\n\n"
+      printf "  An existing /etc/vulos/storage.yaml always wins over the default:\n"
+      printf "  re-running this installer never rewrites it and never migrates your data.\n"
       exit 0
       ;;
     *)
@@ -99,9 +128,13 @@ plan()  { printf "%s  [DRY-RUN]%s %b\n"   "${YEL}" "${RST}" "$*"; }
 VULOS_USER="vulos"
 VULOS_GROUP="vulos"
 
-# Shared dirs (co-located bundle — all three services share these)
-CONFIG_DIR="/etc/vulos"
-DATA_DIR="/var/lib/vulos"
+# Shared dirs (co-located bundle — all three services share these).
+# The two overrides exist so the storage-mode selection path can be exercised
+# by scripts/test-storage-mode.sh against a scratch tree instead of the real
+# /etc. They are NOT a supported relocation of an install: everything else
+# (systemd units, hardening paths) still assumes the canonical locations.
+CONFIG_DIR="${VULOS_INSTALL_CONFIG_DIR:-/etc/vulos}"
+DATA_DIR="${VULOS_INSTALL_DATA_DIR:-/var/lib/vulos}"
 
 # Per-service config files (under the shared CONFIG_DIR)
 FABRIC_CONFIG="${CONFIG_DIR}/fabric.yaml"
@@ -149,6 +182,88 @@ UNIT_BUNDLE="${SYSTEMD_DIR}/vulos-bundle.target"
 # OpenRC init scripts
 OPENRC_DIR="/etc/init.d"
 
+# ── Storage mode selection (D-STORE-LOCAL-DEFAULT) ────────────────────────────
+#
+# Precedence, highest first:
+#   1. an existing ${STORAGE_CONFIG} — an install that is ALREADY running keeps
+#      running exactly as it is. This file is never rewritten by this script
+#      and no data is ever migrated between backends.
+#   2. an explicit --storage= flag — for a NEW install.
+#   3. the default: local-fs, this box's own disk.
+#
+# Rule 1 outranks rule 2 for the config FILE (which we refuse to touch either
+# way); when the two disagree we say so loudly instead of quietly doing half of
+# each.
+
+# existing_storage_backend prints the top-level `backend:` value from an
+# existing storage.yaml, or nothing when the file is absent/unparseable.
+existing_storage_backend() {
+  [ -f "${STORAGE_CONFIG}" ] || return 0
+  sed -n 's/^backend:[[:space:]]*"\{0,1\}\([A-Za-z0-9_-]\{1,\}\)"\{0,1\}.*/\1/p' \
+      "${STORAGE_CONFIG}" 2>/dev/null | head -n 1
+}
+
+EXISTING_BACKEND="$(existing_storage_backend)"
+
+if [ -n "${EXISTING_BACKEND}" ]; then
+  # Map the on-disk backend name onto this script's mode vocabulary.
+  case "${EXISTING_BACKEND}" in
+    tigris)                    EXISTING_MODE="tigris" ;;
+    minio)                     EXISTING_MODE="minio" ;;
+    local|local-fs|filesystem) EXISTING_MODE="local-fs" ;;
+    *)                         EXISTING_MODE="" ;;
+  esac
+
+  if [ -z "${EXISTING_MODE}" ]; then
+    warn "${STORAGE_CONFIG} declares an unrecognised backend '${EXISTING_BACKEND}'.\nLeaving it exactly as it is. This installer will not change your storage."
+    STORAGE_MODE="${EXISTING_BACKEND}"
+    STORAGE_MODE_SOURCE="existing config"
+    STORAGE_MODE_WHY="${STORAGE_CONFIG} already exists and declares backend '${EXISTING_BACKEND}' (not recognised by this installer, left untouched)"
+  elif [ "${STORAGE_MODE_SOURCE}" = "flag" ] && [ "${STORAGE_MODE}" != "${EXISTING_MODE}" ]; then
+    warn "--storage=${STORAGE_MODE} was requested but ${STORAGE_CONFIG} already declares backend '${EXISTING_BACKEND}'.\nAn existing install is never repointed and its data is never migrated: keeping '${EXISTING_MODE}'.\nTo change backends deliberately: stop the bundle, migrate your data yourself, then edit ${STORAGE_CONFIG}."
+    STORAGE_MODE="${EXISTING_MODE}"
+    STORAGE_MODE_SOURCE="existing config"
+    STORAGE_MODE_WHY="${STORAGE_CONFIG} already exists and declares backend '${EXISTING_BACKEND}' — an existing install is kept as-is (the --storage flag was ignored)"
+  else
+    STORAGE_MODE="${EXISTING_MODE}"
+    STORAGE_MODE_SOURCE="existing config"
+    STORAGE_MODE_WHY="${STORAGE_CONFIG} already exists and declares backend '${EXISTING_BACKEND}' — this install is kept exactly as it is"
+  fi
+  # A box already declaring MinIO needs the MinIO unit maintained on re-runs.
+  [ "${STORAGE_MODE}" = "minio" ] && INSTALL_MINIO=true
+elif [ "${STORAGE_MODE_SOURCE}" = "flag" ]; then
+  case "${STORAGE_MODE}" in
+    tigris)
+      STORAGE_MODE_WHY="--storage=tigris was passed — OPT-IN to hosted third-party object storage (tigrisdata.com); you supply the credentials" ;;
+    minio)
+      STORAGE_MODE_WHY="--storage=minio was passed — a co-located MinIO object store on this box (still self-hosted)" ;;
+    *)
+      STORAGE_MODE_WHY="--storage=local-fs was passed — this box's own filesystem" ;;
+  esac
+else
+  STORAGE_MODE_WHY="new install, no --storage flag and no ${STORAGE_CONFIG} — defaulting to this box's own filesystem, so nothing is sent to a third-party service"
+fi
+
+# storage_mode_banner prints the selection and its reason. Both the dry-run
+# plan and the real run call it, so what you are told in a dry run is exactly
+# what the install does.
+storage_mode_banner() {
+  local emit="$1"   # "plan" or "info"
+  local hosted_note="self-hosted — no third-party service holds your data"
+  case "${STORAGE_MODE}" in
+    tigris)   hosted_note="HOSTED — your data is stored by a third party (tigrisdata.com)" ;;
+    minio)    hosted_note="self-hosted — co-located MinIO on this box, port 9000, loopback only" ;;
+    local-fs) hosted_note="self-hosted — plain files under ${DATA_DIR}/storage on this box" ;;
+  esac
+  "${emit}" "Storage mode:   ${STORAGE_MODE}  [${STORAGE_MODE_SOURCE}]"
+  "${emit}" "  ${hosted_note}"
+  "${emit}" "  Why: ${STORAGE_MODE_WHY}"
+  if [ "${STORAGE_MODE}" != "tigris" ]; then
+    "${emit}" "  Want hosted object storage instead? Re-run a FRESH install with"
+    "${emit}" "  --storage=tigris, or edit ${STORAGE_CONFIG} yourself. It is never the default."
+  fi
+}
+
 # ── Dry-run: print plan and exit ──────────────────────────────────────────────
 
 if [ "${DRY_RUN}" = "true" ]; then
@@ -170,6 +285,9 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "  ${DATA_DIR}/vulos/        — OS backend data"
   plan "  ${DATA_DIR}/lilmail/      — lilmail durable store (bbolt) + cache"
   plan "  ${DATA_DIR}/office/       — office suite data + uploads"
+  if [ "${STORAGE_MODE}" = "local-fs" ]; then
+    plan "  ${DATA_DIR}/storage/      — object bytes (default local-fs backend)"
+  fi
   if [ "${INSTALL_MINIO}" = "true" ]; then
     plan "  ${DATA_DIR}/minio/        — MinIO object store data"
   fi
@@ -183,14 +301,22 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "${BUNDLE_CONFIG}    — bundle-level metadata"
 
   printf "\n${BLD}Storage backend:${RST}\n"
-  if [ "${STORAGE_MODE}" = "tigris" ]; then
-    plan "Tigris (S3-compatible hosted object storage — https://www.tigrisdata.com)"
-    plan "Credentials: set TIGRIS_ACCESS_KEY and TIGRIS_SECRET_KEY in ${STORAGE_CONFIG}"
-  else
-    plan "Local MinIO (BYO — installed at /usr/local/bin/minio)"
-    plan "API endpoint: http://127.0.0.1:9000"
-    plan "Data:         ${DATA_DIR}/minio/"
-  fi
+  storage_mode_banner plan
+  case "${STORAGE_MODE}" in
+    tigris)
+      plan "Tigris (S3-compatible hosted object storage — https://www.tigrisdata.com)"
+      plan "Credentials: set TIGRIS_ACCESS_KEY and TIGRIS_SECRET_KEY in ${STORAGE_CONFIG}"
+      ;;
+    minio)
+      plan "Local MinIO (BYO — installed at /usr/local/bin/minio)"
+      plan "API endpoint: http://127.0.0.1:9000"
+      plan "Data:         ${DATA_DIR}/minio/"
+      ;;
+    local-fs)
+      plan "This box's filesystem — no object store, no credentials, no network"
+      plan "Data:         ${DATA_DIR}/storage/"
+      ;;
+  esac
 
   printf "\n${BLD}Service ordering (systemd):${RST}\n"
   plan "network-online.target"
@@ -591,9 +717,14 @@ install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/office"
 if [ "${INSTALL_MINIO}" = "true" ]; then
   install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/minio"
 fi
+if [ "${STORAGE_MODE}" = "local-fs" ]; then
+  # The default backend's data root. Created here so the very first write does
+  # not depend on the service being able to mkdir under ProtectSystem=strict.
+  install -d -m 750 -o "${VULOS_USER}" -g "${VULOS_GROUP}" "${DATA_DIR}/storage"
+fi
 
 info "Config dir:  ${CONFIG_DIR}/"
-info "Data dir:    ${DATA_DIR}/ (vulos/ mail/ office/$([ "${INSTALL_MINIO}" = "true" ] && printf " minio/" || true))"
+info "Data dir:    ${DATA_DIR}/ (vulos/ mail/ office/$([ "${STORAGE_MODE}" = "local-fs" ] && printf " storage/" || true)$([ "${INSTALL_MINIO}" = "true" ] && printf " minio/" || true))"
 
 # ── Write default fabric config ───────────────────────────────────────────────
 
@@ -639,14 +770,21 @@ fi
 
 step "Writing shared storage config"
 
+storage_mode_banner info
+
 if [ ! -f "${STORAGE_CONFIG}" ]; then
-  if [ "${STORAGE_MODE}" = "tigris" ]; then
-    cat > "${STORAGE_CONFIG}" <<'YAML'
-# /etc/vulos/storage.yaml — shared S3 storage selector
+  case "${STORAGE_MODE}" in
+    tigris)
+      cat > "${STORAGE_CONFIG}" <<'YAML'
+# /etc/vulos/storage.yaml — shared storage selector
 # Shared by vulos, lilmail, and diwan.
 #
-# backend: tigris   — Tigris hosted S3-compatible storage (recommended)
+# backend: local    — this box's own filesystem (DEFAULT for new installs)
 # backend: minio    — local MinIO running on this machine
+# backend: tigris   — Tigris HOSTED S3-compatible storage (a third party
+#                     stores your data; you supply the credentials)
+#
+# This box was installed with --storage=tigris.
 
 backend: "tigris"
 
@@ -657,10 +795,15 @@ tigris:
   secret_key: ""    # REQUIRED — set TIGRIS_SECRET_KEY or fill here
   bucket:     ""    # REQUIRED — e.g. "vulos-bundle-yourdomain"
 YAML
-  else
-    cat > "${STORAGE_CONFIG}" <<YAML
-# /etc/vulos/storage.yaml — shared S3 storage selector (local MinIO)
+      ;;
+    minio)
+      cat > "${STORAGE_CONFIG}" <<YAML
+# /etc/vulos/storage.yaml — shared storage selector (co-located MinIO)
 # Shared by vulos, lilmail, and diwan.
+#
+# backend: local    — this box's own filesystem (DEFAULT for new installs)
+# backend: minio    — local MinIO running on this machine  <-- this box
+# backend: tigris   — Tigris HOSTED S3-compatible storage (opt-in)
 
 backend: "minio"
 
@@ -670,12 +813,39 @@ minio:
   secret_key_file:   "${DATA_DIR}/minio/.minio_secret"
   bucket:            "vulos-bundle"
 YAML
-  fi
+      ;;
+    *)
+      cat > "${STORAGE_CONFIG}" <<YAML
+# /etc/vulos/storage.yaml — shared storage selector (this box's filesystem)
+# Shared by vulos, lilmail, and diwan.
+#
+# backend: local    — this box's own filesystem  <-- this box, the DEFAULT
+# backend: minio    — local MinIO running on this machine
+# backend: tigris   — Tigris HOSTED S3-compatible storage
+#
+# The default is deliberately local: nothing here talks to a storage vendor,
+# there are no credentials to leak, and the box works with no network at all.
+#
+# Opt into an object store when you actually need one:
+#   - more than one node serving the same data (MinIO + the sync layer), or
+#   - you want an off-box copy of the bytes and accept that a third party
+#     holds them (tigris).
+# Switching later is a manual, deliberate operation: stop the bundle, copy the
+# bytes out of ${DATA_DIR}/storage yourself, then edit this file. Neither this
+# installer nor the OS will migrate your data behind your back.
+
+backend: "local"
+
+local:
+  root: "${DATA_DIR}/storage"
+YAML
+      ;;
+  esac
   chmod 640 "${STORAGE_CONFIG}"
   chown root:"${VULOS_GROUP}" "${STORAGE_CONFIG}"
   info "Storage config written: ${STORAGE_CONFIG} (backend=${STORAGE_MODE})"
 else
-  info "Storage config already exists — not overwriting."
+  info "Storage config already exists — not overwriting (your existing backend '${EXISTING_BACKEND:-unknown}' is kept)."
 fi
 
 # ── Write per-service configs ─────────────────────────────────────────────────
@@ -1265,15 +1435,25 @@ printf "${BLD}Next steps:${RST}\n\n"
 printf "  1. ${BLD}Edit the shared config:${RST}\n"
 printf "     ${CYN}sudo nano ${FABRIC_CONFIG}${RST}\n"
 printf "     → Set your domain and acme_email.\n\n"
-if [ "${STORAGE_MODE}" = "tigris" ]; then
-  printf "  2. ${BLD}Set Tigris credentials:${RST}\n"
-  printf "     ${CYN}sudo nano ${STORAGE_CONFIG}${RST}\n"
-  printf "     → Set access_key, secret_key, and bucket.\n\n"
-else
-  printf "  2. ${BLD}MinIO secret:${RST}\n"
-  printf "     ${CYN}sudo cat ${DATA_DIR}/minio/.minio_secret${RST}\n"
-  printf "     → Set MINIO_ROOT_PASSWORD in /etc/default/vulos-minio\n\n"
-fi
+case "${STORAGE_MODE}" in
+  tigris)
+    printf "  2. ${BLD}Set Tigris credentials:${RST}\n"
+    printf "     ${CYN}sudo nano ${STORAGE_CONFIG}${RST}\n"
+    printf "     → Set access_key, secret_key, and bucket.\n"
+    printf "     → This box stores your data with a third party (tigrisdata.com).\n\n"
+    ;;
+  minio)
+    printf "  2. ${BLD}MinIO secret:${RST}\n"
+    printf "     ${CYN}sudo cat ${DATA_DIR}/minio/.minio_secret${RST}\n"
+    printf "     → Set MINIO_ROOT_PASSWORD in /etc/default/vulos-minio\n\n"
+    ;;
+  *)
+    printf "  2. ${BLD}Storage: nothing to do.${RST}\n"
+    printf "     → Your data lives on this box, at ${CYN}${DATA_DIR}/storage${RST}.\n"
+    printf "     → No credentials, no object store, no third-party service.\n"
+    printf "     → Back it up like any other directory (see docs/BACKUP-RECOVERY.md).\n\n"
+    ;;
+esac
 printf "  3. ${BLD}Generate the fabric keypair:${RST}\n"
 printf "     ${CYN}sudo -u ${VULOS_USER} ${BIN_VULOS} keygen --fabric${RST}\n"
 printf "     (lilmail needs no keypair — it signs in to your own mailbox.)\n\n"

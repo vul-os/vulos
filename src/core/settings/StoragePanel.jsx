@@ -10,22 +10,30 @@ import { Section, Card, Field, InfoList, InfoRow, Banner, Pill } from './ui.jsx'
 // The anchor inbox is ALWAYS on Tigris regardless of the mode selected here.
 // ---------------------------------------------------------------------------
 
+// D-STORE-LOCAL-DEFAULT: the default is this device's own disk. Both other
+// modes are opt-ins, and the hosted one is labelled as hosted. Keep these
+// values in sync with backend/internal/storagemode (Mode constants).
 const MODES = [
   {
-    value: 'central-tigris',
-    label: 'Tigris (default)',
-    desc: 'Read and write directly to the hosted Tigris bucket. No local sync layer engaged.',
+    value: 'local-fs',
+    label: 'This device (default)',
+    desc: 'Keep everything on this device’s own disk. No object store, no credentials, and nothing is sent to a third-party service.',
   },
   {
     value: 'local-minio-sync',
     label: 'Local MinIO + Sync',
-    desc: 'Read and write a co-located MinIO source-of-truth. The CRDT sync layer replicates between nodes.',
+    desc: 'Read and write a co-located MinIO source-of-truth. The CRDT sync layer replicates between nodes. Still self-hosted.',
+  },
+  {
+    value: 'central-tigris',
+    label: 'Tigris (hosted — opt in)',
+    desc: 'Read and write directly to the hosted Tigris bucket. A third party stores your data. No local sync layer engaged.',
   },
 ]
 
 export default function StoragePanel() {
   const [cfg, setCfg] = useState(null)
-  const [mode, setMode] = useState('central-tigris')
+  const [mode, setMode] = useState('local-fs')
   const [endpoint, setEndpoint] = useState('')
   const [region, setRegion] = useState('')
   const [bucket, setBucket] = useState('')
@@ -46,7 +54,7 @@ export default function StoragePanel() {
       .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
       .then(d => {
         setCfg(d)
-        setMode(d.mode || 'central-tigris')
+        setMode(d.mode || 'local-fs')
         setEndpoint(d.minio_endpoint || '')
         setRegion(d.minio_region || '')
         setBucket(d.minio_bucket || '')
@@ -102,7 +110,7 @@ export default function StoragePanel() {
       <Card
         icon="storagemode"
         title="Backend"
-        desc="Tigris keeps everything on the hosted bucket. Local MinIO makes a co-located node the source of truth and replicates over CRDT sync."
+        desc="The default keeps everything on this device. Local MinIO makes a co-located node the source of truth and replicates over CRDT sync. Tigris hands your data to a hosted third party — pick it deliberately."
         footer={
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--text-tertiary)]">

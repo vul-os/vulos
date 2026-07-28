@@ -150,9 +150,12 @@ export default function Setup({ onComplete }) {
     IS05_storageSizeGb: 20,
     IS05_storagePassword: '',
     IS05_storagePassphrase: '',
-    // STORE-LOCAL-01: bundle storage mode. Defaults to central-tigris.
-    // 'local-minio-sync' opts the bundle into the local-MinIO-with-sync path.
-    IS05_storageMode: 'central-tigris',
+    // STORE-LOCAL-01 / D-STORE-LOCAL-DEFAULT: bundle storage mode. Defaults to
+    // local-fs — this box's own disk, no third-party service. 'local-minio-sync'
+    // opts into the local-MinIO-with-sync path; 'central-tigris' opts into
+    // hosted storage. A fresh box must never be pushed onto hosted storage by
+    // the wizard's default.
+    IS05_storageMode: 'local-fs',
     IS05_storageMinioEndpoint: 'http://127.0.0.1:9000',
     IS05_storageMinioRegion: 'auto',
     IS05_storageMinioBucket: 'vulos-bundle',
@@ -1624,9 +1627,12 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
     } catch {
       // degrade gracefully
     }
-    // STORE-LOCAL-01: persist the bundle storage mode. Default (central-tigris)
-    // is still POSTed so the row is materialised and the dashboard reflects it
-    // — the env contract for the default mode is just VULOS_STORAGE_MODE.
+    // STORE-LOCAL-01: persist the bundle storage mode. Whatever the operator
+    // left selected is POSTed so the row is materialised and the dashboard
+    // reflects it — the env contract for the local-fs default is just
+    // VULOS_STORAGE_MODE. This must send the SELECTED mode, not a hard-coded
+    // one: hard-coding a hosted backend here would put every fresh box on
+    // hosted storage no matter what the default says.
     try {
       const modeBody = config.IS05_storageMode === 'local-minio-sync'
         ? {
@@ -1636,7 +1642,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
             minio_bucket: config.IS05_storageMinioBucket,
             minio_creds_ref: config.IS05_storageMinioCredsRef,
           }
-        : { mode: 'central-tigris' }
+        : { mode: config.IS05_storageMode || 'local-fs' }
       await fetch('/api/storagemode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1693,15 +1699,16 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
       <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
         <div className="text-sm text-neutral-200 mb-2">{t('Bundle Storage Mode')}</div>
         <div className="text-[11px] text-neutral-600 mb-2">
-          {t('Central Tigris is the default — direct hosted S3. Local MinIO + sync runs a local source-of-truth and replicates between Vulos nodes via the CRDT layer.')}
+          {t('This device is the default — your data stays on this box, with no object store and no third-party service. Local MinIO + sync runs a local source-of-truth and replicates between Vulos nodes via the CRDT layer. Central Tigris hands your data to a hosted third party.')}
         </div>
         <select
           value={config.IS05_storageMode}
           onChange={e => update('IS05_storageMode', e.target.value)}
           className="input text-sm py-2"
         >
-          <option value="central-tigris">{t('Central Tigris (default — direct hosted S3)')}</option>
+          <option value="local-fs">{t('This device (default — no third-party service)')}</option>
           <option value="local-minio-sync">{t('Local MinIO + CRDT sync (opt-in)')}</option>
+          <option value="central-tigris">{t('Central Tigris (opt-in — hosted third-party S3)')}</option>
         </select>
 
         {config.IS05_storageMode === 'local-minio-sync' && (

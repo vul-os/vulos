@@ -41,7 +41,13 @@ run_step "go test -race ./..." \
 run_step "go test -tags=e2e (firstboot/e2e)" \
   bash -c "cd '$BACKEND' && go test -tags=e2e -timeout 2m -v ./firstboot/e2e/..."
 
-# ── Step 3: frontend build ────────────────────────────────────────────────────
+# ── Step 3: installer storage-mode gate ───────────────────────────────────────
+# Runs install-vulos.sh's dry-run mode-selection path for real (scratch config
+# dir, nothing installed). Fails closed with a coverage assertion.
+run_step "storage-mode selection gate" \
+  bash "$ROOT/scripts/test-storage-mode.sh"
+
+# ── Step 4: frontend build ────────────────────────────────────────────────────
 if [[ "${SKIP_NPM:-0}" == "1" ]]; then
   echo ""
   echo "  SKIP: npm run build (SKIP_NPM=1)"

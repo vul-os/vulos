@@ -365,10 +365,28 @@ func (e *RegistryEntry) GetRecipe(version string) *VersionRecipe {
 }
 
 // LoadRegistry reads a registry.json file.
+//
+// It REFUSES the unverified quarantine registry (see UnverifiedRegistryFile).
+// That refusal is what lets `make verify-registry` and the REGISTRY-SIGN-02
+// acceptance suite stay absolute — "every entry in the signed registry is signed
+// by the trusted publisher", with no exception path inside the gate — while an
+// entry that has not yet earned a signature still keeps its work and its
+// caveats on disk.  Without this check, VULOS_REGISTRY=<quarantine> would load
+// unsigned entries into the App Hub's catalogue; they would still fail closed at
+// install time (VerifyEntrySignature), but they would be listed as installable,
+// which is exactly the "looks trusted" state the split exists to prevent.
 func LoadRegistry(path string) (*Registry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+	if quarantined, why := isQuarantineRegistry(path, data); quarantined {
+		return nil, fmt.Errorf("%w: %s (%s) — its entries are NOT signed and NOT trusted; "+
+			"the signed catalogue is registry.json. To read it deliberately, call "+
+			"LoadUnverifiedRegistry (loudly logged, refused when VULOS_ENV=prod). To ship an "+
+			"entry, promote it: real-hardware validation, then `make sign-registry` "+
+			"(see the _promotion notes in %s and docs/KEY-CEREMONY.md)",
+			ErrUnverifiedRegistry, path, why, UnverifiedRegistryFile)
 	}
 	var r Registry
 	if err := json.Unmarshal(data, &r); err != nil {
@@ -377,6 +395,122 @@ func LoadRegistry(path string) (*Registry, error) {
 	if r.Apps == nil {
 		r.Apps = make(map[string]*RegistryEntry)
 	}
+	return &r, nil
+}
+
+// ─── The unverified quarantine registry ───────────────────────────────────────
+//
+// registry.json is the SIGNED set: every entry in it is signed by the release
+// key the shipped anchor certifies, and `make verify-registry` fails on the
+// first entry that is not.  There is deliberately no "quarantine" or "pending"
+// concept inside that gate — an exception path in a security gate is a way for
+// an unsigned entry to ship.
+//
+// An entry that is not ready to be signed — e.g. one whose own _note says
+// UNVERIFIED, authored without the hardware needed to validate it — lives in
+// registry-unverified.json instead.  That file:
+//
+//   - is NOT signed, and every entry in it must carry an EMPTY signature;
+//   - is NOT loaded by any runtime path (LoadRegistry refuses it outright);
+//   - is NOT copied into the image (Dockerfile and build.sh copy only registry.json);
+//   - IS cross-checked by `make verify-registry`, which fails if an app ID
+//     appears in both files, if an entry in it carries a signature, or if it
+//     exists but is empty.
+//
+// Promotion (the only route into the signed set) is documented in that file's
+// _promotion array and in docs/KEY-CEREMONY.md.
+
+// UnverifiedRegistryFile is the conventional filename of the quarantine
+// registry.  The name alone is enough for LoadRegistry to refuse it, so that
+// stripping the in-file marker cannot launder it into the trusted path.
+const UnverifiedRegistryFile = "registry-unverified.json"
+
+// unverifiedMarkerKey is the top-level JSON key a quarantine registry sets to
+// true.  Content-based detection means renaming the file cannot launder it
+// either — both the name and the marker are refused.
+const unverifiedMarkerKey = "_unverified"
+
+// ErrUnverifiedRegistry is returned when a quarantine registry is handed to a
+// path that only accepts the signed registry.  Callers can errors.Is it.
+var ErrUnverifiedRegistry = errors.New("registry: refusing the UNVERIFIED quarantine registry")
+
+// isQuarantineRegistry reports whether path/data is the unverified quarantine
+// registry, and why.  Either signal is sufficient: the filename, or the
+// "_unverified": true marker inside the file.
+func isQuarantineRegistry(path string, data []byte) (bool, string) {
+	byName := filepath.Base(path) == UnverifiedRegistryFile
+	var probe map[string]json.RawMessage
+	byMarker := false
+	if err := json.Unmarshal(data, &probe); err == nil {
+		if raw, ok := probe[unverifiedMarkerKey]; ok {
+			var flag bool
+			byMarker = json.Unmarshal(raw, &flag) == nil && flag
+		}
+	}
+	switch {
+	case byName && byMarker:
+		return true, "filename is " + UnverifiedRegistryFile + ` and it declares "` + unverifiedMarkerKey + `": true`
+	case byName:
+		return true, "filename is " + UnverifiedRegistryFile
+	case byMarker:
+		return true, `it declares "` + unverifiedMarkerKey + `": true`
+	}
+	return false, ""
+}
+
+// LoadUnverifiedRegistry is the ONLY way to read the quarantine registry, and
+// it is deliberately awkward: it must be called by name (nothing in the runtime
+// does), it refuses anything that is not actually marked as quarantined, it
+// refuses any entry that carries a signature — a quarantined entry that looks
+// signed is the failure mode this whole split exists to prevent — it is refused
+// outright under VULOS_ENV=prod (which is also the default when VULOS_ENV is
+// unset), and it logs a banner naming the file and every entry it returns.
+//
+// Nothing it returns is trusted: the entries are unsigned, so any install
+// attempt still fails closed in VerifyEntrySignature.
+func LoadUnverifiedRegistry(path string) (*Registry, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if quarantined, _ := isQuarantineRegistry(path, data); !quarantined {
+		return nil, fmt.Errorf("registry: %s is not marked as an unverified quarantine registry "+
+			"(no %q filename, no %q: true marker) — use LoadRegistry for the signed registry",
+			path, UnverifiedRegistryFile, unverifiedMarkerKey)
+	}
+
+	prod, err := isProdEnv()
+	if err != nil {
+		return nil, err
+	}
+	if prod {
+		return nil, fmt.Errorf("%w: %s cannot be read under VULOS_ENV=prod (unset counts as prod) — "+
+			"unverified entries have no place on a production box", ErrUnverifiedRegistry, path)
+	}
+
+	var r Registry
+	if err := json.Unmarshal(data, &r); err != nil {
+		return nil, err
+	}
+	if r.Apps == nil {
+		r.Apps = make(map[string]*RegistryEntry)
+	}
+	ids := make([]string, 0, len(r.Apps))
+	for id, entry := range r.Apps {
+		if entry.Signature != "" {
+			return nil, fmt.Errorf("%w: %s entry %q carries a signature — a quarantined entry must be "+
+				"unsigned. Either it belongs in registry.json (promote it: validate, then "+
+				"`make sign-registry`), or the signature is bogus and must be removed",
+				ErrUnverifiedRegistry, path, id)
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	log.Printf("[registry] *** UNVERIFIED QUARANTINE REGISTRY LOADED ON PURPOSE: %s ***", path)
+	log.Printf("[registry] *** %d entry/entries, NONE signed, NONE trusted: %s", len(ids), strings.Join(ids, ", "))
+	log.Printf("[registry] *** any install of these WILL be refused (REGISTRY-SIGN-01). "+
+		"Promote via real-hardware validation + `make sign-registry` to make them real.")
 	return &r, nil
 }
 

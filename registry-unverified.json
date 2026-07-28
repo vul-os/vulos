@@ -1,0 +1,64 @@
+{
+  "_readme": "QUARANTINE — NOT PART OF THE SIGNED SET. Entries in this file are NOT signed, are NOT loaded by the box, and are NOT shipped in the image (the Dockerfile and build.sh copy only registry.json). They live here so that `make verify-registry` and TestAcceptance_ShippedAnchorVerifiesShippedRegistry can stay absolute — every entry in registry.json is signed by the trusted publisher, with no quarantine/exception path inside the security gate. appnet.LoadRegistry REFUSES this file on sight (the \"_unverified\": true marker below, and the filename), so it cannot be substituted for registry.json via VULOS_REGISTRY. The only way to read it is the explicit, loudly-logged appnet.LoadUnverifiedRegistry, which is refused outright when VULOS_ENV=prod and which no runtime path calls.",
+  "_promotion": [
+    "PROMOTION PATH — how an entry moves from this file into the signed registry.json:",
+    "1. REAL-HARDWARE VALIDATION. Discharge the entry's own UNVERIFIED caveat (see its _note) on real hardware: run the install recipe end to end on a box that has the prerequisites, and record what was exercised and on what kernel/host in the PR.",
+    "2. REWRITE THE CAVEAT. Edit the entry's _note so it states what was actually verified. Never promote an entry whose _note still says UNVERIFIED — that is the exact state this file exists to keep out of the signed set.",
+    "3. MOVE THE ENTRY into registry.json's \"apps\" object and delete it from here. Delete this whole file once its \"apps\" object would be empty; an empty quarantine is a verify-registry failure, not a passing state.",
+    "4. SIGN. On the offline signing machine: make sign-registry RELEASE_PRIV=<key>  (docs/KEY-CEREMONY.md). CI never holds a private key.",
+    "5. PROVE IT. make verify-registry must report the new entry count, and go test ./services/appnet/ must pass. The gate is what promotes the entry — not this document."
+  ],
+  "_unverified": true,
+  "apps": {
+    "android": {
+      "_note": "OPT-IN / ADVANCED. Runs Android apps with no web/Linux client inside a redroid (github.com/remote-android/redroid-doc) container, managed by the box's backend/services/android Go service. HARDWARE/KERNEL-GATED: needs Docker plus the host kernel's binder+ashmem drivers (built in or modprobe'd); the service reports available:false with the specific missing prerequisite otherwise rather than pretending to work. This install recipe only ensures Docker is present and pre-pulls the image — actual container start/stop and GNSS injection are NOT driven by the generic app launcher's command/port fields, they go through the android service's own owner-gated /api/android/start|stop|location endpoints. Location injection is MOCK-LOCATION ONLY (Android's Location.isMock=true, detectable) via the open-source io.appium.settings helper app; a genuine non-mock GNSS/NMEA HAL feed would require a custom redroid image build and is not implemented. Does NOT unlock banking, tap-to-pay, SafetyNet/Play-Integrity-gated, or attestation-locked apps like ride-hailing — those remain phone-only. UNVERIFIED: authored without access to a real Docker daemon, binder/ashmem kernel modules, or an actual redroid image; needs real-hardware validation before being trusted in production. Registry signature is intentionally blank — this entry is inert until a maintainer runs `go run ./backend/cmd/sign sign-registry -release-priv <key>` (REGISTRY-SIGN-01: VerifyEntrySignature fails closed on an empty/invalid signature).",
+      "admin_only": true,
+      "arch": [
+        "amd64"
+      ],
+      "author": "remote-android/redroid-doc community (container image); Vulos android service (lifecycle management)",
+      "category": "utilities",
+      "description": "Run Android apps that have no web/Linux version, in a container. Opt-in/advanced. Does NOT unlock banking, tap-to-pay, or attestation-locked apps like ride-hailing — those stay phone-only.",
+      "homepage": "https://github.com/remote-android/redroid-doc",
+      "icon": "android",
+      "icon_url": "",
+      "keywords": [
+        "android",
+        "redroid",
+        "compatibility",
+        "container",
+        "docker",
+        "apk",
+        "emulation",
+        "mock-location",
+        "gnss"
+      ],
+      "license": "Apache-2.0",
+      "name": "Android (redroid)",
+      "signature": "",
+      "type": "service",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends docker.io && docker pull redroid/redroid:11.0.0-latest",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "",
+          "port": 0,
+          "post_install": "",
+          "deps": [
+            "docker.io"
+          ],
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true
+    }
+  }
+}

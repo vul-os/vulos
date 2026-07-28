@@ -24,12 +24,16 @@ package main
 // rule would cost the reader the instructions that make the refusal actionable.
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/signing"
@@ -138,6 +142,8 @@ func cmdVerifyRegistry(args []string) {
 	anchorPath := fs.String("anchor", signing.DefaultAnchorPath, "path to the trust-anchor public key (root)")
 	certPath := fs.String("cert", "", "path to the root-signed release cert (omit for the single-key model)")
 	registryPath := fs.String("registry", "registry.json", "path to registry.json")
+	unverifiedPath := fs.String("unverified", appnet.UnverifiedRegistryFile,
+		"path to the unverified quarantine registry to cross-check against (may not exist)")
 	requireProd := fs.Bool("require-prod-keys", false,
 		"fail if the trust material is the well-known DEV keypair (use in release builds)")
 	_ = fs.Parse(args)
@@ -171,6 +177,25 @@ func cmdVerifyRegistry(args []string) {
 	}
 
 	fmt.Printf("verify-registry: OK — all %d entries in %s are signed by %s\n", n, *registryPath, keyDesc)
+
+	// COVERAGE ASSERTION. "All N entries verified" is worth nothing if N is not
+	// every entry the file contains. Re-read the raw JSON and count the app IDs
+	// the parser saw, so a duplicate key (which the map silently collapses,
+	// hiding the shadowed entry from verification) or a dropped entry is a hard
+	// failure rather than a smaller, still-green N.
+	if err := assertVerifiedEveryEntry(*registryPath, n); err != nil {
+		fatalf(2, "verify-registry: %v", err)
+	}
+	fmt.Printf("verify-registry: coverage — %d/%d app IDs in %s were verified (0 skipped)\n",
+		n, n, *registryPath)
+
+	// QUARANTINE CROSS-CHECK. registry.json is the signed set and has no
+	// exception path; entries that are not ready to be signed live in the
+	// unverified quarantine registry instead. Prove the two files stay disjoint
+	// and that nothing in the quarantine is dressed up to look signed.
+	if err := crossCheckQuarantine(*unverifiedPath, *registryPath); err != nil {
+		fatalf(2, "verify-registry: %v", err)
+	}
 
 	if err := releaseKeyGate(verifyKey, *requireProd, *registryPath); err != nil {
 		fatalf(2, "verify-registry: %v", err)
@@ -331,6 +356,199 @@ func verifyRegistryFile(registryPath string, pub ed25519.PublicKey) (int, error)
 		}
 	}
 	return len(reg.Apps), nil
+}
+
+// rawAppIDs returns the app IDs exactly as they appear in the file's "apps"
+// object, in file order and INCLUDING duplicates.
+//
+// It exists to be a second, independent opinion about what is in the registry.
+// LoadRegistry unmarshals into a map, which silently keeps only the last of any
+// duplicated key — so a registry containing "foo" twice would verify one "foo"
+// and never look at the other. Token-scanning the raw bytes sees both.
+func rawAppIDs(registryPath string) ([]string, error) {
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		return nil, err
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", registryPath, err)
+	}
+	apps, ok := top["apps"]
+	if !ok {
+		return nil, fmt.Errorf(`%s has no top-level "apps" object`, registryPath)
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(apps))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, fmt.Errorf(`parse %s "apps": %w`, registryPath, err)
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, fmt.Errorf(`%s "apps" is not a JSON object`, registryPath)
+	}
+	var ids []string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf(`parse %s "apps": %w`, registryPath, err)
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return nil, fmt.Errorf(`%s "apps" has a non-string key`, registryPath)
+		}
+		ids = append(ids, key)
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return nil, fmt.Errorf(`parse %s entry %q: %w`, registryPath, key, err)
+		}
+	}
+	return ids, nil
+}
+
+// assertVerifiedEveryEntry fails unless the number of entries verified equals
+// the number of app IDs literally present in the file — no duplicates, nothing
+// dropped between the raw bytes and the verified set.
+//
+// This is the assertion that stops "verify-registry passed" from meaning
+// "verify-registry looked at a subset and liked it".
+func assertVerifiedEveryEntry(registryPath string, verified int) error {
+	ids, err := rawAppIDs(registryPath)
+	if err != nil {
+		return fmt.Errorf("coverage check: %w", err)
+	}
+	if verified == 0 {
+		return fmt.Errorf("coverage check: verified 0 entries in %s", registryPath)
+	}
+	seen := make(map[string]bool, len(ids))
+	var dupes []string
+	for _, id := range ids {
+		if seen[id] {
+			dupes = append(dupes, id)
+		}
+		seen[id] = true
+	}
+	if len(dupes) > 0 {
+		sort.Strings(dupes)
+		return fmt.Errorf("coverage check: %s declares duplicate app ID(s) %v — the shadowed "+
+			"entry is never verified. Remove the duplicate", registryPath, dupes)
+	}
+	if len(ids) != verified {
+		return fmt.Errorf("coverage check: %s contains %d app IDs but only %d were verified — "+
+			"%d entry/entries were not checked", registryPath, len(ids), verified, len(ids)-verified)
+	}
+	return nil
+}
+
+// quarantineFile is the on-disk shape of the unverified registry, parsed
+// independently of appnet.Registry: this check must see the file as it literally
+// is, including the marker and the raw signature field.
+type quarantineFile struct {
+	Unverified *bool                      `json:"_unverified"`
+	Apps       map[string]json.RawMessage `json:"apps"`
+}
+
+// crossCheckQuarantine proves the split between the signed registry and the
+// unverified quarantine registry is real.
+//
+// It FAILS CLOSED when the quarantine file exists and is wrong:
+//   - it does not declare "_unverified": true (so LoadRegistry's content-based
+//     refusal would not fire if the file were renamed);
+//   - it is empty (an empty quarantine must be deleted, not left as a passing
+//     no-op — this programme has enough gates that pass by doing nothing);
+//   - an entry in it carries a signature, i.e. is dressed up as trusted;
+//   - an app ID appears in BOTH files, which would let an unsigned entry shadow
+//     or impersonate a signed one.
+//
+// When the file does not exist, it SKIPS LOUDLY, naming exactly what was not
+// cross-checked. That is a legitimate state: it means every entry has been
+// promoted into the signed set.
+func crossCheckQuarantine(unverifiedPath, registryPath string) error {
+	data, err := os.ReadFile(unverifiedPath)
+	if os.IsNotExist(err) {
+		fmt.Printf("verify-registry: quarantine cross-check SKIPPED — %s does not exist, so there "+
+			"are no unverified entries to keep out of %s. NOT verified by this run: "+
+			"quarantine/signed disjointness, quarantine entries being unsigned, quarantine marker.\n",
+			unverifiedPath, registryPath)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("quarantine cross-check: read %s: %w", unverifiedPath, err)
+	}
+
+	var qf quarantineFile
+	if err := json.Unmarshal(data, &qf); err != nil {
+		return fmt.Errorf("quarantine cross-check: parse %s: %w", unverifiedPath, err)
+	}
+	if qf.Unverified == nil || !*qf.Unverified {
+		return fmt.Errorf("quarantine cross-check: %s does not declare %q: true — without that "+
+			"marker appnet.LoadRegistry would only refuse it by filename, so renaming the file "+
+			"would load unsigned entries as trusted", unverifiedPath, "_unverified")
+	}
+	if len(qf.Apps) == 0 {
+		return fmt.Errorf("quarantine cross-check: %s exists but holds no entries — delete the "+
+			"file rather than leaving an empty quarantine that makes this check pass by doing nothing",
+			unverifiedPath)
+	}
+
+	// Every quarantined entry must be unsigned. A signature here means either it
+	// belongs in registry.json or it is bogus; both are hard failures.
+	qIDs := make([]string, 0, len(qf.Apps))
+	for id := range qf.Apps {
+		qIDs = append(qIDs, id)
+	}
+	sort.Strings(qIDs)
+	for _, id := range qIDs {
+		var probe struct {
+			Signature string `json:"signature"`
+		}
+		if err := json.Unmarshal(qf.Apps[id], &probe); err != nil {
+			return fmt.Errorf("quarantine cross-check: parse %s entry %q: %w", unverifiedPath, id, err)
+		}
+		if probe.Signature != "" {
+			return fmt.Errorf("quarantine cross-check: %s entry %q carries a signature — a "+
+				"quarantined entry must be unsigned. Promote it into %s (validate on real "+
+				"hardware, then `make sign-registry`) or remove the signature",
+				unverifiedPath, id, registryPath)
+		}
+	}
+
+	// The two sets must be disjoint.
+	signedIDs, err := rawAppIDs(registryPath)
+	if err != nil {
+		return fmt.Errorf("quarantine cross-check: %w", err)
+	}
+	signedSet := make(map[string]bool, len(signedIDs))
+	for _, id := range signedIDs {
+		signedSet[id] = true
+	}
+	var both []string
+	for _, id := range qIDs {
+		if signedSet[id] {
+			both = append(both, id)
+		}
+	}
+	if len(both) > 0 {
+		return fmt.Errorf("quarantine cross-check: app ID(s) %v appear in BOTH %s and %s — an "+
+			"unverified entry must never shadow a signed one. Delete the quarantined copy once "+
+			"the entry is promoted", both, registryPath, unverifiedPath)
+	}
+
+	// LoadRegistry must actually refuse this file. Assert it here rather than
+	// trusting the comment: this is the only thing keeping VULOS_REGISTRY from
+	// pointing the App Hub at unsigned entries.
+	if _, err := appnet.LoadRegistry(unverifiedPath); err == nil {
+		return fmt.Errorf("quarantine cross-check: appnet.LoadRegistry ACCEPTED %s — the "+
+			"quarantine is loadable as a trusted registry", unverifiedPath)
+	} else if !errors.Is(err, appnet.ErrUnverifiedRegistry) {
+		return fmt.Errorf("quarantine cross-check: appnet.LoadRegistry rejected %s for the wrong "+
+			"reason (want ErrUnverifiedRegistry): %v", unverifiedPath, err)
+	}
+
+	fmt.Printf("verify-registry: quarantine OK — %s holds %d UNSIGNED entry/entries (%s), disjoint "+
+		"from %s, marked %q: true, and refused by appnet.LoadRegistry\n",
+		unverifiedPath, len(qIDs), strings.Join(qIDs, ", "), registryPath, "_unverified")
+	return nil
 }
 
 // sortedAppIDs returns the registry's app IDs in a stable order so that output

@@ -1,7 +1,9 @@
 package main
 
 // routes_storagemode.go — STORE-LOCAL-01: HTTP surface for the bundle
-// storage-mode selector (central-tigris default vs. local-minio-sync opt-in).
+// storage-mode selector. Since D-STORE-LOCAL-DEFAULT the default is local-fs
+// (this box's own disk); local-minio-sync and the hosted central-tigris are
+// both explicit opt-ins.
 //
 // The wizard step (firstboot) and the dashboard settings panel both POST
 // here. The handler validates the request, persists via
@@ -33,9 +35,15 @@ func registerStorageModeRoutes(mux *http.ServeMux, home string, authStore *auth.
 		// behaviour (reads return Defaults(), writes 500) is intentional so
 		// the server still boots on a misconfigured host — but the operator
 		// needs to see WHY they're stuck on tigris-only.
-		log.Printf("[storagemode] store unavailable at %s: %v — soft-degrading to defaults (writes will 500)", dbPath, err)
+		// The degraded default is resolved from the SAME evidence the store
+		// uses (a legacy storage.yaml naming a hosted backend keeps reading
+		// back as hosted), so a broken store never misreports a Tigris box as
+		// local — which would be a lie about where that operator's bytes are.
+		degraded, why := storagemode.EffectiveDefault("")
+		log.Printf("[storagemode] store unavailable at %s: %v — soft-degrading to %q (%s); writes will 500",
+			dbPath, err, degraded, why)
 		mux.HandleFunc("GET /api/storagemode", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, storagemode.Defaults())
+			writeJSON(w, storagemode.Config{Mode: degraded})
 		})
 		mux.HandleFunc("PUT /api/storagemode", func(w http.ResponseWriter, r *http.Request) {
 			// FIX-STORE-LOCAL-LOG-01: also log on the 500 path so each rejected
@@ -78,6 +86,12 @@ func registerStorageModeRoutes(mux *http.ServeMux, home string, authStore *auth.
 		if err := store.Set(req); err != nil {
 			writeErr(w, 400, err.Error())
 			return
+		}
+		if req.Mode.Hosted() {
+			// Selecting a hosted backend is a posture change (the box's bytes
+			// start leaving it). Leave a breadcrumb naming who did it.
+			log.Printf("[storagemode] mode set to %q — HOSTED third-party storage, selected explicitly by user %q",
+				req.Mode, userID)
 		}
 		cfg, err := store.Get()
 		if err != nil {

@@ -2130,9 +2130,10 @@ function StorageSettings() {
   )
 }
 
-// --- Storage Mode (STORE-LOCAL-01) ---
-// Bundle-wide selector between central Tigris (default) and a local
-// MinIO-with-sync source-of-truth. Toggling to local-minio-sync passes the
+// --- Storage Mode (STORE-LOCAL-01 / D-STORE-LOCAL-DEFAULT) ---
+// Bundle-wide selector. The default is local-fs — this box's own disk, no
+// object store and no third-party service. Local MinIO-with-sync and hosted
+// central Tigris are both opt-ins. Toggling to local-minio-sync passes the
 // endpoint + bucket + creds-ref to the co-located lilmail and diwan
 // services via VULOS_STORAGE_MODE / VULOS_MINIO_* env vars. The CRDT sync
 // layer (STORE-SYNC-01 / OFFICE-SYNC-01 / SYNC-P2P-01) lives in the sibling
@@ -2140,7 +2141,7 @@ function StorageSettings() {
 function StorageModeSettings() {
   const [cfg, setCfg] = useState(null)
   const [draft, setDraft] = useState({
-    mode: 'central-tigris',
+    mode: 'local-fs',
     minio_endpoint: 'http://127.0.0.1:9000',
     minio_region: 'auto',
     minio_bucket: 'vulos-bundle',
@@ -2157,7 +2158,7 @@ function StorageModeSettings() {
         // Seed the draft from the current config so the form is in sync.
         setDraft(prev => ({
           ...prev,
-          mode: d.mode || 'central-tigris',
+          mode: d.mode || 'local-fs',
           minio_endpoint: d.minio_endpoint || prev.minio_endpoint,
           minio_region: d.minio_region || prev.minio_region,
           minio_bucket: d.minio_bucket || prev.minio_bucket,
@@ -2171,7 +2172,9 @@ function StorageModeSettings() {
     setSaving(true)
     setMsg('')
     try {
-      const body = draft.mode === 'local-minio-sync' ? draft : { mode: 'central-tigris' }
+      // Send the SELECTED mode — never a hard-coded backend, or the picker
+      // silently becomes a two-state toggle that always lands on hosted.
+      const body = draft.mode === 'local-minio-sync' ? draft : { mode: draft.mode || 'local-fs' }
       const res = await fetch('/api/storagemode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -2229,8 +2232,9 @@ function StorageModeSettings() {
           onChange={e => setDraft(d => ({ ...d, mode: e.target.value }))}
           className="input"
         >
-          <option value="central-tigris">Central Tigris (default — direct hosted S3)</option>
+          <option value="local-fs">This device (default — no third-party service)</option>
           <option value="local-minio-sync">Local MinIO + CRDT sync (opt-in)</option>
+          <option value="central-tigris">Central Tigris (opt-in — hosted third-party S3)</option>
         </select>
       </Field>
 

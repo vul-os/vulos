@@ -245,14 +245,14 @@ cloud_endpoint: ""                      # optional; leave empty unless you run y
 
 ### `/etc/vulos/storage.yaml`
 
-S3/MinIO credentials. Choose one backend.
+Storage backend selector. Choose one backend. **The default is this box's own
+filesystem** — no object store, no credentials, no third-party service.
 
 ```yaml
-# Tigris (default)
-backend: tigris
-access_key: YOUR_ACCESS_KEY
-secret_key: YOUR_SECRET_KEY
-bucket: your-bucket-name
+# This box's filesystem (DEFAULT — written by a new install)
+backend: local
+local:
+  root: /var/lib/vulos/storage
 
 # Local MinIO (--storage=minio)
 backend: minio
@@ -260,7 +260,27 @@ endpoint: http://127.0.0.1:9000
 access_key: vulos
 secret_key: (read from /var/lib/vulos/minio/.minio_secret at start)
 bucket: vulos
+
+# Tigris — HOSTED, opt-in (--storage=tigris). A third party stores your data.
+backend: tigris
+access_key: YOUR_ACCESS_KEY
+secret_key: YOUR_SECRET_KEY
+bucket: your-bucket-name
 ```
+
+**When to opt into an object store.** The local backend is enough for a
+single box: the OS writes object bytes as plain files under `local.root`,
+mirroring the bucket/key layout, and the Files data plane serves them
+directly. Pick MinIO when more than one of your own nodes must serve the same
+data (it also gives you the S3 API and STS-scoped per-app credentials). Pick a
+hosted provider when you want an off-box copy of the bytes and accept that the
+provider holds them.
+
+**Existing installs are never converted.** Re-running the installer on a box
+that already has `storage.yaml` keeps that backend, reports it, and migrates
+nothing — even if `--storage=` says otherwise. The OS side behaves the same
+way: the storage-mode selector pins a box that predates the local default to
+the backend it was already using (see `backend/internal/storagemode`).
 
 #### Per-app isolation (STS) — on by default for self-host
 
@@ -314,13 +334,18 @@ Diwan (office suite) config. Inherits from `fabric.yaml` and `storage.yaml`.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dry-run` | off | Print plan without making changes |
-| `--storage=tigris` | on | Use Tigris hosted S3 storage |
-| `--storage=minio` | off | Install and use local MinIO (`--storage=local` alias) |
+| `--storage=local-fs` | **on** | Store object data on this box's filesystem (no object store, no credentials, no third-party service) |
+| `--storage=minio` | off | Install and use co-located MinIO (`--storage=local` is a legacy alias for this) |
+| `--storage=tigris` | off | Opt in to hosted Tigris S3 storage |
 | `--no-enable` | off | Install units but do not enable/start (CI/containers) |
 | `--help` | — | Print usage |
 
+An existing `/etc/vulos/storage.yaml` outranks every `--storage=` flag: an
+install that is already running is never repointed and its data is never
+migrated.
+
 ```bash
-# Dry run
+# Dry run — prints the selected storage mode and why
 curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
 
 # With local MinIO
@@ -334,7 +359,7 @@ curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
 ```
 /etc/vulos/
   fabric.yaml       — mesh identity, domain, TLS, control-plane endpoint
-  storage.yaml      — S3/MinIO credentials and backend selector
+  storage.yaml      — storage backend selector (local by default; S3/MinIO credentials when used)
   vulos.yaml        — OS backend config
   mail.yaml         — self-hosted mail-server config
   office.yaml       — Diwan (office suite) config
@@ -349,6 +374,7 @@ curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
     x25519_private.pem (mode 600)
   office/
     uploads/
+  storage/            — object bytes (default local-fs backend)
   minio/              — only when --storage=minio
     .minio_secret     — MinIO root password (mode 600)
 ```
