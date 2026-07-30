@@ -261,10 +261,10 @@ function DockButton({ children, label, active, badge, disabled, onClick }) {
       >
         {children}
         {badge ? (
-          <span className="absolute -top-1 right-1.5 min-w-[1rem] h-4 px-1 accent-bg rounded-full text-[9px] leading-none text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center tabular-nums">{badge}</span>
+          <span className="absolute -top-1 right-1.5 min-w-[1rem] h-4 px-1 accent-bg rounded-full text-[12px] leading-none text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center tabular-nums">{badge}</span>
         ) : null}
       </span>
-      <span className="text-[10px] leading-none font-medium tracking-[0.01em]">{label}</span>
+      <span className="text-[12px] leading-none font-medium tracking-[0.01em]">{label}</span>
     </button>
   )
 }
