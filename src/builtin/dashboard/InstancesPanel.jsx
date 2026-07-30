@@ -116,11 +116,11 @@ function ResourceMiniBar({ label, pct }) {
   const color = clamp > 80 ? 'bg-[var(--status-warning)]' : clamp > 60 ? 'accent-bg' : 'bg-[var(--text-ghost)]'
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] w-7 shrink-0 font-medium">{label}</span>
+      <span className="text-[12px] uppercase tracking-wide text-[var(--text-muted)] w-7 shrink-0 font-medium">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
         <div className={`h-full rounded-full transition-[width] duration-500 ${color}`} style={{ width: `${clamp}%` }} />
       </div>
-      <span className="text-[11px] text-[var(--text-tertiary)] w-8 text-right shrink-0 mono tabular-nums">{Math.round(clamp)}%</span>
+      <span className="text-[12px] text-[var(--text-tertiary)] w-8 text-right shrink-0 mono tabular-nums">{Math.round(clamp)}%</span>
     </div>
   )
 }
@@ -163,7 +163,7 @@ function RenameModal({ instance, onSave, onCancel }) {
           className="input"
           placeholder="Instance name"
         />
-        {error && <p className="mt-2 text-[11px] text-danger">{error}</p>}
+        {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
         <div className="flex gap-2 mt-4 justify-end">
           <button onClick={onCancel} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
           <button onClick={handleSave} disabled={!name.trim() || saving} className="btn-primary text-xs px-3 py-1.5 active:scale-[0.97]">
@@ -205,7 +205,7 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
           Remove <span className="text-[var(--text-primary)] font-medium">{instance.display_name || truncateId(instance.id)}</span> from your account?
           This cannot be undone.
         </p>
-        {error && <p className="text-[11px] text-danger mb-3">{error}</p>}
+        {error && <p className="text-[12px] text-danger mb-3">{error}</p>}
         <div className="flex gap-2 justify-end">
           <button onClick={onCancel} className="btn-secondary text-xs px-3 py-1.5">Cancel</button>
           <button
@@ -269,9 +269,9 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[11px] text-[var(--text-muted)]">{typeLabel}</span>
+                <span className="text-[12px] text-[var(--text-muted)]">{typeLabel}</span>
                 <span aria-hidden="true" className="w-0.5 h-0.5 rounded-full bg-[var(--text-ghost)]" />
-                <span className="text-[11px] text-[var(--text-muted)]">
+                <span className="text-[12px] text-[var(--text-muted)]">
                   {instance.online ? 'Active now' : `Last seen ${formatLastSeen(instance.last_seen)}`}
                 </span>
               </div>
@@ -289,7 +289,7 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
         </div>
 
         {/* ULID */}
-        <div className="mt-2 text-[10px] mono text-[var(--text-ghost)]">{truncateId(instance.id)}</div>
+        <div className="mt-2 text-[12px] mono text-[var(--text-ghost)]">{truncateId(instance.id)}</div>
 
         {/* Resource bars — only when online */}
         {instance.online && (instance.cpu_pct != null || instance.ram_pct != null) && (
@@ -303,7 +303,7 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
         {instanceApps.length > 0 && (
           <button
             onClick={() => setExpanded(v => !v)}
-            className="mt-2.5 text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] flex items-center gap-1.5 transition-colors"
+            className="mt-2.5 text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] flex items-center gap-1.5 transition-colors"
           >
             <span aria-hidden="true" className={`transition-transform text-[8px] ${expanded ? 'rotate-90' : ''}`}>▶</span>
             {instanceApps.length} app{instanceApps.length !== 1 ? 's' : ''}
@@ -322,7 +322,7 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
                   href={`https://${app.fqdn}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-[11px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] accent-text transition-colors focus-primary"
+                  className="shrink-0 text-[12px] px-2 py-0.5 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] accent-text transition-colors focus-primary"
                   title={`Open ${app.app_id} on this instance`}
                 >
                   Open ↗
@@ -338,7 +338,7 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
       <div className="px-3.5 pb-3.5 flex flex-wrap items-center gap-2">
         <button
           onClick={onRename}
-          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary"
+          className="text-[12px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary"
         >
           Rename
         </button>
@@ -352,19 +352,19 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
           title={instance.store_only
             ? 'Currently sync-only. Make this device serve app traffic to the cluster.'
             : 'Currently serving. Make this device sync data only — never a route target.'}
-          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary disabled:opacity-40"
+          className="text-[12px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors focus-primary disabled:opacity-40"
         >
           {toggling ? 'Updating…' : instance.store_only ? 'Make serving' : 'Make sync-only'}
         </button>
         {!instance.is_owner && (
           <button
             onClick={onRemove}
-            className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-danger-soft text-[var(--text-muted)] hover:text-danger transition-colors focus-primary"
+            className="text-[12px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-danger-soft text-[var(--text-muted)] hover:text-danger transition-colors focus-primary"
           >
             Remove
           </button>
         )}
-        {toggleErr && <span role="alert" className="text-[11px] text-danger w-full">{toggleErr}</span>}
+        {toggleErr && <span role="alert" className="text-[12px] text-danger w-full">{toggleErr}</span>}
       </div>
     </div>
   )
@@ -508,9 +508,9 @@ export default function InstancesPanel() {
         {/* Online instances */}
         {instances !== null && online.length > 0 && (
           <section>
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+            <h3 className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
               Online
-              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{online.length}</span>
+              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[12px] tabular-nums">{online.length}</span>
             </h3>
             <div className="space-y-2.5">
               {online.map(inst => (
@@ -530,9 +530,9 @@ export default function InstancesPanel() {
         {/* Offline instances */}
         {instances !== null && offline.length > 0 && (
           <section>
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+            <h3 className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
               Offline
-              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{offline.length}</span>
+              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[12px] tabular-nums">{offline.length}</span>
             </h3>
             <div className="space-y-2.5">
               {offline.map(inst => (

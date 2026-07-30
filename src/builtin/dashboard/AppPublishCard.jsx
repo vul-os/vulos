@@ -56,14 +56,14 @@ function ResourceBar({ label, pct, warn }) {
 
   return (
     <div className="flex items-center gap-2.5 min-w-0">
-      <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] w-8 shrink-0 font-medium">{label}</span>
+      <span className="text-[12px] uppercase tracking-wide text-[var(--text-muted)] w-8 shrink-0 font-medium">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
         <div
           className={`h-full rounded-full transition-[width] duration-500 ${barColor}`}
           style={{ width: `${clamp}%` }}
         />
       </div>
-      <span className={`text-[11px] w-9 text-right shrink-0 mono tabular-nums ${warn ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
+      <span className={`text-[12px] w-9 text-right shrink-0 mono tabular-nums ${warn ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
         {Math.round(clamp)}%
       </span>
     </div>
@@ -180,17 +180,17 @@ function AppCard({ app, cgroupInfo, onToggle }) {
       {isPublic && (
         <div className="mt-3 pt-3 border-t border-[var(--border-subtle)] space-y-1.5">
           {loadingDeploy && (
-            <span className="text-[11px] text-[var(--text-muted)]">Loading URL…</span>
+            <span className="text-[12px] text-[var(--text-muted)]">Loading URL…</span>
           )}
           {!loadingDeploy && deployment?.fqdn && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1 mono">
+              <span className="text-[12px] text-[var(--text-secondary)] truncate flex-1 mono">
                 {deployment.fqdn}
               </span>
               <button
                 onClick={handleCopy}
                 title="Copy link"
-                className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                className="shrink-0 text-[12px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
               >
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -198,14 +198,14 @@ function AppCard({ app, cgroupInfo, onToggle }) {
                 onClick={handlePurge}
                 disabled={purging}
                 title="Purge cache"
-                className="shrink-0 text-[11px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
+                className="shrink-0 text-[12px] px-2 py-1 rounded-md bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
               >
                 {purging ? '…' : 'Purge'}
               </button>
             </div>
           )}
           {!loadingDeploy && !deployment?.fqdn && (
-            <span className="text-[11px] text-[var(--text-muted)] italic">Subdomain provisioning…</span>
+            <span className="text-[12px] text-[var(--text-muted)] italic">Subdomain provisioning…</span>
           )}
         </div>
       )}
@@ -289,9 +289,9 @@ export default function AppPublishCard() {
         {/* Published apps */}
         {apps !== null && publicApps.length > 0 && (
           <section>
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+            <h3 className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
               Published
-              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{publicApps.length}</span>
+              <span className="accent-bg-soft accent-text rounded-full px-1.5 py-0.5 text-[12px] tabular-nums">{publicApps.length}</span>
             </h3>
             <div className="space-y-2.5">
               {publicApps.map(app => (
@@ -304,9 +304,9 @@ export default function AppPublishCard() {
         {/* Private apps */}
         {apps !== null && privateApps.length > 0 && (
           <section>
-            <h3 className="flex items-center gap-2 text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
+            <h3 className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-tertiary)] uppercase tracking-[0.1em] mb-2.5">
               Private
-              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[10px] tabular-nums">{privateApps.length}</span>
+              <span className="bg-[var(--bg-elevated)] text-[var(--text-muted)] rounded-full px-1.5 py-0.5 text-[12px] tabular-nums">{privateApps.length}</span>
             </h3>
             <div className="space-y-2.5">
               {privateApps.map(app => (
