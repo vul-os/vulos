@@ -223,7 +223,7 @@ func main() {
 		log.Printf("[gateway] no gateway configured — gateway-dependent features (cloud login/sync, OAuth integrations broker) report not-configured until an operator sets one (VULOS_CP_URL / VULOS_CLOUD_URL / VULOS_CLOUD_API_URL, or Settings)")
 	}
 	if err := relayconfig.Init(dbDir); err != nil {
-		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — using ephor default", err)
+		log.Printf("[relayconfig] could not load persisted relay provider override (%v) — falling back to the built-in default provider (vulos); ephor is opt-in and is NOT being dialled", err)
 	}
 
 	// S3 storage
