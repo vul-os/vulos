@@ -380,27 +380,27 @@ function TransferPanel({ onBack, onImported }) {
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-neutral-900 rounded-lg py-2">
                     <div className="text-[var(--status-success)] text-sm font-semibold">{result.imported ?? 0}</div>
-                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Imported</div>
+                    <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Imported</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
                     <div className="text-neutral-300 text-sm font-semibold">{result.skipped ?? 0}</div>
-                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Skipped</div>
+                    <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Skipped</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
                     <div className={`text-sm font-semibold ${result.errors ? 'text-[var(--status-danger)]' : 'text-neutral-300'}`}>
                       {result.errors ?? 0}
                     </div>
-                    <div className="text-neutral-600 text-[10px] uppercase tracking-wide">Failed</div>
+                    <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Failed</div>
                   </div>
                 </div>
-                <p className="text-[11px] text-neutral-600">
+                <p className="text-[12px] text-neutral-600">
                   {result.parsed ?? 0} entr{(result.parsed ?? 0) === 1 ? 'y' : 'ies'} found in the file.
                   {(result.skipped ?? 0) > 0 && ' Skipped entries were already in your vault.'}
                 </p>
                 {Array.isArray(result.warnings) && result.warnings.length > 0 && (
                   <ul className="flex flex-col gap-1 mt-1">
                     {result.warnings.map((wmsg, i) => (
-                      <li key={i} className="text-[11px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-md px-2 py-1">
+                      <li key={i} className="text-[12px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-md px-2 py-1">
                         {wmsg}
                       </li>
                     ))}
@@ -461,7 +461,7 @@ function TransferPanel({ onBack, onImported }) {
               />
             </Field>
 
-            <p className="text-[11px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-lg px-3 py-2">
+            <p className="text-[12px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-lg px-3 py-2">
               This password is not stored anywhere. If you lose it, the backup
               cannot be opened — not even by us.
             </p>
@@ -657,7 +657,7 @@ function GeneratorPanel({ onInsert, onClose }) {
               ))}
             </div>
             {strength.label && (
-              <span className="text-[10px] font-medium shrink-0" style={{ color: strength.color }}>
+              <span className="text-[12px] font-medium shrink-0" style={{ color: strength.color }}>
                 {strength.label}
               </span>
             )}

@@ -55,7 +55,7 @@ function SourceBadges({ sources }) {
     <span className="inline-flex flex-wrap items-center gap-1 align-middle">
       {SOURCE_ORDER.filter((s) => list.includes(s)).map((s) => (
         <span key={s}
-          className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-medium leading-none ring-1 ring-inset"
+          className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px] font-medium leading-none ring-1 ring-inset"
           style={{ color: SOURCE_META[s].color, background: `color-mix(in srgb, ${SOURCE_META[s].color} 14%, transparent)`, '--tw-ring-color': `color-mix(in srgb, ${SOURCE_META[s].color} 35%, transparent)` }}>
           <span className="w-1 h-1 rounded-full" style={{ background: SOURCE_META[s].color }} />
           {SOURCE_META[s].label}
@@ -286,7 +286,7 @@ export default function Contacts() {
                 <li key={c.id || c.name}>
                   <button type="button" onClick={() => { setSelectedId(c.id); setEditing(null) }}
                     className={`group w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors focus-primary border-l-2 ${selectedId === c.id ? 'bg-neutral-800/70 border-[var(--accent)]' : 'border-transparent hover:bg-neutral-800/40'}`}>
-                    <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[11px] font-mono font-semibold ring-1 ring-inset ring-white/5"
+                    <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[12px] font-mono font-semibold ring-1 ring-inset ring-white/5"
                       style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(c.name)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
@@ -295,7 +295,7 @@ export default function Contacts() {
                           <SourceBadges sources={c.sources} />
                         )}
                       </span>
-                      {c.emails[0] && <span className="block text-[10.5px] text-neutral-500 truncate">{c.emails[0]}</span>}
+                      {c.emails[0] && <span className="block text-[12px] text-neutral-500 truncate">{c.emails[0]}</span>}
                     </span>
                   </button>
                 </li>
@@ -357,7 +357,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }) {
           )}
         </div>
         {contact._readonly ? (
-          <div className="ml-auto text-[11px] text-neutral-500 max-w-[9rem] text-right leading-snug">
+          <div className="ml-auto text-[12px] text-neutral-500 max-w-[9rem] text-right leading-snug">
             From your phone — edit it on the device it lives on.
           </div>
         ) : (
@@ -408,7 +408,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 mb-1">{label}</div>
+      <div className="text-[12px] font-mono uppercase tracking-wider text-neutral-500 mb-1">{label}</div>
       {children}
     </div>
   )
@@ -440,7 +440,7 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }) {
         <ListField label="Phone" type="tel" values={form.phones} onChange={(i, v) => setList('phones', i, v)} />
 
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
+          <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
           <textarea value={form.note} onChange={(e) => set({ note: e.target.value })} rows={3}
             className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 resize-none focus-primary" />
         </label>
@@ -459,7 +459,7 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }) {
 function Input({ label, value, onChange, autoFocus }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
+      <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
       <input autoFocus={autoFocus} value={value} onChange={(e) => onChange(e.target.value)}
         className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 focus-primary" />
     </label>
@@ -469,7 +469,7 @@ function Input({ label, value, onChange, autoFocus }) {
 function ListField({ label, type, values, onChange }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
+      <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
       <div className="flex flex-col gap-1.5">
         {values.map((v, i) => (
           <input key={i} type={type} value={v} onChange={(e) => onChange(i, e.target.value)}

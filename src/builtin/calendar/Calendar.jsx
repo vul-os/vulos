@@ -231,7 +231,7 @@ export default function Calendar({ initialQuery = '' } = {}) {
         <div className="text-[15px] font-semibold min-w-0 truncate tracking-tight" data-calendar-title>
           {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
         </div>
-        <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-neutral-500 ml-1"
+        <span className="flex items-center gap-1 text-[12px] font-mono uppercase tracking-wider text-neutral-500 ml-1"
           title={unavailable ? 'Calendar unavailable' : loading ? 'Loading' : 'Calendar is live'}>
           {!unavailable && !loading && (
             <><span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--status-success)' }} />live</>
@@ -239,7 +239,7 @@ export default function Calendar({ initialQuery = '' } = {}) {
         </span>
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-md border border-neutral-700/80 overflow-hidden text-[11px] font-mono p-0.5 gap-0.5">
+          <div className="flex rounded-md border border-neutral-700/80 overflow-hidden text-[12px] font-mono p-0.5 gap-0.5">
             <button type="button" onClick={() => setView('month')}
               className={`px-3 py-1.5 sm:py-1 rounded transition-colors ${view === 'month' ? 'text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
               style={view === 'month' ? { background: 'var(--accent)' } : undefined}>Month</button>
@@ -303,7 +303,7 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
       <div className="grid grid-cols-7 shrink-0 border-b" style={{ borderColor: 'var(--border-strong)' }}>
         {WEEKDAYS.map((w, i) => (
           <div key={w}
-            className="px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-center"
+            className="px-2 py-2 text-[12px] font-semibold uppercase tracking-[0.12em] text-center"
             style={{ color: i === 0 || i === 6 ? 'var(--text-muted)' : 'var(--text-secondary)' }}>{w}</div>
         ))}
       </div>
@@ -347,7 +347,7 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
                     tabIndex={0}
                     onClick={(e) => { e.stopPropagation(); onEvent(ev) }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onEvent(ev) } }}
-                    className="flex items-center gap-1.5 text-[11px] font-medium leading-tight pl-2 pr-1.5 py-1 rounded-md truncate cursor-pointer transition-all hover:brightness-125"
+                    className="flex items-center gap-1.5 text-[12px] font-medium leading-tight pl-2 pr-1.5 py-1 rounded-md truncate cursor-pointer transition-all hover:brightness-125"
                     style={{
                       background: `color-mix(in srgb, ${tone} 22%, transparent)`,
                       color: `color-mix(in srgb, ${tone} 82%, var(--text-primary))`,
@@ -363,7 +363,7 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
                   )
                 })}
                 {items.length > 3 && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  <span className="text-[12px] font-semibold px-1.5 py-0.5" style={{ color: 'var(--text-tertiary)' }}>
                     +{items.length - 3} more
                   </span>
                 )}
@@ -403,7 +403,7 @@ function AgendaList({ groups, now, onEvent, loading }) {
         const isToday = isSameDay(g.date, now)
         return (
         <div key={g.key}>
-          <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-950/95 backdrop-blur px-4 py-1.5 text-[11px] font-mono uppercase tracking-wider border-b border-neutral-800/50"
+          <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-950/95 backdrop-blur px-4 py-1.5 text-[12px] font-mono uppercase tracking-wider border-b border-neutral-800/50"
             style={isToday ? { color: 'var(--accent)' } : undefined}>
             {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
             <span className={isToday ? '' : 'text-neutral-500'}>{fmtDayLabel(g.date, now)}</span>
@@ -420,7 +420,7 @@ function AgendaList({ groups, now, onEvent, loading }) {
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] text-neutral-100 truncate group-hover:text-[var(--text-primary)] transition-colors">{ev.title || '(untitled)'}</div>
                     {ev.location && (
-                      <div className="flex items-center gap-1 text-[11px] text-neutral-500 truncate mt-0.5">
+                      <div className="flex items-center gap-1 text-[12px] text-neutral-500 truncate mt-0.5">
                         <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M8 1.5c-2.5 0-4.5 2-4.5 4.5 0 3 4.5 8 4.5 8s4.5-5 4.5-8c0-2.5-2-4.5-4.5-4.5z"/><circle cx="8" cy="6" r="1.5"/></svg>
                         <span className="truncate">{ev.location}</span>
                       </div>
@@ -454,7 +454,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
         </div>
         <div className="p-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Title</span>
+            <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Title</span>
             <input
               autoFocus
               value={form.title}
@@ -471,7 +471,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
 
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Starts</span>
+              <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Starts</span>
               <input
                 type={form.allDay ? 'date' : 'datetime-local'}
                 value={form.allDay ? toDateInput(form.start) : toLocalInput(form.start)}
@@ -481,7 +481,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Ends</span>
+              <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Ends</span>
               <input
                 type={form.allDay ? 'date' : 'datetime-local'}
                 value={form.allDay ? toDateInput(form.end) : toLocalInput(form.end)}
@@ -493,7 +493,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Location</span>
+            <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Location</span>
             <input
               value={form.location}
               onChange={(e) => set({ location: e.target.value })}
@@ -503,7 +503,7 @@ function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
+            <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
             <textarea
               value={form.notes}
               onChange={(e) => set({ notes: e.target.value })}

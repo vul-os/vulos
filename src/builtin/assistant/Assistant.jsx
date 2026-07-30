@@ -34,7 +34,7 @@ function SovereigntyBadge({ status, onClick }) {
       type="button"
       onClick={onClick}
       title={status.sovereignty?.reason || info.blurb}
-      className="flex items-center gap-2 text-[11px] rounded-md px-1.5 py-1 -mr-1 hover:bg-neutral-800/60 transition-colors focus-primary"
+      className="flex items-center gap-2 text-[12px] rounded-md px-1.5 py-1 -mr-1 hover:bg-neutral-800/60 transition-colors focus-primary"
     >
       <span className="inline-block w-2 h-2 rounded-full" style={{ background: info.dot }} />
       <span className={info.tone}>{label}</span>
@@ -61,8 +61,8 @@ function TierPicker({ status, options, current, onPick, busy, onClose }) {
   return (
     <div className="flex-shrink-0 px-4 py-3 border-b border-neutral-800/60 bg-neutral-900/40">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-[11px] font-medium text-neutral-300">Where your AI runs</div>
-        <button type="button" onClick={onClose} className="text-neutral-600 hover:text-neutral-300 text-[11px]">Done</button>
+        <div className="text-[12px] font-medium text-neutral-300">Where your AI runs</div>
+        <button type="button" onClick={onClose} className="text-neutral-600 hover:text-neutral-300 text-[12px]">Done</button>
       </div>
       <div className="flex flex-col gap-1.5">
         {opts.map(o => {
@@ -83,15 +83,15 @@ function TierPicker({ status, options, current, onPick, busy, onClose }) {
               <div className="flex items-center gap-2">
                 <span className="inline-block w-2 h-2 rounded-full" style={{ background: info.dot }} />
                 <span className={`text-[12px] ${info.tone}`}>{o.label || info.label}</span>
-                {active && <span className="ml-auto text-[10px] text-neutral-500">current</span>}
+                {active && <span className="ml-auto text-[12px] text-neutral-500">current</span>}
               </div>
-              <div className="text-[10.5px] text-neutral-500 mt-0.5 leading-snug pl-4">{info.blurb}</div>
+              <div className="text-[12px] text-neutral-500 mt-0.5 leading-snug pl-4">{info.blurb}</div>
             </button>
           )
         })}
       </div>
       {status?.sovereignty && !status.sovereignty.allowed && (
-        <div className="text-[10.5px] text-warning mt-2 leading-snug">
+        <div className="text-[12px] text-warning mt-2 leading-snug">
           This tier needs the egress opt-in (VULOS_ASSISTANT_ALLOW_EXTERNAL=1) before mail is sent to it.
         </div>
       )}
@@ -422,7 +422,7 @@ export default function Assistant() {
           <span className="w-7 h-7 rounded-lg flex items-center justify-center accent-bg-soft accent-text text-[15px] leading-none flex-shrink-0" aria-hidden="true">✦</span>
           <div className="min-w-0">
             <div className="text-[13px] font-medium text-neutral-100 leading-tight">Assistant</div>
-            <div className="text-[11px] text-neutral-500 leading-tight truncate">
+            <div className="text-[12px] text-neutral-500 leading-tight truncate">
               {/* Only surface the mail source when it's an EXTERNAL provider the
                   user connected (e.g. "Gmail"); the built-in mail engine's
                   internal id is not a user-facing brand. */}
@@ -445,7 +445,7 @@ export default function Assistant() {
       )}
 
       {blocked && (
-        <div className="flex-shrink-0 px-3 sm:px-4 py-2 text-[11px] text-danger bg-danger-soft border-b border-danger-soft">
+        <div className="flex-shrink-0 px-3 sm:px-4 py-2 text-[12px] text-danger bg-danger-soft border-b border-danger-soft">
           This endpoint's tier ({tierInfo(currentTier).label}) is not permitted, so your mail stays inside the
           sovereignty boundary. Pick a local or sovereign endpoint, or set VULOS_ASSISTANT_ALLOW_EXTERNAL=1 to
           authorize a brokered/external one.
@@ -520,7 +520,7 @@ export default function Assistant() {
                 type="button"
                 onClick={() => onQuick(q)}
                 disabled={busy}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40 focus-primary"
+                className="text-[12px] px-2.5 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 transition-colors disabled:opacity-40 focus-primary"
               >
                 {q.label}
               </button>

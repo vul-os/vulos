@@ -190,7 +190,7 @@ export function StepTrace({ steps, className = '' }) {
         details.va-steps[open] > ol { animation: vaStepReveal var(--motion-base) var(--ease-out) }
         @media (prefers-reduced-motion: reduce) { details.va-steps[open] > ol { animation: none } }
       `}</style>
-      <summary className="cursor-pointer text-[11px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5 rounded focus-primary w-fit transition-colors">
+      <summary className="cursor-pointer text-[12px] text-neutral-500 hover:text-neutral-300 select-none list-none flex items-center gap-1.5 rounded focus-primary w-fit transition-colors">
         <svg viewBox="0 0 20 20" fill="currentColor" width="10" height="10" aria-hidden="true"
           className="transition-transform group-open:rotate-90 motion-reduce:transition-none">
           <path fillRule="evenodd" d="M7.21 5.23a.75.75 0 011.06.02l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 11-1.04-1.08L11.17 10 7.23 6.29a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
@@ -200,7 +200,7 @@ export function StepTrace({ steps, className = '' }) {
       </summary>
       <ol className="mt-1.5 space-y-1.5 pl-1 border-l border-neutral-800 ml-1">
         {steps.map((s, i) => (
-          <li key={i} className="pl-3 text-[11px] leading-snug relative">
+          <li key={i} className="pl-3 text-[12px] leading-snug relative">
             <span className="absolute -left-[3px] top-1.5 w-1.5 h-1.5 rounded-full bg-neutral-700" aria-hidden="true" />
             <div className="text-neutral-300">{STEP_VERB[s.tool] || (s.tool || 'tool')}</div>
             {s.args && <div className="text-neutral-600 font-mono break-words">{s.args}</div>}
