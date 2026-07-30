@@ -102,7 +102,7 @@ function NC13_Panel({ onClose }) {
             <button
               onClick={markAllRead}
               style={{ color: 'var(--accent)' }}
-              className="focus-primary text-[10px] transition-colors px-1.5 py-0.5 rounded hover:brightness-125"
+              className="focus-primary text-[12px] transition-colors px-1.5 py-0.5 rounded hover:brightness-125"
             >
               Mark all read
             </button>
@@ -110,7 +110,7 @@ function NC13_Panel({ onClose }) {
           {items.length > 0 && (
             <button
               onClick={clear}
-              className="focus-primary text-[10px] transition-colors px-1.5 py-0.5 rounded"
+              className="focus-primary text-[12px] transition-colors px-1.5 py-0.5 rounded"
               style={{ color: 'var(--text-muted)' }}
             >
               Clear
@@ -139,14 +139,14 @@ function NC13_Panel({ onClose }) {
         {grouped.map(({ day, groups }) => (
           <div key={day}>
             <div className="flex items-center gap-2 px-3.5 pt-3 pb-1">
-              <span className="text-[10px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{day}</span>
+              <span className="text-[12px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{day}</span>
               <div className="vshell-hairline flex-1 h-px" />
             </div>
             {groups.map(({ source, items: rows }) => (
               <div key={source} className="mb-1">
                 {source !== 'system' && (
                   <div className="px-3.5 pb-0.5">
-                    <span className="text-[9px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>{source}</span>
+                    <span className="text-[12px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-ghost)' }}>{source}</span>
                   </div>
                 )}
                 {rows.map(n => (
@@ -167,10 +167,10 @@ function NC13_Panel({ onClose }) {
                           <span className="text-xs font-medium truncate" style={{ color: n.read ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
                             {n.title}
                           </span>
-                          <span className="text-[10px] shrink-0" style={{ color: 'var(--text-faint)' }}>{NC13_fmtRelTime(n.ts)}</span>
+                          <span className="text-[12px] shrink-0" style={{ color: 'var(--text-faint)' }}>{NC13_fmtRelTime(n.ts)}</span>
                         </div>
                         {n.body && (
-                          <p className="text-[11px] mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{n.body}</p>
+                          <p className="text-[12px] mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{n.body}</p>
                         )}
                       </div>
                     </button>
@@ -191,7 +191,7 @@ function NC13_Panel({ onClose }) {
 
       {/* Do Not Disturb — global mute lives in the store; also surfaced in Settings. */}
       <div className="vshell-border-t flex items-center justify-between px-3.5 py-2.5 shrink-0">
-        <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Do Not Disturb</span>
+        <span className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>Do Not Disturb</span>
         <button
           onClick={() => setMuted(!prefs.muted)}
           role="switch"
