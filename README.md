@@ -8,12 +8,7 @@
 
 Your server. Your AI. Your rules.
 
-<p>
-  <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
-  <img src="https://img.shields.io/badge/version-1.2.0-informational.svg" alt="Version 1.2.0" />
-  <img src="https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61dafb.svg" alt="React 19 + Vite" />
-  <img src="https://img.shields.io/badge/backend-Go%201.25-00ADD8.svg" alt="Go 1.25" />
-</p>
+**[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) · v1.2.0 · React 19 + Vite · Go 1.25**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/hero-light.png" />
