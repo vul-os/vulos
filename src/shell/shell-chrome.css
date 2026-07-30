@@ -257,7 +257,7 @@
   padding: 0.2rem 0.35rem;
   font-family: var(--font-mono);
   font-feature-settings: 'tnum' 1, 'zero' 1;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
   color: var(--text-tertiary);
   background: color-mix(in srgb, var(--bg-hover) 72%, transparent);

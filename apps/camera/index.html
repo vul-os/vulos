@@ -21,10 +21,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 
 /* Overlay badges */
 .badge-wrap{position:absolute;top:12px;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:0 14px;pointer-events:none}
-.mode-badge{background:#000a;border:1px solid #ffffff18;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;letter-spacing:.04em;color:#fff;pointer-events:auto;cursor:pointer;user-select:none}
+.mode-badge{background:#000a;border:1px solid #ffffff18;border-radius:20px;padding:3px 10px;font-size: 12px;font-weight:600;letter-spacing:.04em;color:#fff;pointer-events:auto;cursor:pointer;user-select:none}
 .mode-badge.active-photo{border-color:var(--accent);color:var(--accent)}
 .mode-badge.active-video{border-color:var(--record);color:var(--record)}
-.rec-indicator{display:none;align-items:center;gap:6px;background:#000a;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;color:var(--record);letter-spacing:.04em}
+.rec-indicator{display:none;align-items:center;gap:6px;background:#000a;border-radius:20px;padding:3px 10px;font-size: 12px;font-weight:700;color:var(--record);letter-spacing:.04em}
 .rec-indicator.on{display:flex}
 .rec-dot{width:8px;height:8px;border-radius:50%;background:var(--record);animation:blink 1s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
@@ -34,7 +34,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .filter-row{position:absolute;bottom:88px;left:0;right:0;padding:0 12px;pointer-events:auto}
 .filter-scroll{display:flex;gap:8px;overflow-x:auto;padding:4px 0;scrollbar-width:none}
 .filter-scroll::-webkit-scrollbar{display:none}
-.filter-pill{flex-shrink:0;background:#000b;border:1.5px solid transparent;border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s;backdrop-filter:blur(4px)}
+.filter-pill{flex-shrink:0;background:#000b;border:1.5px solid transparent;border-radius:20px;padding:4px 12px;font-size: 12px;color:var(--text2);cursor:pointer;transition:all .15s;backdrop-filter:blur(4px)}
 .filter-pill.active{border-color:#fff5;color:#fff;background:#fff1}
 
 /* Controls bar */
@@ -63,7 +63,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 
 /* Mode selector tabs */
 .mode-tabs{display:flex;justify-content:center;gap:0;background:#0006;border-top:1px solid #ffffff0a}
-.mode-tab{flex:1;max-width:100px;padding:6px 0;font-size:11px;font-weight:600;letter-spacing:.05em;text-align:center;color:var(--text3);cursor:pointer;transition:color .15s;user-select:none;text-transform:uppercase}
+.mode-tab{flex:1;max-width:100px;padding:6px 0;font-size: 12px;font-weight:600;letter-spacing:.05em;text-align:center;color:var(--text3);cursor:pointer;transition:color .15s;user-select:none;text-transform:uppercase}
 .mode-tab.active{color:#fff}
 
 /* Toast */

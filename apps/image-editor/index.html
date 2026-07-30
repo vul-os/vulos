@@ -73,7 +73,7 @@ html, body {
 .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
 .spacer { flex: 1; }
 #status-msg {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   padding: 0 8px;
 }
@@ -90,7 +90,7 @@ html, body {
 }
 .panel-section { display: flex; flex-direction: column; gap: 6px; }
 .panel-title {
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
@@ -116,7 +116,7 @@ html, body {
   border-radius: var(--radius);
   color: var(--text);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   transition: background 0.15s;
   line-height: 1.2;
   text-align: center;
@@ -135,7 +135,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 .slider-label span:last-child { color: var(--text); min-width: 32px; text-align: right; }
@@ -184,7 +184,7 @@ input[type=color] {
   border-radius: var(--radius);
   color: var(--text);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
   transition: background 0.15s;
 }
@@ -204,7 +204,7 @@ input[type=color] {
   border-radius: var(--radius);
   color: var(--text);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
   transition: background 0.15s;
 }
@@ -395,7 +395,7 @@ input[type=color] {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .info-key { color: var(--text-dim); }
 .info-val { color: var(--text); }
@@ -471,7 +471,7 @@ input[type=color] {
       <div class="color-size-row">
         <input type="color" id="brush-color" value="#ff4444" title="Color">
         <input type="number" class="size-input" id="brush-size" value="10" min="1" max="200" title="Size (px)">
-        <label style="font-size:11px;color:var(--text-dim)">px</label>
+        <label style="font-size: 12px;color:var(--text-dim)">px</label>
       </div>
       <div class="slider-row">
         <div class="slider-label"><span>Opacity</span><span id="brush-opacity-val">100%</span></div>
@@ -486,7 +486,7 @@ input[type=color] {
       <div class="color-size-row">
         <input type="color" id="text-color" value="#ffffff">
         <input type="number" id="font-size-input" value="24" min="6" max="200">
-        <label style="font-size:11px;color:var(--text-dim)">pt</label>
+        <label style="font-size: 12px;color:var(--text-dim)">pt</label>
       </div>
     </div>
 
@@ -502,9 +502,9 @@ input[type=color] {
       <div class="color-size-row">
         <input type="color" id="shape-color" value="#ffcc00">
         <input type="number" class="size-input" id="shape-size" value="3" min="1" max="50" title="Stroke width">
-        <label style="font-size:11px;color:var(--text-dim)">px</label>
+        <label style="font-size: 12px;color:var(--text-dim)">px</label>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;font-size: 12px;cursor:pointer">
         <input type="checkbox" id="shape-fill"> Fill shape
       </label>
     </div>
@@ -557,7 +557,7 @@ input[type=color] {
       <h2>Image Editor</h2>
       <p>Open an image to get started</p>
       <button id="open-file-btn">Open Image</button>
-      <p style="font-size:11px">or drag and drop a file here</p>
+      <p style="font-size: 12px">or drag and drop a file here</p>
     </div>
     <canvas id="main-canvas" style="display:none"></canvas>
     <div id="crop-overlay"></div>
@@ -631,7 +631,7 @@ input[type=color] {
         <button class="transform-btn" id="btn-undo2" style="flex:1">↩ Undo</button>
         <button class="transform-btn" id="btn-redo2" style="flex:1">↪ Redo</button>
       </div>
-      <div style="font-size:11px;color:var(--text-dim)" id="history-info">No history</div>
+      <div style="font-size: 12px;color:var(--text-dim)" id="history-info">No history</div>
     </div>
 
   </div>

@@ -13,7 +13,7 @@ h1{font-size:20px;font-weight:600;color:var(--text);display:flex;align-items:cen
 h1 svg{flex-shrink:0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
-.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title{font-size: 12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:6px}
 .card-title svg{opacity:.7}
 .row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
 .row:last-child{border-bottom:none}
@@ -31,7 +31,7 @@ h1 svg{flex-shrink:0}
 .net-table th{color:var(--muted);font-weight:500;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border)}
 .net-table td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top}
 .net-table tr:last-child td{border-bottom:none}
-.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;background:#1e293b;color:var(--accent)}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size: 12px;font-weight:600;background:#1e293b;color:var(--accent)}
 .badge.green{background:#14532d22;color:var(--green)}
 .badge.red{background:#7f1d1d22;color:var(--red)}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
@@ -42,7 +42,7 @@ h1 svg{flex-shrink:0}
 .uptime-big{font-size:28px;font-weight:700;color:var(--accent);letter-spacing:-.5px;margin:4px 0 2px}
 .hostname-sub{font-size:13px;color:var(--muted)}
 .header-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-.ts{font-size:11px;color:var(--muted)}
+.ts{font-size: 12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -72,7 +72,7 @@ h1 svg{flex-shrink:0}
   <!-- Cards rendered by JS -->
 </div>
 
-<div style="text-align:center;margin-top:20px;font-size:11px;letter-spacing:.04em;color:var(--text-ghost)">Part of Vulos</div>
+<div style="text-align:center;margin-top:20px;font-size: 12px;letter-spacing:.04em;color:var(--text-ghost)">Part of Vulos</div>
 
 <script>
 const grid = document.getElementById('grid');
@@ -192,7 +192,7 @@ function render(){
         <div class="bar-wrap" style="margin:0">
           <div class="bar-fill" style="width:${Math.min(pct,100)}%;background:${pctColor(pct)}"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px">
+        <div style="display:flex;justify-content:space-between;font-size: 12px;color:var(--muted);margin-top:2px">
           <span>${d.device} · ${d.fs_type}</span>
           <span>${pct.toFixed(1)}%</span>
         </div>
@@ -249,7 +249,7 @@ function render(){
   const netRows = network.filter(n => n.name !== 'lo' && (n.addresses||[]).length > 0 || n.rx_bytes > 0);
   if(netRows.length > 0){
     const tableRows = netRows.map(n => {
-      const addrs = (n.addresses||[]).map(a=>`<div>${a.address} <span style="color:var(--muted);font-size:10px">${a.family}</span></div>`).join('');
+      const addrs = (n.addresses||[]).map(a=>`<div>${a.address} <span style="color:var(--muted);font-size: 12px">${a.family}</span></div>`).join('');
       const rx = n.rx_bytes ? fmt(n.rx_bytes) : '—';
       const tx = n.tx_bytes ? fmt(n.tx_bytes) : '—';
       return `<tr>

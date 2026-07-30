@@ -53,7 +53,7 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,-apple-system,sans-s
 #sidebar .top{padding:8px;border-bottom:1px solid #222;display:flex;gap:4px}
 #sidebar .top button{
   flex:1;background:#222;border:1px solid #333;border-radius:5px;
-  padding:5px 0;color:#ccc;cursor:pointer;font-size:11px;
+  padding:5px 0;color:#ccc;cursor:pointer;font-size: 12px;
 }
 #sidebar .top button:hover{background:#2a2a2a}
 #file-list{flex:1;overflow-y:auto}
@@ -64,7 +64,7 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,-apple-system,sans-s
 .file-item:hover{background:#111}
 .file-item.active{background:#1a1a1a;border-left:2px solid #3b82f6}
 .file-item .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.file-item .del{color:#555;font-size:10px;padding:1px 4px;border-radius:3px;flex-shrink:0}
+.file-item .del{color:#555;font-size: 12px;padding:1px 4px;border-radius:3px;flex-shrink:0}
 .file-item .del:hover{background:#3f1212;color:#f87171}
 
 /* ── Editor area ────────────────────────────────────────────────────────── */
@@ -88,14 +88,14 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,-apple-system,sans-s
   padding:4px 10px;color:#ccc;cursor:pointer;font-size:12px;
 }
 #find-bar button:hover{background:#2a2a2a}
-#find-count{color:#666;font-size:11px;min-width:60px}
+#find-count{color:#666;font-size: 12px;min-width:60px}
 
 /* ── Status bar ─────────────────────────────────────────────────────────── */
 #statusbar{
   display:flex;align-items:center;gap:12px;
   padding:3px 10px;
   background:#111;border-top:1px solid #222;
-  font-size:11px;color:#555;flex-shrink:0;
+  font-size: 12px;color:#555;flex-shrink:0;
 }
 #statusbar .s-right{margin-left:auto;display:flex;gap:12px}
 #save-status{color:#555}
@@ -115,13 +115,13 @@ body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,-apple-system,sans-s
 .peer-badge{
   display:flex;align-items:center;gap:4px;
   background:#1e3a5f;border:1px solid #2563eb;border-radius:12px;
-  padding:2px 8px;font-size:11px;
+  padding:2px 8px;font-size: 12px;
 }
 .peer-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 #collab-link-wrap{display:flex;align-items:center;gap:6px}
 #collab-link{
   background:#1a1a1a;border:1px solid #333;border-radius:5px;
-  padding:3px 8px;color:#93c5fd;font-size:11px;
+  padding:3px 8px;color:#93c5fd;font-size: 12px;
   cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 #collab-link:hover{border-color:#3b82f6}
@@ -546,7 +546,7 @@ async function loadFileList() {
   const files = await res.json();
   const list = document.getElementById("file-list");
   if (!files.length) {
-    list.innerHTML = '<div style="padding:10px;color:#555;font-size:11px">No files yet</div>';
+    list.innerHTML = '<div style="padding:10px;color:#555;font-size: 12px">No files yet</div>';
     return;
   }
   list.innerHTML = files.map(f => `
@@ -804,7 +804,7 @@ function updatePeerBadges() {
   });
   const container = document.getElementById("collab-peers");
   if (!peers.length) {
-    container.innerHTML = '<span style="color:#3b6bbf;font-size:11px">Waiting for peers…</span>';
+    container.innerHTML = '<span style="color:#3b6bbf;font-size: 12px">Waiting for peers…</span>';
     return;
   }
   container.innerHTML = peers.map(p => `
