@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: file header names 'the Ephor fabric' only as the illustrative HTTPS
+// contract this optional, disabled-by-default GPU-host registration
+// speaks -- RelayBaseURL has no default (see config.go: 'Required: there
+// is no default').
+
 // fabric.go — host registration with the Ephor fabric (HTTPS contract).
 //
 // The VULOS-STREAM/1 sub-protocol is a peering-envelope protocol used between

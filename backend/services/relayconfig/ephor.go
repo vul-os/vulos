@@ -1,3 +1,11 @@
+// no-broker-dep:allow-file: file implements builtinICEServers, the shared built-in ICE fallback
+// used by BOTH vulosProvider and ephorProvider; header comment
+// ('ephor.go -- the DEFAULT relay/reachability provider') is stale
+// naming left over from before the file was split into vulos/ephor
+// providers (reported separately, not fixed here) -- providers.go's
+// dispatch table (not this file) decides the default, and it resolves to
+// vulosProvider.
+
 package relayconfig
 
 import (

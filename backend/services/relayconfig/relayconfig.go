@@ -1,3 +1,10 @@
+// no-broker-dep:allow-file: package doc + comments are the canonical description of the
+// Vulos/Ephor/TURN/libp2p/wireguard/none provider seam; DefaultConfig()
+// returns Provider: vulos, and a comment explicitly notes the string
+// 'ephor' only survives as a stale on-disk value from before the
+// provider rename. THIS FILE IS THE PROOF the default is vulos, not
+// ephor.
+
 // Package relayconfig is the SINGLE source of truth for the box's
 // relay/reachability + TURN "provider" — the concrete answer to "you use
 // Vulos's own relay, an Ephor relay, or bring your own".

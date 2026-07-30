@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: test proves a built-in Vulos relay AND an Ephor relay can be held
+// together in one endpoint set -- asserts an operator-configured
+// coexistence capability, not a dependency.
+
 package reach
 
 import (

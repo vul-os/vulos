@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: comments state this rendezvous role is wire-identical to Ephor's, so a
+// Vulos relay is a drop-in replacement for an Ephor one and vice versa
+// -- wire-compatibility for operator choice, not a dependency.
+
 // Package rendezvous is the relay's DISCOVERY role: the small, content-blind
 // service that lets two boxes find each other when they are not on the same
 // LAN.

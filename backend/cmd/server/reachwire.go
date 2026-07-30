@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: comment documents that /api/network/reach may report a Vulos relay and
+// an Ephor relay TOGETHER when an operator has explicitly configured both
+// in VULOS_RELAY_ENDPOINTS -- reporting logic for an operator choice, not
+// a default or dependency.
+
 package main
 
 import (

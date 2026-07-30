@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: doc comment names Ephor as the broker an owner may configure for
+// cross-instance notification fan-out via VULOS_RELAY_BASE_URL, and
+// states plainly 'There is no built-in default... with the variable
+// unset the fan-out delivers locally.'
+
 // MINST-06: Multi-instance notifications — fan-out + dedup.
 //
 // NotifyFanout fans an OS notification out to all online account instances

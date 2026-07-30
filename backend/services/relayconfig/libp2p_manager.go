@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: comment states 'the box's out-of-the-box default (DefaultConfig() is
+// ephor)' -- THIS IS STALE relative to the current code: relayconfig.go's
+// DefaultConfig() literally returns Provider: vulos. Reported separately
+// as a stale-comment finding, not fixed here; no actual dependency or
+// behavioural default on Ephor exists (C-DEP go clean, 899 entries).
+
 package relayconfig
 
 // libp2p_manager.go owns the ONE optional, real go-libp2p host this box may

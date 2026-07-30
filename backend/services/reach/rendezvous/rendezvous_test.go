@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: test comment states a constant is a wire contract shared with Ephor,
+// asserted so it can never silently drift -- a compatibility pin, not a
+// dependency.
+
 package rendezvous
 
 import (

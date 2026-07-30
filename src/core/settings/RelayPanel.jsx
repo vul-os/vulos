@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: Settings UI copy for the RELAY-01 provider picker: comments and the
+// 'ephor' PROVIDERS entry describe it as 'A supported alternative, not a
+// dependency' right next to 'vulos' explicitly labelled '(default)' --
+// this file IS the UI proof that vulos, not ephor, is the default.
+
 import { useState, useEffect, useCallback } from 'react'
 import { requireStepUp } from '../../lib/stepup'
 import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from './ui.jsx'

@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: comment cites Ephor only as an example relay a resumable upload might
+// ride ('e.g. Ephor, an owner-run broker...') -- illustrative, no import,
+// no default.
+
 package main
 
 // routes_files_resumable.go — RESUMABLE (tus-style) chunked upload control plane

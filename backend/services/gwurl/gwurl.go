@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: package doc explains Vulos operates no control plane and reachability
+// instead goes through Ephor, an open broker the box dials OUT to WHEN
+// THE OWNER CHOOSES TO RUN ONE -- and states 'There is no compiled-in
+// gateway host' for the CP URL this file resolves. Names the broker to
+// describe an optional choice, not a dependency.
+
 // Package gwurl is the SINGLE source of truth for the control-plane
 // ("gateway") base URL that every box-side broker consumes: cloud login /
 // signup / enroll, identity-username claim, instance routing (PlaceFor), cloud

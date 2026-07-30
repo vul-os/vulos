@@ -1,3 +1,6 @@
+// no-broker-dep:allow-file: comment names 'Ephor/fabric.js + prekeys.js' as an example of the
+// CLIENT holding all private keys -- illustrative prose, no dependency.
+
 // prekeys.go — forward-secret content keys via an X3DH-style prekey scheme
 // (PEER-37 FS hardening).
 //

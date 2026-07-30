@@ -1,3 +1,8 @@
+<!-- no-broker-dep:allow-file: handover doc states the mobile/offline track depends on NONE of the
+     listed items, and reachability for the phone is just the existing
+     Ephor an operator may have configured (an alternative to the built-in
+     Vulos relay) -- states an ABSENCE of dependency, not a dependency. -->
+
 # Handover — Vulos Mobile & Client-Offline workstream
 
 You are picking up the **mobile + client-offline** track for Vulos. The core team is focused elsewhere

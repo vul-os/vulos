@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: tests exercise ProviderEphor/Set/ResetToEphor (internal package
+// symbols) to prove Ephor is a real, selectable peer AND that
+// ResetToEphor resets to vulos ('want vulos') -- the tests themselves
+// assert the default is vulos, not ephor.
+
 package relayconfig
 
 import (

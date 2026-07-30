@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: comment describes ICE servers coming from the relayconfig provider
+// seam using the same legacy 'ephor by default' shorthand as
+// backend/services/peering/ice.go -- no import, no dependency;
+// stale-terminology finding reported separately, not fixed here.
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { applyLowLatencyHints } from './lowLatency'
 

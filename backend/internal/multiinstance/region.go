@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: doc comment cites Ephor as an example self-hosted gateway an operator
+// MIGHT point the box at; the field defaults to "" (not configured)
+// absent that.
+
 // Package multiinstance — Phase-0 multi-region seam.
 //
 // PlaceFor resolves the control-plane base URL for a given region slug. Vulos

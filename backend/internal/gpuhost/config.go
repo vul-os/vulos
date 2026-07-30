@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: doc comment on RelayBaseURL names 'the Ephor node' an operator points
+// this box at, and states plainly: 'Required: there is no default,
+// because nobody runs a relay on the owner's behalf.' Names the broker to
+// state its ABSENCE as a default.
+
 // config.go — gpuhost Config + external-streamer config-file generator.
 
 package gpuhost

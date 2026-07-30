@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# no-broker-dep:allow-file: installer comments/plan-output lines describe Ephor as one OPTIONAL
+# self-hostable broker an operator may point the box at for
+# reachability -- no default install path installs or dials it.
+
 # install-vulos.sh — idempotent meta-bundle installer for Vulos (OS + lilmail + Diwan)
 # Usage:  curl -fsSL https://get.vulos.org | sudo bash
 #         curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run

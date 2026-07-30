@@ -1,3 +1,7 @@
+<!-- no-broker-dep:allow-file: roadmap comparison table's 'Host coupling' cell names an Ephor endpoint
+     only as an example of an optional https:// peer URL -- illustrative,
+     no import, no default endpoint. -->
+
 # Offline Data — the generic `@vulos/offline` layer (OFFLINE-DATA-01)
 
 > **Status.** 🟢 Core built + unit-tested (`src/lib/offline/`). 🟢 First app adoption (Notes) wired **and executing** — Yjs vendored, importmap + static serving in place. Complements [OFFLINE-AUTH.md](OFFLINE-AUTH.md) (the OS auth *gate*) and [OFFLINE.md](OFFLINE.md) (the client-offline model). This is the *data* half: how an app keeps its own data offline.

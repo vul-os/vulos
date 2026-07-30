@@ -1,3 +1,10 @@
+// no-broker-dep:allow-file: comments explain the optional self-hosted control-plane gateway seam
+// (e.g. Ephor) and a STALE legacy log string ('using ephor default') on
+// relayconfig.Init's error-fallback path, which actually calls
+// DefaultConfig() (Provider: vulos) -- no import, no code path actually
+// defaults to dialling Ephor. (Stale-wording finding reported separately,
+// not fixed here -- out of scope for a broker-gate marker.)
+
 package main
 
 import (

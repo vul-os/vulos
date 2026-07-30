@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: test comment cites the same canonical-message vector Ephor's own test
+// asserts, to prove wire-format compatibility -- a cross-project test
+// vector reference, not a dependency.
+
 package fabric
 
 import (

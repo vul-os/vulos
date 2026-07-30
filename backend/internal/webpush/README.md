@@ -1,3 +1,7 @@
+<!-- no-broker-dep:allow-file: README describes an Ephor node's optional wake-origin role as one
+     example substrate-only Wake consumer -- illustrative prose, no
+     dependency. -->
+
 # webpush
 
 Sovereign, self-hostable Web Push (VAPID / RFC 8291) — PUSH-CELL-01.

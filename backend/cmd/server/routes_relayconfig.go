@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: comments describe the relayconfig HTTP seam (owner-selectable
+// vulos/ephor/turn/libp2p/wireguard/none) and call the legacy-named
+// ResetToEphor() wrapper, which itself calls relayconfig.ResetToDefault()
+// (Provider: vulos, see relayconfig.go DefaultConfig()) -- no Ephor
+// import, no default-to-ephor behaviour.
+
 package main
 
 // routes_relayconfig.go — RELAY-01: owner-configurable relay/TURN provider

@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: doc comment documents the optional VULOS_RELAY_BASE_URL env var (a
+// self-hosted Ephor instance an operator may point the box at) and again
+// uses legacy 'ephor by default' shorthand for the built-in provider (see
+// peering/ice.go) -- no default env value, no import.
+
 // federation_profile.go — the sovereign-federation config profile.
 //
 // Central-optional reachability (peering resolve.go, directlisten, relay

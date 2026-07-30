@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: the file implementing the whole provider seam: providerFor's default
+// case returns vulosProvider{} (not ephor), and ephorProvider is a peer
+// alternative selected only when Provider=="ephor" is explicitly
+// persisted. Names Ephor extensively to describe this optional peer,
+// never as this package's own dependency.
+
 package relayconfig
 
 import (

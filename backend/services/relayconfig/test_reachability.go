@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: a `default: // ephor` case label + an 'ephor default -- public STUN
+// only' detail string use legacy 'ephor' as the label for providerFor's
+// DEFAULT branch (which actually constructs vulosProvider{}, see
+// relayconfig.go) -- stale terminology, not a dependency or an actual
+// default-to-ephor.
+
 package relayconfig
 
 import (

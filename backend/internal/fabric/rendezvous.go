@@ -1,3 +1,9 @@
+// no-broker-dep:allow-file: comments state the rendezvous protocol is OPEN -- 'point this at your
+// own Ephor... at one somebody else hosts, or at nothing at all' -- and
+// note a canonical message format kept byte-identical to Ephor's for wire
+// compatibility. Describes an optional, operator-chosen peer and a
+// wire-compat contract, not a dependency.
+
 package fabric
 
 import (

@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: comment names 'Ephor/fabric.js' only as an example of a browser peer
+// that may query this endpoint for prekey claims -- illustrative, no
+// dependency.
+
 // prekeys_published.go — the PUBLIC prekey directory for REMOTE (browser) peers.
 //
 // # Why this exists

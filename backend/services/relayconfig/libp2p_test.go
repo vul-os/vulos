@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: test comments/names use ProviderEphor (an internal package constant,
+// not an import of anything external) to prove libp2p stays inert when a
+// DIFFERENT provider is selected -- a negative test, not a dependency.
+
 package relayconfig
 
 // libp2p_test.go — hermetic unit tests for the optional embedded libp2p

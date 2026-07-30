@@ -1,3 +1,8 @@
+// no-broker-dep:allow-file: comments require this box's rendezvous agent to match Ephor's wire
+// contract byte-for-byte, and note a mixed set of built-in Vulos and
+// Ephor relays is fine -- wire-compatibility and operator choice, not a
+// dependency.
+
 // resolve.go — the single peer-reachability seam (CONSOLIDATION B-0, finished
 // under the "unified reachability architecture" / two-class-app-model program).
 //

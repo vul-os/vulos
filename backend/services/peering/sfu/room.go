@@ -1,3 +1,7 @@
+// no-broker-dep:allow-file: comments describe relayconfig.ICEServers as the single ICE source of
+// truth using the same legacy 'ephor by default' shorthand as
+// peering/ice.go -- no import, no dependency.
+
 // Package sfu implements a Selective Forwarding Unit (SFU) for multi-party
 // WebRTC calls on the host's Vula server. It handles N participant
 // PeerConnections, 2-layer simulcast per sender, Last-N video forwarding
