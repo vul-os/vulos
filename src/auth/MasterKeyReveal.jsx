@@ -57,7 +57,7 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }) {
               className="flex items-center gap-2 rounded-lg px-3 py-2"
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}
             >
-              <span className="text-[10px] font-mono w-5 text-right tabular-nums" style={{ color: 'var(--text-faint)' }}>{i + 1}</span>
+              <span className="text-[12px] font-mono w-5 text-right tabular-nums" style={{ color: 'var(--text-faint)' }}>{i + 1}</span>
               <span className="text-sm font-medium font-mono tracking-tight" style={{ color: 'var(--text-primary)' }}>{w}</span>
             </div>
           ))}

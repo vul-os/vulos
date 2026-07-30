@@ -264,7 +264,7 @@ function IncomingCallModal({ call, onAccept, onReject }) {
               {call.peerDisplay || call.peerId || 'Unknown peer'}
             </h3>
             {call.peerId && call.peerId !== call.peerDisplay && (
-              <p className="mt-0.5 text-[11px] text-neutral-500 font-mono truncate max-w-[220px]">{call.peerId}</p>
+              <p className="mt-0.5 text-[12px] text-neutral-500 font-mono truncate max-w-[220px]">{call.peerId}</p>
             )}
           </div>
         </div>

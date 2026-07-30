@@ -33,7 +33,7 @@ export default function FullscreenHint() {
       {isFirefox && (
         <button
           onClick={() => setShowTip(!showTip)}
-          className="text-[11px] text-neutral-600 hover:text-neutral-400 transition-colors"
+          className="text-[12px] text-neutral-600 hover:text-neutral-400 transition-colors"
         >
           Using Firefox? Prevent Esc from exiting fullscreen
         </button>
@@ -42,13 +42,13 @@ export default function FullscreenHint() {
       {showTip && (
         <div className="max-w-xs bg-neutral-900/90 border border-neutral-700/50 rounded-xl p-4 text-left animate-[fadeIn_0.15s_ease-out]">
           <p className="text-xs text-neutral-300 font-medium mb-2">Stop Esc from exiting fullscreen:</p>
-          <ol className="text-[11px] text-neutral-400 space-y-1.5 list-decimal list-inside">
+          <ol className="text-[12px] text-neutral-400 space-y-1.5 list-decimal list-inside">
             <li>Type <code className="text-amber-400/80 bg-neutral-800 px-1 py-0.5 rounded">about:config</code> in the address bar</li>
             <li>Click "Accept the Risk and Continue"</li>
             <li>Search for: <code className="text-amber-400/80 bg-neutral-800 px-1 py-0.5 rounded">browser.fullscreen.exit_on_escape</code></li>
             <li>Double-click to set it to <strong className="text-neutral-200">false</strong></li>
           </ol>
-          <p className="text-[10px] text-neutral-600 mt-2">Use F11 or the menu to exit fullscreen instead.</p>
+          <p className="text-[12px] text-neutral-600 mt-2">Use F11 or the menu to exit fullscreen instead.</p>
         </div>
       )}
     </div>

@@ -267,7 +267,7 @@ export default function LoginScreen() {
 
       {/* Bottom branding */}
       <div className="absolute bottom-6 text-center">
-        <p className="text-[10px] text-neutral-800">Vulos OS</p>
+        <p className="text-[12px] text-neutral-800">Vulos OS</p>
       </div>
     </div>
   )
@@ -279,7 +279,7 @@ function HelpSection({ title, items }) {
       <h3 className="text-xs font-medium text-neutral-400 mb-1.5">{title}</h3>
       <ul className="space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="text-[11px] text-neutral-500 leading-relaxed flex gap-2">
+          <li key={i} className="text-[12px] text-neutral-500 leading-relaxed flex gap-2">
             <span className="text-neutral-700 mt-0.5 shrink-0">{'\u2022'}</span>
             <span>{item}</span>
           </li>
