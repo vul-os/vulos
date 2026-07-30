@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="wibbly">
+  <defs>
+    <linearGradient id="wb-trail" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0"   stop-color="#FF4D9D" stop-opacity=".22"/>
+      <stop offset=".55" stop-color="#FF4D9D" stop-opacity=".75"/>
+      <stop offset="1"   stop-color="#E0007A" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <!-- Viewfinder brackets (unchanged) -->
+  <g fill="none" stroke="#6E6479" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 61 V33 A12 12 0 0 1 33 21 H61"/>
+    <path d="M139 21 H167 A12 12 0 0 1 179 33 V61"/>
+    <path d="M179 139 V167 A12 12 0 0 1 167 179 H139"/>
+    <path d="M61 179 H33 A12 12 0 0 1 21 167 V139"/>
+  </g>
+  <!-- Motion trail: the ball bounces a W through the frame -->
+  <path d="M52 78 L76 138 L100 98 L124 138 L148 78" fill="none" stroke="url(#wb-trail)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- The landmark: where the gesture resolves (end of the W) -->
+  <circle cx="148" cy="78" r="17" fill="#E0007A"/>
+  <circle cx="148" cy="78" r="6.5" fill="#FFE3F0"/>
+</svg>
