@@ -621,7 +621,7 @@ export default function FileManager() {
         <div className="hidden sm:flex w-44 shrink-0 border-r border-neutral-800/40 bg-neutral-900/50 overflow-y-auto overflow-x-hidden py-3 flex-col gap-1">
           {/* Places */}
           <div className="flex flex-col">
-            <div className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
+            <div className="text-[12px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
               Places
             </div>
             {SIDEBAR_PLACES.map(place => (
@@ -643,7 +643,7 @@ export default function FileManager() {
 
           {/* System */}
           <div className="flex flex-col">
-            <div className="text-[10px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
+            <div className="text-[12px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
               System
             </div>
             {SIDEBAR_SYSTEM.map(place => (
@@ -665,7 +665,7 @@ export default function FileManager() {
         {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Column headers */}
-          <div className="flex items-center px-3 py-1.5 border-b border-neutral-800/40 text-[10px] text-neutral-600 uppercase tracking-wide shrink-0 select-none bg-neutral-950/50">
+          <div className="flex items-center px-3 py-1.5 border-b border-neutral-800/40 text-[12px] text-neutral-600 uppercase tracking-wide shrink-0 select-none bg-neutral-950/50">
             <span className="flex-1 flex items-center gap-1.5 min-w-0 cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('name')}>
               Name{sortArrow('name')}
             </span>
@@ -710,12 +710,12 @@ export default function FileManager() {
                       <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
                         <IconCode className="accent-text shrink-0" />
                         <span className="truncate">{name}</span>
-                        <span className="accent-bg-soft accent-text text-[9px] px-1.5 py-0.5 rounded-full ml-1 shrink-0">
+                        <span className="accent-bg-soft accent-text text-[12px] px-1.5 py-0.5 rounded-full ml-1 shrink-0">
                           {Math.round((r.score || 0) * 100)}%
                         </span>
                       </span>
                       <span className="w-16 shrink-0 text-right text-neutral-700">{'\u2014'}</span>
-                      <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[10px]">
+                      <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                         {p.split('/').slice(0, -1).join('/')}
                       </span>
                     </div>
@@ -738,7 +738,7 @@ export default function FileManager() {
                       <span className="truncate">{r.name}</span>
                     </span>
                     <span className="w-16 shrink-0 text-right text-neutral-700">{'\u2014'}</span>
-                    <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[10px]">
+                    <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                       {r.path}
                     </span>
                   </div>
@@ -765,7 +765,7 @@ export default function FileManager() {
                       {entry.name}
                     </span>
                     {entry.linkTarget && (
-                      <span className="text-neutral-600 text-[10px] ml-1 shrink-0 flex items-center gap-0.5">
+                      <span className="text-neutral-600 text-[12px] ml-1 shrink-0 flex items-center gap-0.5">
                         <IconChevronRight className="text-neutral-700" /> {entry.linkTarget}
                       </span>
                     )}
@@ -832,31 +832,31 @@ export default function FileManager() {
             {preview.entry && (
               <div className="px-3 py-2.5 border-b border-neutral-800/30 shrink-0 space-y-1">
                 {preview.entry.perms && (
-                  <div className="flex justify-between text-[11px]">
+                  <div className="flex justify-between text-[12px]">
                     <span className="text-neutral-600">Permissions</span>
-                    <span className="text-neutral-400 font-mono text-[10px]">{preview.entry.perms}</span>
+                    <span className="text-neutral-400 font-mono text-[12px]">{preview.entry.perms}</span>
                   </div>
                 )}
                 {preview.entry.owner && (
-                  <div className="flex justify-between text-[11px]">
+                  <div className="flex justify-between text-[12px]">
                     <span className="text-neutral-600">Owner</span>
                     <span className="text-neutral-400">{preview.entry.owner}:{preview.entry.group}</span>
                   </div>
                 )}
                 {preview.entry.size !== undefined && !preview.entry.isDir && (
-                  <div className="flex justify-between text-[11px]">
+                  <div className="flex justify-between text-[12px]">
                     <span className="text-neutral-600">Size</span>
                     <span className="text-neutral-400">{fmtSize(preview.entry.size)}</span>
                   </div>
                 )}
                 {preview.entry.modified && (
-                  <div className="flex justify-between text-[11px]">
+                  <div className="flex justify-between text-[12px]">
                     <span className="text-neutral-600">Modified</span>
                     <span className="text-neutral-400">{preview.entry.modified}</span>
                   </div>
                 )}
                 {preview.entry.linkTarget && (
-                  <div className="flex justify-between text-[11px]">
+                  <div className="flex justify-between text-[12px]">
                     <span className="text-neutral-600">Link</span>
                     <span className="text-neutral-400 truncate ml-2">{preview.entry.linkTarget}</span>
                   </div>
@@ -866,13 +866,13 @@ export default function FileManager() {
 
             {preview.type === 'semantic' && (
               <div className="px-3 py-2.5 border-b border-neutral-800/30 shrink-0 space-y-1">
-                <div className="flex justify-between text-[11px]">
+                <div className="flex justify-between text-[12px]">
                   <span className="text-neutral-600">Match</span>
                   <span className="accent-text">{Math.round((preview.score || 0) * 100)}%</span>
                 </div>
-                <div className="flex justify-between text-[11px]">
+                <div className="flex justify-between text-[12px]">
                   <span className="text-neutral-600">Path</span>
-                  <span className="text-neutral-500 text-[10px] truncate ml-2">{preview.path}</span>
+                  <span className="text-neutral-500 text-[12px] truncate ml-2">{preview.path}</span>
                 </div>
               </div>
             )}
@@ -895,7 +895,7 @@ export default function FileManager() {
                   <div className="text-neutral-600 text-xs truncate max-w-full">{preview.name}</div>
                 </div>
               ) : (
-                <pre className="m-0 p-3 text-[11px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-all font-mono">
+                <pre className="m-0 p-3 text-[12px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-all font-mono">
                   {preview.content}
                 </pre>
               )}
@@ -905,7 +905,7 @@ export default function FileManager() {
       </div>
 
       {/* Status bar */}
-      <div className="flex justify-between items-center px-3 py-1 bg-neutral-900/50 border-t border-neutral-800/40 text-[10px] text-neutral-600 shrink-0">
+      <div className="flex justify-between items-center px-3 py-1 bg-neutral-900/50 border-t border-neutral-800/40 text-[12px] text-neutral-600 shrink-0">
         <span>{entries.length} items</span>
         <span className="text-neutral-700 truncate ml-4">{cwd}</span>
       </div>
@@ -918,7 +918,7 @@ export default function FileManager() {
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[200px] shadow-2xl shadow-black/60">
-            <div className="px-3 py-1.5 text-[11px] text-neutral-600 truncate border-b border-neutral-700/40 mb-1">
+            <div className="px-3 py-1.5 text-[12px] text-neutral-600 truncate border-b border-neutral-700/40 mb-1">
               {ctxMenu.entry.name}
             </div>
             <button

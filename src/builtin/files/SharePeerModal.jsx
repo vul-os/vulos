@@ -151,7 +151,7 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/60 shrink-0">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-neutral-200">Share to peer</h2>
-            <p className="text-[11px] text-neutral-500 truncate mt-0.5">
+            <p className="text-[12px] text-neutral-500 truncate mt-0.5">
               {target.isDir ? 'Folder' : 'File'} · {target.name}
             </p>
           </div>
@@ -167,12 +167,12 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
+            <h3 className="text-[12px] font-medium text-neutral-400 uppercase tracking-wider">
               Nearby peers
             </h3>
             <button
               onClick={loadPeers}
-              className="px-2 py-1 -mr-2 text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors"
+              className="px-2 py-1 -mr-2 text-[12px] text-neutral-500 hover:text-neutral-300 transition-colors"
             >
               Refresh
             </button>
@@ -220,10 +220,10 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
                           {peer.display_name || 'Unknown'}
                         </span>
                         {fail
-                          ? <span className="block text-[11px] text-danger truncate">{fail}</span>
+                          ? <span className="block text-[12px] text-danger truncate">{fail}</span>
                           : peer.is_contact
-                            ? <span className="block text-[10px] accent-text">Contact</span>
-                            : <span className="block text-[10px] text-neutral-600 truncate">{peer.vula_id}</span>}
+                            ? <span className="block text-[12px] accent-text">Contact</span>
+                            : <span className="block text-[12px] text-neutral-600 truncate">{peer.vula_id}</span>}
                       </span>
                       <span className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg accent-text">
                         {isSending
@@ -242,7 +242,7 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
 
         {/* Footer note */}
         <div className="px-4 py-2.5 border-t border-neutral-800/60 shrink-0">
-          <p className="text-[11px] text-neutral-600 leading-relaxed">
+          <p className="text-[12px] text-neutral-600 leading-relaxed">
             End-to-end over your peering transport. The recipient must accept;
             the file then lands in their Downloads.
           </p>
