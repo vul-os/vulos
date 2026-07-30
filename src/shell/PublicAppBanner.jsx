@@ -83,7 +83,7 @@ export default function PublicAppBanner() {
     <div
       role="alert"
       aria-live="polite"
-      className="absolute top-8 left-0 right-0 z-[45] flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-500/95 backdrop-blur-sm border-b border-amber-400/60 text-amber-950 text-[11px] font-medium leading-none shadow-sm"
+      className="absolute top-8 left-0 right-0 z-[45] flex items-center justify-between gap-2 px-3 py-1.5 bg-amber-500/95 backdrop-blur-sm border-b border-amber-400/60 text-amber-950 text-[12px] font-medium leading-none shadow-sm"
     >
       <div className="flex items-center gap-1.5 min-w-0">
         {/* Globe icon */}
@@ -108,7 +108,7 @@ export default function PublicAppBanner() {
       <button
         onClick={handleMakePrivate}
         disabled={saving}
-        className="shrink-0 px-2.5 py-1 rounded-md bg-amber-950/20 hover:bg-amber-950/35 border border-amber-800/30 transition-colors disabled:opacity-50 text-[10px] font-semibold tracking-wide cursor-pointer select-none"
+        className="shrink-0 px-2.5 py-1 rounded-md bg-amber-950/20 hover:bg-amber-950/35 border border-amber-800/30 transition-colors disabled:opacity-50 text-[12px] font-semibold tracking-wide cursor-pointer select-none"
       >
         {saving ? 'Saving…' : 'Make private'}
       </button>

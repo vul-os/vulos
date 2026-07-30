@@ -68,8 +68,8 @@ function ToastCard({ notif, onAction, onDismiss }) {
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} style={dotStyle} />
         <span className="text-sm font-medium truncate flex-1">{notif.title}</span>
-        {urgent && <span style={{ color: 'var(--status-danger)' }} className="text-[9px] uppercase tracking-wider font-semibold shrink-0">Urgent</span>}
-        <span className="text-[10px] text-neutral-500 shrink-0">{notif.source}</span>
+        {urgent && <span style={{ color: 'var(--status-danger)' }} className="text-[12px] uppercase tracking-wider font-semibold shrink-0">Urgent</span>}
+        <span className="text-[12px] text-neutral-500 shrink-0">{notif.source}</span>
         <button
           onClick={onDismiss}
           aria-label="Dismiss"
@@ -84,7 +84,7 @@ function ToastCard({ notif, onAction, onDismiss }) {
               key={a.id}
               onClick={() => onAction(a)}
               style={a === primary ? { background: 'var(--accent)', color: '#fff' } : undefined}
-              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors
+              className={`text-[12px] px-2.5 py-1 rounded-md transition-colors
                 ${a === primary ? 'hover:brightness-110' : 'bg-neutral-800/80 text-neutral-300 hover:bg-neutral-700'}`}
             >
               {a.label || 'Open'}

@@ -51,7 +51,7 @@ const GROUPS = [
 function Key({ children }) {
   return (
     <kbd
-      className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md text-[11px] font-medium"
+      className="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md text-[12px] font-medium"
       style={{
         background: 'var(--bg-elevated)',
         border: '1px solid var(--border-emphasis)',
@@ -129,7 +129,7 @@ export default function ShortcutsLegend() {
           {GROUPS.map(group => (
             <div key={group.title}>
               <h3
-                className="text-[10px] uppercase tracking-wider font-medium mb-2"
+                className="text-[12px] uppercase tracking-wider font-medium mb-2"
                 style={{ color: 'var(--text-faint)' }}
               >
                 {group.title}
@@ -144,7 +144,7 @@ export default function ShortcutsLegend() {
                       {item.keys.map((k, j) => (
                         <span key={j} className="flex items-center gap-1">
                           {j > 0 && (
-                            <span className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>+</span>
+                            <span className="text-[12px]" style={{ color: 'var(--text-ghost)' }}>+</span>
                           )}
                           <Key>{k}</Key>
                         </span>
@@ -158,7 +158,7 @@ export default function ShortcutsLegend() {
         </div>
 
         <div
-          className="px-5 py-2.5 text-[11px] flex items-center justify-between"
+          className="px-5 py-2.5 text-[12px] flex items-center justify-between"
           style={{ borderTop: '1px solid var(--border-default)', color: 'var(--text-faint)' }}
         >
           <span>Part of Vulos</span>

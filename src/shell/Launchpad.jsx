@@ -160,7 +160,7 @@ export default function Launchpad() {
             Object.entries(grouped).map(([cat, catApps], i) => (
               <div key={cat} className={i === 0 ? '' : 'mt-6'}>
                 <h3
-                  className="mb-3 mt-4 px-0.5 text-[11px] font-semibold uppercase tracking-[0.09em]"
+                  className="mb-3 mt-4 px-0.5 text-[12px] font-semibold uppercase tracking-[0.09em]"
                   style={{ color: 'var(--text-faint)' }}
                 >
                   {categoryLabels[cat] || cat}
@@ -276,7 +276,7 @@ function AppTile({ app, onLaunch, index = 0 }) {
       style={{ '--tile-i': Math.min(index, 28) }}
     >
       <AppIconTile id={app.id} size={60} unicode={app.icon} />
-      <span className="vshell-tile-label max-w-[80px] truncate text-center text-[11.5px] leading-tight">
+      <span className="vshell-tile-label max-w-[80px] truncate text-center text-[12px] leading-tight">
         {app.name}
       </span>
     </button>

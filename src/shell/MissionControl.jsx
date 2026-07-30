@@ -193,7 +193,7 @@ export default function MissionControl() {
                   })}
                 </div>
               </div>
-              <span className="text-[11px]" style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              <span className="text-[12px]" style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                 Desktop {i + 1}
               </span>
               {desktopList.length > 1 && (
@@ -239,7 +239,7 @@ export default function MissionControl() {
       </div>
 
       {/* Shortcut hint */}
-      <div className="fixed bottom-0 left-0 right-0 z-[60] text-center pb-3 text-[11px]" style={{ color: 'var(--text-muted)', paddingBottom: 'max(0.75rem, var(--safe-bottom))' }}>
+      <div className="fixed bottom-0 left-0 right-0 z-[60] text-center pb-3 text-[12px]" style={{ color: 'var(--text-muted)', paddingBottom: 'max(0.75rem, var(--safe-bottom))' }}>
         {os === 'mac' ? 'F3 or Ctrl+\u2191 to toggle' : 'F3 to toggle'} · ESC to close · pinch to zoom
       </div>
     </>

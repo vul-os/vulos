@@ -436,7 +436,7 @@ export default function CommandPalette() {
         {/* Results */}
         <div className={`flex-1 overflow-y-auto py-1.5 ${narrow ? '' : 'max-h-[52vh]'}`}>
           {!searchText && !showAskSection && (
-            <div className="px-4 pt-1 pb-0.5 text-[10px]" style={{ color: 'var(--text-faint)' }}>
+            <div className="px-4 pt-1 pb-0.5 text-[12px]" style={{ color: 'var(--text-faint)' }}>
               {appRows.length ? 'Jump back in, or run an action.' : 'Start typing, or run an action.'}
             </div>
           )}
@@ -448,7 +448,7 @@ export default function CommandPalette() {
           {!hasResults && searchText && (
             <div className="px-4 py-6 text-center text-[13px]" style={{ color: 'var(--text-muted)' }}>
               No matches for “{searchText}”.
-              <div className="mt-1 text-[11px]" style={{ color: 'var(--text-faint)' }}>Prefix with <span className="font-mono">?</span> to ask the assistant.</div>
+              <div className="mt-1 text-[12px]" style={{ color: 'var(--text-faint)' }}>Prefix with <span className="font-mono">?</span> to ask the assistant.</div>
             </div>
           )}
         </div>
@@ -460,7 +460,7 @@ export default function CommandPalette() {
 
         {/* Footer legend — hidden on mobile (no keyboard) to save vertical room */}
         {!narrow && (
-          <div className="vshell-border-t flex items-center gap-4 px-4 py-2 text-[10.5px] shrink-0" style={{ color: 'var(--text-faint)' }}>
+          <div className="vshell-border-t flex items-center gap-4 px-4 py-2 text-[12px] shrink-0" style={{ color: 'var(--text-faint)' }}>
             <span className="flex items-center gap-1.5"><Kbd>↑</Kbd><Kbd>↓</Kbd> navigate</span>
             <span className="flex items-center gap-1.5"><Kbd>⏎</Kbd> open</span>
             <span className="flex items-center gap-1.5"><Kbd>tab</Kbd> section</span>
@@ -482,8 +482,8 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
       lastKind = row.kind
       out.push(
         <div key={'h:' + row.kind} className="px-4 pt-2.5 pb-1 flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{SECTION_LABEL[row.kind]}</span>
-          {row.kind === 'mail' && mailState === 'loading' && <span className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>searching…</span>}
+          <span className="text-[12px] font-mono uppercase tracking-[0.14em]" style={{ color: 'var(--text-faint)' }}>{SECTION_LABEL[row.kind]}</span>
+          {row.kind === 'mail' && mailState === 'loading' && <span className="text-[12px]" style={{ color: 'var(--text-ghost)' }}>searching…</span>}
         </div>
       )
     }
@@ -496,8 +496,8 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
   // Mail degradation note (only when the user is searching and mail failed).
   if (mailState === 'error' && !showAskSection) {
     out.push(
-      <div key="mail-err" className="px-4 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Mail</span>
+      <div key="mail-err" className="px-4 py-1.5 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-[12px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Mail</span>
         <span className="ml-2">search unavailable — is Mail connected?</span>
       </div>
     )
@@ -515,7 +515,7 @@ function Row({ row, active, onHover, onClick, rowRef }) {
       <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center shrink-0" style={iconStyle}>{a.icon}</span>
         <span className="vshell-row-title text-[13px]" style={titleColor}>{a.name}</span>
-        <span className="ml-auto text-[11px] truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{a.description}</span>
+        <span className="ml-auto text-[12px] truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{a.description}</span>
       </div>
     )
   }
@@ -525,7 +525,7 @@ function Row({ row, active, onHover, onClick, rowRef }) {
       <div ref={rowRef} data-active={active || undefined} className={base} onMouseMove={onHover} onClick={onClick}>
         <span className="w-5 text-center shrink-0" style={iconStyle}>{c.icon || '▸'}</span>
         <span className="vshell-row-title text-[13px]" style={titleColor}>{c.title}</span>
-        {c.subtitle && <span className="ml-auto text-[11px] font-mono truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{c.subtitle}</span>}
+        {c.subtitle && <span className="ml-auto text-[12px] font-mono truncate max-w-[45%]" style={{ color: 'var(--text-faint)' }}>{c.subtitle}</span>}
       </div>
     )
   }
@@ -537,7 +537,7 @@ function Row({ row, active, onHover, onClick, rowRef }) {
         <span className="w-5 text-center shrink-0" style={{ color: 'var(--text-faint)' }}>✉</span>
         <span className="min-w-0 flex-1">
           <span className="vshell-row-title text-[13px] block truncate" style={titleColor}>{m.subject || '(no subject)'}</span>
-          <span className="text-[11px] block truncate" style={{ color: 'var(--text-faint)' }}>{sender}{m.preview ? ` — ${m.preview}` : ''}</span>
+          <span className="text-[12px] block truncate" style={{ color: 'var(--text-faint)' }}>{sender}{m.preview ? ` — ${m.preview}` : ''}</span>
         </span>
         {m.unread && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />}
       </div>
@@ -563,7 +563,7 @@ function AskResult({ ask, onApprove, onReject }) {
     <div aria-live="polite" className="vshell-border-t px-4 py-3 max-h-[30vh] overflow-y-auto shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-base) 30%, transparent)' }}>
       <div className="flex items-center gap-2 mb-1.5">
         <span style={{ color: 'var(--accent)' }}>✦</span>
-        <span className="text-[11px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Assistant</span>
+        <span className="text-[12px] font-mono uppercase tracking-wider" style={{ color: 'var(--text-faint)' }}>Assistant</span>
         {ask.status === 'thinking' && (
           <span className="inline-flex gap-1 ml-1">
             <span className="vshell-typing w-1.5 h-1.5 rounded-full" />
@@ -589,7 +589,7 @@ function AskResult({ ask, onApprove, onReject }) {
             compact
           />
           {(!ask.proposalState || ask.proposalState === 'pending') && (
-            <div className="mt-1.5 text-[10.5px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }} aria-hidden="true">
+            <div className="mt-1.5 text-[12px] flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }} aria-hidden="true">
               <Kbd>Y</Kbd> approve <Kbd>N</Kbd> reject · or <Kbd>tab</Kbd> to focus
             </div>
           )}

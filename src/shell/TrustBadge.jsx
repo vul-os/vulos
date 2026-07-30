@@ -81,7 +81,7 @@ export default function TrustBadge({ compact = false }) {
     >
       <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: info.dot }} />
       {!compact && (
-        <span className={`text-[10px] font-mono uppercase tracking-wider ${info.tone} hidden md:inline`}>
+        <span className={`text-[12px] font-mono uppercase tracking-wider ${info.tone} hidden md:inline`}>
           {SHORT[tier] || 'External'}
         </span>
       )}
