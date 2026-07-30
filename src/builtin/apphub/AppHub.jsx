@@ -53,7 +53,7 @@ function AppTypeBadge({ app, className = '' }) {
   if (!key) return null
   const s = APPTYPE_BADGE[key]
   return (
-    <span className={`inline-flex items-center text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
+    <span className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
       {s.label}
     </span>
   )
@@ -111,7 +111,7 @@ function SourceBadge({ app, className = '' }) {
   const src = getSourceType(app)
   const s = SOURCE_BADGE[src]
   return (
-    <span className={`inline-flex items-center text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
+    <span className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
       {s.label}
     </span>
   )
@@ -304,7 +304,7 @@ export default function AppHub() {
       <div className="w-44 sm:w-52 lg:w-56 flex-shrink-0 border-r border-[var(--border-default)] flex flex-col bg-[var(--bg-base)]">
         <div className="px-4 sm:px-5 pt-5 pb-4">
           <h1 className="text-[17px] font-bold text-[var(--text-primary)] tracking-tight">App Store</h1>
-          <p className="text-[11px] text-neutral-600 mt-1">{apps.length} apps available</p>
+          <p className="text-[12px] text-neutral-600 mt-1">{apps.length} apps available</p>
         </div>
 
         {/* Search */}
@@ -338,7 +338,7 @@ export default function AppHub() {
               <svg viewBox="0 0 24 24" className="w-[15px] h-[15px] flex-shrink-0" fill="currentColor" opacity={0.7}><path d={t.icon} /></svg>
               {t.label}
               {t.count > 0 && (
-                <span className="ml-auto text-[10px] bg-[var(--bg-elevated)] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
+                <span className="ml-auto text-[12px] bg-[var(--bg-elevated)] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
                   {t.count}
                 </span>
               )}
@@ -348,7 +348,7 @@ export default function AppHub() {
 
         {/* APPSTORE-08: Type filter */}
         <div className="px-3 pt-3 border-t border-[var(--border-subtle)]">
-          <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
+          <div className="text-[12px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
           <div className="flex flex-col gap-0.5">
             {[
               { id: 'all',     label: 'All Types' },
@@ -376,7 +376,7 @@ export default function AppHub() {
 
         {/* Categories */}
         <div className="px-3 pt-3 border-t border-[var(--border-subtle)] flex-1 overflow-y-auto">
-          <div className="text-[10px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">Categories</div>
+          <div className="text-[12px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">Categories</div>
           <div className="flex flex-col gap-0.5">
             {categories.map(cat => (
               <button
@@ -410,12 +410,12 @@ export default function AppHub() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-semibold text-[var(--accent)]">Package index required</div>
-              <div className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Update to install apps from Debian repositories</div>
+              <div className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Update to install apps from Debian repositories</div>
             </div>
             <button
               onClick={updateAptCache}
               disabled={updatingCache}
-              className="px-4 py-2 rounded-lg text-[11px] font-semibold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-colors [transition-duration:var(--motion-fast)] flex-shrink-0 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-colors [transition-duration:var(--motion-fast)] flex-shrink-0 disabled:opacity-50"
             >
               {updatingCache ? (
                 <span className="flex items-center gap-1.5">
@@ -446,7 +446,7 @@ export default function AppHub() {
             <h2 className="text-[14px] font-semibold text-[var(--text-primary)] min-w-0 truncate">
               {tab === 'installed' ? 'Installed Apps' : category !== 'all' ? CATEGORY_LABELS[category] || category : 'All Apps'}
             </h2>
-            <span className="text-[11px] text-neutral-600 flex-shrink-0">{browseList.length} {browseList.length === 1 ? 'app' : 'apps'}</span>
+            <span className="text-[12px] text-neutral-600 flex-shrink-0">{browseList.length} {browseList.length === 1 ? 'app' : 'apps'}</span>
           </div>
 
           {loading ? (
@@ -462,7 +462,7 @@ export default function AppHub() {
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[13px] font-medium text-[var(--text-secondary)]">{tab === 'installed' ? 'No apps installed yet' : 'No apps match your search'}</span>
-                <span className="text-[11px] text-neutral-600">{tab === 'installed' ? 'Browse the store to add your first app' : 'Try a different search or category'}</span>
+                <span className="text-[12px] text-neutral-600">{tab === 'installed' ? 'Browse the store to add your first app' : 'Try a different search or category'}</span>
               </div>
             </div>
           ) : (
@@ -489,7 +489,7 @@ export default function AppHub() {
                         <SourceBadge app={app} />
                         <AppTypeBadge app={app} />{/* APPSTORE-08 */}
                       </div>
-                      <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{app.description}</p>
+                      <p className="text-[12px] text-neutral-500 mt-0.5 truncate">{app.description}</p>
                     </div>
                     <div className="flex-shrink-0 ml-1">
                       {isBeingInstalled ? (
@@ -510,7 +510,7 @@ export default function AppHub() {
                         </svg>
                       ) : (
                         <button
-                          className="px-3.5 py-2 min-h-[36px] rounded-lg text-[11px] font-semibold text-[var(--accent)] accent-bg-soft accent-bg-hover border accent-border-soft transition-colors [transition-duration:var(--motion-fast)]"
+                          className="px-3.5 py-2 min-h-[36px] rounded-lg text-[12px] font-semibold text-[var(--accent)] accent-bg-soft accent-bg-hover border accent-border-soft transition-colors [transition-duration:var(--motion-fast)]"
                           onClick={e => { e.stopPropagation(); installApp(app.id, app.latest) }}
                         >
                           Get
@@ -607,8 +607,8 @@ export default function AppHub() {
                       <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zM6.25 5.5a.75.75 0 00-1.5 0v4a.75.75 0 001.5 0v-4zm4.25-.75a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4a.75.75 0 01.75-.75zM8 13a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                     </svg>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-[var(--status-danger)] mb-1">Installation failed</div>
-                      <pre className="text-[10px] text-[var(--text-tertiary)] whitespace-pre-wrap break-words font-mono leading-relaxed max-h-24 overflow-y-auto">{error}</pre>
+                      <div className="text-[12px] font-semibold text-[var(--status-danger)] mb-1">Installation failed</div>
+                      <pre className="text-[12px] text-[var(--text-tertiary)] whitespace-pre-wrap break-words font-mono leading-relaxed max-h-24 overflow-y-auto">{error}</pre>
                     </div>
                     <button onClick={() => setError(null)} className="text-neutral-600 hover:text-[var(--status-danger)] transition-colors flex-shrink-0">
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
@@ -636,7 +636,7 @@ export default function AppHub() {
                   <svg viewBox="0 0 24 24" className={`w-4 h-4 mt-0.5 flex-shrink-0 ${selectedApp.flatpak_id ? 'text-sky-400/60' : 'text-amber-400/60'}`} fill="currentColor">
                     <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
                   </svg>
-                  <p className={`text-[11px] leading-relaxed ${selectedApp.flatpak_id ? 'text-sky-300/60' : 'text-amber-300/60'}`}>
+                  <p className={`text-[12px] leading-relaxed ${selectedApp.flatpak_id ? 'text-sky-300/60' : 'text-amber-300/60'}`}>
                     {selectedApp.flatpak_id
                       ? 'Via Flatpak — latest version, sandboxed, independent of system packages.'
                       : 'Via Apt — Debian system package. Version depends on repository.'}
@@ -648,12 +648,12 @@ export default function AppHub() {
             {/* Version picker */}
             {(selectedApp.versions || []).length > 1 && (
               <div className="px-6 pb-5">
-                <div className="text-[10px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Version</div>
+                <div className="text-[12px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Version</div>
                 <div className="flex gap-1.5 flex-wrap">
                   {(selectedApp.versions || []).map(v => (
                     <button
                       key={v}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors [transition-duration:var(--motion-fast)] ${
+                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors [transition-duration:var(--motion-fast)] ${
                         selectedVersion === v
                           ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] border border-[var(--bg-selected-border)]'
                           : 'bg-[var(--bg-elevated)] text-neutral-500 border border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-neutral-300'
@@ -669,7 +669,7 @@ export default function AppHub() {
 
             {/* Details table */}
             <div className="px-6 pb-6">
-              <div className="text-[10px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Details</div>
+              <div className="text-[12px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Details</div>
               <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden divide-y divide-[var(--border-subtle)]">
                 <DetailRow label="Source" value={selectedApp.flatpak_id ? 'Flathub' : selectedApp.type === 'web' ? 'Web Service' : 'Debian'} />
                 <DetailRow label="Category" value={CATEGORY_LABELS[selectedApp.category] || selectedApp.category} />
@@ -688,18 +688,18 @@ export default function AppHub() {
 function DetailRow({ label, value, link }) {
   return (
     <div className="flex justify-between items-center gap-3 px-4 py-2.5 bg-[var(--bg-base)]">
-      <span className="text-[11px] text-neutral-600 font-medium flex-shrink-0">{label}</span>
+      <span className="text-[12px] text-neutral-600 font-medium flex-shrink-0">{label}</span>
       {link ? (
         <a
           href={value}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[11px] text-[var(--accent)] hover:text-[var(--accent-hover)] truncate max-w-[170px] transition-colors"
+          className="text-[12px] text-[var(--accent)] hover:text-[var(--accent-hover)] truncate max-w-[170px] transition-colors"
         >
           {value.replace(/^https?:\/\/(www\.)?/, '')}
         </a>
       ) : (
-        <span className="text-[11px] text-neutral-400 truncate max-w-[170px]">{value}</span>
+        <span className="text-[12px] text-neutral-400 truncate max-w-[170px]">{value}</span>
       )}
     </div>
   )
