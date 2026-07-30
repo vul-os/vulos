@@ -391,7 +391,7 @@ function WizardProgress({ steps, step, onJump }) {
         })}
       </div>
       <span
-        className="text-[11px] font-mono tabular-nums shrink-0 whitespace-nowrap"
+        className="text-[12px] font-mono tabular-nums shrink-0 whitespace-nowrap"
         style={{ color: 'var(--text-muted)' }}
       >
         {String(step + 1).padStart(2, '0')}
@@ -484,15 +484,15 @@ function DeviceStep({ config, update, onNext, onPrev }) {
               </span>
               <div>
                 <div className="text-sm font-medium leading-snug">{profile.label}</div>
-                <div className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{profile.desc}</div>
+                <div className="text-[12px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{profile.desc}</div>
               </div>
               {detected === profile.id && !isSelected && (
-                <div className="absolute top-2 right-2 text-[9px] font-semibold tracking-wider text-neutral-500 uppercase">
+                <div className="absolute top-2 right-2 text-[12px] font-semibold tracking-wider text-neutral-500 uppercase">
                   Detected
                 </div>
               )}
               {detected === profile.id && isSelected && (
-                <div className="absolute top-2 left-2 text-[9px] font-semibold tracking-wider text-neutral-400 uppercase">
+                <div className="absolute top-2 left-2 text-[12px] font-semibold tracking-wider text-neutral-400 uppercase">
                   Detected
                 </div>
               )}
@@ -1023,7 +1023,7 @@ function TimezoneStep({ config, update, onNext, onPrev }) {
                 : 'bg-neutral-600 border-neutral-500 hover-accent-bg hover-accent-border group-hover:scale-125'}`}
             />
             {/* Label (shows on hover or when selected) */}
-            <div className={`absolute left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap text-[10px] font-medium transition-opacity
+            <div className={`absolute left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap text-[12px] font-medium transition-opacity
               ${config.timezone === tz.id ? 'opacity-100 accent-text' : 'opacity-0 group-hover:opacity-100 text-neutral-400'}`}>
               {tz.label}
             </div>
@@ -1120,7 +1120,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
               <span className="text-[10px] font-mono text-neutral-500 w-10">{signalIcon(n.signal)}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate">{n.ssid || '(hidden)'}</div>
-                <div className="text-[10px] text-neutral-600">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
+                <div className="text-[12px] text-neutral-600">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
               </div>
               {config.wifiSSID === n.ssid && <span className="accent-text text-xs">{t('setup.network.selected')}</span>}
             </button>
@@ -1284,7 +1284,7 @@ function PinStep({ config, update, onNext, onPrev }) {
             <p
               id="pin-confirm-msg"
               role={config.pin !== confirm ? 'alert' : undefined}
-              className={`text-[11px] mb-3 flex items-center gap-1 self-start ${config.pin !== confirm ? 'text-danger' : 'text-success'}`}
+              className={`text-[12px] mb-3 flex items-center gap-1 self-start ${config.pin !== confirm ? 'text-danger' : 'text-success'}`}
             >
               <span aria-hidden="true">{config.pin !== confirm ? '✕' : '✓'}</span>
               {config.pin !== confirm ? t('setup.pin.error_match') : t('setup.pin.match')}
@@ -1464,7 +1464,7 @@ function AppearanceStep({ onNext, onPrev }) {
             </div>
             <div>
               <div className="text-sm font-medium">{thm.label}</div>
-              <div className="text-[11px] text-neutral-500 mt-0.5">{thm.desc}</div>
+              <div className="text-[12px] text-neutral-500 mt-0.5">{thm.desc}</div>
             </div>
             {theme === thm.value && (
               <div className="absolute top-2 right-2 w-5 h-5 rounded-full accent-bg flex items-center justify-center">
@@ -1480,7 +1480,7 @@ function AppearanceStep({ onNext, onPrev }) {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-neutral-300">{t('setup.appearance.night_shift')}</div>
-            <div className="text-[11px] text-neutral-600">{t('setup.appearance.night_shift_desc')}</div>
+            <div className="text-[12px] text-neutral-600">{t('setup.appearance.night_shift_desc')}</div>
           </div>
           <button
             onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
@@ -1553,7 +1553,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
       <div className="space-y-4 mb-2">
         {/* ULID display */}
         <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-4">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('Instance ID (ULID)')}</div>
+          <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Instance ID (ULID)')}</div>
           {IS05_loading ? (
             <div className="h-5 w-48 bg-neutral-800 rounded animate-pulse" />
           ) : (
@@ -1561,7 +1561,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
               {config.IS05_ulid}
             </div>
           )}
-          <div className="text-[10px] text-neutral-600 mt-1">{t('Read-only — cryptographically unique, auto-assigned')}</div>
+          <div className="text-[12px] text-neutral-600 mt-1">{t('Read-only — cryptographically unique, auto-assigned')}</div>
         </div>
 
         {/* Hostname input */}
@@ -1576,7 +1576,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
             placeholder="my-vula-node"
             className="input text-base py-3 font-mono"
           />
-          <p className="text-[11px] text-neutral-600 mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
+          <p className="text-[12px] text-neutral-600 mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
         </div>
 
         {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
@@ -1683,7 +1683,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-neutral-200">{t('Enable Cluster Sync')}</div>
-            <div className="text-[11px] text-neutral-600">{t('Shared encrypted storage across cluster nodes')}</div>
+            <div className="text-[12px] text-neutral-600">{t('Shared encrypted storage across cluster nodes')}</div>
           </div>
           <button
             onClick={() => { update('IS05_storageEnabled', !config.IS05_storageEnabled); IS05_setError('') }}
@@ -1698,7 +1698,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
           operator chooses a backend even when cluster-sync is off. */}
       <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
         <div className="text-sm text-neutral-200 mb-2">{t('Bundle Storage Mode')}</div>
-        <div className="text-[11px] text-neutral-600 mb-2">
+        <div className="text-[12px] text-neutral-600 mb-2">
           {t('This device is the default — your data stays on this box, with no object store and no third-party service. Local MinIO + sync runs a local source-of-truth and replicates between Vulos nodes via the CRDT layer. Central Tigris hands your data to a hosted third party.')}
         </div>
         <select
@@ -1714,7 +1714,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
         {config.IS05_storageMode === 'local-minio-sync' && (
           <div className="space-y-2 mt-3 animate-[fadeIn_0.2s_ease-out]">
             <div>
-              <label className="block text-[11px] text-neutral-500 mb-1">{t('MinIO endpoint')}</label>
+              <label className="block text-[12px] text-neutral-500 mb-1">{t('MinIO endpoint')}</label>
               <input
                 value={config.IS05_storageMinioEndpoint}
                 onChange={e => update('IS05_storageMinioEndpoint', e.target.value)}
@@ -1723,7 +1723,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-neutral-500 mb-1">{t('Region')}</label>
+              <label className="block text-[12px] text-neutral-500 mb-1">{t('Region')}</label>
               <input
                 value={config.IS05_storageMinioRegion}
                 onChange={e => update('IS05_storageMinioRegion', e.target.value)}
@@ -1732,7 +1732,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-neutral-500 mb-1">{t('Bucket')}</label>
+              <label className="block text-[12px] text-neutral-500 mb-1">{t('Bucket')}</label>
               <input
                 value={config.IS05_storageMinioBucket}
                 onChange={e => update('IS05_storageMinioBucket', e.target.value)}
@@ -1741,7 +1741,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-neutral-500 mb-1">{t('Credentials reference (file path or secret-store key)')}</label>
+              <label className="block text-[12px] text-neutral-500 mb-1">{t('Credentials reference (file path or secret-store key)')}</label>
               <input
                 value={config.IS05_storageMinioCredsRef}
                 onChange={e => update('IS05_storageMinioCredsRef', e.target.value)}
@@ -1749,7 +1749,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
                 className="input text-sm py-2"
               />
             </div>
-            <p className="text-[10px] text-neutral-600">
+            <p className="text-[12px] text-neutral-600">
               {t('The installer writes /var/lib/vulos/minio/.minio_secret when run with --storage=minio.')}
             </p>
           </div>
@@ -1773,7 +1773,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
               onChange={e => update('IS05_storageSizeGb', Number(e.target.value))}
               className="w-full" style={{ accentColor: 'var(--accent)' }}
             />
-            <div className="flex justify-between text-[10px] text-neutral-700 mt-1">
+            <div className="flex justify-between text-[12px] text-neutral-700 mt-1">
               <span>5 GB</span><span>100 GB</span>
             </div>
           </div>
@@ -1962,7 +1962,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
         {IS05_privateKey && (
           <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
             <div className="flex items-center justify-between px-4 py-2 bg-neutral-900/60 border-b border-neutral-800">
-              <span className="text-[11px] text-warning font-medium">{t('Private Key — shown once, copy now')}</span>
+              <span className="text-[12px] text-warning font-medium">{t('Private Key — shown once, copy now')}</span>
               <button
                 onClick={IS05_copy}
                 className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft text-success' : 'bg-neutral-800 text-neutral-400 hover-accent-text'}`}
@@ -1970,7 +1970,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
                 {IS05_copied ? t('Copied!') : t('Copy')}
               </button>
             </div>
-            <pre className="text-[10px] font-mono text-neutral-400 p-4 overflow-x-auto whitespace-pre-wrap break-all select-all">
+            <pre className="text-[12px] font-mono text-neutral-400 p-4 overflow-x-auto whitespace-pre-wrap break-all select-all">
               {IS05_privateKey}
             </pre>
           </div>
@@ -1979,7 +1979,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
         {/* Public key fingerprint */}
         {config.IS05_sshFingerprint && (
           <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
+            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
             <div className="font-mono text-xs text-success break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
@@ -2081,7 +2081,7 @@ function IK06_QRCanvas({ content }) {
 
   if (IK06_qrError) {
     return (
-      <div className="text-[10px] text-neutral-600 text-center p-2">
+      <div className="text-[12px] text-neutral-600 text-center p-2">
         (QR rendering pending — verify checksum below)
       </div>
     )
@@ -2172,29 +2172,29 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
       {/* Credentials summary */}
       <div className="space-y-2 mb-4">
         <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('Identity')}</div>
+          <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Identity')}</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div>
               <div className="text-neutral-600 mb-0.5">{t('ULID')}</div>
-              <div className="font-mono accent-text text-[10px] break-all">{config.IS05_ulid || '—'}</div>
+              <div className="font-mono accent-text text-[12px] break-all">{config.IS05_ulid || '—'}</div>
             </div>
             <div>
               <div className="text-neutral-600 mb-0.5">{t('Hostname')}</div>
-              <div className="font-mono text-neutral-300 text-[10px]">{config.IS05_hostname || '—'}</div>
+              <div className="font-mono text-neutral-300 text-[12px]">{config.IS05_hostname || '—'}</div>
             </div>
           </div>
         </div>
 
         {config.IS05_storageEnabled && (
           <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
+            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
             <div className="text-xs">
               <div className="text-neutral-600 mb-0.5">{t('Status')}</div>
               <div className="text-success">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
               {config.IS05_s3AccessKey && (
                 <>
                   <div className="text-neutral-600 mt-2 mb-0.5">{t('S3 Access Key')}</div>
-                  <div className="font-mono text-[10px] text-neutral-300 break-all">{config.IS05_s3AccessKey}</div>
+                  <div className="font-mono text-[12px] text-neutral-300 break-all">{config.IS05_s3AccessKey}</div>
                 </>
               )}
             </div>
@@ -2204,15 +2204,15 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
         {/* INIT-06: storage-skipped notice — shown when user skipped storage */}
         {IS06_storageSkipped && (
           <div className="bg-neutral-900/30 border border-neutral-800/30 rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[10px] text-neutral-600 uppercase tracking-wider mb-1">{t('Cluster Storage')}</div>
+            <div className="text-[12px] text-neutral-600 uppercase tracking-wider mb-1">{t('Cluster Storage')}</div>
             <div className="text-xs text-neutral-600">{t('Skipped — can be enabled later in Settings')}</div>
           </div>
         )}
 
         {config.IS05_sshFingerprint && (
           <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-            <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-2">{t('SSH Access')}</div>
-            <div className="text-[10px] font-mono text-success break-all">{config.IS05_sshFingerprint}</div>
+            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('SSH Access')}</div>
+            <div className="text-[12px] font-mono text-success break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
       </div>
@@ -2220,9 +2220,9 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
       {/* INIT-06: Inline QR code — encodes recovery identity token */}
       {!IK06_buildingPayload && IK06_qrContent && (
         <div className="bg-neutral-950 border border-neutral-800/50 rounded-xl p-4 mb-4 flex flex-col items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
-          <div className="text-[10px] text-neutral-500 uppercase tracking-wider">{t('Recovery QR — scan to verify identity')}</div>
+          <div className="text-[12px] text-neutral-500 uppercase tracking-wider">{t('Recovery QR — scan to verify identity')}</div>
           <IK06_QRCanvas content={IK06_qrContent} />
-          <div className="text-[9px] font-mono text-neutral-700 break-all text-center max-w-[200px]">
+          <div className="text-[12px] font-mono text-neutral-700 break-all text-center max-w-[200px]">
             {IK06_qrContent}
           </div>
         </div>
@@ -2231,8 +2231,8 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
       {/* INIT-06: Checksum preview */}
       {IK06_payload && (
         <div className="bg-neutral-900/40 border border-neutral-800/30 rounded-xl px-4 py-2 mb-4">
-          <div className="text-[10px] text-neutral-600 uppercase tracking-wider mb-1">{t('Kit checksum (SHA-256)')}</div>
-          <div className="font-mono text-[10px] text-neutral-500 break-all">{IK06_payload.checksum_sha256}</div>
+          <div className="text-[12px] text-neutral-600 uppercase tracking-wider mb-1">{t('Kit checksum (SHA-256)')}</div>
+          <div className="font-mono text-[12px] text-neutral-500 break-all">{IK06_payload.checksum_sha256}</div>
         </div>
       )}
 
@@ -2453,7 +2453,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
           <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>Recovery kit</span> — your credentials JSON was shown once during setup.
           You can re-download it any time as an admin via{' '}
-          <code className="accent-text text-[11px]">GET /api/recovery/kit</code>
+          <code className="accent-text text-[12px]">GET /api/recovery/kit</code>
           {' '}from a trusted local session.
         </p>
       </div>
@@ -2539,7 +2539,7 @@ export function PrivateAIStep({ onDone }) {
           add the model any time in <span className="text-neutral-400">Settings → AI Models</span>.
         </p>
         {deps && !deps.ready && (
-          <p className="text-[11px] text-warning leading-relaxed mt-2">
+          <p className="text-[12px] text-warning leading-relaxed mt-2">
             Note: running embeddings also needs the vula-embed Python packages on the box:
             <code className="block mt-1 font-mono text-warning bg-neutral-950/60 rounded px-2 py-1 select-all">
               {deps.install_hint || 'pip install onnxruntime tokenizers numpy'}
@@ -2638,7 +2638,7 @@ function SummaryCard({ icon, label, value }) {
     >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-sm">{icon}</span>
-        <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</span>
+        <span className="text-[12px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</span>
       </div>
       <div className="text-sm truncate" style={{ color: 'var(--text-secondary)' }}>{value}</div>
     </div>
