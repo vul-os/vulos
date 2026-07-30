@@ -136,7 +136,7 @@ export default function SecurityPanel() {
                       <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
                         {REASON_LABELS[a.reason] || a.reason}
                       </p>
-                      <p className="mt-1 text-[11px] text-[var(--text-faint)]">
+                      <p className="mt-1 text-[12px] text-[var(--text-faint)]">
                         {formatTs(a.ts)} · {a.client_ip || 'unknown location'}
                       </p>
                     </div>
@@ -223,7 +223,7 @@ export default function SecurityPanel() {
                 <div key={a.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
                   <div className="min-w-0">
                     <span className="text-sm text-[var(--text-tertiary)]">{actionLabel(a.action)}</span>
-                    <span className="ml-2 text-[11px] text-[var(--text-faint)]">
+                    <span className="ml-2 text-[12px] text-[var(--text-faint)]">
                       {a.status === 'locked' ? 'Account locked' : 'Dismissed'}
                     </span>
                   </div>

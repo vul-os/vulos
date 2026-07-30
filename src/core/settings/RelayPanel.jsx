@@ -281,7 +281,7 @@ export default function RelayPanel() {
         <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 mb-5">
           <p className="text-xs text-[var(--text-faint)] mb-3">
             One or more STUN/TURN servers (comma-separate multiple URLs per row, e.g.
-            <code className="mx-1 text-[11px]">turn:relay.example.org:3478?transport=udp, turn:relay.example.org:3478?transport=tcp</code>).
+            <code className="mx-1 text-[12px]">turn:relay.example.org:3478?transport=udp, turn:relay.example.org:3478?transport=tcp</code>).
             The credential is write-only — it is never shown again once saved.
           </p>
           {turnServers.map((s, i) => (
@@ -406,7 +406,7 @@ function RelayNodes({ reach, showAdd, setShowAdd, draft, setDraft }) {
     >
       <Banner tone="info">
         Vulos the project runs no relay, rendezvous, or hosted infrastructure — these are relays <em>you</em> run.
-        A relay is a box with a public IP running <code className="mono text-[11px]">vulos relay serve</code> (a cheap VPS is plenty);
+        A relay is a box with a public IP running <code className="mono text-[12px]">vulos relay serve</code> (a cheap VPS is plenty);
         this box dials out to it and opens no inbound ports.
       </Banner>
 
@@ -415,7 +415,7 @@ function RelayNodes({ reach, showAdd, setShowAdd, draft, setDraft }) {
           <Banner tone="warning" title="No relay nodes configured">
             This box holds no relay tunnels. That is correct if it has a public IP or only needs its LAN.
             Otherwise it is unreachable from outside your network — add a node below and apply it via
-            <code className="mono text-[11px] mx-1">VULOS_RELAY_ENDPOINTS</code>.
+            <code className="mono text-[12px] mx-1">VULOS_RELAY_ENDPOINTS</code>.
           </Banner>
         </div>
       ) : (
@@ -440,7 +440,7 @@ function RelayNodes({ reach, showAdd, setShowAdd, draft, setDraft }) {
                       {down ? `backoff ${st.down_for_seconds || 0}s` : link.state || (st.healthy ? 'healthy' : 'down')}
                     </Pill>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--text-muted)]">
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] text-[var(--text-muted)]">
                     {ep.region && <span>region {ep.region}</span>}
                     {link.public_url && <span className="mono truncate">→ {link.public_url}</span>}
                     {st.last_error && <span className="text-[var(--status-danger)] truncate">last error: {st.last_error}</span>}
@@ -493,7 +493,7 @@ function RelayNodeGuide({ showAdd, setShowAdd, draft, setDraft, count }) {
 
       {showAdd && (
         <div className="mt-3 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4">
-          <p className="text-[11px] text-[var(--text-faint)] mb-3 leading-relaxed">
+          <p className="text-[12px] text-[var(--text-faint)] mb-3 leading-relaxed">
             Mint a grant on your relay with <code className="mono">vulos relay grant &lt;name&gt;</code>, fill it in here,
             then add the generated entry to your <code className="mono">VULOS_RELAY_ENDPOINTS</code> array (or 0600
             endpoints file) and restart. The token stays on your machine — this builder never sends it anywhere.
@@ -506,11 +506,11 @@ function RelayNodeGuide({ showAdd, setShowAdd, draft, setDraft, count }) {
           </div>
           {ready ? (
             <>
-              <pre className="text-[11px] mono bg-[var(--bg-elevated)] rounded-lg p-3 overflow-x-auto text-[var(--text-secondary)]">{entry}</pre>
+              <pre className="text-[12px] mono bg-[var(--bg-elevated)] rounded-lg p-3 overflow-x-auto text-[var(--text-secondary)]">{entry}</pre>
               <button onClick={copy} className="btn-secondary text-xs mt-2">{copied ? 'Copied' : 'Copy entry'}</button>
             </>
           ) : (
-            <p className="text-[11px] text-[var(--text-faint)]">Fill in the relay URL, name and token to generate the config entry.</p>
+            <p className="text-[12px] text-[var(--text-faint)]">Fill in the relay URL, name and token to generate the config entry.</p>
           )}
         </div>
       )}

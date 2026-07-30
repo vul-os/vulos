@@ -253,7 +253,7 @@ function SubscriptionRow({ sub, allTopics, onChanged, onSecret }) {
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {sub.topics.map(t => (
-                  <span key={t} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">{t}</span>
+                  <span key={t} className="text-[12px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">{t}</span>
                 ))}
               </div>
             </div>
@@ -299,7 +299,7 @@ function SubscriptionRow({ sub, allTopics, onChanged, onSecret }) {
 
         <button
           onClick={() => setExpanded(v => !v)}
-          className="mt-2 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+          className="mt-2 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
         >
           {expanded ? 'Hide delivery log' : 'Show delivery log'}
         </button>

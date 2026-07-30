@@ -182,7 +182,7 @@ export default function DeveloperPanel() {
             {issuing ? 'Issuing…' : 'Issue Key'}
           </button>
         </div>
-        <p className="text-[11px] text-[var(--text-faint)] mt-1">Requires confirming your password.</p>
+        <p className="text-[12px] text-[var(--text-faint)] mt-1">Requires confirming your password.</p>
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -211,7 +211,7 @@ export default function DeveloperPanel() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-[var(--text-primary)] truncate">{k.name}</span>
                       {revoked && (
-                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
                           Revoked
                         </span>
                       )}

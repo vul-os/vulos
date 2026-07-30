@@ -44,7 +44,7 @@ function Field({ label, hint, children }) {
     <div className="mb-3">
       <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1">{hint}</p>}
+      {hint && <p className="text-[12px] text-[var(--text-faint)] mt-1">{hint}</p>}
     </div>
   )
 }
@@ -308,7 +308,7 @@ export default function CDNPanel() {
         </p>
         {rangeCount > 0 && (
           <div className="max-h-32 overflow-y-auto rounded-lg bg-[var(--bg-elevated)] px-3 py-2">
-            <code className="text-[11px] font-mono text-[var(--text-tertiary)] whitespace-pre-wrap break-all">
+            <code className="text-[12px] font-mono text-[var(--text-tertiary)] whitespace-pre-wrap break-all">
               {(ranges[provider] || []).map(r => r.cidr).join('\n')}
             </code>
           </div>
@@ -351,7 +351,7 @@ export default function CDNPanel() {
         </div>
 
         {showRuleset && status?.ruleset && (
-          <pre className="text-[11px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-elevated)] rounded-lg px-3 py-2 overflow-x-auto whitespace-pre">
+          <pre className="text-[12px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-elevated)] rounded-lg px-3 py-2 overflow-x-auto whitespace-pre">
             {status.ruleset}
           </pre>
         )}

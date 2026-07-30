@@ -31,7 +31,7 @@ function Field({ label, hint, children }) {
     <div className="mb-3">
       <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1">{hint}</p>}
+      {hint && <p className="text-[12px] text-[var(--text-faint)] mt-1">{hint}</p>}
     </div>
   )
 }
@@ -51,7 +51,7 @@ function StatusBadge({ status }) {
   const verified = status === 'verified'
   return (
     <span
-      className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+      className={`text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
         verified
           ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]'
           : 'bg-[var(--status-warning-soft)] text-[var(--status-warning)]'

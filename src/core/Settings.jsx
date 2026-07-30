@@ -174,7 +174,7 @@ function SettingsNav({ active, onSelect, idPrefix, groups }) {
     <div className="px-2 space-y-5">
       {groups.map(g => (
         <div key={g.label}>
-          <div className="px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] select-none">
+          <div className="px-2.5 mb-1.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] select-none">
             {g.label}
           </div>
           <div className="space-y-0.5">
@@ -243,7 +243,7 @@ export default function Settings({ initialSection } = {}) {
       <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 lg:w-60 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
         <div className="sticky top-0 z-10 px-4 pt-5 pb-3 bg-[var(--bg-surface)]/80 backdrop-blur-sm border-b border-[var(--border-subtle)]">
           <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
-          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">Configure your device</p>
+          <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Configure your device</p>
         </div>
         <div className="py-4">
           <SettingsNav active={active} onSelect={selectSection} groups={groups} />
@@ -468,7 +468,7 @@ function AppearanceSettings() {
               <input type="time" value={scheduleLight} onChange={e => setScheduleLight(e.target.value)} className="input" />
             </Field>
           </div>
-          <p className="text-[11px] text-[var(--text-faint)]">Timezone: {tz}</p>
+          <p className="text-[12px] text-[var(--text-faint)]">Timezone: {tz}</p>
         </div>
       )}
 
@@ -514,7 +514,7 @@ function AppearanceSettings() {
                 <input type="time" value={nightShiftTo} onChange={e => setNightShiftTo(e.target.value)} className="input" />
               </Field>
             </div>
-            <p className="text-[11px] text-[var(--text-faint)]">
+            <p className="text-[12px] text-[var(--text-faint)]">
               {nightShiftActive ? 'Currently active.' : 'Currently off.'} Timezone: {tz}
             </p>
           </div>
@@ -529,7 +529,7 @@ function AppearanceSettings() {
                 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--status-warning)]"
             />
-            <div className="flex justify-between text-[10px] text-[var(--text-faint)] mt-1">
+            <div className="flex justify-between text-[12px] text-[var(--text-faint)] mt-1">
               <span>Less warm</span>
               <span>More warm</span>
             </div>
@@ -894,7 +894,7 @@ function DisplaySettings() {
           <div className="flex items-center gap-2 mb-1">
             <span className={`w-2 h-2 rounded-full ${o.connected ? 'bg-[var(--status-success)]' : 'bg-[var(--bg-active)]'}`} />
             <span className="text-sm font-medium">{o.name}</span>
-            {o.primary && <span className="text-[10px] text-[var(--accent)]">primary</span>}
+            {o.primary && <span className="text-[12px] text-[var(--accent)]">primary</span>}
           </div>
           {o.connected && o.modes?.length > 0 && (
             <select value={o.resolution || ''} onChange={e => setRes(o.name, e.target.value)} className="input mt-1">
@@ -1089,7 +1089,7 @@ function NET9_ConnectionModeSettings() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
                   {current === m.id && (
-                    <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">
+                    <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">
                       Active
                     </span>
                   )}
@@ -1633,7 +1633,7 @@ function FingerprintSettings() {
               <li>DigitalPersona (USB 05ba:xxxx)</li>
               <li>Validity Sensors (USB 138a:xxxx)</li>
             </ul>
-            <p className="text-[11px] text-[var(--text-ghost)] mt-2">
+            <p className="text-[12px] text-[var(--text-ghost)] mt-2">
               Virtual machines without USB passthrough and macOS/Windows are not supported.
               Install fprintd and libfprint2 to enable this feature.
             </p>
@@ -1743,7 +1743,7 @@ function FingerprintSettings() {
             <li>DigitalPersona (USB 05ba:xxxx)</li>
             <li>Validity Sensors (USB 138a:xxxx)</li>
           </ul>
-          <p className="text-[11px] text-[var(--text-ghost)] mt-2">
+          <p className="text-[12px] text-[var(--text-ghost)] mt-2">
             Requires fprintd + libfprint2 on Linux.
             Virtual machines without USB passthrough are not supported.
           </p>
@@ -1782,7 +1782,7 @@ function AIAppPreview({ app, onClose }) {
           referrerPolicy="no-referrer"
         />
       </div>
-      <p className="text-[10px] text-[var(--text-faint)] mt-2">
+      <p className="text-[12px] text-[var(--text-faint)] mt-2">
         Runs in an isolated sandbox — no access to your session or data.
       </p>
     </SettingsModal>
@@ -1832,13 +1832,13 @@ function AIAppVersions({ appId, onClose, editDisabled }) {
         <div key={v.version} className="flex items-center justify-between py-1 border-b border-[var(--border-default)]">
           <div>
             <span className="text-xs text-[var(--text-tertiary)]">{v.timestamp}</span>
-            {v.brief && <span className="text-[10px] text-[var(--text-faint)] ml-2">{v.brief}</span>}
+            {v.brief && <span className="text-[12px] text-[var(--text-faint)] ml-2">{v.brief}</span>}
           </div>
           <button
             onClick={() => rollback(v.version)}
             disabled={busy || editDisabled}
             title={editDisabled ? 'Editing disabled by administrator' : 'Restore this version'}
-            className="text-[10px] text-[var(--status-warning)] hover:text-[var(--status-warning)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-[12px] text-[var(--status-warning)] hover:text-[var(--status-warning)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Restore
           </button>
@@ -1890,7 +1890,7 @@ function AIAppsSettings() {
           <div className="min-w-0">
             <span className="text-sm">{app.title || 'Untitled'}</span>
             <span className="text-xs text-[var(--text-faint)] ml-2">{app.created?.slice(0, 10)}</span>
-            {app.has_python === 'true' && <span className="text-[10px] text-[var(--accent)] ml-2">Python</span>}
+            {app.has_python === 'true' && <span className="text-[12px] text-[var(--accent)] ml-2">Python</span>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <PamVisibilityControl key={`${app.id}-${visRefreshKey}`} appId={app.id} onChanged={handleVisChanged} />
@@ -2271,7 +2271,7 @@ function StorageModeSettings() {
               placeholder="/var/lib/vulos/minio/.minio_secret"
               className="input"
             />
-            <p className="text-[11px] text-[var(--text-faint)] mt-1">
+            <p className="text-[12px] text-[var(--text-faint)] mt-1">
               Path or secret-store key — the secret itself is never stored here. The installer writes
               /var/lib/vulos/minio/.minio_secret when run with --storage=minio.
             </p>
@@ -2409,7 +2409,7 @@ function UsersSettings({ profile }) {
         <div key={p.user_id} className="flex items-center justify-between py-2 border-b border-[var(--border-default)]">
           <div>
             <span className="text-sm">{p.display_name || 'Unnamed'}</span>
-            <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
+            <span className={`ml-2 text-[12px] px-1.5 py-0.5 rounded-full ${
               p.role === 'admin' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' :
               p.role === 'guest' ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)]' :
               'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
@@ -2521,7 +2521,7 @@ function OSUpdateSettings() {
             <span className="flex items-center gap-1.5 text-sm font-mono text-[var(--status-success)]">
               {status.latest_version}
               {isSecurity && (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-[var(--status-danger)] text-white">
+                <span className="px-1.5 py-0.5 rounded text-[12px] font-semibold tracking-wide bg-[var(--status-danger)] text-white">
                   SECURITY
                 </span>
               )}
@@ -2737,7 +2737,7 @@ function AboutSettings() {
           <span className="text-sm text-[var(--accent)]">View offer →</span>
         </button>
       </div>
-      <p className="text-[11px] text-[var(--text-faint)] mb-6">
+      <p className="text-[12px] text-[var(--text-faint)] mb-6">
         Vulos includes open-source software. The notices reproduce each component's licence;
         the written offer covers how to obtain the corresponding source of the GPL/LGPL parts.
       </p>
@@ -2750,7 +2750,7 @@ function AboutSettings() {
             <span className="text-xs text-[var(--text-tertiary)] font-medium">{legal.title}</span>
             <button onClick={() => setLegal(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Close ✕</button>
           </div>
-          <pre className="max-h-96 overflow-auto px-4 py-3 text-[11px] leading-relaxed text-[var(--text-tertiary)] whitespace-pre-wrap break-words">
+          <pre className="max-h-96 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-[var(--text-tertiary)] whitespace-pre-wrap break-words">
             {legalLoading ? 'Loading…' : legal.text}
           </pre>
         </div>
@@ -2758,7 +2758,7 @@ function AboutSettings() {
 
       {/* Powered by */}
       <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-[var(--border-default)]">
-        <span className="text-[11px] text-[var(--text-faint)]">Powered by</span>
+        <span className="text-[12px] text-[var(--text-faint)]">Powered by</span>
         <span className="text-xs text-[var(--text-tertiary)] font-medium">Debian Linux</span>
       </div>
     </div>

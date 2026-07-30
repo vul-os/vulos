@@ -131,14 +131,14 @@ export default function BoxHealthPanel() {
           </span>
         </div>
         {health?.timestamp && !healthErr && (
-          <p className="text-[11px] mt-1 opacity-80">Checked {new Date(health.timestamp).toLocaleTimeString()}</p>
+          <p className="text-[12px] mt-1 opacity-80">Checked {new Date(health.timestamp).toLocaleTimeString()}</p>
         )}
       </div>
 
       {/* Live resource usage */}
       <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">
         Resources
-        <span className={`ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+        <span className={`ml-2 text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
           connected ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
         }`}>{connected ? 'live' : 'offline'}</span>
       </h3>

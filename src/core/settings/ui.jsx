@@ -83,7 +83,7 @@ export function Field({ label, hint, htmlFor, children }) {
     <div className="mb-4 last:mb-0">
       {label && <label htmlFor={htmlFor} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">{label}</label>}
       {children}
-      {hint && <p className="text-[11px] text-[var(--text-faint)] mt-1.5 leading-relaxed">{hint}</p>}
+      {hint && <p className="text-[12px] text-[var(--text-faint)] mt-1.5 leading-relaxed">{hint}</p>}
     </div>
   )
 }
@@ -168,7 +168,7 @@ export function Pill({ tone = 'neutral', dot = true, pulse = false, children }) 
   return (
     <span
       style={soft ? { background: soft } : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset whitespace-nowrap ${PILL_TONES[tone] || PILL_TONES.neutral}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 ring-inset whitespace-nowrap ${PILL_TONES[tone] || PILL_TONES.neutral}`}
     >
       {dot && <span aria-hidden="true" className={`w-1.5 h-1.5 rounded-full ${PILL_DOT[tone] || PILL_DOT.neutral} ${pulse ? 'animate-pulse' : ''}`} />}
       {children}
@@ -217,7 +217,7 @@ export function StatTile({ label, value, sub, tone, icon }) {
     : 'text-[var(--text-primary)]'
   return (
     <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-3.5">
-      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] font-medium text-[var(--text-tertiary)]">
+      <div className="flex items-center gap-1.5 text-[12px] uppercase tracking-[0.08em] font-medium text-[var(--text-tertiary)]">
         {icon && <span aria-hidden="true" className="opacity-70"><SettingsIcon name={icon} size={13} /></span>}
         {label}
       </div>

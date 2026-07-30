@@ -88,7 +88,7 @@ function PythonDepsNotice({ deps }) {
   const hint = deps.install_hint || 'pip install onnxruntime tokenizers numpy'
   if (deps.ready) {
     return (
-      <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)] border border-success-soft">
+      <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)] border border-success-soft">
         On-box embedding runtime detected (python3 + onnxruntime + tokenizers). Semantic embeddings can run locally.
       </div>
     )
@@ -98,7 +98,7 @@ function PythonDepsNotice({ deps }) {
   if (!deps.onnxruntime) missing.push('onnxruntime')
   if (!deps.tokenizers) missing.push('tokenizers')
   return (
-    <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)] border border-warning-soft">
+    <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)] border border-warning-soft">
       The on-box embedding runtime is missing ({missing.join(', ') || 'dependencies'}). A model can be installed, but
       embeddings will not run until you install the <strong>vula-embed</strong> Python deps on the box:
       <code className="block mt-1.5 font-mono text-[var(--status-warning)] bg-[var(--bg-base)] rounded px-2 py-1 select-all">{hint}</code>
@@ -145,19 +145,19 @@ function CatalogRow({ entry, onDownloaded }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-[var(--text-primary)] font-mono">{entry.name}</span>
             {entry.recommended && (
-              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent)]">Recommended</span>
+              <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent)]">Recommended</span>
             )}
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">{entry.dim}-dim</span>
+            <span className="text-[12px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-tertiary)]">{entry.dim}-dim</span>
           </div>
           <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">{entry.description}</p>
-          <p className="text-[11px] text-[var(--text-faint)] mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
+          <p className="text-[12px] text-[var(--text-faint)] mt-0.5">Download: {humanBytes(totalBytes)} (model + tokenizer), verified by SHA-256.</p>
         </div>
         <button onClick={download} disabled={busy} aria-busy={busy} className="btn text-sm shrink-0 disabled:opacity-50 flex items-center gap-1.5">
           {busy && <span className="spinner w-3.5 h-3.5" aria-hidden="true" />}
           {busy ? 'Downloading…' : 'Download'}
         </button>
       </div>
-      {busy && <div className="mt-2 text-[11px] text-[var(--text-muted)]" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
+      {busy && <div className="mt-2 text-[12px] text-[var(--text-muted)]" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
       {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-[var(--status-success)]" role="status">{ok}</div>}
       {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{err}</div>}
     </div>
@@ -305,11 +305,11 @@ function ModelsPanelOwner() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-[var(--text-primary)] font-mono">{mm.name}</span>
                       {mm.active && (
-                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">Active</span>
+                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">Active</span>
                       )}
                       {mm.has_tokenizer
-                        ? <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">tokenizer ✓</span>
-                        : <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-warning-soft)] text-[var(--status-warning)]">no tokenizer</span>}
+                        ? <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">tokenizer ✓</span>
+                        : <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-warning-soft)] text-[var(--status-warning)]">no tokenizer</span>}
                     </div>
                     <div className="text-xs text-[var(--text-muted)] mt-1">
                       {humanBytes(mm.size_bytes)}
@@ -324,7 +324,7 @@ function ModelsPanelOwner() {
                 Import an <span className="font-mono">.onnx</span> model below to enable semantic RAG.
               </p>
             )}
-            <p className="text-[11px] text-[var(--text-faint)] mt-2 font-mono truncate" title={emb.dir}>
+            <p className="text-[12px] text-[var(--text-faint)] mt-2 font-mono truncate" title={emb.dir}>
               {emb.dir}
             </p>
           </div>
@@ -333,7 +333,7 @@ function ModelsPanelOwner() {
           {emb.catalog?.length > 0 && (
             <div className="mb-6">
               <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Download a recommended model</h3>
-              <p className="text-[11px] text-[var(--text-faint)] mb-3 leading-relaxed">
+              <p className="text-[12px] text-[var(--text-faint)] mb-3 leading-relaxed">
                 Install a curated embedding model in one click. The model is fetched on demand
                 from a pinned source and verified by SHA-256 before it is installed — nothing
                 is bundled in the app.
@@ -354,7 +354,7 @@ function ModelsPanelOwner() {
           {/* Import flow (manual) */}
           <div className="mb-6">
             <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">Or import a model you already have</h3>
-            <div className="mb-3 text-[11px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--border-strong)]">
+            <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border border-[var(--border-strong)]">
               Already have an ONNX sentence-embedding model and its
               <span className="font-mono"> tokenizer.json</span>? Import both files here.
               The active model is picked up automatically.
@@ -391,7 +391,7 @@ function ModelsPanelOwner() {
             ) : (
               <p className="text-sm text-[var(--text-muted)]">No chat models reported by the gateway.</p>
             )}
-            <p className="text-[11px] text-[var(--text-faint)] mt-2 leading-relaxed">
+            <p className="text-[12px] text-[var(--text-faint)] mt-2 leading-relaxed">
               Chat model routing and provider management are handled by your llmux gateway.
             </p>
           </div>
