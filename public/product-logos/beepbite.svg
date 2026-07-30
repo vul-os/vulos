@@ -1,8 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="BeepBite">
   <title>BeepBite</title>
   <rect width="128" height="128" rx="28" fill="#231207"/>
-  <!-- a serving cloche: dome, plate, and knob -->
-  <path d="M30 84 a34 34 0 0 1 68 0 Z" fill="#FF6B3D"/>
-  <rect x="22" y="84" width="84" height="11" rx="5.5" fill="#FF6B3D"/>
-  <circle cx="64" cy="45" r="6" fill="#FF6B3D"/>
+  <!-- the "bite": a covered serving tray (cloche + platter) -->
+  <path d="M34 92 C34 64 94 64 94 92 Z" fill="#FF6B3D"/>
+  <rect x="24" y="92" width="80" height="10" rx="5" fill="#FF6B3D"/>
+  <!-- the "beep": signal waves rising above the tray -->
+  <g fill="none" stroke="#FF6B3D" stroke-width="6" stroke-linecap="round">
+    <path d="M52 53 Q64 43 76 53"/>
+    <path d="M44 45 Q64 28 84 45"/>
+  </g>
 </svg>

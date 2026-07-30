@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Patala">
+  <title>Patala</title>
+  <rect width="128" height="128" rx="28" fill="#0c0f1e"/>
+  <!-- cowrie shell: the traditional money-shell — a payment substrate -->
+  <ellipse cx="64" cy="64" rx="29" ry="40" fill="#f06b3d"/>
+  <!-- aperture: the shell's toothed opening -->
+  <path d="M64 33 Q74 64 64 95 Q54 64 64 33 Z" fill="#0c0f1e"/>
+  <g stroke="#f06b3d" stroke-width="3" stroke-linecap="round">
+    <line x1="60.5" y1="45" x2="67.5" y2="45"/>
+    <line x1="59" y1="54.5" x2="69" y2="54.5"/>
+    <line x1="58.5" y1="64" x2="69.5" y2="64"/>
+    <line x1="59" y1="73.5" x2="69" y2="73.5"/>
+    <line x1="60.5" y1="83" x2="67.5" y2="83"/>
+  </g>
+</svg>
