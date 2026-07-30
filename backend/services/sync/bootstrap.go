@@ -75,9 +75,14 @@ type BootstrapConfig struct {
 	// authenticates cluster/snapshot/latest.json before its Version/Key are
 	// trusted to install a snapshot — see snapshot.go's package doc comment
 	// (deriveLatestMACKey) for the anti-rollback-authenticity threat this
-	// closes. Leave empty only when the caller doesn't have the passphrase in
-	// scope; bootstrapReadSnapshot then falls back to trusting the doc
-	// unconditionally, matching pre-authenticity behavior.
+	// closes.
+	//
+	// REQUIRED. Bootstrap returns ErrLatestAuthenticityUnconfigured when it is
+	// empty: installing a snapshot blob chosen by an unauthenticated pointer is
+	// the most damaging form of the rollback this check exists to stop (it
+	// becomes the new node's entire DB base), so a blank field must refuse, not
+	// proceed unprotected. It is the same passphrase the SSE-C client already
+	// needs to read the bucket at all.
 	Passphrase string
 }
 
@@ -85,6 +90,9 @@ type BootstrapConfig struct {
 
 // Bootstrap performs the SYNC-03 new-instance bootstrap sequence:
 //
+//  0. Refuse outright (ErrLatestAuthenticityUnconfigured) when cfg.Passphrase
+//     is empty — latest.json's Version/Key could not be authenticated, and an
+//     unverified snapshot must never become a node's DB base.
 //  1. Read cluster/snapshot/latest.json from S3.
 //     – If absent: log "no snapshot found" and fall back to full changeset replay
 //     (snapshotVersion=0, all changesets replayed via applier).
@@ -117,10 +125,13 @@ func Bootstrap(
 	if nodeID == "" {
 		nodeID = "unknown"
 	}
-	var macKey []byte
-	if cfg.Passphrase != "" {
-		macKey = deriveLatestMACKey(cfg.Passphrase)
+	// ── 0. Fail-closed configuration gate ────────────────────────────────────
+	// No passphrase → no MAC key → latest.json could not be authenticated.
+	// Refuse rather than install an unverified snapshot as this node's DB base.
+	if cfg.Passphrase == "" {
+		return fmt.Errorf("bootstrap: refusing to bootstrap node %q: %w", nodeID, ErrLatestAuthenticityUnconfigured)
 	}
+	macKey := deriveLatestMACKey(cfg.Passphrase)
 
 	// ── 1. Read latest.json ───────────────────────────────────────────────────
 	snapshotVersion, err := bootstrapReadSnapshot(ctx, s3, nodeID, macKey, install)
@@ -163,7 +174,7 @@ func bootstrapReadSnapshot(
 			nodeID, doc.Version, doc.Key)
 		return 0, nil
 	}
-	if macKey != nil && !verifyLatestDoc(macKey, doc) {
+	if !verifyLatestDoc(macKey, doc) {
 		// doc.Version/Key cannot be trusted enough to install as the new
 		// node's DB base — treat exactly like the malformed case above and
 		// fall back to a full changeset replay (always a safe, if slower,

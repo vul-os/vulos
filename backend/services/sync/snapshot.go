@@ -25,6 +25,18 @@
 // arbitrarily — either freezing the cluster (an absurdly high Version makes
 // every real snapshot look stale forever) or pointing Key at a stale/malicious
 // blob to force a rollback on restore. See deriveLatestMACKey / verifyLatestDoc.
+//
+// Authenticity is MANDATORY, not opt-in. Every consumer of latest.json
+// (Compactor.Run, Restorer.LatestSnapshot, Bootstrap) refuses to operate at all
+// when no MAC key is configured, returning ErrLatestAuthenticityUnconfigured.
+// There is deliberately NO "authenticity off" mode: the very same cluster
+// passphrase is already structurally required to read or write any object in
+// this bucket (cluster.NewClient derives the SSE-C key from it), so
+// "no passphrase available" is not a real operating mode — it was only ever
+// reachable by leaving a config field blank, which is exactly the fail-open
+// hole this closes. An anti-rollback check that silently stops checking when a
+// field is empty is worse than none, because the surrounding code reads as
+// though the protection is present.
 package sync
 
 import (
@@ -84,6 +96,16 @@ func deriveLatestMACKey(passphrase string) []byte {
 	return argon2.IDKey([]byte(passphrase), []byte(latestMACDomain), snapshotArgonTime, snapshotArgonMem, snapshotArgonThreads, snapshotArgonKeyLen)
 }
 
+// LatestMACKeyFromPassphrase derives the latest.json authenticity MAC key from
+// the cluster passphrase, for callers outside this package that construct a
+// Restorer directly: WithLatestMACKey deliberately takes derived material
+// rather than a passphrase, so without this the documented way to satisfy it
+// would be unreachable. Production callers should prefer BuildRestorer /
+// BuildCompactor, which derive it internally and never expose the key.
+func LatestMACKeyFromPassphrase(passphrase string) []byte {
+	return deriveLatestMACKey(passphrase)
+}
+
 // latestDocMAC computes the hex-encoded HMAC-SHA256 authenticating a
 // LatestDoc's Version/Key/CreatedAt under macKey. It is computed over an
 // explicit canonical string — not raw marshaled JSON — so verification never
@@ -96,12 +118,39 @@ func latestDocMAC(macKey []byte, version int64, key string, createdAt time.Time)
 }
 
 // verifyLatestDoc reports whether doc.MAC authenticates doc's Version/Key/
-// CreatedAt under macKey. Callers must gate on macKey != nil themselves (a nil
-// macKey means no cluster passphrase was configured, i.e. authenticity
-// enforcement is off — see CompactorConfig.Passphrase / WithLatestMACKey).
+// CreatedAt under macKey. A nil/empty macKey can never authenticate anything:
+// it returns false rather than "no opinion", so a caller that forgets the
+// configuration gate below still gets a refusal and not a free pass.
 func verifyLatestDoc(macKey []byte, doc LatestDoc) bool {
+	if len(macKey) == 0 {
+		return false
+	}
 	want := latestDocMAC(macKey, doc.Version, doc.Key, doc.CreatedAt)
 	return hmac.Equal([]byte(want), []byte(doc.MAC))
+}
+
+// ErrLatestAuthenticityUnconfigured is the fail-closed refusal returned when a
+// latest.json consumer has no MAC key at all — i.e. its cluster passphrase was
+// left blank. It is NOT an attack signal; it is a misconfiguration that would
+// silently disable the anti-rollback protection described in the package doc
+// comment, so every consumer refuses instead of proceeding unprotected.
+var ErrLatestAuthenticityUnconfigured = errors.New(
+	"sync: latest.json anti-rollback authenticity cannot be verified: no cluster passphrase configured " +
+		"(set VULOS_CLUSTER_PASSPHRASE / CompactorConfig.Passphrase / BootstrapConfig.Passphrase, or build the " +
+		"Restorer with WithLatestMACKey(LatestMACKeyFromPassphrase(passphrase))) — refusing to trust latest.json unverified")
+
+// requireLatestMACKey is the single fail-closed configuration gate shared by
+// every latest.json consumer. It returns ErrLatestAuthenticityUnconfigured when
+// no MAC key is available, so an absent passphrase REFUSES TO VERIFY rather
+// than skipping verification. It deliberately errors rather than logging a
+// "skipping authenticity check" warning: skip output is routinely swallowed by
+// service supervisors and CI runners, so the one run where it matters is
+// exactly the run where nobody sees it.
+func requireLatestMACKey(macKey []byte) error {
+	if len(macKey) == 0 {
+		return ErrLatestAuthenticityUnconfigured
+	}
+	return nil
 }
 
 // ── S3 abstraction (mockable) ─────────────────────────────────────────────────
@@ -200,9 +249,12 @@ type LatestDoc struct {
 	CreatedAt time.Time `json:"created_at"`
 	// MAC authenticates Version/Key/CreatedAt (see deriveLatestMACKey /
 	// latestDocMAC) so an anti-rollback decision never trusts Version until
-	// its authenticity is established. Empty when written without a cluster
-	// passphrase configured. Consumers MUST call verifyLatestDoc before
-	// trusting Version/Key — see existingSnapshotVersion and LatestSnapshot.
+	// its authenticity is established. Consumers MUST call verifyLatestDoc
+	// before trusting Version/Key — see existingSnapshotVersion and
+	// LatestSnapshot. A doc with an empty MAC is unauthenticated and is never
+	// trusted: writers always populate it (Compactor.Run refuses to run without
+	// a MAC key), so an empty MAC on the wire means the doc was written by
+	// something other than a passphrase-holding compactor.
 	MAC string `json:"mac,omitempty"`
 }
 
@@ -236,8 +288,9 @@ type Compactor struct {
 
 	// macKey authenticates cluster/snapshot/latest.json (see the package doc
 	// and deriveLatestMACKey). nil means no Passphrase was configured in
-	// CompactorConfig, so the anti-rollback check below falls back to
-	// trusting Version unconditionally — same as before this was added.
+	// CompactorConfig; Run then refuses to compact at all
+	// (ErrLatestAuthenticityUnconfigured) rather than performing an
+	// anti-rollback comparison against a Version it cannot authenticate.
 	macKey []byte
 
 	// lastSeenFence is the highest snapshot lease fence this Compactor has
@@ -255,10 +308,15 @@ type CompactorConfig struct {
 	// Passphrase is the cluster passphrase (VULOS_CLUSTER_PASSPHRASE) used to
 	// derive the HMAC key that authenticates cluster/snapshot/latest.json
 	// before its Version is trusted for the anti-rollback check — see the
-	// package doc comment above and deriveLatestMACKey. BuildCompactor always
-	// sets this in production. Leave empty only in tests that don't care
-	// about latest.json authenticity (existingSnapshotVersion then falls back
-	// to trusting Version unconditionally, matching pre-authenticity behavior).
+	// package doc comment above and deriveLatestMACKey.
+	//
+	// REQUIRED. It is not an optional hardening knob: Run returns
+	// ErrLatestAuthenticityUnconfigured when it is empty, because a compactor
+	// that cannot authenticate latest.json cannot make a sound anti-rollback
+	// decision and would also publish an unauthenticated latest.json that no
+	// Restorer/Bootstrap would accept. It is the same passphrase the SSE-C
+	// bucket client already needs, so there is no configuration in which it is
+	// legitimately unavailable.
 	Passphrase string
 }
 
@@ -301,7 +359,8 @@ func NewCompactor(cfg CompactorConfig, leaseFcd LeaseFacade, s3 SnapshotS3, snap
 //     is treated the same as an absent/malformed one — it does not block the
 //     write, which defeats a forged-high-Version freeze attempt.
 //  5. Write the encrypted snapshot blob (cluster/snapshot/<version>.db.enc).
-//  6. Write latest.json, MAC'd when a Passphrase is configured.
+//  6. Write latest.json, always MAC'd (CompactorConfig.Passphrase is required;
+//     Run refuses with ErrLatestAuthenticityUnconfigured when it is absent).
 //  7. Prune per-node changesets below the covered version.
 //  8. Release the lease.
 //
@@ -310,6 +369,19 @@ func NewCompactor(cfg CompactorConfig, leaseFcd LeaseFacade, s3 SnapshotS3, snap
 // sees nor persists the passphrase itself — that responsibility belongs to the
 // caller who constructs the cluster.Client.
 func (c *Compactor) Run(ctx context.Context) error {
+	// ── 0. Fail-closed configuration gate ────────────────────────────────────
+	// Without a MAC key the step-4 anti-rollback check would compare our
+	// version against a Version nobody can authenticate, and step 6 would
+	// publish a latest.json with no MAC. Refuse here — before the lease is even
+	// acquired — instead of proceeding with the protection silently absent.
+	// Checked in Run rather than inside existingSnapshotVersion because Run
+	// deliberately treats an *unreadable/unauthentic* doc as "proceed with the
+	// write" (that is what defeats a forged-high-Version freeze), so an error
+	// returned from there could never act as a guard.
+	if err := requireLatestMACKey(c.macKey); err != nil {
+		return fmt.Errorf("snapshot: refusing to compact: %w", err)
+	}
+
 	// ── 1. Acquire the snapshot lease ────────────────────────────────────────
 	fence, err := c.leaseFcd.AcquireSnapshot(ctx, c.nodeID, c.leaseTTL)
 	if err != nil {
@@ -376,9 +448,8 @@ func (c *Compactor) Run(ctx context.Context) error {
 		Key:       blobKey,
 		CreatedAt: time.Now().UTC(),
 	}
-	if c.macKey != nil {
-		latest.MAC = latestDocMAC(c.macKey, latest.Version, latest.Key, latest.CreatedAt)
-	}
+	// Always MAC'd: step 0 guarantees c.macKey is present.
+	latest.MAC = latestDocMAC(c.macKey, latest.Version, latest.Key, latest.CreatedAt)
 	latestJSON, err := json.Marshal(latest)
 	if err != nil {
 		return fmt.Errorf("snapshot: marshal latest.json: %w", err)
@@ -432,8 +503,13 @@ var ErrNoSnapshot = errors.New("sync: no snapshot present (latest.json absent)")
 // someone holding the cluster passphrase, so its Version/Key cannot be
 // trusted. This is a fail-closed rejection: Restore does NOT fall back to
 // applying it anyway, unlike Compactor's own anti-rollback check (which fails
-// open toward "proceed", since a stuck compactor is the worse outcome there —
-// a stuck Restore is the safe default here, since Restore is destructive).
+// over toward "proceed with the write", since a stuck compactor is the worse
+// outcome there — a stuck Restore is the safe default here, since Restore is
+// destructive).
+//
+// A Restorer with no MAC key at all does not reach this error: it fails earlier
+// with ErrLatestAuthenticityUnconfigured (see requireLatestMACKey), so
+// "forgot the passphrase" can never be mistaken for "MAC verified fine".
 var ErrSnapshotTampered = errors.New("sync: latest.json failed authenticity check (bad or missing MAC) — refusing to restore")
 
 // Restorer pulls the latest snapshot from the bucket and rehydrates local state.
@@ -451,22 +527,31 @@ type Restorer struct {
 
 	// macKey authenticates cluster/snapshot/latest.json (see the package doc
 	// and deriveLatestMACKey). nil means no WithLatestMACKey option was
-	// supplied, so LatestSnapshot falls back to trusting Version/Key
-	// unconditionally — same as before this was added.
+	// supplied; LatestSnapshot/Restore then refuse outright with
+	// ErrLatestAuthenticityUnconfigured rather than trusting Version/Key from a
+	// document they cannot authenticate.
 	macKey []byte
 }
 
 // RestorerOption configures optional Restorer behavior. See WithLatestMACKey.
 type RestorerOption func(*Restorer)
 
-// WithLatestMACKey enables authenticity verification of latest.json: Restorer
-// will reject (ErrSnapshotTampered, fail-closed) any latest.json whose MAC
-// does not authenticate under macKey, rather than trusting Version/Key from
-// an object anyone with bucket write access could have forged — see the
-// package doc comment for the threat this closes.
+// WithLatestMACKey supplies the key for the authenticity verification of
+// latest.json: Restorer rejects (ErrSnapshotTampered, fail-closed) any
+// latest.json whose MAC does not authenticate under macKey, rather than
+// trusting Version/Key from an object anyone with bucket write access could
+// have forged — see the package doc comment for the threat this closes.
 //
-// macKey should come from deriveLatestMACKey(passphrase) — the SAME cluster
-// passphrase already required to reach the bucket's SSE-C content. Never pass
+// REQUIRED despite being expressed as an option: a Restorer built without it
+// (or with an empty macKey) refuses to read latest.json at all
+// (ErrLatestAuthenticityUnconfigured). It stays an option only because the key
+// is derived material rather than a passphrase — the Restorer must never see
+// the passphrase itself. Production callers should prefer BuildRestorer, which
+// derives it for them.
+//
+// macKey should come from LatestMACKeyFromPassphrase(passphrase) — the SAME
+// cluster passphrase already required to reach the bucket's SSE-C content
+// (deriveLatestMACKey in-package). Never pass
 // the SSE-C encryption key itself; it is a different, domain-separated key.
 func WithLatestMACKey(macKey []byte) RestorerOption {
 	return func(r *Restorer) { r.macKey = macKey }
@@ -478,9 +563,10 @@ func WithLatestMACKey(macKey []byte) RestorerOption {
 //     SSE-C key is managed by the cluster.Client layer; the Restorer never sees
 //     a passphrase).
 //   - rehydrate applies the decrypted blob to local state.
-//   - opts may include WithLatestMACKey to enable latest.json authenticity
-//     verification (strongly recommended in production — BuildRestorer always
-//     sets it when a passphrase is available).
+//   - opts MUST include WithLatestMACKey; without it the returned Restorer
+//     refuses every read with ErrLatestAuthenticityUnconfigured rather than
+//     silently skipping latest.json authenticity verification. BuildRestorer
+//     wires it from the cluster passphrase in production.
 func NewRestorer(s3 SnapshotS3, rehydrate DBRehydrate, opts ...RestorerOption) *Restorer {
 	r := &Restorer{s3: s3, rehydrate: rehydrate}
 	for _, opt := range opts {
@@ -491,8 +577,17 @@ func NewRestorer(s3 SnapshotS3, rehydrate DBRehydrate, opts ...RestorerOption) *
 
 // LatestSnapshot reads and parses cluster/snapshot/latest.json. It returns
 // ErrNoSnapshot when latest.json is absent so callers can distinguish "nothing
-// backed up yet" from a transport error.
+// backed up yet" from a transport error, and
+// ErrLatestAuthenticityUnconfigured when no MAC key was supplied — a Restorer
+// that cannot authenticate the document must not report or act on its
+// Version/Key at all.
 func (r *Restorer) LatestSnapshot(ctx context.Context) (LatestDoc, error) {
+	// Fail-closed configuration gate — see requireLatestMACKey. Deliberately
+	// before the fetch: an unverifiable pointer must not be reported as status
+	// either, since Version/Key are exactly what an attacker controls.
+	if err := requireLatestMACKey(r.macKey); err != nil {
+		return LatestDoc{}, err
+	}
 	data, err := r.s3.GetEncrypted(ctx, latestKey)
 	if err != nil {
 		// Treat any miss as "no snapshot" — the mock and the cluster client both
@@ -507,7 +602,7 @@ func (r *Restorer) LatestSnapshot(ctx context.Context) (LatestDoc, error) {
 	if doc.Key == "" {
 		return LatestDoc{}, fmt.Errorf("sync: latest.json has empty snapshot key")
 	}
-	if r.macKey != nil && !verifyLatestDoc(r.macKey, doc) {
+	if !verifyLatestDoc(r.macKey, doc) {
 		return LatestDoc{}, ErrSnapshotTampered
 	}
 	return doc, nil
@@ -552,8 +647,18 @@ func (r *Restorer) Restore(ctx context.Context) (RestoreResult, error) {
 }
 
 // existingSnapshotVersion reads latest.json and returns the version field.
-// Returns (0, err) when the object is absent or unreadable.
+// Returns (0, err) when the object is absent, unreadable, or unauthentic.
+//
+// Its caller (Run step 4) treats ANY error as "no known existing version" and
+// proceeds with the write, so this function must never be the place where a
+// missing-configuration guard lives — Run step 0 owns that gate and refuses
+// before we get here. See the comment there.
 func (c *Compactor) existingSnapshotVersion(ctx context.Context) (int64, error) {
+	if err := requireLatestMACKey(c.macKey); err != nil {
+		// Unreachable via Run (step 0 already refused); belt-and-braces for any
+		// future caller. NOT a substitute for that gate — see above.
+		return 0, err
+	}
 	data, err := c.s3.GetEncrypted(ctx, latestKey)
 	if err != nil {
 		return 0, err
@@ -562,7 +667,7 @@ func (c *Compactor) existingSnapshotVersion(ctx context.Context) (int64, error) 
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return 0, fmt.Errorf("snapshot: parse latest.json: %w", err)
 	}
-	if c.macKey != nil && !verifyLatestDoc(c.macKey, doc) {
+	if !verifyLatestDoc(c.macKey, doc) {
 		// doc.Version cannot be trusted as an anti-rollback counter until its
 		// authenticity is established (see the package doc comment). Treat
 		// exactly like the parse-failure case above: Run's caller falls back

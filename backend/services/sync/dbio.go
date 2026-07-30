@@ -242,14 +242,19 @@ type BackupConfig struct {
 // one used to build the cluster.Client's SSE-C key. It is forwarded into
 // CompactorConfig.Passphrase so the anti-rollback check authenticates
 // latest.json before trusting its Version (see snapshot.go's package doc
-// comment). Pass "" only when no passphrase is available; the Compactor then
-// falls back to trusting Version unconditionally.
+// comment). It is REQUIRED: an empty passphrase is rejected here rather than
+// yielding a Compactor whose anti-rollback check cannot verify anything.
 func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Config, passphrase string) (*Compactor, error) {
 	if s3 == nil {
 		return nil, errors.New("sync: BuildCompactor: nil cluster client")
 	}
 	if cfg.DBPath == "" {
 		return nil, errors.New("sync: BuildCompactor: empty DB path")
+	}
+	// Fail closed at construction: without the passphrase the compactor could
+	// neither authenticate an existing latest.json nor MAC the one it writes.
+	if passphrase == "" {
+		return nil, fmt.Errorf("sync: BuildCompactor: %w", ErrLatestAuthenticityUnconfigured)
 	}
 	mgr, err := lease.New(leaseCfg)
 	if err != nil {
@@ -269,11 +274,13 @@ func BuildCompactor(cfg BackupConfig, s3 *cluster.Client, leaseCfg lease.S3Confi
 // dbPath. Restore is lease-free by design (read of an immutable versioned blob
 // + local apply).
 //
-// passphrase is the cluster passphrase; when non-empty it is used to derive
-// the latest.json authenticity MAC key (WithLatestMACKey) so Restore refuses
+// passphrase is the cluster passphrase, used to derive the latest.json
+// authenticity MAC key (WithLatestMACKey) so Restore refuses
 // (ErrSnapshotTampered) rather than applies a snapshot doc that anyone with
-// bucket write access — but not the passphrase — could have forged. Pass ""
-// only when no passphrase is available.
+// bucket write access — but not the passphrase — could have forged. It is
+// REQUIRED: an empty passphrase is rejected here, because the alternative
+// (a Restorer with no MAC key) is precisely the fail-open state that would
+// apply an attacker-chosen rollback to a destructive restore.
 func BuildRestorer(s3 *cluster.Client, dbPath string, passphrase string) (*Restorer, error) {
 	if s3 == nil {
 		return nil, errors.New("sync: BuildRestorer: nil cluster client")
@@ -281,9 +288,8 @@ func BuildRestorer(s3 *cluster.Client, dbPath string, passphrase string) (*Resto
 	if dbPath == "" {
 		return nil, errors.New("sync: BuildRestorer: empty DB path")
 	}
-	var opts []RestorerOption
-	if passphrase != "" {
-		opts = append(opts, WithLatestMACKey(deriveLatestMACKey(passphrase)))
+	if passphrase == "" {
+		return nil, fmt.Errorf("sync: BuildRestorer: %w", ErrLatestAuthenticityUnconfigured)
 	}
-	return NewRestorer(s3, RehydrateDB(dbPath), opts...), nil
+	return NewRestorer(s3, RehydrateDB(dbPath), WithLatestMACKey(deriveLatestMACKey(passphrase))), nil
 }

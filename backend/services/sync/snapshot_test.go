@@ -155,7 +155,7 @@ func TestSnapshotWrittenAndLatestJsonUpdated(t *testing.T) {
 	version := int64(42)
 
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		simpleFakeSnapshot(dbData, version),
@@ -201,6 +201,11 @@ func TestSnapshotWrittenAndLatestJsonUpdated(t *testing.T) {
 	if doc.CreatedAt.IsZero() {
 		t.Error("latest.json created_at is zero")
 	}
+	// Every latest.json a Compactor writes is authenticated — an unMAC'd doc
+	// would be rejected by Restorer/Bootstrap as unverifiable.
+	if !verifyLatestDoc(testMACKey(), doc) {
+		t.Errorf("latest.json MAC does not authenticate under the cluster passphrase (mac=%q)", doc.MAC)
+	}
 }
 
 // TestCompactionRefusedWithoutLease verifies that compaction is skipped when
@@ -215,7 +220,7 @@ func TestCompactionRefusedWithoutLease(t *testing.T) {
 
 	snapshotFn := simpleFakeSnapshot([]byte("data"), 10)
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		snapshotFn,
@@ -243,7 +248,7 @@ func TestCompactionRefusedOnLeaseError(t *testing.T) {
 	lf.errOnAcquire = lease.ErrLost // simulate 412 race
 
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		simpleFakeSnapshot([]byte("data"), 10),
@@ -268,7 +273,7 @@ func TestCompactionRefusedWithStaleFence(t *testing.T) {
 	lf := newFakeLeaseFacade()
 
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-A", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		simpleFakeSnapshot([]byte("db-data"), 100),
@@ -314,7 +319,7 @@ func TestChangesetsPrunedBelowCoveredVersion(t *testing.T) {
 
 	// Snapshot covers up to version 10.
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "compactor-node", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "compactor-node", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		simpleFakeSnapshot([]byte("merged-db"), 10),
@@ -362,18 +367,24 @@ func TestNoOlderVersionOverwritesNewer(t *testing.T) {
 	s3 := newMockSnapshotS3()
 	lf := newFakeLeaseFacade()
 
-	// Pre-populate latest.json with version=200.
+	// Pre-populate latest.json with version=200, MAC'd under the cluster
+	// passphrase — an AUTHENTIC newer snapshot. The MAC matters: the
+	// anti-rollback comparison only honours a Version it can authenticate, so
+	// an unMAC'd doc here would (correctly) be ignored and this test would be
+	// asserting nothing. See TestCompactorIgnoresForgedHighVersion for the
+	// deliberate opposite case.
 	existing := LatestDoc{
 		Version:   200,
 		Key:       snapshotBlobKey(200),
 		CreatedAt: time.Now().UTC(),
 	}
+	existing.MAC = latestDocMAC(testMACKey(), existing.Version, existing.Key, existing.CreatedAt)
 	existingJSON, _ := json.Marshal(existing)
 	_ = s3.PutEncrypted(ctx, latestKey, existingJSON)
 
 	// Our snapshot only covers version 50 — older than the existing 200.
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-late", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-late", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf,
 		s3,
 		simpleFakeSnapshot([]byte("old-db"), 50),
@@ -406,10 +417,12 @@ func TestNoOlderVersionOverwritesNewer(t *testing.T) {
 // TestPassphraseNeverPersisted asserts the design invariant: no object in the
 // mock S3 store contains the literal passphrase string.
 //
-// The Compactor never receives a passphrase (the SSE-C key is owned by the
-// cluster.Client layer).  We verify via oracle: inject the oracle string into
-// the snapshot data would be the only way it could appear — our test data
-// does not contain it.
+// The Compactor receives the cluster passphrase for ONE purpose — deriving the
+// latest.json MAC key in-process (CompactorConfig.Passphrase; the SSE-C key
+// remains owned by the cluster.Client layer). It must never be persisted, so
+// this test hands the Compactor the oracle string AS its passphrase: if the
+// passphrase (rather than a derived key) ever reached an object key or value,
+// the scan below would see it.
 func TestPassphraseNeverPersisted(t *testing.T) {
 	ctx := context.Background()
 	s3 := newMockSnapshotS3()
@@ -420,7 +433,7 @@ func TestPassphraseNeverPersisted(t *testing.T) {
 
 	// Snapshot data deliberately does NOT contain the oracle.
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-sec", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-sec", LeaseTTL: 30 * time.Second, Passphrase: passphraseOracle},
 		lf,
 		s3,
 		simpleFakeSnapshot([]byte("db-content-no-secrets"), 7),
@@ -428,6 +441,10 @@ func TestPassphraseNeverPersisted(t *testing.T) {
 
 	if err := compactor.Run(ctx); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+	// Sanity: latest.json was actually written (so the scan is not vacuous).
+	if !s3.has(latestKey) {
+		t.Fatal("latest.json not written — nothing to scan for the passphrase oracle")
 	}
 
 	// Verify no S3 object value contains the oracle passphrase.

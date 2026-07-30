@@ -3933,8 +3933,13 @@ func main() {
 	// to consume it. The default path remains untouched.
 	registerStorageModeRoutes(mux, home, authStore)
 
-	// ANCHOR-01: per-account anchor inbox provisioning (always-on ~1 GiB Tigris
-	// inbox). Routes: POST /api/anchor-inbox/provision, GET /api/anchor-inbox/status.
+	// ANCHOR-01: per-account anchor inbox ENTITLEMENT RECORD (~1 GiB), tracked in
+	// local SQLite. This creates no bucket and contacts no object store — see the
+	// services/anchorinbox package doc; the hosted bucket, if any, is created
+	// cloud-side for accounts that connect to a Vulos cloud account. It is
+	// therefore unrelated to the storage-mode selector in either direction (it is
+	// not moved by choosing local-fs, and it does not send anything to Tigris).
+	// Routes: POST /api/anchor-inbox/provision, GET /api/anchor-inbox/status.
 	if anchorStore, anchorErr := anchorinbox.Open(filepath.Join(dbDir, "anchorinbox.db")); anchorErr != nil {
 		log.Printf("[anchorinbox] store unavailable: %v — endpoints will 500", anchorErr)
 	} else {

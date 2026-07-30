@@ -13,8 +13,16 @@ package sync
 //     install never called.
 //   - empty bucket → no error, no install, no replay.
 //   - multi-peer: tail filter applies across all peers.
-//   - passphrase oracle: Bootstrap never receives a passphrase; no oracle
-//     string appears in any S3 object key or value during the test.
+//   - passphrase oracle: the cluster passphrase Bootstrap derives its
+//     latest.json MAC key from never reaches the bucket — no oracle string
+//     appears in any S3 object key or value during the test.
+//
+// Every Bootstrap call here supplies a Passphrase and every seeded latest.json
+// is MAC'd under it: latest.json authenticity is mandatory (see snapshot.go's
+// package doc), so a passphrase-less Bootstrap now refuses outright rather than
+// installing an unverified snapshot. That refusal is covered by
+// TestBootstrapRefusesRollbackWhenPassphraseMissing in
+// latest_authenticity_test.go.
 
 import (
 	"context"
@@ -53,8 +61,12 @@ func (f *fakeApplier) Apply(_ context.Context, _ BootstrapS3, key string) error 
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-// seedSnapshot writes a LatestDoc and the snapshot blob into a mock S3.
-func seedSnapshot(t *testing.T, s3 *mockSnapshotS3, version int64, blobData []byte) {
+// seedSnapshot writes a LatestDoc and the snapshot blob into a mock S3. The
+// doc is MAC'd under macKey so it authenticates the way a real compactor's
+// would — an unMAC'd doc is now rejected by every consumer. macKey is passed in
+// (rather than derived here) so callers can share testMACKey() instead of
+// paying for Argon2id on every seed.
+func seedSnapshot(t *testing.T, s3 *mockSnapshotS3, version int64, blobData []byte, macKey []byte) {
 	t.Helper()
 	ctx := context.Background()
 	blobKey := snapshotBlobKey(version)
@@ -62,6 +74,7 @@ func seedSnapshot(t *testing.T, s3 *mockSnapshotS3, version int64, blobData []by
 		t.Fatalf("seed snapshot blob: %v", err)
 	}
 	doc := LatestDoc{Version: version, Key: blobKey}
+	doc.MAC = latestDocMAC(macKey, doc.Version, doc.Key, doc.CreatedAt)
 	latestData, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatalf("seed latest.json marshal: %v", err)
@@ -95,7 +108,7 @@ func TestBootstrap_SnapshotInstalled_TailReplayed(t *testing.T) {
 
 	const snapVer = int64(10)
 	snapBlob := []byte("fake-snapshot-db-v10")
-	seedSnapshot(t, s3, snapVer, snapBlob)
+	seedSnapshot(t, s3, snapVer, snapBlob, testMACKey())
 
 	// Seed changesets: versions 5, 10 (covered by snapshot) and 11, 15, 20 (tail).
 	for _, v := range []int64{5, 10, 11, 15, 20} {
@@ -105,7 +118,7 @@ func TestBootstrap_SnapshotInstalled_TailReplayed(t *testing.T) {
 	installer := &fakeInstaller{}
 	applier := &fakeApplier{}
 
-	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-node"}, s3, installer.Install, applier.Apply); err != nil {
+	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-node", Passphrase: testClusterPassphrase}, s3, installer.Install, applier.Apply); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
@@ -158,7 +171,7 @@ func TestBootstrap_NoSnapshot_FullReplay(t *testing.T) {
 	installer := &fakeInstaller{}
 	applier := &fakeApplier{}
 
-	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-no-snap"}, s3, installer.Install, applier.Apply); err != nil {
+	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-no-snap", Passphrase: testClusterPassphrase}, s3, installer.Install, applier.Apply); err != nil {
 		t.Fatalf("Bootstrap (no snapshot): %v", err)
 	}
 
@@ -182,7 +195,7 @@ func TestBootstrap_EmptyBucket_NoError(t *testing.T) {
 	installer := &fakeInstaller{}
 	applier := &fakeApplier{}
 
-	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-empty"}, s3, installer.Install, applier.Apply); err != nil {
+	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "new-empty", Passphrase: testClusterPassphrase}, s3, installer.Install, applier.Apply); err != nil {
 		t.Fatalf("Bootstrap on empty bucket: %v", err)
 	}
 	if len(installer.calls) != 0 {
@@ -200,7 +213,7 @@ func TestBootstrap_MultiPeer_OnlyTailReplayed(t *testing.T) {
 	s3 := newMockSnapshotS3()
 
 	const snapVer = int64(7)
-	seedSnapshot(t, s3, snapVer, []byte("snap-v7"))
+	seedSnapshot(t, s3, snapVer, []byte("snap-v7"), testMACKey())
 
 	// peer-X: v3 (covered), v8 (tail), v12 (tail)
 	for _, v := range []int64{3, 8, 12} {
@@ -214,7 +227,7 @@ func TestBootstrap_MultiPeer_OnlyTailReplayed(t *testing.T) {
 	installer := &fakeInstaller{}
 	applier := &fakeApplier{}
 
-	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "joiner"}, s3, installer.Install, applier.Apply); err != nil {
+	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "joiner", Passphrase: testClusterPassphrase}, s3, installer.Install, applier.Apply); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
@@ -234,25 +247,32 @@ func TestBootstrap_MultiPeer_OnlyTailReplayed(t *testing.T) {
 	}
 }
 
-// TestBootstrap_PassphraseNeverPersisted asserts that Bootstrap never receives
-// a passphrase and no oracle string appears in any S3 object.
-// (The invariant is structural: BootstrapConfig has no passphrase field, and
-// SnapshotS3 is the post-derivation interface.)
+// TestBootstrap_PassphraseNeverPersisted asserts that the cluster passphrase
+// Bootstrap DOES receive (BootstrapConfig.Passphrase, used only to derive the
+// latest.json MAC key in-process) never reaches the bucket, in any object key
+// or value. The oracle string is used as the passphrase itself, so a leak would
+// be visible rather than merely absent-by-construction.
 func TestBootstrap_PassphraseNeverPersisted(t *testing.T) {
 	ctx := context.Background()
 	s3 := newMockSnapshotS3()
 
 	const oracle = "SYNC03-PASSPHRASE-ORACLE-never-persist"
 
-	// Seed a snapshot whose data deliberately does NOT contain the oracle.
-	seedSnapshot(t, s3, 5, []byte("clean-snapshot-data"))
+	// Seed a snapshot whose data deliberately does NOT contain the oracle, but
+	// whose latest.json MAC is derived from it.
+	seedSnapshot(t, s3, 5, []byte("clean-snapshot-data"), deriveLatestMACKey(oracle))
 	seedChangeset(s3, "peer-C", 6)
 
 	installer := &fakeInstaller{}
 	applier := &fakeApplier{}
 
-	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "sec-node"}, s3, installer.Install, applier.Apply); err != nil {
+	if err := Bootstrap(ctx, BootstrapConfig{NodeID: "sec-node", Passphrase: oracle}, s3, installer.Install, applier.Apply); err != nil {
 		t.Fatalf("Bootstrap: %v", err)
+	}
+	// Sanity: the snapshot really was installed, so the oracle-derived MAC key
+	// authenticated the doc (otherwise this test would pass vacuously).
+	if len(installer.calls) != 1 {
+		t.Fatalf("expected the MAC'd snapshot to be installed once, got %d install calls", len(installer.calls))
 	}
 
 	// Verify no S3 object key or value contains the oracle.

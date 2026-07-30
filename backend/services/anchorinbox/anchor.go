@@ -1,16 +1,37 @@
-// Package anchorinbox implements ANCHOR-01: guaranteed per-account anchor inbox
-// provisioning on Tigris.
+// Package anchorinbox implements ANCHOR-01: the per-account anchor inbox
+// allowance record.
 //
-// The anchor inbox is a ~1 GiB quota bucket on Tigris that is ALWAYS provisioned
-// on the Tigris backend, regardless of the account's current storage backend
-// selection (central-tigris vs local-minio-sync). It serves as the guaranteed
-// reliable inbox so email/notifications always have a landing zone even when the
-// account's primary storage is in flux.
+// WHAT THIS PACKAGE ACTUALLY DOES — and what it does not:
 //
-// In this implementation the provisioning record is tracked in local SQLite.
-// The actual Tigris bucket creation happens server-side via the Vulos cloud
-// control plane when the account connects to the cloud — we do not hold Tigris
-// credentials locally.
+// It records, in local SQLite, that an account is entitled to an anchor inbox
+// of DefaultCapacityBytes (~1 GiB): a reliable landing zone for
+// email/notifications that stays available even while the account's primary
+// storage is in flux. That record is ALL this package creates. It does not
+// create a bucket, does not hold Tigris (or any object-store) credentials, and
+// moves no bytes anywhere. Creating the actual hosted bucket is a cloud-side
+// action performed by the Vulos cloud control plane if and when the account
+// connects to it; on a box that never connects to a Vulos cloud account, this
+// local row is the only thing that exists.
+//
+// RELATIONSHIP TO THE STORAGE-MODE SELECTOR (internal/storagemode): none, and
+// deliberately none in BOTH directions. The selector governs where THIS BOX
+// puts the bytes it stores (default: local-fs, its own disk — see
+// storagemode.DefaultMode). The anchor inbox is not local storage, so:
+//
+//   - Selecting local-fs or local-minio-sync does NOT relocate the anchor
+//     inbox, because there is nothing local to relocate; and
+//   - it equally does NOT cause this box to hand anything to Tigris. Nothing
+//     here uploads, and no code in this repository reads BucketPrefix to route
+//     data. Do not read the old "ALWAYS provisioned on Tigris regardless of the
+//     storage backend selection" wording into it: that described an intent, not
+//     this code, and it contradicted the local-by-default posture.
+//
+// So the anchor inbox is not an exception carved out of the user's storage
+// choice — it is a hosted-account entitlement that only materialises for
+// accounts that opt into the cloud at all. If that ever changes (i.e. something
+// starts routing real bytes using BucketPrefix), this comment, the storage
+// settings panel copy (src/core/settings/StoragePanel.jsx), and the
+// storage-mode interaction all have to be revisited together.
 //
 // HTTP endpoints (register via RegisterAnchorHandlers):
 //
@@ -36,16 +57,30 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver — never CGo
 )
 
-// DefaultCapacityBytes is the guaranteed anchor inbox quota (1 GiB).
+// DefaultCapacityBytes is the anchor inbox quota recorded for an account
+// (1 GiB). It is the entitlement written into the local record — not space
+// reserved or allocated anywhere by this box (see the package doc).
 const DefaultCapacityBytes int64 = 1 << 30 // 1 GiB
 
-// AnchorInboxStatus describes the current state of an account's anchor inbox.
+// AnchorInboxStatus describes the current state of an account's anchor inbox
+// RECORD. Every field below describes the local record; none of them is
+// evidence that hosted storage exists (see the package doc).
 type AnchorInboxStatus struct {
-	AccountID     string    `json:"account_id"`
-	BucketPrefix  string    `json:"bucket_prefix"`
-	CapacityBytes int64     `json:"capacity_bytes"`
-	UsedBytes     int64     `json:"used_bytes"`
-	Status        string    `json:"status"` // "pending" | "provisioned" | "error"
+	AccountID string `json:"account_id"`
+	// BucketPrefix is the deterministic name a hosted bucket WOULD carry
+	// (derived from AccountID). Nothing in this repository creates a bucket
+	// under it or routes data to it.
+	BucketPrefix string `json:"bucket_prefix"`
+	// CapacityBytes is the recorded entitlement, not reserved space.
+	CapacityBytes int64 `json:"capacity_bytes"`
+	// UsedBytes is only ever what a caller has reported; this package does not
+	// measure any store.
+	UsedBytes int64 `json:"used_bytes"`
+	// Status is the state of the LOCAL RECORD: "pending" | "provisioned" |
+	// "error". "provisioned" means the entitlement row exists — it does NOT
+	// mean a hosted bucket has been created, which is a cloud-side step this
+	// box neither performs nor observes.
+	Status        string    `json:"status"`
 	ProvisionedAt time.Time `json:"provisioned_at,omitempty"`
 }
 
@@ -119,8 +154,12 @@ func (s *AnchorStore) Close() error {
 
 // Provision ensures the account has an anchor inbox record. It is idempotent:
 // if a record already exists for accountID it is returned unchanged.
-// The actual Tigris bucket creation is handled server-side by the cloud
-// gateway when the instance connects to it.
+//
+// "Provision" here means only "write the entitlement row"; the returned
+// Status is "provisioned" on that basis alone. No bucket is created and no
+// object store is contacted — that step belongs to the Vulos cloud control
+// plane if the account connects to it. Callers must not treat a successful
+// Provision as proof that a hosted landing zone exists.
 func (s *AnchorStore) Provision(ctx context.Context, accountID string) (AnchorInboxStatus, error) {
 	if accountID == "" {
 		return AnchorInboxStatus{}, errors.New("anchorinbox: Provision: accountID must not be empty")

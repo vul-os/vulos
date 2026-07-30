@@ -163,6 +163,14 @@ func adminStore(t *testing.T) (*auth.Store, string) {
 	return store, u.ID
 }
 
+// testClusterPassphrase stands in for VULOS_CLUSTER_PASSPHRASE. It is not
+// optional decoration: latest.json authenticity is mandatory, so a Compactor
+// without a passphrase (or a Restorer without its derived MAC key) refuses
+// every operation instead of silently skipping the anti-rollback check — see
+// services/sync/snapshot.go's package doc. Production wires the same value in
+// via clusterBackupDeps.
+const testClusterPassphrase = "test-cluster-passphrase"
+
 // testDeps builds backupDeps backed by the in-memory S3 mock + fake lease,
 // snapshotting/rehydrating srcPath/dstPath via the real VACUUM-INTO callbacks.
 func testDeps(store *auth.Store, s3 syncsvc.SnapshotS3, srcPath, dstPath string) backupDeps {
@@ -171,12 +179,13 @@ func testDeps(store *auth.Store, s3 syncsvc.SnapshotS3, srcPath, dstPath string)
 		dbPath:    dstPath,
 		newCompactor: func() (*syncsvc.Compactor, error) {
 			return syncsvc.NewCompactor(
-				syncsvc.CompactorConfig{NodeID: "test-node"},
+				syncsvc.CompactorConfig{NodeID: "test-node", Passphrase: testClusterPassphrase},
 				&memLease{}, s3, syncsvc.SnapshotDB(srcPath),
 			), nil
 		},
 		newRestorer: func() (*syncsvc.Restorer, error) {
-			return syncsvc.NewRestorer(s3, syncsvc.RehydrateDB(dstPath)), nil
+			return syncsvc.NewRestorer(s3, syncsvc.RehydrateDB(dstPath),
+				syncsvc.WithLatestMACKey(syncsvc.LatestMACKeyFromPassphrase(testClusterPassphrase))), nil
 		},
 	}
 }

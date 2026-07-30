@@ -3,12 +3,16 @@ package sync
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"vulos/backend/services/cluster"
+	"vulos/backend/services/lease"
 )
 
 // makeDB creates a small sqlite DB at path with a table and the given rows.
@@ -204,7 +208,7 @@ func TestBackupRestoreRoundtripThroughLibrary(t *testing.T) {
 
 	// Backup via Compactor using the real VACUUM-INTO snapshot.
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-rt", LeaseTTL: 30 * time.Second},
+		CompactorConfig{NodeID: "node-rt", LeaseTTL: 30 * time.Second, Passphrase: testClusterPassphrase},
 		lf, s3, SnapshotDB(srcPath),
 	)
 	if err := compactor.Run(ctx); err != nil {
@@ -216,7 +220,7 @@ func TestBackupRestoreRoundtripThroughLibrary(t *testing.T) {
 
 	// Restore into a fresh location via the real RehydrateDB.
 	dstPath := filepath.Join(dir, "restored.db")
-	restorer := NewRestorer(s3, RehydrateDB(dstPath))
+	restorer := NewRestorer(s3, RehydrateDB(dstPath), WithLatestMACKey(testMACKey()))
 	res, err := restorer.Restore(ctx)
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
@@ -234,5 +238,27 @@ func TestBackupRestoreRoundtripThroughLibrary(t *testing.T) {
 func TestBuildRestorerRequiresClient(t *testing.T) {
 	if _, err := BuildRestorer(nil, "/tmp/x.db", ""); err == nil {
 		t.Error("BuildRestorer(nil, ...) should error")
+	}
+}
+
+// TestProductionBuildersRejectEmptyPassphrase pins the construction-time half of
+// the fail-closed posture: the production builders refuse to hand back a
+// Compactor/Restorer that could never authenticate latest.json, rather than
+// returning one whose anti-rollback check is silently inert.
+//
+// The client is built with NewClientWithKey (no network: minio.New only parses
+// the endpoint) purely so the nil-client guard is not what fires.
+func TestProductionBuildersRejectEmptyPassphrase(t *testing.T) {
+	s3cfg := cluster.S3Config{Endpoint: "localhost:9000", Bucket: "b", AccessKey: "a", SecretKey: "s"}
+	client, err := cluster.NewClientWithKey(s3cfg, make([]byte, 32))
+	if err != nil {
+		t.Fatalf("NewClientWithKey: %v", err)
+	}
+
+	if _, err := BuildRestorer(client, "/tmp/x.db", ""); !errors.Is(err, ErrLatestAuthenticityUnconfigured) {
+		t.Errorf("BuildRestorer(passphrase=\"\") error = %v, want ErrLatestAuthenticityUnconfigured", err)
+	}
+	if _, err := BuildCompactor(BackupConfig{DBPath: "/tmp/x.db"}, client, lease.S3Config{}, ""); !errors.Is(err, ErrLatestAuthenticityUnconfigured) {
+		t.Errorf("BuildCompactor(passphrase=\"\") error = %v, want ErrLatestAuthenticityUnconfigured", err)
 	}
 }

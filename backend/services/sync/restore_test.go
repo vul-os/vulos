@@ -3,6 +3,12 @@ package sync
 // SYNC-03 tests: Restorer — the inverse of the Compactor. A snapshot written to
 // the (mock, in-memory) bucket is downloaded and rehydrated into fresh local
 // state, proving a backup → restore roundtrip without touching real S3.
+//
+// Every Compactor/Restorer pair here is wired with the cluster passphrase and
+// its derived latest.json MAC key: authenticity is mandatory, so a Restorer
+// built without WithLatestMACKey refuses every read rather than trusting an
+// unverifiable pointer (see TestRestoreRefusesRollbackWhenPassphraseMissing in
+// latest_authenticity_test.go).
 
 import (
 	"bytes"
@@ -20,7 +26,7 @@ func TestRestoreRoundTrip(t *testing.T) {
 	// ── Backup: compact a known blob at version 7. ──────────────────────────
 	want := []byte("merged-db-image-bytes-\x00\x01\x02-binary-safe")
 	compactor := NewCompactor(
-		CompactorConfig{NodeID: "node-A"},
+		CompactorConfig{NodeID: "node-A", Passphrase: testClusterPassphrase},
 		newFakeLeaseFacade(),
 		s3,
 		simpleFakeSnapshot(want, 7),
@@ -38,7 +44,7 @@ func TestRestoreRoundTrip(t *testing.T) {
 		gotData = append([]byte(nil), data...)
 		gotVersion = version
 		return nil
-	})
+	}, WithLatestMACKey(testMACKey()))
 	res, err := restorer.Restore(ctx)
 	if err != nil {
 		t.Fatalf("restore: %v", err)
@@ -63,7 +69,8 @@ func TestRestoreRoundTrip(t *testing.T) {
 func TestRestoreNoSnapshot(t *testing.T) {
 	ctx := context.Background()
 	s3 := newMockSnapshotS3()
-	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil })
+	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil },
+		WithLatestMACKey(testMACKey()))
 
 	_, err := restorer.Restore(ctx)
 	if !errors.Is(err, ErrNoSnapshot) {
@@ -79,16 +86,17 @@ func TestRestoreLatestOfMultiple(t *testing.T) {
 
 	// Two successive compactions: version 3 then version 9. latest.json must
 	// point at 9.
-	c3 := NewCompactor(CompactorConfig{NodeID: "n"}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("v3"), 3))
+	c3 := NewCompactor(CompactorConfig{NodeID: "n", Passphrase: testClusterPassphrase}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("v3"), 3))
 	if err := c3.Run(ctx); err != nil {
 		t.Fatalf("compact v3: %v", err)
 	}
-	c9 := NewCompactor(CompactorConfig{NodeID: "n"}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("v9-newer-image"), 9))
+	c9 := NewCompactor(CompactorConfig{NodeID: "n", Passphrase: testClusterPassphrase}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("v9-newer-image"), 9))
 	if err := c9.Run(ctx); err != nil {
 		t.Fatalf("compact v9: %v", err)
 	}
 
-	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil })
+	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil },
+		WithLatestMACKey(testMACKey()))
 	res, err := restorer.Restore(ctx)
 	if err != nil {
 		t.Fatalf("restore: %v", err)
@@ -103,13 +111,14 @@ func TestRestoreLatestOfMultiple(t *testing.T) {
 func TestRestorePropagatesRehydrateError(t *testing.T) {
 	ctx := context.Background()
 	s3 := newMockSnapshotS3()
-	c := NewCompactor(CompactorConfig{NodeID: "n"}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("data"), 1))
+	c := NewCompactor(CompactorConfig{NodeID: "n", Passphrase: testClusterPassphrase}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("data"), 1))
 	if err := c.Run(ctx); err != nil {
 		t.Fatalf("compact: %v", err)
 	}
 
 	sentinel := errors.New("apply failed")
-	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return sentinel })
+	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return sentinel },
+		WithLatestMACKey(testMACKey()))
 	if _, err := restorer.Restore(ctx); !errors.Is(err, sentinel) {
 		t.Fatalf("Restore must propagate rehydrate error; got %v", err)
 	}
@@ -120,11 +129,12 @@ func TestRestorePropagatesRehydrateError(t *testing.T) {
 func TestLatestSnapshotParsesPointer(t *testing.T) {
 	ctx := context.Background()
 	s3 := newMockSnapshotS3()
-	c := NewCompactor(CompactorConfig{NodeID: "n"}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("xyz"), 42))
+	c := NewCompactor(CompactorConfig{NodeID: "n", Passphrase: testClusterPassphrase}, newFakeLeaseFacade(), s3, simpleFakeSnapshot([]byte("xyz"), 42))
 	if err := c.Run(ctx); err != nil {
 		t.Fatalf("compact: %v", err)
 	}
-	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil })
+	restorer := NewRestorer(s3, func(context.Context, []byte, int64) error { return nil },
+		WithLatestMACKey(testMACKey()))
 	doc, err := restorer.LatestSnapshot(ctx)
 	if err != nil {
 		t.Fatalf("LatestSnapshot: %v", err)

@@ -7,7 +7,13 @@ import { Section, Card, Field, InfoList, InfoRow, Banner, Pill } from './ui.jsx'
 //   GET /api/storagemode  → { mode, minio_endpoint, minio_region, minio_bucket, minio_creds_ref }
 //   PUT /api/storagemode  → same shape, persists the selection
 //
-// The anchor inbox is ALWAYS on Tigris regardless of the mode selected here.
+// The anchor inbox is NOT an exception to the choice made here, and the old
+// "always kept on Tigris regardless of this setting" copy was wrong: the box
+// creates no anchor-inbox bucket and uploads nothing for it. It is a ~1 GiB
+// entitlement recorded for cloud-connected accounts and created cloud-side —
+// see backend/services/anchorinbox (package doc). Nothing below should imply
+// this device hands data to a hosted service unless the user picked a hosted
+// mode above.
 // ---------------------------------------------------------------------------
 
 // D-STORE-LOCAL-DEFAULT: the default is this device's own disk. Both other
@@ -105,7 +111,7 @@ export default function StoragePanel() {
     <Section
       icon="storagemode"
       title="Storage Backend"
-      desc="Choose where Vulos stores your mail, files, and office data on this device. The anchor inbox is always kept on Tigris regardless of this setting, guaranteeing a reliable landing zone."
+      desc="Choose where Vulos stores your mail, files, and office data on this device."
     >
       <Card
         icon="storagemode"
@@ -114,7 +120,8 @@ export default function StoragePanel() {
         footer={
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--text-tertiary)]">
-              The anchor inbox always uses Tigris regardless of the backend selected.
+              The ~1&nbsp;GiB anchor inbox is a hosted-account allowance, set up by Vulos cloud only if you
+              connect this device to a Vulos account. This device neither stores nor uploads anything for it.
             </span>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={load} disabled={loading || saving} className="btn-ghost text-sm">Refresh</button>
