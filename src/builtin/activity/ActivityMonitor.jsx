@@ -130,16 +130,16 @@ export default function ActivityMonitor() {
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-neutral-800/40">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold tracking-tight">Activity Monitor</h1>
-          <span className="text-[10px] text-neutral-600 font-mono">{stats?.hostname || ''}</span>
+          <span className="text-[12px] text-neutral-600 font-mono">{stats?.hostname || ''}</span>
         </div>
         <div className="flex items-center gap-3">
           {stats?.temp > 0 && (
-            <span className="text-[10px] text-neutral-500 font-mono">{Math.round(stats.temp)}{'\u00B0'}C</span>
+            <span className="text-[12px] text-neutral-500 font-mono">{Math.round(stats.temp)}{'\u00B0'}C</span>
           )}
           {stats?.battery >= 0 && (
-            <span className="text-[10px] text-neutral-500 font-mono">{stats.battery}%{stats.charging ? ' +' : ''}</span>
+            <span className="text-[12px] text-neutral-500 font-mono">{stats.battery}%{stats.charging ? ' +' : ''}</span>
           )}
-          <span className="text-[10px] text-neutral-600 font-mono">up {stats?.uptime || '—'}</span>
+          <span className="text-[12px] text-neutral-600 font-mono">up {stats?.uptime || '—'}</span>
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
         </div>
       </div>
@@ -203,7 +203,7 @@ export default function ActivityMonitor() {
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
-              className={`px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+              className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
               style={tab === t ? { boxShadow: 'inset 0 -2px 0 var(--accent)' } : undefined}
             >
               {t === 'processes' ? `Processes (${processes.length})` : `Network (${netConns?.length || 0})`}
@@ -213,7 +213,7 @@ export default function ActivityMonitor() {
         <input
           type="text" placeholder="Filter..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[11px] text-neutral-300 placeholder-neutral-600 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
+          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-300 placeholder-neutral-600 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
         />
       </div>
 
@@ -271,7 +271,7 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="min-w-[560px]">
           {/* Header */}
-          <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map(c => (
               <span
                 key={c.key}
@@ -287,7 +287,7 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
             <div className="text-xs text-neutral-600 p-6 text-center">No processes found</div>
           )}
           {sorted.map(p => (
-            <div key={p.pid} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
+            <div key={p.pid} className="grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
               <span className="text-neutral-500 font-mono">{p.pid}</span>
               <span className="text-neutral-300 truncate" title={p.command}>{p.name}</span>
               <span className="text-neutral-500 truncate">{p.user}</span>
@@ -300,7 +300,7 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
         </div>
       </div>
       {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
+      <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
         <span>{sorted.length} process{sorted.length !== 1 ? 'es' : ''}</span>
         <span>Total threads: {sorted.reduce((s, p) => s + (p.threads || 0), 0)}</span>
       </div>
@@ -320,7 +320,7 @@ function StateIndicator({ state }) {
   return (
     <span className="flex items-center gap-1">
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${colors[state] || 'bg-neutral-600'}`} />
-      <span className="text-[10px] truncate">{state}</span>
+      <span className="text-[12px] truncate">{state}</span>
     </span>
   )
 }
@@ -336,7 +336,7 @@ function NetworkTable({ conns, search }) {
   })
 
   const cols = [
-    { key: 'proto', label: 'Protocol', w: '55px' },
+    { key: 'proto', label: 'Protocol', w: '76px' },
     { key: 'local', label: 'Local Address', w: '1fr' },
     { key: 'remote', label: 'Remote Address', w: '1fr' },
     { key: 'state', label: 'State', w: '90px' },
@@ -348,20 +348,20 @@ function NetworkTable({ conns, search }) {
     <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-800/60 bg-neutral-900/40 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="min-w-[560px]">
-          <div className="grid gap-2 px-3 py-1.5 text-[10px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map(c => <span key={c.key}>{c.label}</span>)}
           </div>
           {filtered.length === 0 && (
             <div className="text-xs text-neutral-600 p-6 text-center">No connections</div>
           )}
           {filtered.map((c, i) => (
-            <div key={i} className="grid gap-2 items-center px-3 py-1 text-[11px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
+            <div key={i} className="grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
               <span className="text-neutral-500 font-mono uppercase">{c.proto}</span>
               <span className="text-neutral-300 font-mono truncate">{c.local_addr}:{c.local_port}</span>
               <span className="text-neutral-500 font-mono truncate">
                 {c.remote_addr === '0.0.0.0' && c.remote_port === 0 ? '*' : `${c.remote_addr}:${c.remote_port}`}
               </span>
-              <span className={`text-[10px] ${c.state === 'ESTABLISHED' ? 'text-emerald-400' : c.state === 'LISTEN' ? 'text-blue-400' : c.state === 'TIME_WAIT' ? 'text-amber-400' : 'text-neutral-500'}`}>
+              <span className={`text-[12px] ${c.state === 'ESTABLISHED' ? 'text-emerald-400' : c.state === 'LISTEN' ? 'text-blue-400' : c.state === 'TIME_WAIT' ? 'text-amber-400' : 'text-neutral-500'}`}>
                 {c.state}
               </span>
               <span className="text-neutral-500 truncate">{c.process || '—'}</span>
@@ -369,7 +369,7 @@ function NetworkTable({ conns, search }) {
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between px-3 py-1.5 text-[10px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
+      <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
         <span>{filtered.length} connection{filtered.length !== 1 ? 's' : ''}</span>
         <span>
           {(filtered).filter(c => c.state === 'LISTEN').length} listening,{' '}
@@ -390,12 +390,12 @@ function GraphCard({ label, value, details, data, color, colorFill, borderColor,
       <div className={`flex ${expanded ? 'gap-6' : 'flex-col'} h-full`}>
         {/* Info side */}
         <div className={`flex flex-col ${expanded ? 'w-44 shrink-0 p-3 justify-center' : 'px-3 pt-2.5 pb-1 shrink-0'}`}>
-          <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-medium">{label}</span>
+          <span className="text-[12px] text-neutral-500 uppercase tracking-widest font-medium">{label}</span>
           <span className={`font-semibold text-neutral-100 leading-tight ${expanded ? 'text-2xl mt-1' : compact ? 'text-base' : 'text-xl'}`}>{value}</span>
           {expanded && details && (
             <div className="mt-3 space-y-1">
               {details.map(d => (
-                <div key={d.label} className="flex justify-between text-[11px]">
+                <div key={d.label} className="flex justify-between text-[12px]">
                   <span className="text-neutral-500">{d.label}</span>
                   <span className="text-neutral-300 font-mono">{d.value}</span>
                 </div>

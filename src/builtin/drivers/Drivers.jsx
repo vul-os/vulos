@@ -131,7 +131,7 @@ export default function Drivers() {
           <div className="space-y-6">
             {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([cls, devices]) => (
               <div key={cls}>
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 mb-2 flex items-center gap-2">
+                <h3 className="text-[12px] font-semibold uppercase tracking-wider text-neutral-500 mb-2 flex items-center gap-2">
                   <span className="text-sm leading-none">{classIcons[cls] || '⚙'}</span>
                   {classLabels[cls] || cls}
                   <span className="text-neutral-700 tabular-nums">{devices.length}</span>
@@ -141,7 +141,7 @@ export default function Drivers() {
                     <div key={d.id + i} className="flex items-center justify-between gap-3 px-3 sm:px-4 py-3 bg-neutral-900/40 hover:bg-neutral-900/70 transition-colors duration-(--motion-fast)">
                       <div className="min-w-0 flex-1">
                         <div className="text-sm truncate text-neutral-200">{d.name || d.id}</div>
-                        <div className="text-[11px] text-neutral-600 mt-0.5 flex items-center gap-2 sm:gap-3 min-w-0">
+                        <div className="text-[12px] text-neutral-600 mt-0.5 flex items-center gap-2 sm:gap-3 min-w-0">
                           {d.vendor && <span className="truncate">{d.vendor}</span>}
                           <span className="text-neutral-700 font-mono shrink-0">{d.bus}:{d.id}</span>
                         </div>
@@ -150,7 +150,7 @@ export default function Drivers() {
                         {d.driver && (
                           <span className="hidden sm:inline text-xs text-neutral-500 font-mono truncate max-w-[10rem]">{d.driver}</span>
                         )}
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`text-[12px] px-2 py-0.5 rounded-full font-medium ${
                           d.driver_state === 'active' ? 'bg-success-soft text-success' :
                           d.driver_state === 'available' ? 'bg-warning-soft text-warning' :
                           'bg-neutral-800 text-neutral-500'}`}>
@@ -158,7 +158,7 @@ export default function Drivers() {
                         </span>
                         {d.module && d.driver_state !== 'active' && (
                           <button onClick={() => loadMod(d.module)}
-                            className="text-[11px] font-medium accent-text hover-accent-text rounded-md px-1.5 py-0.5 hover-accent-bg-soft transition-colors duration-(--motion-fast)">
+                            className="text-[12px] font-medium accent-text hover-accent-text rounded-md px-1.5 py-0.5 hover-accent-bg-soft transition-colors duration-(--motion-fast)">
                             Load
                           </button>
                         )}
@@ -201,15 +201,15 @@ export default function Drivers() {
                   <div key={m.name} className="flex items-center justify-between gap-3 px-3 sm:px-4 py-2.5 bg-neutral-900/40 hover:bg-neutral-900/70 transition-colors duration-(--motion-fast)">
                     <div className="min-w-0 flex-1">
                       <span className="text-sm font-mono text-neutral-200">{m.name}</span>
-                      <span className="text-[11px] text-neutral-600 ml-3 tabular-nums">{m.size} bytes</span>
+                      <span className="text-[12px] text-neutral-600 ml-3 tabular-nums">{m.size} bytes</span>
                       {m.used_by && m.used_by !== '0' && (
-                        <span className="text-[11px] text-neutral-700 ml-2">used by {m.used_by}</span>
+                        <span className="text-[12px] text-neutral-700 ml-2">used by {m.used_by}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-success-soft text-success font-medium">loaded</span>
+                      <span className="text-[12px] px-2 py-0.5 rounded-full bg-success-soft text-success font-medium">loaded</span>
                       <button onClick={() => unloadMod(m.name)}
-                        className="text-[11px] font-medium text-danger rounded-md px-1.5 py-0.5 hover:bg-[color-mix(in_srgb,var(--status-danger)_16%,transparent)] transition-colors duration-(--motion-fast)">
+                        className="text-[12px] font-medium text-danger rounded-md px-1.5 py-0.5 hover:bg-[color-mix(in_srgb,var(--status-danger)_16%,transparent)] transition-colors duration-(--motion-fast)">
                         Unload
                       </button>
                     </div>

@@ -145,17 +145,17 @@ export default function DiskUsage() {
         {/* Sidebar: filesystem list */}
         <div className="w-36 sm:w-52 shrink-0 flex flex-col border-r border-neutral-800/50 bg-neutral-950/80">
           <div className="shrink-0 px-3 pt-3 pb-2">
-            <h2 className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold">Volumes</h2>
+            <h2 className="text-[12px] uppercase tracking-wider text-neutral-500 font-semibold">Volumes</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
             {loading && !mounts && (
               <div className="flex flex-col items-center gap-2 px-3 py-8 text-neutral-500">
                 <Spinner className="w-5 h-5" />
-                <span className="text-[11px]">Scanning...</span>
+                <span className="text-[12px]">Scanning...</span>
               </div>
             )}
             {mounts?.length === 0 && !loading && (
-              <div className="px-3 py-6 text-[11px] text-neutral-600 text-center">No volumes found</div>
+              <div className="px-3 py-6 text-[12px] text-neutral-600 text-center">No volumes found</div>
             )}
             {mounts?.map(m => {
               const active = selectedMount?.mount_point === m.mount_point
@@ -172,11 +172,11 @@ export default function DiskUsage() {
                   }`}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-xs font-mono truncate">{m.mount_point}</span>
-                    <span className={`text-[10px] shrink-0 tabular-nums font-medium ${pctColor}`}>{Math.round(m.percent)}%</span>
+                    <span className={`text-[12px] shrink-0 tabular-nums font-medium ${pctColor}`}>{Math.round(m.percent)}%</span>
                   </div>
-                  <div className="text-[10px] text-neutral-600 mt-0.5 truncate font-mono">{m.device}</div>
+                  <div className="text-[12px] text-neutral-600 mt-0.5 truncate font-mono">{m.device}</div>
                   <UsageBar percent={m.percent} className="mt-1.5" />
-                  <div className="text-[10px] text-neutral-600 mt-1 tabular-nums">
+                  <div className="text-[12px] text-neutral-600 mt-1 tabular-nums">
                     {fmtSize(m.used_mb)} / {fmtSize(m.total_mb)}
                   </div>
                 </button>
@@ -216,20 +216,20 @@ export default function DiskUsage() {
                   />
                   <div className="min-w-0 flex-1">
                     <h1 className="text-sm font-semibold truncate">{selectedMount.mount_point}</h1>
-                    <div className="text-[11px] text-neutral-500 mt-0.5 font-mono truncate">
+                    <div className="text-[12px] text-neutral-500 mt-0.5 font-mono truncate">
                       {selectedMount.device} &middot; {selectedMount.fs_type}
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-3">
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Used</div>
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Used</div>
                         <div className="text-xs font-medium accent-text tabular-nums mt-0.5">{fmtSize(selectedMount.used_mb)}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Free</div>
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Free</div>
                         <div className="text-xs font-medium text-neutral-400 tabular-nums mt-0.5">{fmtSize(selectedMount.free_mb)}</div>
                       </div>
                       <div>
-                        <div className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold">Total</div>
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Total</div>
                         <div className="text-xs font-medium text-neutral-300 tabular-nums mt-0.5">{fmtSize(selectedMount.total_mb)}</div>
                       </div>
                     </div>
@@ -249,9 +249,9 @@ export default function DiskUsage() {
                       &larr; Up
                     </button>
                   )}
-                  <span className="text-[11px] text-neutral-500 font-mono truncate">{breakdownPath}</span>
+                  <span className="text-[12px] text-neutral-500 font-mono truncate">{breakdownPath}</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-neutral-600 font-semibold shrink-0">Breakdown</span>
+                <span className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold shrink-0">Breakdown</span>
               </div>
 
               {/* Directory breakdown list (scrollable) */}
@@ -285,7 +285,7 @@ export default function DiskUsage() {
                           <span className="text-xs truncate flex-1 min-w-0 group-hover:text-[var(--text-primary)] transition-colors">
                             {d.name}
                           </span>
-                          <span className="text-[11px] text-neutral-500 shrink-0 tabular-nums">
+                          <span className="text-[12px] text-neutral-500 shrink-0 tabular-nums">
                             {fmtSize(d.size_mb)}
                           </span>
                           <div className="w-14 h-1 bg-neutral-800 rounded-full overflow-hidden shrink-0">

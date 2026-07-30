@@ -177,14 +177,14 @@ export default function Packages() {
       <div className="hidden sm:flex w-52 shrink-0 flex-col border-r border-neutral-800/60 bg-neutral-950/80">
         <div className="px-4 pt-5 pb-4">
           <h1 className="text-[15px] font-semibold tracking-tight">Software</h1>
-          <p className="text-[11px] text-neutral-500 mt-0.5">Package Manager</p>
+          <p className="text-[12px] text-neutral-500 mt-0.5">Package Manager</p>
         </div>
 
         {/* Installed count card */}
         {status && (
           <div className="mx-3 mb-4 px-3 py-3 rounded-xl bg-neutral-900/60 border border-neutral-800/40">
             <div className="text-2xl font-bold text-[var(--text-primary)] leading-none tabular-nums">{status.installed_count?.toLocaleString()}</div>
-            <div className="text-[11px] text-neutral-500 mt-1">packages installed</div>
+            <div className="text-[12px] text-neutral-500 mt-1">packages installed</div>
           </div>
         )}
 
@@ -245,7 +245,7 @@ export default function Packages() {
           <div className="flex items-baseline justify-between gap-2 px-4 pt-3">
             <h1 className="text-[15px] font-semibold tracking-tight">Software</h1>
             {status && (
-              <span className="text-[11px] text-neutral-500 tabular-nums shrink-0">
+              <span className="text-[12px] text-neutral-500 tabular-nums shrink-0">
                 {status.installed_count?.toLocaleString()} installed
               </span>
             )}
@@ -288,7 +288,7 @@ export default function Packages() {
                 )}
               </div>
               {installed && (
-                <p className="text-[11px] text-neutral-600 mt-2">
+                <p className="text-[12px] text-neutral-600 mt-2">
                   {filter ? `${filteredInstalled.length} matches` : `${installed.length} packages`}
                   {filteredInstalled.length > 300 && ' — showing first 300, narrow your filter'}
                 </p>
@@ -324,7 +324,7 @@ export default function Packages() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-neutral-100 truncate">{p.name}</span>
-                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-neutral-800/80 text-neutral-500 font-mono">{p.version}</span>
+                          <span className="shrink-0 text-[12px] px-1.5 py-0.5 rounded-md bg-neutral-800/80 text-neutral-500 font-mono">{p.version}</span>
                         </div>
                         {p.description && (
                           <p className="text-[12px] text-neutral-500 mt-0.5 truncate leading-snug">{p.description}</p>
@@ -332,7 +332,7 @@ export default function Packages() {
                       </div>
                       <button
                         onClick={() => action('/api/packages/remove', { name: p.name }, `Removing ${p.name}`)}
-                        className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 px-2.5 py-1 text-[11px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-all duration-(--motion-fast)">
+                        className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 px-2.5 py-1 text-[12px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-all duration-(--motion-fast)">
                         Remove
                       </button>
                     </div>
@@ -404,9 +404,9 @@ export default function Packages() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-neutral-100 truncate">{p.name}</span>
-                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-neutral-800/80 text-neutral-500 font-mono">{p.version}</span>
+                          <span className="shrink-0 text-[12px] px-1.5 py-0.5 rounded-md bg-neutral-800/80 text-neutral-500 font-mono">{p.version}</span>
                           {p.installed && (
-                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-md bg-success-soft text-success font-medium">installed</span>
+                            <span className="shrink-0 text-[12px] px-1.5 py-0.5 rounded-md bg-success-soft text-success font-medium">installed</span>
                           )}
                         </div>
                         {p.description && (
@@ -416,13 +416,13 @@ export default function Packages() {
                       {p.installed ? (
                         <button
                           onClick={() => action('/api/packages/remove', { name: p.name }, `Removing ${p.name}`)}
-                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
+                          className="shrink-0 px-3 py-1.5 text-[12px] font-medium text-danger bg-danger-soft hover:bg-[color-mix(in_srgb,var(--status-danger)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
                           Remove
                         </button>
                       ) : (
                         <button
                           onClick={() => action('/api/packages/install', { name: p.name }, `Installing ${p.name}`)}
-                          className="shrink-0 px-3 py-1.5 text-[11px] font-medium accent-text accent-bg-soft hover:bg-[color-mix(in_srgb,var(--accent)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
+                          className="shrink-0 px-3 py-1.5 text-[12px] font-medium accent-text accent-bg-soft hover:bg-[color-mix(in_srgb,var(--accent)_24%,transparent)] rounded-lg transition-colors duration-(--motion-fast)">
                           Install
                         </button>
                       )}
@@ -512,7 +512,7 @@ export default function Packages() {
                       <div className="min-w-0 flex-1">
                         <span className="text-sm font-mono text-neutral-300 truncate block">{r.url}</span>
                       </div>
-                      <span className={`shrink-0 text-[10px] px-2 py-1 rounded-lg font-medium ${
+                      <span className={`shrink-0 text-[12px] px-2 py-1 rounded-lg font-medium ${
                         r.enabled
                           ? 'bg-success-soft text-success'
                           : 'bg-neutral-800 text-neutral-500'
