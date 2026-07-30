@@ -1,10 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Cackle">
   <title>Cackle</title>
-  <rect width="128" height="128" rx="28" fill="#1C1426"/>
-  <!-- admit-one ticket, pinched at the middle with side notches -->
-  <path d="M28 46 h72 a8 8 0 0 1 8 8 v4 a6 6 0 0 0 0 12 v4 a8 8 0 0 1 -8 8 h-72 a8 8 0 0 1 -8 -8 v-4 a6 6 0 0 0 0 -12 v-4 a8 8 0 0 1 8 -8 z" fill="#FF4848"/>
-  <!-- perforated stub line -->
-  <line x1="52" y1="50" x2="52" y2="78" stroke="#1C1426" stroke-width="4" stroke-dasharray="5 5"/>
-  <!-- a spark of an event -->
-  <path d="M78 55 Q80.5 63.5 89 66 Q80.5 68.5 78 77 Q75.5 68.5 67 66 Q75.5 63.5 78 55 Z" fill="#FFFFFF"/>
+  <rect width="128" height="128" rx="28" fill="#FF4848"/>
+  <line x1="22" y1="45" x2="106" y2="45" stroke="#FFFFFF" stroke-width="3" stroke-dasharray="6 6" stroke-linecap="round"/>
+  <path d="M44 74 Q64 100 84 74" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
 </svg>
