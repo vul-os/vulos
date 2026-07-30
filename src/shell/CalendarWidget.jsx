@@ -125,7 +125,7 @@ export default function CalendarWidget() {
           className="vshell-row w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left focus-primary"
         >
           <div className="min-w-0">
-            <div className="text-[10px] font-mono uppercase tracking-[0.16em]" style={{ color: 'var(--text-faint)' }}>
+            <div className="text-[12px] font-mono uppercase tracking-[0.16em]" style={{ color: 'var(--text-faint)' }}>
               {now.toLocaleDateString(undefined, { weekday: 'long' })}
             </div>
             <div className="text-[15px] font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>
@@ -133,7 +133,7 @@ export default function CalendarWidget() {
             </div>
           </div>
           <span
-            className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider shrink-0"
+            className="flex items-center gap-1 text-[12px] font-mono uppercase tracking-wider shrink-0"
             style={{ color: 'var(--text-faint)' }}
             title={fresh ? 'Calendar is live' : hasError ? 'Calendar unavailable' : ''}
           >
@@ -159,7 +159,7 @@ export default function CalendarWidget() {
               <button
                 type="button"
                 onClick={() => openApp_connectMail(openWindow)}
-                className="mt-1 text-[11px] font-mono transition-colors focus-primary rounded"
+                className="mt-1 text-[12px] font-mono transition-colors focus-primary rounded"
                 style={{ color: 'var(--accent)' }}
               >
                 Connect Mail →
@@ -173,12 +173,12 @@ export default function CalendarWidget() {
             >
               <div className="w-14 shrink-0 text-right">
                 <div className="text-[12px] font-mono" style={{ color: 'var(--accent)' }}>{eventWhen(next)}</div>
-                <div className="text-[9px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(next._start, now)}</div>
+                <div className="text-[12px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(next._start, now)}</div>
               </div>
               <div className="w-px self-stretch vshell-hairline" />
               <div className="min-w-0">
                 <div className="text-[12.5px] truncate" style={{ color: 'var(--text-primary)' }}>{next.title || '(untitled)'}</div>
-                {next.location && <div className="text-[10.5px] truncate" style={{ color: 'var(--text-muted)' }}>{next.location}</div>}
+                {next.location && <div className="text-[12px] truncate" style={{ color: 'var(--text-muted)' }}>{next.location}</div>}
               </div>
             </button>
           ) : (
@@ -207,13 +207,13 @@ export default function CalendarWidget() {
                       className="vshell-row w-full flex items-center gap-2.5 px-3.5 py-1.5 text-left focus-primary"
                     >
                       <div className="w-14 shrink-0 text-right">
-                        <div className="text-[11.5px] font-mono" style={{ color: 'var(--text-secondary)' }}>{eventWhen(ev)}</div>
-                        <div className="text-[9px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(ev._start, now)}</div>
+                        <div className="text-[12px] font-mono" style={{ color: 'var(--text-secondary)' }}>{eventWhen(ev)}</div>
+                        <div className="text-[12px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(ev._start, now)}</div>
                       </div>
                       <div className="w-px self-stretch vshell-hairline" />
                       <div className="min-w-0">
                         <div className="text-[12px] truncate" style={{ color: 'var(--text-primary)' }}>{ev.title || '(untitled)'}</div>
-                        {ev.location && <div className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>{ev.location}</div>}
+                        {ev.location && <div className="text-[12px] truncate" style={{ color: 'var(--text-muted)' }}>{ev.location}</div>}
                       </div>
                     </button>
                   </li>
@@ -224,7 +224,7 @@ export default function CalendarWidget() {
               <button
                 type="button"
                 onClick={openCalendar}
-                className="text-[11px] font-mono transition-colors focus-primary rounded"
+                className="text-[12px] font-mono transition-colors focus-primary rounded"
                 style={{ color: 'var(--text-muted)' }}
               >
                 Open Calendar →

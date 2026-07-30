@@ -57,8 +57,8 @@ const TIER_DOT = {
 // surface stays coherent and is retuned in one place.
 const CARD = 'rounded-[var(--radius-xl)] border border-[var(--border-default)] bg-[color-mix(in_srgb,var(--bg-surface)_80%,transparent)] backdrop-blur-xl'
 const CARD_ROW = `${CARD} px-4 py-3 shadow-[var(--shadow-sm)] transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--border-strong)] hover:bg-[color-mix(in_srgb,var(--bg-elevated)_72%,transparent)] hover:shadow-[var(--shadow-md)]`
-const BTN = 'text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-hover)_50%,transparent)] text-[color:var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[color:var(--text-primary)] transition-colors disabled:opacity-40 disabled:hover:text-[color:var(--text-secondary)]'
-const LINK = 'text-[11.5px] font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors'
+const BTN = 'text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-hover)_50%,transparent)] text-[color:var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[color:var(--text-primary)] transition-colors disabled:opacity-40 disabled:hover:text-[color:var(--text-secondary)]'
+const LINK = 'text-[12px] font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors'
 
 // Module-scoped cache of the last Home payload. Home remounts each time you
 // close all windows (it's the desktop backdrop), so we render the cached brief/
@@ -105,7 +105,7 @@ function Section({ label, right, children, className = '' }) {
   return (
     <section className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3.5">
-        <h2 className="flex items-center gap-2.5 min-w-0 text-[11px] font-semibold uppercase tracking-[0.09em] text-[color:var(--text-tertiary)]">
+        <h2 className="flex items-center gap-2.5 min-w-0 text-[12px] font-semibold uppercase tracking-[0.09em] text-[color:var(--text-tertiary)]">
           <span aria-hidden="true" className="inline-block h-[2px] w-4 rounded-full flex-shrink-0" style={{ background: 'var(--accent)' }} />
           <span className="truncate">{label}</span>
         </h2>
@@ -351,8 +351,8 @@ export default function Home() {
                   <>
                     <button onClick={() => snooze(item)}
                       style={{ background: 'color-mix(in srgb, var(--status-warning) 20%, transparent)', color: 'var(--status-warning)', border: '1px solid color-mix(in srgb, var(--status-warning) 40%, transparent)' }}
-                      className="text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110">Confirm snooze</button>
-                    <button onClick={() => setSnoozing(null)} className="text-[11.5px] px-2 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Cancel</button>
+                      className="text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110">Confirm snooze</button>
+                    <button onClick={() => setSnoozing(null)} className="text-[12px] px-2 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Cancel</button>
                   </>
                 ) : (
                   <button onClick={() => setSnoozing(item.uid)} disabled={snoozing === `busy:${item.uid}`} className={BTN}>
@@ -372,7 +372,7 @@ export default function Home() {
       right={
         <div className="flex items-center gap-2.5">
           {data && (
-            <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-faint)]" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-[color:var(--text-faint)]" title={data.agenda_fresh ? 'Calendar is live' : 'Calendar unavailable'}>
               <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: data.agenda_fresh ? 'var(--status-success)' : 'var(--status-danger)' }} />
               {data.agenda_fresh ? 'Live' : 'Stale'}
             </span>
@@ -397,7 +397,7 @@ export default function Home() {
                 <div className="text-[13.5px] font-semibold tabular-nums text-[color:var(--text-primary)] leading-tight whitespace-nowrap">
                   {ev.all_day ? 'All day' : eventTime(ev.start)}
                 </div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.04em] text-[color:var(--text-tertiary)] leading-tight px-1">
+                <div className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[color:var(--text-tertiary)] leading-tight px-1">
                   {relDay(ev.start)}
                 </div>
               </div>
@@ -415,7 +415,7 @@ export default function Home() {
   const invitesSection = (invites.length > 0 || data?.invites_error) && (
     <Section label="Invites awaiting your response"
       right={invites.length > 0 && (
-        <span className="text-[11px] font-medium text-[color:var(--text-muted)] tabular-nums">
+        <span className="text-[12px] font-medium text-[color:var(--text-muted)] tabular-nums">
           {invites.length} · soonest {relDay(invites[0]?.invite?.start)}
         </span>
       )}>
@@ -434,16 +434,16 @@ export default function Home() {
                       {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
                       {iv.location ? ` · ${iv.location}` : ''}
                     </div>
-                    <div className="text-[11.5px] text-[color:var(--text-faint)] mt-0.5 truncate">from {iv.organizer || inv.from}</div>
+                    <div className="text-[12px] text-[color:var(--text-faint)] mt-0.5 truncate">from {iv.organizer || inv.from}</div>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                   <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
                     style={{ background: 'color-mix(in srgb, var(--status-success) 18%, transparent)', color: 'var(--status-success)', border: '1px solid color-mix(in srgb, var(--status-success) 38%, transparent)' }}
-                    className="text-[11.5px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110 disabled:opacity-40">Accept</button>
+                    className="text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110 disabled:opacity-40">Accept</button>
                   <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy} className={BTN}>Tentative</button>
                   <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy} className={BTN}>Decline</button>
-                  <button onClick={openMail} className="text-[11.5px] px-2.5 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Open</button>
+                  <button onClick={openMail} className="text-[12px] px-2.5 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Open</button>
                 </div>
               </li>
             )
@@ -456,7 +456,7 @@ export default function Home() {
   const remindersSection = (reminders.length > 0 || data?.reminders_error) && (
     <Section label="Reminders"
       right={reminders.length > 0 && (
-        <span className="text-[11px] font-medium text-[color:var(--text-muted)] tabular-nums">
+        <span className="text-[12px] font-medium text-[color:var(--text-muted)] tabular-nums">
           {reminders.length} · next {reminderWhen(reminders[0]?.remind_at)}
         </span>
       )}>
@@ -500,7 +500,7 @@ export default function Home() {
                 <span className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: a.unread ? 'var(--accent)' : 'var(--border-emphasis)' }} />
                 <div className="min-w-0 flex-1">
                   <div className={`text-[13px] truncate ${a.unread ? 'text-[color:var(--text-primary)] font-medium' : 'text-[color:var(--text-secondary)]'}`}>{a.title}</div>
-                  <div className="text-[11.5px] text-[color:var(--text-muted)] truncate">{a.subtitle}</div>
+                  <div className="text-[12px] text-[color:var(--text-muted)] truncate">{a.subtitle}</div>
                 </div>
               </button>
             </li>
@@ -559,7 +559,7 @@ export default function Home() {
               type="button"
               onClick={openAssistant}
               title="Where your AI runs"
-              className="flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] backdrop-blur px-3 py-1.5 text-[11.5px] font-medium text-[color:var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[color:var(--text-primary)] transition-colors"
+              className="flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-elevated)_60%,transparent)] backdrop-blur px-3 py-1.5 text-[12px] font-medium text-[color:var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[color:var(--text-primary)] transition-colors"
             >
               <span className="inline-block w-2 h-2 rounded-full" style={{ background: TIER_DOT[tier] || TIER_DOT.external }} />
               <span className="capitalize">{tierLabel || 'sovereign'}</span>

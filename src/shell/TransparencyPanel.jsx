@@ -66,7 +66,7 @@ function Dot({ color }) {
 }
 
 function SectionTitle({ children }) {
-  return <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-500 mb-2">{children}</div>
+  return <div className="text-[12px] font-mono uppercase tracking-[0.18em] text-neutral-500 mb-2">{children}</div>
 }
 
 // EgressBanner — the headline "what leaves this box" state, front and center.
@@ -97,7 +97,7 @@ function EgressBanner({ egress }) {
       </svg>
       <div className="min-w-0">
         <div className="text-[13px] font-medium" style={{ color }}>{headline}</div>
-        <div className="text-[11.5px] text-neutral-400 leading-snug mt-0.5">{detail}</div>
+        <div className="text-[12px] text-neutral-400 leading-snug mt-0.5">{detail}</div>
       </div>
     </div>
   )
@@ -115,7 +115,7 @@ function AiTierSection() {
     <div>
       <SectionTitle>Where your AI runs</SectionTitle>
       {sov?.reason && (
-        <div className="text-[11.5px] text-neutral-400 leading-snug mb-2.5">{sov.reason}</div>
+        <div className="text-[12px] text-neutral-400 leading-snug mb-2.5">{sov.reason}</div>
       )}
       <div className="flex flex-col gap-1.5">
         {opts.map(o => {
@@ -134,15 +134,15 @@ function AiTierSection() {
               <div className="flex items-center gap-2">
                 <Dot color={info.dot} />
                 <span className={`text-[12px] ${info.tone}`}>{o.label || info.label}</span>
-                {active && <span className="ml-auto text-[10px] font-mono text-neutral-500">current</span>}
+                {active && <span className="ml-auto text-[12px] font-mono text-neutral-500">current</span>}
               </div>
-              <div className="text-[10.5px] text-neutral-500 mt-0.5 leading-snug pl-4">{info.blurb}</div>
+              <div className="text-[12px] text-neutral-500 mt-0.5 leading-snug pl-4">{info.blurb}</div>
             </button>
           )
         })}
       </div>
       {externalArmed && (
-        <div className="text-[10.5px] text-amber-400/80 mt-2 leading-snug">
+        <div className="text-[12px] text-amber-400/80 mt-2 leading-snug">
           The external egress opt-in is armed on this instance — brokered/external tiers are permitted to send mail off-box.
         </div>
       )}
@@ -184,16 +184,16 @@ function AtRestSection({ hasMasterKey, sealDefault }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-neutral-200">{r.label}</span>
-                <span className={`text-[9.5px] font-mono uppercase tracking-wider ${
+                <span className={`text-[12px] font-mono uppercase tracking-wider ${
                   r.state === 'e2e' ? 'text-emerald-400' : 'text-amber-400'
                 }`}>{r.state === 'e2e' ? 'End-to-end' : 'Provider-readable'}</span>
               </div>
-              <div className="text-[10.5px] text-neutral-500 leading-snug mt-0.5">{r.note}</div>
+              <div className="text-[12px] text-neutral-500 leading-snug mt-0.5">{r.note}</div>
             </div>
           </div>
         ))}
       </div>
-      <div className="text-[10.5px] text-neutral-500 leading-snug mt-2">
+      <div className="text-[12px] text-neutral-500 leading-snug mt-2">
         Content-blind data is encrypted with keys your client holds
         {hasMasterKey === true ? ' — this account has a client-side master key.'
           : hasMasterKey === false ? '. This is a legacy account with no client-side master key.'
@@ -215,13 +215,13 @@ function KeysSection({ hasMasterKey }) {
             : 'Checking master-key state…'}
         </span>
       </div>
-      <div className="text-[10.5px] text-neutral-500 leading-snug">
+      <div className="text-[12px] text-neutral-500 leading-snug">
         Keys are client-held and wrapped by your password; the server stores only an
         envelope it cannot open. Keep a recovery kit so a lost password never means lost data.
       </div>
       <a
         href="/api/recovery/kit"
-        className="inline-flex items-center gap-1.5 mt-2 text-[11px] text-blue-400 hover:text-blue-300"
+        className="inline-flex items-center gap-1.5 mt-2 text-[12px] text-blue-400 hover:text-blue-300"
       >
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3">
           <path d="M8 2v8M5 7l3 3 3-3M3 13h10" strokeLinecap="round" strokeLinejoin="round" />
@@ -236,7 +236,7 @@ function ExportSection() {
   return (
     <div>
       <SectionTitle>It&apos;s yours — take it with you</SectionTitle>
-      <div className="text-[11.5px] text-neutral-400 leading-snug mb-2.5">
+      <div className="text-[12px] text-neutral-400 leading-snug mb-2.5">
         Export your data in standard, portable formats. Nothing here needs Vulos to read it back.
       </div>
       <a
@@ -250,20 +250,20 @@ function ExportSection() {
       </a>
       <div className="grid grid-cols-1 gap-2 mt-3">
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-wider text-emerald-500/80 mb-1">Covers</div>
+          <div className="text-[12px] font-mono uppercase tracking-wider text-emerald-500/80 mb-1">Covers</div>
           <ul className="space-y-0.5">
             {EXPORT_COVERS.map((c, i) => (
-              <li key={i} className="text-[11px] text-neutral-400 leading-snug pl-3 relative">
+              <li key={i} className="text-[12px] text-neutral-400 leading-snug pl-3 relative">
                 <span className="absolute left-0 text-emerald-500">+</span>{c}
               </li>
             ))}
           </ul>
         </div>
         <div>
-          <div className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 mb-1">Not yet covered</div>
+          <div className="text-[12px] font-mono uppercase tracking-wider text-neutral-500 mb-1">Not yet covered</div>
           <ul className="space-y-0.5">
             {EXPORT_NOT.map((c, i) => (
-              <li key={i} className="text-[11px] text-neutral-500 leading-snug pl-3 relative">
+              <li key={i} className="text-[12px] text-neutral-500 leading-snug pl-3 relative">
                 <span className="absolute left-0 text-neutral-600">–</span>{c}
               </li>
             ))}
@@ -306,7 +306,7 @@ export default function TransparencyPanel() {
           bg-neutral-900/95 backdrop-blur-xl border-b border-neutral-800/70">
           <div>
             <div className="text-[13px] font-semibold text-neutral-100">Transparency</div>
-            <div className="text-[10.5px] font-mono text-neutral-500">Trust you can verify.</div>
+            <div className="text-[12px] font-mono text-neutral-500">Trust you can verify.</div>
           </div>
           <button
             type="button"
@@ -324,7 +324,7 @@ export default function TransparencyPanel() {
           <AtRestSection hasMasterKey={hasMasterKey} sealDefault={sealDefault} />
           <KeysSection hasMasterKey={hasMasterKey} />
           <ExportSection />
-          <div className="text-[10px] text-neutral-600 leading-snug pt-1 border-t border-neutral-800/60">
+          <div className="text-[12px] text-neutral-600 leading-snug pt-1 border-t border-neutral-800/60">
             This panel reads live state from your instance (assistant sovereignty status and your
             key envelope). It is intentionally honest about what is readable and what is not — the
             boundaries above are the ones we have actually earned.

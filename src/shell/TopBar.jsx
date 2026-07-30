@@ -18,7 +18,7 @@ function DesktopIndicator({ narrow }) {
   return (
     <div className="flex items-center gap-1 ml-1">
       <span
-        className="text-[11px] font-medium leading-none px-2 py-1 rounded-md"
+        className="text-[12px] font-medium leading-none px-2 py-1 rounded-md"
         style={{
           color: 'var(--text-tertiary)',
           background: 'color-mix(in srgb, var(--bg-hover) 55%, transparent)',

@@ -63,7 +63,7 @@ export default function Dock() {
               />
               {/* Tooltip — frosted chip that reads in both themes. */}
               <span
-                className="pointer-events-none absolute bottom-full mb-2 whitespace-nowrap px-2.5 py-1 rounded-lg text-[11px] font-medium opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150"
+                className="pointer-events-none absolute bottom-full mb-2 whitespace-nowrap px-2.5 py-1 rounded-lg text-[12px] font-medium opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150"
                 style={{
                   background: 'color-mix(in srgb, var(--bg-elevated) 92%, transparent)',
                   border: '1px solid color-mix(in srgb, var(--border-strong) 65%, transparent)',

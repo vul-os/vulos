@@ -156,7 +156,7 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
           >
             Retry{attempt > 0 ? ` (${attempt})` : ''}
           </button>
-          <div className="text-[10px] text-[color:var(--text-faint)] mt-3 font-mono truncate max-w-xs">{appId}</div>
+          <div className="text-[12px] text-[color:var(--text-faint)] mt-3 font-mono truncate max-w-xs">{appId}</div>
         </div>
       )}
     </>
