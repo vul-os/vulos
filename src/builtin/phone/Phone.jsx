@@ -34,7 +34,7 @@ function PermissionBanner({ tab, perms, onRetry }) {
         Vulos needs {label} permission on this phone.
       </span>
       <button type="button" onClick={onRetry}
-        className="shrink-0 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium text-white hover:brightness-110 active:scale-95 focus-primary transition-all"
+        className="shrink-0 px-2.5 py-1.5 rounded-md text-[12px] font-medium text-white hover:brightness-110 active:scale-95 focus-primary transition-all"
         style={{ background: 'var(--accent)' }}>
         Grant access
       </button>

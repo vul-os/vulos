@@ -64,11 +64,11 @@ export default function CallsTab({ onPermsChange }) {
                       style={{ color: meta.color, background: 'color-mix(in srgb, currentColor 14%, transparent)' }}>{meta.glyph}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-[12.5px] font-medium truncate">{c.number || 'Unknown'}</span>
-                      <span className="block text-[10.5px]" style={{ color: 'var(--text-secondary, #888)' }}>
+                      <span className="block text-[12px]" style={{ color: 'var(--text-secondary, #888)' }}>
                         {meta.label}{c.durationSec ? ` · ${formatDuration(c.durationSec)}` : ''}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[10.5px]" style={{ color: 'var(--text-secondary, #888)' }}>
+                    <span className="shrink-0 text-[12px]" style={{ color: 'var(--text-secondary, #888)' }}>
                       {dialing === c.number ? 'Dialing…' : formatRelative(c.date)}
                     </span>
                   </button>

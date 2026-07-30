@@ -73,7 +73,7 @@ export default function MessagesTab({ onPermsChange }) {
             {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
-        {sendError && <div className="text-[11.5px] text-danger">{sendError}</div>}
+        {sendError && <div className="text-[12px] text-danger">{sendError}</div>}
       </form>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {loading && messages.length === 0 ? (
@@ -92,7 +92,7 @@ export default function MessagesTab({ onPermsChange }) {
               <li key={i} className="px-3 py-2.5 flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
                   <span className="text-[12.5px] font-medium truncate">{m.address || m.from || 'Unknown'}</span>
-                  <span className="ml-auto text-[10.5px] shrink-0" style={{ color: 'var(--text-secondary, #888)' }}>
+                  <span className="ml-auto text-[12px] shrink-0" style={{ color: 'var(--text-secondary, #888)' }}>
                     {formatRelative(m.date ?? m.timestamp)}
                   </span>
                 </div>
