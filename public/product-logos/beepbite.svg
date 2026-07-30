@@ -36,7 +36,7 @@
   <g
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
-     id="layer1">
+     id="layer1" transform="translate(256 256) scale(0.8) translate(-256 -256)">
     <path
        fill="none"
        stroke="#FF6B3D"
