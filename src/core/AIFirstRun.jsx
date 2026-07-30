@@ -107,7 +107,7 @@ export default function AIFirstRun() {
           </div>
           <h2 id="ai-firstrun-title" className="text-lg font-semibold text-[var(--text-primary)]">Meet your AI assistant</h2>
           <p className="text-sm text-[var(--text-muted)] mt-1.5 leading-relaxed">
-            Press <kbd className="px-1.5 py-0.5 text-[11px] rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-secondary)] font-mono">Ctrl+K</kbd> any time to open the chat.
+            Press <kbd className="px-1.5 py-0.5 text-[12px] rounded bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-secondary)] font-mono">Ctrl+K</kbd> any time to open the chat.
           </p>
         </div>
 

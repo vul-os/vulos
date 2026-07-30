@@ -603,14 +603,14 @@ function Bubble({ message }) {
   const time = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
 
   if (role === 'system') {
-    return <div className="text-center"><span className="text-[11px] text-neutral-600">{text}</span></div>
+    return <div className="text-center"><span className="text-[12px] text-neutral-600">{text}</span></div>
   }
   if (role === 'user') {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] bg-neutral-800 rounded-2xl rounded-br-sm px-3.5 py-2">
           <p className="text-sm text-neutral-200 whitespace-pre-wrap">{text}</p>
-          <span className="text-[10px] text-neutral-600 mt-0.5 block text-right">{time}</span>
+          <span className="text-[12px] text-neutral-600 mt-0.5 block text-right">{time}</span>
         </div>
       </div>
     )
@@ -619,7 +619,7 @@ function Bubble({ message }) {
     <div className="flex justify-start">
       <div className="max-w-[85%]">
         <p className="text-sm text-neutral-300 whitespace-pre-wrap">{text}</p>
-        <span className="text-[10px] text-neutral-600 mt-0.5 block">{time}</span>
+        <span className="text-[12px] text-neutral-600 mt-0.5 block">{time}</span>
       </div>
     </div>
   )

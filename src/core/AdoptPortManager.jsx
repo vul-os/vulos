@@ -92,8 +92,8 @@ function ApmAdoptForm({ onAdopted }) {
           Adopt
         </button>
       </div>
-      {err && <p className="text-[11px] text-[var(--status-danger)]">{err}</p>}
-      <p className="text-[10px] text-[var(--text-faint)]">
+      {err && <p className="text-[12px] text-[var(--status-danger)]">{err}</p>}
+      <p className="text-[12px] text-[var(--text-faint)]">
         The service must be listening on 127.0.0.1. It stays behind your sign-in — it is never exposed to the public web.
       </p>
     </form>
@@ -120,19 +120,19 @@ function ApmRow({ item, onRevoke }) {
           aria-label={item.healthy ? 'healthy' : 'unhealthy'}
         />
         <span className="text-sm text-[var(--text-primary)] truncate">{item.name || item.id}</span>
-        <span className="text-[10px] text-[var(--text-muted)] shrink-0">:{item.port}</span>
+        <span className="text-[12px] text-[var(--text-muted)] shrink-0">:{item.port}</span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <a
           href={item.url}
-          className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--accent)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] transition-colors"
+          className="text-[12px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--accent)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] transition-colors"
         >
           Open
         </a>
         <button
           onClick={revoke}
           disabled={busy}
-          className="text-[11px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--status-danger-soft)] hover:text-[var(--status-danger)] transition-colors disabled:opacity-40"
+          className="text-[12px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--status-danger-soft)] hover:text-[var(--status-danger)] transition-colors disabled:opacity-40"
         >
           Revoke
         </button>
@@ -185,7 +185,7 @@ function ApmPopover({ onClose }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Adopt a Local Port</h2>
-            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Front a loopback service through the OS gateway</p>
+            <p className="text-[12px] text-[var(--text-muted)] mt-0.5">Front a loopback service through the OS gateway</p>
           </div>
           <button
             onClick={onClose}

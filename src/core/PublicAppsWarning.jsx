@@ -95,7 +95,7 @@ export default function PublicAppsWarning() {
       aria-label={title}
       style={{ '--chip-fg': fg, '--chip-bg': bg, '--chip-bd': bd }}
       className="vshell-chip group inline-flex items-center gap-1.5 h-6 pl-1.5 pr-1 rounded-full
-        text-[10px] font-semibold leading-none tracking-wide select-none cursor-pointer"
+        text-[12px] font-semibold leading-none tracking-wide select-none cursor-pointer"
     >
       <span
         className="vshell-chip-dot w-1.5 h-1.5 rounded-full shrink-0"
@@ -104,7 +104,7 @@ export default function PublicAppsWarning() {
       {hasPublic ? <GlobeGlyph /> : <LanGlyph />}
       {!narrow && <span>{label}</span>}
       <span
-        className="inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[9px] tabular-nums"
+        className="inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full text-[12px] tabular-nums"
         style={{ background: 'color-mix(in srgb, var(--chip-fg) 24%, transparent)' }}
       >
         {count}

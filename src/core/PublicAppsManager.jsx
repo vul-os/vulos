@@ -139,7 +139,7 @@ function PamAppRow({ entry, onChanged }) {
     <>
       <div className="flex items-center justify-between py-2.5 border-b border-neutral-800/40 last:border-0 gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badge.cls}`}>
+          <span className={`shrink-0 text-[12px] px-1.5 py-0.5 rounded-full font-medium ${badge.cls}`}>
             {badge.text}
           </span>
           <span className="text-sm text-neutral-200 truncate">{entry.app_id}</span>
@@ -149,7 +149,7 @@ function PamAppRow({ entry, onChanged }) {
             <button
               onClick={() => handleChange('private')}
               disabled={saving}
-              className="text-[11px] px-2 py-1 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors disabled:opacity-40"
+              className="text-[12px] px-2 py-1 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200 transition-colors disabled:opacity-40"
             >
               Make private
             </button>
@@ -158,7 +158,7 @@ function PamAppRow({ entry, onChanged }) {
             value={entry.visibility}
             onChange={e => handleChange(e.target.value)}
             disabled={saving}
-            className="text-[11px] bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1 text-neutral-300 focus:outline-none focus:border-blue-500/50 disabled:opacity-40 cursor-pointer"
+            className="text-[12px] bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1 text-neutral-300 focus:outline-none focus:border-blue-500/50 disabled:opacity-40 cursor-pointer"
           >
             {PAM_VISIBILITY_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -231,7 +231,7 @@ function PamPopover({ onClose }) {
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800/60 shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-neutral-100">Public App Manager</h2>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Apps with network visibility beyond Private</p>
+            <p className="text-[12px] text-neutral-500 mt-0.5">Apps with network visibility beyond Private</p>
           </div>
           <button
             onClick={onClose}
@@ -267,7 +267,7 @@ function PamPopover({ onClose }) {
         <div className="px-4 py-2.5 border-t border-neutral-800/60 shrink-0">
           <div className="flex items-center gap-3">
             {PAM_VISIBILITY_OPTIONS.map(o => (
-              <span key={o.value} className="text-[10px] text-neutral-600">
+              <span key={o.value} className="text-[12px] text-neutral-600">
                 <span className={`font-medium ${o.value === 'public' ? 'text-green-500' : o.value === 'local' ? 'text-amber-500' : 'text-neutral-500'}`}>{o.label}</span>
                 {' — '}{o.desc}
               </span>
@@ -342,7 +342,7 @@ export function PamVisibilityControl({ appId, onChanged }) {
     finally { setSaving(false) }
   }, [confirm, onChanged])
 
-  if (visibility === null) return <span className="text-[10px] text-neutral-600">...</span>
+  if (visibility === null) return <span className="text-[12px] text-neutral-600">...</span>
 
   return (
     <>
@@ -350,7 +350,7 @@ export function PamVisibilityControl({ appId, onChanged }) {
         value={visibility}
         onChange={e => handleChange(e.target.value)}
         disabled={saving}
-        className="text-[11px] bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1 text-neutral-300 focus:outline-none focus:border-blue-500/50 disabled:opacity-40 cursor-pointer"
+        className="text-[12px] bg-neutral-800 border border-neutral-700/50 rounded-lg px-2 py-1 text-neutral-300 focus:outline-none focus:border-blue-500/50 disabled:opacity-40 cursor-pointer"
         title="App visibility"
         aria-label="App visibility"
       >

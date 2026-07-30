@@ -118,7 +118,7 @@ export default function ConflictResolver({ onClose }) {
                 <p className="text-xs font-mono text-neutral-300 truncate mb-0.5" title={c.path}>
                   {c.base_path}
                 </p>
-                <p className="text-[10px] text-neutral-500 mb-3">
+                <p className="text-[12px] text-neutral-500 mb-3">
                   node: <span className="text-neutral-400">{c.node}</span>
                   {' '}&middot;{' '}
                   ts: <span className="text-neutral-400">{c.timestamp}</span>

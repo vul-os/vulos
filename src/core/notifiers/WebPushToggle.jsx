@@ -92,7 +92,7 @@ export default function WebPushToggle({ deps }) {
       <div className="flex items-center justify-between py-2">
         <span className="text-sm">
           Push notifications
-          <span className="block text-[11px] text-neutral-500">
+          <span className="block text-[12px] text-neutral-500">
             {on
               ? 'This device receives notifications even when Vulos is closed.'
               : 'Get notifications on this device even when Vulos is closed.'}
@@ -111,10 +111,10 @@ export default function WebPushToggle({ deps }) {
         </button>
       </div>
       {error && (
-        <p role="alert" className="text-[11px] text-red-400 pb-1">{error}</p>
+        <p role="alert" className="text-[12px] text-red-400 pb-1">{error}</p>
       )}
       {on && prefs.muted && (
-        <p className="text-[11px] text-amber-500/90 pb-1">
+        <p className="text-[12px] text-amber-500/90 pb-1">
           Do Not Disturb is on — the box holds pushes back until you turn it off.
         </p>
       )}
@@ -129,7 +129,7 @@ function ExplainRow({ label, hint, muted }) {
     <div className="flex items-center justify-between py-2">
       <span className="text-sm">
         {label}
-        <span className="block text-[11px] text-neutral-500">{hint}</span>
+        <span className="block text-[12px] text-neutral-500">{hint}</span>
       </span>
       <span
         aria-hidden="true"

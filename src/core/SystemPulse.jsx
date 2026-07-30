@@ -170,7 +170,7 @@ function ClockDropdown({ now }) {
         {/* Day headers */}
         <div className="grid grid-cols-7 gap-0 mb-1">
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-            <div key={d} className="text-center text-[10px] text-neutral-600 py-0.5">{d}</div>
+            <div key={d} className="text-center text-[12px] text-neutral-600 py-0.5">{d}</div>
           ))}
         </div>
         {/* Days grid */}
@@ -187,7 +187,7 @@ function ClockDropdown({ now }) {
           ))}
         </div>
         {monthOffset !== 0 && (
-          <button onClick={() => setMonthOffset(0)} className="w-full mt-2 text-[11px] text-blue-400 hover:text-blue-300 text-center">
+          <button onClick={() => setMonthOffset(0)} className="w-full mt-2 text-[12px] text-blue-400 hover:text-blue-300 text-center">
             Today
           </button>
         )}
@@ -220,7 +220,7 @@ function WifiDropdown() {
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-neutral-300">Wi-Fi</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+          <span className={`text-[12px] px-1.5 py-0.5 rounded-full ${
             status?.connected ? 'bg-green-900/40 text-green-400' : 'bg-neutral-800 text-neutral-500'}`}>
             {status?.connected ? 'Connected' : 'Off'}
           </span>
@@ -228,7 +228,7 @@ function WifiDropdown() {
         {status?.connected && (
           <div className="mt-1.5">
             <div className="text-sm text-neutral-200">{status.ssid}</div>
-            <div className="text-[11px] text-neutral-600">{status.ip}</div>
+            <div className="text-[12px] text-neutral-600">{status.ip}</div>
           </div>
         )}
       </div>
@@ -246,7 +246,7 @@ function WifiDropdown() {
               <WifiIcon connected size={12} />
               <span className="text-xs text-neutral-300 truncate">{n.ssid || '(hidden)'}</span>
             </div>
-            <span className="text-[10px] text-neutral-600 shrink-0">{n.signal}dBm</span>
+            <span className="text-[12px] text-neutral-600 shrink-0">{n.signal}dBm</span>
           </div>
         ))}
       </div>
@@ -270,7 +270,7 @@ function BatteryDropdown({ battery, charging, temp, uptime }) {
           <BatteryIcon percent={battery} charging={charging} size={28} />
           <div>
             <div className="text-lg font-semibold text-neutral-200">{battery}%</div>
-            <div className="text-[11px] text-neutral-500">{charging ? 'Charging' : 'On Battery'}</div>
+            <div className="text-[12px] text-neutral-500">{charging ? 'Charging' : 'On Battery'}</div>
           </div>
         </div>
         {/* Battery bar */}
@@ -322,7 +322,7 @@ function SystemDropdown({ stats, connected, profile, onLogout }) {
         </div>
         <div className="min-w-0">
           <div className="text-sm font-medium text-neutral-200 truncate">{profile?.display_name || profile?.username}</div>
-          <div className="text-[11px] text-neutral-500 truncate">{profile?.username}</div>
+          <div className="text-[12px] text-neutral-500 truncate">{profile?.username}</div>
         </div>
       </div>
 
@@ -330,8 +330,8 @@ function SystemDropdown({ stats, connected, profile, onLogout }) {
 
       {/* System stats */}
       <div className="px-4 py-2">
-        <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">System</div>
-        <div className="text-[11px] text-neutral-500 mb-2">{hostname}{uptime ? ` \u00b7 Up ${uptime}` : ''}</div>
+        <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-1.5">System</div>
+        <div className="text-[12px] text-neutral-500 mb-2">{hostname}{uptime ? ` \u00b7 Up ${uptime}` : ''}</div>
       </div>
       {connected && cpu !== null ? (
         <div className="px-4 pb-2.5 space-y-2">
@@ -350,7 +350,7 @@ function SystemDropdown({ stats, connected, profile, onLogout }) {
             <div className={`h-full rounded-full ${mem > 80 ? 'bg-red-500' : mem > 50 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${mem}%` }} />
           </div>
           {stats?.mem_used && (
-            <div className="text-[10px] text-neutral-600">{fmtBytes(stats.mem_used)} / {fmtBytes(stats.mem_total)}</div>
+            <div className="text-[12px] text-neutral-600">{fmtBytes(stats.mem_used)} / {fmtBytes(stats.mem_total)}</div>
           )}
           {temp > 0 && (
             <div className="flex justify-between text-xs">
@@ -433,7 +433,7 @@ export default function LifePulse({ compact = false, className = '' }) {
             <StatusButton onClick={() => toggleDropdown('battery')} active={openDropdown === 'battery'}>
               <div className="flex items-center gap-1">
                 <BatteryIcon percent={battery} charging={charging} size={16} />
-                <span className="text-[11px] font-mono text-neutral-400">{battery}%</span>
+                <span className="text-[12px] font-mono text-neutral-400">{battery}%</span>
               </div>
             </StatusButton>
             <Dropdown open={openDropdown === 'battery'} onClose={closeDropdown} containerRef={batteryRef}>
@@ -465,7 +465,7 @@ export default function LifePulse({ compact = false, className = '' }) {
           <StatusButton onClick={() => toggleDropdown('clock')} active={openDropdown === 'clock'} wide>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-neutral-300">{formatTime(now)}</span>
-              <span className="text-[11px] text-neutral-500">{formatDate(now)}</span>
+              <span className="text-[12px] text-neutral-500">{formatDate(now)}</span>
             </div>
           </StatusButton>
           <Dropdown open={openDropdown === 'clock'} onClose={closeDropdown} containerRef={clockRef}>
@@ -511,10 +511,10 @@ function PulseCard({ label, value, sub, dot }) {
         {dot && <span className={`w-1.5 h-1.5 rounded-full ${
           dot === 'green' ? 'bg-green-500' : dot === 'yellow' ? 'bg-yellow-500' : 'bg-red-500'
         }`} />}
-        <span className="text-[10px] text-neutral-500 uppercase tracking-wider">{label}</span>
+        <span className="text-[12px] text-neutral-500 uppercase tracking-wider">{label}</span>
       </div>
       <div className="text-sm text-neutral-300 mt-0.5 truncate">{value}</div>
-      {sub && <div className="text-[10px] text-neutral-600 truncate">{sub}</div>}
+      {sub && <div className="text-[12px] text-neutral-600 truncate">{sub}</div>}
     </div>
   )
 }
