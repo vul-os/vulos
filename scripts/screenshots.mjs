@@ -148,6 +148,59 @@ const CGROUPS = [
   { app_id: 'grafana', cpu_pct: 1.5, mem_current: 132 * 1e6, mem_high: 384 * 1e6, mem_max: 768 * 1e6 },
 ]
 
+// Settings → Network → Relay & Reachability (`settings-relay` shot). The box
+// runs on Vulos's own built-in relay (the default) with two operator-diverse
+// relay nodes, both healthy and holding a live tunnel. Shapes match
+// src/core/settings/RelayPanel.jsx: GET /api/relayconfig → { config, effective }
+// and GET /api/network/reach → { enabled, endpoints:[Status], links:[LinkStatus] }.
+const RELAY_CONFIG = {
+  config: {
+    provider: 'vulos',
+    turn: { ice_servers: [] },
+    libp2p: { relay_peers: [] },
+    wireguard: { endpoint: '', network: '' },
+  },
+  effective: {
+    ingress: {
+      mode: 'relay-tunnel',
+      detail: 'wss://relay.eu-central.vulos.host → this box (yamux, dialled out)',
+    },
+    // Public STUN + this box's own TURN — what the "N configured" count reads.
+    ice_servers: [
+      { urls: ['stun:stun.l.google.com:19302'] },
+      { urls: ['turn:box.ada.example:3478?transport=udp', 'turn:box.ada.example:3478?transport=tcp'] },
+    ],
+  },
+}
+
+const RELAY_REACH = {
+  enabled: true,
+  endpoints: [
+    { endpoint: { name: 'relay-eu', url: 'wss://relay.eu-central.vulos.host', region: 'eu-central' },
+      healthy: true, down_for_seconds: 0, last_error: '' },
+    { endpoint: { name: 'relay-us', url: 'wss://relay.us-east.vulos.host', region: 'us-east' },
+      healthy: true, down_for_seconds: 0, last_error: '' },
+  ],
+  links: [
+    { name: 'relay-eu', state: 'up', public_url: 'https://ada.eu-central.vulos.host' },
+    { name: 'relay-us', state: 'up', public_url: 'https://ada.us-east.vulos.host' },
+  ],
+}
+
+// Settings → Network → Custom Domain (`settings-domain` shot). lilmail is the
+// first public app in APP_VISIBILITY, so DomainPanel default-selects it; return
+// a verified record (TLS active) for it. Shape matches src/core/settings/
+// DomainPanel.jsx: { domain, status, txt_record, challenge_token, created_at,
+// verified_at }.
+const DOMAIN_RECORD = {
+  domain: 'cloud.ada.example',
+  status: 'verified',
+  txt_record: '_vulos-challenge.cloud.ada.example',
+  challenge_token: 'vulos-verify=8f3c1a9e4b7d2065',
+  created_at: iso(NOW - 6 * dayMs),
+  verified_at: iso(NOW - 6 * dayMs + 42 * 60 * 1000),
+}
+
 // Build the App Hub registry (`/api/store/registry`) + installed tiles
 // (`/api/store/installed`) from the real registry.json so the catalogue is
 // faithful and Browse is populated (not empty), with Installed(18).
@@ -292,7 +345,9 @@ const ASSISTANT_ATTENTION_ANSWER =
 async function demoOverrides() {
   const { registry, installed } = await buildStoreFixtures()
   return {
-    'GET /api/auth/me': json({ user: { id: 'u1', username: 'ada' }, profile: { username: 'ada', display_name: 'Ada Lovelace' } }),
+    // role:'admin' → Settings' isOwner is true, so the owner-only Network panels
+    // (Relay & Reachability, CDN, …) appear in the nav for the settings-relay shot.
+    'GET /api/auth/me': json({ user: { id: 'u1', username: 'ada' }, profile: { username: 'ada', display_name: 'Ada Lovelace', role: 'admin' } }),
     'GET /api/assistant/home': json(HOME_PAYLOAD),
     // Calendar: return live events so the agenda badge reads "live" and no
     // "Calendar unavailable" toast fires.
@@ -320,6 +375,16 @@ async function demoOverrides() {
     'GET /api/cgroups/status': json(CGROUPS),
     'GET /api/instances': json(INSTANCES),
     'GET /api/routing/apps': json(ROUTING_APPS),
+    // Settings → Network → Relay & Reachability (settings-relay shot).
+    'GET /api/relayconfig': json(RELAY_CONFIG),
+    'GET /api/network/reach': json(RELAY_REACH),
+    // Settings → Network → Custom Domain (settings-domain shot). DomainPanel
+    // default-selects lilmail (first public app); its record is verified/TLS-active.
+    'GET /api/apps/lilmail/domain': json(DOMAIN_RECORD),
+    // Settings → Network → Connection Mode / Remote Access (kept coherent with
+    // the custom-domain story; harmless for the two target shots).
+    'GET /api/network/mode': json({ mode: 'own', external_listener_blocked: false, status: { domain: 'cloud.ada.example', instance_id: INST_DEVICE } }),
+    'GET /api/network/config': json({ app_url: 'https://cloud.ada.example' }),
     // AI status for Settings → AI Assistant.
     'GET /api/ai/status': json({ available: true, mode: 'byo', provider: 'ollama', model: 'llama3', providers: [{ id: 'ollama', label: 'Ollama (on-device)', ready: true }], tier: 'local' }),
     // Launchpad (`mobile-apps` shot) — apt-installed desktop entries. Must be an
@@ -406,6 +471,29 @@ const SHOTS = [
       await launchApp(page, 'Settings')
       await page.getByRole('button', { name: 'Appearance' }).first().click().catch(() => {})
       await page.waitForTimeout(600)
+    },
+  },
+  {
+    name: 'settings-relay',
+    light: true,
+    desc: 'Settings — Relay & Reachability (owner): built-in Vulos relay + live relay nodes',
+    async drive(page) {
+      await launchApp(page, 'Settings')
+      // The Settings nav renders every section as a flat button (no collapsible
+      // groups), so the owner-only Network item is directly clickable once
+      // role:'admin' makes it visible.
+      await page.getByRole('button', { name: 'Relay & Reachability' }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
+    },
+  },
+  {
+    name: 'settings-domain',
+    light: true,
+    desc: 'Settings — Custom Domain: a verified custom domain with TLS active',
+    async drive(page) {
+      await launchApp(page, 'Settings')
+      await page.getByRole('button', { name: 'Custom Domain' }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
     },
   },
   {
