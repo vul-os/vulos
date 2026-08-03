@@ -67,7 +67,6 @@ export const APP_LOGOS = {
   soko: '/product-logos/soko.svg',
   gitstate: '/product-logos/gitstate.svg',
   wede: '/product-logos/wede.svg',
-  flowstock: '/product-logos/flowstock.svg',
   magnetite: '/product-logos/magnetite.svg',
 
   // Catalog (self-hosted) apps — same-origin coloured tiles we drew ourselves
