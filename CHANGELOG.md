@@ -13,6 +13,18 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-03
+
+### Security
+
+- **Production signing ceremony run.** The App Hub registry and the OS trust
+  chain are now signed with a production release key (root-anchored), replacing
+  the development anchor. `make verify-registry-prod` — the release gate — now
+  passes, so tagged releases build and publish flashable images again instead of
+  halting. A one-command ceremony (`make ceremony`) generates the root + release
+  keypairs, signs the cert and registry, installs the public trust material into
+  `keys/`, and collects the private keys into an offline vault.
+
 ### Added
 
 - **Reach — Vulos's own reachability stack.** A box behind NAT is now reachable
