@@ -25,6 +25,24 @@ type relayFixture struct {
 	domain string
 }
 
+// safeLogf returns a logger that stops forwarding to t once the test ends.
+// The relay and agent log from background goroutines that can outlive the test
+// body (e.g. a box disconnect racing test teardown); calling t.Logf after the
+// test completes is itself a data race the -race detector flags. The mutex makes
+// the done-check and the t.Logf atomic w.r.t. the Cleanup that sets done.
+func safeLogf(t *testing.T, prefix string) func(string, ...any) {
+	var mu sync.Mutex
+	done := false
+	t.Cleanup(func() { mu.Lock(); done = true; mu.Unlock() })
+	return func(f string, a ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !done {
+			t.Logf(prefix+f, a...)
+		}
+	}
+}
+
 func newRelayFixture(t *testing.T, grants []Grant, mutate func(*ServerConfig)) *relayFixture {
 	t.Helper()
 	store, err := NewGrantStore(grants, Revocations{})
@@ -34,7 +52,7 @@ func newRelayFixture(t *testing.T, grants []Grant, mutate func(*ServerConfig)) *
 	cfg := ServerConfig{
 		Domain: "relay.test",
 		Grants: store,
-		Logf:   func(f string, a ...any) { t.Logf("[relay] "+f, a...) },
+		Logf:   safeLogf(t, "[relay] "),
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -63,7 +81,7 @@ func (f *relayFixture) startAgent(t *testing.T, name, token string, h http.Handl
 	a, err := NewAgent(AgentConfig{
 		Targets: []Target{{WSURL: f.wsURL, Name: name, Token: token, Label: "test-relay"}},
 		Handler: h,
-		Logf:    func(fm string, ar ...any) { t.Logf("[agent] "+fm, ar...) },
+		Logf:    safeLogf(t, "[agent] "),
 		OnState: func(s LinkStatus) {
 			select {
 			case up <- s:
@@ -97,21 +115,35 @@ func (f *relayFixture) startAgent(t *testing.T, name, token string, h http.Handl
 }
 
 // get issues a request to the relay addressed to a tunnel name.
+//
+// A box becomes routable in two steps: the agent's LinkUp fires when the client
+// side of the tunnel handshakes, but the relay only starts serving that box a
+// moment later (server.go: "requests get 502 until activate()"). A request in
+// that window gets a 502 "box unavailable". No test in this package expects a
+// 502, so we retry through that brief registration race rather than flaking.
 func (f *relayFixture) get(t *testing.T, name, path string, mutate func(*http.Request)) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, f.http.URL+path, nil)
-	if err != nil {
-		t.Fatal(err)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		req, err := http.NewRequest(http.MethodGet, f.http.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Host = name + "." + f.domain
+		if mutate != nil {
+			mutate(req)
+		}
+		resp, err := f.http.Client().Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		if resp.StatusCode == http.StatusBadGateway && time.Now().Before(deadline) {
+			resp.Body.Close()
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		return resp
 	}
-	req.Host = name + "." + f.domain
-	if mutate != nil {
-		mutate(req)
-	}
-	resp, err := f.http.Client().Do(req)
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	return resp
 }
 
 func body(t *testing.T, resp *http.Response) string {
@@ -399,7 +431,7 @@ func TestNameNotGrantedIsRefused(t *testing.T) {
 	a, err := NewAgent(AgentConfig{
 		Targets: []Target{{WSURL: f.wsURL, Name: "box2", Token: "tok", Label: "l"}},
 		Handler: http.NotFoundHandler(),
-		Logf:    func(fm string, ar ...any) { t.Logf("[agent] "+fm, ar...) },
+		Logf:    safeLogf(t, "[agent] "),
 		OnState: func(s LinkStatus) {
 			if s.State == LinkRefused {
 				select {

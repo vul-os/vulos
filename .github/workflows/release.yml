@@ -125,40 +125,34 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Build flashable bare-metal images (Debian Trixie) ────────────────────
+      # ── Build flashable bare-metal images via the tested baremetal builder ────
+      # Uses the SAME builder + `build.sh --live` path that is verified to boot in
+      # QEMU/UEFI locally (loop-free: mke2fs -d + mtools + systemd-boot + a squashfs
+      # /overlayfs live root). amd64 builds natively; arm64 builds under
+      # `--platform linux/arm64` emulation (the docker/setup-qemu-action step above
+      # registers the binfmt handlers). The old hand-rolled losetup + grub path
+      # never actually produced a bootable image and is gone.
       - name: Build system images
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.VERSION }}"
-
-          for ARCH in amd64 arm64; do
-            LABEL="x86_64"
-            [ "$ARCH" = "arm64" ] && LABEL="arm64"
-            echo "Building ${LABEL} system image..."
-            sudo ARCH=$ARCH ./build.sh --output "output-${ARCH}"
-
-            # Create a bootable disk image from the rootfs
-            IMG="vulos-${VERSION}-${LABEL}.img"
-            truncate -s 4G "$IMG"
-            LOOP=$(sudo losetup --find --show "$IMG")
-            sudo parted "$LOOP" mklabel gpt
-            sudo parted "$LOOP" mkpart primary ext4 1MiB 100%
-            sudo partprobe "$LOOP"
-            sudo mkfs.ext4 -L vulos "${LOOP}p1"
-            MNT=$(mktemp -d)
-            sudo mount "${LOOP}p1" "$MNT"
-            sudo cp -a "output-${ARCH}/." "$MNT/"
-            if [ "$ARCH" = "amd64" ]; then
-              sudo grub-install --target=x86_64-efi --boot-directory="$MNT/boot" --efi-directory="$MNT/boot/efi" --removable "$LOOP" 2>/dev/null || true
-              sudo grub-install --target=i386-pc --boot-directory="$MNT/boot" "$LOOP" 2>/dev/null || true
-            fi
-            sudo umount "$MNT"
-            sudo losetup -d "$LOOP"
-            rmdir "$MNT"
-            gzip "$IMG"
-            rm -rf "output-${ARCH}"
-          done
-
-          ls -lh vulos-*.img.gz
+          docker build -q -t vulos-bm-builder -f scripts/baremetal-builder.Dockerfile scripts
+          build_one() {
+            arch="$1"; flag="$2"; label="$3"
+            echo "::group::Building ${label} live image (${arch})"
+            docker run --rm --privileged --platform "linux/${arch}" \
+              -v "$PWD":/src -w /src vulos-bm-builder \
+              bash -c "./build.sh ${flag} --live /src/out-${arch}"
+            sudo chown -R "$(id -un)" "out-${arch}"
+            gzip -c "out-${arch}/vulos-live-${arch}.img" > "vulos-${VERSION}-${label}.img.gz"
+            tb="$(ls out-${arch}/vulos-${arch}-*.tar.gz 2>/dev/null | head -1 || true)"
+            [ -n "$tb" ] && cp "$tb" "vulos-${VERSION}-${label}-rootfs.tar.gz" || true
+            sudo rm -rf "out-${arch}"
+            echo "::endgroup::"
+          }
+          build_one amd64 --amd64 x86_64
+          build_one arm64 --arm64 arm64
+          ls -lh vulos-*.img.gz vulos-*-rootfs.tar.gz
 
       # ── Extract CHANGELOG section for this release ───────────────────────────
       - name: Extract CHANGELOG notes
@@ -221,6 +215,7 @@ jobs:
             ${{ steps.changelog.outputs.NOTES }}
           files: |
             vulos-*.img.gz
+            vulos-*-rootfs.tar.gz
             keys/trust-anchor.pub
             keys/release-cert.json
           draft: false
