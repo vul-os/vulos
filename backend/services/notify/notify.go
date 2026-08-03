@@ -396,6 +396,10 @@ func (s *Service) Shutdown() {
 	for c, cl := range s.clients {
 		conns = append(conns, c)
 		clients = append(clients, cl)
+		// Deregister here rather than waiting for each Handler goroutine to do
+		// it on its way out: those run asynchronously, so leaving it to them
+		// makes "the set is empty once Shutdown returns" a race.
+		delete(s.clients, c)
 	}
 	s.mu.Unlock()
 

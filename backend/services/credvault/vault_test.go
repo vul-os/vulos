@@ -1,6 +1,7 @@
 package credvault
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,8 +103,10 @@ func TestVaultFileOpaque(t *testing.T) {
 	if strings.Contains(string(data), "supersecret") {
 		t.Fatal("plaintext password found in encrypted vault file")
 	}
-	// It must not be valid JSON (GCM ciphertext is binary).
-	if strings.HasPrefix(strings.TrimSpace(string(data)), "{") {
+	// It must not be valid JSON (GCM ciphertext is binary). Test the whole
+	// document rather than the first byte: the file opens with a random
+	// 12-byte nonce, so a leading-'{' check false-fails on 1 write in 256.
+	if json.Valid(data) {
 		t.Fatal("vault.enc appears to be unencrypted JSON")
 	}
 }
