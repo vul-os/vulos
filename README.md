@@ -10,10 +10,7 @@ Your server. Your AI. Your rules.
 
 **[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) · v1.2.0 · React 19 + Vite · Go 1.25**
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/hero-light.png" />
-  <img src="docs/screenshots/hero.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
-</picture>
+<img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
 
 </div>
 
@@ -45,38 +42,20 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/assistant.png" alt="The private AI assistant answering a question" width="100%" /><br /><sub><b>Private AI</b> — an assistant that runs on <i>your</i> box, knows your day, and acts only with your OK.</sub></td>
-    <td width="50%"><img src="docs/screenshots/calendar.png" alt="The Calendar month view" width="100%" /><br /><sub><b>Calendar</b> — your schedule, on your server, feeding the assistant's context.</sub></td>
+    <td width="50%"><img src="docs/screenshots/assistant-light.png" alt="The private AI assistant answering a question" width="100%" /><br /><sub><b>Private AI</b> — an assistant that runs on <i>your</i> box, knows your day, and acts only with your OK.</sub></td>
+    <td width="50%"><img src="docs/screenshots/calendar-light.png" alt="The Calendar month view" width="100%" /><br /><sub><b>Calendar</b> — your schedule, on your server, feeding the assistant's context.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/apphub.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/tiled-light.png" />
-        <img src="docs/screenshots/tiled.png" alt="Multiple tiled windows" width="100%" />
-      </picture>
-      <br /><sub><b>Real windowing</b> — drag, snap, and tile just like a native desktop.</sub>
-    </td>
+    <td width="50%"><img src="docs/screenshots/apphub-light.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
+    <td width="50%"><img src="docs/screenshots/tiled-light.png" alt="Multiple tiled windows" width="100%" /><br /><sub><b>Real windowing</b> — drag, snap, and tile just like a native desktop.</sub></td>
   </tr>
   <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/files-light.png" />
-        <img src="docs/screenshots/files.png" alt="The Files app" width="100%" />
-      </picture>
-      <br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub>
-    </td>
-    <td width="50%"><img src="docs/screenshots/terminal.png" alt="The built-in terminal" width="100%" /><br /><sub><b>Terminal</b> — a real shell into the machine you own.</sub></td>
+    <td width="50%"><img src="docs/screenshots/files-light.png" alt="The Files app" width="100%" /><br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub></td>
+    <td width="50%"><img src="docs/screenshots/terminal-light.png" alt="The built-in terminal" width="100%" /><br /><sub><b>Terminal</b> — a real shell into the machine you own.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/contacts.png" alt="A selected contact card" width="100%" /><br /><sub><b>Contacts</b> — people and details that stay on your box, not a vendor's.</sub></td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/settings-light.png" />
-        <img src="docs/screenshots/settings.png" alt="System settings" width="100%" />
-      </picture>
-      <br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub>
-    </td>
+    <td width="50%"><img src="docs/screenshots/contacts-light.png" alt="A selected contact card" width="100%" /><br /><sub><b>Contacts</b> — people and details that stay on your box, not a vendor's.</sub></td>
+    <td width="50%"><img src="docs/screenshots/settings-light.png" alt="System settings" width="100%" /><br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub></td>
   </tr>
 </table>
 
@@ -89,10 +68,7 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
 Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your apps, settings, and workspace follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
 
 <div align="center">
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/peer-sync-light.svg" />
-  <img src="docs/assets/peer-sync-dark.svg" alt="Your phone reaches your own Vulos instances from anywhere; a home box and a laptop you own stay in sync as peers over their own Ed25519 identities." width="880" />
-</picture>
+<img src="docs/assets/peer-sync-light.svg" alt="Your phone reaches your own Vulos instances from anywhere; a home box and a laptop you own stay in sync as peers over their own Ed25519 identities." width="880" />
 </div>
 
 <sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same-LAN nodes today, with broader structured-data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
@@ -101,15 +77,15 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 
 ## Reachability & redundancy
 
-**Vulos the project runs no infrastructure.** There is no hosted relay, no rendezvous service, no zero-config `os.vulos.org` you sign in through. Every reachable endpoint in the picture is one *you* operate. That's the whole point — nothing you depend on answers to us.
+**Vulos the project runs no infrastructure.** There is no hosted relay, no rendezvous service, no central box you sign in through. Every reachable endpoint in the picture is one *you* operate. That's the whole point — nothing you depend on answers to us.
 
 **Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
 
 - **Direct — no relay at all.** A box with a public/static IP or your own domain serves **directly** over TLS: no relay, no middleman. Multiple static-IP boxes DNS-load-balance and fail over across each other. This is the simplest path when you have a public IP.
 - **Your own Vulos relay (today's supported default).** Behind NAT, your home box opens *no ports* and dials **out** to a relay — a box with a public IP running the same Vulos binary in relay mode (`vulos relay serve`). You run that relay yourself on a cheap VPS (Hetzner, Fly, DigitalOcean — around €4/month); the VPS is the public endpoint, your home box stays sealed. It's a role of the one binary, not a separate product or a service we host. A box can hold tunnels to several relays at once; run more than one for redundancy, and for resilient rendezvous discovery point boxes at **≥3 nodes under disjoint operators**. See [docs/REACH.md](docs/REACH.md) and [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
-- **Ephor (experimental alternative).** [Ephor](https://github.com/vul-os/ephor) is a separate, still-evolving broker (Kotva ecosystem) that speaks the same rendezvous contract, so you *can* point a box at it instead of — or safely *alongside* — your own Vulos relay. It's an experimental option, not the default; your own Vulos relay is the recommended path today.
+- **Pier (experimental alternative).** [Pier](https://github.com/vul-os/pier) is the Kotva broker reference implementation — a separate, still-evolving broker that speaks the same rendezvous contract, so you *can* point a box at it instead of — or safely *alongside* — your own Vulos relay. It's an experimental option, not the default; your own Vulos relay is the recommended path today.
 
-Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass, and the trust boundary is identical whether the relay is your Vulos one or Ephor. It's a real provider seam (direct · your relay · Ephor), not a lock-in.
+Every path lands on the **same** authenticated handler — there's no "trusted because it came over the LAN / direct / relay" bypass, and the trust boundary is identical whether the relay is your Vulos one or Pier. It's a real provider seam (direct · your relay · Pier), not a lock-in.
 
 <sub>How it all wires up: <a href="docs/NETWORKING.md">docs/NETWORKING.md</a> (reachability, DNS, TLS, ports) and <a href="docs/PEERING.md">docs/PEERING.md</a> (peer identity and sync).</sub>
 
@@ -199,11 +175,11 @@ An installable PWA is the everyday path (offline support and Web Push already wo
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="docs/screenshots/mobile.png" alt="The Vulos File Explorer on a phone" width="230" /><br />
+      <img src="docs/screenshots/mobile-light.png" alt="The Vulos File Explorer on a phone" width="230" /><br />
       <sub><b>Files, in your pocket</b> — the same storage as your desktop, thumb-first.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="docs/screenshots/mobile-apps.png" alt="The Vulos app grid on a phone" width="230" /><br />
+      <img src="docs/screenshots/mobile-apps-light.png" alt="The Vulos app grid on a phone" width="230" /><br />
       <sub><b>Your app grid</b> — every app your box runs, one tap away.</sub>
     </td>
   </tr>
@@ -224,10 +200,7 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 ## One binary, three ways to run
 
 <div align="center">
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/run-light.svg" />
-  <img src="docs/assets/run-dark.svg" alt="The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server." width="820" />
-</picture>
+<img src="docs/assets/run-light.svg" alt="The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server." width="820" />
 </div>
 
 Vulos is built to be owned end to end. Deploy it to your own server:
