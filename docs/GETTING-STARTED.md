@@ -98,8 +98,8 @@ Vite proxies `/api` and `/app` to `:8080`. No TLS, no cloud account needed in `l
 Or use the dev script:
 
 ```bash
-./scripts/dev.sh              # Go + Vite HMR together
-./scripts/dev.sh deploy       # Full Docker build on localhost:8080
+./dev.sh              # Go + Vite HMR together
+./dev.sh deploy       # Full Docker build on localhost:8080
 ```
 
 ---
