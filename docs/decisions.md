@@ -57,6 +57,7 @@ A few conventions:
 | D32 | 2026-05-16 16:51 | Triple-check security: 2 Opus auditors (OSS verify) | **active rule** |
 | D93 | 2026-05-20 09:00 | Bare-metal window model: React always WM; v1 always-stream/cage, v2 surface/labwc | **active rule** |
 | D94 | 2026-05-20 | Image-based OS distribution: signed immutable squashfs in public bucket, A/B + rollback, netboot-to-install, offline-PKI/min-epoch, bucket leases, two-tier sync, manifest concurrency | **active rule** |
+| D95 | 2026-08-03 | Stack re-review: Go and React/JSX reaffirmed (Rust and Svelte rejected, with rationale); gradual JSDoc type-checking ruled compatible with the never-`.tsx` invariant | **active rule** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -564,3 +565,19 @@ A long architecture session locked a connected set of OS-distribution and data-c
 **J. Language.** Stay **Go** for everything, including the boot/verification slice (no Rust). Consistent with the CGO-free/modernc SQLite rule (D23).
 
 **Control-plane boundary.** Cloud/control-plane features are developed in a separate (non-public) repository and are out of scope for this roadmap. OSS correctness never depends on any external service — any control plane is an accelerator/advisor only, reached at a configurable URL. New docs: OS-DISTRIBUTION.md, SEED-TRUST.md, NETBOOT.md, SIGNING.md, COORDINATION.md, SYNC.md, CONCURRENCY.md, APP-MANIFEST.md; updated BAREMETAL-INIT.md, INIT.md, CLUSTER.md, NETWORK.md, AI.md, README.md. No push.
+
+---
+
+## D95 (2026-08-03) — Stack re-review: Go and React/JSX reaffirmed; gradual typing is compatible with never-`.tsx`
+
+The frozen-stack invariant (`ROADMAP.md`, "Settled invariants") asserts *"Go backend … React/JSX only (never `.tsx`); no Rust"* without recording **why**. This entry supplies the rationale so the rule can be defended — or knowingly overturned — rather than merely inherited. Nothing here reverses D93 or D94-J.
+
+**A. Rust rejected; Go reaffirmed (restates D94-J, adds the reasoning).** The "Rust is safer for an OS" argument targets C/C++ **in kernel space**, where a use-after-free is a privilege escalation. Vulos is a userspace daemon on Linux — `labwc`, `cgroups`, `drivers`, `disks`, `wifi` orchestrate the kernel, they are not the kernel. Go is already memory-safe, and this codebase sits at Go's safety ceiling: **0 files import `unsafe`, 0 cgo** (the `modernc.org/sqlite` choice per D23), `go test -race` in the Makefile, `govulncheck` in `.github/workflows/security-scan.yml`. Rust's marginal gain over *that* is small.
+
+The actual risk surface is **logic, not memory**: `peering`/`prekeys`/`ice`, `credvault`, `authvault`, `kms`, `passkeys`, `stepup`, `sandbox`, `appsgate`, `webproxy`, and `internal/safedial`. Auth bypass, capability confusion, SSRF, and path traversal are unaffected by the choice of memory-safe language. Cost side: ~145k production lines plus **~120k lines of Go tests** discarded, and `go-libp2p` + `pion/webrtc` are more mature than their Rust counterparts for the NAT-traversal work in `rendezvous`/`relayconfig`. Go's remaining true hole is **data races**, which can corrupt maps and interfaces — mitigated by the existing `-race` CI. *Flip condition:* a real kernel module, driver, or hypervisor component would be written in Rust.
+
+**B. Svelte rejected; React reaffirmed (restates D93's "React is always the WM").** The strongest case for Svelte in this codebase is real and worth recording: a windowing shell with drag/snap/tile is exactly where React's reconciler is a liability, and the runtime-size difference matters for a shell loaded through a relay across a WAN. It loses anyway on (i) **contributor pool** — an MIT/Apache project whose frontend is the product's face recruits far more easily on React; (ii) ~48.9k lines plus ~8.2k lines of frontend tests to rewrite; (iii) the framework-coupled surface being small — `xterm` and `yjs` are framework-agnostic, so the lock-in is the line count, not the dependencies. **Consequence for implementers:** keep drag/resize/tile hot paths on direct DOM writes (rAF + CSS transforms) outside React state, rather than trying to make the reconciler keep up. Bundled apps under `apps/` are unaffected — they are vanilla JS/HTML and import no framework.
+
+**C. Type safety: adopt gradually, without crossing the `.tsx` line.** The shell is ~48.9k lines with 0 `prop-types` and JSDoc types in only 8 files, while `@types/react` is already a devDependency. Two spots make this costlier here than in a typical frontend: `src/lib/` is a **security boundary** (`contentSeal.js`, `masterKey.js`, `offlineAuth.js`, `stepup.js`), and the **Go→JS wire** throws away shapes the backend already defines statically.
+
+The resolution: `tsconfig.json` with `allowJs`/`checkJs: false`/`strict`, per-file `// @ts-check`, JSDoc `@typedef`, and a generated `.d.ts` for the API boundary. This creates **no `.ts` or `.tsx` file**, adds no runtime dependency, and runs `tsc --noEmit` as a lint step outside the Vite build — so the never-`.tsx` invariant is **unchanged and unamended**. Partial coverage is the intended end state, not a stepping stone; converting `src/lib/*.js` to real `.ts` would require an explicit amendment and is deliberately out of scope. Design: [`roadmap/TYPE-SAFETY.md`](../roadmap/TYPE-SAFETY.md); work tracked as TYPE-01…TYPE-05 in GitHub Issues.

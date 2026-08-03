@@ -50,6 +50,7 @@ The core is in place and self-hostable today:
 - **Assistant depth** — broader curated toolset, better on-instance retrieval (RAG), sovereignty-tier UX.
 - **Bare-metal / first-boot** — smoother first-boot + netboot install; signed `os-core.roothash.sig` verification fail-closed.
 - **Multi-node depth** — full cr-sqlite CRDT across a user's own nodes; conflict-free "move to your own box" migration reusing the same identity.
+- **Client type safety** — gradual JSDoc type-checking of the JSX shell (`tsc --noEmit`), starting with the security-critical `src/lib/` SDK and generated types for the Go→JS API boundary. Stays inside the frozen stack: no `.ts`, no `.tsx`, no build change. See [`roadmap/TYPE-SAFETY.md`](roadmap/TYPE-SAFETY.md) and `docs/decisions.md` D95.
 
 ---
 

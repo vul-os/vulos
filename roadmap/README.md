@@ -49,6 +49,7 @@ Read it like this:
 | Device profiles | [`DEVICE-PROFILES.md`](DEVICE-PROFILES.md) | pc / tv / car / watch — different layouts, focus models, and behaviors per form factor | shipped |
 | Streaming optimizations | [`STREAMING-OPTIMIZATIONS.md`](STREAMING-OPTIMIZATIONS.md) | GPU encoder selection, NVENC/VA-API low-latency tuning, adaptive bitrate, audio backends, Wayland capture | shipped |
 | Gaming | [`GAMING.md`](GAMING.md) | Per-session gaming mode: FPS, encoder profiles, pointer-lock, gamepad rumble, process priority, MangoHud | shipped |
+| Client type safety | [`TYPE-SAFETY.md`](TYPE-SAFETY.md) | Gradual JSDoc type-checking of the JSX shell (`tsc --noEmit`), security-critical `src/lib/` first, generated types for the Go→JS API boundary. No `.ts`/`.tsx` — frozen stack unchanged | design only |
 | Other | [`OTHER.md`](OTHER.md) | Catch-all: theming, i18n, accessibility — small items that don't deserve their own file yet | shipped |
 
 ### Image-based OS distribution & multi-instance data (planned)
