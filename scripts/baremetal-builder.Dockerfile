@@ -14,8 +14,8 @@ ENV GOTOOLCHAIN=auto
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       debootstrap \
-      e2fsprogs dosfstools mtools parted \
-      xz-utils ca-certificates curl git \
+      e2fsprogs dosfstools mtools parted squashfs-tools \
+      xz-utils zstd ca-certificates curl git \
  && rm -rf /var/lib/apt/lists/*
 
 # Node from the official static tarball — deterministic, no NodeSource/Debian

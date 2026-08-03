@@ -329,7 +329,7 @@ cat > /etc/chromium/policies/managed/vulos.json << 'POL'
 POL
 
 # Hostname
-echo "vula" > /etc/hostname
+echo "vulos" > /etc/hostname
 
 # Mark setup complete
 touch /var/lib/vulos/.setup-complete
@@ -435,7 +435,7 @@ Environment=VULOS_REGISTRY=/opt/vulos/registry.json
 Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 Environment=XDG_RUNTIME_DIR=/tmp/xdg-runtime
 Environment=SHELL=/bin/bash
-Environment=HOSTNAME=vula
+Environment=HOSTNAME=vulos
 Environment=HOME=/root
 $VULOS_ENV_DOMAIN
 
@@ -865,7 +865,7 @@ cp -r assets/labwc/. "$ROOTFS/root/.config/labwc/"
 mkdir -p "$ROOTFS/usr/share/themes/vulos/openbox-3"
 cp -r assets/themes/vulos/. "$ROOTFS/usr/share/themes/vulos/"
 
-echo "vula" > "$ROOTFS/etc/hostname"
+echo "vulos" > "$ROOTFS/etc/hostname"
 echo "%sudo ALL=(ALL) ALL" > "$ROOTFS/etc/sudoers.d/sudo-group"
 chmod 440 "$ROOTFS/etc/sudoers.d/sudo-group"
 
@@ -885,7 +885,7 @@ Environment=VULOS_REGISTRY=/opt/vulos/registry.json
 Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 Environment=XDG_RUNTIME_DIR=/tmp/xdg-runtime
 Environment=SHELL=/bin/bash
-Environment=HOSTNAME=vula
+Environment=HOSTNAME=vulos
 Environment=HOME=/root
 
 [Install]
@@ -942,6 +942,9 @@ if [ "$LIVE_MODE" = "1" ]; then
   fi
 
   # --- Install squashfs-tools in the chroot ---
+  # apt lists are cleaned at the end of a build, so a reused rootfs (--reuse-rootfs)
+  # has none — refresh them first or the install fails with "Unable to locate package".
+  chroot "$ROOTFS" apt-get update
   chroot "$ROOTFS" apt-get install -y --no-install-recommends squashfs-tools
   chroot "$ROOTFS" apt-get clean
   rm -rf "$ROOTFS/var/lib/apt/lists/"*
@@ -957,7 +960,15 @@ if [ "$LIVE_MODE" = "1" ]; then
   chmod 0755 "$INITRAMFS_HOOK_DIR/vulos-live"
   echo "  ${GREEN}✓${NC} initramfs hook installed in rootfs"
 
-  # Regenerate initramfs so the hook is baked in
+  # The live hook loop-mounts the squashfs and stacks an overlay, so the initramfs
+  # MUST carry loop + squashfs + overlay (with MODULES=dep they would be pruned,
+  # since the boot device is the plain ext4 data partition). Force them in.
+  for _m in loop squashfs overlay; do
+    grep -qxF "$_m" "$ROOTFS/etc/initramfs-tools/modules" 2>/dev/null \
+      || echo "$_m" >> "$ROOTFS/etc/initramfs-tools/modules"
+  done
+
+  # Regenerate initramfs so the hook + modules are baked in
   chroot "$ROOTFS" sh -c 'command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all' \
       || echo "  ${DIM}update-initramfs unavailable — hook will be absent${NC}"
 

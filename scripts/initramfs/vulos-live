@@ -47,12 +47,25 @@ HASHTREE_PATH="/os-core.hashtree"
 ROOTHASH_PATH="/os-core.roothash"
 VERITY_NAME="vulos-root"
 LOWER="/run/vulos/lower"
-UPPER="/run/vulos/upper"
-WORK="/run/vulos/work"
+RW="/run/vulos/rw"          # one tmpfs holds BOTH upper and work — overlayfs
+UPPER="/run/vulos/rw/upper" # requires upperdir and workdir on the same mount
+WORK="/run/vulos/rw/work"
 MERGED="/run/vulos/merged"
 
+# The initramfs may not ship grep — a failed `grep` here (command-not-found →
+# non-zero → `! grep` true) made this hook exit 0 and skip the live overlay
+# entirely, dropping the boot to an initramfs shell. Read the cmdline with pure
+# shell instead. Matches a bare token ("vulos.live") or a key ("vulos.live=…").
+cmdline_has() {
+    read -r _cl < /proc/cmdline 2>/dev/null || _cl=""
+    case " $_cl " in
+        *" $1 "*|*" $1="*) return 0 ;;
+    esac
+    return 1
+}
+
 # Only activate when live mode is requested via kernel parameter
-if ! grep -q "vulos.live" /proc/cmdline; then
+if ! cmdline_has vulos.live; then
     exit 0
 fi
 
@@ -95,7 +108,7 @@ LOWER_DEV=""
 # local live-USB does NOT, so rescue/CI live-USB builds that predate verity keep
 # their loop-mount fallback while every network boot is strictly fail-closed.
 NETBOOT=0
-if grep -q "vulos.netboot=1" /proc/cmdline; then
+if cmdline_has vulos.netboot=1; then
     NETBOOT=1
 fi
 
@@ -166,18 +179,30 @@ if [ -n "$LOWER_DEV" ]; then
         panic "vulos-live: failed to mount dm-verity device $LOWER_DEV as squashfs"
     fi
 else
-    # Fallback: direct loop mount (no block-level verity).
-    if ! mount -t squashfs -o loop,ro "$SQUASHFS_ABS" "$LOWER"; then
-        panic "vulos-live: failed to mount squashfs at $SQUASHFS_ABS"
+    # Fallback: direct loop mount (no block-level verity). The initramfs `mount`
+    # does not auto-attach a loop device — it forwards `-o loop` to the squashfs
+    # driver, which rejects it ("Unknown parameter 'loop'") — so attach the loop
+    # device explicitly with losetup, then fall back to a plain mount for kernels
+    # whose mount does auto-loop.
+    _sq_loop="$(losetup -f 2>/dev/null)"
+    if [ -n "$_sq_loop" ] && losetup "$_sq_loop" "$SQUASHFS_ABS" 2>/dev/null \
+            && mount -t squashfs -o ro "$_sq_loop" "$LOWER" 2>/dev/null; then
+        :
+    elif mount -t squashfs -o ro "$SQUASHFS_ABS" "$LOWER" 2>/dev/null; then
+        :
+    else
+        panic "vulos-live: failed to mount squashfs at $SQUASHFS_ABS (losetup=$(command -v losetup 2>/dev/null || echo none), loop free=$_sq_loop)"
     fi
 fi
 
-# Writable tmpfs upper layer (in RAM)
-if ! mount -t tmpfs -o mode=0755 tmpfs-upper "$UPPER"; then
-    panic "vulos-live: failed to mount tmpfs upper"
+# Writable tmpfs layer (in RAM) holding BOTH upperdir and workdir. overlayfs
+# requires them on the same mount, so mount one tmpfs at $RW and create both
+# inside it (previously the tmpfs was mounted AT upper, leaving work on a
+# different mount → "workdir and upperdir must reside under the same mount").
+mkdir -p "$RW"
+if ! mount -t tmpfs -o mode=0755 tmpfs-rw "$RW"; then
+    panic "vulos-live: failed to mount tmpfs rw layer"
 fi
-
-# Work directory must be on same fs as upper
 mkdir -p "$UPPER" "$WORK"
 
 # Overlay: lower=squashfs/verity(ro), upper=tmpfs(rw)
@@ -188,10 +213,10 @@ fi
 # Move the merged overlay to $rootmnt so the standard pivot_root works.
 # Bind-mount /run/vulos into the new root so our sub-mounts remain visible.
 mkdir -p "${rootmnt}/run/vulos"
-mount --bind /run/vulos "${rootmnt}/run/vulos"
+mount -o bind /run/vulos "${rootmnt}/run/vulos"
 
 # Rebind $rootmnt to the merged overlay view
-mount --bind "$MERGED" "$rootmnt"
+mount -o bind "$MERGED" "$rootmnt"
 
 if [ -n "$LOWER_DEV" ]; then
     log_end_msg "Vulos: live overlayfs active (dm-verity ro + tmpfs rw)"
