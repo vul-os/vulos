@@ -19,7 +19,7 @@ built this way*, see [REACH.md](REACH.md).
 3. [Where the costs arise](#where-the-costs-arise)
 4. [A worked example](#a-worked-example)
 5. [The honest third-party caveat](#the-honest-third-party-caveat)
-6. [Pier — the supported alternative](#ephor--the-supported-alternative)
+6. [Pier — the supported alternative](#pier--the-supported-alternative)
 7. [See also](#see-also)
 
 ---
