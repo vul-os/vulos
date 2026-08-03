@@ -155,8 +155,21 @@ jobs:
               bash -c "git config --global --add safe.directory '*' && ./build.sh ${flag} --live /src/out-${arch}"
             sudo chown -R "$(id -un)" "out-${arch}"
             gzip -c "out-${arch}/vulos-live-${arch}.img" > "vulos-${VERSION}-${label}.img.gz"
-            tb="$(ls out-${arch}/vulos-${arch}-*.tar.gz 2>/dev/null | head -1 || true)"
-            [ -n "$tb" ] && cp "$tb" "vulos-${VERSION}-${label}-rootfs.tar.gz" || true
+            # build.sh names these two ways: 'vulos-amd64.tar.gz' (bare arch) but
+            # 'vulos-arm64-generic-arm64.tar.gz' (arch + device). A single
+            # 'vulos-${arch}-*' glob requires a hyphen after the arch, so it
+            # matched arm64 and silently missed amd64 — v1.0.0 shipped without
+            # its x86_64 rootfs even though the 593 MB tarball built fine. Match
+            # both spellings, and fail loudly rather than dropping an artifact.
+            tb="$(find "out-${arch}" -maxdepth 1 -type f \
+              \( -name "vulos-${arch}.tar.gz" -o -name "vulos-${arch}-*.tar.gz" \) \
+              2>/dev/null | sort | head -1 || true)"
+            if [ -z "$tb" ]; then
+              echo "::error::no rootfs tarball in out-${arch}/ (expected vulos-${arch}.tar.gz or vulos-${arch}-*.tar.gz)"
+              ls -la "out-${arch}" || true
+              exit 1
+            fi
+            cp "$tb" "vulos-${VERSION}-${label}-rootfs.tar.gz"
             sudo rm -rf "out-${arch}"
             echo "::endgroup::"
           }
