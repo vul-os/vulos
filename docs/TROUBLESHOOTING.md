@@ -35,7 +35,7 @@ docker logs vulos --tail 200
 docker logs vulos -f
 ```
 
-**Dev (`./dev.sh` or `go run ./backend/cmd/server`).** Logs go straight to your terminal. On a clean start you will see one of:
+**Dev (`./scripts/dev.sh` or `go run ./backend/cmd/server`).** Logs go straight to your terminal. On a clean start you will see one of:
 
 ```
 vulos server listening on :8080 (env=local, no TLS)
@@ -321,7 +321,7 @@ mkcert localhost          # produces localhost.pem + localhost-key.pem
 mv localhost*.pem ~/.vulos/
 ```
 
-`./dev.sh` detects these files and mounts them into the container read-only (`TLS certs mounted (HTTPS enabled)` in its output).
+`./scripts/dev.sh` detects these files and mounts them into the container read-only (`TLS certs mounted (HTTPS enabled)` in its output).
 
 **Prod behind Caddy (`./build.sh --deploy ... --domain ...`):** the deploy script builds Caddy with the Namecheap DNS plugin, configures `/etc/caddy/Caddyfile` for `$DOMAIN` + `*.$DOMAIN` wildcard TLS, and installs `caddy.service` with credentials in `/etc/caddy/env` (`NAMECHEAP_API_USER` / `NAMECHEAP_API_KEY`). Certificate problems on this path are Caddy problems:
 

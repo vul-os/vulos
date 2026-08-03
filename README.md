@@ -8,7 +8,13 @@
 
 Your server. Your AI. Your rules.
 
-**[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) · v1.0.0 · React 19 + Vite · Go 1.25**
+[![Release](https://img.shields.io/github/v/release/vul-os/vulos?sort=semver&style=flat-square&color=7C5CFF&label=release)](https://github.com/vul-os/vulos/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/vul-os/vulos/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/vul-os/vulos/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-3DA639?style=flat-square)](LICENSE-MIT)
+[![Go](https://img.shields.io/github/go-mod/go-version/vul-os/vulos?filename=backend%2Fgo.mod&style=flat-square&label=go&color=00ADD8&logo=go&logoColor=white)](backend/go.mod)
+[![Frontend](https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=white)](package.json)
+[![Stars](https://img.shields.io/github/stars/vul-os/vulos?style=flat-square&color=F5A623&logo=github)](https://github.com/vul-os/vulos/stargazers)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-7C5CFF?style=flat-square)](CONTRIBUTING.md)
 
 <img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
 
@@ -126,7 +132,7 @@ npm run dev
 cd backend && go run ./cmd/server --env=local
 ```
 
-Or run both together with **`./dev.sh`** (equivalently `make dev`). Open **http://localhost:5173**.
+Or run both together with **`./scripts/dev.sh`** (equivalently `make dev`). Open **http://localhost:5173**.
 
 Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)**.
 

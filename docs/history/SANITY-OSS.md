@@ -144,7 +144,7 @@ Files using the old name (representative sample):
 - `scripts/initramfs/vulos-live:2,16,38,71` — all comments
 - `index.html` — page title
 - `Dockerfile` — comments
-- `dev.sh`, `docker-compose.yml` — comments
+- `scripts/dev.sh`, `docker-compose.yml` — comments
 - All `apps/*/app.json` and `apps/*/server.py` — 40+ app files
 - All `roadmap/*.md` docs — 20+ roadmap files
 - `tasks.md` — task descriptions (not status flags, so orchestration-safe)
