@@ -8,7 +8,7 @@
 
 Your server. Your AI. Your rules.
 
-**[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) · v1.2.0 · React 19 + Vite · Go 1.25**
+**[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) · v1.0.0 · React 19 + Vite · Go 1.25**
 
 <img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
 
@@ -212,7 +212,7 @@ Vulos is built to be owned end to end. Deploy it to your own server:
 Or flash a signed image to bare metal:
 
 ```bash
-gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+gunzip -c vulos-v1.0.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
 The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
