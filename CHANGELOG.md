@@ -13,7 +13,7 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.3.0] - 2026-08-03
+## [1.0.0] - 2026-08-03
 
 ### Security
 
