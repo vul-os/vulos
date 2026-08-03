@@ -2,7 +2,7 @@
 
 Vulos is a full desktop that runs in your browser and lives on hardware you own — a mini-PC, a spare laptop, or a cloud VPS you rent from any provider. This is the daily-driver manual for what you actually see once you open it: first sign-in, the shell (windows, dock, tiling), Files, the App Hub, the assistant, Calendar/Contacts/Notes, notifications, the terminal, and using it from your phone.
 
-This chapter assumes a running box — see [GETTING-STARTED.md](GETTING-STARTED.md) for installation. Networking and reachability (Ephor, direct, your own domain) are their own chapter: [NETWORKING.md](NETWORKING.md).
+This chapter assumes a running box — see [GETTING-STARTED.md](GETTING-STARTED.md) for installation. Networking and reachability (relays, Pier, direct, your own domain) are their own chapter: [NETWORKING.md](NETWORKING.md).
 
 ---
 
@@ -345,7 +345,7 @@ A few worth calling out:
 
 - **Sign-in security** watches for account-takeover patterns on your own profile — a burst of sensitive changes (password, recovery key, passkeys, role, a bulk export or mass download), or one from an unfamiliar device or network. A flagged alert lets you say "this was me" and dismiss it, or "this wasn't me" and sign every device out.
 - **Export My Data** takes your data out in open formats: Mail as `.eml` per message, Files as your real Drive tree with original names, Calendar/Contacts as `.ics`/`.vcf` where your mail service exposes them, and your Settings as JSON (API keys, PINs, and passwords are never included).
-- **Relay & Reachability** and **Connection Mode** are how the box chooses to be reachable from outside — Ephor (the default, zero-config relay), your own relay, or a direct connection over your own domain. Full detail in [NETWORKING.md](NETWORKING.md).
+- **Relay & Reachability** and **Connection Mode** are how the box chooses to be reachable from outside — the built-in Vulos relay (the default, zero-config), Pier (an experimental alternative), your own relay, or a direct connection over your own domain. Full detail in [NETWORKING.md](NETWORKING.md).
 
 Backend-level configuration (environment variables, `--env` profiles) is in [CONFIGURATION.md](CONFIGURATION.md).
 
@@ -430,7 +430,7 @@ Because it's a real web app, you can **add it to your home screen** from your ph
 - [APPS.md](APPS.md) — the built-in apps and the App Hub, permissions, sandboxing, and publishing an app to a subdomain.
 - [FILES.md](FILES.md) — the Files app, uploads, sharing, and where your bytes live.
 - [ASSISTANT.md](ASSISTANT.md) — the assistant, proposals, and private AI in full.
-- [NETWORKING.md](NETWORKING.md) — connection modes, Ephor, and remote access.
+- [NETWORKING.md](NETWORKING.md) — connection modes, Pier, and remote access.
 - [PEERING.md](PEERING.md) — box-to-box connections, peer sync, and calls.
 - [SECURITY.md](SECURITY.md) — the trust model behind the trust badge.
 - [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) — the recovery phrase, kit, and backups.

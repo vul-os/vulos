@@ -10,14 +10,14 @@ This is the **high-level** roadmap: vision and horizon themes. Granular, trackab
 
 You run your own box — a VPS, a home server, or bare metal — and it *is* your cloud: desktop, files, calendar, contacts, AI, and reachability, all owned by you. **You self-provision.** Vulos does not host or run boxes for you — it is free, open-source software you run on your own hardware or a VPS you rent. The wedge is **agency, not just privacy**: your own server, your own AI, acting for you.
 
-The suite is free and open-source — 100% self-hosted, nothing to buy. Reachability is via **Ephor**, an open, self-hostable broker your box dials out to (host your own or point at a hosted one). Storage is your own S3/MinIO bucket. Nothing is metered or billed.
+The suite is free and open-source — 100% self-hosted, nothing to buy. Reachability is via a relay your box dials out to — the built-in **Vulos relay** by default, with **Pier**, an open, self-hostable broker, as an experimental alternative (host your own or point at one someone else hosts). Storage is your own S3/MinIO bucket. Nothing is metered or billed.
 
 ### Settled invariants
 
 - **The OS is the shell.** One React window-manager desktop is the whole surface — local or remote. There is no separate "Workspace" front end.
 - **Native-first dispatch.** The most efficient compute is the browser already on the user's device. Every launch routes through the Open Router (`backend/services/openrouter/`) into one of five lanes: **web app** (host browser, ~zero server cost) · **CPU app stream** (Xvfb + WebRTC) · **GPU route** (BYO GPU peer — your own box) · **compute worker** (batch) · **local-only**.
 - **Browsing is native, never streamed.** No server-side streamed browser; the host browser does all web content.
-- **Reachability via Ephor.** A box is the authority; **Ephor** — an open, self-hostable broker the box dials out to — is the single reachability ingress (direct-first, relay-fallback). Works without any central control plane.
+- **Reachability via a relay you choose.** A box is the authority; a relay it dials out to — the built-in **Vulos relay** by default, or **Pier**, an open, self-hostable broker, as an experimental alternative — is the single reachability ingress (direct-first, relay-fallback). Works without any central control plane.
 - **Login isolates the credential, not the browsing.** Passkeys + a server-side token vault; no streamed login; no third-party SSO required.
 - **Security from signing, not gatekeeping.** Signed, immutable, A/B-updatable images from a public bucket with a hard-baked trust anchor. Forkable with your own key.
 - **PIM is bring-your-own.** [lilmail](docs/MAIL-LILMAIL.md) connects the user's IMAP/CalDAV/CardDAV and exposes a stable `/v1`; the OS ships standalone Calendar + Contacts over the box PIM proxy. Vulos hosts no mailbox.
