@@ -1,5 +1,5 @@
-// no-broker-dep:allow-file: comment cites Ephor only as an example relay a resumable upload might
-// ride ('e.g. Ephor, an owner-run broker...') -- illustrative, no import,
+// no-broker-dep:allow-file: comment cites Pier only as an example relay a resumable upload might
+// ride ('e.g. Pier, an owner-run broker...') -- illustrative, no import,
 // no default.
 
 package main
@@ -7,8 +7,8 @@ package main
 // routes_files_resumable.go — RESUMABLE (tus-style) chunked upload control plane
 // for the OS Files service.
 //
-// Motivation: a single upload that rides a relay (e.g. Ephor, an owner-run
-// broker the box dials out to — github.com/vul-os/ephor) is capped at the
+// Motivation: a single upload that rides a relay (e.g. Pier, an owner-run
+// broker the box dials out to — github.com/vul-os/pier) is capped at the
 // relay's MaxRequestBytes. Instead of raising that cap without bound, the BOX chunks
 // large files: the client creates an upload here, then PATCHes bounded chunks
 // (each ≤ the relay cap) that each pass the relay as an ordinary request with

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# no-broker-dep:allow-file: installer comments/plan-output lines describe Ephor as one OPTIONAL
+# no-broker-dep:allow-file: installer comments/plan-output lines describe Pier as one OPTIONAL
 # self-hostable broker an operator may point the box at for
 # reachability -- no default install path installs or dials it.
 
@@ -29,8 +29,8 @@
 #
 # There is no Vulos Cloud and nothing here is operated by us: this installs
 # software the box owner runs on their own hardware or a VPS they rent.
-# Reachability (so the box is dialable from outside) is via Ephor
-# (github.com/vul-os/ephor), an open, self-hostable broker the box dials OUT
+# Reachability (so the box is dialable from outside) is via Pier
+# (github.com/vul-os/pier), an open, self-hostable broker the box dials OUT
 # to — configure it yourself; this installer does not provision it.
 #
 # Supports:
@@ -346,7 +346,7 @@ if [ "${DRY_RUN}" = "true" ]; then
   plan "2. Edit ${LILMAIL_CONFIG} — set your own IMAP/SMTP account"
   plan "3. Enable services:  systemctl enable --now vulos-bundle.target"
   plan "4. Reachability from outside your network is BYO: point a self-hosted"
-  plan "   Ephor broker (github.com/vul-os/ephor) at this box — there is no"
+  plan "   Pier broker (github.com/vul-os/pier) at this box — there is no"
   plan "   Vulos Cloud and nothing here is operated by us."
 
   printf "\n${GRN}Dry-run complete. No changes made.${RST}\n\n"
@@ -1493,7 +1493,7 @@ case "${INIT_SYSTEM}" in
 esac
 
 printf "  5. ${BLD}Make the box reachable (optional):${RST}\n"
-printf "     → Point a self-hosted Ephor (github.com/vul-os/ephor) at this box,\n"
+printf "     → Point a self-hosted Pier (github.com/vul-os/pier) at this box,\n"
 printf "       or expose it directly with a static IP and an A record.\n\n"
 printf "  6. ${BLD}Configure your domain DNS:${RST}\n"
 printf "     → A record pointing to this server's IP\n\n"

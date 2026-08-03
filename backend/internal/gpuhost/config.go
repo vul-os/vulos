@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: doc comment on RelayBaseURL names 'the Ephor node' an operator points
+// no-broker-dep:allow-file: doc comment on RelayBaseURL names 'the Pier node' an operator points
 // this box at, and states plainly: 'Required: there is no default,
 // because nobody runs a relay on the owner's behalf.' Names the broker to
 // state its ABSENCE as a default.
@@ -53,7 +53,7 @@ type Config struct {
 	// Identity is the box's fabric identity. Required.
 	Identity FabricIdentity
 
-	// RelayBaseURL is the HTTPS base URL of the Ephor node that exposes the
+	// RelayBaseURL is the HTTPS base URL of the Pier node that exposes the
 	// host-registration endpoint. Required: there is no default, because nobody
 	// runs a relay on the owner's behalf.
 	RelayBaseURL string

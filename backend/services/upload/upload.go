@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: comment cites Ephor as an example ('the open...') relay a resumable
+// no-broker-dep:allow-file: comment cites Pier as an example ('the open...') relay a resumable
 // upload might ride, motivating this file's chunking design --
 // illustrative, no import, no default.
 
@@ -6,7 +6,7 @@
 // tus.io-style protocol semantics (Upload-Length / Upload-Offset /
 // Upload-Metadata / POST-create / HEAD-offset / PATCH-append).
 //
-// Why this exists: a single HTTP upload that rides the relay (Ephor, the open
+// Why this exists: a single HTTP upload that rides the relay (Pier, the open
 // self-hostable reachability broker the box dials out to) is capped at the
 // relay's MaxRequestBytes. Rather than raise that cap without bound, the BOX
 // APP chunks large files: the client

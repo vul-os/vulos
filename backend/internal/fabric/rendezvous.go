@@ -1,6 +1,6 @@
 // no-broker-dep:allow-file: comments state the rendezvous protocol is OPEN -- 'point this at your
-// own Ephor... at one somebody else hosts, or at nothing at all' -- and
-// note a canonical message format kept byte-identical to Ephor's for wire
+// own Pier... at one somebody else hosts, or at nothing at all' -- and
+// note a canonical message format kept byte-identical to Pier's for wire
 // compatibility. Describes an optional, operator-chosen peer and a
 // wire-compat contract, not a dependency.
 
@@ -44,8 +44,8 @@ import (
 //
 // # Any relay, or none
 //
-// The rendezvous protocol is open. Point this at your own Ephor
-// (github.com/vul-os/ephor), at one somebody else hosts, or at nothing at all:
+// The rendezvous protocol is open. Point this at your own Pier
+// (github.com/vul-os/pier), at one somebody else hosts, or at nothing at all:
 // with no RendezvousURL configured the fabric is mDNS-only.
 // It composes with MDNSDiscoverer rather than replacing it — see MultiDiscoverer.
 type RendezvousDiscoverer struct {
@@ -307,8 +307,8 @@ const (
 
 // canonicalMessage builds the relay's domain-separated, length-prefixed signing
 // preimage: each segment prefixed by its big-endian uint32 length, domain first.
-// Kept byte-identical to keyauth.CanonicalMessage in Ephor
-// (github.com/vul-os/ephor, tunnel/internal/keyauth) — the two are a wire
+// Kept byte-identical to keyauth.CanonicalMessage in Pier
+// (github.com/vul-os/pier, tunnel/internal/keyauth) — the two are a wire
 // contract, and rendezvous_test.go pins the shared vector.
 func canonicalMessage(domain string, fields ...string) []byte {
 	total := 4 + len(domain)

@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: doc comment cites Ephor as an example self-hosted gateway an operator
+// no-broker-dep:allow-file: doc comment cites Pier as an example self-hosted gateway an operator
 // MIGHT point the box at; the field defaults to "" (not configured)
 // absent that.
 
@@ -8,8 +8,8 @@
 // operates no control plane for any region, so there is no compiled-in
 // per-region directory: PlaceFor simply delegates to the single gwurl
 // resolver — a persisted override (Settings) or a canonical CP env var when
-// the operator has pointed the box at a self-hosted gateway (e.g. Ephor,
-// github.com/vul-os/ephor); otherwise "" (not configured). The region
+// the operator has pointed the box at a self-hosted gateway (e.g. Pier,
+// github.com/vul-os/pier); otherwise "" (not configured). The region
 // parameter is accepted for API stability — a future self-hosted multi-cell
 // deployment could reintroduce per-region routing here without changing the
 // signature — but Phase-0 has exactly one resolution path and region does not

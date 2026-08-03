@@ -1,7 +1,7 @@
 // no-broker-dep:allow-file: the file implementing the whole provider seam: providerFor's default
 // case returns vulosProvider{} (not ephor), and ephorProvider is a peer
 // alternative selected only when Provider=="ephor" is explicitly
-// persisted. Names Ephor extensively to describe this optional peer,
+// persisted. Names Pier extensively to describe this optional peer,
 // never as this package's own dependency.
 
 package relayconfig
@@ -217,7 +217,7 @@ func (vulosProvider) Ingress() IngressDescriptor {
 // # Why one reporter serves both providers — the dual-provider keystone
 //
 // The embedded agent (services/reach/tunnel) holds one link per configured
-// relay REGARDLESS of who operates it. A built-in Vulos relay and an Ephor
+// relay REGARDLESS of who operates it. A built-in Vulos relay and a Pier
 // relay listed together in VULOS_RELAY_ENDPOINTS are dialled, served, and
 // reported through the exact same agent and the exact same header-trust
 // boundary — the tunnel layer has no notion of "provider" at all. So an owner
@@ -251,29 +251,29 @@ func (vulosProvider) ResolvePeer(context.Context, string) (string, bool) { retur
 
 // --- ephor: the supported ALTERNATIVE relay, and a PEER of the built-in one. ---
 //
-// Ephor (github.com/vul-os/ephor) speaks the same rendezvous contract and the
+// Pier (github.com/vul-os/pier) speaks the same rendezvous contract and the
 // same reverse-tunnel wire protocol, and serves the same purpose. Selecting it
 // is a genuine swap, not a downgrade — which is the whole point of the
 // coordinator being hired rather than depended on. ICE resolves identically
 // either way: which relay carries HTTP ingress has nothing to do with which
 // STUN/TURN servers call media uses.
 //
-// # Ephor and Vulos coexist — this label is not exclusive
+// # Pier and Vulos coexist — this label is not exclusive
 //
 // Because the tunnel agent (services/reach/tunnel) holds one link per relay in
 // VULOS_RELAY_ENDPOINTS with no notion of "provider", an owner can run a
-// built-in Vulos relay AND an Ephor relay AT THE SAME TIME, in one endpoint
+// built-in Vulos relay AND a Pier relay AT THE SAME TIME, in one endpoint
 // set, for redundant/versatile access. This provider label selects only which
 // facet (ICE/rendezvous) reporting style is authoritative; it does NOT make
 // the choice mutually exclusive with the built-in Vulos relay at the tunnel
 // layer. Ingress therefore reports the SAME live multi-relay state that
-// vulosProvider does — a Vulos relay and an Ephor relay in the same set both
+// vulosProvider does — a Vulos relay and a Pier relay in the same set both
 // show up — via the shared relayTunnelIngress reporter, rather than re-reading
 // a single relay URL from the environment (which would hide the coexistence).
 //
-// SECURITY: coexistence does not widen the trust boundary. Ephor being a
+// SECURITY: coexistence does not widen the trust boundary. Pier being a
 // separate project buys its relay no additional trust — the box-side agent
-// strips and re-derives every X-Vulos-Reach-* header for an Ephor relay
+// strips and re-derives every X-Vulos-Reach-* header for a Pier relay
 // exactly as it does for a Vulos relay (see services/reach/tunnel/agent.go's
 // tunnelHandler and the unconditional, prefix-based stripPrefixHeaders). A
 // compromised relay of EITHER kind is untrusted transport, no more.
@@ -288,7 +288,7 @@ func (ephorProvider) ICEServers(_ context.Context, userID string) []ICEServer {
 }
 
 func (ephorProvider) Ingress() IngressDescriptor {
-	return relayTunnelIngress("Ephor selected but no relay tunnel is up — add the Ephor relay to VULOS_RELAY_ENDPOINTS (it may sit alongside the built-in Vulos relay in the same set) and see GET /api/network/reach")
+	return relayTunnelIngress("Pier selected but no relay tunnel is up — add the Pier relay to VULOS_RELAY_ENDPOINTS (it may sit alongside the built-in Vulos relay in the same set) and see GET /api/network/reach")
 }
 
 func (ephorProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }

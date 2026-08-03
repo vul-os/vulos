@@ -367,7 +367,7 @@ Your bundle is a **fully self-contained, sovereign server** — it routes, serve
 and delivers mail entirely on its own once DNS is configured above. Nothing
 about it phones home or depends on any Vulos-operated service. If the box
 sits behind NAT or CGNAT, see [NETWORKING.md](NETWORKING.md) for reaching it
-through **Ephor** (`github.com/vul-os/ephor`) — a hosted instance, your own
+through **Pier** (`github.com/vul-os/pier`) — a hosted instance, your own
 self-hosted one, or direct TLS if you have a static IP.
 
 ---

@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: test comment cites the same canonical-message vector Ephor's own test
+// no-broker-dep:allow-file: test comment cites the same canonical-message vector Pier's own test
 // asserts, to prove wire-format compatibility -- a cross-project test
 // vector reference, not a dependency.
 
@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-// canonicalVectorHex is the same vector Ephor asserts in
-// tunnel/rendezvous/canonical_test.go (github.com/vul-os/ephor). It is a
+// canonicalVectorHex is the same vector Pier asserts in
+// tunnel/rendezvous/canonical_test.go (github.com/vul-os/pier). It is a
 // cross-implementation wire contract: this
 // side signs the preimage and the relay verifies it, so a one-byte divergence
 // is an authentication failure at runtime that no amount of local testing here

@@ -1,5 +1,5 @@
-// no-broker-dep:allow-file: comments state this rendezvous role is wire-identical to Ephor's, so a
-// Vulos relay is a drop-in replacement for an Ephor one and vice versa
+// no-broker-dep:allow-file: comments state this rendezvous role is wire-identical to Pier's, so a
+// Vulos relay is a drop-in replacement for a Pier one and vice versa
 // -- wire-compatibility for operator choice, not a dependency.
 
 // Package rendezvous is the relay's DISCOVERY role: the small, content-blind
@@ -36,8 +36,8 @@
 // # Wire compatibility
 //
 // The protocol here is byte-identical to the one backend/internal/fabric's
-// RendezvousDiscoverer already speaks, which is in turn identical to Ephor's
-// rendezvous role. A Vulos relay is therefore a drop-in for an Ephor one and
+// RendezvousDiscoverer already speaks, which is in turn identical to Pier's
+// rendezvous role. A Vulos relay is therefore a drop-in for a Pier one and
 // vice versa: an operator can move between them by changing a URL, and a box
 // does not know or care which it is talking to. That interchangeability is
 // the point — it is what makes the coordinator swappable rather than a
@@ -405,7 +405,7 @@ func (s *Service) originAllowed(origin string) bool {
 // set of values would validate for a different set. With it, no rearrangement
 // of field boundaries can collide.
 //
-// Byte-identical to backend/internal/fabric's canonicalMessage and to Ephor's
+// Byte-identical to backend/internal/fabric's canonicalMessage and to Pier's
 // keyauth.CanonicalMessage — a wire contract pinned by a shared test vector.
 func CanonicalMessage(domain string, fields ...string) []byte {
 	total := 4 + len(domain)

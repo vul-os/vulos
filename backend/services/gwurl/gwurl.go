@@ -1,5 +1,5 @@
 // no-broker-dep:allow-file: package doc explains Vulos operates no control plane and reachability
-// instead goes through Ephor, an open broker the box dials OUT to WHEN
+// instead goes through Pier, an open broker the box dials OUT to WHEN
 // THE OWNER CHOOSES TO RUN ONE -- and states 'There is no compiled-in
 // gateway host' for the CP URL this file resolves. Names the broker to
 // describe an optional choice, not a dependency.
@@ -13,7 +13,7 @@
 //
 // Vulos does not operate a control plane. The OS is free, open-source software
 // the owner runs on their own hardware or a rented VPS; reachability goes
-// through Ephor (github.com/vul-os/ephor), an open, self-hostable broker the
+// through Pier (github.com/vul-os/pier), an open, self-hostable broker the
 // box dials OUT to when the owner chooses to run one. The gateway base URL
 // used to be read directly from a handful of environment variables
 // (VULOS_CP_URL, VULOS_CLOUD_URL, VULOS_CLOUD_API_URL) scattered across

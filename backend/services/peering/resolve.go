@@ -1,6 +1,6 @@
-// no-broker-dep:allow-file: comments require this box's rendezvous agent to match Ephor's wire
+// no-broker-dep:allow-file: comments require this box's rendezvous agent to match Pier's wire
 // contract byte-for-byte, and note a mixed set of built-in Vulos and
-// Ephor relays is fine -- wire-compatibility and operator choice, not a
+// Pier relays is fine -- wire-compatibility and operator choice, not a
 // dependency.
 
 // resolve.go — the single peer-reachability seam (CONSOLIDATION B-0, finished
@@ -16,7 +16,7 @@
 //     ownership-probe mechanism) that it controls a publicly reachable
 //     endpoint. Fastest and most private — bypasses any relay entirely.
 //  2. relay-tunnel: the peer's box has no public IP but a co-located relay
-//     agent (Ephor, self-hostable, run alongside the OS — NOT embedded
+//     agent (Pier, self-hostable, run alongside the OS — NOT embedded
 //     in this binary, see internal/directlisten's "the OS does not embed the
 //     relay agent" note) maintains a reverse tunnel, so requests routed to
 //     the relay's per-identity URL reach the box anyway. This is what makes
@@ -64,7 +64,7 @@ var reachabilityLogf = log.Printf
 // relayResolvePath is the relay's peer-reachability resolve endpoint. It
 // shares the "_vulos-direct" path family with internal/directlisten.ProbePath
 // (the box-side ownership-proof probe) — both are the relay/box halves of the
-// SAME direct-reachability mechanism. MUST match Ephor's wire contract.
+// SAME direct-reachability mechanism. MUST match Pier's wire contract.
 const relayResolvePath = "/_vulos-direct/resolve"
 
 // reachabilityHTTPTimeout bounds a single resolve request to the relay.
@@ -97,7 +97,7 @@ var (
 
 // relayResolveResponse is the wire shape returned by the relay's
 // peer-reachability resolve endpoint for a given vula_id. Both fields are
-// optional; either, both, or neither may be present. MUST match Ephor.
+// optional; either, both, or neither may be present. MUST match Pier.
 type relayResolveResponse struct {
 	// Direct is the peer's verified-direct base URL (https), present only when
 	// the relay has successfully probed and verified it (see directlisten.go).
@@ -259,7 +259,7 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulaID string) e
 // The substrate spec's answer (KOTVA §4.2.1(3): a rendezvous set of >= 3 nodes
 // under DISJOINT operators, cross-checked) is that no single operator may
 // equivocate about where a peer is. Applied here: ask EVERY configured relay
-// (a mixed set of built-in Vulos and Ephor relays is fine — same wire
+// (a mixed set of built-in Vulos and Pier relays is fine — same wire
 // contract) and compare their `direct` answers. Honest relays agree — a peer
 // has one real verified-direct endpoint, or none — so a DISAGREEMENT means at
 // least one relay is equivocating. We cannot tell which, so we treat the

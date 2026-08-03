@@ -1,7 +1,7 @@
 // no-broker-dep:allow-file: comment states ICE servers come exclusively from
 // relayconfig.ICEServers, 'the box's single, owner-configurable
 // relay/TURN provider (ephor default; BYO...)' -- legacy shorthand for
-// the built-in provider carried over from before the Vulos/Ephor
+// the built-in provider carried over from before the Vulos/Pier
 // provider split (providers.go's providerFor default case actually
 // returns vulosProvider{}, not ephor). Stale-terminology finding reported
 // separately, not fixed here.

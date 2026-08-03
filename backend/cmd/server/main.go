@@ -1,8 +1,8 @@
 // no-broker-dep:allow-file: comments explain the optional self-hosted control-plane gateway seam
-// (e.g. Ephor) and a STALE legacy log string ('using ephor default') on
+// (e.g. Pier) and a STALE legacy log string ('using ephor default') on
 // relayconfig.Init's error-fallback path, which actually calls
 // DefaultConfig() (Provider: vulos) -- no import, no code path actually
-// defaults to dialling Ephor. (Stale-wording finding reported separately,
+// defaults to dialling Pier. (Stale-wording finding reported separately,
 // not fixed here -- out of scope for a broker-gate marker.)
 
 package main
@@ -212,8 +212,8 @@ func main() {
 	// cloud login/signup/enroll, identity claim, instance routing, cloud sync, and
 	// the OAuth integrations broker. Missing/corrupt file → env/unconfigured
 	// (fail-safe) — Vulos operates no control plane, so an unconfigured box simply
-	// has no gateway until the owner points it at one (e.g. a self-hosted Ephor,
-	// github.com/vul-os/ephor) via env or Settings.
+	// has no gateway until the owner points it at one (e.g. a self-hosted Pier,
+	// github.com/vul-os/pier) via env or Settings.
 	if err := gwurl.Init(datadir.Root()); err != nil {
 		log.Printf("[gateway] could not load persisted gateway override (%v) — falling back to env/unconfigured", err)
 	}

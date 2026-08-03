@@ -15,7 +15,7 @@ There are three ways to make a box reachable, and you can mix them:
 | # | Option | When to use it | Setup |
 |---|---|---|---|
 | (a) | **No relay** | The box has a public IP, or only ever needs to be reached from its own LAN. | [Jump to setup](#a-no-relay-at-all) — nothing to configure |
-| (b) | **A relay** — yours, a friend's, or an Ephor instance | Behind NAT/CGNAT and you want the box reachable from anywhere. | [Jump to setup](#b-run-a-relay--yours-or-someone-elses) · full recipes in [RELAY-SELF-HOST.md](RELAY-SELF-HOST.md) |
+| (b) | **A relay** — yours, a friend's, or a Pier instance | Behind NAT/CGNAT and you want the box reachable from anywhere. | [Jump to setup](#b-run-a-relay--yours-or-someone-elses) · full recipes in [RELAY-SELF-HOST.md](RELAY-SELF-HOST.md) |
 | (c) | **Direct** | Box has a public IP or your own domain (bare metal with a static IP, or a cloud VPS) — no relay at all. | [Jump to setup](#c-direct-public-ip-or-your-own-domain) |
 
 If you remember one thing: **you never *have* to port-forward a Vulos box** — option (b) needs only outbound 443. What it does need is a machine somewhere with a public IP, which is either yours or someone's.
@@ -69,7 +69,7 @@ and Fly.io.
 Two properties make a relay something you *hire* rather than *depend on*:
 
 - **It is swappable.** A relay is named by configuration, never compiled in. Point
-  at your own, at a friend's, or at an [Ephor](https://github.com/vul-os/ephor)
+  at your own, at a friend's, or at an [Pier](https://github.com/vul-os/pier)
   instance — no code change.
 - **It is plural.** A box holds a live tunnel to **every** configured relay at once,
   so no single one is load-bearing. Two relays under different operators is the
@@ -134,11 +134,11 @@ The box is now served at `https://box1.relay-a.example.com` **and**
 | `VULOS_RELAY_ENDPOINTS` | The same list inline, for platforms whose secret channel is the environment (Fly, Docker, Kubernetes). |
 | `VULOS_RELAY_BASE_URL` / `_NAME` / `_TOKEN` | The legacy single-endpoint form. Still fully supported. |
 
-**Using Ephor instead** is a supported alternative and needs no code change: set
-`VULOS_RELAY_BASE_URL` to your Ephor instance and run Ephor's own agent alongside
-the OS (Ephor's tunnel server and client agent are separate binaries from that
-project; the OS does not embed either). Ephor speaks the same rendezvous contract,
-so `VULOS_RENDEZVOUS_URL` may list Vulos and Ephor nodes interchangeably.
+**Using Pier instead** is a supported alternative and needs no code change: set
+`VULOS_RELAY_BASE_URL` to your Pier instance and run Pier's own agent alongside
+the OS (Pier's tunnel server and client agent are separate binaries from that
+project; the OS does not embed either). Pier speaks the same rendezvous contract,
+so `VULOS_RENDEZVOUS_URL` may list Vulos and Pier nodes interchangeably.
 
 Under the hood, the box-side contract is:
 
@@ -381,7 +381,7 @@ or point at an address you cannot authenticate to; it cannot forge a changeset,
 because signature checking happens at the peer and is downstream of discovery.
 
 Any conforming rendezvous role works here — a `vulos relay serve -rendezvous`
-node, an Ephor instance, or set nothing at all and stay LAN-only. The two are
+node, a Pier instance, or set nothing at all and stay LAN-only. The two are
 **wire-compatible** (the protocol is byte-identical, and a test drives the real
 box-side client against the Vulos implementation), so a single
 `VULOS_RENDEZVOUS_URL` list may mix them freely. Protocol details:

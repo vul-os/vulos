@@ -1,6 +1,6 @@
 // no-broker-dep:allow-file: comments describe relayconfig's provider seam using legacy 'ephor'
 // shorthand for 'the built-in default provider' (stale terminology
-// predating the Vulos/Ephor split -- the actual default per
+// predating the Vulos/Pier split -- the actual default per
 // providers.go's providerFor is vulosProvider{}). No import of anything
 // named ephor; stale-terminology finding reported separately, not fixed
 // here.

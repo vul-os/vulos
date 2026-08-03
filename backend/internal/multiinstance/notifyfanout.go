@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: doc comment names Ephor as the broker an owner may configure for
+// no-broker-dep:allow-file: doc comment names Pier as the broker an owner may configure for
 // cross-instance notification fan-out via VULOS_RELAY_BASE_URL, and
 // states plainly 'There is no built-in default... with the variable
 // unset the fan-out delivers locally.'
@@ -6,8 +6,8 @@
 // MINST-06: Multi-instance notifications — fan-out + dedup.
 //
 // NotifyFanout fans an OS notification out to all online account instances
-// through the server-to-server messaging channel of the Ephor the owner has
-// configured (github.com/vul-os/ephor), so the user sees it on every device.  Dedup is enforced by a seen_notifications SQLite table (7-day TTL)
+// through the server-to-server messaging channel of the Pier the owner has
+// configured (github.com/vul-os/pier), so the user sees it on every device.  Dedup is enforced by a seen_notifications SQLite table (7-day TTL)
 // so each instance delivers the notification to its local UI at most once.
 //
 // Priority mapping:
@@ -17,7 +17,7 @@
 //
 // Relay endpoint: POST {VULOS_RELAY_BASE_URL}/api/s2s/notify
 //
-// VULOS_RELAY_BASE_URL names the Ephor this box dials out to. There is no
+// VULOS_RELAY_BASE_URL names the Pier this box dials out to. There is no
 // built-in default: nobody runs a relay on the owner's behalf, so with the
 // variable unset the fan-out delivers locally and skips the S2S POST rather
 // than dialling a host nobody operates.
@@ -68,7 +68,7 @@ import (
 	"time"
 )
 
-// relayBaseURL returns the Ephor base URL this box is configured to dial, or
+// relayBaseURL returns the Pier base URL this box is configured to dial, or
 // "" when the owner has configured none. Unified on VULOS_RELAY_BASE_URL
 // (seam P2-4) so it matches the rest of the OS reachability layer.
 func relayBaseURL() string {
@@ -372,12 +372,12 @@ func tunnelNameForInstance(inst Instance) string {
 	return strings.ToLower(label)
 }
 
-// errNoRelay is returned when the box dials no Ephor. It is not an outage:
+// errNoRelay is returned when the box dials no Pier. It is not an outage:
 // the notification is still delivered locally, and callers treat it as "this
 // box has no relay" rather than as a failed send.
 var errNoRelay = errors.New("multiinstance: no relay configured for this box")
 
-// sendToRelay POSTs a single notification to the Ephor S2S endpoint for
+// sendToRelay POSTs a single notification to the Pier S2S endpoint for
 // the target instance.  Failures are logged but do not panic.
 //
 // The relay both authenticates the sender (via the box's own VULOS_RELAY_TOKEN

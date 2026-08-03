@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: test proves a built-in Vulos relay AND an Ephor relay can be held
+// no-broker-dep:allow-file: test proves a built-in Vulos relay AND a Pier relay can be held
 // together in one endpoint set -- asserts an operator-configured
 // coexistence capability, not a dependency.
 
@@ -144,7 +144,7 @@ func TestFromEnvInlineJSONMultiEndpoint(t *testing.T) {
 }
 
 // TestMixedVulosAndEphorEndpointsCoexist is the dual-provider case: a box may
-// list a built-in Vulos relay AND an Ephor relay in ONE endpoint set and hold
+// list a built-in Vulos relay AND a Pier relay in ONE endpoint set and hold
 // a tunnel to BOTH at once, for versatile/redundant access. This package has
 // no notion of "provider" — a relay is just an https base URL and a per-relay
 // grant — so the two coexist by construction rather than being mutually
@@ -162,7 +162,7 @@ func TestMixedVulosAndEphorEndpointsCoexist(t *testing.T) {
 		t.Fatalf("FromEnv: %v", err)
 	}
 	if set.Len() != 2 {
-		t.Fatalf("Len = %d, want 2 (a Vulos relay AND an Ephor relay held at once)", set.Len())
+		t.Fatalf("Len = %d, want 2 (a Vulos relay AND a Pier relay held at once)", set.Len())
 	}
 	all := set.All()
 	var haveVulos, haveEphor bool

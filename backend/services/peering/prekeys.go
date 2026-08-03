@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: comment names 'Ephor/fabric.js + prekeys.js' as an example of the
+// no-broker-dep:allow-file: comment names 'Pier/fabric.js + prekeys.js' as an example of the
 // CLIENT holding all private keys -- illustrative prose, no dependency.
 
 // prekeys.go — forward-secret content keys via an X3DH-style prekey scheme
@@ -67,7 +67,7 @@
 //
 // The content forward-secrecy WIRE PROTOCOL — per-message envelope construction,
 // one-time-prekey selection, and the browser↔browser handshake — is implemented by
-// the CLIENT (Ephor/fabric.js + prekeys.js), which holds ALL private keys.
+// the CLIENT (Pier/fabric.js + prekeys.js), which holds ALL private keys.
 // This Go package provides two things only: (1) the REFERENCE X3DH derivation
 // (X3DHInitiate/X3DHRespond/X3DHDeriveSharedKey + the byte-exact cross-language
 // KDF) that a JS initiator must reproduce, and (2) the PUBLIC prekey DIRECTORY

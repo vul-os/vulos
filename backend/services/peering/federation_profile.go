@@ -1,5 +1,5 @@
 // no-broker-dep:allow-file: doc comment documents the optional VULOS_RELAY_BASE_URL env var (a
-// self-hosted Ephor instance an operator may point the box at) and again
+// self-hosted Pier instance an operator may point the box at) and again
 // uses legacy 'ephor by default' shorthand for the built-in provider (see
 // peering/ice.go) -- no default env value, no import.
 
@@ -14,11 +14,11 @@
 //
 // Env surface (all optional; every field defaults to "off"/central):
 //
-//	VULOS_RELAY_BASE_URL    the box's configured Ephor instance — used
+//	VULOS_RELAY_BASE_URL    the box's configured Pier instance — used
 //	                        both for reachability resolve (resolve.go) and, by
 //	                        other subsystems (gpuhost), for capability
-//	                        registration. Self-hostable (see Ephor,
-//	                        github.com/vul-os/ephor).
+//	                        registration. Self-hostable (see Pier,
+//	                        github.com/vul-os/pier).
 //	VULOS_VERIFY_URL        the directory/verify service base URL (discovery.go
 //	                        + email verification). Defaults to the central
 //	                        vulos.org directory when unset.

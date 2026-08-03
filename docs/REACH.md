@@ -40,7 +40,7 @@ answer:
   run, in a different role. Not a separate product, not a separate download, not a
   separate vendor.
 - It is **swappable**: a relay is named by config, never compiled in. Point at your
-  own, a friend's, or an [Ephor](https://github.com/vul-os/ephor) instance.
+  own, a friend's, or an [Pier](https://github.com/vul-os/pier) instance.
 - It is **plural**: your box holds tunnels to *every* configured relay at once, so
   no single one is load-bearing.
 
@@ -81,7 +81,7 @@ Does the box have a reachable public IP or hostname?
            ├─ `vulos relay serve` on a small VPS   ◄── this document
            │   ~€4/month. Gives you all three facets in one binary.
            │
-           ├─ An Ephor relay
+           ├─ A Pier relay
            │   Same idea, separate project. Supported alternative.
            │
            └─ Generic tunnel (Tailscale/Headscale, wg + Caddy, frp)
@@ -257,9 +257,9 @@ skipped rather than failing the set, so losing multicast never costs you your re
 siblings, and vice versa. This is the substrate spec's shape (KOTVA §4.2.1(3): a
 home rendezvous set of ≥3 nodes under disjoint operators).
 
-**Wire-compatible with Ephor.** The protocol is byte-identical to Ephor's rendezvous
+**Wire-compatible with Pier.** The protocol is byte-identical to Pier's rendezvous
 role and is pinned by a test that drives the real box-side client against this
-server. You can mix Vulos and Ephor rendezvous nodes in one list.
+server. You can mix Vulos and Pier rendezvous nodes in one list.
 
 ---
 
@@ -390,7 +390,7 @@ operators, and no single one is load-bearing.
 |---|---|---|
 | **Direct mode** | The box has a public IP or a forwardable port | Nothing in the middle at all. Strictly best when available. |
 | **`vulos relay serve`** | Behind NAT/CGNAT and you want all three facets from one binary | You run a small VPS. |
-| **Ephor relay** | You already run Ephor, or want its other coordinator kinds | A separate project to track. Fully supported; same rendezvous contract. |
+| **Pier relay** | You already run Pier, or want its other coordinator kinds | A separate project to track. Fully supported; same rendezvous contract. |
 | **Tailscale / Headscale / WireGuard mesh** | You want a private mesh, not a public URL | Covers facet B only. Facets A and C stay on their own paths. Ingress is actuated by the mesh daemon, outside Vulos. |
 | **LAN only** | The box never needs to be reached from outside | Nothing to run, nothing to trust. |
 

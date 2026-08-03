@@ -1,5 +1,5 @@
 // no-broker-dep:allow-file: comment documents that /api/network/reach may report a Vulos relay and
-// an Ephor relay TOGETHER when an operator has explicitly configured both
+// a Pier relay TOGETHER when an operator has explicitly configured both
 // in VULOS_RELAY_ENDPOINTS -- reporting logic for an operator choice, not
 // a default or dependency.
 
@@ -214,7 +214,7 @@ func registerReachStatus(mux *http.ServeMux, rt *reachRuntime) {
 // purposes — a relay in tunnel-backoff can still answer a read correctly, and
 // dropping it would both weaken the cross-check quorum and let a relay that
 // deliberately flaps its tunnel exclude itself from being caught equivocating.
-// A mixed set (a built-in Vulos relay AND an Ephor relay together) is returned
+// A mixed set (a built-in Vulos relay AND a Pier relay together) is returned
 // as one flat list; both speak the same resolve contract, so the fan-out and
 // cross-check treat them uniformly.
 //

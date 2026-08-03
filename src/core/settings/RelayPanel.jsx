@@ -14,7 +14,7 @@ import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from 
 // RELAY-01: lets the owner pick the box's relay/TURN/rendezvous provider.
 // Vulos's OWN built-in reverse tunnel (docs/REACH.md) is the DEFAULT and
 // needs nothing external — a relay is `vulos relay serve`, the same binary in
-// a role. Ephor is a supported alternative. You can also bring your own
+// a role. Pier is a supported alternative. You can also bring your own
 // STUN/TURN, a libp2p Circuit Relay v2 peer, a Tailscale/Headscale/Nebula
 // WireGuard mesh, or turn the relay tunnel off entirely if this box has a
 // static IP / port-forward.
@@ -23,7 +23,7 @@ import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from 
 // makes Meet/Talk calls connect), box HTTP ingress (reaching this box from
 // outside your NAT), and box<->box rendezvous/discovery. Picking libp2p or
 // WireGuard here changes ingress/rendezvous ONLY — Meet/Talk calls keep
-// using Ephor's ICE (public STUN + this box's own TURN, if configured)
+// using Pier's ICE (public STUN + this box's own TURN, if configured)
 // automatically; this panel never lets you accidentally break call audio
 // while trying to change how the box itself is reached.
 //
@@ -81,9 +81,9 @@ const PROVIDERS = [
   },
   {
     value: 'ephor',
-    label: 'Ephor relay',
+    label: 'Pier relay',
     blurb:
-      'Use an Ephor relay (github.com/vul-os/ephor) instead of the built-in one. A supported alternative, not a dependency — it speaks the same rendezvous contract, so switching is a config change.',
+      'Use a Pier relay (github.com/vul-os/pier) instead of the built-in one. A supported alternative, not a dependency — it speaks the same rendezvous contract, so switching is a config change.',
   },
   { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on the built-in provider.' },
   { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) is unaffected.' },
@@ -222,7 +222,7 @@ export default function RelayPanel() {
     <Section
       icon="relay"
       title="Relay & Reachability"
-      desc="The built-in Vulos relay is the default reachability path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP. Ephor is a supported alternative relay."
+      desc="The built-in Vulos relay is the default reachability path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP. Pier is a supported alternative relay."
       actions={config && <Pill tone="accent">{activeMeta?.label?.replace(/ \(default\)/, '') || config.provider}</Pill>}
     >
       {loadError && <Banner tone="info">{loadError}</Banner>}

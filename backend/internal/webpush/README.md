@@ -1,4 +1,4 @@
-<!-- no-broker-dep:allow-file: README describes an Ephor node's optional wake-origin role as one
+<!-- no-broker-dep:allow-file: README describes a Pier node's optional wake-origin role as one
      example substrate-only Wake consumer -- illustrative prose, no
      dependency. -->
 
@@ -108,14 +108,14 @@ is intentional:
   itself is the one thing neither design ever exposes: both are sealed to the
   device's own keys end to end.
 - **Interop cost.** A node that only speaks the substrate's Wake role (e.g.
-  an Ephor node, expecting a fixed-shape opaque ping followed by an
+  a Pier node, expecting a fixed-shape opaque ping followed by an
   out-of-band fetch) cannot interoperate with this box's push sender as-is —
   it would receive a real-content payload instead of an opaque token.
 
 **Decision: keep the current behavior as the documented default (superset,
 not a conformance mode).** No content-free "wake-only" mode has been added —
 that would be a genuinely useful future addition if/when interop with
-substrate-only Wake consumers (e.g. an Ephor node's wake origin role)
+substrate-only Wake consumers (e.g. a Pier node's wake origin role)
 becomes a requirement, config-gated and off by default so existing push
 behavior for every current box is never silently changed. Until then, this
 divergence from `substrate/ROLES.md` §8 is intentional and accepted, not an

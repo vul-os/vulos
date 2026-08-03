@@ -1,9 +1,9 @@
-// no-broker-dep:allow-file: file header names 'the Ephor fabric' only as the illustrative HTTPS
+// no-broker-dep:allow-file: file header names 'the Pier fabric' only as the illustrative HTTPS
 // contract this optional, disabled-by-default GPU-host registration
 // speaks -- RelayBaseURL has no default (see config.go: 'Required: there
 // is no default').
 
-// fabric.go — host registration with the Ephor fabric (HTTPS contract).
+// fabric.go — host registration with the Pier fabric (HTTPS contract).
 //
 // The VULOS-STREAM/1 sub-protocol is a peering-envelope protocol used between
 // two boxes once a session is in flight, carried over the host's peering

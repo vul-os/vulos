@@ -1,5 +1,5 @@
 // no-broker-dep:allow-file: package doc + comments are the canonical description of the
-// Vulos/Ephor/TURN/libp2p/wireguard/none provider seam; DefaultConfig()
+// Vulos/Pier/TURN/libp2p/wireguard/none provider seam; DefaultConfig()
 // returns Provider: vulos, and a comment explicitly notes the string
 // 'ephor' only survives as a stale on-disk value from before the
 // provider rename. THIS FILE IS THE PROOF the default is vulos, not
@@ -7,7 +7,7 @@
 
 // Package relayconfig is the SINGLE source of truth for the box's
 // relay/reachability + TURN "provider" — the concrete answer to "you use
-// Vulos's own relay, an Ephor relay, or bring your own".
+// Vulos's own relay, a Pier relay, or bring your own".
 //
 // # Why this exists
 //
@@ -125,8 +125,8 @@ const (
 	// exactly as it did before — it just logs a one-line "unknown relay
 	// provider" warning on Init.
 	ProviderVulos Provider = "vulos"
-	// ProviderEphor points reachability at an Ephor relay
-	// (github.com/vul-os/ephor) instead of Vulos's own. Ephor is a fully
+	// ProviderEphor points reachability at a Pier relay
+	// (github.com/vul-os/pier) instead of Vulos's own. Pier is a fully
 	// supported ALTERNATIVE, not a dependency: it speaks the same rendezvous
 	// contract, so this is a genuine swap rather than a downgrade. Facet A
 	// (ICE) resolves identically either way — STUN/TURN is not something a

@@ -19,7 +19,7 @@ built this way*, see [REACH.md](REACH.md).
 3. [Where the costs arise](#where-the-costs-arise)
 4. [A worked example](#a-worked-example)
 5. [The honest third-party caveat](#the-honest-third-party-caveat)
-6. [Ephor — the supported alternative](#ephor--the-supported-alternative)
+6. [Pier — the supported alternative](#ephor--the-supported-alternative)
 7. [See also](#see-also)
 
 ---
@@ -222,18 +222,18 @@ CGNAT'd residential line cannot give you, and the whole reason a relay exists.
 
 ---
 
-## Ephor — the supported alternative
+## Pier — the supported alternative
 
-[Ephor](https://github.com/vul-os/ephor) is a **supported alternative, not the
+[Pier](https://github.com/vul-os/pier) is a **supported alternative, not the
 default.** It is a separate project that speaks the same rendezvous contract — the
-protocol is byte-identical and pinned by a test, so you can mix Vulos and Ephor
-rendezvous nodes in one list. Prefer it when you *already* run Ephor for its other
+protocol is byte-identical and pinned by a test, so you can mix Vulos and Pier
+rendezvous nodes in one list. Prefer it when you *already* run Pier for its other
 coordinator kinds, or as a deliberately different operator for your second relay.
 
 For a first, plain reachability relay, the built-in `vulos relay serve` is the
 recommended path: it is the binary you already run, it needs no second project to
 track, and it gives you all three reachability facets (media ICE, HTTP ingress, and
-rendezvous) from one process. Reach for Ephor as the longer-term or
+rendezvous) from one process. Reach for Pier as the longer-term or
 already-invested-in option, not the starting point.
 
 ---

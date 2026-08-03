@@ -1,4 +1,4 @@
-// no-broker-dep:allow-file: test comment states a constant is a wire contract shared with Ephor,
+// no-broker-dep:allow-file: test comment states a constant is a wire contract shared with Pier,
 // asserted so it can never silently drift -- a compatibility pin, not a
 // dependency.
 
@@ -162,7 +162,7 @@ func TestRealFabricClientFindsItsPeer(t *testing.T) {
 }
 
 // TestCanonicalMessagePinned locks the signing preimage to a fixed vector.
-// This is a WIRE CONTRACT shared with the box client and with Ephor: changing
+// This is a WIRE CONTRACT shared with the box client and with Pier: changing
 // it silently would make every existing deployment fail to verify, with a
 // symptom ("signature does not verify") that gives no hint of the cause.
 func TestCanonicalMessagePinned(t *testing.T) {
@@ -191,7 +191,7 @@ func TestCanonicalMessagePinned(t *testing.T) {
 func TestDomainTagMatchesClient(t *testing.T) {
 	// Value from backend/internal/fabric/rendezvous.go's domainRdvAnnounce.
 	if DomainAnnounce != "vulos-rdv/announce/1" {
-		t.Fatalf("DomainAnnounce = %q — this is a wire contract with the box client and Ephor", DomainAnnounce)
+		t.Fatalf("DomainAnnounce = %q — this is a wire contract with the box client and Pier", DomainAnnounce)
 	}
 }
 
