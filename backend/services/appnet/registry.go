@@ -509,7 +509,7 @@ func LoadUnverifiedRegistry(path string) (*Registry, error) {
 
 	log.Printf("[registry] *** UNVERIFIED QUARANTINE REGISTRY LOADED ON PURPOSE: %s ***", path)
 	log.Printf("[registry] *** %d entry/entries, NONE signed, NONE trusted: %s", len(ids), strings.Join(ids, ", "))
-	log.Printf("[registry] *** any install of these WILL be refused (REGISTRY-SIGN-01). "+
+	log.Printf("[registry] *** any install of these WILL be refused (REGISTRY-SIGN-01). " +
 		"Promote via real-hardware validation + `make sign-registry` to make them real.")
 	return &r, nil
 }

@@ -532,11 +532,6 @@ func mountDataPartition() {
 	}
 	device := strings.TrimSpace(string(out))
 
-	// Determine mount point: use the running user's home directory.
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "/root"
-	}
 	target := datadir.Root()
 
 	if err := os.MkdirAll(target, 0755); err != nil {

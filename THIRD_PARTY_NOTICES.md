@@ -22,7 +22,7 @@ covered by the written offer in `WRITTEN-OFFER.md` (shipped in the image at
 
 | Licence | Components |
 |---|---|
-| MIT | 198 |
+| MIT | 200 |
 | BSD-3-Clause | 32 |
 | Apache-2.0 | 26 |
 | MPL-2.0 | 13 |
@@ -31,7 +31,7 @@ covered by the written offer in `WRITTEN-OFFER.md` (shipped in the image at
 | see text | 2 |
 | 0BSD | 1 |
 
-Go modules: 128 · npm packages: 88 · vendored app libraries: 68
+Go modules: 128 · npm packages: 90 · vendored app libraries: 68
 
 ---
 
@@ -9384,6 +9384,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Development-only dependencies are excluded: they are not part of any shipped
 artifact. Everything below is bundled by Vite into the JavaScript we ship.
 
+### @emnapi/core 1.11.3
+
+- Licence: MIT
+
+> This package ships no licence file. Declared licence: MIT.
+
 ### @emnapi/core 1.11.1
 
 - Licence: MIT
@@ -9403,6 +9409,12 @@ artifact. Everything below is bundled by Vite into the JavaScript we ship.
 > This package ships no licence file. Declared licence: MIT.
 
 ### @emnapi/runtime 1.8.1
+
+- Licence: MIT
+
+> This package ships no licence file. Declared licence: MIT.
+
+### @emnapi/wasi-threads 1.2.3
 
 - Licence: MIT
 
