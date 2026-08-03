@@ -330,22 +330,26 @@ func TestAcceptance_FreshBoxRefusesUncertifiedRootSwap(t *testing.T) {
 	assertNothingInstalled(t, appsDir)
 }
 
-// TestAcceptance_ShippedDevAnchorIsRefusedInProd — the anchor this repo ships is
-// the DEV anchor, whose private key is derived from a published seed. A box in
-// prod must refuse it outright rather than trust a key anyone can forge with.
-func TestAcceptance_ShippedDevAnchorIsRefusedInProd(t *testing.T) {
+// TestAcceptance_ShippedAnchorIsProductionAndAcceptedInProd — the anchor this repo
+// ships is the PRODUCTION (main) trust anchor, not a dev key: a box in prod accepts
+// it. There is no dev anchor to fall back to, so if a dev key is ever committed as
+// the shipped anchor again, TrustedKey() refuses it in prod and this test fails —
+// which is exactly the guard we want. A dev-key-signed *entry* is still refused in
+// prod regardless, as defense in depth.
+func TestAcceptance_ShippedAnchorIsProductionAndAcceptedInProd(t *testing.T) {
 	anchor, cert := shippedTrust(t)
 	stageBox(t, "prod", anchor, &cert)
 
-	_, err := TrustedKey()
-	if err == nil {
-		t.Fatal("the DEV trust anchor was ACCEPTED in prod — anyone could forge registry entries")
+	key, err := TrustedKey()
+	if err != nil {
+		t.Fatalf("prod box REJECTED the shipped anchor — the repo must ship a PRODUCTION anchor, not a dev key (there is no dev anchor): %v", err)
 	}
-	if !strings.Contains(err.Error(), "DEVELOPMENT") {
-		t.Errorf("expected a dev-key refusal, got: %v", err)
+	if key == nil {
+		t.Fatal("TrustedKey returned a nil key with no error — verification would be skipped")
 	}
 
-	// And the refusal must actually block an install, not just a helper call.
+	// Defense in depth: even with a production anchor shipped, an entry signed by a
+	// dev key must still be refused in prod — it must not verify or install.
 	_, releasePriv := signing.DeriveDevKey(signing.DevReleaseSeed)
 	reg := hermeticApp(t, "acceptapp", releasePriv)
 	appsDir := t.TempDir()

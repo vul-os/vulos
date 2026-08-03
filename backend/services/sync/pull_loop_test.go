@@ -73,6 +73,7 @@ func testSyncer(t *testing.T, client S3Client, pullEvery time.Duration) (*Syncer
 	root := t.TempDir()
 	cfg := Config{
 		NodeID:            "node-local",
+		VulosRoot:         root, // isolate to the temp dir — without this, absPath()
 		DataDir:           filepath.Join(root, "data"),
 		BrowserProfileDir: filepath.Join(root, "profiles"),
 		IgnoreDir:         filepath.Join(root, "apps", "bin"),
