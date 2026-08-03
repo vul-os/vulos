@@ -28,7 +28,7 @@ REGISTRY_FEED := registry-feed.json
 REGISTRY_UNVERIFIED := registry-unverified.json
 
 .PHONY: build test-local test-dev test-all coverage help \
-        dev-keys sign-registry verify-registry verify-registry-prod \
+        dev-keys ceremony sign-registry verify-registry verify-registry-prod \
         publish-feed verify-feed smoke dev
 
 ## build: compile backend and build frontend assets.
@@ -71,6 +71,16 @@ smoke:
 dev-keys:
 	$(SCRIPTS)/signing/dev-keys.sh
 
+## ceremony: run the PRODUCTION signing ceremony (docs/KEY-CEREMONY.md) in one
+## command. Generates the root + release keys, signs the cert + registry, installs
+## the public trust material into keys/, and collects everything you must keep
+## into a gitignored vault in the sibling vulos-cloud repo. Override the location
+## with VAULT=/path (e.g. encrypted removable media):
+##   make ceremony                      # vault → ../vulos-cloud/signing-vault
+##   make ceremony VAULT=/Volumes/VULOS-VAULT
+ceremony:
+	$(SCRIPTS)/signing/ceremony.sh $(if $(VAULT),--vault "$(VAULT)")
+
 ## sign-registry: sign every registry.json entry with the RELEASE key, then verify.
 ## Defaults to the dev release key. For a real release, run the ceremony first and
 ## point RELEASE_PRIV at the key on your offline signing machine:
@@ -86,7 +96,7 @@ sign-registry:
 	  fi; \
 	fi
 	cd $(BACKEND) && go run ./cmd/sign sign-registry \
-	  -release-priv ../$(RELEASE_PRIV) -registry ../$(REGISTRY)
+	  -release-priv $(abspath $(RELEASE_PRIV)) -registry ../$(REGISTRY)
 	@$(MAKE) --no-print-directory verify-registry
 
 ## verify-registry: verify every registry.json entry against the shipped anchor.

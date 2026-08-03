@@ -43,7 +43,7 @@
           "auto_start": false
         }
       },
-      "signature": "hjQENiI+UH45KLJ3u+iRjqvHzL/Oz1Et7BGHhYIqXy2tTRuTCHSZGyyp03Buc8nWIKVou1Uk4mmVJ9sln14oCw=="
+      "signature": "RERtiwKWieK/mE1WFiPq7VeHP9ZK9sQBH5/ecXT6hNPqtsTqMYEyvox3CgqS3w5ojZ9R+/jftDsxJTZ4M8ScAA=="
     },
     "audacity": {
       "name": "Audacity",
@@ -85,7 +85,7 @@
           "auto_start": false
         }
       },
-      "signature": "8gHDC5WzeYuGlQ3bbMdXm/xGYoOz9HOtbVuusDLnIemn9C4DO+D4EXmRhWWy8+mRqMGaueGCaUgKyjpWdOnCAg=="
+      "signature": "vstvJ4wCkaPxAQZ/0KZl9l9paZe4YMah5XEzx2f3KUSG6+QAoL6UFj8JBVecUi8u9sWPNIwizqfEgqEK8V3FAQ=="
     },
     "audiomass": {
       "arch": null,
@@ -108,7 +108,7 @@
       },
       "license": "MIT",
       "name": "AudioMass",
-      "signature": "n6FVWP5RBomEVCpGesNtALqXbVL2Bgxz/jgYYSiLhff9z0s7ek3JT7QIn8HkF9WhSb13AG5aqvhZYwX8mFKqAA==",
+      "signature": "fln+YRynk2HaX7nXT0lPd1EKisGY2LRdjY+9vWXIQhzZgKcgkT25wWfBGV5kb6F29IsdiNfCTZrCVeM+LtawDA==",
       "type": "web",
       "versions": {
         "latest": {
@@ -152,7 +152,7 @@
       },
       "license": "GPL-3.0",
       "name": "Blender",
-      "signature": "LoW2iofGnVw8XMRqYZ42XKVZpOy91ubymHBALLNQF9s3I/om+VbZxfNReVhnPLDKHH3hsBahryBSnKfU3vsxBA==",
+      "signature": "CMe/fkRmAAi/Mok4H7A7VXSYOEbB7E0xDjpt0L0JlfaSTtJmFXz1oNwU/rNeMLBI2WDAMSYT3ByUxgpCiF6lDw==",
       "type": "desktop",
       "versions": {
         "4": {
@@ -215,7 +215,7 @@
           "auto_start": false
         }
       },
-      "signature": "kM8DerKHUvZATpFUr2fhD6j4g2rh/IgJ8zF0LVZJc3Lkzq0ioMQMbN8TPDFIO897QL8SkUaxhi/wsR782wB0BQ=="
+      "signature": "JxNsfyEEE5KVSY3Ax/wZ9mC85w8Xm1/qayTEMEOmJwJzbPxwgGUVEtq6e6gTiUC5OEpYwbaGfa1w8r6OJYEmDw=="
     },
     "cockpit": {
       "name": "Cockpit",
@@ -258,7 +258,7 @@
           "auto_start": false
         }
       },
-      "signature": "HNoaCXFl5P7c/hMM1Za8ytuvNTMMj3r/5RHjfZz+TA3F/McXCMcRbZFOuexWhOcsLyxQ7vUvudKaHioFn365Aw=="
+      "signature": "QJV3ohIcsrpqS01W101T2h2tZgqkzwk1T2xUm2sWKcEtZk5C22rMVcJ0UtpeS2bAd/pQ0yNOUR7w+cNe7rzuAw=="
     },
     "code-server": {
       "arch": null,
@@ -283,7 +283,7 @@
       },
       "license": "MIT",
       "name": "code-server",
-      "signature": "qA2/+fIsD9OpNrJfZ1l40dag1rn+y16dPH17X+sUoWqqkwIwJhF4R4dVMo4iWJUpBXG86gsbx99ctzy83eDTBg==",
+      "signature": "0jEcbYd71UGfD9SI6PGy687EvRDYvkjqW03C8j3couggeTQRa1Lw/VWhdi7hMFDvFT7n5y4eWno4Z4rNFw4hCA==",
       "type": "web",
       "versions": {
         "4.100.2": {
@@ -333,7 +333,7 @@
       ],
       "license": "Apache-2.0",
       "name": "Conduit",
-      "signature": "t4BuHpcUOPwZs5Y7PXlfZ+Uj8QLOY2gWkZ6GViPN8Du7W+aNKbS8ZWpFPpVO3cd9TQixc7MJsA0Ya7QaJspcDg==",
+      "signature": "ZOmzrMu0wKlNCfs0z9pQpt0A66GFdbBfsICzjAlD6HzCo8AEZ6NarX8KtqsQk7L5NlVzFUb0srRRHB97cVVwBg==",
       "type": "service",
       "versions": {
         "0.5.9": {
@@ -386,7 +386,7 @@
       },
       "license": "GPL-3.0",
       "name": "Darktable",
-      "signature": "PZeAecllQPhwni8Ng8jIzYRFCQQx1wlM55W/QpiHBTM2rYXNYH6kqGddqufsTVaAjaOxA23jSWF/YHqg/8l3Cw==",
+      "signature": "3bcNuqY0rD14zZ45x7xs4d+7aTivb0Wmn6a70HVN5z+XYbbFqbz4hBL08Cbnk/bYZRKfwk6RFuEC8ahfNaLhDA==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -433,7 +433,7 @@
       },
       "license": "Apache-2.0",
       "name": "diagrams.net",
-      "signature": "pdim2iaqD1CpnDkzSvVVI5h3useINoIJyA2PhqthrcmL8yyObL3mq06Z8zr5KtKWnYMpCOD1FPfanokvnXVZBQ==",
+      "signature": "wwj4goRxBLW40yO6egYKxG8EMHnbTxaLWhzmyLOr+s5y0jctA/LgAo4oCcqheQrpbrc2KZLkFsBw3R3m2wjqBw==",
       "type": "web",
       "versions": {
         "24.7.17": {
@@ -498,7 +498,7 @@
           "auto_start": false
         }
       },
-      "signature": "9esqdVpb/USX8aHsLdJywXzXGQNUKbRfL8n0VwRZ6uGnKmO9nbOSDFFWjvrF2rKTLqBQkGdPrOqd1Aor++vFAg=="
+      "signature": "e29AqdpTuGAfApAPsrrFfSunB9s95p0UKyxKdwaXhY/vpKWXan7ZRsjmzsZweDvb2DdKWpp3PR53jKkda3/bBw=="
     },
     "element": {
       "name": "Element",
@@ -543,7 +543,7 @@
           "auto_start": false
         }
       },
-      "signature": "hOC3uU788jS//vFbyP4f78M+RgOAl98LP6piD/NPG1GpnGya3m7/Bb2hQ3AsUwXw+Qm3FdD0aeH3q3mWQFstBQ=="
+      "signature": "E0r0Kv0Yau2mjUejPPFXTq17BBVoMWejCgTIqa2NzCFSdOSS8IWGS23LozULt7ELNUpszA7E0z5v1IZyAY+TAA=="
     },
     "element-call": {
       "_note": "Static frontend only \u2014 requires a LiveKit SFU (or compatible focus) and a Matrix homeserver that supports MSC3401 group calls; edit static/config.json post-install to point at them. This is the 'hosted-web experience the user configures' shape, same as Cinny needing a homeserver URL.",
@@ -565,7 +565,7 @@
       ],
       "license": "AGPL-3.0",
       "name": "Element Call",
-      "signature": "JuXEiQ2EqatZtGLZ8lZ2gXo7kndu+FU97bfrnX9FyHQn6DFSJuLemm8be3tFlywfcx1fWFjT8nSmreYGi5quBw==",
+      "signature": "Cdv9Y1187qXHzIhApPnRrbDOcewF1pwMBCqUIFofErMesCaYbx+qba+kcpCozgAPjmNL+rdlnD9U1EljANqEDw==",
       "type": "web",
       "versions": {
         "0.21.0": {
@@ -631,7 +631,7 @@
           "singleton": true
         }
       },
-      "signature": "DI9HWaxIcaK1vAlKxLx1Lqhnared/JB6wlRBANYExUa+oWI9hovmy2h1C/hWVt14Nsan0zmdtcKjLmYiviiODA=="
+      "signature": "dJBVmL8wHnrpYAa/o3kQNxp2zRVEFGU5WVkZC/kSM7kHtgzXLm8sVRqfJ0dy+OMnYtv/8Hse0ZU+gLa/EJSVAw=="
     },
     "filezilla": {
       "name": "FileZilla",
@@ -673,7 +673,7 @@
           "auto_start": false
         }
       },
-      "signature": "JnHnAkOaw9osNp7BOieT1YxG3bCpq6HVVtoO3df/4rLnF5E8ciXkPd+txmDUnTzKBX4MBsldLlupbe0tpDD4AQ=="
+      "signature": "NsmWL3kyNMEhpd3QRgbirItfwAaaln2WMeMYvMC1zJmtkVcR+gX1sgA7v4XLx8dBD9RhBqK9G8cNcXG2YqZ7Ag=="
     },
     "firefox": {
       "name": "Firefox",
@@ -717,7 +717,7 @@
           "auto_start": false
         }
       },
-      "signature": "EM1RHz7GBY5UtRCrk5BzINYdSK4EWotKTpYFz/HzrN0L3saxeTDR4wv2Il4A/5TzewXguZswAHwRwgIeyZsXCw=="
+      "signature": "2Mkm2D6nl+f9f9RpQTccCAu3QI2+WhDpylPnkSBvoNMQ6d/2H+FAiDTQGaIFlLCyptPtxkWOr1RJs69+NZeQBQ=="
     },
     "geany": {
       "name": "Geany",
@@ -759,7 +759,7 @@
           "auto_start": false
         }
       },
-      "signature": "Ej9rAiHxj2SC+0u3oaMg7e6rhO6g4ZHiB9ioinHOlH1AW1D/S0wg/a51/KZMy2adQLOJtNOTyLpoeBJgKszsAA=="
+      "signature": "p2NZP5sFvuFRrU/4P08gCUNXxN1N74vSwSFFdQWUWi3xmZZI6cU/goeo7ZinDrAwEk/P5k9zeW9ksiop51TkDg=="
     },
     "gimp": {
       "name": "GIMP",
@@ -801,7 +801,7 @@
           "auto_start": false
         }
       },
-      "signature": "65tr+nTE4RfzIRTH0Vm/x2n+TW82cGswfv9HC7xCp8INHbLWzO+kG6dxPZBOhLf0Mz5zWTXu3lyPjjzXJiIwDw=="
+      "signature": "ySIsCQyM2f3vtOiCfBwXUS2QJvMh58PlTxuCeTXzVTuc940yqTA+n0Vqhi1DKdLOwC7YUH86tYYoD6jpvoJwDw=="
     },
     "gitea": {
       "name": "Gitea",
@@ -843,7 +843,7 @@
           "auto_start": false
         }
       },
-      "signature": "nb3PS76hBOD7ruXOsERcFE4AvENT10hIUlEOcm6MZR9c7KzUJqoE3uDWCogESbF/yeGRFp9eO7aCnHYlCGzPBw=="
+      "signature": "Es4PX+/3NwG2TE7fseuEugpOMkmHRRC4pVQEezVyPLMGdK+3bFjH2xZmi5UHtdsfI7iaKN7q/Z8mJfkg+yhsDg=="
     },
     "gnucash": {
       "name": "GnuCash",
@@ -887,7 +887,7 @@
           "auto_start": false
         }
       },
-      "signature": "Yedx7+gH28jDzxQPkl7imJGdeFd+hodXKyF1xjdOBUnvuhZPmI/KYdbtZbNvZiYVCplrJt4pA3SqGbxxiY7QBg=="
+      "signature": "TnLaoHMJVs5UJNAmNh9+GOINfabnFWf9zIZEqBXhS2Q7XJxpl97DVpWuXzdLg1Jyr5NTNWRE/Awl9NcWziL+Bg=="
     },
     "grafana": {
       "name": "Grafana",
@@ -928,7 +928,7 @@
           "auto_start": false
         }
       },
-      "signature": "v333+NkVwiV890dElvQ7171sfbDNWFKiMc9Dqj7Zlb8igrAbevPyQ6b1c06Dzn7sTHChUObKEmgdG7mvnjspAg=="
+      "signature": "YRM2KHPuxyXfJXHUbGUfmDGm1ViMFksBJA71NhDQ0wxlk77xbT13dv8mSMZU89R2gY6ef6GL8VTTBpUGrE0BCw=="
     },
     "hoppscotch": {
       "name": "Hoppscotch",
@@ -972,7 +972,7 @@
           "singleton": true
         }
       },
-      "signature": "WRU4Q7dqPk84SJZV8XUHBJfSZHHCGd4cdglisMvcmAFdM1S4Oz91yzZ1OIzYddyywMdEvLVuetOx1cHOkrKzCQ=="
+      "signature": "42Dj9I91nOp4HFCL8GF3kai92aEdEkTVc2KcOdnXiSDDgumV53bQzOZYTVa1itwIBRWmHDvMZMACj7NkZiSNDw=="
     },
     "httpbin": {
       "name": "httpbin",
@@ -1011,7 +1011,7 @@
           "auto_start": false
         }
       },
-      "signature": "natLM5CbTEq03TP3vYLhtVl37NAx+W9IGzTYt2cJZ4N7VjpMzGVnrffGYPjzwQGbTpN+6lO2TlAJ3j+m/tk7DA=="
+      "signature": "RcAP3N1LEgowchjcVTCj7cOvqx70d6ZKrLBEeRkWcE2XVDG0jroe8fuA4F+xez75eB76c9tVoTFpT0IFIRGZBA=="
     },
     "immich": {
       "arch": null,
@@ -1035,7 +1035,7 @@
       },
       "license": "AGPL-3.0",
       "name": "Immich",
-      "signature": "PBk4ncXASIOHnAC8K+jpkqftJnyc8D1O0Tl2GkKv4iZ8sULE1eBzQWmuwT/EKEz6xG0iBw0EZ7t0Tm8DnnayCg==",
+      "signature": "EXdCIjkg6B7/wk8zNmw27NZ17jcwoowL/IznTHAPH52Xx+vckFkLVhN/HkYHZTRYqC0dewfr/pi002mlIm90Bw==",
       "type": "web",
       "versions": {
         "1.134.0": {
@@ -1100,7 +1100,7 @@
           "auto_start": false
         }
       },
-      "signature": "zkySMLm+VyRVHj9utMFMUp7ZSgI/ue5Kk44LFLX+vrSkrSAc65kDjETaPIfLc8G1ML8vFgPn2DySgDYBlkFNDg=="
+      "signature": "mt/o201dRM1YH7e9arEu/tG5RfLXPRvyC7ojVEDRcMDWMTvCJgDe7EuDl85iCStV0MEiBkBMTHCTjtL+X4OIDw=="
     },
     "jellyfin": {
       "arch": null,
@@ -1125,7 +1125,7 @@
       },
       "license": "GPL-2.0",
       "name": "Jellyfin",
-      "signature": "FLh+BPTajNxyz+PoN0Foz1SOmUDHT9pIWjl1QP8LesTDm0LpNiEkLND0YHuSKezjJBgS62hdmT4JyqiXL12FAQ==",
+      "signature": "u81o8FG0HLEoxO8g1WhTy1oYVIkyTdLbVRJFkpx43BmKOwJAbwVB/O/lqIlNSs7lNxnHTseHMaXiqVoZbnbMDw==",
       "type": "web",
       "versions": {
         "10": {
@@ -1192,7 +1192,7 @@
           "auto_start": false
         }
       },
-      "signature": "f/Hbq0Vv+NZnHwp1GlL/EYVqfPEww6w2X8nLAa3tAxRU8pQDB04Q9bOqNXY0IeARNdhsaAWgticQq2iCjOVXBg=="
+      "signature": "w4hpHvs05UvUClt2aW/wZfrMYNpz3HdgZKedR6MCfkzsu3y3KShuQLMNmFLVA64BZAC/e3buVRF6ZL2YsK1CAw=="
     },
     "jupyter": {
       "name": "Jupyter Lab",
@@ -1234,7 +1234,7 @@
           "auto_start": false
         }
       },
-      "signature": "kA1w38+gWug9cmmyq+oKdrHhU3RDePNAaq5sVkWOKA9++Gbfw+CInp3MfpaPI0L73DPrVp0YLTcopXfDcqOTDA=="
+      "signature": "16VPynMw6uAswKXNtOsWY/N/fU6riJ8LxrfIe8ZtkZ6BVaGxtd26VqICDP1R7tAF+7G9bSuKuCh4cktIEygqCQ=="
     },
     "kdenlive": {
       "arch": null,
@@ -1257,7 +1257,7 @@
       },
       "license": "GPL-3.0",
       "name": "Kdenlive",
-      "signature": "/gWHbmArWUuHFbiUAw9X5jfMzeN+nYkTJsg76X2EGkuk/Eb+7msZ3eCIefh5gHQCLxkm8VAK7PtrFJliwhD7BQ==",
+      "signature": "5ZUIclAdOG0YK6ZrhyWD6HqHdPSt0j41fTRNgJNzY2vpbJwydT0GiHRwRxCucc50lsnqXK8zwXyoFIEERcIkCw==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -1320,7 +1320,7 @@
           "auto_start": false
         }
       },
-      "signature": "G9R6RfTOVHlj8aZFhJywVBHz04CNGhxy5ThutXhbEZXx50oKEQ0vUk4ib+UyPskGkS8uP1ctNkfhsV0bN05zAg=="
+      "signature": "Z1HQEOYkac32CVm2PyRiZQ2+qLGPrqplPgP1JqM9AivbkbmVBerIoEOaFYYQZKIbjC4WEgwowd5SCDwNKimQBQ=="
     },
     "kerf": {
       "arch": null,
@@ -1346,7 +1346,7 @@
       },
       "license": "Apache-2.0",
       "name": "Kerf",
-      "signature": "9s0SvwPIoDx0GP96e2z6i1SJ1DN6IKDJ/qrmQKjP+6MAgvpx7PSL04ykPEVaIlshQS6MdOcMQilvnpM9erOMCw==",
+      "signature": "FA6z/OJiv1P3NpUhFNRD9j62hJWCTXPSZH0mVvtAmrGBoMKzyRYW5z8FcUmDLuYxGCQDJb1g7vUqIApnSBUICw==",
       "type": "web",
       "versions": {
         "latest": {
@@ -1411,7 +1411,7 @@
           "auto_start": false
         }
       },
-      "signature": "VToOU96H/BxMID8IUYTnx4FsQ/4Y8UqzWufsWYXknxgC65RFgWcsDHWmEXbdwDw8sClqZo15tHXSEtAwudGyBg=="
+      "signature": "U+G4ISMNw+jYHSnlj09BwwvT/KkszQkyjK159Mi+XVLQYdXohHQP60a38gBauuccDZ12rtDrhmqCmQN1OILDDg=="
     },
     "libreoffice": {
       "name": "LibreOffice",
@@ -1456,7 +1456,7 @@
           "auto_start": false
         }
       },
-      "signature": "Pjnyba1KpHtp9oJvjE+njLbRDusQvg8zWyHVGIqp/L3WI/K8MlIQXcOWp1MimseNYMiFGeAwKXw3I4STIOC7Aw=="
+      "signature": "9RxVnoDnG8x38jiazE21NO0fsGECOK9PcTZIHcK2YvjWz1jBExCRl9vaOhNtBHeYDx5lKF4msLwCUtEFKpUUAQ=="
     },
     "libretranslate": {
       "name": "LibreTranslate",
@@ -1497,7 +1497,7 @@
           "auto_start": false
         }
       },
-      "signature": "Qx5EL3FlL1KSPRkJ3w9xUwUegBdWP3GtQwoh/tSM0yYx8gMlT34NJ1T2BeI6aBr783STQGEJs4U7pP4YFqC0Aw=="
+      "signature": "izvArJDFh9kd2tSD8bhVW+S9FRCtUJMrpHJRftx781lx0NjgoJUE30qu1VOc/6VXqPZamECImJ/+srHB0cB2Cg=="
     },
     "lmms": {
       "name": "LMMS",
@@ -1542,7 +1542,7 @@
           "auto_start": false
         }
       },
-      "signature": "KwB3U1UhXHYJXtNjoPQU9iGKyI/4U4nZuUlByxoPlhglAi4IgOP/oOvj9TBpPZiqXjmSE72pyRlxipq3FebXCg=="
+      "signature": "HtADyb8bpCk7sRiWlwrcWZ6hgL6SRDXxcL5515+abYq3PIGkDBFk6PeNZiWUWO9Mx+Ewy0S6R77UcIaykDRICw=="
     },
     "lutris": {
       "arch": null,
@@ -1566,7 +1566,7 @@
       },
       "license": "GPL-3.0",
       "name": "Lutris",
-      "signature": "RJnoXKlPYQ/kV+P4aU3lV/iyb4W45KbjisU+NPTHe09zXmqPjGQWI5H3T1JaJVrjKe9NhypL6wds2HCrD6Y6Cg==",
+      "signature": "Sd5s5Pu1vEs5gDPKBgaHnfIACn87ic9+V6yHsVIBXa1PtbI2zNf4C59nGmIp+ytA5hnZiw8BiTfmM2WuOPblDg==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -1637,7 +1637,7 @@
           "singleton": true
         }
       },
-      "signature": "CpYQHxKTadQskhyHkrvGBsmW7oTopiokE1VVT4HDfgc5y1VGEMkZvgJKPDnWisOakrLC0B9cc1huOgZVKRyzDA=="
+      "signature": "g0bHVeI00x9DW5HMapx71WuCWfCFF49u2hblx9yHt1WIYl41Smqx9zKxlp8k6oCN8YvsyVX4d1uLZiD4KdxOBw=="
     },
     "minio": {
       "name": "MinIO",
@@ -1681,7 +1681,7 @@
           "singleton": true
         }
       },
-      "signature": "5Ve1ZhuZcqSDl+qLKGC0PTxI82+MwL1s/Z0itk6CWWX/d9Qi7IGpCX5CqEleTPLQ2TBGWBov/GPBh4vOKhqpBw=="
+      "signature": "GOqyc1uzyMbCgb9d5v0qPriSgFxynSTVCmPimXfeEi+ijPUxCRa31vueZJu4QsHx40rAEmja8joo+GaNhBVdCA=="
     },
     "minipaint": {
       "arch": null,
@@ -1705,7 +1705,7 @@
       },
       "license": "MIT",
       "name": "miniPaint",
-      "signature": "zdebIC4FhGb2N9sNRoRrs3/67sTp3O4C5kw+guUlS2AQ0PjHN43O42Arb3xZMLoHS9hak/N0Wjm/hx2VAn2KDQ==",
+      "signature": "h5StPINtO+pL+GqwoVhC+Rra44tcXLhVBLx7AWXDDHpxwWFXokDgr3EyH89adNy7y0tHwWOnpcbxnGBiTvMBBw==",
       "type": "web",
       "versions": {
         "4.10.0": {
@@ -1767,7 +1767,7 @@
           "auto_start": false
         }
       },
-      "signature": "IbwWnhl9jALZBh8Ghq1w1Wl3C46Z3poFcZY7oZ3Hs4yyFZ4SZuEts1i/hiGZ2YygReZuPOGWqIYD4tGmaPsABw=="
+      "signature": "GBjNxeJDxdwzS1LHtlW+UR/Iet9suxChoxBiFJYJjqDohh/ufI75DO4i8GljSaLTERoe+HC3NJNOlDvcZCIEAA=="
     },
     "nginx": {
       "name": "Nginx",
@@ -1808,7 +1808,7 @@
           "auto_start": false
         }
       },
-      "signature": "RjBRC2sO7yXjyvCKz1agRAAWSe5CJ7+7j0RVuiqO7lggGnikf120NLJIwwLNLetQUGaNRb+YGXKFbslJ5zF1Cw=="
+      "signature": "H6Frg0i0Prv/z9krlKqaWQKXzczeK9Nd2ollJyv0gm3kkgfbgeQUwRO4T9fRMt8WKkzFw3gkaWR4IeMaq8OxCw=="
     },
     "obs-studio": {
       "arch": [
@@ -1834,7 +1834,7 @@
       },
       "license": "GPL-2.0",
       "name": "OBS Studio",
-      "signature": "3YRwX5Ylmb5BcCyyAC9ihICUL30ivf649CySGZ3J2ljsgGNrfqs4m4BkdW/DiMH5vdeU+BAxNnZSKEQMCZXqBg==",
+      "signature": "bnIGjU9vqNTh3T8mxfYt9ukdEPapqKRTfT/9gHR4TfCMURgOwgT15CJJ9dVBOmUdL9ttIJW3c1Rx6wd5im59Bw==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -1902,7 +1902,7 @@
           "auto_start": false
         }
       },
-      "signature": "O1jtVbg/2eL8HvQI1Q0gINsvZSrYvVKm3cEYkK9H5DS1XreCfA2m0grt94ivrq6kh1SsUHy9UkEfIvmzYCH9BQ=="
+      "signature": "08eYpFPxEGV1szTIbIptybSqD4gIxEuurL+B3JwxgiLN+2iiG+lYKTtyGBgr3ffvGyWyKV437fEnCaIBJLz4Ag=="
     },
     "qbittorrent": {
       "name": "qBittorrent",
@@ -1943,7 +1943,7 @@
           "auto_start": false
         }
       },
-      "signature": "PB96wkhqSl6Dfefg23Z/h7Xsi75upFv36JVXY51NqYBzV2AvVyqyX6q+MTJOv9GU05fpuZiE9noRubzVVieACQ=="
+      "signature": "E/mj3/beQ7I5iDg28APgWfzT3YxDC0FuJRDqvtCZxlLOA7yLojb/ALXpuwteei0DfGK/MONjQ94NXx9exBOmDg=="
     },
     "qgis": {
       "name": "QGIS",
@@ -1988,7 +1988,7 @@
           "auto_start": false
         }
       },
-      "signature": "GXOdlpzTZOfnckPkTSwBmNhjeFjptbimvWcWE8MEiU3O2KeG+EGmn7fwPiDJG7liM/KgVbVdoIonTGnnwSk0Aw=="
+      "signature": "lK/tS7IHcoK/7eVei1qT5PCsrvN2ZTMgnqtjhcq6wi2El7kRxqWaMLQyhl9IvVV9YGg64RDmj77bba6VNTH7Ag=="
     },
     "shotcut": {
       "arch": [
@@ -2014,7 +2014,7 @@
       },
       "license": "GPL-3.0",
       "name": "Shotcut",
-      "signature": "/slBKaBaWeNRY0ZeJ+e2E8JSYupNl9UPVzn4ptrOX1gfIZ+N1mm+UDWuSMQwZpxpfMxA3/XQqdBNBHGIjHvqDg==",
+      "signature": "KLbyQb+6dE05KHupuyLf/LQVJZc/2bGZMbW3L+KZ/ggrdZouZ14V34fYC7xZ+UTWgfJVm5zWcqxIPI9iR1eHAw==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -2060,7 +2060,7 @@
       },
       "license": "proprietary",
       "name": "Steam",
-      "signature": "DxvecOU94Lf3uC4NuVN0rlsBL6qpENJGH8rKBYLuf2bJujY3f/k1TIZq5M+/7yzyZwei9+qNonNZ0qNhYX8tAw==",
+      "signature": "tV4WLKspeqklbaIk6i2SA1VMpQOZ0hOw6gzNjBxrJqmuqeh+AJEXowNGJvu5Jk7TJKSw0YQ14B76bAll2l/DBQ==",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -2112,7 +2112,7 @@
       },
       "license": "MIT",
       "name": "SVG-Edit",
-      "signature": "iN4xrMs0Dm3EnUGq6bay+z5qkUP+vXY9RN8rwZx7bll0PJY3l3vPwjnPpR/khELPB/GC4H7JUEPKBnL3ObAxBQ==",
+      "signature": "jxFx9UUz8JovngIJyfZNr1M9WE48KEtu7BBrI2z0VAOxfd0XE9Qn0S8vyV71wFqNITN60GWWcQU5Kv7iTr0FDg==",
       "type": "web",
       "versions": {
         "7.3.0": {
@@ -2178,7 +2178,7 @@
           "auto_start": false
         }
       },
-      "signature": "MXVmUmow72mj1NaDXv5AY0Uw3SI1/hqyW5nWgZR5H4joigKN9qOGzWPkoFJfCCxZAHBi3tkMpsRy8RUYNmO1DA=="
+      "signature": "+RJh+JNUNbAXZZovfXcbOhZyHF7u1aYBbyyY1bVaqQOJsQIOjPWbKImDostJfEUzZEygWdHluifAtyYKG9AgCg=="
     },
     "transmission": {
       "name": "Transmission",
@@ -2220,7 +2220,7 @@
           "auto_start": false
         }
       },
-      "signature": "zZmgMJLcFU9q5dI/k645h+3GN5oydeYluWF/V3YpdnjerVhR9W6FeZWGWWChmaUavKht2rrI+z7Sd36McNjoBA=="
+      "signature": "RHb7Nlp6gMlrJnFPpJoOp2Igq0fv/KGbYW9WSLLztkgFFXd4GndGUGP4akzDVDtl6dQ8VdxqhNl8cJHXjSPEBw=="
     },
     "uptime-kuma": {
       "name": "Uptime Kuma",
@@ -2264,7 +2264,7 @@
           "singleton": true
         }
       },
-      "signature": "c1DvlUcqv78+ZXB9HqOwrjP6l40jwK7RRSNwBfyOUrzH8agJ+BPZKuQIRTu4xukplZbpqkFRs2QdosDBD766DQ=="
+      "signature": "gnvvIKrofDo7LId9g4T6sUOawGvESfNAr1PqB2gsXusinuIK53Yby6RFPfc5OSkqih/0uso0vkA34God95BoCg=="
     },
     "vaultwarden": {
       "name": "Vaultwarden",
@@ -2314,7 +2314,7 @@
           "singleton": true
         }
       },
-      "signature": "o227RvqWqcSI2FA69a4RGtmRHRk+GXUTBVr088OmQGV6k5W8VXIUjO9G9hOqx0mvPbWIZJMfScz9ah6w+KQHDQ=="
+      "signature": "iATST0SgEo0OVigwinLzddb5r6O5ztwTuco5Z554NfQBdWNaRQICCvI52bJMAuD88CFs7Dd83qQ/jCDU07QVDw=="
     },
     "vlc": {
       "name": "VLC",
@@ -2356,7 +2356,7 @@
           "auto_start": false
         }
       },
-      "signature": "SCO84NADBLdr2AJCYe5Uh/zMCOVLE+DJ/ROIVkxSNoq90QQWj9tS0bkTzA26VUrVv15NFENoQa0BskrP79CiCA=="
+      "signature": "zO+bS9Da3WrrcmeHX8Z+S7vdqpAVHgUr+pkD+6oaNsUsOOktV5O3O+tNisfMDI8pzr8Z7cmQA10rybJnrwvAAw=="
     },
     "wede": {
       "name": "Wede",
@@ -2400,7 +2400,7 @@
           "singleton": true
         }
       },
-      "signature": "uT82l5JYV6rx63+jmOMV2011yZUBlrUgFzXJwn/eZk2kz6mR34efMjv/pL/DpDq5sFc9nYHTuggeaYrYQfDLDg=="
+      "signature": "IiAIao2RJRFxoLAou24tZSJ/kvpp6nbGd9z8k6wZhg16oJOwovVjiiCea/ftObMJzEw/ma4iBHiO9+5QM2PeAw=="
     },
     "wine": {
       "arch": null,
@@ -2423,7 +2423,7 @@
       },
       "license": "LGPL-2.1",
       "name": "Wine",
-      "signature": "hbZQ7SHqUwW89SBfNvAAlKfGEsDdny8RX7p2aJY53Z70BMtQcKqeKFBOVkmmmGJhnMMtu2dyvj4gTSITJJKlAg==",
+      "signature": "ZHj9HD564qwCE+zLa7jMB+caPmBeJEG/Ds+GYk3s3yzW747P8TmZAkatQrX5nkolhBUucDvy5mvZiHNWfx0/Dw==",
       "type": "desktop",
       "versions": {
         "latest": {

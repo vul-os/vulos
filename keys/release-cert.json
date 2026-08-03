@@ -1,7 +1,7 @@
 {
-  "release_pubkey": "ba8b1e8be03cb3cdc23acbb40812239827f81f83e9c576934096abeeb51a7f01",
-  "key_id": "dev-release-DO-NOT-TRUST",
-  "not_after": "2099-01-01T00:00:00Z",
-  "min_epoch": 0,
-  "root_sig": "sbqL94E5aMZOw1F+AwVDByFesyvJA0dfzNa2Yx0VccUEJWeaXcoSowu0DmJb6qX21DeakjjCzxXXxIRBSAUDCg=="
+  "release_pubkey": "dbc913bf7b1e806bf2a1c9a146bde683ea514e0c8845639907f2d75781f7a71c",
+  "key_id": "release-2026-08",
+  "not_after": "2027-08-03T00:00:00Z",
+  "min_epoch": 1,
+  "root_sig": "KAnMCaXf572GjjLyTocDd8EirYQ84DssLZ7fDaaPaUAtwLgS6GfqMNCb65E5D7oI49wsxO1r3KpmOhyNASyRCQ=="
 }
