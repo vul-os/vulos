@@ -102,7 +102,7 @@ func (s *SQLStore) ListByAccount(ctx context.Context, accountID string) ([]Reque
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, account_id, kind, status, note, created_at
 FROM compliance_requests WHERE account_id = ?
-ORDER BY created_at DESC, id DESC`, accountID)
+ORDER BY created_at DESC, rowid DESC`, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("compliance: list requests: %w", err)
 	}
