@@ -140,9 +140,15 @@ jobs:
           build_one() {
             arch="$1"; flag="$2"; label="$3"
             echo "::group::Building ${label} live image (${arch})"
+            # -buildvcs=false + safe.directory: the repo is bind-mounted into the
+            # container as a different uid than its root, so `go build`'s VCS
+            # stamping otherwise dies with "error obtaining VCS status: exit
+            # status 128" (git "dubious ownership"). The version comes from the
+            # tag/VERSION via ldflags, not VCS, so skipping the stamp is fine.
             docker run --rm --privileged --platform "linux/${arch}" \
+              -e GOFLAGS=-buildvcs=false \
               -v "$PWD":/src -w /src vulos-bm-builder \
-              bash -c "./build.sh ${flag} --live /src/out-${arch}"
+              bash -c "git config --global --add safe.directory '*' && ./build.sh ${flag} --live /src/out-${arch}"
             sudo chown -R "$(id -un)" "out-${arch}"
             gzip -c "out-${arch}/vulos-live-${arch}.img" > "vulos-${VERSION}-${label}.img.gz"
             tb="$(ls out-${arch}/vulos-${arch}-*.tar.gz 2>/dev/null | head -1 || true)"
