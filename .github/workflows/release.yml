@@ -136,10 +136,14 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.VERSION }}"
-          docker build -q -t vulos-bm-builder -f scripts/baremetal-builder.Dockerfile scripts
           build_one() {
             arch="$1"; flag="$2"; label="$3"
             echo "::group::Building ${label} live image (${arch})"
+            # Build the builder image FOR THIS ARCH (a plain `docker build` only
+            # produces the runner's native arch, so `docker run --platform
+            # linux/arm64` then fails with "Unable to find image").
+            docker build --platform "linux/${arch}" -q -t "vulos-bm-builder-${arch}" \
+              -f scripts/baremetal-builder.Dockerfile scripts
             # -buildvcs=false + safe.directory: the repo is bind-mounted into the
             # container as a different uid than its root, so `go build`'s VCS
             # stamping otherwise dies with "error obtaining VCS status: exit
@@ -147,7 +151,7 @@ jobs:
             # tag/VERSION via ldflags, not VCS, so skipping the stamp is fine.
             docker run --rm --privileged --platform "linux/${arch}" \
               -e GOFLAGS=-buildvcs=false \
-              -v "$PWD":/src -w /src vulos-bm-builder \
+              -v "$PWD":/src -w /src "vulos-bm-builder-${arch}" \
               bash -c "git config --global --add safe.directory '*' && ./build.sh ${flag} --live /src/out-${arch}"
             sudo chown -R "$(id -un)" "out-${arch}"
             gzip -c "out-${arch}/vulos-live-${arch}.img" > "vulos-${VERSION}-${label}.img.gz"
