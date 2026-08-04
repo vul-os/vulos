@@ -22,6 +22,7 @@ import {
   getMasterKey,
   clearMasterKey,
 } from './masterKey.js'
+import { requireSubtle } from './secureContext.js'
 
 const DB_NAME = 'vulos-offline-auth'
 const STORE_NAME = 'kv'
@@ -240,7 +241,11 @@ export async function appKey(appId) {
     throw e
   }
   const raw = await deriveContentKey(mk, 'vulos-offline-app', String(appId))
-  const subtle = globalThis.crypto && globalThis.crypto.subtle
+  // requireSubtle() rather than a bare `crypto.subtle` deref: on the shipped box
+  // reached over plain http:// on a LAN IP or .local name this is undefined, and
+  // the raw deref threw "Cannot read properties of undefined (reading
+  // 'importKey')" with no hint of the cause or the fix.
+  const subtle = requireSubtle()
   return subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
 }
 

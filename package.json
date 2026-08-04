@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -41,6 +42,7 @@
     "msw": "^2.14.6",
     "playwright": "^1.49.0",
     "qrcode": "^1.5.4",
+    "typescript": "^7.0.2",
     "vite": "^8.0.1",
     "vitest": "^4.1.7"
   }

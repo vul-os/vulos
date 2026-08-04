@@ -88,10 +88,24 @@ function idbBackend(dbName) {
 
 // ─── AES-GCM codec (only used when a key is present) ──────────────────────────
 
+// The message text below is intentionally DUPLICATED from src/lib/secureContext.js
+// rather than imported: this file's contract (see header) is zero Vulos imports
+// so it stays a single self-contained file, copy/vendor-able into any OSS app
+// (apps/notes/vendor/vulos-offline.js is exactly such a copy). A cross-file
+// import here would silently dangle in that vendored context. Only reached when
+// a `key` was supplied (i.e. a host offered one via appKey()), so this is the
+// same insecure-context situation the other three lib/ crypto modules guard —
+// see secureContext.js for the full rationale.
 function subtle() {
   const s = globalThis.crypto && globalThis.crypto.subtle
-  if (!s) throw new Error('offline: WebCrypto unavailable')
-  return s
+  if (s) return s
+  throw new Error(
+    'Encrypting this offline cache needs browser WebCrypto, which is only ' +
+    "available on a secure connection (https://, or http://localhost) — not " +
+    "on a plain http:// LAN address. Open the host over https:// (a self-" +
+    "signed certificate is enough) or via an SSH tunnel at http://localhost:" +
+    '<port> to restore it.',
+  )
 }
 
 // seal wraps a Yjs update as { iv, ct } under `key`; a fresh random 12-byte IV

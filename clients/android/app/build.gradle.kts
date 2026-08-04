@@ -71,7 +71,10 @@ dependencies {
 // The shell MUST NOT drift between tiers: this copies the SAME build the PWA
 // serves rather than a duplicate maintained by hand.
 val syncShell by tasks.registering(Copy::class) {
-    val dist = rootProject.projectDir.parentFile.resolve("dist")
+    // rootProject.projectDir is clients/android/ (two levels below the repo root
+    // now that this project moved out of a top-level mobile/ dir) — climb two,
+    // not one, to reach vulos/dist/.
+    val dist = rootProject.projectDir.parentFile.parentFile.resolve("dist")
     onlyIf { dist.exists() }
     from(dist) { exclude("**/.*") }
     into(layout.projectDirectory.dir("src/main/assets/shell"))

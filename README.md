@@ -182,7 +182,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone.
 
-An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets, box-attached SMS and calling, and a set of **opt-in** native bridges — contacts, camera, push, files, biometric unlock, and the home-screen launcher — each one off until you turn it on. See **[mobile/README.md](mobile/README.md)** for the model and build path.
+An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets, box-attached SMS and calling, and a set of **opt-in** native bridges — contacts, camera, push, files, biometric unlock, and the home-screen launcher — each one off until you turn it on. See **[clients/android/README.md](clients/android/README.md)** for the model and build path.
 
 <table>
   <tr>

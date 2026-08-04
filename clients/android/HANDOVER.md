@@ -11,9 +11,9 @@ is: make Vulos great on a phone, and make it work offline.
 
 ## Read first (source of truth — do not re-derive)
 
-1. [`mobile/DECISIONS.md`](DECISIONS.md) — every settled call (MOB-01…07), what's ruled out, the security floor. **This governs.**
-2. [`mobile/README.md`](README.md) — the model and the two tiers.
-3. [`mobile/BUILD.md`](BUILD.md) — Kotlin/Gradle boilerplate for the APK tier (deferred, but ready).
+1. [`android/DECISIONS.md`](DECISIONS.md) — every settled call (MOB-01…07), what's ruled out, the security floor. **This governs.**
+2. [`android/README.md`](README.md) — the model and the two tiers.
+3. [`android/BUILD.md`](BUILD.md) — Kotlin/Gradle boilerplate for the APK tier (deferred, but ready).
 4. [`roadmap/OFFLINE.md`](../roadmap/OFFLINE.md) — the offline model both tiers share.
 
 ## The model in one paragraph

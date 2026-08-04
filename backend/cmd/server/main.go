@@ -1247,30 +1247,57 @@ func main() {
 		// INTEG-SEC-01 method 1: if this box has completed owner-attested cloud
 
 		passkeysSvc := passkeys.New(datadir.Join("auth", "passkeys"), deviceKS)
-		// TASK-2 (P0): RP ID prod safety — reject insecure defaults in prod.
+		// TASK-2 (P0): RP ID prod safety — fail closed and DEGRADE, not die.
+		//
+		// A freshly flashed box has no domain by definition, and WebAuthn
+		// requires a secure context (HTTPS) that a bare, just-booted box can't
+		// offer either — so passkeys physically cannot function until an
+		// operator sets a real VULOS_RPID/VULOS_ORIGIN. This used to
+		// log.Fatalf here, which means the entire OS died on every single
+		// boot of a fresh box to "protect" a feature that cannot run yet;
+		// that buys nothing and bricks the box. So an invalid prod config now
+		// disables passkeys instead: the routes below are simply never
+		// registered (a real "not configured" state, a 404), rather than
+		// registered with a broken/localhost RP ID, which would be worse —
+		// it would present a broken, insecure auth path as if it worked. The
+		// OS keeps booting either way.
+		passkeysEnabled := true
 		if activeEnv.IsProd() {
 			if err := passkeysSvc.ValidateConfig(); err != nil {
-				log.Fatalf("[passkeys] %v", err)
+				log.Printf("[passkeys] ##### PASSKEYS DISABLED #####")
+				log.Printf("[passkeys] %v", err)
+				log.Printf("[passkeys] This is EXPECTED on a freshly flashed box, which has no production domain yet.")
+				log.Printf("[passkeys] WebAuthn passkey registration/login are unavailable until this is fixed — server startup is NOT blocked.")
+				log.Printf("[passkeys] To enable: set VULOS_RPID to your production domain and VULOS_ORIGIN to your production origin (e.g. https://vulos.org), then restart.")
+				passkeysEnabled = false
 			}
 		}
-		registerPasskeysRoutes(mux, passkeysSvc, authStore, acctSecSvc)
-		// LOGINISO-01: promote WebAuthn from re-auth gate to full login flow.
-		// LOGINISO-02: QR / phone-approval kiosk login.
-		loginSvc := passkeys.NewLoginService(passkeysSvc, authStore)
-		qrSvc := passkeys.NewQRLoginService(authStore)
-		// auth.new_signin: passkey login (unlike password/cloud login above) has
-		// no auth.Handler.OnSignIn hook to piggyback on, so registerPasskeyLoginRoutes
-		// is handed webhooksDispatcher directly and emits after a successful
-		// finishLogin, matching the payload shape used by the password path.
-		registerPasskeyLoginRoutes(mux, loginSvc, qrSvc, webhooksDispatcher)
+		if passkeysEnabled {
+			registerPasskeysRoutes(mux, passkeysSvc, authStore, acctSecSvc)
+			// LOGINISO-01: promote WebAuthn from re-auth gate to full login flow.
+			// LOGINISO-02: QR / phone-approval kiosk login.
+			loginSvc := passkeys.NewLoginService(passkeysSvc, authStore)
+			qrSvc := passkeys.NewQRLoginService(authStore)
+			// auth.new_signin: passkey login (unlike password/cloud login above) has
+			// no auth.Handler.OnSignIn hook to piggyback on, so registerPasskeyLoginRoutes
+			// is handed webhooksDispatcher directly and emits after a successful
+			// finishLogin, matching the payload shape used by the password path.
+			registerPasskeyLoginRoutes(mux, loginSvc, qrSvc, webhooksDispatcher)
+		}
 		// AUTH-10c: device identity / TPM status / seal-unseal HTTP API.
 		devicekey.RegisterHandlers(mux, deviceKS, func(r *http.Request) bool {
 			p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
 			return p != nil && p.Role == auth.RoleAdmin
 		})
-		// AUTH-13: wire the real WebAuthn verifier for input-injection re-auth.
-		streamVerifier = passkeys.NewStreamVerifier(passkeysSvc)
-		streamPool.SetWebAuthnVerifier(streamVerifier)
+		// AUTH-13: wire the real WebAuthn verifier for input-injection re-auth —
+		// only when passkeys are actually enabled. If disabled, streamVerifier
+		// stays nil and the existing AUTH-13 fail-closed default below (strict
+		// input gate in prod when no verifier is wired) takes over instead —
+		// input locks rather than passkeys silently not existing.
+		if passkeysEnabled {
+			streamVerifier = passkeys.NewStreamVerifier(passkeysSvc)
+			streamPool.SetWebAuthnVerifier(streamVerifier)
+		}
 	}
 
 	// App gateway — /app/{appId}/* proxied with auth

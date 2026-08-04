@@ -23,6 +23,8 @@
 //
 // Fail-closed: every AEAD open authenticates; wrong key / tamper throws.
 
+import { requireSubtle } from './secureContext.js'
+
 const MAGIC = 'VSEAL1\n'
 const VERSION = 1
 const AEAD = 'AES-256-GCM'
@@ -46,10 +48,13 @@ const PKCS8_X25519_PREFIX = Uint8Array.from([
 
 const te = new TextEncoder()
 
+// subtle() is called lazily from inside seal()/open()/deriveContentKeyPair()
+// etc. (never at module load), so importing this module never fails for a
+// caller that doesn't end up sealing/opening content on this page load. See
+// secureContext.js for why this can be undefined on the shipped box's
+// plain-HTTP LAN origin.
 function subtle() {
-  const s = globalThis.crypto && globalThis.crypto.subtle
-  if (!s) throw new Error('contentSeal: WebCrypto SubtleCrypto unavailable (requires a secure context)')
-  return s
+  return requireSubtle()
 }
 
 // ─── base64 (std, padded — matches Go encoding/base64.StdEncoding) ─────────────

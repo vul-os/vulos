@@ -7,8 +7,9 @@
 #   OVMF (UEFI) → systemd-boot → kernel → initramfs vulos-live hook
 #     (pivot to squashfs+overlayfs) → login prompt or first-boot wizard
 #
-# The test watches the serial console for the pivot or for a reachable HTTP
-# endpoint — whichever comes first — and exits 0 on success, 1 on failure.
+# The test watches the serial console for the pivot (progress/diagnostic only)
+# but PASS is decided solely by a reachable HTTP endpoint — the gold-standard
+# "fully running" check — and exits 0 on success, 1 on failure.
 #
 # Usage:
 #   scripts/smoke-liveusb.sh                  # CI: boot headless, assert, exit 0/1
@@ -205,40 +206,45 @@ PY
 
 # ── 4. Wait for a healthy-boot signal ────────────────────────────────────────
 #
-# Two independent signals — whichever fires first wins:
+# The HTTP check is MANDATORY and is the only thing that sets PASS: it is the
+# sole proof that vulos-server is actually up and routing, not crash-looping
+# (Restart=on-failure/RestartSec=3 means a dead-on-arg-parse server still
+# leaves systemd "active" and the console still prints a login prompt — a
+# serial-only match was previously enough to pass and hid exactly that bug).
 #
-#   (a) Serial log contains evidence that initramfs pivoted to the live rootfs:
-#       "vulos-live" hook banner, "VULOS-LIVE-DATA", "login:" or
-#       "/sbin/init" executed from the squashfs overlay.
+#   (a) Serial log evidence that initramfs pivoted to the live rootfs
+#       ("vulos-live" hook banner, "VULOS-LIVE-DATA", "login:", etc.) is kept
+#       as progress/diagnostic logging only, and to help explain an eventual
+#       failure — it never flips PASS on its own.
 #
-#   (b) HTTP /api/setup/status is reachable on the forwarded port — the server
-#       is up and routing (same check as baremetal-smoke.sh).
-#
-# Either signal means the live boot chain is intact; (a) fires earlier (pre-
-# desktop) while (b) is the gold-standard "fully running" check.
+#   (b) HTTP /api/setup/status reachable on the forwarded port — the server is
+#       up and routing (same check as baremetal-smoke.sh). This is the
+#       gold-standard "fully running" check and is required for PASS.
 
 SERIAL_PATTERNS='vulos-live\|VULOS-LIVE-DATA\|Started.*Login Service\|login:.*\|Welcome to Vula\|vulos-init'
 HTTP_URL="http://127.0.0.1:${HOSTPORT}/api/setup/status"
 
-say "Waiting up to ${TIMEOUT}s for initramfs pivot / login prompt / HTTP…"
+say "Waiting up to ${TIMEOUT}s for HTTP (serial pivot/login logged for diagnostics only)…"
 deadline=$(( $(date +%s) + TIMEOUT ))
 PASS=0
 PASS_MSG=""
+SERIAL_SEEN=0
+QEMU_DIED=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
   # Check QEMU is still running
   if ! kill -0 "$QEMU_PID" 2>/dev/null; then
     printf "${c_r}  QEMU process exited early${c_n}\n" >&2
+    QEMU_DIED=1
     break
   fi
 
-  # (a) Serial pivot/login check
-  if grep -qsE "$SERIAL_PATTERNS" "$SERIAL" 2>/dev/null; then
-    PASS=1
-    PASS_MSG="initramfs pivot / login prompt seen on serial console"
-    break
+  # (a) Serial pivot/login check — diagnostic only, does NOT set PASS.
+  if [ "$SERIAL_SEEN" = "0" ] && grep -qsE "$SERIAL_PATTERNS" "$SERIAL" 2>/dev/null; then
+    SERIAL_SEEN=1
+    printf "${c_d}  (serial) pivot/login prompt seen — still waiting on HTTP to confirm the backend is actually up…${c_n}\n"
   fi
 
-  # (b) HTTP check
+  # (b) HTTP check — the only signal that sets PASS.
   if curl -fsS --max-time 3 "$HTTP_URL" >/dev/null 2>&1; then
     PASS=1
     PASS_MSG="HTTP /api/setup/status reachable — live OS fully booted"
@@ -273,6 +279,21 @@ if [ "$PASS" = "1" ]; then
 else
   printf "${c_r}✗ FAIL — live OS did not reach a sane state within ${TIMEOUT}s${c_n}\n" >&2
   echo "" >&2
+  if [ "$QEMU_DIED" = "1" ]; then
+    echo "Failed signal: QEMU exited before the timeout — the VM process died." >&2
+  elif [ "$SERIAL_SEEN" = "1" ]; then
+    echo "Failed signal: HTTP /api/setup/status never became reachable, even though" >&2
+    echo "the serial console DID show an initramfs pivot / login prompt. The boot" >&2
+    echo "chain reached the OS but vulos-server is not answering — most likely it is" >&2
+    echo "crash-looping (systemd Restart=on-failure/RestartSec=3 hides this on serial" >&2
+    echo "since the console still looks fine). Check journalctl -u vulos.service and" >&2
+    echo "the -env value it was started with." >&2
+  else
+    echo "Failed signal: neither the serial pivot/login prompt nor HTTP" >&2
+    echo "/api/setup/status was seen — the live boot chain itself likely never" >&2
+    echo "completed." >&2
+  fi
+  echo "" >&2
   echo "---- last 60 lines of serial ($SERIAL) ----" >&2
   tail -n 60 "$SERIAL" >&2 || true
   echo "" >&2
@@ -281,6 +302,8 @@ else
   echo "  • vulos-live initramfs hook not installed (scripts/initramfs/vulos-live)" >&2
   echo "  • VULOS-LIVE-DATA ext4 partition missing image.squashfs" >&2
   echo "  • QEMU firmware/arch mismatch (check --arch flag)" >&2
+  echo "  • backend up but crash-looping (bad -env value / config) — HTTP check" >&2
+  echo "    is the only thing that can catch this; see the failed-signal note above" >&2
   qmp '{"execute":"quit"}' >/dev/null 2>&1 || true
   exit 1
 fi

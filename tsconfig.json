@@ -1,0 +1,77 @@
+{
+  // Foundation for a gradual JS -> TS migration. Existing .js/.jsx files are
+  // included (via allowJs) so TS files can import them with inferred types,
+  // but checkJs is OFF so none of the ~48.9k lines of untouched JS are
+  // type-checked yet — only .ts/.tsx files are. See README/CI for the
+  // `npm run typecheck` gate this backs.
+  "compilerOptions": {
+    // ---- Language target / module system, matched to Vite 8 (esbuild) ----
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    // "Bundler" mirrors how Vite/esbuild actually resolves imports (package
+    // "exports" conditions, no forced extensions) instead of emulating
+    // Node's runtime resolver — the correct choice for a Vite app.
+    "moduleResolution": "Bundler",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
+
+    // ---- React 19 ----
+    // New JSX transform (matches @vitejs/plugin-react, which already injects
+    // the automatic runtime for .jsx today) — no `import React` needed.
+    "jsx": "react-jsx",
+
+    // ---- Gradual migration knobs ----
+    // Let TS parse existing .js/.jsx (needed for cross-file inference when a
+    // future .ts file imports current JS) without type-checking them yet.
+    "allowJs": true,
+    "checkJs": false,
+    // Strict is opt-in-by-file-type here: it only bites .ts/.tsx because
+    // checkJs is false, so new/converted files get full strictness from day
+    // one instead of accumulating new `any`-shaped debt during the migration.
+    "strict": true,
+
+    // ---- Vite owns transpilation; tsc is a type-checker only ----
+    "noEmit": true,
+    // Each file is transpiled independently by esbuild (no cross-file type
+    // info at build time), so this flag makes tsc reject the handful of
+    // TS constructs (e.g. `const enum`, non-isolated re-exports of types)
+    // that esbuild can't handle in isolation — catches it at typecheck time
+    // instead of as a silent runtime bug.
+    "isolatedModules": true,
+
+    // ---- Interop / hygiene ----
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    // node_modules .d.ts files are not our problem to type-check, and doing
+    // so is a common source of unrelated, unfixable CI failures.
+    "skipLibCheck": true,
+    // vite/client gives import.meta.env / asset-import (?url, ?raw, etc.)
+    // ambient types; vitest/globals gives describe/it/expect globals for
+    // future .test.ts(x) files (vitest.config.js sets test.globals: true).
+    "types": ["vite/client", "vitest/globals"]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "apps/**/__tests__/**/*.js",
+    "apps/**/__tests__/**/*.jsx",
+    "e2e/**/*.ts",
+    "e2e/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "output",
+    "apps/*/vendor/**",
+    "apps/**/vendor/**",
+    "apps/notes/collab.js",
+    "apps/social/hls.js"
+  ]
+}

@@ -16,6 +16,8 @@
 // Fail-closed: every unwrap authenticates via AES-GCM; a wrong password/phrase or
 // any tampering throws — no partial or unauthenticated key material is returned.
 
+import { requireSubtle } from './secureContext.js'
+
 const AAD_PW = 'vulos-mk-pw-v1'
 const AAD_PHRASE = 'vulos-mk-phrase-v1'
 const HKDF_PHRASE_INFO = 'vulos-masterkey-wrap-v1'
@@ -23,10 +25,13 @@ const ZERO_SALT_32 = new Uint8Array(32)
 
 const te = new TextEncoder()
 
+// subtle() is called lazily inside each exported function below (never at
+// module load), so importing this module never fails for a caller that
+// doesn't end up on a crypto path — only the actual unwrap/wrap/derive calls
+// need a secure context. See secureContext.js for why this can be undefined
+// on the shipped box's plain-HTTP LAN origin.
 function subtle() {
-  const s = globalThis.crypto && globalThis.crypto.subtle
-  if (!s) throw new Error('masterKey: WebCrypto SubtleCrypto unavailable (requires a secure context)')
-  return s
+  return requireSubtle()
 }
 
 // b64ToBytes decodes standard base64 (as emitted by Go's encoding/json for []byte).

@@ -28,6 +28,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Foundation for the JS -> TS migration: checkJs is off in tsconfig.json
+      # so this only checks .ts/.tsx files (none exist yet outside converted
+      # ones), and is noEmit-only — Vite/esbuild still does all transpilation.
+      # A regression here means a converted/new TS file broke type-safety.
+      - name: Typecheck
+        run: npm run typecheck
+
       # The Vitest suite (unit + RTL/MSW integration) is the frontend security
       # contract described in README § Frontend test layers — it asserts the
       # UI-level security invariants, so a regression here must break the build,

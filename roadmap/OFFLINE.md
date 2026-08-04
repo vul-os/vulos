@@ -7,7 +7,7 @@ This is **client↔box**, not box↔box. For multi-instance cluster replication 
 **Who may see the cache is a separate concern:** each app decides *what* it caches (below); the **OS owns the auth gate** that decides whether cached data may be shown at all when the box is unreachable — see [OFFLINE-AUTH.md](OFFLINE-AUTH.md). Offline today fails closed (no access); OFFLINE-AUTH is how it opens safely.
 
 > **Goal.** Parity with a normal offline Android phone, plus the things web does better than native: read your mail, notes, docs, contacts and cached files; queue the obvious writes; never show a broken screen.
-> **Non-goals.** A sync engine. Conflict resolution. Offline for real-time apps (Meet, Messages live). Client-side encryption in v1 ([mobile/DECISIONS.md § MOB-04](../mobile/DECISIONS.md#mob-04--no-client-side-encryption-in-v1)). Making the phone authoritative — the box is the authority, always.
+> **Non-goals.** A sync engine. Conflict resolution. Offline for real-time apps (Meet, Messages live). Client-side encryption in v1 ([clients/android/DECISIONS.md § MOB-04](../clients/android/DECISIONS.md#mob-04--no-client-side-encryption-in-v1)). Making the phone authoritative — the box is the authority, always.
 > **Status.** 📐 **DESIGN ONLY — no code written against this doc.** Service worker shell caching already exists (see [`../docs/SW-CACHE-VERSIONS.md`](../docs/SW-CACHE-VERSIONS.md)) and Web Push already works ([NOTIFICATIONS.md](NOTIFICATIONS.md)). The `@vulos/offline` package, the outbox, and the per-app manifest declaration below are **unbuilt**.
 
 ---
@@ -16,7 +16,7 @@ This is **client↔box**, not box↔box. For multi-instance cluster replication 
 
 **Nothing required to paint the first screen may cross the network.**
 
-Everything else follows from this. A spinner on a surface the user cannot escape reads as a broken phone, not a slow app — and that is doubly true if the launcher role is ever enabled ([MOB-05](../mobile/DECISIONS.md#mob-05--category_home-launcher-deferred)).
+Everything else follows from this. A spinner on a surface the user cannot escape reads as a broken phone, not a slow app — and that is doubly true if the launcher role is ever enabled ([MOB-05](../clients/android/DECISIONS.md#mob-05--category_home-launcher-deferred)).
 
 ---
 
@@ -41,7 +41,7 @@ That constraint fits the architecture — the box is the authority and local sto
 - Access through a thin wrapper (`idb`), never the raw API.
 - Call `navigator.storage.persist()` **after first successful sign-in**, not on first load — Chrome's grant heuristics favour engaged origins, so timing measurably affects the outcome.
 - Bound the working set explicitly, per app. Unbounded caching is what makes apps slow, blows quota, and turns eviction from an annoyance into data loss.
-- **Pluggable codec** at the storage boundary from day one, so encryption can drop in later without a rewrite ([MOB-04](../mobile/DECISIONS.md#mob-04--no-client-side-encryption-in-v1)).
+- **Pluggable codec** at the storage boundary from day one, so encryption can drop in later without a rewrite ([MOB-04](../clients/android/DECISIONS.md#mob-04--no-client-side-encryption-in-v1)).
 
 ### The one genuinely fragile spot
 

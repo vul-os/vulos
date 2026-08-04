@@ -13,7 +13,7 @@
 1. **Android Studio** → New Project → **Empty Views Activity** (not Compose — the UI is the web shell)
 2. Language **Kotlin**, build DSL **Kotlin (`.kts`)**
 3. `minSdk = 26`, `targetSdk` = current
-4. Package `org.vulos.mobile`, project location `vulos/mobile/app/`
+4. Package `org.vulos.mobile`, project location `vulos/clients/android/app/`
 5. Replace the generated files with the boilerplate below
 
 Then `./gradlew assembleDebug`. That is the whole loop.
@@ -198,9 +198,9 @@ Chrome is local, content is remote.
 
 ## CI
 
-A workflow scoped to `mobile/**` running `./gradlew assembleRelease`, with the signing key in secrets.
+A workflow scoped to `clients/android/**` running `./gradlew assembleRelease`, with the signing key in secrets.
 
-⚠️ Keep the OS image build (`build.sh`, `Makefile`) on an **explicit include list** so `mobile/` never
+⚠️ Keep the OS image build (`build.sh`, `Makefile`) on an **explicit include list** so `clients/android/` never
 enters the roothash-signed surface. Verify this before the first APK lands, not after.
 
 ---

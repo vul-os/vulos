@@ -40,7 +40,7 @@ Design principle: **everything that can move, moves.** The residue stays native,
 ## Layout
 
 ```
-mobile/
+clients/android/
   README.md      ← you are here
   DECISIONS.md   ← what was settled, what was ruled out, and why
   BUILD.md       ← the boilerplate + the easiest build path
@@ -58,7 +58,7 @@ mobile/
 
 ## Build
 
-Kotlin ([MOB-03](DECISIONS.md#mob-03--kotlin-not-java)). From `mobile/`:
+Kotlin ([MOB-03](DECISIONS.md#mob-03--kotlin-not-java)). From `clients/android/`:
 
 1. **Bundle the shell first:** run the web build so `vulos/dist/` exists — the Gradle `syncShell` task copies it into `app/src/main/assets/shell/` on every build (no drift between tiers). Without it, the app shows a "shell not bundled" placeholder.
 2. **Open in Android Studio** (it provisions the Gradle wrapper + Android SDK automatically), **or** from the CLI run `gradle wrapper` once to generate `gradle/wrapper/gradle-wrapper.jar` (not committed — binary), then `./gradlew assembleDebug`.

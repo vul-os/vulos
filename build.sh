@@ -427,7 +427,12 @@ After=network.target
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/plymouth quit --retain-splash
-ExecStart=/usr/local/bin/vulos-server -env main
+# -env MUST be one of: local | dev | prod (backend/services/env/env.go Parse()
+# rejects anything else and main.go log.Fatalf's on that error, crash-looping
+# the unit). prod is required here specifically because it is the only env
+# with BindHost:"" (binds all interfaces) — local/dev bind 127.0.0.1 only,
+# which would make a LAN box unreachable.
+ExecStart=/usr/local/bin/vulos-server -env prod
 Restart=on-failure
 RestartSec=3
 Environment=PORT=8080
@@ -877,7 +882,12 @@ After=network.target
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/plymouth quit --retain-splash
-ExecStart=/usr/local/bin/vulos-server -env main
+# -env MUST be one of: local | dev | prod (backend/services/env/env.go Parse()
+# rejects anything else and main.go log.Fatalf's on that error, crash-looping
+# the unit). prod is required here specifically because it is the only env
+# with BindHost:"" (binds all interfaces) — local/dev bind 127.0.0.1 only,
+# which would make a LAN box unreachable.
+ExecStart=/usr/local/bin/vulos-server -env prod
 Restart=on-failure
 RestartSec=3
 Environment=PORT=8080

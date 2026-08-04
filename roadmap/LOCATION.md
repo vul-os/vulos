@@ -19,7 +19,7 @@ designed.
 - Not a tracking/history product — this is a live-position feed with staleness
   surfaced, not a location-history store, unless a future app explicitly opts
   into logging what it receives.
-- Not phone-as-instance — consistent with [`MOB-01`](../mobile/DECISIONS.md#mob-01--the-phone-is-a-thin-client-not-an-instance),
+- Not phone-as-instance — consistent with [`MOB-01`](../clients/android/DECISIONS.md#mob-01--the-phone-is-a-thin-client-not-an-instance),
   the phone contributes a *reading*, it doesn't become part of the box's
   authority.
 
@@ -50,8 +50,8 @@ designed.
 - **Phone PWA is the good source.** A phone's browser `navigator.geolocation`
   is backed by the real GNSS chip — accurate to a few meters, refreshes
   quickly, has heading/speed. This is the primary source whenever a phone with
-  the Vulos PWA installed (see [`mobile/README.md`](../mobile/README.md),
-  [`MOB-02`](../mobile/DECISIONS.md#mob-02--two-delivery-tiers-one-shell-pwa-first))
+  the Vulos PWA installed (see [`clients/android/README.md`](../clients/android/README.md),
+  [`MOB-02`](../clients/android/DECISIONS.md#mob-02--two-delivery-tiers-one-shell-pwa-first))
   is attached and has granted location permission.
 - **Laptop WiFi-geo is the coarse fallback.** A desktop browser's
   `navigator.geolocation` on a machine with no GPS resolves via WiFi
@@ -89,7 +89,7 @@ location" resolves against the requesting user's own most-recent reading only.
   a Vulos-side "let this box use my location" toggle. Consistent with
   [`OFFLINE-AUTH.md`](OFFLINE-AUTH.md) and the mobile security floor's
   "opt-in, revocable" posture for anything sensor-adjacent (see
-  [`HANDOVER.md`](../mobile/HANDOVER.md)'s security-floor section).
+  [`HANDOVER.md`](../clients/android/HANDOVER.md)'s security-floor section).
 - **Revocable at any time** — turning it off stops new reports; it does not
   retroactively erase what's already been read by an app (apps that need
   history are responsible for their own retention/deletion, same as any other
@@ -144,7 +144,7 @@ run it against a real GeoClue consumer.
 Android's location stack ultimately wants a **GNSS HAL** or, for many
 apps/tools, will accept an injected **NMEA** sentence stream as if it came
 from a real GPS receiver. For a redroid container (see
-[`mobile/ANDROID-COMPAT.md`](../mobile/ANDROID-COMPAT.md) — opt-in Android
+[`clients/android/ANDROID-COMPAT.md`](../clients/android/ANDROID-COMPAT.md) — opt-in Android
 streaming) to give its guest apps a working "where am I," the plan is to feed
 it the box's current best position tier-①-style, translated into NMEA
 sentences (or the mock-location-provider equivalent Android exposes for test
@@ -154,7 +154,7 @@ source.
 **Critical distinction from Android's "mock location" API:** Android exposes a
 developer-facing *mock location provider* API specifically so a value can be
 force-set from software — and every serious app (especially ride-hailing, per
-[`mobile/ANDROID-COMPAT.md`](../mobile/ANDROID-COMPAT.md)'s attestation-locked
+[`clients/android/ANDROID-COMPAT.md`](../clients/android/ANDROID-COMPAT.md)'s attestation-locked
 bucket) treats `isMock == true` as an active fraud/abuse signal and refuses or
 flags it. **This tier is explicitly designed to set `isMock == false`** — i.e.
 present as a genuine hardware-backed GNSS/NMEA source at the driver level, the
@@ -188,8 +188,8 @@ works.
 
 ## Related
 
-- [`mobile/ANDROID-COMPAT.md`](../mobile/ANDROID-COMPAT.md) — redroid rationale, opt-in posture, and the full honest bucketed list of what Android compat can't do (including *why* ride-hailing apps are a hard no even with a working location feed)
+- [`clients/android/ANDROID-COMPAT.md`](../clients/android/ANDROID-COMPAT.md) — redroid rationale, opt-in posture, and the full honest bucketed list of what Android compat can't do (including *why* ride-hailing apps are a hard no even with a working location feed)
 - [`backend/services/telephony`](../backend/services/telephony) — the hardware-gating (`IsAvailable()`), owner/user-scoping, and `mmcli` shell-out style this service mirrors
-- [`mobile/DECISIONS.md`](../mobile/DECISIONS.md), [`mobile/HANDOVER.md`](../mobile/HANDOVER.md) — MOB-01…07, thin-client model, opt-in/revocable sensor-permission posture
+- [`clients/android/DECISIONS.md`](../clients/android/DECISIONS.md), [`clients/android/HANDOVER.md`](../clients/android/HANDOVER.md) — MOB-01…07, thin-client model, opt-in/revocable sensor-permission posture
 - [`DEFAULT-WEB-APPS.md`](DEFAULT-WEB-APPS.md) — `apps/maps`'s existing in-browser `navigator.geolocation` "locate me," unaffected by this service
 - [`OFFLINE-AUTH.md`](OFFLINE-AUTH.md) — the fail-closed, opt-in permission posture this doc follows

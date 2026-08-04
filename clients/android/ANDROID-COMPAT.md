@@ -161,8 +161,8 @@ several of which the OS ships or links to today (see
 
 ## Related
 
-- [`mobile/DECISIONS.md`](DECISIONS.md) — MOB-01…07, the settled thin-client model this doc does not reopen
-- [`mobile/HANDOVER.md`](HANDOVER.md) — "ruled out permanently" list (phone-as-instance, custom ROM, Waydroid-in-the-product)
+- [`android/DECISIONS.md`](DECISIONS.md) — MOB-01…07, the settled thin-client model this doc does not reopen
+- [`android/HANDOVER.md`](HANDOVER.md) — "ruled out permanently" list (phone-as-instance, custom ROM, Waydroid-in-the-product)
 - [`roadmap/LOCATION.md`](../roadmap/LOCATION.md) — the box-side virtual-GNSS feed a redroid session would consume, and its explicit ride-hailing fraud-signal warning
 - [`roadmap/STREAMING-OPTIMIZATIONS.md`](../roadmap/STREAMING-OPTIMIZATIONS.md) — the GPU-encode/streaming pipeline redroid would reuse
 - [`backend/services/telephony`](../backend/services/telephony) — the hardware-gating style (`IsAvailable()`, clean "unavailable" degrade) any redroid integration should mirror

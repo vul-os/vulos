@@ -41,7 +41,7 @@ offlineAuth.wipe(): Promise<void>                // forget the credential + sign
 ```
 
 - The OS shows the **offline lock screen** when the box is unreachable *and* the session isn't unlocked, and **blocks all cached-app rendering** behind it.
-- `appKey` derives a **per-app** key via HKDF so an XSS in Notes cannot read Mail's cache — the same per-origin isolation the [mobile security floor](../mobile/DECISIONS.md#security-floor--do-these-regardless-of-mobile) mandates, extended to offline key material. Keys are non-extractable `CryptoKey`s; the raw master key never leaves the OS module. The HKDF domain separation is cryptographically real (length-prefixed `info`), but the isolation *guarantee* has a **precondition for whoever wires this up**: `appId` is a public label ("mail", "notes"), not a secret — anyone who can call `appKey("mail")` gets Mail's key. So the OS (`AppBridge`) MUST pass `appId` from a **trusted binding** (the iframe's registered origin/identity), NEVER an `appId` string an app supplies over `postMessage`. Until that binding exists, `appKey` is an unwired seam, not a live isolation boundary.
+- `appKey` derives a **per-app** key via HKDF so an XSS in Notes cannot read Mail's cache — the same per-origin isolation the [mobile security floor](../clients/android/DECISIONS.md#security-floor--do-these-regardless-of-mobile) mandates, extended to offline key material. Keys are non-extractable `CryptoKey`s; the raw master key never leaves the OS module. The HKDF domain separation is cryptographically real (length-prefixed `info`), but the isolation *guarantee* has a **precondition for whoever wires this up**: `appId` is a public label ("mail", "notes"), not a secret — anyone who can call `appKey("mail")` gets Mail's key. So the OS (`AppBridge`) MUST pass `appId` from a **trusted binding** (the iframe's registered origin/identity), NEVER an `appId` string an app supplies over `postMessage`. Until that binding exists, `appKey` is an unwired seam, not a live isolation boundary.
 - The in-memory key is **never persisted**. Lock/idle/logout drops it; unlocking again requires the password.
 
 ## What apps provide
@@ -69,7 +69,7 @@ The OS does not know or care what an app caches. It only answers "is the user al
 
 **What v1 protects vs. what it does NOT (state this plainly, never overclaim):**
 - **Protects:** casual/shoulder-surfer access to an unlocked device; "box is down, let me read my mail" convenience; per-app isolation of offline key material.
-- **At rest, v1 relies on device encryption** (Android FBE / OS disk encryption), consistent with [MOB-04](../mobile/DECISIONS.md#mob-04--no-client-side-encryption-in-v1): the cache is plaintext IndexedDB in v1, so the offline lock gates the **running session**, and FBE protects **at rest**. It does **not** defend a rooted/forensically-extracted device until cache encryption lands.
+- **At rest, v1 relies on device encryption** (Android FBE / OS disk encryption), consistent with [MOB-04](../clients/android/DECISIONS.md#mob-04--no-client-side-encryption-in-v1): the cache is plaintext IndexedDB in v1, so the offline lock gates the **running session**, and FBE protects **at rest**. It does **not** defend a rooted/forensically-extracted device until cache encryption lands.
 - **Never call this end-to-end encrypted.** Positioning stays: *"Encrypted on your device. Your instance holds the plaintext, because that is what lets it search and sync"* — plus, for offline: *"unlocking offline verifies your password locally; at rest your data is protected by your device's encryption."*
 
 **Closing the at-rest gap (the MOB-04 reversal, now concrete):** when client-side cache encryption is warranted, the codec key is simply `offlineAuth.appKey(appId)` — HKDF from the already-unwrapped master key. This makes [OFFLINE.md](OFFLINE.md)'s "pluggable codec" and MOB-04's "libsodium later" concrete: the key source already exists and is per-app. Preconditions for whoever adopts it:
@@ -83,7 +83,7 @@ The OS does not know or care what an app caches. It only answers "is the user al
 
 **In:** cache the wrapped envelope on login; the OS offline lock screen (reusing `LockScreen.jsx`'s UX, swapping server-validate for local unwrap when offline); `offlineAuth` gate API; per-app HKDF keys; fail-closed + attempt-wipe; apps gate cached rendering on `isUnlocked()`.
 
-**Deferred:** encrypting the cache with the app keys (MOB-04 holds until reviewed); a PIN-wrapped local shortcut; WebAuthn/passkey unlock (Firefox Android PRF lags — [mobile browser scope](../mobile/DECISIONS.md#browser-scope)); biometric unlock.
+**Deferred:** encrypting the cache with the app keys (MOB-04 holds until reviewed); a PIN-wrapped local shortcut; WebAuthn/passkey unlock (Firefox Android PRF lags — [mobile browser scope](../clients/android/DECISIONS.md#browser-scope)); biometric unlock.
 
 **Non-goals:** making the phone authoritative; a second auth system (this reuses the master-key crypto); offline for real-time apps (`none` by definition).
 

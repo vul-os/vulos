@@ -219,8 +219,8 @@ These won't be installed as apps in Vulos (we're building our own Go webapp), bu
 > **thin client to the user's box** — an installable PWA first, an APK later —
 > *not* a Vulos instance. Handset battery, camera, NFC, biometrics, and radios are
 > the stock phone OS's concern, not Vulos's. See
-> **[`mobile/DECISIONS.md`](../mobile/DECISIONS.md)** (MOB-01…07, phone-as-instance
-> ruled out permanently) and **[`mobile/README.md`](../mobile/README.md)** for the
+> **[`clients/android/DECISIONS.md`](../clients/android/DECISIONS.md)** (MOB-01…07, phone-as-instance
+> ruled out permanently) and **[`clients/android/README.md`](../clients/android/README.md)** for the
 > governing decisions.
 >
 > The **telephony** half of this doc (above) stays valid on a *different* basis:

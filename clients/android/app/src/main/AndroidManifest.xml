@@ -3,7 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Embedded telephony (mobile/DECISIONS.md TEL-01, revising MOB-07). All are
+    <!-- Embedded telephony (clients/android/DECISIONS.md TEL-01, revising MOB-07). All are
          RUNTIME-requested on first use, never at install. READ_SMS / RECEIVE_SMS /
          READ_CALL_LOG are Play "restricted" permissions (need a Permissions
          Declaration + default-handler justification); the sovereign / F-Droid APK

@@ -151,7 +151,7 @@ records this telephony service (ModemManager D-Bus) as already shipped. Costs a 
 
 **Decided.** The APK now embeds SMS and calling and ships as an enabled launcher.
 This supersedes MOB-05's deferral and MOB-07's "v2". Implemented in
-`mobile/app/` (`TelephonyBridge.kt`, `SmsReceiver.kt`, `TelephonyEvents.kt`,
+`clients/android/app/` (`TelephonyBridge.kt`, `SmsReceiver.kt`, `TelephonyEvents.kt`,
 `VulosApplication.kt`, wired in `MainActivity.kt`).
 
 **What ships:**
