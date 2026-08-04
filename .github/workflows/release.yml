@@ -158,9 +158,10 @@ jobs:
             # build.sh names these two ways: 'vulos-amd64.tar.gz' (bare arch) but
             # 'vulos-arm64-generic-arm64.tar.gz' (arch + device). A single
             # 'vulos-${arch}-*' glob requires a hyphen after the arch, so it
-            # matched arm64 and silently missed amd64 — v1.0.0 shipped without
-            # its x86_64 rootfs even though the 593 MB tarball built fine. Match
-            # both spellings, and fail loudly rather than dropping an artifact.
+            # matched arm64 and silently missed amd64 — an earlier build shipped
+            # without its x86_64 rootfs even though the 593 MB tarball built
+            # fine. Match both spellings, and fail loudly rather than dropping
+            # an artifact.
             tb="$(find "out-${arch}" -maxdepth 1 -type f \
               \( -name "vulos-${arch}.tar.gz" -o -name "vulos-${arch}-*.tar.gz" \) \
               2>/dev/null | sort | head -1 || true)"
@@ -176,6 +177,14 @@ jobs:
           build_one amd64 --amd64 x86_64
           build_one arm64 --arm64 arm64
           ls -lh vulos-*.img.gz vulos-*-rootfs.tar.gz
+
+          # Checksums. Without these a downloader has no way to tell a truncated
+          # or tampered 600 MB image from a good one — which matters more than
+          # usual for an OS you flash to a boot device.
+          sha256sum vulos-*.img.gz vulos-*-rootfs.tar.gz > SHA256SUMS
+          # Re-verify what we just wrote, so a malformed SHA256SUMS cannot ship.
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
 
       # ── Extract CHANGELOG section for this release ───────────────────────────
       - name: Extract CHANGELOG notes
@@ -212,13 +221,28 @@ jobs:
             | Platform | File | Devices |
             |----------|------|---------|
             | x86_64 | `vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz` | PC, laptop, server |
-            | ARM64 | `vulos-${{ steps.version.outputs.VERSION }}-arm64.img.gz` | Raspberry Pi, Pine64, Rock64 |
+            | ARM64 | `vulos-${{ steps.version.outputs.VERSION }}-arm64.img.gz` | Generic ARM64 (UEFI-booting SBCs and VMs) |
+
+            > **Raspberry Pi is not covered by the ARM64 image above.** It is a
+            > `generic-arm64` build: a stock `linux-image-arm64` with no
+            > `config.txt`, `cmdline.txt`, or `raspi-firmware`, so Pi firmware
+            > will not boot it. A Pi image is a separate target — build it
+            > yourself with `sudo ./build.sh --arm64 --device rpi4`. Same for
+            > PinePhone via `--device pinephone`.
 
             ```bash
             gunzip -c vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
             ```
 
             Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz` file.
+
+            ### Verify your download
+
+            ```bash
+            sha256sum -c SHA256SUMS --ignore-missing
+            ```
+
+            `SHA256SUMS` covers every image and rootfs tarball in this release.
 
             ### Cloud server
 
@@ -239,6 +263,7 @@ jobs:
           files: |
             vulos-*.img.gz
             vulos-*-rootfs.tar.gz
+            SHA256SUMS
             keys/trust-anchor.pub
             keys/release-cert.json
           draft: false

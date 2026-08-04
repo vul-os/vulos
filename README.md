@@ -218,7 +218,7 @@ Vulos is built to be owned end to end. Deploy it to your own server:
 Or flash a signed image to bare metal:
 
 ```bash
-gunzip -c vulos-v1.0.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+gunzip -c vulos-v0.1.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
 The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.

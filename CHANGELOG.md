@@ -9,11 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) —
 
 Versioning: [SemVer](https://semver.org/).
 
+> **Numbering reset (2026-08-03).** `0.1.0` is the first release Vulos has ever
+> tagged or published. Everything under *Pre-release development history* below
+> was written during development and never shipped, so those numbers — including
+> an earlier `0.1.0` and a `1.0.0`–`1.2.0` line — are demoted to plain headings
+> rather than deleted. Vulos is deliberately pre-1.0: the roadmap still carries
+> planned and design-only tracks, so interfaces may change. A `1.0.0` would
+> promise a stability commitment the project is not ready to make.
+
 ---
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-08-03
+## [0.1.0] - 2026-08-03
 
 ### Security
 
@@ -246,9 +254,18 @@ Versioning: [SemVer](https://semver.org/).
   `docs/KEY-CEREMONY.md`, left over from before the three comms apps
   were added (registry is now 55 entries).
 
-## [1.2.0] - 2026-07-17
+---
 
-### Added
+## Pre-release development history
+
+The sections below were written during development. **None of them was ever
+tagged or published** — `0.1.0` above is the first actual release. They are
+kept for historical accuracy, with their version numbers demoted to plain
+headings so they do not compete with released versions.
+
+### 1.2.0 — 2026-07-17
+
+#### Added
 
 - **Streaming Chrome, restored.** A real Chromium instance running on the box,
   streamed to the shell over WebRTC with a **persistent per-user profile**
@@ -270,12 +287,12 @@ Versioning: [SemVer](https://semver.org/).
 - **Live per-app resource usage.** The dashboard's per-app CPU/RAM figures are
   now served from live cgroup data (`internal/cgroups/governor_http.go`).
 
-### Changed
+#### Changed
 
 - **Setup wizard trimmed.** Dropped the post-signup wizard whose steps hit
   CP-only routes that a self-hosted box cannot serve.
 
-### Security
+#### Security
 
 - **Cloud broker pubkey pinned at enrollment.** The cloud login-broker public
   key is now pinned when the box enrolls, instead of trust-on-first-use at first
@@ -290,7 +307,7 @@ Versioning: [SemVer](https://semver.org/).
 - **Honest stream auth reporting.** Stopped reporting passkey assertions that
   never actually happened in the stream WebAuthn gate.
 
-### Removed
+#### Removed
 
 - **Board (whiteboard sync) retired.** Deleted the dead `/api/board/token`
   HMAC-minting surface (`registerBoardRoutes`, `BOARD_AUTH_SECRET`) and its
@@ -302,7 +319,7 @@ Versioning: [SemVer](https://semver.org/).
 
 ---
 
-## [1.1.0] - 2026-07-07
+### 1.1.0 — 2026-07-07
 
 The **sovereign assistant** release. Vulos gains an on-box AI agent that is
 aware of your calendar, contacts, files, and reminders and can act on your
@@ -312,7 +329,7 @@ Guard, and the LLM runs through your own on-box gateway by default. Plus
 one-click account portability, passkey clone/replay hardening, content-blind
 file sharing, and a deep shell polish pass.
 
-### Added
+#### Added
 
 - **Sovereign assistant — read-only awareness.** The agent can read your
   agenda and pending invites (calendar), look up contacts (`find_contact`),
@@ -357,7 +374,7 @@ file sharing, and a deep shell polish pass.
 - **Board/whiteboard integration** — embedded board surface gated by
   `BOARD_AUTH_SECRET` (fails closed in prod when unset).
 
-### Fixed
+#### Fixed
 
 - **Passkey clone/replay (AUTH-13).** Closed a WebAuthn signature-counter
   clone-detection gap; added a virtual-authenticator test harness that closes
@@ -370,7 +387,7 @@ file sharing, and a deep shell polish pass.
   AUTH-13 input-injection gate safely.
 - Redact email-verification token from production peering logs.
 
-### Security
+#### Security
 
 - Default-deny attestation policy with fail-closed Nitro/noop verifiers;
   Ed25519-signed peer profiles verified against the Vula ID.
@@ -381,7 +398,7 @@ file sharing, and a deep shell polish pass.
   (calendar, files, reminders) and expanded HTTP-route + registrar coverage
   (join/joincode/files/aiapps, notify, assistant execute).
 
-### Changed
+#### Changed
 
 - Files ACL role hierarchy is **viewer < editor < owner**, enforced
   server-side on every share and collab join.
@@ -390,7 +407,7 @@ file sharing, and a deep shell polish pass.
 
 ---
 
-## [1.0.0] - 2026-06-16
+### 1.0.0 — 2026-06-16
 
 Milestone release. First feature-complete, security-hardened Vula OS merged to
 `main`: email/password + passkey/2FA auth (no third-party OAuth), GPU-accelerated
@@ -402,7 +419,7 @@ and the headless `vulos-managed` cloud box image. Mail is fully separated
 and cloud/infra paths are implemented and unit-tested but await verification on
 real hardware/live services.
 
-### Fixed
+#### Fixed
 
 - Wire `RegisterAnchorHandlers` in `main.go` — ANCHOR-01 routes
   (`POST /api/anchor-inbox/provision`, `GET /api/anchor-inbox/status`) were
@@ -418,9 +435,9 @@ real hardware/live services.
 
 ---
 
-## [0.2.0] — 2026-06-15
+### 0.2.0 — 2026-06-15
 
-### Security
+#### Security
 
 - Admin-gated 35 privileged endpoints across `backend/cmd/server/` — system
   mutation routes (networking, energy, exec, process control, sandbox) now
@@ -439,7 +456,7 @@ real hardware/live services.
   signing prevents forged-origin uninstall attacks; observation-set GC closes
   re-quorum-after-reinstall vector
 
-### Added
+#### Added
 
 - Passkeys (WebAuthn/FIDO2) as primary login method — full registration +
   assertion ceremony (`backend/services/passkeys/login.go`,
@@ -459,7 +476,7 @@ real hardware/live services.
 - Quorum security test suite
   (`backend/internal/multiinstance/quorum_security_test.go`)
 
-### Changed
+#### Changed
 
 - Auth model clarified: email + password + 2FA/TOTP baseline; passkeys
   (WebAuthn) primary for new accounts; QR/phone-approval for kiosk clients.
@@ -477,7 +494,7 @@ real hardware/live services.
 - OAuth BFF / connected-accounts (LOGINISO-03) descoped — won't-do; Vulos
   identity is self-contained.
 
-### Removed
+#### Removed
 
 - `backend/services/webbrowser/` — server-side Chromium streaming (BROWSER-02)
 - `backend/services/isolatedbrowser/` — Isolated/Disposable Browsing (RBI)
@@ -489,9 +506,9 @@ real hardware/live services.
 
 ---
 
-## [0.1.2] — 2026-05-26
+### 0.1.2 — 2026-05-26
 
-### Added
+#### Added
 
 - Native-first re-architecture (v8): Open Router dispatch lanes, host-browser
   native browsing, GPU route (BYO peer), streaming efficiency wins
@@ -509,9 +526,9 @@ real hardware/live services.
 
 ---
 
-## [0.1.1] — 2026-05-10
+### 0.1.1 — 2026-05-10
 
-### Added
+#### Added
 
 - Peering: Ed25519 identity, signed canonical-JSON envelopes, server-to-server
   messaging, media transfer, WebRTC voice/video signaling, Drop (AirDrop-style)
@@ -519,15 +536,15 @@ real hardware/live services.
 - AI Router: Ollama default, multi-provider (Claude, OpenAI, OpenAI-compatible),
   chat history, embeddings, sandbox Python execution
 
-### Fixed
+#### Fixed
 
 - Live-USB bootable ESP fix (BMINIT-14)
 
 ---
 
-## [0.1.0] — 2026-04-18
+### 0.1.0 — 2026-04-18
 
-### Added
+#### Added
 
 - Initial public release
 - Web-native window manager (React 19, Tailwind CSS 4, Vite)
@@ -538,13 +555,5 @@ real hardware/live services.
 - Docker image for `linux/amd64` and `linux/arm64`
 - CI (build, vet, test, gofmt, Docker) and release pipeline (tag-triggered)
 
-[Unreleased]: https://github.com/vul-os/vulos/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/vul-os/vulos/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/vul-os/vulos/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/vul-os/vulos/compare/v0.2.0...v1.0.0
-[0.2.0]: https://github.com/vul-os/vulos/compare/v0.1.2...v0.2.0
-[0.1.2]: https://github.com/vul-os/vulos/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/vul-os/vulos/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/vul-os/vulos/compare/v0.0.2...v0.1.0
-[0.0.2]: https://github.com/vul-os/vulos/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/vul-os/vulos/releases/tag/v0.0.1
+[Unreleased]: https://github.com/vul-os/vulos/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/vul-os/vulos/releases/tag/v0.1.0
