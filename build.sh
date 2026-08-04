@@ -970,7 +970,9 @@ chroot "$ROOTFS" systemctl enable vulos.service
 # log into.
 cat > "$ROOTFS/usr/local/bin/vulos-console-status" << 'STATUSEOF'
 #!/bin/sh
-# Renders box status to the console. No shell, no input — display only.
+# Renders box status to the console. No shell, no input - display only.
+# ASCII only: the Linux console font has no em-dash glyph and renders it as a
+# filled block (seen in a tty1 screendump).
 while :; do
   ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
   [ -n "$ip" ] || ip="(no network yet)"
@@ -984,7 +986,7 @@ while :; do
   clear
   printf '\n  Vulos\n\n'
   printf '  Open in a browser:   http://%s:8080\n' "$ip"
-  [ "$https" = "up" ] && printf '                       https://%s   (self-signed — accept once)\n' "$ip"
+  [ "$https" = "up" ] && printf '                       https://%s   (self-signed - accept once)\n' "$ip"
   printf '\n  Address:   %s\n' "$ip"
   printf '  Server:    %s\n' "$svc"
   printf '  HTTP:      %s\n' "$http"
