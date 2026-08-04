@@ -550,6 +550,21 @@ debootstrap --arch="$ARCH" --variant=minbase "$SUITE" "$ROOTFS" http://deb.debia
 
 chroot "$ROOTFS" sh -c 'sed -i "s/Components: main/Components: main contrib non-free non-free-firmware/" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true'
 
+# Bound every apt download so a wedged connection FAILS instead of hanging.
+# Without this, a stalled fetch has no timeout at all: two separate builds here
+# (arm64 and amd64) parked on the ~100 MB linux-image download and sat silent
+# for 2h25m and 28min respectively before being killed by hand — apt was still
+# "running", just never going to finish. A build that dies in 30s and retries
+# is strictly better than one that hangs indefinitely, especially inside CI
+# where nobody is watching the log.
+mkdir -p "$ROOTFS/etc/apt/apt.conf.d"
+cat > "$ROOTFS/etc/apt/apt.conf.d/99vulos-retries" << 'APTCONF'
+Acquire::Retries "3";
+Acquire::http::Timeout "30";
+Acquire::https::Timeout "30";
+Acquire::http::No-Cache "true";
+APTCONF
+
 chroot "$ROOTFS" apt-get update
 # Single install list. Trailing-backslash continuation must be unbroken — a
 # stray newline here previously split this into bare `flatpak …` commands that
@@ -932,6 +947,68 @@ WantedBy=multi-user.target
 EOF
 
 chroot "$ROOTFS" systemctl enable vulos.service
+
+# ── Console status screen ────────────────────────────────────────────────────
+# A freshly flashed box previously booted to a bare `vulos login:` with NO
+# credentials configured — so the one screen physically in front of the user
+# told them nothing: not the box's address, not whether the server came up, not
+# where to point a browser. The whole first-run story is "open it in a
+# browser", and the console never said so.
+#
+# This shows the box's real state instead, refreshed every 15s: address, the
+# URL to open, and whether the HTTP and LAN-HTTPS listeners are actually up.
+# It deliberately grants NO shell — it is a status view, not a login. That
+# keeps the existing posture (no console credentials) while removing the dead
+# end, and it is also the only way to see listener state on a box you cannot
+# log into.
+cat > "$ROOTFS/usr/local/bin/vulos-console-status" << 'STATUSEOF'
+#!/bin/sh
+# Renders box status to the console. No shell, no input — display only.
+while :; do
+  ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+  [ -n "$ip" ] || ip="(no network yet)"
+  if systemctl is-active --quiet vulos.service; then svc="running"; else svc="NOT running"; fi
+  # Probe the listeners rather than trusting the unit state: "active" only means
+  # the process is alive, not that it is serving.
+  if curl -fsS --max-time 2 "http://127.0.0.1:8080/api/setup/status" >/dev/null 2>&1; then
+    http="up"; else http="down"; fi
+  if curl -fsSk --max-time 2 "https://127.0.0.1:443/api/setup/status" >/dev/null 2>&1; then
+    https="up"; else https="off"; fi
+  clear
+  printf '\n  Vulos\n\n'
+  printf '  Open in a browser:   http://%s:8080\n' "$ip"
+  [ "$https" = "up" ] && printf '                       https://%s   (self-signed — accept once)\n' "$ip"
+  printf '\n  Address:   %s\n' "$ip"
+  printf '  Server:    %s\n' "$svc"
+  printf '  HTTP:      %s\n' "$http"
+  printf '  HTTPS:     %s\n' "$https"
+  printf '\n  This console is status-only. Manage the box from the browser.\n'
+  sleep 15
+done
+STATUSEOF
+chmod +x "$ROOTFS/usr/local/bin/vulos-console-status"
+
+cat > "$ROOTFS/etc/systemd/system/vulos-console.service" << 'EOF'
+[Unit]
+Description=Vulos console status screen
+After=vulos.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vulos-console-status
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+chroot "$ROOTFS" systemctl enable vulos-console.service
 
 mkdir -p "$ROOTFS/var/lib/vulos"
 touch "$ROOTFS/var/lib/vulos/.setup-complete"
