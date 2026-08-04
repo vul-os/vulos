@@ -803,7 +803,9 @@ func stripJSComments(src string) string {
 }
 
 // origin01RepoRoot walks up from the test's working directory (backend/services)
-// until it finds the repo root — the directory holding both src/ and backend/.
+// until it finds the repo root — the directory holding both frontend/ and
+// backend/. The web tier lives in frontend/ (alongside backend/ and clients/),
+// so the marker file is frontend/src/core/AppOrigins.js.
 func origin01RepoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -811,7 +813,7 @@ func origin01RepoRoot(t *testing.T) string {
 		t.Fatalf("getwd: %v", err)
 	}
 	for i := 0; i < 6; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "src", "core", "AppOrigins.js")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "frontend", "src", "core", "AppOrigins.js")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -820,16 +822,16 @@ func origin01RepoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatal("could not locate repo root (no src/core/AppOrigins.js above the test dir)")
+	t.Fatal("could not locate repo root (no frontend/src/core/AppOrigins.js above the test dir)")
 	return ""
 }
 
 func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
 	root := origin01RepoRoot(t)
-	srcDir := filepath.Join(root, "src")
+	srcDir := filepath.Join(root, "frontend", "src")
 
 	// The single sanctioned site: AppOrigins.js, inside the origin-comparison gate.
-	const sanctioned = "src/core/AppOrigins.js"
+	const sanctioned = "frontend/src/core/AppOrigins.js"
 
 	var offenders []string
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
@@ -882,7 +884,7 @@ func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
 	}
 
 	// The dead needsSameOrigin() allowlist must not come back as a sandbox input.
-	for _, f := range []string{"src/shell/Window.jsx", "src/layouts/MobileStack.jsx", "src/shell/Popout.jsx"} {
+	for _, f := range []string{"frontend/src/shell/Window.jsx", "frontend/src/layouts/MobileStack.jsx", "frontend/src/shell/Popout.jsx"} {
 		data, err := os.ReadFile(filepath.Join(root, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
