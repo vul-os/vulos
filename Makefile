@@ -52,12 +52,12 @@ test-dev:
 test-all:
 	$(SCRIPTS)/test-all.sh
 
-## dev: run the Go backend and the Vite dev server together (wraps ./dev.sh).
+## dev: run the Go backend and the Vite dev server together (wraps scripts/dev.sh).
 ## Declared explicitly (and in .PHONY) because without it make's implicit
 ## copy rule silently turns `make dev` into `cp dev.sh dev`, leaving a stray
 ## executable behind instead of starting anything.
 dev:
-	./dev.sh
+	$(SCRIPTS)/dev.sh
 
 ## smoke: run the peering-route smoke test (SMOKE-01) — builds the server, starts
 ## it, waits for /health, then probes every registered peering route and fails if

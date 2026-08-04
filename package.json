@@ -9,11 +9,13 @@
     "build": "vite build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "gen:wire-types": "cd scripts/wiregen && go run . -root ../.. > ../../src/types/wire.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "gen:wire-types:check": "cd scripts/wiregen && go run . -root ../.. | diff -u ../../src/types/wire.ts - > /dev/null || (echo \"src/types/wire.ts is stale — run: npm run gen:wire-types\" && exit 1)"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -42,7 +44,8 @@
     "msw": "^2.14.6",
     "playwright": "^1.49.0",
     "qrcode": "^1.5.4",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.66.0",
     "vite": "^8.0.1",
     "vitest": "^4.1.7"
   }

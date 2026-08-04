@@ -138,7 +138,7 @@ npm run dev
 cd backend && go run ./cmd/server --env=local
 ```
 
-Or run both together with **`./dev.sh`** (equivalently `make dev`). Open **http://localhost:5173**.
+Or run both together with **`./scripts/dev.sh`** (equivalently `make dev`). Open **http://localhost:5173**.
 
 Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)**.
 

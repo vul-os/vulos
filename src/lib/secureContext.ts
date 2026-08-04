@@ -1,4 +1,4 @@
-// secureContext.js — shared guard for the src/lib modules that need WebCrypto
+// secureContext.ts — shared guard for the src/lib modules that need WebCrypto
 // SubtleCrypto (offlineAuth.js, masterKey.js, contentSeal.js, offline/index.js).
 //
 // WHY: `window.crypto.subtle` only exists in a browser "secure context" —
@@ -27,19 +27,22 @@ export const INSECURE_CONTEXT_MESSAGE =
   'connection becomes secure), or open an SSH tunnel to the box and use ' +
   'http://localhost:<port>, which browsers also treat as secure.'
 
+// A plain Error tagged with a `code` so callers can distinguish this guard
+// from an unrelated failure without string-matching the message.
+export type TaggedError = Error & { code: string }
+
 // hasSubtleCrypto reports whether the platform SubtleCrypto implementation is
 // available in this context, without throwing. Useful for callers that want
 // to pre-flight a UI state (e.g. disable a button) rather than catch.
-export function hasSubtleCrypto() {
+export function hasSubtleCrypto(): boolean {
   return !!(globalThis.crypto && globalThis.crypto.subtle)
 }
 
 // requireSubtle returns the platform SubtleCrypto implementation, or throws a
 // tagged Error (code: 'INSECURE_CONTEXT') carrying INSECURE_CONTEXT_MESSAGE.
-export function requireSubtle() {
+export function requireSubtle(): SubtleCrypto {
   const subtle = globalThis.crypto && globalThis.crypto.subtle
   if (subtle) return subtle
-  const e = new Error(INSECURE_CONTEXT_MESSAGE)
-  e.code = 'INSECURE_CONTEXT'
+  const e: TaggedError = Object.assign(new Error(INSECURE_CONTEXT_MESSAGE), { code: 'INSECURE_CONTEXT' })
   throw e
 }

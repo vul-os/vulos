@@ -1,5 +1,5 @@
 /**
- * stepup.js — client side of the generic "extra security step" gate.
+ * stepup.ts — client side of the generic "extra security step" gate.
  *
  * Pattern: privileged UI actions (destructive/sensitive admin operations)
  * call `await requireStepUp()` immediately before performing the mutation.
@@ -31,7 +31,7 @@
 
 import { createRoot } from 'react-dom/client'
 import { createElement } from 'react'
-import StepUpModal from './StepUpModal.jsx'
+import StepUpModal from './StepUpModal.js'
 
 // SAFETY_MARGIN_MS keeps the client from treating a token as fresh right up
 // against the server's own expiry — a network round-trip could land just
@@ -51,7 +51,11 @@ let elevatedUntil = 0
 // pendingPromise de-dupes concurrent callers: if requireStepUp() is invoked
 // again while a modal is already open, the second caller waits on the same
 // modal instead of stacking a second one.
-let pendingPromise = null
+let pendingPromise: Promise<void> | null = null
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
 
 /**
  * Resolve once the current session is freshly elevated. Opens a
@@ -60,13 +64,13 @@ let pendingPromise = null
  *
  * @returns {Promise<void>}
  */
-export function requireStepUp() {
+export function requireStepUp(): Promise<void> {
   if (Date.now() < elevatedUntil - SAFETY_MARGIN_MS) {
     return Promise.resolve()
   }
   if (pendingPromise) return pendingPromise
 
-  pendingPromise = new Promise((resolve, reject) => {
+  pendingPromise = new Promise<void>((resolve, reject) => {
     const container = document.createElement('div')
     container.setAttribute('data-stepup-modal-root', '')
     document.body.appendChild(container)
@@ -77,13 +81,16 @@ export function requireStepUp() {
       container.remove()
     }
 
-    const onResolve = (data) => {
-      const expiresAt = data?.expires_at ? Date.parse(data.expires_at) : NaN
+    // `data` is whatever /auth/stepup/verify returned — untrusted network
+    // JSON (request() returns `unknown`, see api.ts). Narrowed here rather
+    // than assumed.
+    const onResolve = (data: unknown) => {
+      const expiresAt = isRecord(data) && typeof data.expires_at === 'string' ? Date.parse(data.expires_at) : NaN
       elevatedUntil = Number.isFinite(expiresAt) ? expiresAt : Date.now() + 5 * 60_000
       cleanup()
       resolve()
     }
-    const onReject = (err) => {
+    const onReject = (err: unknown) => {
       cleanup()
       reject(err)
     }

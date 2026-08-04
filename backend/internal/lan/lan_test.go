@@ -177,6 +177,75 @@ func TestLanBindAddr_PinsWildcardToLANIP(t *testing.T) {
 	}
 }
 
+// TestService_DisableDNSSkipsResponderButKeepsHTTPS proves DisableDNS is a
+// genuine opt-out: no UDP socket is opened at all (not just "unreachable"),
+// while HTTPS keeps serving over the self-signed fallback cert exactly as
+// when DNS is enabled. This is the pair to TestService_DNSAndHTTPSIntegrated
+// above — same setup, DNS flipped off — so the same assertions could have
+// caught DNS being left on by accident.
+func TestService_DisableDNSSkipsResponderButKeepsHTTPS(t *testing.T) {
+	const instanceID = "01H000000000000000000TEST"
+	lanIP := net.IPv4(127, 0, 0, 1)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "vulos-os")
+	})
+	host := BoxHostname(instanceID)
+	src := NewSelfSignedCertSource([]string{"vulos.local", host}, []net.IP{lanIP})
+
+	svc, err := New(Config{
+		InstanceID:  instanceID,
+		CertSource:  src,
+		Handler:     handler,
+		LANIP:       lanIP,
+		HTTPSAddr:   "127.0.0.1:0",
+		DNSAddr:     "127.0.0.1:0",
+		DisableMDNS: true,
+		DisableDNS:  true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := svc.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer svc.Stop(context.Background())
+
+	// No DNS responder was constructed at all.
+	svc.mu.Lock()
+	dnsIsNil := svc.dns == nil
+	svc.mu.Unlock()
+	if !dnsIsNil {
+		t.Error("expected svc.dns to be nil when DisableDNS is set")
+	}
+
+	// HTTPS still works, including the self-signed fallback cert.
+	devCert, err := src.Certificate(nil)
+	if err != nil {
+		t.Fatalf("Certificate: %v", err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(devCert.Leaf)
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, ServerName: "vulos.local"},
+		},
+	}
+	url := "https://" + svc.HTTPSAddr() + "/"
+	resp, err := client.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "vulos-os" {
+		t.Errorf("body = %q, want %q", body, "vulos-os")
+	}
+}
+
 // TestService_BindsListenersToLANIPNotWildcard proves the wired path: when the
 // configured HTTPS/DNS addresses use a wildcard host, the actually-bound
 // listeners use the detected LAN IP, not 0.0.0.0. We use a loopback LAN IP so

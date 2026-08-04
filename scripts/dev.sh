@@ -2,15 +2,21 @@
 # Vula OS — Development Script
 #
 # Usage:
-#   ./dev.sh                Local dev (Go backend + Vite HMR, no Docker)
-#   ./dev.sh deploy         Full Docker build + deploy
-#   ./dev.sh deploy quick   Quick rebuild (copy backend + frontend into running container)
-#   ./dev.sh deploy layer   Layered rebuild (Docker build, reuses cached apt layer — fast)
+#   ./scripts/dev.sh                Local dev (Go backend + Vite HMR, no Docker)
+#   ./scripts/dev.sh deploy         Full Docker build + deploy
+#   ./scripts/dev.sh deploy quick   Quick rebuild (copy backend + frontend into running container)
+#   ./scripts/dev.sh deploy layer   Layered rebuild (Docker build, reuses cached apt layer — fast)
 #
 # Local dev:  http://localhost:5173
 # Docker:     http://localhost:8080
 
 set -e
+
+# Every path below (backend/, Dockerfile, dist/, registry.json, landing/) is
+# relative to the repo root, not to this script's own location. Anchor CWD to
+# the repo root (parent of scripts/) so this still works regardless of where
+# it's invoked from, now that it no longer lives at the root itself.
+cd "$(dirname "$0")/.."
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -89,7 +95,7 @@ deploy_quick() {
   echo "${BLUE}Quick rebuild — backend + frontend only${NC}"
 
   if ! docker ps --filter "name=$NAME" --format '{{.Status}}' | grep -q "Up"; then
-    echo "${RED}Container not running. Use './dev.sh deploy' first.${NC}"
+    echo "${RED}Container not running. Use './scripts/dev.sh deploy' first.${NC}"
     exit 1
   fi
 

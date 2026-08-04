@@ -1,5 +1,5 @@
 /**
- * offlineQueue.js — local write-queue for offline operation (OFFLINE-03 +
+ * offlineQueue.ts — local write-queue for offline operation (OFFLINE-03 +
  * OFFLINE-04 IndexedDB upgrade).
  *
  * Shape mirrors lilmail/src/lib/outboxQueue.js so the OS shell, mail
@@ -41,6 +41,36 @@
 
 import { request, rawFetch } from './api.js'
 
+export interface QueueRecordBody {
+  method: string
+  path: string
+  headers: Record<string, string> | null
+  body: string | Blob | ArrayBuffer | null
+}
+
+export interface QueueRecord {
+  id: string
+  kind: string
+  body: QueueRecordBody
+  queuedAt: number
+  attempts: number
+  lastError: string | null
+}
+
+interface EnqueueEntry {
+  kind?: string
+  body?: {
+    method?: string
+    path?: string
+    headers?: Record<string, string> | null
+    body?: string | Blob | ArrayBuffer | null
+  }
+}
+
+interface ReplayDeps {
+  replay?: (record: QueueRecord) => Promise<unknown>
+}
+
 const LS_KEY = 'vulos.os.offlineQueue.v1'
 const IDB_NAME = 'vulos.os.offlineQueue'
 const IDB_STORE = 'writes'
@@ -54,28 +84,28 @@ const FLUSH_INTERVAL_MS = 30_000
 const LS_MIRROR_CAP_BYTES = 1_000_000
 
 let _flushing = false
-let _flushTimer = null
-const listeners = new Set()
+let _flushTimer: ReturnType<typeof setInterval> | null = null
+const listeners = new Set<(items: QueueRecord[]) => void>()
 
 // In-memory mirror — the synchronous source of truth for readAll/size.
-let _mirror = hydrateFromLocalStorage()
+let _mirror: QueueRecord[] = hydrateFromLocalStorage()
 // Resolves once the initial IndexedDB hydration (if any) has completed.
-let _ready = hydrateFromIndexedDB()
+const _ready: Promise<void> = hydrateFromIndexedDB()
 
 /** Subscribe to queue-state changes. Returns an unsubscribe fn. */
-export function onQueueChange(fn) {
+export function onQueueChange(fn: (items: QueueRecord[]) => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }
 
-function emit() {
+function emit(): void {
   const items = readAll()
   for (const fn of listeners) {
     try { fn(items) } catch { /* listener errors are non-fatal */ }
   }
 }
 
-function genId() {
+function genId(): string {
   try {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
   } catch { /* fallthrough */ }
@@ -85,7 +115,7 @@ function genId() {
 // ── IndexedDB plumbing ───────────────────────────────────────────────────────
 
 /** True when IndexedDB is usable in this environment. */
-function idbAvailable() {
+function idbAvailable(): boolean {
   try {
     return typeof indexedDB !== 'undefined' && indexedDB !== null
   } catch {
@@ -94,9 +124,9 @@ function idbAvailable() {
 }
 
 /** Open (creating/upgrading) the queue object store. Resolves to an IDBDatabase. */
-function openIDB() {
+function openIDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    let req
+    let req: IDBOpenDBRequest
     try {
       req = indexedDB.open(IDB_NAME, IDB_VERSION)
     } catch (err) {
@@ -122,19 +152,21 @@ function openIDB() {
  * is never lost to microtask-vs-macrotask ordering between onsuccess and
  * oncomplete. Errors reject.
  */
-async function withStore(mode, fn) {
+async function withStore<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => T | Promise<T>): Promise<T> {
   const db = await openIDB()
   try {
-    return await new Promise((resolve, reject) => {
+    return await new Promise<T>((resolve, reject) => {
       const tx = db.transaction(IDB_STORE, mode)
       const store = tx.objectStore(IDB_STORE)
-      let result
-      let fnDone = false
+      // Boxed so TS can prove `fnResult.value` is only ever read once it has
+      // actually been assigned (a plain `let result: T` read inside the
+      // closure below can't be proven definitely-assigned across the two
+      // independent async completion paths, even though it always is here).
+      let fnResult: { value: T } | null = null
       let txDone = false
-      const maybeResolve = () => { if (fnDone && txDone) resolve(result) }
+      const maybeResolve = () => { if (fnResult && txDone) resolve(fnResult.value) }
       Promise.resolve(fn(store)).then((r) => {
-        result = r
-        fnDone = true
+        fnResult = { value: r }
         maybeResolve()
       }).catch(reject)
       tx.oncomplete = () => { txDone = true; maybeResolve() }
@@ -146,12 +178,21 @@ async function withStore(mode, fn) {
   }
 }
 
-/** Read every record from IndexedDB (ordered by queuedAt for stable replay). */
-async function idbReadAll() {
-  return withStore('readonly', (store) => new Promise((resolve, reject) => {
+/**
+ * Read every record from IndexedDB (ordered by queuedAt for stable replay).
+ *
+ * TRUST BOUNDARY: `req.result` off IDBObjectStore.getAll() is `any[]` per
+ * lib.dom.d.ts (IndexedDB has no schema) — asserted to QueueRecord[] below
+ * without runtime validation, same as the original code did implicitly. These
+ * rows were only ever written by idbPut() below (this module's own writer),
+ * so in practice they always have this shape; nothing upstream of this
+ * conversion validated that either.
+ */
+async function idbReadAll(): Promise<QueueRecord[]> {
+  return withStore<QueueRecord[]>('readonly', (store) => new Promise<QueueRecord[]>((resolve, reject) => {
     const req = store.getAll()
     req.onsuccess = () => {
-      const rows = Array.isArray(req.result) ? req.result.slice() : []
+      const rows: QueueRecord[] = Array.isArray(req.result) ? req.result.slice() : []
       rows.sort((a, b) => (a.queuedAt || 0) - (b.queuedAt || 0))
       resolve(rows)
     }
@@ -159,16 +200,16 @@ async function idbReadAll() {
   }))
 }
 
-function idbPut(record) {
-  return withStore('readwrite', (store) => { store.put(record) })
+function idbPut(record: QueueRecord): Promise<void> {
+  return withStore<void>('readwrite', (store) => { store.put(record) })
 }
 
-function idbDelete(id) {
-  return withStore('readwrite', (store) => { store.delete(id) })
+function idbDelete(id: string): Promise<void> {
+  return withStore<void>('readwrite', (store) => { store.delete(id) })
 }
 
-function idbClear() {
-  return withStore('readwrite', (store) => { store.clear() })
+function idbClear(): Promise<void> {
+  return withStore<void>('readwrite', (store) => { store.clear() })
 }
 
 /**
@@ -177,13 +218,14 @@ function idbClear() {
  * records are kept in IndexedDB only. Fire-and-forget: failures never block the
  * synchronous caller (the in-memory mirror already reflects the change).
  */
-function persist(items) {
+function persist(items: QueueRecord[]): Promise<void> {
   writeLocalStorageMirror(items)
   if (!idbAvailable()) return Promise.resolve()
   // Reconcile IndexedDB to exactly `items`: clear then re-put. The set is small
   // (queued offline writes), so a full rewrite is simplest and race-free.
   return idbClear()
     .then(() => Promise.all(items.map((it) => idbPut(it))))
+    .then(() => undefined)
     .catch(() => { /* durable store unavailable — mirror still holds the data */ })
 }
 
@@ -195,7 +237,7 @@ function persist(items) {
  * over-cap total are NOT mirrored (they live durably in IndexedDB); a marker is
  * left so a fresh load knows to wait for the IndexedDB hydration.
  */
-function writeLocalStorageMirror(items) {
+function writeLocalStorageMirror(items: QueueRecord[]): void {
   if (typeof localStorage === 'undefined') return
   try {
     const jsonSafe = items.every((it) => isJsonSafeBody(it.body && it.body.body))
@@ -214,20 +256,29 @@ function writeLocalStorageMirror(items) {
 }
 
 /** A body is JSON-safe if it is null, a string, or absent (not Blob/ArrayBuffer). */
-function isJsonSafeBody(body) {
+function isJsonSafeBody(body: unknown): boolean {
   if (body == null) return true
   if (typeof body === 'string') return true
   return false
 }
 
-/** Synchronously hydrate the mirror from localStorage. [] on missing/corrupt/deferred. */
-function hydrateFromLocalStorage() {
+/**
+ * Synchronously hydrate the mirror from localStorage. [] on missing/corrupt/deferred.
+ *
+ * TRUST BOUNDARY: `v` is JSON parsed out of localStorage — only checked to be
+ * an array, not that its elements are actually well-formed QueueRecords. This
+ * matches the ORIGINAL behaviour exactly (it never validated element shape
+ * either); every element here was written by this module's own writeAll(), so
+ * it is self-consistent in practice, but this function cannot prove that —
+ * flagged here rather than silently asserted.
+ */
+function hydrateFromLocalStorage(): QueueRecord[] {
   try {
     if (typeof localStorage === 'undefined') return []
     const raw = localStorage.getItem(LS_KEY)
     if (!raw) return []
-    const v = JSON.parse(raw)
-    if (Array.isArray(v)) return v
+    const v: unknown = JSON.parse(raw)
+    if (Array.isArray(v)) return v as QueueRecord[]
     // { deferred: true } or any non-array → empty until IndexedDB hydrates.
     return []
   } catch {
@@ -240,7 +291,7 @@ function hydrateFromLocalStorage() {
  * IndexedDB holds records the localStorage mirror could not (binary/large), this
  * is what restores them after a reload. IndexedDB is authoritative on init.
  */
-async function hydrateFromIndexedDB() {
+async function hydrateFromIndexedDB(): Promise<void> {
   if (!idbAvailable()) return
   try {
     const rows = await idbReadAll()
@@ -256,19 +307,19 @@ async function hydrateFromIndexedDB() {
  * the synchronous API works immediately off the localStorage-hydrated mirror,
  * but a caller (or test) that needs the durable set restored can await this.
  */
-export function ready() {
+export function ready(): Promise<void> {
   return _ready
 }
 
 // ── Public queue API (synchronous, mirror-backed) ────────────────────────────
 
 /** Read the full queue. Synchronous — returns a copy of the in-memory mirror. */
-export function readAll() {
+export function readAll(): QueueRecord[] {
   return _mirror.slice()
 }
 
 /** Replace the mirror and write through to the durable + fallback stores. */
-function writeAll(items) {
+function writeAll(items: QueueRecord[]): void {
   _mirror = items.slice()
   persist(_mirror)
 }
@@ -283,9 +334,9 @@ function writeAll(items) {
  *   IndexedDB (it could not in the old localStorage-only queue).
  * @returns {object} the stored record
  */
-export function enqueue(entry) {
+export function enqueue(entry: EnqueueEntry): QueueRecord {
   const body = entry && entry.body ? entry.body : {}
-  const record = {
+  const record: QueueRecord = {
     id: genId(),
     kind: (entry && entry.kind) || 'write',
     body: {
@@ -306,19 +357,19 @@ export function enqueue(entry) {
 }
 
 /** Remove a record by id. */
-export function remove(id) {
+export function remove(id: string): void {
   writeAll(readAll().filter((it) => it.id !== id))
   emit()
 }
 
 /** Clear all queued records. */
-export function clear() {
+export function clear(): void {
   writeAll([])
   emit()
 }
 
 /** Number of items currently queued. */
-export function size() {
+export function size(): number {
   return _mirror.length
 }
 
@@ -330,10 +381,15 @@ export function size() {
  * suffix and replayed via request(); anything else is replayed via rawFetch()
  * so it still benefits from failover.
  */
-async function defaultReplay(record) {
-  const { method, path, headers, body } = record.body || {}
+async function defaultReplay(record: QueueRecord): Promise<unknown> {
+  // record.body is non-optional per QueueRecord, but a record hydrated from
+  // storage (see the trust-boundary note on hydrateFromLocalStorage/
+  // idbReadAll) isn't runtime-verified to actually have that shape — the `||
+  // {}` fallback is defensive, matching the original code exactly.
+  const b: Partial<QueueRecordBody> = record.body || {}
+  const { method, path, headers, body } = b
   if (!path) throw new Error('offlineQueue: empty path')
-  const init = {
+  const init: RequestInit = {
     method: method || 'POST',
     headers: headers || undefined,
     body: body ?? undefined,
@@ -349,6 +405,10 @@ async function defaultReplay(record) {
   return res
 }
 
+function isRecordWithMessage(x: unknown): x is { message: unknown } {
+  return typeof x === 'object' && x !== null && 'message' in x
+}
+
 /**
  * flush — attempt to replay every queued record. Stops on the first network
  * failure; retried later when `online` fires or the ticker re-arms.
@@ -357,7 +417,7 @@ async function defaultReplay(record) {
  *   tests so the queue is exercised without touching api.js.
  * @returns {Promise<{ sent: number, failed: number, remaining: number }>}
  */
-export async function flush(deps) {
+export async function flush(deps?: ReplayDeps): Promise<{ sent: number; failed: number; remaining: number }> {
   if (_flushing) return { sent: 0, failed: 0, remaining: size() }
   _flushing = true
   const replay = (deps && deps.replay) || defaultReplay
@@ -375,7 +435,8 @@ export async function flush(deps) {
         sent++
       } catch (err) {
         record.attempts++
-        record.lastError = String(err?.message ?? err)
+        const msg = isRecordWithMessage(err) ? err.message : undefined
+        record.lastError = String(msg ?? err)
         if (record.attempts >= MAX_ATTEMPTS) {
           // Poisoned record — give up so the queue doesn't get stuck forever.
           items = readAll().filter((it) => it.id !== record.id)
@@ -403,7 +464,7 @@ export async function flush(deps) {
  *
  * @param {object} [deps] — optional { replay } override for tests.
  */
-export function startOfflineQueueFlushLoop(deps) {
+export function startOfflineQueueFlushLoop(deps?: ReplayDeps): void {
   if (typeof window === 'undefined') return
 
   const tryFlush = async () => {

@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
@@ -49,6 +50,29 @@ export default defineConfig([
   // Test files — Vitest runs with `globals: true`, so the describe/it/expect
   // family and the lifecycle hooks are ambient. Also allow Node globals
   // (__dirname, process) used by fixture-loading tests.
+  // TypeScript sources (src/lib/ — the security-critical client SDK, plus the
+  // generated wire types). Deliberately mirrors the JS block's react-hooks
+  // rules: converting a file to TypeScript must NOT silently drop the
+  // rules-of-hooks / exhaustive-deps coverage it had as .jsx. tsc catches type
+  // errors; only eslint catches a conditional hook.
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+    ],
+    languageOptions: {
+      parser: tseslint.parser,
+      globals: { ...globals.browser },
+      parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } },
+    },
+    rules: {
+      // Superseded by the TS-aware version, which understands type-only imports.
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    },
+  },
   {
     files: ['**/*.test.{js,jsx}', '**/__tests__/**/*.{js,jsx}', 'src/test-setup.js'],
     languageOptions: {

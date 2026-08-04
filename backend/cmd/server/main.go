@@ -4358,10 +4358,16 @@ func main() {
 	// OFFLINE-01: opt-in box LAN reachability. When enabled, the box advertises
 	// vulos.local over mDNS, runs a tiny DNS responder for box.<id>.lan.vulos.org,
 	// and serves the OS over HTTPS on the LAN — all without any cloud round-trip,
-	// so a co-located client keeps working with the internet/cloud down.
+	// so a co-located client keeps working with the internet/cloud down. HTTPS
+	// is also what makes the LAN origin a secure context in the browser (only
+	// the scheme matters, not cert validity), which is required for
+	// window.crypto.subtle and the rest of src/lib/ to run at all.
 	// Disabled by default (NOT every install wants extra listeners); set
 	// VULOS_LAN_ENABLE=1 to turn on. The HTTPS/DNS ports default to the
-	// privileged 443/53 and can be overridden for non-root runs.
+	// privileged 443/53 and can be overridden for non-root runs. The DNS
+	// responder specifically can be turned off on its own, independent of
+	// HTTPS/mDNS, with VULOS_LAN_DNS_DISABLE=1 (see below) — unchanged by
+	// default.
 	if os.Getenv("VULOS_LAN_ENABLE") == "1" {
 		lanHost := lan.BoxHostname(cfg.InstanceID)
 		// Prefer the LANCERT-01 externally-issued cert at the well-known local
@@ -4386,6 +4392,23 @@ func main() {
 		if v := os.Getenv("VULOS_LAN_DNS_ADDR"); v != "" {
 			dnsAddr = v
 		}
+		// OFFLINE-01 follow-up: the DNS responder is a SEPARATE opt-out from
+		// VULOS_LAN_ENABLE. Enabling LAN reachability is primarily about making
+		// the LAN origin a secure context (HTTPS, even self-signed — cert
+		// VALIDITY doesn't matter, only the scheme does) so window.crypto.subtle
+		// and the rest of src/lib/ work at all over the LAN. That does NOT
+		// require an authoritative DNS server on :53, which is an unacceptable
+		// default side effect on someone's home network (port conflict with an
+		// existing router/Pi-hole resolver, a surprise UDP:53 responder showing
+		// up on a LAN scan). VULOS_LAN_DNS_DISABLE=1 turns the responder off
+		// while leaving HTTPS + mDNS (vulos.local) fully intact, matching the
+		// VULOS_STORAGE_STS_DISABLE=1 naming convention already used elsewhere
+		// in this file.
+		//
+		// Default is UNCHANGED for existing VULOS_LAN_ENABLE=1 deployments: the
+		// DNS responder still starts by default (disableDNS is false unless the
+		// operator explicitly opts out).
+		disableDNS := os.Getenv("VULOS_LAN_DNS_DISABLE") == "1"
 		// FABRIC-P2P-01: same-LAN peer-to-peer CRDT sync. The fabric handlers
 		// (/api/fabric/changeset) are mounted on a LAN-ONLY mux so they ride the
 		// LAN HTTPS listener (pinned to the LAN IP) and are never exposed on the
@@ -4553,6 +4576,7 @@ func main() {
 			Handler:    lanHandler,
 			HTTPSAddr:  httpsAddr,
 			DNSAddr:    dnsAddr,
+			DisableDNS: disableDNS,
 		}
 		if s, err := lan.New(lanCfg); err != nil {
 			log.Printf("[lan] disabled: %v", err)

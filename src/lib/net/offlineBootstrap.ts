@@ -1,5 +1,5 @@
 /**
- * offlineBootstrap.js — vulos-native offline boot seam (OFFLINE-03).
+ * offlineBootstrap.ts — vulos-native offline boot seam (OFFLINE-03).
  *
  * The OS owns its offline-boot layer natively.
  * Re-homed natively so the OS builds/runs standalone. Contract preserved:
@@ -16,19 +16,24 @@
 
 import { configure, selectEndpoint } from './endpoints.js'
 
+interface BootstrapOptions {
+  tierHint?: () => string
+  onBoot?: () => void
+}
+
 let bootstrapped = false
-const updateListeners = new Set()
+const updateListeners = new Set<() => void>()
 // The SW that most recently finished installing while an old SW was already
 // controlling the page — i.e. the one applyUpdate() should tell to activate.
-let waitingWorker = null
+let waitingWorker: ServiceWorker | null = null
 
 /** onUpdateAvailable subscribes to "a new service worker is ready" events. */
-export function onUpdateAvailable(cb) {
+export function onUpdateAvailable(cb: () => void): () => void {
   updateListeners.add(cb)
   return () => updateListeners.delete(cb)
 }
 
-function fireUpdateAvailable() {
+function fireUpdateAvailable(): void {
   for (const cb of updateListeners) {
     try {
       cb()
@@ -38,7 +43,7 @@ function fireUpdateAvailable() {
   }
 }
 
-function registerServiceWorker() {
+function registerServiceWorker(): void {
   if (typeof navigator === 'undefined' || !navigator.serviceWorker) return
   const swc = navigator.serviceWorker
   Promise.resolve(swc.register('/sw.js'))
@@ -76,7 +81,7 @@ function registerServiceWorker() {
  *                             prime are kicked off (the OS starts its write-
  *                             queue flush loop here).
  */
-export function bootstrapOffline(opts = {}) {
+export function bootstrapOffline(opts: BootstrapOptions = {}): void {
   if (bootstrapped) return
   bootstrapped = true
 
@@ -107,7 +112,7 @@ export function bootstrapOffline(opts = {}) {
  * (posts { type: 'SKIP_WAITING' } — the sw.js listener applies it). Returns
  * true if a waiting worker was signalled, false if there is nothing to do.
  */
-export function applyUpdate() {
+export function applyUpdate(): boolean {
   if (!waitingWorker || typeof waitingWorker.postMessage !== 'function') return false
   waitingWorker.postMessage({ type: 'SKIP_WAITING' })
   return true
@@ -116,7 +121,7 @@ export function applyUpdate() {
 /* Test-only: reset module state so each test starts from a clean slate.
    bootstrapOffline() is deliberately once-only per page load, so a suite that
    exercises it repeatedly needs to clear the guard between cases. */
-export function _resetForTests() {
+export function _resetForTests(): void {
   bootstrapped = false
   updateListeners.clear()
   waitingWorker = null

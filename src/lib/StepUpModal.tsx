@@ -2,20 +2,33 @@ import { useState, useEffect, useRef } from 'react'
 import { request } from './api.js'
 
 // StepUpModal — the confirm-password prompt behind requireStepUp() (see
-// ./stepup.js). Visual shape mirrors OfflineLockScreen.jsx / LockScreen.jsx
+// ./stepup.ts). Visual shape mirrors OfflineLockScreen.jsx / LockScreen.jsx
 // (same password-prompt affordances, shake-on-error, aria-live status) but as
 // a small centred dialog rather than a full-screen lock, since the rest of
 // the OS stays visible and usable behind it.
 //
 // Pure presentation + the one network call — `onResolve`/`onReject` are the
 // imperative promise's settle functions, supplied by requireStepUp().
-export default function StepUpModal({ onResolve, onReject }) {
+
+interface StepUpModalProps {
+  // `data` is whatever /auth/stepup/verify returned — request() returns
+  // `unknown` (see api.ts), so this stays `unknown` too rather than
+  // asserting a shape this component doesn't itself verify; stepup.ts's own
+  // onResolve narrows `expires_at` explicitly before using it.
+  onResolve: (data: unknown) => void
+  // Always a tagged Error in practice (see cancel() below), but the
+  // receiving end (stepup.ts) treats it as an opaque Promise-rejection
+  // reason, so `unknown` is the honest signature here too.
+  onReject: (err: unknown) => void
+}
+
+export default function StepUpModal({ onResolve, onReject }: StepUpModalProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-  const inputRef = useRef(null)
-  const errorTimer = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50) }, [])
   useEffect(() => () => clearTimeout(errorTimer.current), [])
@@ -26,13 +39,13 @@ export default function StepUpModal({ onResolve, onReject }) {
   }
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') cancel() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy])
 
-  const flash = (text) => {
+  const flash = (text: string) => {
     clearTimeout(errorTimer.current)
     setError(true)
     setMessage(text)
@@ -40,7 +53,7 @@ export default function StepUpModal({ onResolve, onReject }) {
     errorTimer.current = setTimeout(() => setError(false), 1500)
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy || !password) return
     setBusy(true)
@@ -52,7 +65,8 @@ export default function StepUpModal({ onResolve, onReject }) {
       })
       onResolve(data)
     } catch (err) {
-      if (/too many/i.test(err?.message || '')) {
+      const msg = err instanceof Error ? err.message : ''
+      if (/too many/i.test(msg)) {
         flash('Too many attempts. Try again shortly.')
       } else {
         flash('Incorrect password, try again.')

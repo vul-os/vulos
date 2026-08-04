@@ -58,6 +58,8 @@ A few conventions:
 | D93 | 2026-05-20 09:00 | Bare-metal window model: React always WM; v1 always-stream/cage, v2 surface/labwc | **active rule** |
 | D94 | 2026-05-20 | Image-based OS distribution: signed immutable squashfs in public bucket, A/B + rollback, netboot-to-install, offline-PKI/min-epoch, bucket leases, two-tier sync, manifest concurrency | **active rule** |
 | D95 | 2026-08-03 | Stack re-review: Go and React/JSX reaffirmed (Rust and Svelte rejected, with rationale); gradual JSDoc type-checking ruled compatible with the never-`.tsx` invariant | **active rule** |
+| D96 | 2026-08-04 | Native installable clients (Windows/macOS/Linux/Android/iOS): `mobile/`→`clients/`, one shared Go core + thin per-platform shells (Wails/gomobile), Tauri evaluated and rejected; TOFU/pinned-SPKI trust model for a local box; push notifications left OPEN | **active rule** |
+| D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -581,3 +583,55 @@ The actual risk surface is **logic, not memory**: `peering`/`prekeys`/`ice`, `cr
 **C. Type safety: adopt gradually, without crossing the `.tsx` line.** The shell is ~48.9k lines with 0 `prop-types` and JSDoc types in only 8 files, while `@types/react` is already a devDependency. Two spots make this costlier here than in a typical frontend: `src/lib/` is a **security boundary** (`contentSeal.js`, `masterKey.js`, `offlineAuth.js`, `stepup.js`), and the **Go→JS wire** throws away shapes the backend already defines statically.
 
 The resolution: `tsconfig.json` with `allowJs`/`checkJs: false`/`strict`, per-file `// @ts-check`, JSDoc `@typedef`, and a generated `.d.ts` for the API boundary. This creates **no `.ts` or `.tsx` file**, adds no runtime dependency, and runs `tsc --noEmit` as a lint step outside the Vite build — so the never-`.tsx` invariant is **unchanged and unamended**. Partial coverage is the intended end state, not a stepping stone; converting `src/lib/*.js` to real `.ts` would require an explicit amendment and is deliberately out of scope. Design: [`roadmap/TYPE-SAFETY.md`](../roadmap/TYPE-SAFETY.md); work tracked as TYPE-01…TYPE-05 in GitHub Issues.
+
+---
+
+## D96 (2026-08-04) — Native installable clients, and the trust model for a local box
+
+**A. Native clients, five platforms.** Vulos gets native installable clients for Windows, macOS, Linux, Android, and iOS. `mobile/` is renamed `clients/`: `clients/android` (the existing Kotlin WebView shell) and new `clients/core`.
+
+**B. Architecture: one Go core, thin shells.** `clients/core` is a single shared Go module holding pinning, pairing, protocol, and credential-storage logic. Each platform gets the thinnest possible shell over it: desktop via **Wails** (Go), Android via a **gomobile `.aar`**, iOS via a **gomobile `.xcframework`**. This is the shape Tailscale uses for the same problem (one core, N thin native shells) and it is chosen for the same reason: the logic that must not diverge (pinning/protocol) lives in exactly one place.
+
+**C. Tauri evaluated and rejected — the trade-off, stated honestly.** Tauri v2 genuinely covers all five platforms from one codebase, and it would let the client reuse the existing React shell — that is a real advantage, not a strawman. It is rejected anyway, for two reasons:
+1. It is Rust, which conflicts with D94-J and D95-A's Go-everywhere rule.
+2. More importantly: adopting it would mean **reimplementing the pinning/protocol logic in Rust that already exists in Go** in `clients/core`. Two parallel implementations of security-sensitive protocol logic, one per language, is exactly this project's recurring defect class (see D70/D71/D75's notify.go and auth.go stale-base divergence for what happens when one codebase's shape silently diverges from another's).
+
+*Flip condition:* if maintaining three thin native shells (Wails + two gomobile bindings) proves more expensive in practice than maintaining one Rust/Tauri codebase, revisit. This is not a permanent ban on Tauri, it's a bet that one Go core is cheaper than two implementations of the same protocol.
+
+**D. Trust model for a local box.** The box presents a stable **self-signed certificate**. The client **pins its public key (SPKI, not the whole certificate) at first pairing**, confirmed out of band by scanning a QR code the box displays — trust-on-first-use, the SSH/Syncthing model.
+
+This is **stronger** than public-CA TLS for this use case, not a fallback forced by the box lacking a real cert:
+- It removes roughly 150 root CAs from the trust path — no CA anywhere can mint a certificate for someone's box, because no CA is in the path at all.
+- It needs no DNS, no ACME, and no internet connectivity — it works on a LAN with no external dependency, which a sovereign personal server must.
+
+Pinning the **SPKI** rather than the whole certificate means the box can rotate/renew its self-signed cert without forcing every paired device to re-pair — only a key change forces re-pairing.
+
+The exposure window is the first pairing (before any key is pinned, a MITM could intercept it) — which is exactly why the fingerprint is confirmed out of band via the QR scan, not trusted on the wire alone.
+
+**E. Why native at all, not just a browser.** A browser pointed at `http://192.168.1.50` is not a secure context, so `crypto.subtle` is `undefined` and none of `src/lib`'s crypto (masterKey, contentSeal, offlineAuth) can run. A browser also cannot pin a key without a per-device manual click-through exception, which is not a pairing flow a non-technical owner can be handed. A native client owns its own TLS stack and its embedded webview is always a secure context — this is the structural reason a client is needed at all, not just a UX preference.
+
+**F. OPEN QUESTION — push notifications, not resolved here.** Per prior memory, an Android APK breaks the sovereign VAPID push stack, and the available fallback is FCM — which routes notifications through Google and directly contradicts the sovereignty position ("your own box, your own AI, nothing routed through a third party"). This bites native-client push on Android (and the equivalent APNs question on iOS) equally regardless of which shell technology is chosen, and must be decided before any client ships push. Not resolved by this decision.
+
+---
+
+## D97 (2026-08-04) — TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is overturned
+
+`ROADMAP.md`'s "Settled invariants" stated: *"React/JSX only (never `.tsx`)."* **That is now OVERTURNED.** The repo is migrating to **TypeScript 6.0**, starting with `src/lib/`.
+
+**Why 6 and not 7.** TypeScript 7 was tried first and reverted. 7.0 is the native (Go) compiler and `typescript-eslint` refuses to run against it outright — *"typescript-eslint does not support TS 7.0"* — with support still open upstream (typescript-eslint#10940). Under 7, `.ts`/`.tsx` files could not be linted at all, so converting a component from `.jsx` silently dropped its `react-hooks/rules-of-hooks` coverage: tsc catches type errors, but only eslint catches a conditional hook. 7.0 also ships as 20 platform-specific binaries, which broke `npm ci` in CI twice. 6.0.3 is stable, fully supported by typescript-eslint, and is the plain JS compiler with no platform binaries. Revisit when typescript-eslint supports 7. This supersedes the "stay inside JSDoc comments forever" conclusion of D95-C (the underlying reasoning in D95-C is restated and stands, below).
+
+**A. The case for it.** Two reasons, both already identified in D95-C and in `roadmap/TYPE-SAFETY.md`, now acted on rather than deferred:
+1. `src/lib/` is a **security boundary** — crypto envelopes (`contentSeal.js`, `masterKey.js`), the master key, and offline auth (`offlineAuth.js`, `stepup.js`). A shape mismatch there is a security defect, not a rendering glitch.
+2. The **Go→JS wire erases shapes** that ~145k lines of Go already define statically. Generated wire types from those Go structs structurally prevent the drift that has been this project's dominant defect class all session (see D21/D36/D57/D59/D70/D71/D75 — every one of those is a worker's code silently drifting from a shape another part of the system already committed to).
+
+**B. The honest counterweight — record this so the migration is never oversold.** Reviewing the actual defects found and fixed today: an invalid `-env` value, an artifact-dropping shell glob, a screenshot that showed the wrong thing, a swallowed promise rejection, and a smoke gate that passed on the wrong signal. TypeScript would have caught **none** of these — they are semantic and verification failures, not type failures. Types are worth adopting for reason A above; they will not move the needle on this project's actual, demonstrated weakness, which is verification discipline, not shape safety.
+
+**C. Critical caveat — parse, don't cast.** Types at a trust boundary are worthless without runtime validation. Casting unvalidated JSON to a TypeScript interface (`json as MyType`) is **typed fiction** — and it is worse than staying untyped, because it reads as safe while validating nothing. Every point where `src/lib` or the API layer receives untrusted input (network responses, storage reads) must parse and validate the shape at runtime, independent of whatever compile-time type is declared for it. This applies to both hand-written and Go-generated `.d.ts`.
+
+**D. vulos-cloud is deliberately NOT migrating.** vulos-cloud is a static content site. Its real failure modes — broken links, stale synced screenshots, layout regressions — are not shape errors; types do not catch them. Its existing render/link gates catch far more per unit effort there. This track is scoped to the OS shell's `src/lib/`, not the fleet's static sites.
+
+**E. Foundation as landed.** `tsconfig.json` with `allowJs: true` / `checkJs: false` so the ~48.9k lines of existing JS keep building untouched; `strict: true` for new TypeScript; `npm run typecheck` wired into CI; the gate is **probe-verified** (confirmed to actually fail on a planted type error, not vacuous — see the "Guards that check nothing" lesson from prior sessions, which is exactly the failure mode a gate like this can fall into unnoticed).
+
+**F. oxlint evaluated and rejected.** Considered alongside the TS migration as a faster ESLint replacement. Run on an identical probe (two deliberately planted error-level violations): oxlint caught `no-unused-vars` and `exhaustive-deps` but **missed `react-hooks/rules-of-hooks` entirely** — the rule that catches conditional/early-return hooks, a real bug class in this shell. Faster is not worth silently dropping that rule. ESLint stays as the linter of record.
+
+Design updated: [`roadmap/TYPE-SAFETY.md`](../roadmap/TYPE-SAFETY.md). `ROADMAP.md`'s "Settled invariants" line amended to point here.

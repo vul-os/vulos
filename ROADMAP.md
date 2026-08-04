@@ -22,7 +22,7 @@ The suite is free and open-source — 100% self-hosted, nothing to buy. Reachabi
 - **Security from signing, not gatekeeping.** Signed, immutable, A/B-updatable images from a public bucket with a hard-baked trust anchor. Forkable with your own key.
 - **PIM is bring-your-own.** [lilmail](docs/MAIL-LILMAIL.md) connects the user's IMAP/CalDAV/CardDAV and exposes a stable `/v1`; the OS ships standalone Calendar + Contacts over the box PIM proxy. Vulos hosts no mailbox.
 - **Owned apps vs third-party comms.** **Diwan** (docs/sheets/slides/PDF/whiteboards — whiteboards are a Diwan document type, not a separate Board) is the standalone `diwan` repo, reached through the App Hub. Real-time chat/video are delegated to established platforms (Matrix/Element, Element-Call/Jitsi); the OS keeps its own sovereign peer-to-peer **Messages**.
-- **Stack is frozen:** Go backend (pure-Go `modernc.org/sqlite`, no CGO); React/JSX only (never `.tsx`); no Rust; cage compositor; pluggable AI providers (no vendor lock-in); every service has a self-hosted path. (see [`docs/decisions.md`](docs/decisions.md))
+- **Stack is frozen, with one amendment:** Go backend (pure-Go `modernc.org/sqlite`, no CGO); React (JSX; `src/lib/` is migrating to TypeScript per D97 — the old "never `.tsx`" line no longer holds); no Rust; cage compositor; pluggable AI providers (no vendor lock-in); every service has a self-hosted path. (see [`docs/decisions.md`](docs/decisions.md))
 
 ---
 
@@ -50,7 +50,7 @@ The core is in place and self-hostable today:
 - **Assistant depth** — broader curated toolset, better on-instance retrieval (RAG), sovereignty-tier UX.
 - **Bare-metal / first-boot** — smoother first-boot + netboot install; signed `os-core.roothash.sig` verification fail-closed.
 - **Multi-node depth** — full cr-sqlite CRDT across a user's own nodes; conflict-free "move to your own box" migration reusing the same identity.
-- **Client type safety** — gradual JSDoc type-checking of the JSX shell (`tsc --noEmit`), starting with the security-critical `src/lib/` SDK and generated types for the Go→JS API boundary. Stays inside the frozen stack: no `.ts`, no `.tsx`, no build change. See [`roadmap/TYPE-SAFETY.md`](roadmap/TYPE-SAFETY.md) and `docs/decisions.md` D95.
+- **Client type safety** — TypeScript migration of the security-critical `src/lib/` SDK (crypto envelopes, master key, offline auth) and generated types for the Go→JS API boundary; components stay `.jsx` for now. No Vite/build-tool change. See [`roadmap/TYPE-SAFETY.md`](roadmap/TYPE-SAFETY.md) and `docs/decisions.md` D97 (supersedes D95's JSDoc-only framing).
 
 ---
 

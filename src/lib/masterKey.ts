@@ -1,4 +1,4 @@
-// masterKey.js — CLIENT-SIDE master-key unwrap (WAVE2-RECOVERY, Tier-1).
+// masterKey.ts — CLIENT-SIDE master-key unwrap (WAVE2-RECOVERY, Tier-1).
 //
 // The server stores only a doubly-wrapped MASTER KEY envelope and never holds the
 // key in the clear. At login the browser fetches the password-wrapped slot and
@@ -25,18 +25,47 @@ const ZERO_SALT_32 = new Uint8Array(32)
 
 const te = new TextEncoder()
 
+// Bytes = an ArrayBuffer-backed byte buffer (as opposed to the TS-default
+// `Uint8Array<ArrayBufferLike>`, which also admits a SharedArrayBuffer-backed
+// view and is therefore NOT assignable to WebCrypto's `BufferSource`). Every
+// byte buffer in this module is constructed locally (`new Uint8Array(n)`,
+// `TextEncoder.encode`, or copied out of a `decrypt`/`deriveBits` result) —
+// this codebase has no SharedArrayBuffer producer anywhere (verified) — so
+// `Bytes` precisely describes what these values actually are; it is a type
+// precision choice, not a cast around a real ambiguity.
+type Bytes = Uint8Array<ArrayBuffer>
+
+// A plain Error tagged with a `code` so callers can distinguish specific
+// failure modes (e.g. 'NO_MASTER_KEY') without string-matching the message.
+type TaggedError = Error & { code: string }
+function taggedError(message: string, code: string): TaggedError {
+  return Object.assign(new Error(message), { code })
+}
+
 // subtle() is called lazily inside each exported function below (never at
 // module load), so importing this module never fails for a caller that
 // doesn't end up on a crypto path — only the actual unwrap/wrap/derive calls
 // need a secure context. See secureContext.js for why this can be undefined
 // on the shipped box's plain-HTTP LAN origin.
-function subtle() {
+function subtle(): SubtleCrypto {
   return requireSubtle()
 }
 
-// b64ToBytes decodes standard base64 (as emitted by Go's encoding/json for []byte).
-function b64ToBytes(b64) {
-  if (b64 instanceof Uint8Array) return b64
+// b64ToBytes decodes standard base64 (as emitted by Go's encoding/json for
+// []byte). `b64` is typed `unknown` because every real caller hands it a
+// field plucked off a JSON envelope fetched from the network or read back out
+// of storage (see the `slot: unknown` parameters below) — nothing upstream of
+// this function has verified it is actually a string. `String(b64)` below is
+// the ORIGINAL coercion (unchanged), so a non-string still behaves exactly as
+// before: it gets stringified and handed to atob(), which throws on anything
+// that isn't valid base64. The `instanceof Uint8Array` passthrough returns a
+// COPY (`new Uint8Array(b64)`) rather than the same reference, purely so the
+// return type can be the ArrayBuffer-backed `Bytes` in every path — no
+// existing call site actually hits this branch (every caller passes a base64
+// string), so this is a behaviourally-invisible change to unreachable code,
+// not a live behaviour change.
+function b64ToBytes(b64: unknown): Bytes {
+  if (b64 instanceof Uint8Array) return new Uint8Array(b64)
   const bin = atob(String(b64))
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
@@ -45,7 +74,7 @@ function b64ToBytes(b64) {
 
 // bytesToB64 encodes to standard base64 — the shape Go's encoding/json expects for
 // a []byte field, so a slot produced here round-trips into the Go wrapSlot verbatim.
-function bytesToB64(u8) {
+function bytesToB64(u8: Bytes): string {
   let bin = ''
   for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i])
   return btoa(bin)
@@ -56,19 +85,53 @@ function bytesToB64(u8) {
 const PBKDF2_ITERS = 600000
 
 // normaliseMnemonic mirrors auth/recovery.go: lowercase + collapse whitespace.
-function normaliseMnemonic(m) {
+function normaliseMnemonic(m: string): string {
   return String(m).trim().toLowerCase().split(/\s+/).join(' ')
+}
+
+// isRecord narrows `unknown` to a plain object with unknown-typed properties,
+// without lying about its shape — every property access on the result is
+// still `unknown` until checked. Used to structurally validate wire envelopes
+// (network/storage boundary data) before trusting any field on them.
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// The password-wrapped master-key envelope as returned by GET
+// /api/auth/masterkey/envelope and as cached by offlineAuth.js. This is
+// DOCUMENTATION of the wire shape, not a cast: unwrapMasterKeyWithPassword
+// below takes `slot: unknown` and narrows every field it actually uses at
+// runtime (mirroring the pre-existing validation, unchanged) rather than
+// asserting this shape onto untrusted input.
+export interface MasterKeyPasswordSlot {
+  v?: number
+  kdf: 'pbkdf2-sha256'
+  iter: number
+  salt: string
+  iv: string
+  ct: string
 }
 
 // unwrapMasterKeyWithPassword unwraps the master key from the password slot.
 // `slot` is the object returned by GET /api/auth/masterkey/envelope:
 //   { v, kdf, iter, salt, iv, ct }  (salt/iv/ct base64)
 // Returns a Uint8Array(32). Throws on wrong password / tampering.
-export async function unwrapMasterKeyWithPassword(slot, password) {
-  if (!slot || slot.kdf !== 'pbkdf2-sha256') {
+//
+// TRUST BOUNDARY: `slot` came off the network (or, via offlineAuth.js, back
+// out of IndexedDB) — it is typed `unknown` rather than cast to
+// MasterKeyPasswordSlot. The two checks below (`kdf` tag, `iter` positivity)
+// are the SAME structural checks the original JS performed; they are not new
+// validation. Anything beyond that (salt/iv/ct actually being valid base64)
+// was never validated before either — a malformed value fails inside atob()
+// exactly as it did pre-conversion, via b64ToBytes's `unknown` parameter (see
+// its comment). This preserves the exact original fail-closed behaviour: a
+// bad password OR a malformed envelope both end up throwing before any key
+// material is returned.
+export async function unwrapMasterKeyWithPassword(slot: unknown, password: string): Promise<Bytes> {
+  if (!isRecord(slot) || slot.kdf !== 'pbkdf2-sha256') {
     throw new Error('masterKey: unsupported password kdf')
   }
-  const iter = slot.iter | 0
+  const iter = Number(slot.iter) | 0
   if (iter <= 0) throw new Error('masterKey: invalid iterations')
   const baseKey = await subtle().importKey('raw', te.encode(password), 'PBKDF2', false, ['deriveKey'])
   const aesKey = await subtle().deriveKey(
@@ -88,8 +151,9 @@ export async function unwrapMasterKeyWithPassword(slot, password) {
 
 // unwrapMasterKeyWithPhrase unwraps the master key from the recovery-phrase slot
 // ({ kdf:'bip39-hkdf-sha256', iv, ct }). This is the client-side recovery path.
-export async function unwrapMasterKeyWithPhrase(slot, mnemonic) {
-  if (!slot || slot.kdf !== 'bip39-hkdf-sha256') {
+// Same trust-boundary treatment as unwrapMasterKeyWithPassword above.
+export async function unwrapMasterKeyWithPhrase(slot: unknown, mnemonic: string): Promise<Bytes> {
+  if (!isRecord(slot) || slot.kdf !== 'bip39-hkdf-sha256') {
     throw new Error('masterKey: unsupported phrase kdf')
   }
   const norm = normaliseMnemonic(mnemonic)
@@ -122,7 +186,11 @@ export async function unwrapMasterKeyWithPhrase(slot, mnemonic) {
 // { v, kdf, iter, salt, iv, ct } with salt/iv/ct base64-encoded (matching Go's JSON
 // []byte encoding), ready to POST. Runs entirely CLIENT-SIDE: the master key never
 // leaves the tab and is never sent to the server — only this wrapped slot is.
-export async function wrapMasterKeyWithPassword(masterKey, password, iter = PBKDF2_ITERS) {
+export async function wrapMasterKeyWithPassword(
+  masterKey: Bytes,
+  password: string,
+  iter: number = PBKDF2_ITERS,
+): Promise<MasterKeyPasswordSlot> {
   if (!(masterKey instanceof Uint8Array) || masterKey.length !== 32) {
     throw new Error('masterKey: master key must be 32 bytes')
   }
@@ -160,12 +228,16 @@ export async function wrapMasterKeyWithPassword(masterKey, password, iter = PBKD
 // If this session does not hold the master key (legacy login, or the key was
 // cleared), it throws an error tagged `code === 'NO_MASTER_KEY'` so the caller can
 // fall back to the recovery phrase (Tier-1) instead of silently failing.
-export async function resetPasswordWithActiveSession(newPassword, fetchImpl = fetch) {
+export async function resetPasswordWithActiveSession(
+  newPassword: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: true }> {
   const mk = getMasterKey()
   if (!mk) {
-    const e = new Error('This session does not hold your encryption key — use your recovery phrase instead.')
-    e.code = 'NO_MASTER_KEY'
-    throw e
+    throw taggedError(
+      'This session does not hold your encryption key — use your recovery phrase instead.',
+      'NO_MASTER_KEY',
+    )
   }
   const slot = await wrapMasterKeyWithPassword(mk, newPassword)
   const res = await fetchImpl('/api/auth/masterkey/reset-active', {
@@ -174,15 +246,18 @@ export async function resetPasswordWithActiveSession(newPassword, fetchImpl = fe
     body: JSON.stringify({ new_password: newPassword, password_slot: slot }),
   })
   if (res.status === 409) {
-    const e = new Error('This session does not hold your encryption key — use your recovery phrase instead.')
-    e.code = 'NO_MASTER_KEY'
-    throw e
+    throw taggedError(
+      'This session does not hold your encryption key — use your recovery phrase instead.',
+      'NO_MASTER_KEY',
+    )
   }
   if (!res.ok) {
     let msg = `reset failed (${res.status})`
     try {
-      const j = await res.json()
-      if (j && j.error) msg = j.error
+      // The error body is untrusted network JSON — narrow it explicitly
+      // rather than trusting fetch's `Promise<any>` return type.
+      const j: unknown = await res.json()
+      if (isRecord(j) && typeof j.error === 'string') msg = j.error
     } catch { /* non-JSON error body */ }
     throw new Error(msg)
   }
@@ -192,7 +267,7 @@ export async function resetPasswordWithActiveSession(newPassword, fetchImpl = fe
 // deriveContentKey mirrors internal/auth.DeriveContentKey — the wave-3 entry
 // point. HKDF-SHA256(masterKey, zeroSalt, "vulos-content:"+len(domain)+domain+
 // len(id)+id). Returns a Uint8Array(32).
-export async function deriveContentKey(masterKey, domain, id) {
+export async function deriveContentKey(masterKey: Bytes, domain: string, id: string): Promise<Bytes> {
   if (!(masterKey instanceof Uint8Array) || masterKey.length !== 32) {
     throw new Error('masterKey: master key must be 32 bytes')
   }
@@ -221,20 +296,20 @@ export async function deriveContentKey(masterKey, domain, id) {
 // of the tab. It is deliberately never placed in localStorage/sessionStorage/
 // IndexedDB/cookies and never logged. Cleared on lock/logout via clearMasterKey().
 
-let _masterKey = null
+let _masterKey: Bytes | null = null
 
-export function holdMasterKey(mk) {
+export function holdMasterKey(mk: Bytes): void {
   if (!(mk instanceof Uint8Array) || mk.length !== 32) {
     throw new Error('masterKey: refusing to hold a non-32-byte key')
   }
   _masterKey = mk
 }
 
-export function getMasterKey() {
+export function getMasterKey(): Bytes | null {
   return _masterKey
 }
 
-export function clearMasterKey() {
+export function clearMasterKey(): void {
   if (_masterKey) _masterKey.fill(0)
   _masterKey = null
 }
@@ -248,11 +323,17 @@ export function clearMasterKey() {
 // envelope for later offline unlock (OFFLINE-AUTH-01) — without a second fetch,
 // and only once the password has proven correct. It is best-effort: a failure to
 // cache never fails login.
-export async function unlockMasterKeyForSession(password, fetchImpl = fetch, onEnvelope = null) {
+export async function unlockMasterKeyForSession(
+  password: string,
+  fetchImpl: typeof fetch = fetch,
+  onEnvelope: ((slot: unknown) => unknown) | null = null,
+): Promise<boolean> {
   const res = await fetchImpl('/api/auth/masterkey/envelope')
   if (res.status === 404) return false // legacy account without a master key
   if (!res.ok) throw new Error(`masterKey: envelope fetch failed (${res.status})`)
-  const slot = await res.json()
+  // Untrusted network JSON — passed on as `unknown` to unwrapMasterKeyWithPassword,
+  // which narrows the fields it actually needs (see its own trust-boundary note).
+  const slot: unknown = await res.json()
   const mk = await unwrapMasterKeyWithPassword(slot, password)
   holdMasterKey(mk)
   if (typeof onEnvelope === 'function') {

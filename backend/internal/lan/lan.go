@@ -57,6 +57,17 @@ type Config struct {
 
 	// DisableMDNS skips mDNS advertisement (e.g. in CI where multicast is unavailable).
 	DisableMDNS bool
+
+	// DisableDNS skips constructing and starting the local DNS responder
+	// entirely — no socket is opened on DNSAddr (default :53) at all. This is
+	// independent of HTTPS/mDNS: both keep working normally with DNS disabled,
+	// including the self-signed TLS fallback (secure-context status depends
+	// only on the scheme, not on how the box's name was resolved).
+	//
+	// Defaults to false (DNS responder starts) so existing VULOS_LAN_ENABLE=1
+	// deployments see no behaviour change; see cmd/server/main.go's
+	// VULOS_LAN_DNS_DISABLE handling for the operator-facing knob.
+	DisableDNS bool
 }
 
 // Service is the box-side LAN reachability layer: mDNS advertisement, a local
@@ -166,14 +177,27 @@ func (s *Service) Start(ctx context.Context) error {
 	// bind exposes an authoritative responder to the internet. lanBindAddr keeps
 	// the configured port but pins the host to s.lanIP (unless the caller already
 	// supplied an explicit host, e.g. tests using 127.0.0.1:0).
-	dnsAddr := lanBindAddr(s.cfg.DNSAddr, s.lanIP)
-	dns, err := newDNSResponder(dnsAddr, s.hostname, s.lanIP)
-	if err != nil {
-		log.Printf("[lan] dns responder disabled: %v", err)
+	//
+	// DisableDNS (VULOS_LAN_DNS_DISABLE=1) skips this block entirely — no UDP
+	// socket is opened at all, not even transiently. This is deliberately
+	// independent of the HTTPS listener above and the mDNS block below: a box
+	// running a DNS responder on :53 by default is an unacceptable surprise on
+	// someone's home network (port conflicts with an existing router/Pi-hole
+	// resolver, an unexpected authoritative-looking UDP:53 service appearing on
+	// the LAN), whereas HTTPS-for-secure-context is the actual point of this
+	// service and must not be held hostage to that decision.
+	if s.cfg.DisableDNS {
+		log.Printf("[lan] DNS responder disabled (VULOS_LAN_DNS_DISABLE=1); HTTPS/mDNS unaffected")
 	} else {
-		s.dns = dns
-		dns.Start(ctx)
-		log.Printf("[lan] DNS responder on %s answering %s -> %v", dns.Addr(), s.hostname, s.lanIP)
+		dnsAddr := lanBindAddr(s.cfg.DNSAddr, s.lanIP)
+		dns, err := newDNSResponder(dnsAddr, s.hostname, s.lanIP)
+		if err != nil {
+			log.Printf("[lan] dns responder disabled: %v", err)
+		} else {
+			s.dns = dns
+			dns.Start(ctx)
+			log.Printf("[lan] DNS responder on %s answering %s -> %v", dns.Addr(), s.hostname, s.lanIP)
+		}
 	}
 
 	// mDNS advertisement — vulos.local on the LAN.

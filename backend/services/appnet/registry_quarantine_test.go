@@ -185,7 +185,7 @@ func TestShippedQuarantine_AndroidCaveatsTravelVerbatim(t *testing.T) {
 // COPY/cp of the quarantine alongside registry.json, this fails and names the
 // file, instead of an unsigned entry quietly landing in /opt/vulos.
 func TestShippedQuarantine_IsNotCopiedIntoTheImage(t *testing.T) {
-	shippers := []string{"Dockerfile", "build.sh", "dev.sh"}
+	shippers := []string{"Dockerfile", "build.sh", "scripts/dev.sh"}
 	checked := 0
 	for _, name := range shippers {
 		path := filepath.Join(repoRoot, name)
