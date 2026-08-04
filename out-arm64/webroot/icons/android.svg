@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="android">
+  <rect width="512" height="512" rx="114" fill="#3DDC84"/>
+    <path d="M168 232 A88 88 0 0 1 344 232 L344 300 a10 10 0 0 1 -10 10 H178 a10 10 0 0 1 -10 -10 Z" fill="#fff"/>
+    <circle cx="212" cy="214" r="13" fill="#3DDC84"/>
+    <circle cx="300" cy="214" r="13" fill="#3DDC84"/>
+    <path d="M198 150 l20 34 M314 150 l-20 34" stroke="#fff" stroke-width="16" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="minipaint">
+  <rect width="512" height="512" rx="114" fill="#E74C3C"/>
+    <path d="M330 160 a28 28 0 0 1 22 42 L268 300 l-44 -44 84 -84 a28 28 0 0 1 22 -12 z" fill="#fff"/>
+    <path d="M224 256 l-40 40 a34 34 0 1 1 -20 -20 z" fill="#fff"/>
+</svg>

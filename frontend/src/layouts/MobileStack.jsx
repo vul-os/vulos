@@ -201,7 +201,7 @@ function MobileSwitcher({ onOpen, onHome }) {
   return (
     <div className="vmob-switcher absolute inset-0 z-10 overflow-y-auto overscroll-contain anim-sheet-up [-webkit-overflow-scrolling:touch]">
       {/* Grab handle + header — signals the overview is a dismissible sheet. */}
-      <div className="safe-px px-4 pt-2.5 pb-1">
+      <div className="safe-px-4 pt-2.5 pb-1">
         <div className="mx-auto mb-3.5 h-1 w-9 rounded-full" style={{ background: 'var(--border-emphasis)' }} aria-hidden="true" />
         <div className="flex items-baseline justify-between">
           <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--text-primary)]">Running apps</h2>
@@ -214,7 +214,7 @@ function MobileSwitcher({ onOpen, onHome }) {
           <button onClick={onHome} className="focus-primary mt-3 text-xs font-medium accent-text active:opacity-70 transition-opacity">Back to home</button>
         </div>
       ) : (
-        <div className="safe-px p-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <div className="safe-px-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           {windows.map(win => (
             <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985]">
               <div className="flex items-center gap-2.5 px-3 h-12">

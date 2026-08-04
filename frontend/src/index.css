@@ -442,6 +442,18 @@ html, body, #root {
 .safe-pb { padding-bottom: var(--safe-bottom); }
 .safe-px { padding-left: var(--safe-left); padding-right: var(--safe-right); }
 
+/* safe-px sets padding OUTRIGHT, so combining it with a Tailwind px-* utility
+   is a trap: both set padding-left/right at equal specificity, and on a device
+   with no left/right inset (portrait on essentially every phone) the env() wins
+   at 0px — silently removing the author's padding and letting content sit flush
+   against the screen edge. Use safe-px-4 where a horizontal gutter is wanted:
+   it takes whichever is larger, so the gutter is never lost and a notched
+   device in landscape still clears the inset. */
+.safe-px-4 {
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+
 /* Guarantees a control is at least a full finger tall/wide without forcing the
    glyph to grow — pairs with flex centering. */
 .touch-target { min-width: var(--touch-min); min-height: var(--touch-min); }

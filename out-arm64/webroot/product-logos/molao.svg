@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Molao">
+  <title>Molao</title>
+  <rect width="128" height="128" rx="28" fill="#211D3B"/>
+  <!-- citation chords across the assembly — judgments citing judgments -->
+  <g stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" opacity="0.30" fill="none">
+    <path d="M64 20 L96 96"/>
+    <path d="M64 20 L32 96"/>
+    <path d="M96 32 L18 64"/>
+    <path d="M32 32 L64 108"/>
+    <path d="M110 64 L32 96"/>
+  </g>
+  <!-- the kgotla ring: the assembly gathered in a circle -->
+  <g fill="#FFFFFF">
+    <circle cx="96" cy="32" r="7.5"/>
+    <circle cx="110" cy="64" r="7.5"/>
+    <circle cx="96" cy="96" r="7.5"/>
+    <circle cx="64" cy="108" r="7.5"/>
+    <circle cx="32" cy="96" r="7.5"/>
+    <circle cx="18" cy="64" r="7.5"/>
+    <circle cx="32" cy="32" r="7.5"/>
+  </g>
+  <!-- the precedent at the head of the ring -->
+  <circle cx="64" cy="20" r="10.5" fill="#E9A23B"/>
+</svg>

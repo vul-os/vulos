@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t d">
+  <title id="t">Aql</title>
+  <desc id="d">An arch standing open — a threshold — with a terracotta keystone at its centre.</desc>
+
+  <!-- Field: ink / aside-surface #141210. Stroke: dark-theme ink #F5EFE6.
+       Keystone: dark-theme terracotta #E0896A. Every value comes from the warm
+       palette in docs/DESIGN-SYSTEM.md §1; the mark is a permanently dark
+       surface, so it uses the dark-theme tunings of ink and terracotta. -->
+  <rect width="64" height="64" rx="14" fill="#141210"/>
+
+  <path
+    d="M14 50 V32 a18 18 0 0 1 36 0 V50 H40 V32 a8 8 0 0 0 -16 0 V50 Z"
+    fill="none"
+    stroke="#F5EFE6"
+    stroke-width="3.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <circle cx="32" cy="42" r="3" fill="#E0896A"/>
+</svg>

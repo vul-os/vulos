@@ -9,13 +9,13 @@
     "build": "vite build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "gen:wire-types": "node scripts/gen-wire-types.mjs",
+    "gen:wire-types": "node ../scripts/gen-wire-types.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "screenshots": "node scripts/screenshots.mjs",
-    "gen:wire-types:check": "node scripts/gen-wire-types.mjs --check"
+    "gen:wire-types:check": "node ../scripts/gen-wire-types.mjs --check"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",

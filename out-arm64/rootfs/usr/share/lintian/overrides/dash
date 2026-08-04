@@ -1,0 +1,6 @@
+# we want prerm to be #!/bin/dash so that it runs no matter what
+dash binary: unusual-control-interpreter
+
+# we work around missing debconf instead of depending on it
+# to reduce the dependencies of a minimal install
+dash binary: missing-debconf-dependency-for-preinst

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Magnetite">
+  <title>Magnetite</title>
+  <rect width="120" height="120" rx="26" fill="#1A1A25"/>
+  <g transform="translate(60,48)">
+    <path d="M -20 -6 V -22 A 20 20 0 0 1 20 -22 V -6" fill="none" stroke="#F5A524" stroke-width="15" stroke-linecap="round"/>
+    <rect x="-27" y="-6" width="14" height="18" rx="4" fill="#F5A524"/>
+    <rect x="13" y="-6" width="14" height="18" rx="4" fill="#9CA3AF"/>
+  </g>
+  <path d="M60 70 L71 84 L60 98 L49 84 Z" fill="#F5A524"/>
+</svg>

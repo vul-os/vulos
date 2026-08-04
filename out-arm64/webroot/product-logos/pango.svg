@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pango mark">
+  <title>Pango</title>
+  <rect width="64" height="64" rx="15" fill="#141416"/>
+  <path d="M13 50V31a19 19 0 0 1 38 0v19" fill="none" stroke="#FF7A29" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M24 50V34a8 8 0 0 1 16 0v16Z" fill="#FF7A29"/>
+</svg>
