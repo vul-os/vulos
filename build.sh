@@ -550,13 +550,20 @@ debootstrap --arch="$ARCH" --variant=minbase "$SUITE" "$ROOTFS" http://deb.debia
 
 chroot "$ROOTFS" sh -c 'sed -i "s/Components: main/Components: main contrib non-free non-free-firmware/" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true'
 
-# Bound every apt download so a wedged connection FAILS instead of hanging.
-# Without this, a stalled fetch has no timeout at all: two separate builds here
-# (arm64 and amd64) parked on the ~100 MB linux-image download and sat silent
-# for 2h25m and 28min respectively before being killed by hand — apt was still
-# "running", just never going to finish. A build that dies in 30s and retries
-# is strictly better than one that hangs indefinitely, especially inside CI
-# where nobody is watching the log.
+# Bound every apt download so a wedged connection fails instead of hanging
+# indefinitely. Worth having on real hardware and in CI, where an unbounded
+# fetch is otherwise invisible.
+#
+# NOTE — this does NOT fix cross-arch emulated builds, and it was originally
+# added believing it would. Building an amd64 rootfs on an arm64 host (or vice
+# versa) runs apt and its http method as FOREIGN binaries under qemu-user
+# binfmt, and they deadlock inside the emulation layer on the large
+# linux-image fetch: the network is fine (curl from the same container returns
+# in <0.5s), the config below IS applied, and apt is "running" — but it has
+# burned 5 seconds of CPU in 3 hours. Blocked that way, apt's own timers never
+# fire, so no Acquire:: setting can help. Three builds hung this way.
+# Build each architecture natively (CI does; this Mac builds arm64 natively and
+# succeeds) rather than under emulation.
 mkdir -p "$ROOTFS/etc/apt/apt.conf.d"
 cat > "$ROOTFS/etc/apt/apt.conf.d/99vulos-retries" << 'APTCONF'
 Acquire::Retries "3";
