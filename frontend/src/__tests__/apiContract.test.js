@@ -26,7 +26,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
 
-const REPO = resolve(import.meta.dirname, '../..')
+// The web tier lives in frontend/, so this file is <repo>/frontend/src/__tests__:
+// FRONTEND is two up, REPO is three. The backend walk needs the repo root; the
+// frontend walk needs frontend/src.
+const FRONTEND = resolve(import.meta.dirname, '../..')
+const REPO = resolve(import.meta.dirname, '../../..')
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'test-results'])
 
@@ -76,7 +80,7 @@ function backendRoutes() {
  */
 function frontendPaths() {
   const calls = new Map()
-  for (const file of walk(join(REPO, 'src'), ['.js', '.jsx'])) {
+  for (const file of walk(join(FRONTEND, 'src'), ['.js', '.jsx', '.ts', '.tsx'])) {
     if (file.includes('__tests__') || /\.test\.jsx?$/.test(file)) continue
     const src = readFileSync(file, 'utf8')
     for (const m of src.matchAll(/['"`](\/api\/[^'"`\s]*)['"`]/g)) {

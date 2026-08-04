@@ -105,6 +105,10 @@ jobs:
   # ── 2. npm dependency audit ──────────────────────────────────────────────────
   npm-audit:
     name: npm Audit
+    # npm-only job; the web tier lives in frontend/.
+    defaults:
+      run:
+        working-directory: frontend
     runs-on: ubuntu-latest
     # Advisory gate: report findings without blocking the merge.
     continue-on-error: true
@@ -116,8 +120,9 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        # npm install (not ci) so Linux-only optional deps absent from the
-        # macOS-generated lockfile resolve at install time.
+        # npm install (not ci) purely so this advisory scan never fails on a
+        # lockfile/platform mismatch — the lockfile itself is now generated on
+        # linux, so `npm ci` is the norm everywhere else.
         run: npm install --no-audit --no-fund
 
       # Fails on HIGH and CRITICAL advisories.

@@ -46,7 +46,7 @@ jobs:
       - name: Verify tag matches package.json version
         run: |
           TAG="${{ steps.version.outputs.VERSION }}"
-          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          PKG_VERSION="v$(node -p "require('./frontend/package.json').version")"
           if [ "$TAG" != "$PKG_VERSION" ]; then
             echo "ERROR: git tag ($TAG) does not match package.json version ($PKG_VERSION)"
             echo "Update package.json version to match the tag before releasing."
@@ -91,9 +91,11 @@ jobs:
       # relay-client lib so that @vulos/relay-client subpath exports resolve.
       - name: Install npm dependencies
         run: npm ci
+        working-directory: frontend
 
       - name: Build frontend
         run: npm run build
+        working-directory: frontend
 
       # ── Go: test + vet ────────────────────────────────────────────────────────
       - name: Go test

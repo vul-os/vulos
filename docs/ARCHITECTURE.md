@@ -79,17 +79,17 @@ flowchart TD
 
 ## Component map
 
-### Frontend (`src/`)
+### Frontend (`frontend/src/`)
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/shell/` | Window manager, dock, Mission Control, launchpad, AI Home, ⌘K palette, notification center |
-| `src/auth/` | Login, passkey enrollment, QR login, setup wizard |
-| `src/core/` | App registry, settings panel, system pulse |
-| `src/builtin/` | Built-in apps: assistant, terminal, files/drive, app hub, dashboard, peering, notes |
-| `src/apps/` | Heavier app integrations: vault, authenticator |
-| `src/providers/` | React context providers |
-| `src/layouts/` | Desktop and mobile layout shells |
+| `frontend/src/shell/` | Window manager, dock, Mission Control, launchpad, AI Home, ⌘K palette, notification center |
+| `frontend/src/auth/` | Login, passkey enrollment, QR login, setup wizard |
+| `frontend/src/core/` | App registry, settings panel, system pulse |
+| `frontend/src/builtin/` | Built-in apps: assistant, terminal, files/drive, app hub, dashboard, peering, notes |
+| `frontend/src/apps/` | Heavier app integrations: vault, authenticator |
+| `frontend/src/providers/` | React context providers |
+| `frontend/src/layouts/` | Desktop and mobile layout shells |
 
 ### Backend (`backend/`)
 

@@ -35,10 +35,12 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import http from 'node:http'
-import { installBackend, json } from '../e2e/mock-backend.js'
+import { installBackend, json } from '../frontend/e2e/mock-backend.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(__dirname, '..')
+// The web tier moved to frontend/; the vite project (and its e2e fixtures) live there.
+const FRONTEND = path.join(REPO_ROOT, 'frontend')
 const OUT_DIR = path.join(REPO_ROOT, 'docs', 'screenshots')
 const PORT = Number(process.env.PORT || 5317)
 const BASE_URL = `http://localhost:${PORT}`

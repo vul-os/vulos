@@ -14,6 +14,11 @@ jobs:
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
+    # The web tier lives in frontend/ (alongside backend/ and clients/), so every
+    # npm step runs there rather than at the repo root.
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +26,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          # setup-node resolves this from the repo root; defaults.run does not
+          # apply to action inputs.
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -29,8 +37,8 @@ jobs:
         run: npm run lint
 
       # Foundation for the JS -> TS migration: checkJs is off in tsconfig.json
-      # so this only checks .ts/.tsx files (none exist yet outside converted
-      # ones), and is noEmit-only — Vite/esbuild still does all transpilation.
+      # so this only checks .ts/.tsx files (src/lib/ is converted), and is
+      # noEmit-only — Vite/esbuild still does all transpilation.
       # A regression here means a converted/new TS file broke type-safety.
       - name: Typecheck
         run: npm run typecheck
@@ -112,10 +120,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Resolve dependencies (populates the licence sources)
         run: |
-          npm ci
+          cd frontend && npm ci && cd ..
           cd backend && go mod download
 
       # Fails if a dependency was added/removed/bumped without regenerating the
@@ -223,9 +232,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Pre-build frontend (dist/ is COPY'd into the Docker image)
+      - name: Pre-build frontend (frontend/dist/ is COPY'd into the Docker image)
         run: npm ci && npm run build
+        working-directory: frontend
 
       # ── Backend: build Go binary on the runner, COPY into the Docker image ───
       # Mirroring the frontend pattern: compile on the runner, COPY the prebuilt

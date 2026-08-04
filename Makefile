@@ -34,7 +34,7 @@ REGISTRY_UNVERIFIED := registry-unverified.json
 ## build: compile backend and build frontend assets.
 build:
 	cd $(BACKEND) && go build ./...
-	npm run build
+	cd frontend && npm run build
 
 ## test-local: run backend unit tests without the race detector (fast iteration).
 ## Does not require Node.js.

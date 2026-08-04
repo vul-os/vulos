@@ -37,6 +37,8 @@ import { fileURLToPath } from 'node:url'
 import { detectSPDX, LICENSE_FILENAMES } from './licensing/spdx.mjs'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
+// apps/ moved under frontend/ with the rest of the web tier.
+const frontendRoot = join(repoRoot, 'frontend')
 const LICENSES_ONLY = process.argv.includes('--licenses-only')
 
 // Import-map specifier -> pinned npm package@version. Output file is derived
@@ -107,7 +109,7 @@ function collectLicenses(app, specs) {
     writeFileSync(join(work, 'package.json'), JSON.stringify({ name: `lic-${app}`, private: true }))
     execFileSync('npm', ['install', '--no-save', '--no-audit', '--no-fund', ...specs], { cwd: work, stdio: 'inherit' })
 
-    const outDir = join(repoRoot, 'apps', app, 'vendor', 'LICENSES')
+    const outDir = join(frontendRoot, 'apps', app, 'vendor', 'LICENSES')
     rmSync(outDir, { recursive: true, force: true })
     mkdirSync(outDir, { recursive: true })
 

@@ -24,7 +24,7 @@ backend/verify
 /results.csv
 
 # Playwright E2E
-/test-results/
+/frontend/test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/

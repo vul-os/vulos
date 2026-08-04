@@ -71,10 +71,10 @@ dependencies {
 // The shell MUST NOT drift between tiers: this copies the SAME build the PWA
 // serves rather than a duplicate maintained by hand.
 val syncShell by tasks.registering(Copy::class) {
-    // rootProject.projectDir is clients/android/ (two levels below the repo root
-    // now that this project moved out of a top-level mobile/ dir) — climb two,
-    // not one, to reach vulos/dist/.
-    val dist = rootProject.projectDir.parentFile.parentFile.resolve("dist")
+    // rootProject.projectDir is clients/android/, so climb two to reach the repo
+    // root, then into frontend/ — the web tier lives there (alongside backend/
+    // and clients/), and its build output is frontend/dist/.
+    val dist = rootProject.projectDir.parentFile.parentFile.resolve("frontend/dist")
     onlyIf { dist.exists() }
     from(dist) { exclude("**/.*") }
     into(layout.projectDirectory.dir("src/main/assets/shell"))

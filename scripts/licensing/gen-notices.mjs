@@ -35,6 +35,9 @@ import { fileURLToPath } from 'node:url'
 import { detectSPDX, LICENSE_FILENAMES } from './spdx.mjs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+// The web tier lives in frontend/ (alongside backend/ and clients/), so the npm
+// lockfile, node_modules and the bundled apps/ all resolve from there.
+const FRONTEND = join(REPO, 'frontend')
 
 // Modules/packages that are ours: no third-party notice is owed for them.
 const FIRST_PARTY = [/^vulos\//, /^github\.com\/vul-os\//, /^@vulos\//]
@@ -93,7 +96,7 @@ function collectGo() {
 }
 
 function collectNpm() {
-  const lockPath = join(REPO, 'package-lock.json')
+  const lockPath = join(FRONTEND, 'package-lock.json')
   if (!existsSync(lockPath)) return []
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'))
   const pkgs = []
@@ -103,7 +106,7 @@ function collectNpm() {
     if (!key.startsWith('node_modules/')) continue // file: links to our own repos
     const name = key.slice(key.lastIndexOf('node_modules/') + 'node_modules/'.length)
     if (isFirstParty(name)) continue
-    const dir = join(REPO, key)
+    const dir = join(FRONTEND, key)
     const files = licenseFiles(dir)
     const parts = files.map((f) => ({ file: f, text: readFileSync(join(dir, f), 'utf8').trimEnd() }))
     pkgs.push({
@@ -122,7 +125,7 @@ function collectNpm() {
 }
 
 function collectVendored() {
-  const appsDir = join(REPO, 'apps')
+  const appsDir = join(FRONTEND, 'apps')
   if (!existsSync(appsDir)) return []
   const out = []
   for (const app of readdirSync(appsDir).sort()) {

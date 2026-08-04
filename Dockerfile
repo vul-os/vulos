@@ -3,7 +3,7 @@
 # ── Default build (pre-built frontend + backend binary) ───────────────────────
 #
 #   Step 1 — build frontend:
-#     npm ci && npm run build
+#     cd frontend && npm ci && npm run build
 #
 #   Step 2 — build the Go binary for the target platform:
 #     mkdir -p bin
@@ -45,11 +45,11 @@ ARG BINARY_SOURCE=prebuilt
 
 # ── Stage 1: Frontend (pre-built) ─────────────────────────────────────────────
 # The frontend is built on the CI runner (or locally via `npm run build`)
-# before `docker build` is invoked.  dist/ is COPY'd from the build context
+# before `docker build` is invoked.  frontend/dist/ is COPY'd from the context
 # rather than rebuilt inside Docker.
-# To build locally: npm ci && npm run build && docker build .
+# To build locally: (cd frontend && npm ci && npm run build) && docker build .
 FROM scratch AS frontend
-COPY dist/ /dist/
+COPY frontend/dist/ /dist/
 
 # ── Stage 2a: Pre-built Go backend (CI / default path) ────────────────────────
 # Binaries are compiled on the runner (CGO_ENABLED=0, so cross-compilation is

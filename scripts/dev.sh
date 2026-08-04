@@ -17,6 +17,8 @@ set -e
 # the repo root (parent of scripts/) so this still works regardless of where
 # it's invoked from, now that it no longer lives at the root itself.
 cd "$(dirname "$0")/.."
+# Absolute repo root, so paths stay correct even if a later step cds away.
+REPO_ROOT="$PWD"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -105,11 +107,11 @@ deploy_quick() {
   cd ..
 
   echo "Building frontend..."
-  npm run build
+  (cd "$REPO_ROOT/frontend" && npm run build)
 
   echo "Copying into container..."
   docker cp vulos-server "$NAME":/usr/local/bin/vulos-server
-  docker cp dist/. "$NAME":/opt/vulos/webroot/
+  docker cp "$REPO_ROOT/frontend/dist/." "$NAME":/opt/vulos/webroot/
   docker cp registry.json "$NAME":/opt/vulos/registry.json
   [ -d landing ] && docker exec "$NAME" mkdir -p /opt/vulos/landing && docker cp landing/. "$NAME":/opt/vulos/landing/
 
@@ -157,7 +159,7 @@ dev_local() {
 
   # Start frontend
   echo "${GREEN}▸ Starting Vite dev server on :5173${NC}"
-  npm run dev &
+  (cd "$REPO_ROOT/frontend" && npm run dev) &
   FRONTEND_PID=$!
 
   echo ""

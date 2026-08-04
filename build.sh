@@ -187,11 +187,12 @@ echo "  ${GREEN}✓${NC} vulos-server, vulos-init"
 # 2. Build frontend
 # ═══════════════════════════════════
 echo "${BLUE}▸ Building frontend...${NC}"
-cd "$ROOT_DIR"
+cd "$ROOT_DIR/frontend"
 npm ci --silent 2>/dev/null || npm install --silent
 npm run build
+cd "$ROOT_DIR"
 rm -rf "$OUTDIR/webroot"
-cp -r dist "$OUTDIR/webroot"
+cp -r frontend/dist "$OUTDIR/webroot"
 echo "  ${GREEN}✓${NC} webroot/"
 
 # ═══════════════════════════════════

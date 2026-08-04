@@ -28,7 +28,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
-const OUT = join(REPO, 'src', 'types', 'wire.ts')
+// The web tier lives in frontend/.
+const OUT = join(REPO, 'frontend', 'src', 'types', 'wire.ts')
 const CHECK = process.argv.includes('--check')
 
 function generate() {

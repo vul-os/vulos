@@ -129,10 +129,10 @@ Prerequisites: **Node.js 22+** and **Go 1.25+**. No sibling repos, no cloud acco
 ```bash
 git clone https://github.com/vul-os/vulos.git
 cd vulos
-npm install
+cd frontend && npm install
 
 # Terminal 1 — frontend (hot reload on http://localhost:5173)
-npm run dev
+npm run dev          # from frontend/
 
 # Terminal 2 — backend (on :8080; Vite proxies /api to it)
 cd backend && go run ./cmd/server --env=local
@@ -285,7 +285,7 @@ We take security seriously and welcome good-faith research under a documented sa
 
 ## Contributing
 
-Contributions are welcome. Branch as `feat/`, `fix/`, or `docs/`, and run `make build` and `make test-local` (or `cd backend && go build ./... && go test ./...` plus `npm run build`) before opening a PR. The full guide is in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Contributions are welcome. Branch as `feat/`, `fix/`, or `docs/`, and run `make build` and `make test-local` (or `cd backend && go build ./... && go test ./...` plus `cd frontend && npm run build`) before opening a PR. The full guide is in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ---
 

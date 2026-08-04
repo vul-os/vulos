@@ -4,7 +4,7 @@ Thanks for being here. Vula OS is a small project with a large surface area, so 
 
 If you just want to get the project running, that lives in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
-Vulos builds standalone — clone this repo, `npm install`, and go. No sibling
+Vulos builds standalone — clone this repo, `cd frontend && npm install`, and go. No sibling
 repos required.
 
 ---
@@ -40,7 +40,7 @@ git checkout -b feat/<short-name>   # or fix/… , docs/…
 # … edit, build, test …
 
 cd backend && go build ./... && cd ..   # backend changes (module root is backend/)
-npm run build                       # frontend changes
+cd frontend && npm run build        # frontend changes
 cd backend && go test ./... && cd ..   # if you touched Go code
                                     # (run the targeted subtree if the full
                                     # test set is too slow on your laptop)
@@ -129,8 +129,8 @@ Before opening a PR:
 
 ```bash
 cd backend && go test ./... && go vet ./... && cd ..   # backend
-npm run lint           # frontend
-npm test               # Vitest — the frontend security contract (also runs in CI)
+cd frontend && npm run lint    # frontend
+cd frontend && npm test        # Vitest — the frontend security contract (also runs in CI)
 make smoke             # SMOKE-01 peering routes; if you touched firstboot/installer
 ```
 
