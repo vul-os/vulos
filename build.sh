@@ -436,6 +436,17 @@ ExecStart=/usr/local/bin/vulos-server -env prod
 Restart=on-failure
 RestartSec=3
 Environment=PORT=8080
+# LAN HTTPS. A browser on http://<lan-ip> or http://vulos.local is NOT a secure
+# context, so window.crypto.subtle is undefined there and the security-critical
+# src/lib modules (master key, content sealing, offline auth) cannot run at all.
+# Serving HTTPS fixes that: secure-context status depends on the SCHEME, not on
+# whether the certificate is trusted, so even the self-signed fallback restores
+# full functionality after a one-time browser warning. Failing to bind is
+# non-fatal (verified) — the box keeps serving on PORT above.
+Environment=VULOS_LAN_ENABLE=1
+# ...but WITHOUT the DNS responder: running a DNS server on :53 on someone's
+# home network is not something a box should do uninvited.
+Environment=VULOS_LAN_DNS_DISABLE=1
 Environment=VULOS_REGISTRY=/opt/vulos/registry.json
 Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 Environment=XDG_RUNTIME_DIR=/tmp/xdg-runtime
@@ -891,6 +902,17 @@ ExecStart=/usr/local/bin/vulos-server -env prod
 Restart=on-failure
 RestartSec=3
 Environment=PORT=8080
+# LAN HTTPS. A browser on http://<lan-ip> or http://vulos.local is NOT a secure
+# context, so window.crypto.subtle is undefined there and the security-critical
+# src/lib modules (master key, content sealing, offline auth) cannot run at all.
+# Serving HTTPS fixes that: secure-context status depends on the SCHEME, not on
+# whether the certificate is trusted, so even the self-signed fallback restores
+# full functionality after a one-time browser warning. Failing to bind is
+# non-fatal (verified) — the box keeps serving on PORT above.
+Environment=VULOS_LAN_ENABLE=1
+# ...but WITHOUT the DNS responder: running a DNS server on :53 on someone's
+# home network is not something a box should do uninvited.
+Environment=VULOS_LAN_DNS_DISABLE=1
 Environment=VULOS_REGISTRY=/opt/vulos/registry.json
 Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 Environment=XDG_RUNTIME_DIR=/tmp/xdg-runtime
