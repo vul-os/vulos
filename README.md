@@ -16,7 +16,9 @@ Your server. Your AI. Your rules.
 [![Stars](https://img.shields.io/github/stars/vul-os/vulos?style=flat-square&color=F5A623&logo=github)](https://github.com/vul-os/vulos/stargazers)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-7C5CFF?style=flat-square)](CONTRIBUTING.md)
 
-<img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="880" />
+<img src="docs/screenshots/tiled-light.png" alt="The Vulos desktop with several windows snapped and tiled side by side, just like a native desktop" width="880" />
+
+<sub><b>Real windowing</b> — drag, snap, and tile just like a native desktop.</sub>
 
 </div>
 
@@ -53,7 +55,7 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/apphub-light.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
-    <td width="50%"><img src="docs/screenshots/tiled-light.png" alt="Multiple tiled windows" width="100%" /><br /><sub><b>Real windowing</b> — drag, snap, and tile just like a native desktop.</sub></td>
+    <td width="50%"><img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="100%" /><br /><sub><b>Desktop</b> — a proactive home with your agenda, assistant, and apps.</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/files-light.png" alt="The Files app" width="100%" /><br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub></td>
@@ -62,6 +64,10 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
   <tr>
     <td width="50%"><img src="docs/screenshots/contacts-light.png" alt="A selected contact card" width="100%" /><br /><sub><b>Contacts</b> — people and details that stay on your box, not a vendor's.</sub></td>
     <td width="50%"><img src="docs/screenshots/settings-light.png" alt="System settings" width="100%" /><br /><sub><b>Settings</b> — appearance, accounts, and system controls in one place.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/mobile-windows-light.png" alt="Running apps shown as cards in the mobile app switcher" width="100%" /><br /><sub><b>Mobile</b> — running apps as swipeable cards in the phone app switcher.</sub></td>
+    <td width="50%"><img src="docs/screenshots/tablet-windows-light.png" alt="Multiple windows snapped and tiled on a tablet-sized screen" width="100%" /><br /><sub><b>Tablet</b> — the same real windowing and tiling, sized for a tablet.</sub></td>
   </tr>
 </table>
 

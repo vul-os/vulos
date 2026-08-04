@@ -440,6 +440,98 @@ async function launchApp(page, name, { maximize = true } = {}) {
   await page.waitForTimeout(150)
 }
 
+// Snap a window into a tile zone using the shell's real keyboard tiling
+// (useWindowShortcuts → nextTile → tileWindow), e.g. ['Left','Up'] walks
+// floating → left half → top-left quarter.
+//
+// The title-bar click is load-bearing, not cosmetic: an app's UI renders in an
+// iframe, and right after launchApp() focus sits INSIDE it. The tiling listener
+// is bound to the shell document, so a keystroke sent while the iframe holds
+// focus never reaches it and the window silently stays where it was. Clicking
+// the title bar moves focus back to the shell document first. Title bars are
+// matched by app name because the windows overlap before they are tiled.
+// VERIFIES the result and retries, because a silent no-op here is invisible:
+// the first version of this shot tiled only the LAST window and still reported
+// success, leaving the other two at their cascade positions and a quarter of
+// the canvas empty. Retrying is safe because the sequences are idempotent —
+// nextTile(zone,'left') returns 'left' from null/'left'/'top-left'/'bottom-left',
+// so re-pressing normalises rather than walking somewhere new.
+//
+// zone must match src/shell/windowTiling.js tileGeometry().
+function zoneOrigin(page, zone) {
+  const vp = page.viewportSize()
+  const top = 32 // MENU_BAR_H, src/shell/windowTiling.js
+  const halfW = Math.floor(vp.width / 2)
+  const halfH = Math.floor((vp.height - top) / 2)
+  const want = {
+    'left': { x: 0, y: top },
+    'right': { x: halfW, y: top },
+    'top-left': { x: 0, y: top },
+    'top-right': { x: halfW, y: top },
+    'bottom-left': { x: 0, y: top + halfH },
+    'bottom-right': { x: halfW, y: top + halfH },
+  }[zone]
+  if (!want) throw new Error(`unsupported tile zone: ${zone}`)
+  return want
+}
+
+// Assert the FINAL layout, at capture time. snapWindow verifying its own effect
+// is not enough on its own: opening another window after a tile can move an
+// already-placed one, so every snapWindow can pass and the captured frame still
+// be wrong (it was — the Terminal filled the whole left half). This is the check
+// that actually guards the image.
+async function assertTiled(page, pairs) {
+  const bad = []
+  for (const [title, zone] of pairs) {
+    const want = zoneOrigin(page, zone)
+    const box = await page.locator('.vwin-titlebar', { hasText: title }).first()
+      .boundingBox().catch(() => null)
+    if (!box || Math.abs(box.x - want.x) > 6 || Math.abs(box.y - want.y) > 6) {
+      bad.push(`${title}: want ${zone} ~(${want.x},${want.y}), got ` +
+        (box ? `(${Math.round(box.x)},${Math.round(box.y)})` : 'no box'))
+    }
+  }
+  if (bad.length) throw new Error(`final tiling wrong — ${bad.join('; ')}`)
+}
+
+async function snapWindow(page, title, dirs, zone) {
+  const bar = page.locator('.vwin-titlebar', { hasText: title }).first()
+  const want = zoneOrigin(page, zone)
+
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    // Click the title bar first: the app renders in an iframe which grabs focus
+    // asynchronously once loaded, and the tiling listener is bound to the SHELL
+    // document — keys sent while the iframe holds focus are swallowed. This is
+    // exactly why the earlier version only tiled the last window.
+    // NOT wrapped in .catch(): if the title bar is covered by another window,
+    // Playwright's actionability check fails here — and swallowing that is how
+    // an earlier version silently tiled the WRONG window (the click landed on
+    // the window on top, so File Explorer got moved when Terminal was meant to).
+    // Callers avoid the overlap by tiling in reverse launch order.
+    await bar.click({ timeout: 5_000 })
+    // Then blur whatever still holds DOM focus. The Terminal is xterm.js, which
+    // keeps a hidden <textarea> focused to receive input, and useWindowShortcuts
+    // deliberately ignores any key whose target is an input/textarea so it never
+    // hijacks typing — so without this the tiling shortcut is dropped for the
+    // Terminal specifically. Clicking the title bar sets the ACTIVE window in
+    // React state; blurring makes <body> the key target so the shortcut runs.
+    await page.evaluate(() => document.activeElement?.blur?.()).catch(() => {})
+    await page.waitForTimeout(250)
+    for (const dir of dirs) {
+      await page.keyboard.press(`Meta+Arrow${dir}`)
+      await page.waitForTimeout(300)
+    }
+    const box = await bar.boundingBox().catch(() => null)
+    if (box && Math.abs(box.x - want.x) <= 6 && Math.abs(box.y - want.y) <= 6) return
+    if (attempt === 4) {
+      throw new Error(
+        `snapWindow: "${title}" never reached ${zone} — wanted ~(${want.x},${want.y}), ` +
+        `got ${box ? `(${Math.round(box.x)},${Math.round(box.y)})` : 'no box'}`)
+    }
+    await page.waitForTimeout(500)
+  }
+}
+
 const SHOTS = [
   {
     name: 'hero',
@@ -588,16 +680,39 @@ const SHOTS = [
   {
     name: 'tiled',
     light: true,
-    desc: 'Desktop — multiple app windows open at once (real multitasking)',
+    desc: 'Desktop — three apps snapped into a real tiled layout',
+    // This shot used to just launch three windows and let ShellProvider's
+    // +32px cascade stagger them, on the theory that overlap "reads as tiled".
+    // It does not: the result is three windows stacked in the top-left corner
+    // with the lower two almost entirely hidden, and half the canvas empty.
+    // It also failed to show the feature it captions — drag, snap and tile.
+    // Drive the REAL tiling path instead (useWindowShortcuts: Super/⌘+arrow →
+    // nextTile → tileWindow), so the shot is the actual feature and fills the
+    // frame: two stacked quarters on the left, one half on the right.
     async drive(page) {
-      // Launch a few real apps WITHOUT maximizing. ShellProvider cascades each
-      // new window's default position by +32px (OPEN_WINDOW), so three
-      // unmaximized 720x500 windows land staggered — overlapping enough to read
-      // as a tiled desktop, each title bar and a slice of its content visible.
+      // Launch ALL windows before tiling any of them. Interleaving the two
+      // disturbs already-placed windows: an earlier version tiled each window
+      // straight after launching it, every snapWindow verified and passed, and
+      // the captured frame still showed the Terminal filling the whole left half.
+      // Opening a window after a tile is what moves it, so do all the opening
+      // first, then place, then assert the final layout at capture time.
       await launchApp(page, 'File Explorer', { maximize: false })
       await launchApp(page, 'Terminal', { maximize: false })
       await launchApp(page, 'Activity Monitor', { maximize: false })
+
+      // Tile in REVERSE launch order — topmost first. Newly opened windows
+      // cascade over the earlier ones, so tiling front-to-back means the window
+      // being clicked is never covered by one still sitting at its cascade spot.
+      await snapWindow(page, 'Activity Monitor', ['Right'], 'right')
+      await snapWindow(page, 'Terminal', ['Left', 'Down'], 'bottom-left')
+      await snapWindow(page, 'File Explorer', ['Left', 'Up'], 'top-left')
+
       await page.waitForTimeout(400)
+      await assertTiled(page, [
+        ['File Explorer', 'top-left'],
+        ['Terminal', 'bottom-left'],
+        ['Activity Monitor', 'right'],
+      ])
     },
   },
   {
@@ -642,7 +757,10 @@ const SHOTS = [
   },
   {
     name: 'mobile-windows',
-    light: false,
+    // Light too: the README and the landing page both present their screenshot
+    // grids in the light theme, so a dark-only phone shot could not be shown
+    // alongside the others.
+    light: true,
     dsf: 2,
     desc: 'MobileStack — the phone app switcher, several running apps open as cards at once',
     // MissionControl (F3 / the desktop TopBar's "Mission Control" button) is
@@ -676,6 +794,29 @@ const SHOTS = [
         if (await page.locator('.vmob-switcher').isVisible().catch(() => false)) break
       }
       await page.waitForTimeout(700)
+    },
+  },
+  {
+    name: 'tablet-windows',
+    light: true,
+    dsf: 2,
+    desc: 'Tablet — two apps snapped side by side at tablet width',
+    // 1024x768 (landscape tablet). App.jsx picks its layout purely on window
+    // width (<768px → MobileStack), so a tablet gets the FULL DesktopCanvas —
+    // real windows, real tiling — rather than the phone stack. That is the
+    // whole point of the shot: the same windowing works on a tablet, which is
+    // not obvious from a phone screenshot where windows become fullscreen
+    // cards. Two halves rather than the desktop's three tiles: quarters at
+    // 1024x768 would be too small for their content to read.
+    viewport: { width: 1024, height: 768 },
+    async drive(page) {
+      await launchApp(page, 'File Explorer', { maximize: false })
+      await launchApp(page, 'Terminal', { maximize: false })
+      // Reverse launch order — see the `tiled` shot.
+      await snapWindow(page, 'Terminal', ['Right'], 'right')
+      await snapWindow(page, 'File Explorer', ['Left'], 'left')
+      await page.waitForTimeout(400)
+      await assertTiled(page, [['File Explorer', 'left'], ['Terminal', 'right']])
     },
   },
 ]
@@ -717,16 +858,24 @@ async function captureTheme(browser, theme, overrides, results) {
     // needs <768px to flip the shell's useViewport() media query and render
     // MobileStack instead of DesktopCanvas (see src/App.jsx `useDesktop`).
     // Existing shots omit `viewport` and get the standard desktop VIEWPORT.
-    const isMobileShot = !!shot.viewport
+    // Derive "is this the PHONE shell?" from the actual breakpoint, not merely
+    // from having a custom viewport. src/App.jsx flips to MobileStack purely on
+    // width < 768px, so a tablet-sized override (1024x768) still renders the
+    // full DesktopCanvas. Keying off `!!shot.viewport` made every custom-size
+    // shot wait for the mobile-only root marker, so the tablet shot hung until
+    // it timed out.
+    const shotViewport = shot.viewport || VIEWPORT
+    const isPhoneShot = shotViewport.width < 768
     const context = await browser.newContext({
-      viewport: shot.viewport || VIEWPORT,
+      viewport: shotViewport,
       // Per-shot override (see SHOTS above): lighter views opt into dsf:2 for
       // retina crispness; heavy maximized apps (App Hub, Dashboard, Instances,
       // tiled multi-window) stay at the default 1 — headless Chromium
       // intermittently captures a BLACK GPU frame for those at 2x.
       deviceScaleFactor: shot.dsf || 1,
-      isMobile: isMobileShot,
-      hasTouch: isMobileShot,
+      isMobile: isPhoneShot,
+      // Tablets are touch devices too, so touch follows any viewport override.
+      hasTouch: !!shot.viewport,
       reducedMotion: 'reduce', // kills window open/maximize animations → no mid-transition black frames
       ignoreHTTPSErrors: true,
     })
@@ -753,7 +902,7 @@ async function captureTheme(browser, theme, overrides, results) {
       await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
       // The desktop TopBar's "Applications" button doesn't exist in
       // MobileStack — wait for that layout's own root marker instead.
-      if (isMobileShot) {
+      if (isPhoneShot) {
         await page.locator('[data-shell="mobile"]').first().waitFor({ timeout: 20_000 })
       } else {
         await page.getByTitle('Applications').first().waitFor({ timeout: 20_000 })
