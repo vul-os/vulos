@@ -156,7 +156,7 @@ ClientAliveInterval 60\n\
 ClientAliveCountMax 3\n' > /etc/ssh/sshd_config.d/vulos.conf
 
 # Layer 3: Static assets (changes with content updates)
-COPY apps/ /opt/vulos/apps/
+COPY frontend/apps/ /opt/vulos/apps/
 
 # labwc compositor config (browser pinned to background, floating focus)
 COPY assets/labwc/ /root/.config/labwc/
