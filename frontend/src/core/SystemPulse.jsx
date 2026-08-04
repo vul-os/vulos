@@ -465,7 +465,13 @@ export default function LifePulse({ compact = false, className = '' }) {
           <StatusButton onClick={() => toggleDropdown('clock')} active={openDropdown === 'clock'} wide>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-neutral-300">{formatTime(now)}</span>
-              <span className="text-[12px] text-neutral-500">{formatDate(now)}</span>
+              {/* Date is hidden on phone-width screens. The compact bar also
+                  carries wifi/battery/notifications/theme and the public-apps
+                  warning, and at 390px the row overflowed — pushing the warning
+                  badge off the right edge, which is the one element that must
+                  never be lost. Native phone status bars show the time only;
+                  the date returns at >=640px where there is room. */}
+              <span className="hidden sm:inline text-[12px] text-neutral-500">{formatDate(now)}</span>
             </div>
           </StatusButton>
           <Dropdown open={openDropdown === 'clock'} onClose={closeDropdown} containerRef={clockRef}>

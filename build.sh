@@ -188,6 +188,12 @@ echo "  ${GREEN}✓${NC} vulos-server, vulos-init"
 # ═══════════════════════════════════
 echo "${BLUE}▸ Building frontend...${NC}"
 cd "$ROOT_DIR/frontend"
+# NOTE for anyone running this inside a container with the repo bind-mounted
+# (scripts/baremetal-builder.Dockerfile does exactly that): this npm ci writes
+# into the HOST's frontend/node_modules and replaces any platform-specific
+# binaries with the container's. After a containerised build, re-run
+# `cd frontend && npm ci` on the host before building locally again, or give the
+# container its own node_modules with `-v /src/frontend/node_modules`.
 npm ci --silent 2>/dev/null || npm install --silent
 npm run build
 cd "$ROOT_DIR"
