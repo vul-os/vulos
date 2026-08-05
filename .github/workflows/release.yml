@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  # Manual builds produce the SAME images via the SAME steps, but publish
+  # nothing: no release, no tag required. This exists so an image can be
+  # boot-tested BEFORE it is released — notably amd64, which cannot be built on
+  # an arm64 developer machine (apt deadlocks under qemu-user emulation), so CI
+  # is the only place it can be produced.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -40,10 +46,18 @@ jobs:
       # ── Derive version from the pushed tag ───────────────────────────────────
       - name: Extract version
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            # Manual run: derive from package.json so downstream steps and
+            # artifact names still have a coherent version.
+            echo "VERSION=v$(node -p "require('./frontend/package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
       # ── Verify tag matches package.json version ───────────────────────────────
       - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${{ steps.version.outputs.VERSION }}"
           PKG_VERSION="v$(node -p "require('./frontend/package.json').version")"
@@ -117,7 +131,10 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          # TAG-ONLY push. A manual run still BUILDS the image (so the
+          # Dockerfile is exercised) but must not publish to ghcr — otherwise
+          # a test build silently republishes :latest.
+          push: ${{ startsWith(github.ref, 'refs/tags/') }}
           build-args: |
             BINARY_SOURCE=built
             VERSION=${{ steps.version.outputs.VERSION }}
@@ -191,6 +208,7 @@ jobs:
       # ── Extract CHANGELOG section for this release ───────────────────────────
       - name: Extract CHANGELOG notes
         id: changelog
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           # Strip leading 'v' to match CHANGELOG section headers like [1.0.0]
@@ -212,7 +230,22 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Manual runs get the images as workflow artifacts instead of a release,
+      # so they can be downloaded and boot-tested before anything is published.
+      - name: Upload images as artifacts (manual runs)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulos-images-${{ steps.version.outputs.VERSION }}
+          path: |
+            vulos-*.img.gz
+            SHA256SUMS
+          retention-days: 7
+          if-no-files-found: error
+
+      # Publishing is TAG-ONLY. A manual run must never create a release.
       - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           name: Vulos ${{ steps.version.outputs.VERSION }}
           body: |
