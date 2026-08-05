@@ -21,7 +21,66 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-08-03
+## [0.1.0] - 2026-08-05
+
+### Fixed
+
+- **The OS image booted but never ran Vulos.** `vulos.service` invoked
+  `vulos-server -env main`; `env.Parse` accepts only `local`/`dev`/`prod` and
+  treats anything else as fatal, so the server exited immediately and
+  crash-looped every 3s while systemd still reported "Started vulos.service"
+  (`Type=simple` only means the process was forked). Every image before this
+  one served nothing. Now `-env prod` — the only environment that binds all
+  interfaces; `local`/`dev` bind loopback and would leave a box unreachable.
+  Verified by booting the built image on both architectures and confirming
+  `GET /api/setup/status` returns 200.
+- **The live-boot smoke gate could not fail.** It passed on *either* a serial
+  pattern or an HTTP probe, and the serial pattern (`login:`) always matches a
+  successful boot — so the HTTP check its own comments called "the gold-standard
+  fully-running check" never gated anything, which is how the above shipped.
+  HTTP is now the only signal that can pass the gate.
+- **`crypto.subtle` was undefined on the box's most likely address.** A browser
+  on `http://<lan-ip>` is not a secure context, so `masterKey`, `contentSeal`
+  and `offlineAuth` could not run at all. Those entry points now fail with a
+  clear message naming both remedies instead of a bare `TypeError`.
+- **Padding vanished wherever `safe-px` met a Tailwind `px-*` utility.** Both
+  set the same property at equal specificity, and with no left/right inset
+  (portrait, essentially every phone) the `env()` won at `0px` — content sat
+  flush against the screen edge.
+- **The phone status bar clipped its public-apps warning badge** at 390px. The
+  date is now hidden below the `sm` breakpoint; the badge is the one element in
+  that bar that must never be lost.
+
+### Added
+
+- **A console status screen.** A freshly flashed box previously booted to a bare
+  `login:` prompt with no credentials configured — the one screen in front of
+  the user said nothing about the address, the URL to open, or whether the
+  server had started. tty1 now shows exactly that, refreshed every 15s, and
+  probes the listeners rather than trusting `systemctl is-active` (which only
+  proves the process exists). It grants no shell.
+- **LAN HTTPS by default**, without a DNS server. Secure-context status depends
+  on the scheme, not on whether the certificate is trusted, so the self-signed
+  fallback is enough to make the platform work; a real certificate then only
+  removes the warning. `VULOS_LAN_DNS_DISABLE=1` keeps the box from running a
+  DNS responder on someone's home network uninvited.
+- **`SHA256SUMS`** published with every release — there was previously no way to
+  verify a 600 MB image at all.
+- **Generated Go→TypeScript wire types** (`scripts/wiregen`, via `go/ast`), so
+  the frontend's view of the API is derived from the Go declarations rather than
+  hand-written and left to drift.
+
+### Changed
+
+- **The LAN TLS key now persists** across reboots, so accepting the self-signed
+  certificate is genuinely a one-time action and future certificate pinning is
+  possible. A world-readable key is treated as compromised and rotated.
+- **`src/lib/` is TypeScript** (the security-critical client SDK), on TypeScript
+  6 — 7 is the native compiler and `typescript-eslint` refuses to run against
+  it, which would have silently dropped `react-hooks` linting from converted
+  files.
+- **Repository layout is now three peers**: `backend/` (Go), `frontend/` (web),
+  `clients/` (native). `mobile/` became `clients/android`.
 
 ### Security
 
