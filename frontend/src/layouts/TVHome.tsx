@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
 import { getAppsByCategory } from '../core/AppRegistry.js'
 
+/** Minimal shape of an app-registry entry, limited to the fields TVHome
+ *  actually reads. See core/AppRegistry.js (untyped JS, out of scope) for the
+ *  full merged shape across builtin/web/installed/AI-generated apps. */
+interface TVApp {
+  id: string
+  name: string
+  icon: string
+  category: string
+}
+
 // ─── Clock ────────────────────────────────────────────────────────────────────
 
 function useClock() {
@@ -58,7 +68,7 @@ function TVStatusBar() {
 
 // ─── App card ────────────────────────────────────────────────────────────────
 
-function TVAppCard({ app }) {
+function TVAppCard({ app }: { app: TVApp }) {
   return (
     <button
       className="tv-card group flex flex-col items-center justify-center gap-4 rounded-2xl transition-all duration-150"
@@ -117,7 +127,7 @@ function TVAppCard({ app }) {
 
 // ─── Category row ─────────────────────────────────────────────────────────────
 
-const CATEGORY_LABELS = {
+const CATEGORY_LABELS: Record<string, string> = {
   system: 'System',
   internet: 'Internet',
   productivity: 'Productivity',
@@ -125,7 +135,7 @@ const CATEGORY_LABELS = {
   other: 'Other',
 }
 
-function TVCategoryRow({ category, apps }) {
+function TVCategoryRow({ category, apps }: { category: string; apps: TVApp[] }) {
   const label = CATEGORY_LABELS[category] || category.charAt(0).toUpperCase() + category.slice(1)
 
   return (
@@ -167,7 +177,11 @@ function TVCategoryRow({ category, apps }) {
 const CATEGORY_ORDER = ['media', 'internet', 'productivity', 'system', 'other']
 
 export default function TVHome() {
-  const byCategory = getAppsByCategory()
+  // getAppsByCategory() builds its return value via `const cats = {}; cats[c]
+  // = [...]` (core/AppRegistry.js, untyped JS, out of scope) — an
+  // un-annotated `{}` infers with no index signature, so TS sees `{}` rather
+  // than a per-category map. Asserted here rather than left broken.
+  const byCategory = getAppsByCategory() as Record<string, TVApp[]>
 
   // Sort categories: known order first, then any remaining alphabetically
   const orderedCategories = [

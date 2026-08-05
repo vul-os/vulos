@@ -23,8 +23,13 @@ export default defineConfig({
     //   so loading it globally is a no-op for them and keeps a single config.
     setupFiles: ['./src/test-setup.js', './src/__tests__/integration/setup.js'],
     include: [
-      'src/**/*.test.{js,jsx}',
-      'apps/**/__tests__/**/*.test.{js,jsx}',
+      // js/jsx/ts/tsx: the JS->TS migration (see tsconfig.json) is converting
+      // test files in place (e.g. src/auth/*.test.tsx) — without ts/tsx here
+      // those files are silently never collected (0 failures, but also 0
+      // runs), which reads as a pass while being a bigger regression than a
+      // failure.
+      'src/**/*.test.{js,jsx,ts,tsx}',
+      'apps/**/__tests__/**/*.test.{js,jsx,ts,tsx}',
     ],
   },
 })

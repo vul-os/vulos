@@ -17,7 +17,10 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: '**/*.e2e.js',
+  // Extension-agnostic: e2e specs are migrating to TypeScript, and a
+  // js-only glob would silently collect NOTHING after the rename — zero
+  // failures because zero tests, which reads as a pass.
+  testMatch: '**/*.e2e.{js,ts}',
   // Fail the build on a stray test.only in CI.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

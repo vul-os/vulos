@@ -1,11 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useAuth } from './AuthProvider'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// logArg mirrors the exact `err?.message || err` shape used throughout this
+// file's best-effort catch blocks: log the message when the caught value has
+// a real string one, otherwise log the raw (unknown-shaped) value itself so
+// the console can still expand it.
+function logArg(err: unknown): unknown {
+  return isRecord(err) && typeof err.message === 'string' && err.message ? err.message : err
+}
+
 export default function LoginScreen() {
   const { checkAuth, checkConcurrentSessions } = useAuth()
-  const [hasUsers, setHasUsers] = useState(null)
+  const [hasUsers, setHasUsers] = useState<boolean | null>(null)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -18,8 +30,12 @@ export default function LoginScreen() {
   useEffect(() => {
     fetch('/api/auth/status')
       .then(r => r.json())
-      .then(data => {
-        setHasUsers(data.has_users)
+      .then((data: unknown) => {
+        // Mirrors the original `data.has_users` pass-through exactly: setup
+        // mode triggers only when the server explicitly says `false` — any
+        // other value (missing field, malformed response) keeps the safe
+        // sign-in default rather than falling into account creation.
+        setHasUsers(isRecord(data) && data.has_users === false ? false : true)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -27,7 +43,7 @@ export default function LoginScreen() {
 
   const isSetup = hasUsers === false
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (submitting) return // double-submit guard
     setError('')
@@ -44,7 +60,9 @@ export default function LoginScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const data = await res.json()
+      // Untrusted network JSON — narrowed to a record before any field
+      // access, never cast to a nicer-looking response shape.
+      const data: unknown = await res.json()
       if (res.ok) {
         // WAVE2-RECOVERY: unwrap the per-user master key client-side and hold it
         // in memory for the session (best-effort; fail-closed unwrap, never
@@ -54,17 +72,17 @@ export default function LoginScreen() {
           // OFFLINE-AUTH-01: cache the wrapped envelope (only after the password
           // proves correct) so the OS can offer a fail-closed offline unlock when
           // the box is later unreachable. Best-effort — never blocks login.
-          const cacheOfflineEnvelope = async (slot) => {
+          const cacheOfflineEnvelope = async (slot: unknown) => {
             try {
               const oa = await import('../lib/offlineAuth.js')
               await oa.cacheEnvelope(slot)
-              const u = data && data.user
+              const u = isRecord(data) && isRecord(data.user) ? data.user : null
               await oa.cacheIdentity({
                 id: (u && u.id) || '',
                 name: (u && (u.display_name || u.username)) || displayName || username || '',
               })
-            } catch (e) {
-              console.warn('[offlineAuth] envelope cache skipped:', e?.message || e)
+            } catch (e: unknown) {
+              console.warn('[offlineAuth] envelope cache skipped:', logArg(e))
             }
           }
           await unlockMasterKeyForSession(password, fetch, cacheOfflineEnvelope)
@@ -74,12 +92,12 @@ export default function LoginScreen() {
           const mk = getMasterKey()
           if (mk) {
             const { publishContentPublicKey } = await import('../lib/contentSeal.js')
-            await publishContentPublicKey(mk).catch((e) =>
-              console.warn('[contentseal] publish content key skipped:', e?.message || e),
+            await publishContentPublicKey(mk).catch((e: unknown) =>
+              console.warn('[contentseal] publish content key skipped:', logArg(e)),
             )
           }
-        } catch (err) {
-          console.warn('[masterkey] client-side unlock skipped:', err?.message || err)
+        } catch (err: unknown) {
+          console.warn('[masterkey] client-side unlock skipped:', logArg(err))
         }
         // Do NOT window.location.reload() — under cage + software-GL Chromium
         // a full page reload re-spawns the GPU process and can stall the
@@ -93,7 +111,8 @@ export default function LoginScreen() {
         // over or keep the other session. Best-effort; never blocks entry.
         if (!isSetup) { await checkConcurrentSessions() }
       } else {
-        setError(data.error || (isSetup
+        const serverError = isRecord(data) && typeof data.error === 'string' ? data.error : undefined
+        setError(serverError || (isSetup
           ? 'Could not create your account. Check your details and try again.'
           : 'Incorrect username or password.'))
       }
@@ -273,7 +292,7 @@ export default function LoginScreen() {
   )
 }
 
-function HelpSection({ title, items }) {
+function HelpSection({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
       <h3 className="text-xs font-medium text-neutral-400 mb-1.5">{title}</h3>

@@ -23,10 +23,23 @@ import { useWindowShortcuts } from '../shell/useWindowShortcuts'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
+/** windowId -> its Mission Control grid cell. Matches the shape
+ *  useMissionControlLayout (shell/MissionControl.jsx, untyped JS) actually
+ *  builds — `layout[win.id] = {x, y, scale}` — which that file's own
+ *  inference can't express (an un-annotated `const layout = {}` types as
+ *  `{}`, not an index signature), so it's asserted here rather than left
+ *  broken. Not editable in this pass (out of scope). */
+interface MissionControlCell { x: number; y: number; scale: number }
+
 export default function DesktopCanvas() {
   const { windows, allWindows, chatOpen, missionControlOpen, setMissionControl, focusWindow, minimizeWindow, openWindow } = useShell()
-  const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen)
-  const { wallpaper } = useWallpaper()
+  const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen) as Record<number, MissionControlCell>
+  // useWallpaper()'s return type is `null` per TS's inference of that file's
+  // untyped `createContext(null)` (core/useWallpaper.jsx, out of scope) — the
+  // real Provider value is always `{ wallpaper, setWallpaper }` once mounted
+  // (App.jsx wraps the whole app in WallpaperProvider). Asserted rather than
+  // left broken.
+  const { wallpaper } = useWallpaper() as unknown as { wallpaper: string | null; setWallpaper: (value: string | null) => void }
   const { isDark } = useTheme()
   // Keyboard-first window management (tile / cycle / close).
   useWindowShortcuts()

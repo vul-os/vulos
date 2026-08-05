@@ -16,7 +16,7 @@ const STEPS = [
 ]
 
 // Mirrors the effectiveSteps computation in Setup.jsx.
-function effectiveSteps(NETB05_choice) {
+function effectiveSteps(NETB05_choice: string) {
   if (NETB05_choice === 'local') {
     return STEPS.filter(s => s !== 'cloudAccount' && s !== 'intent')
   }

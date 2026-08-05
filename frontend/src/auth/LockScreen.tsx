@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { nativeBridge } from '../core/nativeBridge'
 
 // NATIVE-BIO-01: biometric unlock is a LOCAL convenience gate, never a
 // bypass — it re-submits the SAME pin through the SAME server-verified
 // /api/auth/pin/validate call. Module-scoped so the cache survives this
 // screen's mount/unmount across lock cycles within one runtime session.
-let NATIVE_BIO_cachedPin = null
+let NATIVE_BIO_cachedPin: string | null = null
 const NATIVE_BIO_PREF_KEY = 'vulos.biometric.unlock'
 function NATIVE_BIO_optedIn() {
   try { return localStorage.getItem(NATIVE_BIO_PREF_KEY) === 'on' } catch { return false }
@@ -20,7 +20,38 @@ function useTime() {
   return now
 }
 
-export default function LockScreen({ onUnlock, userName }) {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// PinValidateResult — the narrowed shape of POST /api/auth/pin/validate's
+// response. The raw JSON is untrusted network input; every field is
+// typeof-checked here rather than cast, so a malformed/unexpected response
+// degrades to "field absent" instead of the caller trusting a lie about its
+// type (e.g. a non-boolean `valid` must NOT be treated as truthy — see below).
+interface PinValidateResult {
+  valid: boolean
+  permanentLock: boolean
+  locked: boolean
+  attemptsLeft: number | undefined
+}
+
+function parsePinValidateResult(data: unknown): PinValidateResult {
+  const d = isRecord(data) ? data : {}
+  return {
+    valid: d.valid === true,
+    permanentLock: d.permanent_lock === true,
+    locked: d.locked === true,
+    attemptsLeft: typeof d.attempts_left === 'number' ? d.attempts_left : undefined,
+  }
+}
+
+interface LockScreenProps {
+  onUnlock: () => void
+  userName?: string
+}
+
+export default function LockScreen({ onUnlock, userName }: LockScreenProps) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState(false)
   // Human-readable status message (wrong PIN / lockout), announced to AT via the
@@ -29,8 +60,8 @@ export default function LockScreen({ onUnlock, userName }) {
   const [message, setMessage] = useState('')
   const [locked, setLocked] = useState(false)
   const [showInput, setShowInput] = useState(false)
-  const inputRef = useRef(null)
-  const errorTimer = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const now = useTime()
 
   useEffect(() => () => clearTimeout(errorTimer.current), [])
@@ -43,7 +74,7 @@ export default function LockScreen({ onUnlock, userName }) {
       setShowInput(true)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
-    const onKey = (e) => { if (!showInput && e.key !== 'Escape') reveal() }
+    const onKey = (e: globalThis.KeyboardEvent) => { if (!showInput && e.key !== 'Escape') reveal() }
     const onPointer = () => { if (!showInput) reveal() }
     window.addEventListener('keydown', onKey)
     window.addEventListener('pointerdown', onPointer)
@@ -56,7 +87,7 @@ export default function LockScreen({ onUnlock, userName }) {
   // Flash the error/shake state and announce a message. If `permanent` (server
   // lockout), the copy persists and the input is disabled; otherwise it clears
   // after a beat so the field is usable again.
-  const flashError = (text, permanent = false) => {
+  const flashError = (text: string, permanent = false) => {
     clearTimeout(errorTimer.current)
     setError(true)
     setMessage(text)
@@ -67,7 +98,7 @@ export default function LockScreen({ onUnlock, userName }) {
 
   const [bioBusy, setBioBusy] = useState(false)
 
-  const trySubmit = async (pinValue) => {
+  const trySubmit = async (pinValue: string) => {
     if (locked) return
     try {
       const res = await fetch('/api/auth/pin/validate', {
@@ -75,7 +106,8 @@ export default function LockScreen({ onUnlock, userName }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: pinValue }),
       })
-      const data = await res.json().catch(() => ({}))
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = parsePinValidateResult(raw)
       if (data.valid) {
         // Server-verified. When no PIN is configured, the server's own
         // ValidatePIN contract (SEC-PIN-01) legitimately reports valid:true —
@@ -83,7 +115,7 @@ export default function LockScreen({ onUnlock, userName }) {
         // not a client-side bypass. We never decide validity on the client.
         if (pinValue && NATIVE_BIO_optedIn()) NATIVE_BIO_cachedPin = pinValue
         onUnlock()
-      } else if (data.permanent_lock) {
+      } else if (data.permanentLock) {
         // Server has permanently locked this device after repeated failures —
         // re-auth (full sign-in) is required; a PIN retry cannot recover it.
         flashError('Locked after too many attempts. Sign in to unlock.', true)
@@ -92,7 +124,7 @@ export default function LockScreen({ onUnlock, userName }) {
         flashError('Too many attempts. Try again shortly.')
       } else {
         // Wrong PIN. Surface remaining attempts when the server reports them.
-        const left = data.attempts_left
+        const left = data.attemptsLeft
         flashError(
           typeof left === 'number' && left >= 0
             ? `Incorrect PIN — ${left} attempt${left === 1 ? '' : 's'} left`
@@ -107,7 +139,7 @@ export default function LockScreen({ onUnlock, userName }) {
     }
   }
 
-  const handleSubmit = (e) => { e.preventDefault(); trySubmit(pin) }
+  const handleSubmit = (e: FormEvent) => { e.preventDefault(); trySubmit(pin) }
 
   // NATIVE-BIO-01: re-submit the cached PIN through the exact same
   // /api/auth/pin/validate call — biometrics gate reuse, they never
@@ -152,7 +184,7 @@ export default function LockScreen({ onUnlock, userName }) {
               ref={inputRef}
               type="password"
               value={pin}
-              onChange={(e) => { setPin(e.target.value.replace(/[^0-9]/g, '')); if (error && !locked) setError(false) }}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => { setPin(e.target.value.replace(/[^0-9]/g, '')); if (error && !locked) setError(false) }}
               placeholder="PIN"
               inputMode="numeric"
               autoComplete="off"
@@ -176,7 +208,7 @@ export default function LockScreen({ onUnlock, userName }) {
             className="text-xs h-4 text-center transition-colors"
             style={{ color: message ? 'var(--status-danger)' : 'transparent' }}
           >
-            {message || ' '}
+            {message || ' '}
           </p>
           <button
             type="submit"

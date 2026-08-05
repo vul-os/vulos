@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'react'
 import { nativeBridge } from '../core/nativeBridge'
 
 // NATIVE-BIO-01: biometric unlock is a LOCAL convenience gate, never a bypass.
@@ -6,7 +6,7 @@ import { nativeBridge } from '../core/nativeBridge'
 // so it only ever "works" once a password has been typed correctly at least
 // once this runtime session. Module-scoped (not component state) so it
 // survives this screen unmounting on success and remounting on the next lock.
-let NATIVE_BIO_cachedPassword = null
+let NATIVE_BIO_cachedPassword: string | null = null
 const NATIVE_BIO_PREF_KEY = 'vulos.biometric.unlock'
 function NATIVE_BIO_optedIn() {
   try { return localStorage.getItem(NATIVE_BIO_PREF_KEY) === 'on' } catch { return false }
@@ -31,15 +31,41 @@ function useClock() {
   return now
 }
 
-export default function OfflineLockScreen({ onUnlock, identity }) {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// The rejection thrown by AuthProvider.unlockOffline (ultimately
+// lib/offlineAuth.ts's taggedError / Object.assign(e, { attemptsLeft })) is
+// caught here as `unknown` (strict `useUnknownInCatchVariables`). Narrow
+// rather than cast: a thrown value that ISN'T the expected tagged error
+// (e.g. a plain network Error) must fall through to the generic message
+// exactly as `err?.code` / `err?.attemptsLeft` did before.
+function offlineUnlockErrorCode(err: unknown): string | undefined {
+  return isRecord(err) && typeof err.code === 'string' ? err.code : undefined
+}
+function offlineUnlockAttemptsLeft(err: unknown): number | undefined {
+  return isRecord(err) && typeof err.attemptsLeft === 'number' ? err.attemptsLeft : undefined
+}
+
+interface OfflineIdentity {
+  name?: string
+}
+
+interface OfflineLockScreenProps {
+  onUnlock: (password: string) => Promise<boolean>
+  identity?: OfflineIdentity | null
+}
+
+export default function OfflineLockScreen({ onUnlock, identity }: OfflineLockScreenProps) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(false)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [wiped, setWiped] = useState(false)
   const [bioBusy, setBioBusy] = useState(false)
-  const inputRef = useRef(null)
-  const errorTimer = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const now = useClock()
   const canBiometric = nativeBridge.biometric.available && NATIVE_BIO_optedIn() && !!NATIVE_BIO_cachedPassword
 
@@ -49,7 +75,7 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
 
-  const flash = (text, permanent = false) => {
+  const flash = (text: string, permanent = false) => {
     clearTimeout(errorTimer.current)
     setError(true)
     setMessage(text)
@@ -58,7 +84,7 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
     errorTimer.current = setTimeout(() => setError(false), 1500)
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (busy || wiped || !password) return
     setBusy(true)
@@ -67,15 +93,17 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
       await onUnlock(password)
       // Success: AuthProvider flips to the offline session and this screen unmounts.
       if (NATIVE_BIO_optedIn()) NATIVE_BIO_cachedPassword = password
-    } catch (err) {
-      if (err?.code === 'WIPED') {
+    } catch (err: unknown) {
+      const code = offlineUnlockErrorCode(err)
+      const attemptsLeft = offlineUnlockAttemptsLeft(err)
+      if (code === 'WIPED') {
         flash('Too many attempts — offline data on this device was wiped. Sign in online to restore it.', true)
-      } else if (err?.code === 'NOT_ENROLLED') {
+      } else if (code === 'NOT_ENROLLED') {
         flash('No offline access is set up on this device. Sign in online first.', true)
-      } else if (err?.code === 'CORRUPT') {
+      } else if (code === 'CORRUPT') {
         flash('Your offline data is corrupted. Sign in online to restore it.', true)
-      } else if (typeof err?.attemptsLeft === 'number') {
-        flash(`Incorrect password — ${err.attemptsLeft} attempt${err.attemptsLeft === 1 ? '' : 's'} left before offline data is wiped.`)
+      } else if (typeof attemptsLeft === 'number') {
+        flash(`Incorrect password — ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left before offline data is wiped.`)
       } else {
         flash('Incorrect password, try again.')
       }
@@ -128,7 +156,7 @@ export default function OfflineLockScreen({ onUnlock, identity }) {
           ref={inputRef}
           type="password"
           value={password}
-          onChange={(e) => { setPassword(e.target.value); if (error && !wiped) setError(false) }}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => { setPassword(e.target.value); if (error && !wiped) setError(false) }}
           placeholder="Password"
           autoComplete="current-password"
           disabled={wiped || busy}

@@ -50,7 +50,7 @@ The core is in place and self-hostable today:
 - **Assistant depth** — broader curated toolset, better on-instance retrieval (RAG), sovereignty-tier UX.
 - **Bare-metal / first-boot** — smoother first-boot + netboot install; signed `os-core.roothash.sig` verification fail-closed.
 - **Multi-node depth** — full cr-sqlite CRDT across a user's own nodes; conflict-free "move to your own box" migration reusing the same identity.
-- **Client type safety** — TypeScript migration of the security-critical `src/lib/` SDK (crypto envelopes, master key, offline auth) and generated types for the Go→JS API boundary; components stay `.jsx` for now. No Vite/build-tool change. See [`roadmap/TYPE-SAFETY.md`](roadmap/TYPE-SAFETY.md) and `docs/decisions.md` D97 (supersedes D95's JSDoc-only framing).
+- **Client type safety** — TypeScript migration of the security-critical `src/lib/` SDK (crypto envelopes, master key, offline auth) and generated types for the Go→JS API boundary, then the component tree. No Vite/build-tool change. See [`roadmap/TYPE-SAFETY.md`](roadmap/TYPE-SAFETY.md) and `docs/decisions.md` D97 (supersedes D95's JSDoc-only framing).
 
 ---
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAuth } from './AuthProvider'
+import { useAuth, type SessionSummary } from './AuthProvider'
 
 // SESSION-TAKEOVER: shown right after a sign-in when the account is already
 // active on another device. The user chooses to take over this device (sign the
@@ -11,20 +11,20 @@ import { useAuth } from './AuthProvider'
 // and responsive down to small phones (min() width, safe-area padding).
 export default function SessionTakeoverModal() {
   const { sessionConflict, takeOverSession, keepOtherSessionAndSignOut } = useAuth()
-  const [busy, setBusy] = useState(null) // 'take' | 'keep' | null
+  const [busy, setBusy] = useState<'take' | 'keep' | null>(null)
 
   if (!sessionConflict) return null
 
   const { others = 0, sessions = [] } = sessionConflict
   const otherSessions = sessions.filter((s) => !s.current)
 
-  const deviceLabel = (s) => {
+  const deviceLabel = (s: SessionSummary | undefined) => {
     if (!s) return 'Another device'
     if (s.provider && s.provider.startsWith('cloud')) return 'Cloud sign-in'
     if (s.device_id) return s.device_id
     return 'Another device'
   }
-  const whenLabel = (iso) => {
+  const whenLabel = (iso: string | undefined) => {
     if (!iso) return ''
     try {
       const d = new Date(iso)

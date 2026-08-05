@@ -1,5 +1,14 @@
 import { useState } from 'react'
 
+interface MasterKeyRevealProps {
+  /** The 24-word space-separated recovery phrase (from the register response). */
+  phrase: string
+  /** Called when the user confirms they saved it. */
+  onConfirm: () => void
+  /** Called when the user explicitly skips (accepting the risk). */
+  onSkip: () => void
+}
+
 // MasterKeyReveal — WAVE2-RECOVERY forced recovery-phrase screen (Proton-style).
 //
 // Shown ONCE, right after the account is created, before setup can complete. The
@@ -13,7 +22,7 @@ import { useState } from 'react'
 //   phrase     — the 24-word space-separated recovery phrase (from register resp)
 //   onConfirm  — called when the user confirms they saved it
 //   onSkip     — called when the user explicitly skips (accepting the risk)
-export default function MasterKeyReveal({ phrase, onConfirm, onSkip }) {
+export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKeyRevealProps) {
   const words = String(phrase || '').trim().split(/\s+/)
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)

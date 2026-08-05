@@ -1,16 +1,175 @@
-import { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef } from 'react'
+import { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 
-const ShellContext = createContext(null)
+// ─── Types ───────────────────────────────────────────────────────────────────
+// The window shape + reducer actions are the heart of the window manager
+// (BMINIT-18's thin-WM sync, tiling, and desktop/session persistence all pivot
+// on them), so they're typed precisely rather than loosely. Everything here is
+// derived from how the existing consumers (shell/Window.jsx, shell/Dock.jsx,
+// shell/MissionControl.jsx, layouts/*, __tests__/shellStore.test.js) actually
+// read/write these objects — not aspirational, just what's really there.
+
+export interface WindowPosition { x: number; y: number }
+export interface WindowSize { width: number; height: number }
+
+/** Geometry a tile zone resolves to. Derived from windowTiling's own
+ *  (JSDoc-typed) tileGeometry return type so the two never drift apart. */
+type TileGeometry = NonNullable<ReturnType<typeof tileGeometry>>
+
+/** Payload for the "save this AI-generated app" affordance on a window's
+ *  title bar (see shell/Window.jsx's _saveable button). */
+export interface SaveableAIApp {
+  title: string
+  html: string
+  python?: string
+}
+
+/**
+ * A single shell window. Only `id` / `appId` / `position` / `size` /
+ * `minimized` are guaranteed on every window — everything else depends on how
+ * it was opened (component vs. html vs. url) or is bookkeeping the reducer /
+ * thin-WM sync / persistence layer attaches.
+ */
+export interface ShellWindow {
+  id: number
+  appId: string
+  title?: string
+  url?: string
+  icon?: string
+  component?: ReactNode | null
+  html?: string | null
+  _saveable?: SaveableAIApp | null
+  position: WindowPosition
+  size: WindowSize
+  minimized: boolean
+  // Tiling bookkeeping — written by TILE_WINDOW / MAXIMIZE_WINDOW, read by
+  // MOVE_WINDOW / RESIZE_WINDOW (to free the tile) and useWindowShortcuts.
+  _tile?: string | null
+  _maximized?: boolean
+  _prevPosition?: WindowPosition | null
+  _prevSize?: WindowSize | null
+  // BMINIT-18 thin WM: opaque wlr-foreign-toplevel-management handle used by
+  // the /api/shell/windows/{focus,minimize} calls. Never validated beyond
+  // `!= null`, so it's opaque rather than assumed to be a number or string.
+  _wtHandle?: unknown
+  // Persisted-shape marker (see saveShellState / loadShellState /
+  // RESTORE_STATE) — only meaningful on a just-loaded/just-restored window.
+  _builtin?: boolean
+  // allWindows-only derived flags (see the allWindows useMemo below); never
+  // present on the plain per-desktop `windows` array.
+  _visible?: boolean
+  _active?: boolean
+}
+
+export interface Desktop {
+  id: string
+  label: string
+  windows: ShellWindow[]
+  activeWindow: number | null
+}
+
+/** A spawned native (v2/labwc) window — BMINIT-04/06, gated behind
+ *  canSpawnNativeWindow(). `pid` is whatever the backend's spawn response
+ *  hands back (untyped JSON), used only as an opaque identity key. */
+export interface NativeWindow {
+  pid: unknown
+  title?: string
+  appId?: string
+}
+
+/** popoutApp/closePopout/`popout` are exported context surface with no live
+ *  caller today (see shell/Popout.jsx for the sole reader) — shape inferred
+ *  from what Popout.jsx reads off it. */
+export interface PopoutApp {
+  appId?: string
+  url: string
+  title?: string
+  icon?: string
+}
+
+export interface ShellMessage {
+  id: number
+  role: string
+  text: string
+  meta?: unknown
+  timestamp: Date
+}
+
+/** One entry from GET /api/shell/windows (wlr-foreign-toplevel state, polled
+ *  in v2 native mode). `state` is treated as an array of active state enums
+ *  (mirroring the wlr-foreign-toplevel-management protocol) because the
+ *  reducer calls `.includes('minimized')` on it rather than `===` — the
+ *  backend contract itself isn't visible from the frontend, so this is the
+ *  shape implied by that usage, not a verified wire type. */
+interface WlToplevel {
+  handle: unknown
+  app_id?: string
+  title?: string
+  state?: string[]
+}
+
+interface ShellState {
+  desktops: Record<string, Desktop>
+  activeDesktop: string
+  popout: PopoutApp | null
+  nativeWindows: NativeWindow[]
+  conversation: ShellMessage[]
+  thinking: boolean
+  launchpadOpen: boolean
+  chatOpen: boolean
+  missionControlOpen: boolean
+}
+
+/** The subset of ShellState that actually survives a reload — see
+ *  saveShellState, which only ever writes `desktops` + `activeDesktop`. */
+interface SavedShellState {
+  desktops: Record<string, Desktop>
+  activeDesktop: string
+}
+
+export type ShellAction =
+  | { type: 'OPEN_WINDOW'; appId: string; title?: string; url?: string; icon?: string; component?: ReactNode | null; html?: string | null; _saveable?: SaveableAIApp | null
+      // `singleton` is accepted here (and passed by every caller that wants
+      // dedup — shell/launchApp.js, shell/home/Home.jsx) but openWindow()
+      // below does NOT forward it to this action today, so it is currently
+      // inert. Preserved exactly as-is; not a bug this pass fixes.
+      ; singleton?: boolean }
+  | { type: 'CLOSE_WINDOW'; id: number }
+  | { type: 'FOCUS_WINDOW'; id: number }
+  | { type: 'MOVE_WINDOW'; id: number; position: WindowPosition; keepTile?: boolean }
+  | { type: 'RESIZE_WINDOW'; id: number; size: WindowSize; keepTile?: boolean }
+  | { type: 'TILE_WINDOW'; id: number; zone: string; geometry: TileGeometry | null }
+  | { type: 'MAXIMIZE_WINDOW'; id: number }
+  | { type: 'MINIMIZE_WINDOW'; id: number }
+  | { type: 'SWITCH_DESKTOP'; id: string }
+  | { type: 'ADD_DESKTOP'; id?: string; label?: string }
+  | { type: 'REMOVE_DESKTOP'; id: string }
+  | { type: 'MOVE_WINDOW_TO_DESKTOP'; windowId: number; desktopId: string }
+  | { type: 'ADD_NATIVE_WINDOW'; nwin: NativeWindow }
+  | { type: 'REMOVE_NATIVE_WINDOW'; pid: unknown }
+  | { type: 'POPOUT_APP'; app: PopoutApp }
+  | { type: 'CLOSE_POPOUT' }
+  | { type: 'ADD_MESSAGE'; message: ShellMessage }
+  | { type: 'SET_THINKING'; value: boolean }
+  | { type: 'TOGGLE_LAUNCHPAD' }
+  | { type: 'SET_LAUNCHPAD'; open: boolean }
+  | { type: 'TOGGLE_CHAT' }
+  | { type: 'SET_CHAT'; open: boolean }
+  | { type: 'TOGGLE_MISSION_CONTROL' }
+  | { type: 'SET_MISSION_CONTROL'; open: boolean }
+  | { type: 'RESTORE_STATE'; saved: SavedShellState }
+  | { type: 'SYNC_WLTOPLEVELS'; toplevels: WlToplevel[] }
+
+const ShellContext = createContext<ShellContextValue | null>(null)
 
 let nextId = 1
 
 // Exported for unit tests (the store is the heart of the window manager).
-// eslint-disable-next-line react-refresh/only-export-components
-export function shellReducer(state, action) {
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function shellReducer(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
     case 'OPEN_WINDOW': {
       const desktopId = state.activeDesktop
@@ -93,7 +252,11 @@ export function shellReducer(state, action) {
         if (w.id !== id) return w
         if (zone === 'restore') {
           if (!w._prevPosition) return { ...w, _tile: null, _maximized: false }
-          return { ...w, position: w._prevPosition, size: w._prevSize, _tile: null, _maximized: false, _prevPosition: null, _prevSize: null }
+          // _prevPosition and _prevSize are always written together (see the
+          // non-restore branch below) — the !w._prevPosition guard above
+          // covers both in practice; _prevSize is asserted rather than
+          // re-guarded to keep this restore path unchanged.
+          return { ...w, position: w._prevPosition, size: w._prevSize!, _tile: null, _maximized: false, _prevPosition: null, _prevSize: null }
         }
         if (!geometry) return w
         // Preserve the floating geometry the first time a window is tiled so
@@ -119,7 +282,12 @@ export function shellReducer(state, action) {
       desk.windows = desk.windows.map(w => {
         if (w.id !== action.id) return w
         if (w._maximized) {
-          return { ...w, position: w._prevPosition, size: w._prevSize, _maximized: false, _tile: null }
+          // Invariant: _maximized is only ever set true alongside a freshly
+          // (re)written _prevPosition/_prevSize (see the non-restore branch
+          // below and TILE_WINDOW's identical invariant) — never null here in
+          // practice. Asserted rather than guarded to keep this restore path
+          // byte-for-byte identical to the original untyped behaviour.
+          return { ...w, position: w._prevPosition!, size: w._prevSize!, _maximized: false, _tile: null }
         }
         // Preserve floating geometry only if the window isn't already tiled.
         const alreadyTiled = !!w._tile
@@ -223,7 +391,7 @@ export function shellReducer(state, action) {
       return { ...state, missionControlOpen: action.open }
     case 'RESTORE_STATE': {
       const saved = action.saved
-      const desktops = {}
+      const desktops: Record<string, Desktop> = {}
       let maxId = 0
       for (const [deskId, desk] of Object.entries(saved.desktops || {})) {
         const windows = (desk.windows || []).map(w => {
@@ -254,7 +422,7 @@ export function shellReducer(state, action) {
         const updated = desk.windows.map(w => {
           const match = toplevels.find(t => t.app_id === w.appId || t.title === w.title)
           if (!match) return w
-          const minimized = match.state && match.state.includes('minimized')
+          const minimized = !!(match.state && match.state.includes('minimized'))
           return { ...w, _wtHandle: match.handle, minimized: minimized || w.minimized }
         })
         desktops[deskId] = { ...desk, windows: updated }
@@ -268,11 +436,11 @@ export function shellReducer(state, action) {
 
 // Persist shell state to localStorage (survives refresh)
 const STORAGE_KEY = 'vulos-shell-state'
-// eslint-disable-next-line react-refresh/only-export-components
-export function saveShellState(state) {
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function saveShellState(state: ShellState): void {
   try {
     // Only persist serializable window data (strip component/html which can be large)
-    const toSave = {
+    const toSave: SavedShellState = {
       desktops: {},
       activeDesktop: state.activeDesktop,
     }
@@ -300,12 +468,12 @@ export function saveShellState(state) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   } catch { /* noop */ }
 }
-// eslint-disable-next-line react-refresh/only-export-components
-export function loadShellState() {
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function loadShellState(): SavedShellState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    const data = JSON.parse(raw)
+    const data: SavedShellState = JSON.parse(raw)
     // Validate schema before restoring
     if (!data || typeof data !== 'object') return null
     if (!data.desktops || typeof data.desktops !== 'object') return null
@@ -326,14 +494,14 @@ export function loadShellState() {
   } catch { return null }
 }
 
-const initialDesktop = {
+const initialDesktop: Desktop = {
   id: 'desktop-1',
   label: 'Desktop 1',
   windows: [],
   activeWindow: null,
 }
 
-const initialState = {
+const initialState: ShellState = {
   desktops: { 'desktop-1': initialDesktop },
   activeDesktop: 'desktop-1',
   popout: null,
@@ -345,7 +513,77 @@ const initialState = {
   missionControlOpen: false,
 }
 
-export function ShellProvider({ children }) {
+/** A window as exposed via `allWindows` — every ShellWindow plus the
+ *  desktop-relative visibility/focus flags computed in the useMemo below. */
+export type VisibleShellWindow = ShellWindow & { _visible: boolean; _active: boolean }
+
+export interface OpenWindowOptions {
+  appId: string
+  title?: string
+  url?: string
+  icon?: string
+  component?: ReactNode | null
+  html?: string | null
+  _saveable?: SaveableAIApp | null
+  /** Accepted by every caller that wants single-instance dedup, but NOT
+   *  currently forwarded by openWindow() below — see the ShellAction
+   *  'OPEN_WINDOW' comment. Preserved as-is. */
+  singleton?: boolean
+}
+
+/** Loose input accepted by openNativeWindow — DesktopContextMenu.jsx passes a
+ *  minimal literal ({title, url, appId}), Window.jsx passes a full
+ *  ShellWindow. Every field is read defensively (optional chaining / `||`
+ *  fallbacks) so this stays a subset rather than requiring the full shape. */
+export interface OpenNativeWindowInput {
+  id?: number
+  appId?: string
+  title?: string
+  url?: string
+  size?: WindowSize
+}
+
+export interface ShellContextValue {
+  windows: ShellWindow[]
+  activeWindow: number | null
+  allWindows: VisibleShellWindow[]
+  desktops: Record<string, Desktop>
+  activeDesktop: string
+  popout: PopoutApp | null
+  nativeWindows: NativeWindow[]
+  conversation: ShellMessage[]
+  thinking: boolean
+  launchpadOpen: boolean
+  chatOpen: boolean
+  missionControlOpen: boolean
+  layout: ReturnType<typeof useViewport>
+  openWindow: (opts: OpenWindowOptions) => void
+  closeWindow: (id: number) => void
+  focusWindow: (id: number) => void
+  moveWindow: (id: number, position: WindowPosition) => void
+  resizeWindow: (id: number, size: WindowSize) => void
+  minimizeWindow: (id: number) => void
+  maximizeWindow: (id: number) => void
+  tileWindow: (id: number, zone: string) => void
+  switchDesktop: (id: string) => void
+  addDesktop: (label?: string) => void
+  removeDesktop: (id: string) => void
+  moveWindowToDesktop: (windowId: number, desktopId: string) => void
+  openNativeWindow: (win: OpenNativeWindowInput) => Promise<void>
+  closeNativeWindow: (pid: unknown) => Promise<void>
+  popoutApp: (app: PopoutApp) => void
+  closePopout: () => void
+  toggleLaunchpad: () => void
+  setLaunchpad: (open: boolean) => void
+  toggleChat: () => void
+  setChat: (open: boolean) => void
+  toggleMissionControl: () => void
+  setMissionControl: (open: boolean) => void
+  addMessage: (role: string, text: string, meta?: unknown) => void
+  setThinking: (value: boolean) => void
+}
+
+export function ShellProvider({ children }: { children: ReactNode }) {
   const layout = useViewport()
   const [state, dispatch] = useReducer(shellReducer, initialState)
   const mounted = useRef(false)
@@ -377,7 +615,7 @@ export function ShellProvider({ children }) {
   // minimizeWindow) only get a new identity when the underlying window data
   // actually changes, not on every unrelated render.
   const allWindows = useMemo(() => {
-    const out = []
+    const out: VisibleShellWindow[] = []
     for (const [deskId, desk] of Object.entries(state.desktops)) {
       for (const win of desk.windows) {
         out.push({
@@ -390,10 +628,10 @@ export function ShellProvider({ children }) {
     return out
   }, [state.desktops, state.activeDesktop])
 
-  const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable }) => {
+  const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable }: OpenWindowOptions) => {
     dispatch({ type: 'OPEN_WINDOW', appId, title, url, icon, component, html, _saveable })
   }, [])
-  const closeWindow = useCallback((id) => {
+  const closeWindow = useCallback((id: number) => {
     // Find the window to check if it's a running app that needs stopping
     const win = allWindows.find(w => w.id === id)
     if (win?.url && win.appId) {
@@ -438,7 +676,7 @@ export function ShellProvider({ children }) {
     return () => clearInterval(t)
   }, [isNativeV2])
 
-  const focusWindow = useCallback((id) => {
+  const focusWindow = useCallback((id: number) => {
     dispatch({ type: 'FOCUS_WINDOW', id })
     if (isNativeV2) {
       // Find the corresponding wltoplevel handle and activate it in labwc.
@@ -453,10 +691,10 @@ export function ShellProvider({ children }) {
     }
   }, [allWindows, isNativeV2])
 
-  const moveWindow = useCallback((id, position) => dispatch({ type: 'MOVE_WINDOW', id, position }), [])
-  const resizeWindow = useCallback((id, size) => dispatch({ type: 'RESIZE_WINDOW', id, size }), [])
+  const moveWindow = useCallback((id: number, position: WindowPosition) => dispatch({ type: 'MOVE_WINDOW', id, position }), [])
+  const resizeWindow = useCallback((id: number, size: WindowSize) => dispatch({ type: 'RESIZE_WINDOW', id, size }), [])
 
-  const minimizeWindow = useCallback((id) => {
+  const minimizeWindow = useCallback((id: number) => {
     dispatch({ type: 'MINIMIZE_WINDOW', id })
     if (isNativeV2) {
       const win = allWindows.find(w => w.id === id)
@@ -470,26 +708,26 @@ export function ShellProvider({ children }) {
     }
   }, [allWindows, isNativeV2])
 
-  const maximizeWindow = useCallback((id) => dispatch({ type: 'MAXIMIZE_WINDOW', id }), [])
+  const maximizeWindow = useCallback((id: number) => dispatch({ type: 'MAXIMIZE_WINDOW', id }), [])
 
   // Snap/tile a window into a zone (or 'restore' to floating). Geometry is
   // computed here from the live viewport; the reducer records the tile so the
   // keyboard-tiling state machine can build quarters from halves, etc.
-  const tileWindow = useCallback((id, zone) => {
+  const tileWindow = useCallback((id: number, zone: string) => {
     const geometry = zone === 'restore'
       ? null
       : tileGeometry(zone, window.innerWidth, window.innerHeight, MENU_BAR_H)
     dispatch({ type: 'TILE_WINDOW', id, zone, geometry })
   }, [])
 
-  const switchDesktop = useCallback((id) => dispatch({ type: 'SWITCH_DESKTOP', id }), [])
-  const addDesktop = useCallback((label) => dispatch({ type: 'ADD_DESKTOP', label }), [])
-  const removeDesktop = useCallback((id) => dispatch({ type: 'REMOVE_DESKTOP', id }), [])
-  const moveWindowToDesktop = useCallback((windowId, desktopId) => dispatch({ type: 'MOVE_WINDOW_TO_DESKTOP', windowId, desktopId }), [])
+  const switchDesktop = useCallback((id: string) => dispatch({ type: 'SWITCH_DESKTOP', id }), [])
+  const addDesktop = useCallback((label?: string) => dispatch({ type: 'ADD_DESKTOP', label }), [])
+  const removeDesktop = useCallback((id: string) => dispatch({ type: 'REMOVE_DESKTOP', id }), [])
+  const moveWindowToDesktop = useCallback((windowId: number, desktopId: string) => dispatch({ type: 'MOVE_WINDOW_TO_DESKTOP', windowId, desktopId }), [])
 
   // v2 only (D93): openNativeWindow is a no-op in v1; canSpawnNativeWindow()
   // returns false unless VULOS_NATIVE_MODE_V2 is enabled server-side.
-  const openNativeWindow = useCallback(async (win) => {
+  const openNativeWindow = useCallback(async (win: OpenNativeWindowInput) => {
     if (!canSpawnNativeWindow()) return
     try {
       const res = await fetch('/api/shell/native-window', {
@@ -511,7 +749,7 @@ export function ShellProvider({ children }) {
     } catch { /* noop */ }
   }, [closeWindow])
 
-  const closeNativeWindow = useCallback(async (pid) => {
+  const closeNativeWindow = useCallback(async (pid: unknown) => {
     try {
       await fetch('/api/shell/native-window', {
         method: 'DELETE',
@@ -522,19 +760,19 @@ export function ShellProvider({ children }) {
     dispatch({ type: 'REMOVE_NATIVE_WINDOW', pid })
   }, [])
 
-  const popoutApp = useCallback((app) => dispatch({ type: 'POPOUT_APP', app }), [])
+  const popoutApp = useCallback((app: PopoutApp) => dispatch({ type: 'POPOUT_APP', app }), [])
   const closePopout = useCallback(() => dispatch({ type: 'CLOSE_POPOUT' }), [])
 
   const toggleLaunchpad = useCallback(() => dispatch({ type: 'TOGGLE_LAUNCHPAD' }), [])
-  const setLaunchpad = useCallback((open) => dispatch({ type: 'SET_LAUNCHPAD', open }), [])
+  const setLaunchpad = useCallback((open: boolean) => dispatch({ type: 'SET_LAUNCHPAD', open }), [])
   const toggleChat = useCallback(() => dispatch({ type: 'TOGGLE_CHAT' }), [])
-  const setChat = useCallback((open) => dispatch({ type: 'SET_CHAT', open }), [])
+  const setChat = useCallback((open: boolean) => dispatch({ type: 'SET_CHAT', open }), [])
   const toggleMissionControl = useCallback(() => dispatch({ type: 'TOGGLE_MISSION_CONTROL' }), [])
-  const setMissionControl = useCallback((open) => dispatch({ type: 'SET_MISSION_CONTROL', open }), [])
-  const addMessage = useCallback((role, text, meta) => {
+  const setMissionControl = useCallback((open: boolean) => dispatch({ type: 'SET_MISSION_CONTROL', open }), [])
+  const addMessage = useCallback((role: string, text: string, meta?: unknown) => {
     dispatch({ type: 'ADD_MESSAGE', message: { id: Date.now() + Math.random(), role, text, meta, timestamp: new Date() } })
   }, [])
-  const setThinking = useCallback((value) => dispatch({ type: 'SET_THINKING', value }), [])
+  const setThinking = useCallback((value: boolean) => dispatch({ type: 'SET_THINKING', value }), [])
 
   return (
     <ShellContext.Provider value={{
@@ -557,8 +795,8 @@ export function ShellProvider({ children }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function useShell() {
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function useShell(): ShellContextValue {
   const ctx = useContext(ShellContext)
   if (!ctx) throw new Error('useShell must be used within ShellProvider')
   return ctx

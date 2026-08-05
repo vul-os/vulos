@@ -17,15 +17,15 @@ vi.mock('./AuthProvider', () => ({
 vi.mock('./ThemeToggle', () => ({ default: () => null }))
 vi.mock('./FullscreenHint', () => ({ default: () => null }))
 
-import LoginScreen from './LoginScreen.jsx'
+import LoginScreen from './LoginScreen'
 
 // A fetch that resolves auth/status immediately (has_users:true → sign-in mode)
 // but leaves the login POST pending until we release it, so we can observe the
 // in-flight button state.
 function makeControllableFetch() {
-  let releaseLogin
+  let releaseLogin!: (val?: unknown) => void
   const loginPending = new Promise((res) => { releaseLogin = res })
-  const fetchMock = vi.fn((url) => {
+  const fetchMock = vi.fn((url: string) => {
     if (String(url).includes('/api/auth/status')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ has_users: true }) })
     }
@@ -34,7 +34,7 @@ function makeControllableFetch() {
     }
     return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
   })
-  return { fetchMock, resolveLogin: (val) => releaseLogin(val) }
+  return { fetchMock, resolveLogin: (val?: unknown) => releaseLogin(val) }
 }
 
 beforeEach(() => {
@@ -45,7 +45,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function mountSignIn(fetchMock) {
+async function mountSignIn(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   render(<LoginScreen />)
   // Wait for the auth/status check to flip out of the loading splash.
@@ -64,7 +64,7 @@ describe('LoginScreen submit state', () => {
     fireEvent.click(btn)
 
     // While the POST is pending the button switches to its progress label and disables.
-    const pending = await screen.findByRole('button', { name: /Signing in/i })
+    const pending = await screen.findByRole<HTMLButtonElement>('button', { name: /Signing in/i })
     expect(pending.disabled).toBe(true)
   })
 
@@ -102,7 +102,7 @@ describe('LoginScreen submit state', () => {
     expect(alert.textContent).toMatch(/Incorrect username or password/i)
     // Button returns to its idle, enabled state so the user can retry.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Sign In' }).disabled).toBe(false)
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Sign In' }).disabled).toBe(false)
     })
   })
 })

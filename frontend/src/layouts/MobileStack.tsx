@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useShell } from '../providers/ShellProvider'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useShell, type ShellWindow } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
 import Portal from '../core/Portal'
 import AppIcon from '../core/AppIcons'
@@ -32,10 +32,12 @@ import '../shell/shell-chrome.css'
 // momentum + overscroll containment, and press feedback replaces hover (there is
 // no hover on touch). Iconography follows the OS system stroke (1.7px, rounded).
 
+type MobileView = 'home' | 'app' | 'switcher'
+
 export default function MobileStack() {
   const { windows, activeWindow, focusWindow, toggleLaunchpad } = useShell()
   // view: 'home' (assistant + glance) | 'app' (fullscreen active app) | 'switcher'
-  const [view, setView] = useState('home')
+  const [view, setView] = useState<MobileView>('home')
   const prevCount = useRef(windows.length)
 
   // Launching an app (window count grew) jumps to the fullscreen app view.
@@ -54,7 +56,7 @@ export default function MobileStack() {
   const activeWin = windows.find(w => w.id === activeWindow) || windows.at(-1) || null
   const showApp = view === 'app' && activeWin
 
-  const openApp = (id) => { focusWindow(id); setView('app') }
+  const openApp = (id: number) => { focusWindow(id); setView('app') }
 
   return (
     <div data-shell="mobile" className="vmob-root fixed inset-0 flex flex-col overflow-hidden">
@@ -69,7 +71,7 @@ export default function MobileStack() {
               className="focus-primary -ml-1.5 h-9 pl-1.5 pr-3 flex items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
               <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
-              <AppIcon id={activeWin.appId} size={18} />
+              <AppIcon id={activeWin.appId} size={18} color={undefined} style={undefined} />
               <span className="text-[13px] font-semibold tracking-[-0.01em] truncate">{activeWin.title}</span>
             </button>
           ) : (
@@ -166,7 +168,7 @@ export default function MobileStack() {
 // MobileAppFrame — renders a single window FULLSCREEN. Mirrors the desktop
 // Window content branches (component · srcDoc html · url iframe) but without any
 // title bar / resize chrome (the shell status bar owns the app identity).
-function MobileAppFrame({ win }) {
+function MobileAppFrame({ win }: { win: ShellWindow }) {
   const frameRef = useRef(null)
 
   useEffect(() => {
@@ -195,7 +197,7 @@ function MobileAppFrame({ win }) {
 // MobileSwitcher — full-height overlay listing every running app as a large,
 // tappable card with a close affordance. This is the mobile replacement for the
 // desktop window stack / dock.
-function MobileSwitcher({ onOpen, onHome }) {
+function MobileSwitcher({ onOpen, onHome }: { onOpen: (id: number) => void; onHome: () => void }) {
   const { windows, closeWindow } = useShell()
 
   return (
@@ -218,7 +220,7 @@ function MobileSwitcher({ onOpen, onHome }) {
           {windows.map(win => (
             <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985]">
               <div className="flex items-center gap-2.5 px-3 h-12">
-                <AppIcon id={win.appId} size={20} />
+                <AppIcon id={win.appId} size={20} color={undefined} style={undefined} />
                 <span className="text-[13px] font-medium text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
                 <button
                   onClick={() => closeWindow(win.id)}
@@ -245,7 +247,16 @@ function MobileSwitcher({ onOpen, onHome }) {
   )
 }
 
-function DockButton({ children, label, active, badge, disabled, onClick }) {
+interface DockButtonProps {
+  children: ReactNode
+  label: string
+  active?: boolean
+  badge?: number | null
+  disabled?: boolean
+  onClick: () => void
+}
+
+function DockButton({ children, label, active, badge, disabled, onClick }: DockButtonProps) {
   return (
     <button
       onClick={onClick}

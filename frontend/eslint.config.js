@@ -61,6 +61,12 @@ export default defineConfig([
       js.configs.recommended,
       ...tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
+      // react-refresh was in the .js/.jsx block but NOT here, so converting a
+      // file to .tsx silently dropped its HMR-safety linting — and any
+      // `eslint-disable react-refresh/...` comment it carried over became a
+      // hard error, since the rule no longer existed for that file type.
+      // Converting a file must not quietly reduce what checks it.
+      reactRefresh.configs.vite,
     ],
     languageOptions: {
       parser: tseslint.parser,
@@ -74,7 +80,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['**/*.test.{js,jsx}', '**/__tests__/**/*.{js,jsx}', 'src/test-setup.js'],
+    files: ['**/*.test.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}', 'src/test-setup.js'],
     languageOptions: {
       globals: {
         ...globals.vitest,
@@ -110,23 +116,7 @@ export default defineConfig([
   // way app views do), so the specific non-component export names are
   // allow-listed instead of disabling the rule file-wide.
   {
-    files: ['src/auth/CloudSignIn.jsx'],
-    rules: {
-      'react-refresh/only-export-components': ['error', {
-        allowExportNames: ['cloudLoginRequest', 'cloudEnrollStart', 'cloudEnrollStatus', 'cloudErrorMessage', 'useCloudSignIn'],
-      }],
-    },
-  },
-  {
-    files: ['src/auth/GatewayChoice.jsx'],
-    rules: {
-      'react-refresh/only-export-components': ['error', {
-        allowExportNames: ['getGateway', 'checkGateway', 'setGateway', 'clearGateway'],
-      }],
-    },
-  },
-  {
-    files: ['src/builtin/drive/Drive.jsx'],
+    files: ['src/builtin/drive/Drive.{jsx,tsx}'],
     rules: {
       'react-refresh/only-export-components': ['error', {
         allowExportNames: ['resumableUpload'],

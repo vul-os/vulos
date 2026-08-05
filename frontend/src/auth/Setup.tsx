@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import QRCode from 'qrcode'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
@@ -6,6 +6,92 @@ import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
 import { nativeBridge } from '../core/nativeBridge'
+
+// Setup wizard config — every field the wizard steps read/write via
+// `config`/`update`. This is purely OS-local wizard state (never itself
+// network input), so it is typed directly rather than treated as a trust
+// boundary; the actual trust-boundary data (server responses) is narrowed
+// separately at each fetch call below.
+export interface SetupConfig {
+  deviceProfile: string
+  locale: string
+  timezone: string
+  wifiSSID: string
+  wifiPassword: string
+  displayName: string
+  username: string
+  password: string
+  pin: string
+  // INIT-05 fields
+  IS05_ulid: string
+  IS05_hostname: string
+  IS05_storageEnabled: boolean
+  IS05_storageSkipped: boolean
+  IS05_storageSizeGb: number
+  IS05_storagePassword: string
+  IS05_storagePassphrase: string
+  IS05_storageMode: string
+  IS05_storageMinioEndpoint: string
+  IS05_storageMinioRegion: string
+  IS05_storageMinioBucket: string
+  IS05_storageMinioCredsRef: string
+  IS05_sshPubkey: string
+  IS05_sshFingerprint: string
+  IS05_s3AccessKey: string
+  IS05_s3SecretKey: string
+  // BUNDLE-01 fields
+  suiteEmail: boolean
+  suiteWorkspace: boolean
+}
+
+// update() is the wizard's single generic setter — `<K extends keyof
+// SetupConfig>` keeps the key and its value in lockstep so a step can't
+// accidentally write a boolean into a string field (or vice versa) while
+// still sharing one function across every step.
+type SetupUpdate = <K extends keyof SetupConfig>(key: K, val: SetupConfig[K]) => void
+
+// Shared prop shape for the (majority of) steps that read/write the full
+// wizard config. A handful of steps take a narrower slice of these props —
+// declared inline at each of those signatures instead of reusing this type.
+interface StepProps {
+  config: SetupConfig
+  update: SetupUpdate
+  onNext: () => void
+  onPrev: () => void
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// useI18n() / useTheme() (../core/i18n.jsx, ../core/ThemeProvider.jsx — both
+// outside src/auth and out of scope for this pass) create their React
+// context via `createContext(null)` with no type parameter. That means the
+// context's value type is the literal `null`, which — only once consumed
+// from a checked .tsx file like this one — makes TS statically prove each
+// hook's `if (!ctx) throw ...` guard always fires and infer the hook's
+// return type as `never`. The real runtime shape is visible directly in
+// each file's source; these wrappers restate the (narrow) slice of it Setup
+// actually uses so the file can typecheck. This is the one unavoidable cast
+// in this file — an upstream typing gap, not a trust-boundary shortcut —
+// and it is reported here rather than hidden.
+interface I18nShape {
+  t: (key: string, vars?: Record<string, unknown>) => string
+  setLocale: (code: string) => void
+}
+function useI18nTyped(): I18nShape {
+  return useI18n() as unknown as I18nShape
+}
+
+interface ThemeShape {
+  theme: string
+  setTheme: (t: string) => void
+  nightShiftMode: string
+  setNightShiftMode: (m: string) => void
+}
+function useThemeTyped(): ThemeShape {
+  return useTheme() as unknown as ThemeShape
+}
 
 // NATIVE-QR-01: a join code from GET /api/cluster/join-code looks like
 // VULOS-XXXX-XXXX-XXXX (backend/services/joincode). The QR payload may carry
@@ -28,7 +114,17 @@ const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'net
 // join-only steps, then the shared pin + ready. Lost in a merge — restored.
 const IS09_JOIN_STEPS = ['welcome', 'IS09_chooser', 'IS09_join_storage', 'IS09_syncing', 'pin', 'ready']
 
-const DEVICE_PROFILES = [
+type DeviceAccent = 'blue' | 'violet' | 'amber' | 'emerald'
+
+interface DeviceProfile {
+  id: string
+  label: string
+  desc: string
+  icon: ReactNode
+  accent: DeviceAccent
+}
+
+const DEVICE_PROFILES: DeviceProfile[] = [
   {
     id: 'pc',
     label: 'PC / Tablet / Mobile',
@@ -82,7 +178,7 @@ const DEVICE_PROFILES = [
   },
 ]
 
-const PROFILE_ACCENT_CLASSES = {
+const PROFILE_ACCENT_CLASSES: Record<DeviceAccent, { selected: string; icon: string; check: string }> = {
   blue:    { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
   violet:  { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
   amber:   { selected: 'bg-warning-soft border-warning-soft', icon: 'text-warning', check: 'bg-warning' },
@@ -130,9 +226,9 @@ const LANGUAGES = [
   { code: 'ja', name: 'Japanese', native: '日本語', flag: '🇯🇵' },
 ]
 
-export default function Setup({ onComplete }) {
+export default function Setup({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0)
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<SetupConfig>({
     deviceProfile: '',
     locale: 'en',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
@@ -183,13 +279,13 @@ export default function Setup({ onComplete }) {
   useEffect(() => {
     fetch('/api/setup/mode')
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.mode === 'normal') {
+      .then((data: unknown) => {
+        if (isRecord(data) && data.mode === 'normal') {
           // Already set up — shouldn't be here, but complete gracefully
           onComplete()
           return
         }
-        if (data && data.mode === 'sync') {
+        if (isRecord(data) && data.mode === 'sync') {
           IS09_setFlowType('join')
           // Jump straight to the syncing step in the join flow
           const syncIdx = IS09_JOIN_STEPS.indexOf('IS09_syncing')
@@ -207,9 +303,9 @@ export default function Setup({ onComplete }) {
 
 
   const current = IS09_baseSteps[step]
-  const update = (key, val) => setConfig(c => ({ ...c, [key]: val }))
+  const update: SetupUpdate = (key, val) => setConfig(c => ({ ...c, [key]: val }))
 
-  const goTo = (idx) => {
+  const goTo = (idx: number) => {
     setTransitioning(true)
     setTimeout(() => { setStep(idx); setTransitioning(false) }, 200)
   }
@@ -324,10 +420,10 @@ export default function Setup({ onComplete }) {
             {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'storage' && <IS05_StorageStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'ssh' && <IS05_SSHStep config={config} update={update} onNext={next} onPrev={prev} />}
-            {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} update={update} onNext={next} onPrev={prev} />}
+            {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} onNext={next} onPrev={prev} />}
             {/* Join-flow steps */}
             {current === 'IS09_join_storage' && (
-              <IS09_JoinConnectStorageStep config={config} update={update} onNext={next} onPrev={prev} />
+              <IS09_JoinConnectStorageStep onNext={next} onPrev={prev} />
             )}
             {current === 'IS09_syncing' && (
               <IS09_SyncingStep onNext={next} onComplete={onComplete} />
@@ -355,7 +451,7 @@ export default function Setup({ onComplete }) {
 // stays legible on a phone (18 dots would overflow). Completed segments are
 // clickable to jump back; the future is dimmed and inert.
 // ═══════════════════════════════════
-function WizardProgress({ steps, step, onJump }) {
+function WizardProgress({ steps, step, onJump }: { steps: string[]; step: number; onJump: (idx: number) => void }) {
   const total = steps.length
   return (
     <div className="flex-1 flex items-center gap-3 min-w-0">
@@ -404,8 +500,8 @@ function WizardProgress({ steps, step, onJump }) {
 // ═══════════════════════════════════
 // Welcome
 // ═══════════════════════════════════
-function WelcomeStep({ onNext }) {
-  const { t } = useI18n()
+function WelcomeStep({ onNext }: { onNext: () => void }) {
+  const { t } = useI18nTyped()
   return (
     <div className="text-center animate-[fadeIn_0.4s_ease-out]">
       <div className="mb-8 flex flex-col items-center">
@@ -435,17 +531,20 @@ function WelcomeStep({ onNext }) {
 // ═══════════════════════════════════
 // Device Profile
 // ═══════════════════════════════════
-function DeviceStep({ config, update, onNext, onPrev }) {
+function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
   const [loading, setLoading] = useState(true)
-  const [detected, setDetected] = useState(null)
+  const [detected, setDetected] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetch('/api/device-profile')
       .then(r => r.json())
-      .then(data => {
+      .then((data: unknown) => {
         if (cancelled) return
-        const suggested = data?.suggested || data?.profile || null
+        const d = isRecord(data) ? data : {}
+        const suggested = (typeof d.suggested === 'string' && d.suggested)
+          || (typeof d.profile === 'string' && d.profile)
+          || null
         setDetected(suggested)
         if (suggested && !config.deviceProfile) {
           update('deviceProfile', suggested)
@@ -516,7 +615,7 @@ function DeviceStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // INIT-09: New vs Join chooser
 // ═══════════════════════════════════
-function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
+function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }: { onChooseNew: () => void; onChooseJoin: () => void; onPrev: () => void }) {
   return (
     <div className="text-center">
       <StepHeader
@@ -570,7 +669,7 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }) {
 // ═══════════════════════════════════
 // INIT-09: Join — Connect Storage
 // ═══════════════════════════════════
-function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
+function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
   const [IS09_s3Bucket, IS09_setS3Bucket] = useState('')
   const [IS09_s3Region, IS09_setS3Region] = useState('')
   const [IS09_s3AccessKey, IS09_setS3AccessKey] = useState('')
@@ -584,7 +683,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
 
   // NATIVE-QR-01: redeem a VULOS-XXXX-XXXX-XXXX short code → autofills the S3
   // fields below. Shared by the manual "Redeem" button and the QR scan path.
-  const IS09_redeemJoinCode = async (codeArg) => {
+  const IS09_redeemJoinCode = async (codeArg?: string) => {
     const code = (codeArg ?? IS09_joinCode).trim().toUpperCase()
     if (!code) return
     IS09_setRedeeming(true)
@@ -595,15 +694,17 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ short_code: code }),
       })
-      const data = await res.json().catch(() => ({}))
+      // Untrusted network JSON — narrowed field-by-field, never cast.
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
       if (!res.ok) {
-        IS09_setRedeemMsg(data.error || `Could not redeem code (${res.status}).`)
+        IS09_setRedeemMsg((typeof data.error === 'string' && data.error) || `Could not redeem code (${res.status}).`)
         return
       }
-      IS09_setS3Bucket(data.bucket || '')
-      IS09_setS3Region(data.region || '')
-      IS09_setS3AccessKey(data.access_key || '')
-      IS09_setS3SecretKey(data.secret_key || '')
+      IS09_setS3Bucket(typeof data.bucket === 'string' ? data.bucket : '')
+      IS09_setS3Region(typeof data.region === 'string' ? data.region : '')
+      IS09_setS3AccessKey(typeof data.access_key === 'string' ? data.access_key : '')
+      IS09_setS3SecretKey(typeof data.secret_key === 'string' ? data.secret_key : '')
       IS09_setRedeemMsg('Storage details filled in — add your encryption passphrase below.')
     } catch {
       IS09_setRedeemMsg('Could not reach the server to redeem the code.')
@@ -652,8 +753,9 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }) {
         return
       }
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        IS09_setError(data.error || `Unexpected error (${res.status}). Please retry.`)
+        const raw: unknown = await res.json().catch(() => ({}))
+        const data = isRecord(raw) ? raw : {}
+        IS09_setError((typeof data.error === 'string' && data.error) || `Unexpected error (${res.status}). Please retry.`)
         IS09_setJoining(false)
         return
       }
@@ -791,31 +893,39 @@ const IS09_SYNC_PHASES = [
   { key: 'done', label: 'Finalising' },
 ]
 
-function IS09_SyncingStep({ onNext, onComplete }) {
+function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void }) {
   const [IS09_phase, IS09_setPhase] = useState('init')
   const [IS09_phaseIdx, IS09_setPhaseIdx] = useState(0)
   const [IS09_error, IS09_setError] = useState('')
   const [IS09_done, IS09_setDone] = useState(false)
   const [IS09_bgMode, IS09_setBgMode] = useState(false)
-  const IS09_pollRef = useRef(null)
+  const IS09_pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   const IS09_poll = async () => {
     try {
-      // Try /api/setup/join/status first, fall back to /api/setup/mode
-      let data = null
+      // Try /api/setup/join/status first, fall back to /api/setup/mode.
+      // Untrusted network JSON either way — narrowed to a record (and each
+      // field typeof-checked below), never cast to a nicer shape.
+      let data: Record<string, unknown> | null = null
       const statusRes = await fetch('/api/setup/join/status')
       if (statusRes.ok) {
-        data = await statusRes.json()
+        const raw: unknown = await statusRes.json()
+        data = isRecord(raw) ? raw : null
       } else if (statusRes.status === 404) {
         const modeRes = await fetch('/api/setup/mode')
         if (modeRes.ok) {
-          const modeData = await modeRes.json()
-          data = { phase: modeData.sync_state?.phase || 'init', done: modeData.mode !== 'sync' }
+          const modeRaw: unknown = await modeRes.json()
+          const modeData = isRecord(modeRaw) ? modeRaw : {}
+          const syncState = isRecord(modeData.sync_state) ? modeData.sync_state : {}
+          data = {
+            phase: (typeof syncState.phase === 'string' && syncState.phase) || 'init',
+            done: modeData.mode !== 'sync',
+          }
         }
       }
       if (!data) return
 
-      const currentPhase = data.phase || 'init'
+      const currentPhase = (typeof data.phase === 'string' && data.phase) || 'init'
       const phaseIdx = IS09_SYNC_PHASES.findIndex(p => p.key === currentPhase)
       IS09_setPhase(currentPhase)
       IS09_setPhaseIdx(phaseIdx >= 0 ? phaseIdx : 0)
@@ -949,8 +1059,8 @@ function IS09_SyncingStep({ onNext, onComplete }) {
 // ═══════════════════════════════════
 // Language
 // ═══════════════════════════════════
-function LanguageStep({ config, update, onNext, onPrev }) {
-  const { t, setLocale } = useI18n()
+function LanguageStep({ config, update, onNext, onPrev }: StepProps) {
+  const { t, setLocale } = useI18nTyped()
   return (
     <div>
       <StepHeader title={t('setup.language.title')} subtitle={t('setup.language.subtitle')} />
@@ -980,8 +1090,8 @@ function LanguageStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // Timezone (interactive map)
 // ═══════════════════════════════════
-function TimezoneStep({ config, update, onNext, onPrev }) {
-  const { t } = useI18n()
+function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
+  const { t } = useI18nTyped()
   const selected = TIMEZONES.find(tz => tz.id === config.timezone)
 
   return (
@@ -1059,9 +1169,28 @@ function TimezoneStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // Network
 // ═══════════════════════════════════
-function NetworkStep({ config, update, onNext, onPrev }) {
-  const { t } = useI18n()
-  const [networks, setNetworks] = useState(null)
+interface WifiNetwork {
+  bssid?: string
+  ssid?: string
+  signal?: number
+  band?: string
+  security?: string
+}
+
+function toWifiNetwork(x: unknown): WifiNetwork {
+  if (!isRecord(x)) return {}
+  return {
+    bssid: typeof x.bssid === 'string' ? x.bssid : undefined,
+    ssid: typeof x.ssid === 'string' ? x.ssid : undefined,
+    signal: typeof x.signal === 'number' ? x.signal : undefined,
+    band: typeof x.band === 'string' ? x.band : undefined,
+    security: typeof x.security === 'string' ? x.security : undefined,
+  }
+}
+
+function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
+  const { t } = useI18nTyped()
+  const [networks, setNetworks] = useState<WifiNetwork[] | null>(null)
   const [scanning, setScanning] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
@@ -1069,16 +1198,18 @@ function NetworkStep({ config, update, onNext, onPrev }) {
     setScanning(true)
     try {
       const res = await fetch('/api/wifi/scan')
-      const data = await res.json()
-      setNetworks(Array.isArray(data) ? data : [])
+      // Untrusted network JSON — each entry narrowed via toWifiNetwork rather
+      // than cast to WifiNetwork[].
+      const data: unknown = await res.json()
+      setNetworks(Array.isArray(data) ? data.map(toWifiNetwork) : [])
     } catch { setNetworks([]) }
     setScanning(false)
   }
 
-  const signalIcon = (dbm) => {
-    if (dbm > -50) return '████'
-    if (dbm > -60) return '███░'
-    if (dbm > -70) return '██░░'
+  const signalIcon = (dbm: number | undefined) => {
+    if (typeof dbm === 'number' && dbm > -50) return '████'
+    if (typeof dbm === 'number' && dbm > -60) return '███░'
+    if (typeof dbm === 'number' && dbm > -70) return '██░░'
     return '█░░░'
   }
 
@@ -1111,7 +1242,7 @@ function NetworkStep({ config, update, onNext, onPrev }) {
           {networks.map((n, i) => (
             <button
               key={n.bssid || n.ssid || i}
-              onClick={() => { update('wifiSSID', n.ssid); setShowPassword(true) }}
+              onClick={() => { update('wifiSSID', n.ssid || ''); setShowPassword(true) }}
               className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-neutral-800/30 transition-colors
                 ${config.wifiSSID === n.ssid
                   ? 'accent-bg-soft text-neutral-100'
@@ -1155,8 +1286,8 @@ function NetworkStep({ config, update, onNext, onPrev }) {
 // Account
 // ═══════════════════════════════════
 
-function AccountStep({ config, update, onNext, onPrev }) {
-  const { t } = useI18n()
+function AccountStep({ config, update, onNext, onPrev }: StepProps) {
+  const { t } = useI18nTyped()
   const [error, setError] = useState('')
 
   // Local account only — Vulos is self-hosted software with no cloud account
@@ -1220,8 +1351,8 @@ function AccountStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // PIN
 // ═══════════════════════════════════
-function PinStep({ config, update, onNext, onPrev }) {
-  const { t } = useI18n()
+function PinStep({ config, update, onNext, onPrev }: StepProps) {
+  const { t } = useI18nTyped()
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
 
@@ -1300,7 +1431,7 @@ function PinStep({ config, update, onNext, onPrev }) {
         <button onClick={() => { update('pin', ''); onNext() }} className="py-3 px-5 rounded-xl text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
           {t('setup.pin.skip')}
         </button>
-        <button onClick={handleNext} disabled={config.pin && config.pin.length < 4} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-warning hover:opacity-90 disabled:opacity-40 transition-opacity">
+        <button onClick={handleNext} disabled={Boolean(config.pin && config.pin.length < 4)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-warning hover:opacity-90 disabled:opacity-40 transition-opacity">
           {config.pin ? t('setup.pin.set') : t('setup.pin.skip')}
         </button>
       </div>
@@ -1330,7 +1461,7 @@ function PinStep({ config, update, onNext, onPrev }) {
 // On advance we persist the choice to POST /api/setup/apps so the launcher hides
 // the tiles the user opted out of. Best-effort: a failed write just means the
 // batteries-included default (everything shown) — never a broken install.
-function AppsStep({ config, update, onNext, onPrev }) {
+function AppsStep({ config, update, onNext, onPrev }: StepProps) {
   const email = config.suiteEmail !== false
   const workspace = config.suiteWorkspace !== false
   const [saving, setSaving] = useState(false)
@@ -1349,7 +1480,7 @@ function AppsStep({ config, update, onNext, onPrev }) {
     }
   }
 
-  const OptRow = ({ checked, onToggle, title, desc, accent }) => (
+  const OptRow = ({ checked, onToggle, title, desc, accent }: { checked: boolean; onToggle: () => void; title: string; desc: string; accent: string }) => (
     <button
       type="button"
       onClick={onToggle}
@@ -1428,9 +1559,9 @@ function AppsStep({ config, update, onNext, onPrev }) {
   )
 }
 
-function AppearanceStep({ onNext, onPrev }) {
-  const { t } = useI18n()
-  const { theme, setTheme, nightShiftMode, setNightShiftMode } = useTheme()
+function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
+  const { t } = useI18nTyped()
+  const { theme, setTheme, nightShiftMode, setNightShiftMode } = useThemeTyped()
 
   const themes = [
     { value: 'dark', label: t('setup.appearance.theme_dark'), desc: t('setup.appearance.theme_dark_desc'), preview: '#0c0c0c',
@@ -1499,13 +1630,13 @@ function AppearanceStep({ onNext, onPrev }) {
 // ═══════════════════════════════════
 // INIT-05: Identity Step
 // ═══════════════════════════════════
-function IS05_IdentityStep({ config, update, onNext, onPrev }) {
+function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
   const [IS05_loading, IS05_setLoading] = useState(true)
   const [IS05_saving, IS05_setSaving] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
   const [IS05_hostnameEdited, IS05_setHostnameEdited] = useState(false)
 
-  const t = (s) => s
+  const t = (s: string) => s
 
   useEffect(() => {
     fetch('/api/identity')
@@ -1513,10 +1644,13 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
         if (!r.ok) throw new Error('not found')
         return r.json()
       })
-      .then(data => {
-        update('IS05_ulid', data.ulid || data.instance_id || 'auto-generated')
+      .then((raw: unknown) => {
+        // Untrusted network JSON — narrowed field-by-field, never cast.
+        const data = isRecord(raw) ? raw : {}
+        const ulid = (typeof data.ulid === 'string' && data.ulid) || (typeof data.instance_id === 'string' && data.instance_id) || 'auto-generated'
+        update('IS05_ulid', ulid)
         if (!IS05_hostnameEdited) {
-          update('IS05_hostname', data.hostname || '')
+          update('IS05_hostname', (typeof data.hostname === 'string' && data.hostname) || '')
         }
       })
       .catch(() => {
@@ -1590,12 +1724,12 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // INIT-05: Storage Step
 // ═══════════════════════════════════
-function IS05_StorageStep({ config, update, onNext, onPrev }) {
+function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
   const [IS05_passphraseConfirm, IS05_setPassphraseConfirm] = useState('')
   const [IS05_error, IS05_setError] = useState('')
   const [IS05_saving, IS05_setSaving] = useState(false)
 
-  const t = (s) => s
+  const t = (s: string) => s
 
   const handleNext = async () => {
     IS05_setError('')
@@ -1827,7 +1961,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }) {
 // ═══════════════════════════════════
 // INIT-05: SSH Step
 // ═══════════════════════════════════
-function IS05_SSHStep({ config, update, onNext, onPrev }) {
+function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
   const [IS05_generating, IS05_setGenerating] = useState(false)
   const [IS05_privateKey, IS05_setPrivateKey] = useState('')
   const [IS05_confirmed, IS05_setConfirmed] = useState(false)
@@ -1835,10 +1969,10 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
   const [IS05_error, IS05_setError] = useState('')
   const [IS05_saving, IS05_setSaving] = useState(false)
 
-  const t = (s) => s
+  const t = (s: string) => s
 
   // Convert ArrayBuffer to base64
-  const IS05_bufToB64 = (buf) => {
+  const IS05_bufToB64 = (buf: ArrayBuffer) => {
     const bytes = new Uint8Array(buf)
     let bin = ''
     for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
@@ -1846,7 +1980,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
   }
 
   // Build OpenSSH Ed25519 public key wire format
-  const IS05_buildOpenSSHPubkey = (rawPub) => {
+  const IS05_buildOpenSSHPubkey = (rawPub: ArrayBuffer) => {
     const keyType = 'ssh-ed25519'
     const typeBytes = new TextEncoder().encode(keyType)
     const rawBytes = new Uint8Array(rawPub)
@@ -1861,7 +1995,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
   }
 
   // Build PEM-style private key representation (PKCS8)
-  const IS05_buildPrivkeyPEM = async (privKeyRaw) => {
+  const IS05_buildPrivkeyPEM = async (privKeyRaw: CryptoKey) => {
     const pkcs8 = await crypto.subtle.exportKey('pkcs8', privKeyRaw)
     const b64 = IS05_bufToB64(pkcs8)
     const lines = b64.match(/.{1,64}/g) || []
@@ -1869,7 +2003,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
   }
 
   // SHA-256 fingerprint of raw public key bytes
-  const IS05_fingerprint = async (rawPub) => {
+  const IS05_fingerprint = async (rawPub: ArrayBuffer) => {
     const hash = await crypto.subtle.digest('SHA-256', rawPub)
     const b64 = IS05_bufToB64(hash)
     return `SHA256:${b64.replace(/=+$/, '')}`
@@ -1894,8 +2028,9 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
       update('IS05_sshPubkey', pubkeyStr)
       update('IS05_sshFingerprint', fp)
       IS05_setPrivateKey(privPEM)
-    } catch (err) {
-      IS05_setError(t('Key generation failed. Your browser may not support Ed25519. ') + (err?.message || ''))
+    } catch (err: unknown) {
+      const msg = isRecord(err) && typeof err.message === 'string' ? err.message : ''
+      IS05_setError(t('Key generation failed. Your browser may not support Ed25519. ') + msg)
     }
     IS05_setGenerating(false)
   }
@@ -2014,7 +2149,7 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
         onPrev={onPrev}
         onNext={handleNext}
         nextLabel={IS05_saving ? t('Saving...') : t('Continue')}
-        nextDisabled={IS05_saving || (config.IS05_sshPubkey && IS05_privateKey && !IS05_confirmed)}
+        nextDisabled={Boolean(IS05_saving || (config.IS05_sshPubkey && IS05_privateKey && !IS05_confirmed))}
       />
     </div>
   )
@@ -2024,8 +2159,28 @@ function IS05_SSHStep({ config, update, onNext, onPrev }) {
 // INIT-05 + INIT-06: Recovery Kit Step
 // ═══════════════════════════════════
 
+interface RecoveryKitStorage {
+  enabled: true
+  size_gb: number
+  s3_access_key: string
+}
+
+interface RecoveryKit {
+  ulid: string
+  hostname: string
+  storage?: RecoveryKitStorage
+  ssh_fingerprint: string
+  issued_at: string
+}
+
+interface RecoveryKitPayload {
+  schema_version: number
+  kit: RecoveryKit
+  checksum_sha256: string
+}
+
 // INIT-06: build a versioned kit object from wizard config
-function IK06_buildKitObject(config) {
+function IK06_buildKitObject(config: SetupConfig): RecoveryKit {
   const issuedAt = new Date().toISOString()
   return {
     ulid: config.IS05_ulid || '',
@@ -2045,14 +2200,14 @@ function IK06_buildKitObject(config) {
 }
 
 // INIT-06: compute SHA-256 over canonical JSON, return hex string
-async function IK06_sha256hex(obj) {
+async function IK06_sha256hex(obj: unknown): Promise<string> {
   const canonical = JSON.stringify(obj)
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 // INIT-06: assemble the versioned download payload
-async function IK06_buildDownloadPayload(config) {
+async function IK06_buildDownloadPayload(config: SetupConfig): Promise<RecoveryKitPayload> {
   const kit = IK06_buildKitObject(config)
   const checksumSha256 = await IK06_sha256hex(kit)
   return {
@@ -2063,8 +2218,8 @@ async function IK06_buildDownloadPayload(config) {
 }
 
 // INIT-06: QR canvas component — renders the kit checksum + ULID as a QR code
-function IK06_QRCanvas({ content }) {
-  const canvasRef = useRef(null)
+function IK06_QRCanvas({ content }: { content: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [IK06_qrError, IK06_setQRError] = useState('')
 
   useEffect(() => {
@@ -2074,8 +2229,9 @@ function IK06_QRCanvas({ content }) {
       margin: 2,
       color: { dark: '#e2e8f0', light: '#0a0a0a' },
       errorCorrectionLevel: 'M',
-    }).catch(err => {
-      IK06_setQRError(err?.message || 'QR render failed')
+    }).catch((err: unknown) => {
+      const msg = isRecord(err) && typeof err.message === 'string' && err.message ? err.message : 'QR render failed'
+      IK06_setQRError(msg)
     })
   }, [content])
 
@@ -2096,17 +2252,17 @@ function IK06_QRCanvas({ content }) {
   )
 }
 
-function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
+function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig; onNext: () => void; onPrev: () => void }) {
   const [IS05_confirmText, IS05_setConfirmText] = useState('')
   const [IS05_downloading, IS05_setDownloading] = useState(false)
   const [IS05_downloaded, IS05_setDownloaded] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
   // INIT-06: versioned payload built client-side (fallback when server unavailable)
-  const [IK06_payload, IK06_setPayload] = useState(null)
+  const [IK06_payload, IK06_setPayload] = useState<RecoveryKitPayload | null>(null)
   const [IK06_qrContent, IK06_setQRContent] = useState('')
   const [IK06_buildingPayload, IK06_setBuildingPayload] = useState(true)
 
-  const t = (s) => s
+  const t = (s: string) => s
 
   // INIT-06: build the payload on mount / whenever config changes
   useEffect(() => {
@@ -2153,8 +2309,9 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       IS05_setDownloaded(true)
-    } catch (err) {
-      IS05_setError(t('Download failed: ') + (err?.message || t('unknown error')))
+    } catch (err: unknown) {
+      const msg = isRecord(err) && typeof err.message === 'string' && err.message ? err.message : t('unknown error')
+      IS05_setError(t('Download failed: ') + msg)
     }
     IS05_setDownloading(false)
   }
@@ -2291,9 +2448,9 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }) {
 // ═══════════════════════════════════
 // Ready
 // ═══════════════════════════════════
-function ReadyStep({ config, onFinish, onPrev }) {
-  const { t } = useI18n()
-  const { theme } = useTheme()
+function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish: () => Promise<void>; onPrev: () => void }) {
+  const { t } = useI18nTyped()
+  const { theme } = useThemeTyped()
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   // WAVE2-RECOVERY: the 24-word master-key recovery phrase, returned once by the
@@ -2333,15 +2490,21 @@ function ReadyStep({ config, onFinish, onPrev }) {
           }),
         })
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          setError(data.error || 'Failed to create account')
+          // Untrusted network JSON — narrowed before use, never cast.
+          const errRaw: unknown = await res.json().catch(() => ({}))
+          const errData = isRecord(errRaw) ? errRaw : {}
+          setError((typeof errData.error === 'string' && errData.error) || 'Failed to create account')
           setCreating(false)
           return
         }
-        const data = await res.json().catch(() => ({}))
-        // If the server minted a master-key recovery phrase, force the user to save
-        // it before setup can complete (Proton-style). We never persist it here.
-        if (data.master_recovery_phrase) {
+        // WAVE2-RECOVERY trust boundary: the register response may carry the
+        // one-time master-key recovery phrase. Narrowed with an explicit
+        // typeof check — never cast to "the phrase is a string" without
+        // verifying it, since this value is about to be shown to the user as
+        // their only account-recovery credential.
+        const raw: unknown = await res.json().catch(() => ({}))
+        const data = isRecord(raw) ? raw : {}
+        if (typeof data.master_recovery_phrase === 'string' && data.master_recovery_phrase) {
           setMasterPhrase(data.master_recovery_phrase)
           setCreating(false)
           return
@@ -2397,7 +2560,7 @@ function ReadyStep({ config, onFinish, onPrev }) {
 
   const selectedTz = TIMEZONES.find(tz => tz.id === config.timezone)
   const selectedLang = LANGUAGES.find(l => l.code === config.locale)
-  const themeLabels = {
+  const themeLabels: Record<string, string> = {
     dark: t('setup.ready.theme_dark'),
     light: t('setup.ready.theme_light'),
     auto: t('setup.ready.theme_auto'),
@@ -2474,11 +2637,47 @@ function ReadyStep({ config, onFinish, onPrev }) {
 //
 // Exported for unit testing (its offer/downloading/done/error states); the
 // wizard renders it inline via the ReadyStep flow, not via this named import.
-export function PrivateAIStep({ onDone }) {
-  const [state, setState] = useState('offer') // offer | downloading | done | error
+type PrivateAIState = 'offer' | 'downloading' | 'done' | 'error'
+
+interface ModelCatalogEntry {
+  id?: string
+  name?: string
+  recommended?: boolean
+  model?: { size_bytes?: number }
+  tokenizer?: { size_bytes?: number }
+}
+
+interface PythonDeps {
+  ready?: boolean
+  install_hint?: string
+}
+
+function toModelCatalogEntry(x: unknown): ModelCatalogEntry {
+  if (!isRecord(x)) return {}
+  const model = isRecord(x.model) ? x.model : {}
+  const tokenizer = isRecord(x.tokenizer) ? x.tokenizer : {}
+  return {
+    id: typeof x.id === 'string' ? x.id : undefined,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    recommended: x.recommended === true,
+    model: { size_bytes: typeof model.size_bytes === 'number' ? model.size_bytes : undefined },
+    tokenizer: { size_bytes: typeof tokenizer.size_bytes === 'number' ? tokenizer.size_bytes : undefined },
+  }
+}
+
+function toPythonDeps(x: unknown): PythonDeps {
+  if (!isRecord(x)) return {}
+  return {
+    ready: x.ready === true,
+    install_hint: typeof x.install_hint === 'string' ? x.install_hint : undefined,
+  }
+}
+
+export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }) {
+  const [state, setState] = useState<PrivateAIState>('offer')
   const [error, setError] = useState('')
-  const [entry, setEntry] = useState(null) // recommended catalog entry (for size/name)
-  const [deps, setDeps] = useState(null)
+  const [entry, setEntry] = useState<ModelCatalogEntry | null>(null) // recommended catalog entry (for size/name)
+  const [deps, setDeps] = useState<PythonDeps | null>(null)
 
   // Load the catalog + python-deps status so the offer shows the true size and an
   // honest note about the one-time python dependencies.
@@ -2486,11 +2685,16 @@ export function PrivateAIStep({ onDone }) {
     let cancelled = false
     fetch('/api/models', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled || !d?.embeddings) return
-        const cat = d.embeddings.catalog || []
+      .then((raw: unknown) => {
+        if (cancelled) return
+        // Untrusted network JSON — narrowed field-by-field via
+        // toModelCatalogEntry/toPythonDeps, never cast.
+        const d = isRecord(raw) ? raw : {}
+        const embeddings = isRecord(d.embeddings) ? d.embeddings : null
+        if (!embeddings) return
+        const cat = Array.isArray(embeddings.catalog) ? embeddings.catalog.map(toModelCatalogEntry) : []
         setEntry(cat.find(e => e.recommended) || cat[0] || null)
-        setDeps(d.embeddings.python_deps || null)
+        setDeps(embeddings.python_deps == null ? null : toPythonDeps(embeddings.python_deps))
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -2511,11 +2715,13 @@ export function PrivateAIStep({ onDone }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: entry?.id || 'all-MiniLM-L6-v2' }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
+      if (!res.ok) throw new Error((typeof data.error === 'string' && data.error) || `Error ${res.status}`)
       setState('done')
-    } catch (e) {
-      setError(e.message || 'Download failed. You can install the model later in Settings → AI Models.')
+    } catch (e: unknown) {
+      const msg = isRecord(e) && typeof e.message === 'string' && e.message ? e.message : 'Download failed. You can install the model later in Settings → AI Models.'
+      setError(msg)
       setState('error')
     }
   }
@@ -2599,7 +2805,7 @@ export function PrivateAIStep({ onDone }) {
 // ═══════════════════════════════════
 // Shared components
 // ═══════════════════════════════════
-function StepHeader({ title, subtitle }) {
+function StepHeader({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
   return (
     <div className="mb-6">
       <h2 className="text-2xl font-light tracking-tight" style={{ color: 'var(--text-primary)' }}>{title}</h2>
@@ -2608,8 +2814,17 @@ function StepHeader({ title, subtitle }) {
   )
 }
 
-function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }) {
-  const { t } = useI18n()
+interface NavBarProps {
+  onPrev: () => void
+  onNext: () => void
+  nextLabel?: string
+  skipLabel?: string
+  onSkip?: () => void
+  nextDisabled?: boolean
+}
+
+function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }: NavBarProps) {
+  const { t } = useI18nTyped()
   const resolvedNext = nextLabel ?? t('nav.continue')
   return (
     <div className="flex items-center justify-between mt-6 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
@@ -2630,7 +2845,7 @@ function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }) 
   )
 }
 
-function SummaryCard({ icon, label, value }) {
+function SummaryCard({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div
       className="rounded-xl px-4 py-3 transition-colors"
