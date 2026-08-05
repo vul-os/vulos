@@ -981,8 +981,20 @@ while :; do
   # the process is alive, not that it is serving.
   if curl -fsS --max-time 2 "http://127.0.0.1:8080/api/setup/status" >/dev/null 2>&1; then
     http="up"; else http="down"; fi
-  if curl -fsSk --max-time 2 "https://127.0.0.1:443/api/setup/status" >/dev/null 2>&1; then
-    https="up"; else https="off"; fi
+  # Probe the LAN address, NOT loopback. internal/lan/lanBindAddr pins the HTTPS
+  # listener to the detected LAN IP rather than 0.0.0.0, so a loopback probe
+  # answers the wrong question entirely: it reports "up" only when the listener
+  # landed on loopback (i.e. is NOT reachable from the LAN — the failure case)
+  # and "off" when it bound the LAN IP correctly (the success case). Probing
+  # the address a client would actually use is the only honest check. Loopback
+  # is still tried as a fallback so an isolated box with no LAN address is not
+  # misreported.
+  https="off"
+  if [ "$ip" != "(no network yet)" ] && curl -fsSk --max-time 2 "https://$ip/api/setup/status" >/dev/null 2>&1; then
+    https="up"
+  elif curl -fsSk --max-time 2 "https://127.0.0.1:443/api/setup/status" >/dev/null 2>&1; then
+    https="loopback-only"
+  fi
   clear
   printf '\n  Vulos\n\n'
   printf '  Open in a browser:   http://%s:8080\n' "$ip"
