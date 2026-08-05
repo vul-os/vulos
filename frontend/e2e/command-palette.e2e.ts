@@ -7,12 +7,12 @@
 //   • Approve posts ONLY the opaque proposal id to /api/assistant/execute,
 //   • Reject sends NOTHING to that endpoint.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Request } from '@playwright/test'
 import { installBackend, json, sseBody } from './mock-backend.js'
 
 const PROPOSAL = { id: 'prop_e2e_x1', tool: 'send_email', summary: 'Send email to Dana', args: { to: 'dana@acme.io', body: 'Hi Dana' } }
 
-async function openPalette(page) {
+async function openPalette(page: Page) {
   await page.goto('/')
   // Wait for the shell (menu bar chat button) to confirm we're past auth.
   await expect(page.getByTitle('Chat (Ctrl+K)')).toBeVisible({ timeout: 15_000 })
@@ -67,7 +67,7 @@ test('palette groups results into sections and Tab jumps between them', async ({
   // headers are the mono-uppercase labels (scoped so they don't collide with the
   // "Mail" app row / Dock button of the same text).
   await page.getByPlaceholder(/Search apps/).fill('mail')
-  const header = (name) => page.locator('.uppercase.font-mono', { hasText: new RegExp(`^${name}$`) })
+  const header = (name: string) => page.locator('.uppercase.font-mono', { hasText: new RegExp(`^${name}$`) })
   await expect(header('Apps')).toBeVisible()
   await expect(header('Mail')).toBeVisible()
   await expect(header('Actions')).toBeVisible()
@@ -92,13 +92,13 @@ test('palette groups results into sections and Tab jumps between them', async ({
 })
 
 test('palette add_contact proposal posts only the opaque id (WAVE-13)', async ({ page }) => {
-  let executeBody = null
+  let executeBody: unknown = null
   await installBackend(page, {
     'POST /api/assistant/agent/stream': sseBody([
       { type: 'proposal', proposal: { id: 'prop_pal_contact', tool: 'add_contact', summary: 'Add Dana Ruiz to contacts', args: { name: 'Dana Ruiz', email: 'dana@acme.io' } } },
       { type: 'done' },
     ]),
-    'POST /api/assistant/execute': (req) => { executeBody = JSON.parse(req.postData() || '{}'); return json({ result: 'Contact added.' }) },
+    'POST /api/assistant/execute': (req: Request) => { executeBody = JSON.parse(req.postData() || '{}'); return json({ result: 'Contact added.' }) },
   })
   await openPalette(page)
   await page.getByPlaceholder(/Search apps/).fill('?add dana to contacts')
@@ -111,11 +111,11 @@ test('palette add_contact proposal posts only the opaque id (WAVE-13)', async ({
 })
 
 test('WAVE-13: Approve posts only the opaque id; Reject sends nothing', async ({ page }) => {
-  let executeBody = null
+  let executeBody: unknown = null
   let executeCount = 0
   await installBackend(page, {
     'POST /api/assistant/agent/stream': sseBody([{ type: 'proposal', proposal: PROPOSAL }, { type: 'done' }]),
-    'POST /api/assistant/execute': (req) => {
+    'POST /api/assistant/execute': (req: Request) => {
       executeCount++
       executeBody = JSON.parse(req.postData() || '{}')
       return json({ result: 'Message delivered.' })

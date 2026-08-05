@@ -12,14 +12,14 @@
 // server, no DB. Layout selection is viewport-driven (useViewport < 768px →
 // mobile), so simply narrowing the viewport switches the shell to MobileStack.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
 // iPhone-class viewport (390×844 ≈ iPhone 13/14).
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
-async function bootMobile(page, overrides = {}) {
-  const errors = []
+async function bootMobile(page: Page, overrides: Record<string, unknown> = {}) {
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await installBackend(page, overrides)
   await page.goto('/')
@@ -30,7 +30,7 @@ async function bootMobile(page, overrides = {}) {
 }
 
 // No element may push the page wider than the viewport.
-async function assertNoHorizontalOverflow(page) {
+async function assertNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({
     docScroll: document.documentElement.scrollWidth,
     docClient: document.documentElement.clientWidth,
@@ -44,7 +44,7 @@ async function assertNoHorizontalOverflow(page) {
 
 // Launch a builtin by name via the ⌘K palette (the same lane the dock's
 // launcher uses); works identically on mobile.
-async function launch(page, name) {
+async function launch(page: Page, name: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')
@@ -66,6 +66,7 @@ test('mobile shell renders the adaptive dock, no horizontal overflow', async ({ 
 
   // Every dock target is a full touch target (≥44px tall).
   const homeBox = await nav.getByRole('button', { name: 'Home' }).boundingBox()
+  if (!homeBox) throw new Error('Home dock button has no bounding box')
   expect(homeBox.height).toBeGreaterThanOrEqual(44)
 
   await assertNoHorizontalOverflow(page)
@@ -81,6 +82,7 @@ test('launching an app makes it fullscreen with a back-to-home affordance', asyn
   const app = page.locator('[data-calendar-app]')
   await expect(app).toBeVisible()
   const box = await app.boundingBox()
+  if (!box) throw new Error('Calendar app root has no bounding box')
   expect(box.width).toBeGreaterThan(320) // ~full 390px viewport, not a tiny window
 
   // The status bar swaps to the app identity with a back-to-home control.

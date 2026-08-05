@@ -2,7 +2,7 @@
 // (the `vulos-contacts` builtin) over lilmail's /v1 via the box's PIM proxy
 // (/api/pim/contacts/*). Fails on ANY uncaught page error.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Request } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
 function cards() {
@@ -14,8 +14,8 @@ function cards() {
   })
 }
 
-async function boot(page, overrides = {}) {
-  const errors = []
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await installBackend(page, overrides)
   await page.goto('/')
@@ -23,7 +23,7 @@ async function boot(page, overrides = {}) {
   return errors
 }
 
-async function launch(page, name) {
+async function launch(page: Page, name: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')
@@ -52,10 +52,10 @@ test('the Contacts app lists contacts and shows a detail pane', async ({ page })
 })
 
 test('the Contacts app creates a contact through the /v1 write path', async ({ page }) => {
-  let posted = null
+  const state: { posted: { name?: string; emails?: string[] } | null } = { posted: null }
   const errors = await boot(page, {
     'GET /api/pim/contacts/cards': json({ contacts: [] }),
-    'POST /api/pim/contacts': (req) => { posted = req.postDataJSON(); return json({ contact: { uid: 'new' } }, 201) },
+    'POST /api/pim/contacts': (req: Request) => { state.posted = req.postDataJSON(); return json({ contact: { uid: 'new' } }, 201) },
   })
   await launch(page, 'Contacts')
 
@@ -68,8 +68,8 @@ test('the Contacts app creates a contact through the /v1 write path', async ({ p
   await editor.getByRole('button', { name: 'Save' }).click()
 
   await expect(editor).toBeHidden()
-  expect(posted?.name).toBe('Katherine Johnson')
-  expect(posted?.emails).toContain('kj@nasa.gov')
+  expect(state.posted?.name).toBe('Katherine Johnson')
+  expect(state.posted?.emails).toContain('kj@nasa.gov')
 
   expect(errors, `uncaught page errors: ${errors.join(' | ')}`).toEqual([])
 })

@@ -4,7 +4,23 @@
 // is 'uploading' | 'resuming' | 'done' | 'error'. 'resuming' is a transient
 // state on the resumable path: the box already held committed bytes, so the bar
 // is pre-seeded to the resumed fraction and labelled "Resuming".
-export function uploadRowView({ pct, state }) {
+export type UploadRowState = 'uploading' | 'resuming' | 'done' | 'error'
+
+export interface UploadRowInput {
+  pct: number | null | undefined
+  state: UploadRowState
+}
+
+export interface UploadRowView {
+  failed: boolean
+  done: boolean
+  resuming: boolean
+  indeterminate: boolean
+  widthPct: number
+  label: string
+}
+
+export function uploadRowView({ pct, state }: UploadRowInput): UploadRowView {
   const failed = state === 'error'
   const done = state === 'done'
   const resuming = state === 'resuming'

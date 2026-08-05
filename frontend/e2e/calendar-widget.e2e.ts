@@ -11,7 +11,7 @@
 // that can white-screen the whole OS. Nothing here is asserted "green" without
 // the real production bundle running in a real browser.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
 // A PIM calendar payload carrying two future events (lilmail /v1 shape) so the
@@ -28,8 +28,8 @@ function agendaEvents() {
 }
 
 // Attach a pageerror collector BEFORE navigation and boot to the desktop.
-async function boot(page, overrides = {}) {
-  const errors = []
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await installBackend(page, overrides)
   await page.goto('/')
@@ -40,7 +40,7 @@ async function boot(page, overrides = {}) {
 // Launch an app via the ⌘K palette so a window covers the Home backdrop — the
 // ambient Calendar widget mounts only when Home is covered (Home itself shows
 // the agenda when it's the visible backdrop, so the two never double-render).
-async function openAWindow(page, appName = 'Calculator') {
+async function openAWindow(page: Page, appName = 'Calculator') {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')

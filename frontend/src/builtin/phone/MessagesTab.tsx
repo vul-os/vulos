@@ -1,12 +1,43 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { nativeBridge } from '../../core/nativeBridge'
-import { formatRelative, friendlyError } from './phoneUtils'
+import { formatRelative, friendlyError, isRecord, toPerms, type TelephonyPerms } from './phoneUtils'
+
+// SMS rows show up in two raw shapes depending on source: `listSms` results
+// use address/date, live `onSms` pushes use from/timestamp — both are kept
+// here (rather than folded into one field) so rendering stays byte-for-byte
+// the same fallback chain as before.
+interface Message {
+  address?: string
+  from?: string
+  body?: string
+  date?: unknown
+  timestamp?: unknown
+  incoming?: boolean
+}
+
+// Raw SMS rows come back from TelephonyBridge.kt as loosely-shaped JSON
+// (native-bridge boundary) — narrow field-by-field rather than trusting it.
+function toMessage(r: Record<string, unknown>): Message {
+  return {
+    address: typeof r.address === 'string' ? r.address : undefined,
+    from: typeof r.from === 'string' ? r.from : undefined,
+    body: typeof r.body === 'string' ? r.body : undefined,
+    date: r.date,
+    timestamp: r.timestamp,
+    incoming: typeof r.incoming === 'boolean' ? r.incoming : undefined,
+  }
+}
+
+interface MessagesTabProps {
+  perms?: TelephonyPerms | null
+  onPermsChange: (perms: TelephonyPerms | null) => void
+}
 
 // A flat, newest-first SMS inbox (not per-thread) — every text the device has,
 // most recent first, with a compose bar to start a new one. Inbound texts
 // arrive live via onSms while the tab is mounted.
-export default function MessagesTab({ onPermsChange }) {
-  const [messages, setMessages] = useState([])
+export default function MessagesTab({ onPermsChange }: MessagesTabProps) {
+  const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [to, setTo] = useState('')
@@ -18,23 +49,32 @@ export default function MessagesTab({ onPermsChange }) {
   const load = useCallback(() => {
     setLoading(true)
     nativeBridge.telephony.listSms(50)
-      .then((list) => { if (mounted.current) { setMessages(list); setError('') } })
-      .catch((e) => { if (mounted.current) setError(friendlyError(e)) })
+      .then((list: unknown) => {
+        if (!mounted.current) return
+        setMessages(Array.isArray(list) ? list.filter(isRecord).map(toMessage) : [])
+        setError('')
+      })
+      .catch((e: unknown) => { if (mounted.current) setError(friendlyError(e)) })
       .finally(() => { if (mounted.current) setLoading(false) })
-    nativeBridge.telephony.perms().then(onPermsChange).catch(() => {})
+    nativeBridge.telephony.perms().then((p: unknown) => onPermsChange(toPerms(p))).catch(() => {})
   }, [onPermsChange])
 
   useEffect(() => {
     mounted.current = true
     load()
-    const off = nativeBridge.telephony.onSms((m) => {
-      if (!mounted.current || m?.event !== 'sms') return
-      setMessages((prev) => [{ address: m.from, body: m.body, date: m.timestamp, incoming: true }, ...prev])
+    const off = nativeBridge.telephony.onSms((m: unknown) => {
+      if (!mounted.current || !isRecord(m) || m.event !== 'sms') return
+      setMessages((prev) => [{
+        address: typeof m.from === 'string' ? m.from : undefined,
+        body: typeof m.body === 'string' ? m.body : undefined,
+        date: m.timestamp,
+        incoming: true,
+      }, ...prev])
     })
     return () => { mounted.current = false; off() }
   }, [load])
 
-  const send = async (e) => {
+  const send = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const num = to.trim()
     const body = text.trim()

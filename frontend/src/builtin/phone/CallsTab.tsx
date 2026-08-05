@@ -1,16 +1,39 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { nativeBridge } from '../../core/nativeBridge'
-import { formatRelative, formatDuration, friendlyError } from './phoneUtils'
+import { formatRelative, formatDuration, friendlyError, isRecord, toPerms, type TelephonyPerms } from './phoneUtils'
 
-const DIRECTION_META = {
+interface Call {
+  number: string
+  direction: string
+  durationSec: unknown
+  date: unknown
+}
+
+// Raw call-log rows come back from TelephonyBridge.kt as loosely-shaped JSON
+// (native-bridge boundary) — narrow field-by-field rather than trusting it.
+function toCall(r: Record<string, unknown>): Call {
+  return {
+    number: typeof r.number === 'string' ? r.number : '',
+    direction: typeof r.direction === 'string' ? r.direction : 'other',
+    durationSec: r.durationSec,
+    date: r.date,
+  }
+}
+
+const DIRECTION_META: Record<string, { glyph: string; color: string; label: string }> = {
   incoming: { glyph: '↙', color: '#22C55E', label: 'Incoming' },
   outgoing: { glyph: '↗', color: 'var(--accent)', label: 'Outgoing' },
   missed: { glyph: '↘', color: '#EF4444', label: 'Missed' },
   other: { glyph: '•', color: 'var(--text-secondary, #888)', label: 'Call' },
 }
 
-export default function CallsTab({ onPermsChange }) {
-  const [calls, setCalls] = useState([])
+interface CallsTabProps {
+  perms?: TelephonyPerms | null
+  onPermsChange: (perms: TelephonyPerms | null) => void
+}
+
+export default function CallsTab({ onPermsChange }: CallsTabProps) {
+  const [calls, setCalls] = useState<Call[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [dialing, setDialing] = useState('')
@@ -19,15 +42,19 @@ export default function CallsTab({ onPermsChange }) {
   const load = useCallback(() => {
     setLoading(true)
     nativeBridge.telephony.listCallLog(50)
-      .then((list) => { if (mounted.current) { setCalls(list); setError('') } })
-      .catch((e) => { if (mounted.current) setError(friendlyError(e)) })
+      .then((list: unknown) => {
+        if (!mounted.current) return
+        setCalls(Array.isArray(list) ? list.filter(isRecord).map(toCall) : [])
+        setError('')
+      })
+      .catch((e: unknown) => { if (mounted.current) setError(friendlyError(e)) })
       .finally(() => { if (mounted.current) setLoading(false) })
-    nativeBridge.telephony.perms().then(onPermsChange).catch(() => {})
+    nativeBridge.telephony.perms().then((p: unknown) => onPermsChange(toPerms(p))).catch(() => {})
   }, [onPermsChange])
 
   useEffect(() => { mounted.current = true; load(); return () => { mounted.current = false } }, [load])
 
-  const call = async (number) => {
+  const call = async (number: string) => {
     if (!number || !window.confirm(`Dial ${number}?`)) return
     setDialing(number)
     try {
@@ -55,7 +82,7 @@ export default function CallsTab({ onPermsChange }) {
         ) : (
           <ul className="divide-y" style={{ borderColor: 'var(--border-subtle, rgba(255,255,255,0.06))' }}>
             {calls.map((c, i) => {
-              const meta = DIRECTION_META[c.direction] || DIRECTION_META.other
+              const meta = DIRECTION_META[c.direction] ?? DIRECTION_META.other
               return (
                 <li key={i}>
                   <button type="button" onClick={() => call(c.number)} disabled={!c.number || dialing === c.number}

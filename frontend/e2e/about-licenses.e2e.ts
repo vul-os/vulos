@@ -9,17 +9,17 @@
 //   • the written-offer panel opens and shows the DRAFT offer text;
 //   • no page error is thrown while doing so.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend } from './mock-backend.js'
 
 const NOTICES = '# Third-Party Notices\n\nGo modules: 87 · npm packages: 83\n\n### leaflet 1.9.4\n- Licence: BSD-2-Clause\n'
 const OFFER = '# Written Offer for Source Code\n\nSTATUS: DRAFT — REQUIRES FOUNDER AND LAWYER REVIEW.\n'
 
-function text(body) {
+function text(body: string) {
   return { status: 200, contentType: 'text/plain; charset=utf-8', body }
 }
 
-async function openAbout(page) {
+async function openAbout(page: Page) {
   await page.goto('/')
   await expect(page.getByTitle('Chat (Ctrl+K)')).toBeVisible({ timeout: 15_000 })
   const input = page.getByPlaceholder(/Search apps/)
@@ -39,7 +39,7 @@ async function openAbout(page) {
 }
 
 test('About surfaces the open-source licences and the written offer', async ({ page }) => {
-  const pageErrors = []
+  const pageErrors: string[] = []
   page.on('pageerror', (e) => pageErrors.push(e.message))
 
   await installBackend(page, {

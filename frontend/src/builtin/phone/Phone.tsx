@@ -14,15 +14,26 @@ import { useState, useEffect, useCallback } from 'react'
 import { nativeBridge } from '../../core/nativeBridge'
 import MessagesTab from './MessagesTab'
 import CallsTab from './CallsTab'
+import { toPerms, type TelephonyPerms } from './phoneUtils'
+
+type TabId = 'messages' | 'calls'
 
 // TEL-01 permission keys, per tab — used to decide whether to show the
 // "grant access" banner (perms() reports booleans; see TelephonyBridge.kt).
-const NEEDED = {
+const NEEDED: Record<TabId, (keyof TelephonyPerms)[]> = {
   messages: ['readSms', 'sendSms'],
   calls: ['callLog', 'call'],
 }
 
-function PermissionBanner({ tab, perms, onRetry }) {
+const TABS: [TabId, string][] = [['messages', 'Messages'], ['calls', 'Calls']]
+
+interface PermissionBannerProps {
+  tab: TabId
+  perms: TelephonyPerms | null
+  onRetry: () => void
+}
+
+function PermissionBanner({ tab, perms, onRetry }: PermissionBannerProps) {
   const missing = NEEDED[tab].filter((k) => perms && perms[k] === false)
   if (missing.length === 0) return null
   const label = tab === 'messages' ? 'SMS' : 'call'
@@ -64,13 +75,13 @@ function UnavailableState() {
 }
 
 export default function Phone() {
-  const available = nativeBridge.telephony.available
-  const [tab, setTab] = useState('messages')
-  const [perms, setPerms] = useState(null)
+  const available: boolean = nativeBridge.telephony.available
+  const [tab, setTab] = useState<TabId>('messages')
+  const [perms, setPerms] = useState<TelephonyPerms | null>(null)
 
   const refreshPerms = useCallback(() => {
     if (!available) return
-    nativeBridge.telephony.perms().then(setPerms).catch(() => setPerms(null))
+    nativeBridge.telephony.perms().then((p: unknown) => setPerms(toPerms(p))).catch(() => setPerms(null))
   }, [available])
 
   useEffect(() => { refreshPerms() }, [refreshPerms])
@@ -88,7 +99,7 @@ export default function Phone() {
   return (
     <div className="h-full flex flex-col" style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }} data-phone-app>
       <div className="shrink-0 flex items-center gap-1 px-2 pt-2">
-        {[['messages', 'Messages'], ['calls', 'Calls']].map(([id, label]) => (
+        {TABS.map(([id, label]) => (
           <button key={id} type="button" onClick={() => setTab(id)}
             className="px-3.5 py-2 text-[13px] font-medium rounded-t-md transition-colors focus-primary"
             style={{

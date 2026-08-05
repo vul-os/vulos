@@ -7,7 +7,7 @@
 // syncs back to the server (POST /api/notifications/read). Complements the jsdom
 // integration suite with a real-DOM, real-event pass.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend } from './mock-backend.js'
 
 // Two unread backend notifications in the notify.Notification wire shape.
@@ -16,7 +16,7 @@ const FEED = [
   { id: 'n2', title: 'Backup completed', body: 'Nightly snapshot ok', source: 'system', level: 'info', read: false, created_at: '2026-07-07T09:00:00Z' },
 ]
 
-async function boot(page, overrides = {}) {
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
   await installBackend(page, {
     'GET /api/notifications': { status: 200, contentType: 'application/json', body: JSON.stringify(FEED) },
     'GET /api/notifications/unread': { status: 200, contentType: 'application/json', body: JSON.stringify({ unread: 2 }) },

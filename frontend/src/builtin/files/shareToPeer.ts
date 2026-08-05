@@ -23,11 +23,11 @@
  * `media_path`; the shell's `~` is never expanded by Go's os.Stat, so we must
  * substitute the resolved home directory ourselves.
  *
- * @param {string} path  e.g. "~/Documents/report.pdf" or "/tmp/x.txt"
- * @param {string|null} home  the resolved $HOME, e.g. "/home/vula"
- * @returns {string} an absolute path
+ * @param path  e.g. "~/Documents/report.pdf" or "/tmp/x.txt"
+ * @param home  the resolved $HOME, e.g. "/home/vula"
+ * @returns an absolute path
  */
-export function resolveAbsPath(path, home) {
+export function resolveAbsPath(path: string, home: string | null | undefined): string {
   if (!path) return path
   if (path === '~') return home || path
   if (path.startsWith('~/') && home) return home + path.slice(1)
@@ -35,7 +35,7 @@ export function resolveAbsPath(path, home) {
 }
 
 /** Extension -> MIME guess. Mirrors the Drop panel's octet-stream default. */
-const MIME_BY_EXT = {
+const MIME_BY_EXT: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon',
   mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska',
@@ -49,23 +49,35 @@ const MIME_BY_EXT = {
  * Guess a MIME type from a filename. Returns application/octet-stream when
  * unknown — matching the backend's default so the transfer still succeeds.
  */
-export function guessMime(name) {
+export function guessMime(name: string): string {
   if (!name || !name.includes('.')) return 'application/octet-stream'
-  const ext = name.split('.').pop().toLowerCase()
+  const ext = (name.split('.').pop() || '').toLowerCase()
   return MIME_BY_EXT[ext] || 'application/octet-stream'
+}
+
+/** Minimal peer shape needed to address a Drop send — see SharePeerModal's
+ *  roster entries from GET /api/peering/drop/nearby. */
+export interface SharePeer {
+  vula_id: string
+  addr?: string
+}
+
+/** Body for POST /api/peering/drop/send — mirrors what Drop.jsx posts, so the
+ *  same DropService handler serves both surfaces. */
+export interface DropSendBody {
+  target_vula_id: string
+  media_path: string
+  mime_type: string
+  target_addr?: string
 }
 
 /**
  * Build the JSON body for POST /api/peering/drop/send from a chosen peer and a
  * resolved absolute media path. Mirrors the shape Drop.jsx posts, so the same
  * DropService handler serves both surfaces.
- *
- * @param {{vula_id: string, addr?: string}} peer
- * @param {string} absPath
- * @param {string} mimeType
  */
-export function buildSendBody(peer, absPath, mimeType) {
-  const body = {
+export function buildSendBody(peer: SharePeer, absPath: string, mimeType: string): DropSendBody {
+  const body: DropSendBody = {
     target_vula_id: peer.vula_id,
     media_path: absPath,
     mime_type: mimeType || 'application/octet-stream',
@@ -79,7 +91,7 @@ export function buildSendBody(peer, absPath, mimeType) {
 /**
  * Split an absolute path into { parent, base } for `tar -C <parent> <base>`.
  */
-export function splitPath(absPath) {
+export function splitPath(absPath: string): { parent: string; base: string } {
   const idx = absPath.lastIndexOf('/')
   if (idx < 0) return { parent: '.', base: absPath }
   if (idx === 0) return { parent: '/', base: absPath.slice(1) }
@@ -94,12 +106,12 @@ export function splitPath(absPath) {
  *
  * Returns { command, archivePath }.
  */
-export function buildFolderArchiveCommand(absPath) {
+export function buildFolderArchiveCommand(absPath: string): { command: string; archivePath: string } {
   const { parent, base } = splitPath(absPath)
   // A per-share temp dir keeps the archive basename == "<name>.tar.gz".
   const tmpDir = `/tmp/.vulos-share-${Date.now()}`
   const archivePath = `${tmpDir}/${base}.tar.gz`
-  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`
+  const q = (s: string) => `"${String(s).replace(/"/g, '\\"')}"`
   const command =
     `mkdir -p ${q(tmpDir)} && tar -czf ${q(archivePath)} -C ${q(parent)} ${q(base)} && echo OK`
   return { command, archivePath }

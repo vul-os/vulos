@@ -15,7 +15,7 @@ import { installBackend, json, PROFILE } from './mock-backend.js'
 
 test('boot → login → desktop → app-launch runs with zero uncaught page errors', async ({ page }) => {
   // Hard guard: any uncaught exception anywhere in the journey fails the test.
-  const pageErrors = []
+  const pageErrors: string[] = []
   page.on('pageerror', (e) => pageErrors.push(e.message))
 
   // Stateful auth: /api/auth/me is 401 until POST /login flips it, so the shell

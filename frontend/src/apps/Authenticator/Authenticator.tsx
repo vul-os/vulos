@@ -1,7 +1,66 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties, type FormEvent } from 'react'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// errorMessage pulls a server-supplied `{ error: string }` out of an
+// untrusted JSON body without ever casting the body to a nicer shape.
+function errorMessage(x: unknown): string | undefined {
+  return isRecord(x) && typeof x.error === 'string' ? x.error : undefined
+}
+
+// caughtMessage mirrors the exact `err?.message || fallback` shape used
+// throughout this file's catch blocks, now that `catch` binds `unknown`
+// under strict mode instead of the old implicit `any`.
+function caughtMessage(err: unknown, fallback: string): string {
+  return isRecord(err) && typeof err.message === 'string' && err.message ? err.message : fallback
+}
+
+// A TOTP account as this file uses it. Every field is optional because it is
+// narrowed from untrusted server JSON (see toTotpAccount) — nothing here is
+// ever cast to this shape, only assembled into it field-by-field.
+interface TotpAccount {
+  id?: string
+  name?: string
+  issuer?: string
+}
+
+function toTotpAccount(x: unknown): TotpAccount {
+  if (!isRecord(x)) return {}
+  return {
+    id: x.id !== undefined && x.id !== null ? String(x.id) : undefined,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    issuer: typeof x.issuer === 'string' ? x.issuer : undefined,
+  }
+}
+
+function extractTotpCode(x: unknown): string | null {
+  if (!isRecord(x)) return null
+  if (typeof x.code === 'string') return x.code
+  if (typeof x.otp === 'string') return x.otp
+  return null
+}
+
+interface TotpImportResult {
+  imported?: number
+  failed?: number
+  parsed?: number
+  warnings?: string[]
+}
+
+function toTotpImportResult(x: unknown): TotpImportResult {
+  if (!isRecord(x)) return {}
+  return {
+    imported: typeof x.imported === 'number' ? x.imported : undefined,
+    failed: typeof x.failed === 'number' ? x.failed : undefined,
+    parsed: typeof x.parsed === 'number' ? x.parsed : undefined,
+    warnings: Array.isArray(x.warnings) ? x.warnings.filter((w): w is string => typeof w === 'string') : undefined,
+  }
+}
 
 // Seconds remaining in the current 30-second TOTP window
-function useTotpClock() {
+function useTotpClock(): number {
   const [secondsLeft, setSecondsLeft] = useState(() => 30 - (Math.floor(Date.now() / 1000) % 30))
 
   useEffect(() => {
@@ -18,19 +77,19 @@ function useTotpClock() {
 }
 
 // Single TOTP account row — fetches its own code and refreshes on window boundary
-function AccountRow({ account, onDelete }) {
-  const [code, setCode] = useState(null)
+function AccountRow({ account, onDelete }: { account: TotpAccount; onDelete: (id: string | undefined) => void }) {
+  const [code, setCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState(false)
   const secondsLeft = useTotpClock()
-  const prevWindowRef = useRef(null)
+  const prevWindowRef = useRef<number | null>(null)
 
   const fetchCode = useCallback(async () => {
     try {
       const res = await fetch(`/api/auth/totp/code/${account.id}`)
       if (!res.ok) { setError(true); return }
-      const data = await res.json()
-      setCode(data.code || data.otp || null)
+      const data: unknown = await res.json()
+      setCode(extractTotpCode(data))
       setError(false)
     } catch {
       setError(true)
@@ -209,8 +268,26 @@ function AccountRow({ account, onDelete }) {
   )
 }
 
+interface ParsedOtpauth {
+  name: string
+  issuer: string
+  secret: string
+  algorithm: string
+  digits: number
+  period: number
+}
+
+interface AddAccountPayload {
+  name: string
+  issuer: string
+  secret: string
+  algorithm?: string
+  digits?: number
+  period?: number
+}
+
 // Add-account form — supports paste otpauth URI or manual entry
-function AddAccountForm({ onAdd, onCancel }) {
+function AddAccountForm({ onAdd, onCancel }: { onAdd: (account: TotpAccount) => void; onCancel: () => void }) {
   const [uri, setUri] = useState('')
   const [manual, setManual] = useState(false)
   const [name, setName] = useState('')
@@ -218,11 +295,11 @@ function AddAccountForm({ onAdd, onCancel }) {
   const [secret, setSecret] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState('')
-  const firstRef = useRef(null)
+  const firstRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null)
 
   useEffect(() => { firstRef.current?.focus() }, [])
 
-  const parseOtpauth = (rawUri) => {
+  const parseOtpauth = (rawUri: string): ParsedOtpauth | null => {
     try {
       const u = new URL(rawUri.trim())
       if (u.protocol !== 'otpauth:') return null
@@ -239,12 +316,12 @@ function AddAccountForm({ onAdd, onCancel }) {
     } catch { return null }
   }
 
-  const submit = async (e) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     setErr('')
     setSubmitting(true)
 
-    let payload
+    let payload: AddAccountPayload
     if (manual) {
       if (!name.trim() || !secret.trim()) { setErr('Name and secret are required.'); setSubmitting(false); return }
       payload = { name: name.trim(), issuer: issuer.trim(), secret: secret.trim().replace(/\s/g, '').toUpperCase() }
@@ -268,20 +345,20 @@ function AddAccountForm({ onAdd, onCancel }) {
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setErr(body.error || `Server error ${res.status}`)
+        const body: unknown = await res.json().catch(() => ({}))
+        setErr(errorMessage(body) || `Server error ${res.status}`)
         setSubmitting(false)
         return
       }
-      const added = await res.json()
-      onAdd(added)
+      const added: unknown = await res.json()
+      onAdd(toTotpAccount(added))
     } catch {
       setErr('Network error — could not reach the server.')
     }
     setSubmitting(false)
   }
 
-  const inputStyle = {
+  const inputStyle: CSSProperties = {
     width: '100%',
     background: 'var(--bg-surface)',
     border: '1px solid var(--border-default)',
@@ -294,7 +371,7 @@ function AddAccountForm({ onAdd, onCancel }) {
     transition: 'border-color var(--motion-fast, 0.15s) var(--ease-out, ease)',
   }
 
-  const labelStyle = {
+  const labelStyle: CSSProperties = {
     fontSize: 11,
     color: 'var(--text-tertiary)',
     marginBottom: 4,
@@ -417,15 +494,15 @@ function AddAccountForm({ onAdd, onCancel }) {
 // Export writes an encrypted backup that is decryptable with the PASSPHRASE the
 // user chooses — deliberately not with any key held by this box, because the
 // scenario a 2FA backup exists for is "the box is gone".
-function TransferPanel({ onDone, onCancel }) {
-  const [tab, setTab] = useState('import')
+function TransferPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const [tab, setTab] = useState<'import' | 'export'>('import')
 
   const [uri, setUri] = useState('')
-  const [backupFile, setBackupFile] = useState(null)
+  const [backupFile, setBackupFile] = useState<File | null>(null)
   const [importPassphrase, setImportPassphrase] = useState('')
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<TotpImportResult | null>(null)
 
   const [accountPassword, setAccountPassword] = useState('')
   const [passphrase, setPassphrase] = useState('')
@@ -434,7 +511,7 @@ function TransferPanel({ onDone, onCancel }) {
   const [exportErr, setExportErr] = useState('')
   const [exportDone, setExportDone] = useState(false)
 
-  const inputStyle = {
+  const inputStyle: CSSProperties = {
     width: '100%',
     background: 'var(--bg-surface)',
     border: '1px solid var(--border-default)',
@@ -446,23 +523,23 @@ function TransferPanel({ onDone, onCancel }) {
     boxSizing: 'border-box',
     transition: 'border-color var(--motion-fast, 0.15s) var(--ease-out, ease)',
   }
-  const labelStyle = { fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, display: 'block' }
-  const primaryBtn = (disabled) => ({
+  const labelStyle: CSSProperties = { fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, display: 'block' }
+  const primaryBtn = (disabled: boolean): CSSProperties => ({
     width: '100%', minHeight: 44, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
     cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
     background: 'var(--accent)', border: '1px solid var(--accent)', color: 'var(--text-on-accent, #fff)',
     transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
   })
-  const noteStyle = {
+  const noteStyle: CSSProperties = {
     fontSize: 11, lineHeight: 1.5, color: 'var(--status-warning)',
     background: 'var(--status-warning-soft)', border: '1px solid var(--status-warning-soft)',
     borderRadius: 8, padding: '8px 10px',
   }
-  const errStyle = {
+  const errStyle: CSSProperties = {
     fontSize: 12, color: 'var(--status-danger)', background: 'var(--status-danger-soft)',
     border: '1px solid var(--status-danger-soft)', borderRadius: 8, padding: '8px 10px',
   }
-  const tabStyle = (t) => ({
+  const tabStyle = (t: 'import' | 'export'): CSSProperties => ({
     flex: 1, minHeight: 36, padding: '7px 0', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
     background: tab === t ? 'var(--bg-hover)' : 'transparent',
     border: 'none',
@@ -470,16 +547,16 @@ function TransferPanel({ onDone, onCancel }) {
     transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
   })
 
-  const submitImport = async (e) => {
+  const submitImport = async (e: FormEvent) => {
     e.preventDefault()
     setImporting(true)
     setImportErr('')
     setResult(null)
     try {
-      let payload
+      let payload: { blob: unknown; passphrase: string } | { uri: string }
       if (backupFile) {
         const text = await backupFile.text()
-        let blob
+        let blob: unknown
         try { blob = JSON.parse(text) } catch { throw new Error('That file is not a Vulos backup') }
         payload = { blob, passphrase: importPassphrase }
       } else {
@@ -491,20 +568,20 @@ function TransferPanel({ onDone, onCancel }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const body = await res.json().catch(() => ({}))
+      const body: unknown = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setImportErr(body.error || `Import failed (${res.status})`)
+        setImportErr(errorMessage(body) || `Import failed (${res.status})`)
       } else {
-        setResult(body)
+        setResult(toTotpImportResult(body))
         onDone()
       }
-    } catch (err) {
-      setImportErr(err.message || 'Could not read that file')
+    } catch (err: unknown) {
+      setImportErr(caughtMessage(err, 'Could not read that file'))
     }
     setImporting(false)
   }
 
-  const submitExport = async (e) => {
+  const submitExport = async (e: FormEvent) => {
     e.preventDefault()
     setExportErr('')
     setExportDone(false)
@@ -517,9 +594,9 @@ function TransferPanel({ onDone, onCancel }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_password: accountPassword, passphrase }),
       })
-      const body = await res.json().catch(() => ({}))
+      const body: unknown = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setExportErr(body.error || `Export failed (${res.status})`)
+        setExportErr(errorMessage(body) || `Export failed (${res.status})`)
       } else {
         const stamp = new Date().toISOString().slice(0, 10)
         const url = URL.createObjectURL(new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' }))
@@ -735,7 +812,7 @@ function TransferPanel({ onDone, onCancel }) {
 
 // Main Authenticator component
 export default function Authenticator() {
-  const [accounts, setAccounts] = useState([])
+  const [accounts, setAccounts] = useState<TotpAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
@@ -745,8 +822,11 @@ export default function Authenticator() {
     try {
       const res = await fetch('/api/auth/totp/list')
       if (!res.ok) { setFetchErr(true); setLoading(false); return }
-      const data = await res.json()
-      setAccounts(Array.isArray(data) ? data : (data.accounts || []))
+      const data: unknown = await res.json()
+      const list = Array.isArray(data)
+        ? data
+        : (isRecord(data) && Array.isArray(data.accounts) ? data.accounts : [])
+      setAccounts(list.map(toTotpAccount))
       setFetchErr(false)
     } catch {
       setFetchErr(true)
@@ -757,7 +837,7 @@ export default function Authenticator() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadAccounts() }, [loadAccounts])
 
-  const handleAdded = (account) => {
+  const handleAdded = (account: TotpAccount) => {
     // Merge new account; if the server returns the full record use it, otherwise refresh
     if (account && account.id) {
       setAccounts(prev => [...prev.filter(a => a.id !== account.id), account])
@@ -767,11 +847,11 @@ export default function Authenticator() {
     setShowAdd(false)
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = (id: string | undefined) => {
     setAccounts(prev => prev.filter(a => a.id !== id))
   }
 
-  const root = {
+  const root: CSSProperties = {
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
@@ -780,7 +860,7 @@ export default function Authenticator() {
     fontFamily: "-apple-system, 'Inter', 'Segoe UI', sans-serif",
   }
 
-  const header = {
+  const header: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -791,7 +871,7 @@ export default function Authenticator() {
     flexShrink: 0,
   }
 
-  const addBtn = {
+  const addBtn: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
     gap: 5,

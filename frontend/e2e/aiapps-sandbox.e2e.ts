@@ -12,7 +12,7 @@
 // and inside the opaque frame (the probe's recorded outcomes) — that every path
 // back to the OS origin is closed.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend } from './mock-backend.js'
 
 // The AI app id + title the test launches. id must match ^[a-z0-9][a-z0-9-]*$
@@ -74,7 +74,7 @@ const AIAPP_HEADERS = {
   'Cache-Control': 'no-store',
 }
 
-async function boot(page) {
+async function boot(page: Page) {
   await installBackend(page, {
     // Surface one launchable AI app in the registry.
     'GET /api/ai-apps': {
@@ -96,7 +96,7 @@ async function boot(page) {
   await page.evaluate(() => { document.cookie = 'os_session=SUPERSECRET-OS-TOKEN; path=/' })
 }
 
-async function launch(page, appName) {
+async function launch(page: Page, appName: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')

@@ -17,6 +17,18 @@ import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
 import { listEvents, createEvent, updateEvent, deleteEvent, parseDate } from './calendarApi'
+import type { CalendarEvent, EventFormInput } from './calendarApi'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// errMessage extracts a real `.message` off a caught value honestly (`.catch`
+// callers are always `unknown` under strict), matching the original
+// `e?.message || fallback` for the realistic (Error-shaped) rejection.
+function errMessage(e: unknown, fallback: string): string {
+  return (isRecord(e) && typeof e.message === 'string' && e.message) || fallback
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -30,46 +42,59 @@ const EVENT_TONES = [
   'var(--status-warning)',
   'var(--status-info)',
 ]
-function toneFor(ev) {
-  const s = String(ev?.id || ev?.title || ev?.start || '')
+function toneFor(ev: CalendarEvent): string {
+  const s = String(ev.id || ev.title || ev.start || '')
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return EVENT_TONES[h % EVENT_TONES.length]
 }
 
-function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
-function isSameDay(a, b) {
+function startOfDay(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 }
-function addMonths(d, n) { const x = new Date(d); x.setMonth(x.getMonth() + n); return x }
+function addMonths(d: Date, n: number): Date { const x = new Date(d); x.setMonth(x.getMonth() + n); return x }
 
 // The 6-week (42-cell) grid start: the Sunday on/before the 1st of the month.
-function gridStart(month) {
+function gridStart(month: Date): Date {
   const first = new Date(month.getFullYear(), month.getMonth(), 1)
   return startOfDay(new Date(first.getTime() - first.getDay() * DAY_MS))
 }
 
 // Local <input type=datetime-local> value ("YYYY-MM-DDTHH:MM") for a Date.
-function toLocalInput(d) {
-  const p = (n) => String(n).padStart(2, '0')
+function toLocalInput(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
-function toDateInput(d) {
-  const p = (n) => String(n).padStart(2, '0')
+function toDateInput(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
-function fmtTime(d) {
+function fmtTime(d: Date | null): string {
   return d ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : ''
 }
-function fmtDayLabel(d, now) {
+function fmtDayLabel(d: Date, now: Date): string {
   if (isSameDay(d, now)) return 'Today'
   const tm = new Date(now.getTime() + DAY_MS)
   if (isSameDay(d, tm)) return 'Tomorrow'
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 }
 
+// The editor form's shape — start/end stay live Date objects while being
+// edited (only stringified to ISO at save() time), unlike calendarApi's
+// EventFormInput.
+interface EventForm {
+  id: string
+  title: string
+  allDay: boolean
+  start: Date
+  end: Date
+  location: string
+  notes: string
+}
+
 // A blank editor form seeded at `day` (defaults to a 1-hour slot at the next hour).
-function blankEvent(day) {
+function blankEvent(day: Date | null): EventForm {
   const base = day ? new Date(day) : new Date()
   if (!day) base.setMinutes(0, 0, 0)
   const start = new Date(base)
@@ -79,15 +104,25 @@ function blankEvent(day) {
   return { id: '', title: '', allDay: false, start, end, location: '', notes: '' }
 }
 
-export default function Calendar({ initialQuery = '' } = {}) {
+interface CalendarProps {
+  initialQuery?: string
+}
+
+interface AgendaGroup {
+  key: string
+  date: Date
+  items: CalendarEvent[]
+}
+
+export default function Calendar({ initialQuery = '' }: CalendarProps = {}) {
   const { openWindow } = useShell()
   const [now, setNow] = useState(() => new Date())
   const [month, setMonth] = useState(() => startOfDay(new Date()))
-  const [view, setView] = useState('month') // 'month' | 'agenda'
-  const [events, setEvents] = useState([])
+  const [view, setView] = useState<'month' | 'agenda'>('month')
+  const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [editing, setEditing] = useState(null) // form object or null
+  const [editing, setEditing] = useState<EventForm | null>(null)
   const [saving, setSaving] = useState(false)
 
   // The window read range covers the whole 6-week grid (month view) with a day of
@@ -102,7 +137,7 @@ export default function Calendar({ initialQuery = '' } = {}) {
     setLoading(true)
     listEvents(range.from, range.to)
       .then((evs) => { setEvents(evs); setError('') })
-      .catch((e) => { setError(e?.message || 'unavailable'); setEvents([]) })
+      .catch((e: unknown) => { setError(errMessage(e, 'unavailable')); setEvents([]) })
       .finally(() => setLoading(false))
   }, [range.from, range.to])
 
@@ -124,12 +159,13 @@ export default function Calendar({ initialQuery = '' } = {}) {
 
   // events grouped by their day key (local yyyy-mm-dd) for the month grid.
   const byDay = useMemo(() => {
-    const m = new Map()
+    const m = new Map<string, CalendarEvent[]>()
     for (const ev of events) {
       if (!ev._start) continue
       const key = toDateInput(ev._start)
-      if (!m.has(key)) m.set(key, [])
-      m.get(key).push(ev)
+      const list = m.get(key)
+      if (list) list.push(ev)
+      else m.set(key, [ev])
     }
     return m
   }, [events])
@@ -142,8 +178,8 @@ export default function Calendar({ initialQuery = '' } = {}) {
   // Agenda: upcoming events from now, grouped by day, soonest first.
   const agenda = useMemo(() => {
     const cutoff = startOfDay(now)
-    const groups = []
-    let cur = null
+    const groups: AgendaGroup[] = []
+    let cur: AgendaGroup | null = null
     for (const ev of events) {
       if (!ev._start || ev._start < cutoff) continue
       const key = toDateInput(ev._start)
@@ -156,8 +192,8 @@ export default function Calendar({ initialQuery = '' } = {}) {
     return groups
   }, [events, now])
 
-  const openEditorForDay = (day) => setEditing(blankEvent(day))
-  const openEditorForEvent = (ev) => setEditing({
+  const openEditorForDay = (day: Date) => setEditing(blankEvent(day))
+  const openEditorForEvent = (ev: CalendarEvent) => setEditing({
     id: ev.id,
     title: ev.title,
     allDay: ev.allDay,
@@ -170,7 +206,7 @@ export default function Calendar({ initialQuery = '' } = {}) {
   const save = async () => {
     if (!editing) return
     setSaving(true)
-    const payload = {
+    const payload: EventFormInput = {
       title: editing.title.trim() || '(untitled)',
       allDay: editing.allDay,
       location: editing.location,
@@ -183,8 +219,8 @@ export default function Calendar({ initialQuery = '' } = {}) {
       else await createEvent(payload)
       setEditing(null)
       load()
-    } catch (e) {
-      setError(e?.message || 'save failed')
+    } catch (e: unknown) {
+      setError(errMessage(e, 'save failed'))
     } finally {
       setSaving(false)
     }
@@ -197,8 +233,8 @@ export default function Calendar({ initialQuery = '' } = {}) {
       await deleteEvent(editing.id)
       setEditing(null)
       load()
-    } catch (e) {
-      setError(e?.message || 'delete failed')
+    } catch (e: unknown) {
+      setError(errMessage(e, 'delete failed'))
     } finally {
       setSaving(false)
     }
@@ -286,7 +322,7 @@ export default function Calendar({ initialQuery = '' } = {}) {
       {editing && (
         <EventEditor
           form={editing}
-          setForm={setEditing}
+          setForm={(fn) => setEditing((f) => (f ? fn(f) : f))}
           onSave={save}
           onDelete={remove}
           onCancel={() => setEditing(null)}
@@ -297,7 +333,16 @@ export default function Calendar({ initialQuery = '' } = {}) {
   )
 }
 
-function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
+interface MonthGridProps {
+  days: Date[]
+  month: Date
+  now: Date
+  byDay: Map<string, CalendarEvent[]>
+  onDay: (day: Date) => void
+  onEvent: (ev: CalendarEvent) => void
+}
+
+function MonthGrid({ days, month, now, byDay, onDay, onEvent }: MonthGridProps) {
   return (
     <div className="flex-1 flex flex-col min-h-0 animate-[fadeIn_0.18s_ease-out]">
       <div className="grid grid-cols-7 shrink-0 border-b" style={{ borderColor: 'var(--border-strong)' }}>
@@ -376,7 +421,14 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }) {
   )
 }
 
-function AgendaList({ groups, now, onEvent, loading }) {
+interface AgendaListProps {
+  groups: AgendaGroup[]
+  now: Date
+  onEvent: (ev: CalendarEvent) => void
+  loading: boolean
+}
+
+function AgendaList({ groups, now, onEvent, loading }: AgendaListProps) {
   if (loading && groups.length === 0) {
     return (
       <div className="flex-1 grid place-items-center text-neutral-500 text-sm gap-2">
@@ -437,13 +489,22 @@ function AgendaList({ groups, now, onEvent, loading }) {
   )
 }
 
-function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }) {
-  const set = (patch) => setForm((f) => ({ ...f, ...patch }))
-  const onStart = (v) => {
+interface EventEditorProps {
+  form: EventForm
+  setForm: (fn: (f: EventForm) => EventForm) => void
+  onSave: () => void
+  onDelete: () => void
+  onCancel: () => void
+  saving: boolean
+}
+
+function EventEditor({ form, setForm, onSave, onDelete, onCancel, saving }: EventEditorProps) {
+  const set = (patch: Partial<EventForm>) => setForm((f) => ({ ...f, ...patch }))
+  const onStart = (v: string) => {
     const d = parseDate(v)
     if (d) set({ start: d, end: form.end < d ? new Date(d.getTime() + 60 * 60 * 1000) : form.end })
   }
-  const onEnd = (v) => { const d = parseDate(v); if (d) set({ end: d }) }
+  const onEnd = (v: string) => { const d = parseDate(v); if (d) set({ end: d }) }
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-black/50 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]" onClick={onCancel} data-event-editor>
       <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 shadow-2xl shadow-black/50 overflow-hidden anim-sheet-up"

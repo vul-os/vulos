@@ -17,7 +17,7 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 import {
-  resolveAbsPath, guessMime, buildSendBody, buildFolderArchiveCommand,
+  resolveAbsPath, guessMime, buildSendBody, buildFolderArchiveCommand, type SharePeer,
 } from './shareToPeer.js'
 
 /* ── Icons (inline SVG — no external deps, matches Drop.jsx) ── */
@@ -51,7 +51,30 @@ const IconWifi = () => (
   </svg>
 )
 
-async function apiJSON(url, options = {}) {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+/** A roster entry from GET /api/peering/drop/nearby — the same list the
+ *  (retired) Drop panel showed. Only `vula_id` is guaranteed; it satisfies
+ *  {@link SharePeer} so a roster entry can be handed straight to
+ *  buildSendBody(). */
+export interface DropPeer extends SharePeer {
+  display_name?: string
+  is_contact?: boolean
+}
+
+function isDropPeer(x: unknown): x is DropPeer {
+  return isRecord(x) && typeof x.vula_id === 'string'
+}
+
+/** Message from a thrown value — network/API errors here are `unknown` in
+ *  strict mode's catch clauses, never blindly assumed to be an Error. */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+async function apiJSON(url: string, options: RequestInit = {}): Promise<unknown> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
@@ -63,30 +86,39 @@ async function apiJSON(url, options = {}) {
   return res.json().catch(() => ({}))
 }
 
-/**
- * @param {object}   props
- * @param {{name:string, path:string, isDir:boolean}} props.target  file/folder to share
- * @param {string|null} props.home   resolved $HOME for ~-expansion
- * @param {(cmd:string)=>Promise<string>} props.exec  Files exec bridge (for folder tar)
- * @param {()=>void}  props.onClose
- */
-export default function SharePeerModal({ target, home, exec, onClose }) {
-  const [peers, setPeers] = useState([])
+export interface ShareTarget {
+  name: string
+  path: string
+  isDir: boolean
+}
+
+export interface SharePeerModalProps {
+  /** file/folder to share */
+  target: ShareTarget
+  /** resolved $HOME for ~-expansion */
+  home: string | null
+  /** Files exec bridge (for folder tar) */
+  exec: (cmd: string) => Promise<string>
+  onClose: () => void
+}
+
+export default function SharePeerModal({ target, home, exec, onClose }: SharePeerModalProps) {
+  const [peers, setPeers] = useState<DropPeer[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
   // sending: vula_id currently in flight; sent: vula_id -> true; failed: vula_id -> msg
-  const [sending, setSending] = useState(null)
-  const [sent, setSent] = useState({})
-  const [failed, setFailed] = useState({})
+  const [sending, setSending] = useState<string | null>(null)
+  const [sent, setSent] = useState<Record<string, boolean>>({})
+  const [failed, setFailed] = useState<Record<string, string>>({})
 
   const loadPeers = useCallback(async () => {
     setLoading(true)
     try {
       const data = await apiJSON('/api/peering/drop/nearby')
-      setPeers(Array.isArray(data) ? data : [])
+      setPeers(Array.isArray(data) ? data.filter(isDropPeer) : [])
       setError(null)
     } catch (err) {
-      setError(err.message)
+      setError(errMessage(err))
     } finally {
       setLoading(false)
     }
@@ -96,12 +128,12 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
 
   // Close on Escape.
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const share = useCallback(async (peer) => {
+  const share = useCallback(async (peer: DropPeer) => {
     if (sending) return
     setSending(peer.vula_id)
     setFailed(prev => { const n = { ...prev }; delete n[peer.vula_id]; return n })
@@ -130,7 +162,7 @@ export default function SharePeerModal({ target, home, exec, onClose }) {
       })
       setSent(prev => ({ ...prev, [peer.vula_id]: true }))
     } catch (err) {
-      setFailed(prev => ({ ...prev, [peer.vula_id]: err.message }))
+      setFailed(prev => ({ ...prev, [peer.vula_id]: errMessage(err) }))
     } finally {
       setSending(null)
     }

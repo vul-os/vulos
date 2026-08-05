@@ -12,13 +12,13 @@
 // scope for a network-mocked E2E. The subscribe/register wire contract is
 // covered by the jsdom unit suite (webPush.test.js).
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
 const PUBKEY = 'BEl6-2p9d3ExampleVapidPublicKeyBytesForE2E_00000000000000000000000000000000000000000000'
 
 // Open Settings via the command palette and land on the Notifications section.
-async function openNotificationSettings(page) {
+async function openNotificationSettings(page: Page) {
   await page.goto('/')
   await expect(page.getByTitle('Chat (Ctrl+K)')).toBeVisible({ timeout: 15_000 })
   const input = page.getByPlaceholder(/Search apps/)

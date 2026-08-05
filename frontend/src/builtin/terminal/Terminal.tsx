@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal as XTerm } from 'xterm'
+import { useEffect, useRef, useState, useCallback, type MouseEvent as ReactMouseEvent, type CSSProperties } from 'react'
+import { Terminal as XTerm, type ITheme } from 'xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import 'xterm/css/xterm.css'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/pty`
 
@@ -10,7 +14,7 @@ const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.ho
 // Theme definitions
 // Default theme is byte-identical to the original hardcoded values.
 // ---------------------------------------------------------------------------
-const THEMES = {
+const THEMES: Record<string, ITheme> = {
   Default: {
     background: '#0a0a0a',
     foreground: '#e5e5e5',
@@ -125,40 +129,67 @@ const FONT_SIZES = [11, 12, 13, 14, 15, 16, 18, 20]
 
 const STORAGE_KEY = 'terminal-prefs'
 
-const DEFAULT_PREFS = {
+interface TerminalPrefs {
+  theme: string
+  fontFamily: string
+  fontSize: number
+}
+
+const DEFAULT_PREFS: TerminalPrefs = {
   theme: 'Default',
   fontFamily: FONT_FAMILIES[0],
   fontSize: 14,
 }
 
-function loadPrefs() {
+function loadPrefs(): TerminalPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...DEFAULT_PREFS }
-    const parsed = JSON.parse(raw)
-    return {
-      theme: THEME_NAMES.includes(parsed.theme) ? parsed.theme : DEFAULT_PREFS.theme,
-      fontFamily: FONT_FAMILIES.includes(parsed.fontFamily) ? parsed.fontFamily : DEFAULT_PREFS.fontFamily,
-      fontSize: FONT_SIZES.includes(parsed.fontSize) ? parsed.fontSize : DEFAULT_PREFS.fontSize,
-    }
+    const parsed: unknown = JSON.parse(raw)
+    if (!isRecord(parsed)) return { ...DEFAULT_PREFS }
+    const theme = typeof parsed.theme === 'string' && THEME_NAMES.includes(parsed.theme)
+      ? parsed.theme
+      : DEFAULT_PREFS.theme
+    const fontFamily = typeof parsed.fontFamily === 'string' && FONT_FAMILIES.includes(parsed.fontFamily)
+      ? parsed.fontFamily
+      : DEFAULT_PREFS.fontFamily
+    const fontSize = typeof parsed.fontSize === 'number' && FONT_SIZES.includes(parsed.fontSize)
+      ? parsed.fontSize
+      : DEFAULT_PREFS.fontSize
+    return { theme, fontFamily, fontSize }
   } catch {
     return { ...DEFAULT_PREFS }
   }
 }
 
-function savePrefs(prefs) {
+function savePrefs(prefs: TerminalPrefs): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
   } catch { /* noop */ }
 }
 
+// A PTY session as returned by GET /api/pty/sessions.
+interface PtySession {
+  id: string
+  alive?: boolean
+  attached?: boolean
+}
+
+interface SessionPickerProps {
+  sessions: PtySession[]
+  onNew: () => void
+  onAttach: (id: string) => void
+  onKill: (id: string) => void
+  prefs: TerminalPrefs
+}
+
 // ---------------------------------------------------------------------------
 // Session Picker (unchanged behavior; uses prefs for colors)
 // ---------------------------------------------------------------------------
-function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }) {
+function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }: SessionPickerProps) {
   const theme = THEMES[prefs.theme]
-  const hoverIn = (bg) => (e) => { e.currentTarget.style.background = bg }
-  const hoverOut = (bg) => (e) => { e.currentTarget.style.background = bg }
+  const hoverIn = (bg?: string) => (e: ReactMouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = bg ?? '' }
+  const hoverOut = (bg?: string) => (e: ReactMouseEvent<HTMLDivElement>) => { e.currentTarget.style.background = bg ?? '' }
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -206,8 +237,8 @@ function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }) {
               </div>
               {s.alive && (
                 <button onClick={() => onAttach(s.id)}
-                  onMouseEnter={e => { e.currentTarget.style.background = theme.brightBlack }}
-                  onMouseLeave={e => { e.currentTarget.style.background = theme.selectionBackground }}
+                  onMouseEnter={e => { e.currentTarget.style.background = theme.brightBlack ?? '' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = theme.selectionBackground ?? '' }}
                   style={{
                     background: theme.selectionBackground, border: 'none', color: theme.foreground,
                     padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
@@ -217,8 +248,8 @@ function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }) {
                 </button>
               )}
               <button onClick={() => onKill(s.id)} aria-label={`Kill session ${s.id}`} title="Kill session"
-                onMouseEnter={e => { e.currentTarget.style.color = theme.red }}
-                onMouseLeave={e => { e.currentTarget.style.color = theme.brightBlack }}
+                onMouseEnter={e => { e.currentTarget.style.color = theme.red ?? '' }}
+                onMouseLeave={e => { e.currentTarget.style.color = theme.brightBlack ?? '' }}
                 style={{
                   background: 'transparent', border: 'none', color: theme.brightBlack,
                   padding: '5px 7px', cursor: 'pointer', fontSize: 13, lineHeight: 1,
@@ -247,18 +278,24 @@ function SessionPicker({ sessions, onNew, onAttach, onKill, prefs }) {
   )
 }
 
+interface SettingsPanelProps {
+  prefs: TerminalPrefs
+  onChange: (prefs: TerminalPrefs) => void
+  onClose: () => void
+}
+
 // ---------------------------------------------------------------------------
 // Settings panel
 // ---------------------------------------------------------------------------
-function SettingsPanel({ prefs, onChange, onClose }) {
+function SettingsPanel({ prefs, onChange, onClose }: SettingsPanelProps) {
   const theme = THEMES[prefs.theme]
   const panelBg = theme.background === '#fafafa' ? '#f0f0f0' : '#1e1e1e'
   const panelFg = theme.foreground
   const borderColor = theme.selectionBackground
 
-  const row = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }
-  const label = { fontSize: 11, color: theme.brightBlack, minWidth: 72 }
-  const select = {
+  const row: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }
+  const label: CSSProperties = { fontSize: 11, color: theme.brightBlack, minWidth: 72 }
+  const select: CSSProperties = {
     flex: 1, background: theme.black, color: panelFg, border: `1px solid ${borderColor}`,
     borderRadius: 4, padding: '3px 6px', fontSize: 12, cursor: 'pointer',
     fontFamily: prefs.fontFamily,
@@ -334,22 +371,27 @@ function SettingsPanel({ prefs, onChange, onClose }) {
   )
 }
 
+interface TerminalViewProps {
+  sessionID: string | null
+  prefs: TerminalPrefs
+}
+
 // ---------------------------------------------------------------------------
 // Terminal view
 // ---------------------------------------------------------------------------
-function TerminalView({ sessionID, prefs }) {
-  const containerRef = useRef(null)
-  const termRef = useRef(null)
-  const fitAddonRef = useRef(null)
+function TerminalView({ sessionID, prefs }: TerminalViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<XTerm | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const [showSettings, setShowSettings] = useState(false)
-  const [currentPrefs, setCurrentPrefs] = useState(prefs)
+  const [currentPrefs, setCurrentPrefs] = useState<TerminalPrefs>(prefs)
 
   // Keep ref up-to-date for the resize observer closure
   const currentPrefsRef = useRef(currentPrefs)
   // eslint-disable-next-line react-hooks/refs
   currentPrefsRef.current = currentPrefs
 
-  const handlePrefsChange = useCallback((newPrefs) => {
+  const handlePrefsChange = useCallback((newPrefs: TerminalPrefs) => {
     setCurrentPrefs(newPrefs)
     savePrefs(newPrefs)
     const term = termRef.current
@@ -364,7 +406,7 @@ function TerminalView({ sessionID, prefs }) {
     }
     // Sync container background to new theme
     if (containerRef.current) {
-      containerRef.current.style.background = THEMES[newPrefs.theme].background
+      containerRef.current.style.background = THEMES[newPrefs.theme].background ?? ''
     }
   }, [])
 
@@ -403,7 +445,7 @@ function TerminalView({ sessionID, prefs }) {
 
     ws.onopen = () => term.focus()
 
-    ws.onmessage = (e) => {
+    ws.onmessage = (e: MessageEvent<string | ArrayBuffer>) => {
       const data = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data)
       term.write(data)
     }
@@ -455,14 +497,14 @@ function TerminalView({ sessionID, prefs }) {
           fontSize: 14, lineHeight: 1, transition: 'background 0.15s, color 0.15s',
         }}
         onMouseEnter={e => {
-          e.currentTarget.style.background = theme.selectionBackground
-          e.currentTarget.style.color = theme.foreground
-          e.currentTarget.style.borderColor = theme.selectionBackground
+          e.currentTarget.style.background = theme.selectionBackground ?? ''
+          e.currentTarget.style.color = theme.foreground ?? ''
+          e.currentTarget.style.borderColor = theme.selectionBackground ?? ''
         }}
         onMouseLeave={e => {
           if (!showSettings) {
             e.currentTarget.style.background = 'transparent'
-            e.currentTarget.style.color = theme.brightBlack
+            e.currentTarget.style.color = theme.brightBlack ?? ''
             e.currentTarget.style.borderColor = 'transparent'
           }
         }}
@@ -489,20 +531,29 @@ function TerminalView({ sessionID, prefs }) {
   )
 }
 
+type TerminalMode = 'loading' | 'pick' | 'terminal'
+
+// isPtySessionArray narrows an unknown JSON response into PtySession[] — the
+// only shape TerminalView/SessionPicker are allowed to see. A non-array or an
+// element missing a string `id` is treated the same as "no sessions".
+function isPtySessionArray(x: unknown): x is PtySession[] {
+  return Array.isArray(x) && x.every(s => isRecord(s) && typeof s.id === 'string')
+}
+
 // ---------------------------------------------------------------------------
 // Root Terminal component
 // ---------------------------------------------------------------------------
 export default function Terminal() {
-  const [mode, setMode] = useState('loading') // loading | pick | terminal
-  const [sessions, setSessions] = useState([])
-  const [targetSession, setTargetSession] = useState(null)
-  const [prefs] = useState(loadPrefs)
+  const [mode, setMode] = useState<TerminalMode>('loading')
+  const [sessions, setSessions] = useState<PtySession[]>([])
+  const [targetSession, setTargetSession] = useState<string | null>(null)
+  const [prefs] = useState<TerminalPrefs>(loadPrefs)
 
   useEffect(() => {
     fetch('/api/pty/sessions')
       .then(r => r.json())
-      .then(list => {
-        if (!Array.isArray(list)) throw new Error('not array')
+      .then((list: unknown) => {
+        if (!isPtySessionArray(list)) throw new Error('not array')
         const alive = list.filter(s => s.alive)
         if (alive.length === 0) {
           setMode('terminal')
@@ -517,12 +568,12 @@ export default function Terminal() {
       })
   }, [])
 
-  const handleKill = async (id) => {
+  const handleKill = async (id: string) => {
     await fetch(`/api/pty/sessions?id=${id}`, { method: 'DELETE' })
     try {
       const res = await fetch('/api/pty/sessions')
-      const list = await res.json()
-      if (Array.isArray(list) && list.filter(s => s.alive).length > 0) {
+      const list: unknown = await res.json()
+      if (isPtySessionArray(list) && list.filter(s => s.alive).length > 0) {
         setSessions(list)
         return
       }

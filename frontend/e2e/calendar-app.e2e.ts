@@ -6,7 +6,7 @@
 // exactly the kind of change that can white-screen the OS shell. The /v1 surface
 // is mocked at the browser network layer; nothing here talks to a real lilmail.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Request } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
 
 // An events payload with one event today (within the visible month grid).
@@ -18,8 +18,8 @@ function eventsToday() {
   })
 }
 
-async function boot(page, overrides = {}) {
-  const errors = []
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await installBackend(page, overrides)
   await page.goto('/')
@@ -28,7 +28,7 @@ async function boot(page, overrides = {}) {
 }
 
 // Launch a builtin by name via the ⌘K palette (same lane the Launchpad uses).
-async function launch(page, name) {
+async function launch(page: Page, name: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')
@@ -55,10 +55,10 @@ test('the Calendar app opens, shows the month + an event, and switches to agenda
 })
 
 test('the Calendar app creates an event through the /v1 write path', async ({ page }) => {
-  let posted = null
+  const state: { posted: { summary?: string } | null } = { posted: null }
   const errors = await boot(page, {
     'GET /api/pim/calendar/events': json({ events: [] }),
-    'POST /api/pim/calendar/events': (req) => { posted = req.postDataJSON(); return json({ event: { uid: 'new' } }, 201) },
+    'POST /api/pim/calendar/events': (req: Request) => { state.posted = req.postDataJSON(); return json({ event: { uid: 'new' } }, 201) },
   })
   await launch(page, 'Calendar')
 
@@ -71,7 +71,7 @@ test('the Calendar app creates an event through the /v1 write path', async ({ pa
 
   // The editor closes and the create hit the /v1 seam with the mapped body.
   await expect(editor).toBeHidden()
-  expect(posted?.summary).toBe('Dentist')
+  expect(state.posted?.summary).toBe('Dentist')
 
   expect(errors, `uncaught page errors: ${errors.join(' | ')}`).toEqual([])
 })

@@ -21,7 +21,8 @@
 //   • a rapid, identical second fix is throttled — no double-POST
 //   • GET /api/location surfaces a fix into a consuming view
 
-import { test, expect } from '@playwright/test'
+/// <reference types="node" />
+import { test, expect, type Page, type Request } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -33,6 +34,32 @@ const REPORTER_SRC = readFileSync(join(__dirname, '..', 'src', 'core', 'location
 
 const HARNESS_PATH = '/loc-harness'
 const SESSION_COOKIE = 'vulos_session=LOC-SESSION-MARKER'
+
+// The harness's classic script installs this on `window` before the reporter
+// module runs (see HARNESS_HTML below) — a controllable geolocation stub the
+// tests drive via page.evaluate().
+declare global {
+  interface Window {
+    __geo: {
+      fire: (coords: {
+        latitude: number
+        longitude: number
+        accuracy?: number
+        altitude?: number
+        heading?: number
+        speed?: number
+      }) => void
+      error: (e: unknown) => void
+    }
+  }
+}
+
+interface LocationFix {
+  lat: number
+  lng: number
+  accuracy: number
+  ts: number
+}
 
 // The harness page. A classic script installs a controllable navigator.geolocation
 // stub BEFORE the module script runs (so startLocationReporting() picks it up),
@@ -76,7 +103,12 @@ ${REPORTER_SRC}
 </script>
 </body></html>`
 
-async function serveHarness(page, { onPost, getSpec } = {}) {
+interface HarnessOpts {
+  onPost?: (req: Request) => void
+  getSpec?: LocationFix
+}
+
+async function serveHarness(page: Page, { onPost, getSpec }: HarnessOpts = {}) {
   await page.route(`**${HARNESS_PATH}`, (route) =>
     route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: HARNESS_HTML }),
   )
@@ -92,7 +124,7 @@ async function serveHarness(page, { onPost, getSpec } = {}) {
   })
 }
 
-async function boot(page, opts) {
+async function boot(page: Page, opts?: HarnessOpts) {
   await serveHarness(page, opts)
   await page.goto(HARNESS_PATH)
   // The reporter armed its watch against our stub.
@@ -103,7 +135,7 @@ async function boot(page, opts) {
 }
 
 test('a geolocation fix POSTs the fix to /api/location with credentials', async ({ page }) => {
-  const posts = []
+  const posts: Request[] = []
   await boot(page, { onPost: (req) => posts.push(req) })
 
   await page.evaluate(() => window.__geo.fire({
@@ -125,7 +157,7 @@ test('a geolocation fix POSTs the fix to /api/location with credentials', async 
 })
 
 test('a rapid identical second fix is throttled — no double-POST', async ({ page }) => {
-  const posts = []
+  const posts: Request[] = []
   await boot(page, { onPost: (req) => posts.push(req) })
 
   // Two identical fixes back to back: default throttle is 10s / 25m, so the second

@@ -19,7 +19,7 @@ const Spinner = () => (
   </div>
 )
 
-export default function DashboardApp({ initialTab }) {
+export default function DashboardApp({ initialTab }: { initialTab?: string }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'web')
 
   return (

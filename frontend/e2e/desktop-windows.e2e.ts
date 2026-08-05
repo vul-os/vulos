@@ -6,10 +6,10 @@
 // clicking the Dock entry restores it; close removes it. Also opens Mission
 // Control (F3) and the ⌘K palette to confirm the shell chrome is wired.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend } from './mock-backend.js'
 
-async function boot(page) {
+async function boot(page: Page) {
   await installBackend(page)
   await page.goto('/')
   await expect(page.getByTitle('Applications')).toBeVisible({ timeout: 15_000 })
@@ -18,7 +18,7 @@ async function boot(page) {
 // Launch an app through the ⌘K command palette (the same real launch path the
 // Launchpad uses via launchApp), which is more click-stable in a headless run
 // than the re-rendering Launchpad grid.
-async function launch(page, appName) {
+async function launch(page: Page, appName: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')

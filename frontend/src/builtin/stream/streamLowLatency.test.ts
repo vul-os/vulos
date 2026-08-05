@@ -1,5 +1,5 @@
 /**
- * streamLowLatency.test.js — StreamViewer's gaming low-latency receive hint.
+ * streamLowLatency.test.ts — StreamViewer's gaming low-latency receive hint.
  *
  * Verifies that GAMING sessions request a minimal receive-side jitter buffer
  * (RTCRtpReceiver.playoutDelayHint = 0) while non-gaming desktop streams keep
@@ -11,7 +11,16 @@ import { describe, it, expect } from 'vitest'
 import { applyLowLatencyHints } from './lowLatency'
 
 // A minimal stand-in for the transceiver returned by pc.addTransceiver('video').
-function fakeTransceiver() {
+// Typed with a required (non-nullable) `receiver` — unlike the exported
+// LowLatencyTransceiver (whose `receiver` is optional/nullable to accept a
+// bare RTCRtpTransceiver too) — so the assertions below can read
+// `tr.receiver.playoutDelayHint` directly, exactly as the real fixture shape
+// guarantees.
+interface FakeTransceiver {
+  receiver: { playoutDelayHint?: number }
+}
+
+function fakeTransceiver(): FakeTransceiver {
   return { receiver: {} }
 }
 

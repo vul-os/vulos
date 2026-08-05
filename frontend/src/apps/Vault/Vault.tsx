@@ -1,10 +1,80 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties, type ReactNode, type FormEvent, type ChangeEvent } from 'react'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// errorMessage pulls a server-supplied `{ error: string }` (or `{ message }`)
+// out of an untrusted JSON body without ever casting the body to a nicer
+// shape.
+function errorMessage(x: unknown): string | undefined {
+  if (!isRecord(x)) return undefined
+  if (typeof x.error === 'string') return x.error
+  if (typeof x.message === 'string') return x.message
+  return undefined
+}
+
+// caughtMessage mirrors the exact `err?.message || fallback` shape used
+// throughout this file's catch blocks, now that `catch` binds `unknown`
+// under strict mode instead of the old implicit `any`.
+function caughtMessage(err: unknown, fallback: string): string {
+  return isRecord(err) && typeof err.message === 'string' && err.message ? err.message : fallback
+}
+
+// A vault entry as this file uses it. Every field is optional because it is
+// narrowed from untrusted server JSON (see toVaultEntry) — nothing here is
+// ever cast to this shape, only assembled into it field-by-field. The list
+// endpoint and the single-entry endpoint return overlapping shapes (the list
+// omits password/notes), so one type covers both.
+interface VaultEntry {
+  id?: string
+  title?: string
+  name?: string
+  username?: string
+  email?: string
+  url?: string
+  password?: string
+  notes?: string
+}
+
+function toVaultEntry(x: unknown): VaultEntry {
+  if (!isRecord(x)) return {}
+  return {
+    id: x.id !== undefined && x.id !== null ? String(x.id) : undefined,
+    title: typeof x.title === 'string' ? x.title : undefined,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    username: typeof x.username === 'string' ? x.username : undefined,
+    email: typeof x.email === 'string' ? x.email : undefined,
+    url: typeof x.url === 'string' ? x.url : undefined,
+    password: typeof x.password === 'string' ? x.password : undefined,
+    notes: typeof x.notes === 'string' ? x.notes : undefined,
+  }
+}
+
+interface VaultImportResult {
+  imported?: number
+  skipped?: number
+  errors?: number
+  parsed?: number
+  warnings?: string[]
+}
+
+function toVaultImportResult(x: unknown): VaultImportResult {
+  if (!isRecord(x)) return {}
+  return {
+    imported: typeof x.imported === 'number' ? x.imported : undefined,
+    skipped: typeof x.skipped === 'number' ? x.skipped : undefined,
+    errors: typeof x.errors === 'number' ? x.errors : undefined,
+    parsed: typeof x.parsed === 'number' ? x.parsed : undefined,
+    warnings: Array.isArray(x.warnings) ? x.warnings.filter((w): w is string => typeof w === 'string') : undefined,
+  }
+}
 
 // ── Inactivity relock timer (5 minutes) ──────────────────────────────────────
 const RELOCK_MS = 5 * 60 * 1000
 
-function useRelockTimer(locked, onLock) {
-  const timerRef = useRef(null)
+function useRelockTimer(locked: boolean, onLock: () => void): void {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const reset = useCallback(() => {
     if (locked) return
@@ -25,8 +95,18 @@ function useRelockTimer(locked, onLock) {
 }
 
 // ── Password generator hook ───────────────────────────────────────────────────
+interface GeneratorOpts {
+  length: number
+  upper: boolean
+  lower: boolean
+  digits: boolean
+  symbols: boolean
+}
+
+type GeneratorBoolField = 'upper' | 'lower' | 'digits' | 'symbols'
+
 function useGenerator() {
-  const [opts, setOpts] = useState({ length: 20, upper: true, lower: true, digits: true, symbols: true })
+  const [opts, setOpts] = useState<GeneratorOpts>({ length: 20, upper: true, lower: true, digits: true, symbols: true })
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -39,8 +119,11 @@ function useGenerator() {
         body: JSON.stringify(opts),
       })
       if (res.ok) {
-        const data = await res.json()
-        setResult(data.password || data.value || '')
+        const data: unknown = await res.json()
+        const password = isRecord(data) && typeof data.password === 'string' ? data.password
+          : isRecord(data) && typeof data.value === 'string' ? data.value
+          : ''
+        setResult(password)
       }
     } catch { /* ignore */ }
     setLoading(false)
@@ -51,8 +134,8 @@ function useGenerator() {
 
 // ── Copy helper with confirm flash ───────────────────────────────────────────
 function useCopy() {
-  const [copied, setCopied] = useState(null) // key string
-  const copy = useCallback(async (text, key) => {
+  const [copied, setCopied] = useState<string | null>(null) // key string
+  const copy = useCallback(async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(key)
@@ -64,7 +147,7 @@ function useCopy() {
 
 // ── Password strength estimate (presentational only) ─────────────────────────
 // Rough, on-device heuristic used purely to colour the generator's strength bar.
-function estimateStrength(pw) {
+function estimateStrength(pw: string): { score: number; label: string; color: string } {
   if (!pw) return { score: 0, label: '', color: 'var(--text-muted)' }
   let variety = 0
   if (/[a-z]/.test(pw)) variety++
@@ -112,7 +195,7 @@ const IconPlus = () => (
   </svg>
 )
 
-const IconEye = ({ open }) => open ? (
+const IconEye = ({ open }: { open: boolean }) => open ? (
   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
     <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
     <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
@@ -169,8 +252,14 @@ const IconTransfer = () => (
 
 // ── Import / Export helpers ──────────────────────────────────────────────────
 
+interface ImportFormatOption {
+  value: string
+  label: string
+  ext: string
+}
+
 // The formats a user can bring a vault in from. `ext` drives the file picker.
-const IMPORT_FORMATS = [
+const IMPORT_FORMATS: ImportFormatOption[] = [
   { value: 'bitwarden', label: 'Bitwarden (.json)', ext: '.json' },
   { value: 'chrome-csv', label: 'Chrome / Chromium (.csv)', ext: '.csv' },
   { value: 'keepass-csv', label: 'KeePass (.csv)', ext: '.csv' },
@@ -181,16 +270,20 @@ const IMPORT_FORMATS = [
 
 // fileToBase64 reads a File into base64 without blowing the call stack on a
 // large file (String.fromCharCode(...bytes) overflows well before our size cap).
-function fileToBase64(file) {
+function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onerror = () => reject(new Error('Could not read that file'))
     reader.onload = () => {
+      // readAsArrayBuffer below guarantees this, but narrow explicitly rather
+      // than casting — a non-ArrayBuffer result becomes the same "could not
+      // read" rejection as an actual read error, never a runtime throw.
+      if (!(reader.result instanceof ArrayBuffer)) { reject(new Error('Could not read that file')); return }
       const bytes = new Uint8Array(reader.result)
       let binary = ''
       const CHUNK = 0x8000
       for (let i = 0; i < bytes.length; i += CHUNK) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK))
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
       }
       resolve(btoa(binary))
     }
@@ -199,7 +292,7 @@ function fileToBase64(file) {
 }
 
 // downloadBlob triggers a browser download of `data` (a Uint8Array).
-function downloadBlob(data, filename) {
+function downloadBlob(data: Uint8Array<ArrayBuffer>, filename: string): void {
   const url = URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' }))
   const a = document.createElement('a')
   a.href = url
@@ -210,7 +303,7 @@ function downloadBlob(data, filename) {
   URL.revokeObjectURL(url)
 }
 
-function base64ToBytes(b64) {
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64)
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
@@ -223,16 +316,16 @@ function base64ToBytes(b64) {
 // plus any warnings the server returned. A password import that quietly drops
 // rows leaves the user believing they migrated when they did not, so there is no
 // "success" state here that hides a partial result.
-function TransferPanel({ onBack, onImported }) {
-  const [tab, setTab] = useState('import') // 'import' | 'export'
+function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported: () => void }) {
+  const [tab, setTab] = useState<'import' | 'export'>('import') // 'import' | 'export'
 
   // --- import state ---
   const [format, setFormat] = useState('bitwarden')
-  const [file, setFile] = useState(null)
+  const [file, setFile] = useState<File | null>(null)
   const [filePassword, setFilePassword] = useState('')
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState('')
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState<VaultImportResult | null>(null)
 
   // --- export state ---
   const [masterPassword, setMasterPassword] = useState('')
@@ -244,7 +337,7 @@ function TransferPanel({ onBack, onImported }) {
 
   const selected = IMPORT_FORMATS.find(f => f.value === format)
 
-  const handleImport = async (e) => {
+  const handleImport = async (e: FormEvent) => {
     e.preventDefault()
     if (!file) { setImportErr('Choose a file to import'); return }
     setImporting(true)
@@ -257,20 +350,20 @@ function TransferPanel({ onBack, onImported }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format, data, password: filePassword }),
       })
-      const body = await res.json().catch(() => ({}))
+      const body: unknown = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setImportErr(body.error || `Import failed (${res.status})`)
+        setImportErr(errorMessage(body) || `Import failed (${res.status})`)
       } else {
-        setResult(body)
+        setResult(toVaultImportResult(body))
         onImported()
       }
-    } catch (err) {
-      setImportErr(err.message || 'Could not read that file')
+    } catch (err: unknown) {
+      setImportErr(caughtMessage(err, 'Could not read that file'))
     }
     setImporting(false)
   }
 
-  const handleExport = async (e) => {
+  const handleExport = async (e: FormEvent) => {
     e.preventDefault()
     setExportErr('')
     setExportDone(false)
@@ -283,12 +376,13 @@ function TransferPanel({ onBack, onImported }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ master_password: masterPassword, password: exportPassword }),
       })
-      const body = await res.json().catch(() => ({}))
+      const body: unknown = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setExportErr(body.error || `Export failed (${res.status})`)
+        setExportErr(errorMessage(body) || `Export failed (${res.status})`)
       } else {
         const stamp = new Date().toISOString().slice(0, 10)
-        downloadBlob(base64ToBytes(body.data), `vulos-vault-${stamp}.vault`)
+        const exportData = isRecord(body) && typeof body.data === 'string' ? body.data : ''
+        downloadBlob(base64ToBytes(exportData), `vulos-vault-${stamp}.vault`)
         setExportDone(true)
         setMasterPassword('')
         setExportPassword('')
@@ -300,7 +394,7 @@ function TransferPanel({ onBack, onImported }) {
     setExporting(false)
   }
 
-  const tabCls = (t) =>
+  const tabCls = (t: 'import' | 'export') =>
     `flex-1 min-h-[36px] py-1.5 rounded-lg text-xs font-medium transition-colors ${
       tab === t ? 'bg-neutral-700/70 text-[var(--text-primary)]' : 'text-neutral-500 hover:text-neutral-300'
     }`
@@ -492,15 +586,15 @@ function TransferPanel({ onBack, onImported }) {
 }
 
 // ── Unlock screen ─────────────────────────────────────────────────────────────
-function UnlockScreen({ onUnlock }) {
+function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const inputRef = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!password) return
     setLoading(true)
@@ -514,8 +608,8 @@ function UnlockScreen({ onUnlock }) {
       if (res.ok) {
         onUnlock()
       } else {
-        const data = await res.json().catch(() => ({}))
-        setError(data.error || data.message || 'Wrong master password')
+        const data: unknown = await res.json().catch(() => ({}))
+        setError(errorMessage(data) || 'Wrong master password')
       }
     } catch {
       setError('Could not reach vault service')
@@ -559,13 +653,13 @@ function UnlockScreen({ onUnlock }) {
 }
 
 // ── Generator panel (inline, can inject into a setter) ───────────────────────
-function GeneratorPanel({ onInsert, onClose }) {
+function GeneratorPanel({ onInsert, onClose }: { onInsert?: (pwd: string) => void; onClose?: () => void }) {
   const gen = useGenerator()
   const { copied, copy } = useCopy()
 
   const handleGenerate = () => { gen.generate() }
 
-  const toggle = (field) => gen.setOpts(prev => ({ ...prev, [field]: !prev[field] }))
+  const toggle = (field: GeneratorBoolField) => gen.setOpts(prev => ({ ...prev, [field]: !prev[field] }))
 
   const strength = estimateStrength(gen.result)
 
@@ -594,12 +688,12 @@ function GeneratorPanel({ onInsert, onClose }) {
 
       {/* Character set toggles */}
       <div className="flex gap-2 flex-wrap">
-        {[
+        {([
           { field: 'upper', label: 'A–Z' },
           { field: 'lower', label: 'a–z' },
           { field: 'digits', label: '0–9' },
           { field: 'symbols', label: '!@#' },
-        ].map(({ field, label }) => (
+        ] as { field: GeneratorBoolField; label: string }[]).map(({ field, label }) => (
           <button
             key={field}
             onClick={() => toggle(field)}
@@ -669,9 +763,17 @@ function GeneratorPanel({ onInsert, onClose }) {
 }
 
 // ── Entry form (add / edit) ───────────────────────────────────────────────────
-function EntryForm({ existing, onSave, onCancel }) {
+interface EntryFormState {
+  title: string
+  username: string
+  password: string
+  url: string
+  notes: string
+}
+
+function EntryForm({ existing, onSave, onCancel }: { existing?: VaultEntry; onSave: (entry: VaultEntry) => void; onCancel: () => void }) {
   const isEdit = !!existing
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<EntryFormState>({
     title: existing?.title || existing?.name || '',
     username: existing?.username || '',
     password: '',
@@ -683,15 +785,16 @@ function EntryForm({ existing, onSave, onCancel }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const set = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }))
+  const set = (k: keyof EntryFormState) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm(prev => ({ ...prev, [k]: e.target.value }))
 
-  const handleSave = async (e) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault()
     if (!form.title) { setError('Title is required'); return }
     setSaving(true)
     setError('')
     try {
-      const payload = { ...form }
+      const payload: Partial<EntryFormState> = { ...form }
       // For edits, only send password if changed
       if (isEdit && !form.password) delete payload.password
 
@@ -706,11 +809,11 @@ function EntryForm({ existing, onSave, onCancel }) {
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        const data = await res.json()
-        onSave(data)
+        const data: unknown = await res.json()
+        onSave(toVaultEntry(data))
       } else {
-        const data = await res.json().catch(() => ({}))
-        setError(data.error || data.message || 'Save failed')
+        const data: unknown = await res.json().catch(() => ({}))
+        setError(errorMessage(data) || 'Save failed')
       }
     } catch {
       setError('Network error')
@@ -828,7 +931,7 @@ function EntryForm({ existing, onSave, onCancel }) {
 // with no htmlFor, so it was associated with nothing: screen readers announced
 // the inputs as unlabelled. Wrapping gives implicit association for every form
 // control (input, select, textarea) with no id plumbing.
-function Field({ label, required, children }) {
+function Field({ label, required, children }: { label: ReactNode; required?: boolean; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-neutral-500 font-medium">
@@ -842,8 +945,13 @@ function Field({ label, required, children }) {
 const inputCls = 'w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30'
 
 // ── Entry detail view ─────────────────────────────────────────────────────────
-function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
-  const [entry, setEntry] = useState(null)
+function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
+  entryMeta: VaultEntry
+  onBack: () => void
+  onEdit: (entry: VaultEntry) => void
+  onDelete: (id: string | undefined) => void
+}) {
+  const [entry, setEntry] = useState<VaultEntry | null>(null)
   const [loading, setLoading] = useState(true)
   const [showPass, setShowPass] = useState(false)
   const [delConfirm, setDelConfirm] = useState(false)
@@ -853,8 +961,8 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetch(`/api/auth/vault/entry/${entryMeta.id}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { setEntry(data); setLoading(false) })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: unknown) => { setEntry(data ? toVaultEntry(data) : null); setLoading(false) })
       .catch(() => setLoading(false))
   }, [entryMeta.id])
 
@@ -927,7 +1035,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
         {(entry.username || entry.email) && (
           <DetailRow
             label="Username"
-            value={entry.username || entry.email}
+            value={entry.username || entry.email || ''}
             copyKey="username"
             copied={copied}
             copy={copy}
@@ -946,7 +1054,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
                   <IconEye open={showPass} />
                 </button>
                 <button
-                  onClick={() => copy(entry.password, 'password')}
+                  onClick={() => entry.password && copy(entry.password, 'password')}
                   className="text-neutral-500 hover:text-neutral-300 min-w-9 h-9 px-1 flex items-center justify-center rounded transition-colors"
                   title="Copy"
                 >
@@ -979,7 +1087,13 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }) {
   )
 }
 
-function DetailRow({ label, value, copyKey, copied, copy }) {
+function DetailRow({ label, value, copyKey, copied, copy }: {
+  label: string
+  value: string
+  copyKey: string
+  copied: string | null
+  copy: (text: string, key: string) => void
+}) {
   return (
     <div className="py-3 border-b border-neutral-800/60 last:border-0">
       <div className="flex items-center justify-between mb-1 gap-2">
@@ -1001,9 +1115,9 @@ function DetailRow({ label, value, copyKey, copied, copy }) {
 }
 
 // ── Entry list item ───────────────────────────────────────────────────────────
-function EntryTile({ entry, onSelect }) {
+function EntryTile({ entry, onSelect }: { entry: VaultEntry; onSelect: (entry: VaultEntry) => void }) {
   const initials = (entry.title || entry.name || '?').slice(0, 2).toUpperCase()
-  const domain = entry.url ? (() => { try { return new URL(entry.url).hostname } catch { return '' } })() : ''
+  const domain = entry.url ? (() => { try { return new URL(entry.url ?? '').hostname } catch { return '' } })() : ''
 
   return (
     <button
@@ -1027,13 +1141,15 @@ function EntryTile({ entry, onSelect }) {
   )
 }
 
+type VaultView = 'list' | 'detail' | 'add' | 'edit' | 'generator' | 'transfer'
+
 // ── Main Vault component ──────────────────────────────────────────────────────
 export default function Vault() {
   const [locked, setLocked] = useState(true)
-  const [entries, setEntries] = useState([])
+  const [entries, setEntries] = useState<VaultEntry[]>([])
   const [search, setSearch] = useState('')
-  const [view, setView] = useState('list') // 'list' | 'detail' | 'add' | 'edit' | 'generator'
-  const [selected, setSelected] = useState(null)
+  const [view, setView] = useState<VaultView>('list') // 'list' | 'detail' | 'add' | 'edit' | 'generator'
+  const [selected, setSelected] = useState<VaultEntry | null>(null)
   const [loadingEntries, setLoadingEntries] = useState(false)
 
   // Relock on inactivity
@@ -1052,7 +1168,7 @@ export default function Vault() {
     try {
       const res = await fetch('/api/auth/vault/entries')
       if (res.ok) {
-        const data = await res.json()
+        const data: unknown = await res.json()
         // GET /api/auth/vault/entries returns a BARE JSON ARRAY.
         //
         // The old code here was `setEntries(data.entries || data || [])`, which
@@ -1061,7 +1177,10 @@ export default function Vault() {
         // which is truthy. React then took that function to be a state-updater,
         // invoked it with no receiver, and threw "Cannot convert undefined or
         // null to object", tearing down the tree. Check the shape explicitly.
-        setEntries(Array.isArray(data) ? data : (data?.entries ?? []))
+        const list = Array.isArray(data)
+          ? data
+          : (isRecord(data) && Array.isArray(data.entries) ? data.entries : [])
+        setEntries(list.map(toVaultEntry))
       }
     } catch { /* ignore */ }
     setLoadingEntries(false)
@@ -1072,24 +1191,24 @@ export default function Vault() {
     loadEntries()
   }, [loadEntries])
 
-  const handleSaveEntry = useCallback((_savedEntry) => { // eslint-disable-line no-unused-vars
+  const handleSaveEntry = useCallback((_savedEntry: VaultEntry) => { // eslint-disable-line @typescript-eslint/no-unused-vars
     loadEntries()
     setView('list')
     setSelected(null)
   }, [loadEntries])
 
-  const handleDeleteEntry = useCallback((id) => {
+  const handleDeleteEntry = useCallback((id: string | undefined) => {
     setEntries(prev => prev.filter(e => e.id !== id))
     setView('list')
     setSelected(null)
   }, [])
 
-  const handleSelectEntry = useCallback((entry) => {
+  const handleSelectEntry = useCallback((entry: VaultEntry) => {
     setSelected(entry)
     setView('detail')
   }, [])
 
-  const handleEditEntry = useCallback((entry) => {
+  const handleEditEntry = useCallback((entry: VaultEntry) => {
     setSelected(entry)
     setView('edit')
   }, [])
