@@ -22,6 +22,7 @@ export interface SovereigntyBlock {
   provider?: string
   model?: string
   endpoint?: string
+  tier?: string
 }
 
 export interface SovereigntyEgress {

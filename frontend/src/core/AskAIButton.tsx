@@ -14,7 +14,13 @@ const SPARKLE = (
   </svg>
 )
 
-export default function AskAIButton({ context, label = 'Ask AI', className = '' }) {
+interface AskAIButtonProps {
+  context?: string
+  label?: string
+  className?: string
+}
+
+export default function AskAIButton({ context, label = 'Ask AI', className = '' }: AskAIButtonProps) {
   const handleClick = () => {
     const message = context || 'How can I get started?'
     window.dispatchEvent(new CustomEvent('vulos:chat', { detail: message }))

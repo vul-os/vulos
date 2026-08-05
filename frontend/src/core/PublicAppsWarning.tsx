@@ -1,6 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type CSSProperties } from 'react'
 import { useNarrow } from '../shell/useNarrow'
 import '../shell/shell-chrome.css'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+interface AppVisibility {
+  visibility?: string
+}
+
+function toAppVisibility(x: unknown): AppVisibility {
+  return isRecord(x) && typeof x.visibility === 'string' ? { visibility: x.visibility } : {}
+}
+
+type ChipStyle = CSSProperties & { '--chip-fg'?: string; '--chip-bg'?: string; '--chip-bd'?: string }
 
 // PublicAppsWarning — the shell's NETWORK-EXPOSURE indicator (the "public ports"
 // widget). It lives in the top-bar system tray and answers, at a glance, the one
@@ -16,7 +30,7 @@ import '../shell/shell-chrome.css'
 
 const VIS_POLL_INTERVAL = 10_000 // 10 seconds
 
-function useVisPublicApps() {
+function useVisPublicApps(): { count: number; hasPublic: boolean } {
   const [visData, setVisData] = useState({ count: 0, hasPublic: false })
 
   useEffect(() => {
@@ -26,8 +40,9 @@ function useVisPublicApps() {
       try {
         const res = await fetch('/api/apps/visibility')
         if (!res.ok) return
-        const list = await res.json()
+        const raw: unknown = await res.json()
         if (cancelled) return
+        const list = Array.isArray(raw) ? raw.map(toAppVisibility) : []
         const nonPrivate = list.filter((a) => a.visibility !== 'private')
         const hasPublic = nonPrivate.some((a) => a.visibility === 'public')
         setVisData({ count: nonPrivate.length, hasPublic })
@@ -79,12 +94,14 @@ export default function PublicAppsWarning() {
   const bg = hasPublic ? 'var(--status-danger-soft)' : 'var(--status-warning-soft)'
   const bd = `color-mix(in srgb, ${hasPublic ? 'var(--status-danger)' : 'var(--status-warning)'} 38%, transparent)`
 
+  const chipStyle: ChipStyle = { '--chip-fg': fg, '--chip-bg': bg, '--chip-bd': bd }
+
   const label = hasPublic ? 'Public' : 'Local'
   const title = hasPublic
     ? `${count} app${count !== 1 ? 's' : ''} reachable on the public web — click to manage exposure`
     : `${count} app${count !== 1 ? 's' : ''} shared on your local network — click to manage exposure`
 
-  function visHandleClick() {
+  function visHandleClick(): void {
     window.dispatchEvent(new CustomEvent('vulos:open-public-apps'))
   }
 
@@ -93,7 +110,7 @@ export default function PublicAppsWarning() {
       onClick={visHandleClick}
       title={title}
       aria-label={title}
-      style={{ '--chip-fg': fg, '--chip-bg': bg, '--chip-bd': bd }}
+      style={chipStyle}
       className="vshell-chip group inline-flex items-center gap-1.5 h-6 pl-1.5 pr-1 rounded-full
         text-[12px] font-semibold leading-none tracking-wide select-none cursor-pointer"
     >

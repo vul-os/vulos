@@ -44,7 +44,7 @@ const FIXTURE = {
   mkHex: '220a43647fd4f97d90c6d530594583a5dc8d12062c8bc89be61bd3bb811874a3',
 }
 
-function hex(u8) {
+function hex(u8: Uint8Array): string {
   return Array.from(u8).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -112,16 +112,39 @@ describe('wrapMasterKeyWithPassword (Tier-2 re-wrap, Go wire parity)', () => {
   })
 })
 
+// Local shape of the RequestInit the module actually passes to fetchImpl
+// (always a JSON-stringified body) — avoids fighting the DOM `RequestInit`/
+// `Response` types for a stand-in that only needs to mimic what the caller
+// reads back (`res.ok`, `res.status`, `res.json()`).
+interface FakeFetchOpts {
+  method?: string
+  headers?: Record<string, string>
+  body: string
+}
+interface FakeFetchResponse {
+  ok: boolean
+  status: number
+  json: () => Promise<Record<string, unknown>>
+}
+interface PostedResetBody {
+  new_password: string
+  password_slot: unknown
+}
+
 describe('resetPasswordWithActiveSession', () => {
   it('posts a client-wrapped slot when the key is held in memory', async () => {
     const mk = await unwrapMasterKeyWithPassword({ ...FIXTURE.env.pw, v: 1 }, FIXTURE.password)
     holdMasterKey(mk)
-    let captured = null
-    const fakeFetch = async (url, opts) => {
+    let captured!: { url: string; body: PostedResetBody }
+    // resetPasswordWithActiveSession's fetchImpl parameter defaults to the
+    // global `fetch` (typed `typeof fetch`, i.e. it must return a real
+    // `Response`); stubbing the global lets this stand-in return a partial
+    // response shape instead of satisfying that full DOM interface.
+    vi.stubGlobal('fetch', async (url: string, opts: FakeFetchOpts): Promise<FakeFetchResponse> => {
       captured = { url, body: JSON.parse(opts.body) }
       return { ok: true, status: 200, json: async () => ({ status: 'password reset' }) }
-    }
-    const out = await resetPasswordWithActiveSession('a fresh new pass!!', fakeFetch)
+    })
+    const out = await resetPasswordWithActiveSession('a fresh new pass!!')
     expect(out.ok).toBe(true)
     expect(captured.url).toBe('/api/auth/masterkey/reset-active')
     expect(captured.body.new_password).toBe('a fresh new pass!!')
@@ -129,6 +152,7 @@ describe('resetPasswordWithActiveSession', () => {
     const mk2 = await unwrapMasterKeyWithPassword(captured.body.password_slot, 'a fresh new pass!!')
     expect(hex(mk2)).toBe(FIXTURE.mkHex)
     clearMasterKey()
+    vi.unstubAllGlobals()
   })
 
   it('fails to the phrase path (NO_MASTER_KEY) when no key is held', async () => {
@@ -140,10 +164,13 @@ describe('resetPasswordWithActiveSession', () => {
 
   it('surfaces NO_MASTER_KEY when the server returns 409', async () => {
     holdMasterKey(new Uint8Array(32).fill(9))
-    const fetch409 = async () => ({ ok: false, status: 409, json: async () => ({ error: 'no master key' }) })
-    await expect(resetPasswordWithActiveSession('another new pw!!', fetch409))
+    vi.stubGlobal('fetch', async (): Promise<FakeFetchResponse> => (
+      { ok: false, status: 409, json: async () => ({ error: 'no master key' }) }
+    ))
+    await expect(resetPasswordWithActiveSession('another new pw!!'))
       .rejects.toMatchObject({ code: 'NO_MASTER_KEY' })
     clearMasterKey()
+    vi.unstubAllGlobals()
   })
 })
 

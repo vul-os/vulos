@@ -16,14 +16,79 @@
  * offer the picker inline (POST /api/assistant/tier — the backend Guard stays
  * authoritative, so this only ever LABELS the posture, never weakens it).
  */
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { tierInfo, deriveEgress } from './sovereignty'
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { tierInfo, deriveEgress, type SovereigntyBlock, type SovereigntyEgress } from './sovereignty'
 
-const SovereigntyContext = createContext(null)
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
 
-export function SovereigntyProvider({ children }) {
-  const [status, setStatus] = useState(null)
-  const [hasMasterKey, setHasMasterKey] = useState(null) // null=unknown, true/false
+export interface SovereigntyTierOption {
+  tier: string
+  label?: string
+}
+
+// AssistantStatus mirrors /api/assistant/status's response shape, narrowed
+// from `unknown` at the fetch boundary rather than trusted wholesale.
+export interface AssistantStatus {
+  tier?: string
+  sovereignty?: SovereigntyBlock
+  tier_options?: SovereigntyTierOption[]
+  label?: string
+}
+
+function toTierOption(x: unknown): SovereigntyTierOption | null {
+  if (!isRecord(x) || typeof x.tier !== 'string') return null
+  return { tier: x.tier, label: typeof x.label === 'string' ? x.label : undefined }
+}
+
+function toSovereigntyBlock(x: unknown): SovereigntyBlock | undefined {
+  if (!isRecord(x)) return undefined
+  return {
+    reason: typeof x.reason === 'string' ? x.reason : undefined,
+    external_allowed: typeof x.external_allowed === 'boolean' ? x.external_allowed : undefined,
+    provider: typeof x.provider === 'string' ? x.provider : undefined,
+    model: typeof x.model === 'string' ? x.model : undefined,
+    endpoint: typeof x.endpoint === 'string' ? x.endpoint : undefined,
+    tier: typeof x.tier === 'string' ? x.tier : undefined,
+  }
+}
+
+function toAssistantStatus(x: unknown): AssistantStatus {
+  if (!isRecord(x)) return {}
+  return {
+    tier: typeof x.tier === 'string' ? x.tier : undefined,
+    sovereignty: toSovereigntyBlock(x.sovereignty),
+    tier_options: Array.isArray(x.tier_options)
+      ? x.tier_options.map(toTierOption).filter((o): o is SovereigntyTierOption => o !== null)
+      : undefined,
+    label: typeof x.label === 'string' ? x.label : undefined,
+  }
+}
+
+export interface SovereigntyContextValue {
+  status: AssistantStatus | null
+  sov: SovereigntyBlock | null
+  tier: string | null
+  tierOptions: SovereigntyTierOption[] | null
+  label: string | null
+  egress: SovereigntyEgress
+  hasMasterKey: boolean | null
+  externalArmed: boolean
+  busy: boolean
+  panelOpen: boolean
+  openPanel: () => void
+  closePanel: () => void
+  togglePanel: () => void
+  refresh: () => void
+  setTier: (tier: string) => Promise<boolean>
+}
+
+const SovereigntyContext = createContext<SovereigntyContextValue | null>(null)
+
+export function SovereigntyProvider({ children }: { children?: ReactNode }) {
+  const [status, setStatus] = useState<AssistantStatus | null>(null)
+  const [hasMasterKey, setHasMasterKey] = useState<boolean | null>(null) // null=unknown, true/false
   const [panelOpen, setPanelOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const mounted = useRef(true)
@@ -31,7 +96,7 @@ export function SovereigntyProvider({ children }) {
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/assistant/status', { credentials: 'include' })
-      if (res.ok && mounted.current) setStatus(await res.json())
+      if (res.ok && mounted.current) setStatus(toAssistantStatus(await res.json()))
     } catch { /* keep last-known; the badge degrades gracefully */ }
   }, [])
 
@@ -53,7 +118,7 @@ export function SovereigntyProvider({ children }) {
     return () => { alive = false }
   }, [])
 
-  const setTier = useCallback(async (tier) => {
+  const setTier = useCallback(async (tier: string) => {
     setBusy(true)
     try {
       const res = await fetch('/api/assistant/tier', {
@@ -63,7 +128,7 @@ export function SovereigntyProvider({ children }) {
         body: JSON.stringify({ tier }),
       })
       if (res.ok) {
-        const next = await res.json()
+        const next = toAssistantStatus(await res.json())
         // /tier returns the same sovereignty shape but without tier_options-less
         // fields; merge so the picker keeps its options.
         setStatus(prev => ({ ...prev, ...next }))
@@ -94,7 +159,7 @@ export function SovereigntyProvider({ children }) {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function useSovereignty() {
+export function useSovereignty(): SovereigntyContextValue {
   const ctx = useContext(SovereigntyContext)
   if (!ctx) throw new Error('useSovereignty must be used within <SovereigntyProvider>')
   return ctx

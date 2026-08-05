@@ -10,6 +10,12 @@
 
 import { useState, useEffect } from 'react'
 
+type NativeMode = 'baremetal' | 'native' | 'browser'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
 const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
 
 // Embedded WebKit engines used on device
@@ -18,7 +24,7 @@ const isEmbeddedWebKit = ua.includes('WPE') || ua.includes('Cog')
 // Detect baremetal: embedded WebKit + no multi-window compositor hints
 // On baremetal, Cog runs fullscreen as the only window — no WAYLAND_DISPLAY trickery needed.
 // We check via a one-shot API call cached at module level.
-let _mode = null // 'baremetal' | 'native' | 'browser'
+let _mode: NativeMode // 'baremetal' | 'native' | 'browser'
 
 if (!isEmbeddedWebKit) {
   _mode = 'browser' // Standard browser (dev, remote access)
@@ -32,8 +38,8 @@ if (!isEmbeddedWebKit) {
 // v2_enabled:false (or be absent), so mode stays 'baremetal'.
 // Only when VULOS_NATIVE_MODE_V2=1 is set server-side will v2_enabled be
 // true and the mode promoted to 'native'.
-let _modePromise = null
-function detectMode() {
+let _modePromise: Promise<NativeMode> | null = null
+function detectMode(): Promise<NativeMode> {
   if (_modePromise) return _modePromise
   if (_mode === 'browser') {
     _modePromise = Promise.resolve('browser')
@@ -41,10 +47,10 @@ function detectMode() {
   }
   _modePromise = fetch('/api/shell/native-mode')
     .then(r => r.json())
-    .then(data => {
+    .then((data: unknown) => {
       // v1: only accept 'native' when the server explicitly opts in to v2.
       // Without v2_enabled the reported mode is always treated as 'baremetal'.
-      if (data.v2_enabled && data.mode === 'native') {
+      if (isRecord(data) && data.v2_enabled && data.mode === 'native') {
         _mode = 'native'
       } else {
         _mode = 'baremetal'
@@ -62,12 +68,12 @@ function detectMode() {
 detectMode()
 
 // Sync getter — returns cached value (defaults correctly before async resolves)
-export function getNativeMode() {
+export function getNativeMode(): NativeMode {
   return _mode
 }
 
 // Returns true if native windows are supported (not baremetal, not standard browser)
-export function canSpawnNativeWindow() {
+export function canSpawnNativeWindow(): boolean {
   return _mode === 'native'
 }
 
@@ -82,7 +88,7 @@ export function canSpawnNativeWindow() {
 //
 // This is only true when the server has explicitly opted into v2 native mode
 // (VULOS_NATIVE_MODE_V2=1); false in v1 / baremetal / browser.
-export function useThinWM() {
+export function useThinWM(): boolean {
   const [thin, setThin] = useState(false)
 
   useEffect(() => {

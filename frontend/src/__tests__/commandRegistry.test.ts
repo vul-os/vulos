@@ -89,7 +89,7 @@ describe('commandRegistry — the seam', () => {
   })
 
   it('filters by the when() predicate against the context', () => {
-    registerCommand({ id: TEST_ID, title: 'Conditional', when: (c) => c.flag === true, run: () => {} })
+    registerCommand({ id: TEST_ID, title: 'Conditional', when: (c: { flag: boolean }) => c.flag === true, run: () => {} })
     expect(getCommands({ flag: true }).find(c => c.id === TEST_ID)).toBeTruthy()
     expect(getCommands({ flag: false }).find(c => c.id === TEST_ID)).toBeUndefined()
   })

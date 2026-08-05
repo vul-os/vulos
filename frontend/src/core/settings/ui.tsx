@@ -16,11 +16,20 @@
 // These primitives are intentionally presentational; behaviour, data flow and
 // gating stay in the panels that compose them.
 // ─────────────────────────────────────────────────────────────────────────────
-import { SettingsIcon } from '../AppIcons.jsx'
+import type { ReactNode, ComponentPropsWithoutRef } from 'react'
+import { SettingsIcon } from '../AppIcons'
+
+interface SectionProps {
+  title: ReactNode
+  desc?: ReactNode
+  icon?: string
+  actions?: ReactNode
+  children?: ReactNode
+}
 
 // ── Section — the top-of-pane header. An optional accent icon chip anchors the
 // title; `actions` slot into the top-right (e.g. a Refresh button). ──────────
-export function Section({ title, desc, icon, actions, children }) {
+export function Section({ title, desc, icon, actions, children }: SectionProps) {
   return (
     <div className="animate-[fadeIn_0.18s_ease-out]">
       <header className="mb-6 flex items-start gap-3.5">
@@ -45,9 +54,20 @@ export function Section({ title, desc, icon, actions, children }) {
   )
 }
 
+interface CardProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
+  title?: ReactNode
+  desc?: ReactNode
+  icon?: string
+  aside?: ReactNode
+  footer?: ReactNode
+  className?: string
+  bodyClassName?: string
+  children?: ReactNode
+}
+
 // ── Card — a lifted surface grouping related controls. Optional title/desc/icon
 // header and a `footer` slot (e.g. a save bar) that sits on a tinted base. ────
-export function Card({ title, desc, icon, aside, footer, className = '', bodyClassName = '', children, ...rest }) {
+export function Card({ title, desc, icon, aside, footer, className = '', bodyClassName = '', children, ...rest }: CardProps) {
   return (
     <section
       className={`rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-sm overflow-hidden ${className}`}
@@ -77,8 +97,15 @@ export function Card({ title, desc, icon, aside, footer, className = '', bodyCla
   )
 }
 
+interface FieldProps {
+  label?: ReactNode
+  hint?: ReactNode
+  htmlFor?: string
+  children?: ReactNode
+}
+
 // ── Field — a labelled control with optional helper hint. ────────────────────
-export function Field({ label, hint, htmlFor, children }) {
+export function Field({ label, hint, htmlFor, children }: FieldProps) {
   return (
     <div className="mb-4 last:mb-0">
       {label && <label htmlFor={htmlFor} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">{label}</label>}
@@ -88,9 +115,18 @@ export function Field({ label, hint, htmlFor, children }) {
   )
 }
 
+interface SettingRowProps {
+  label?: ReactNode
+  desc?: ReactNode
+  icon?: string
+  control?: ReactNode
+  children?: ReactNode
+  className?: string
+}
+
 // ── SettingRow — a label/description on the left, a control on the right. The
 // workhorse for grouped lists inside a Card; use `<Divider/>` between rows. ───
-export function SettingRow({ label, desc, icon, control, children, className = '' }) {
+export function SettingRow({ label, desc, icon, control, children, className = '' }: SettingRowProps) {
   return (
     <div className={`flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0 ${className}`}>
       <div className="flex items-start gap-3 min-w-0">
@@ -113,8 +149,15 @@ export function Divider() {
   return <div className="border-t border-[var(--border-subtle)]" />
 }
 
+interface ToggleProps {
+  label?: ReactNode
+  checked?: boolean
+  onChange: (next: boolean) => void
+  disabled?: boolean
+}
+
 // ── Toggle — accent-driven switch. Standalone or inside a SettingRow. ────────
-export function Toggle({ label, checked, onChange, disabled }) {
+export function Toggle({ label, checked, onChange, disabled }: ToggleProps) {
   const btn = (
     <button
       type="button"
@@ -144,26 +187,36 @@ export function Toggle({ label, checked, onChange, disabled }) {
 
 // ── Pill — a small status chip with a leading dot. tone: neutral | accent |
 // success | warning | danger. `pulse` animates the dot (live indicator). ─────
-const PILL_TONES = {
+export type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+
+const PILL_TONES: Record<Tone, string> = {
   neutral: 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] ring-[var(--border-strong)]',
   accent: 'accent-bg-soft accent-text ring-transparent',
   success: 'text-[var(--status-success)] ring-transparent',
   warning: 'text-[var(--status-warning)] ring-transparent',
   danger: 'text-[var(--status-danger)] ring-transparent',
 }
-const PILL_DOT = {
+const PILL_DOT: Record<Tone, string> = {
   neutral: 'bg-[var(--text-muted)]',
   accent: 'accent-bg',
   success: 'bg-[var(--status-success)]',
   warning: 'bg-[var(--status-warning)]',
   danger: 'bg-[var(--status-danger)]',
 }
-const PILL_SOFT = {
+const PILL_SOFT: Partial<Record<Tone, string>> = {
   success: 'var(--status-success-soft)',
   warning: 'var(--status-warning-soft)',
   danger: 'var(--status-danger-soft)',
 }
-export function Pill({ tone = 'neutral', dot = true, pulse = false, children }) {
+
+interface PillProps {
+  tone?: Tone
+  dot?: boolean
+  pulse?: boolean
+  children?: ReactNode
+}
+
+export function Pill({ tone = 'neutral', dot = true, pulse = false, children }: PillProps) {
   const soft = PILL_SOFT[tone]
   return (
     <span
@@ -176,9 +229,17 @@ export function Pill({ tone = 'neutral', dot = true, pulse = false, children }) 
   )
 }
 
+interface MeterProps {
+  label?: ReactNode
+  pct?: number
+  right?: ReactNode
+  tone?: Tone
+  className?: string
+}
+
 // ── Meter — a labelled utilisation bar. Tone shifts amber→red as it fills;
 // pass an explicit `tone` to override (e.g. keep accent for a neutral quantity). ─
-export function Meter({ label, pct, right, tone, className = '' }) {
+export function Meter({ label, pct, right, tone, className = '' }: MeterProps) {
   const p = Math.max(0, Math.min(100, pct || 0))
   const resolved = tone || (p > 85 ? 'danger' : p > 65 ? 'warning' : 'accent')
   const fill = resolved === 'danger' ? 'bg-[var(--status-danger)]'
@@ -207,9 +268,17 @@ export function Meter({ label, pct, right, tone, className = '' }) {
   )
 }
 
+interface StatTileProps {
+  label?: ReactNode
+  value?: ReactNode
+  sub?: ReactNode
+  tone?: Tone
+  icon?: string
+}
+
 // ── StatTile — a compact metric cell: big value + label + optional sub/pill.
 // Group several in a grid for an at-a-glance readout row. ────────────────────
-export function StatTile({ label, value, sub, tone, icon }) {
+export function StatTile({ label, value, sub, tone, icon }: StatTileProps) {
   const valueTone = tone === 'success' ? 'text-[var(--status-success)]'
     : tone === 'warning' ? 'text-[var(--status-warning)]'
     : tone === 'danger' ? 'text-[var(--status-danger)]'
@@ -227,15 +296,28 @@ export function StatTile({ label, value, sub, tone, icon }) {
   )
 }
 
+interface InfoListProps {
+  children?: ReactNode
+  className?: string
+}
+
 // ── InfoList / InfoRow — a bordered card of key/value rows (read-only detail). ─
-export function InfoList({ children, className = '' }) {
+export function InfoList({ children, className = '' }: InfoListProps) {
   return (
     <div className={`rounded-xl border border-[var(--border-default)] overflow-hidden divide-y divide-[var(--border-subtle)] ${className}`}>
       {children}
     </div>
   )
 }
-export function InfoRow({ label, value, mono = false, ok }) {
+
+interface InfoRowProps {
+  label?: ReactNode
+  value?: ReactNode
+  mono?: boolean
+  ok?: boolean | null
+}
+
+export function InfoRow({ label, value, mono = false, ok }: InfoRowProps) {
   const tone = ok == null ? 'text-[var(--text-secondary)]'
     : ok ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'
   return (
@@ -246,8 +328,15 @@ export function InfoRow({ label, value, mono = false, ok }) {
   )
 }
 
+interface EmptyStateProps {
+  icon?: string
+  title?: ReactNode
+  hint?: ReactNode
+  action?: ReactNode
+}
+
 // ── EmptyState — a considered "nothing here yet" with an icon medallion. ─────
-export function EmptyState({ icon = 'about', title, hint, action }) {
+export function EmptyState({ icon = 'about', title, hint, action }: EmptyStateProps) {
   return (
     <div className="py-14 px-6 text-center animate-[fadeIn_0.2s_ease-out]">
       <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-muted)] shadow-sm">
@@ -260,9 +349,18 @@ export function EmptyState({ icon = 'about', title, hint, action }) {
   )
 }
 
+type BannerTone = 'info' | 'success' | 'warning' | 'danger'
+
+interface BannerProps {
+  tone?: BannerTone
+  title?: ReactNode
+  children?: ReactNode
+  icon?: boolean
+}
+
 // ── Banner — an inline status message (info / success / warning / danger). ───
-export function Banner({ tone = 'info', title, children, icon = true }) {
-  const map = {
+export function Banner({ tone = 'info', title, children, icon = true }: BannerProps) {
+  const map: Record<BannerTone, { wrap: string; dot: string }> = {
     info: { wrap: 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]', dot: 'bg-[var(--text-muted)]' },
     success: { wrap: 'border-success-soft bg-[var(--status-success-soft)] text-[var(--status-success)]', dot: 'bg-[var(--status-success)]' },
     warning: { wrap: 'border-warning-soft bg-[var(--status-warning-soft)] text-[var(--status-warning)]', dot: 'bg-[var(--status-warning)]' },

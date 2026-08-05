@@ -20,21 +20,40 @@
 
 import { notify } from '../notificationStore'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+interface FocusItem {
+  uid?: string
+  subject?: string
+  from_name?: string
+  from?: string
+  preview?: string
+}
+
+interface ActivityItem {
+  uid?: string
+  unread?: boolean
+  title?: string
+  subtitle?: string
+}
+
 const POLL_MS = 3 * 60 * 1000 // 3 minutes
 const MAX_PER_TICK = 3 // never surface more than a few at once (anti-spam)
 
-const seenFocus = new Set()
-const seenMail = new Set()
+const seenFocus = new Set<string>()
+const seenMail = new Set<string>()
 let seeded = false
 let started = false
 
-export function extractSignals(data) {
-  const focus = Array.isArray(data?.focus) ? data.focus : []
-  const activity = Array.isArray(data?.activity) ? data.activity : []
-  return { focus, unreadMail: activity.filter(a => a && a.unread) }
+export function extractSignals(data: unknown): { focus: FocusItem[]; unreadMail: ActivityItem[] } {
+  const focus: FocusItem[] = isRecord(data) && Array.isArray(data.focus) ? data.focus : []
+  const activity: ActivityItem[] = isRecord(data) && Array.isArray(data.activity) ? data.activity : []
+  return { focus, unreadMail: activity.filter((a) => a && a.unread) }
 }
 
-export function processHomeData(data) {
+export function processHomeData(data: unknown): number {
   const { focus, unreadMail } = extractSignals(data)
 
   if (!seeded) {
@@ -80,12 +99,12 @@ export function processHomeData(data) {
   return count
 }
 
-async function poll() {
+async function poll(): Promise<void> {
   if (typeof document !== 'undefined' && document.hidden) return
   try {
     const res = await fetch('/api/assistant/home', { credentials: 'include' })
     if (!res.ok) return
-    const data = await res.json()
+    const data: unknown = await res.json()
     processHomeData(data)
   } catch { /* assistant offline → notifications just stay empty */ }
 }
@@ -93,7 +112,7 @@ async function poll() {
 /**
  * Start the notifier once. Returns a stop() function. Repeated calls are no-ops.
  */
-export function startAttentionNotifier() {
+export function startAttentionNotifier(): () => void {
   if (started) return () => {}
   started = true
   // Kick off after a short delay so it never competes with first paint.
@@ -103,6 +122,6 @@ export function startAttentionNotifier() {
 }
 
 // Test-only reset.
-export function __resetForTests() {
+export function __resetForTests(): void {
   seenFocus.clear(); seenMail.clear(); seeded = false; started = false
 }

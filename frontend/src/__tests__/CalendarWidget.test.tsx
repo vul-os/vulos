@@ -26,7 +26,7 @@ vi.mock('../providers/ShellProvider', () => ({
 
 const launchApp = vi.fn()
 vi.mock('../shell/launchApp', () => ({
-  launchApp: (...args) => launchApp(...args),
+  launchApp: (...args: unknown[]) => launchApp(...args),
 }))
 
 // Fresh module graph per test so the widget's module-scoped agenda cache
@@ -54,7 +54,7 @@ function eventsPayload() {
 
 // stubFetch mirrors the box proxy: a Response whose body is read via res.text()
 // (calendarApi never calls res.json()). `status` <300 ⇒ ok.
-function stubFetch(status, body) {
+function stubFetch(status: number, body: unknown) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
     ok: status < 300,
     status,

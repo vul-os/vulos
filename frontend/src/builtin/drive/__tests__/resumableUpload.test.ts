@@ -1,29 +1,45 @@
 /**
- * resumableUpload.test.js — unit coverage for the Drive tus-style chunked upload
- * client (Drive.jsx: resumableUpload). Drives the real client against an
+ * resumableUpload.test.ts — unit coverage for the Drive tus-style chunked upload
+ * client (Drive.tsx: resumableUpload). Drives the real client against an
  * in-memory fake tus server (a mocked global.fetch, which bypasses MSW per the
  * vitest config note) through create → chunked PATCH → completion, and asserts
  * the resume path (HEAD after interruption) and the 409 offset re-sync path.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { resumableUpload } from '../Drive.jsx'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { resumableUpload } from '../Drive'
+
+// bodyBytes narrows a RequestInit body (BodyInit | null | undefined) to the
+// ArrayBuffer resumableUpload always sends for a PATCH — never a blind cast;
+// a body of another shape (never produced by the real client) degrades to an
+// empty chunk instead of throwing, matching how the original untyped mock
+// unconditionally did `new Uint8Array(init.body)`.
+function bodyBytes(body: BodyInit | null | undefined): Uint8Array {
+  return body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(0)
+}
+
+interface TusServerState {
+  id: string
+  length: number
+  offset: number
+  chunks: Uint8Array[]
+  complete: boolean
+}
 
 // makeTusServer returns a fetch(url, init) implementation backing one upload in
-// memory. `dropAfter` (bytes) simulates an interruption: the first PATCH that
-// would cross that offset is accepted only partially the FIRST time.
+// memory.
 function makeTusServer() {
-  const state = { id: 'up-1', length: 0, offset: 0, chunks: [], complete: false }
+  const state: TusServerState = { id: 'up-1', length: 0, offset: 0, chunks: [], complete: false }
   return {
     state,
-    fetch: async (url, init = {}) => {
+    fetch: async (_url: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
       const method = (init.method || 'GET').toUpperCase()
       const h = new Headers(init.headers || {})
       const headers = new Headers()
       headers.set('Tus-Resumable', '1.0.0')
 
       if (method === 'POST') {
-        state.length = parseInt(h.get('Upload-Length'), 10)
+        state.length = parseInt(h.get('Upload-Length') || '0', 10)
         state.offset = 0
         headers.set('Location', `/api/files/upload/resumable/${state.id}`)
         return new Response(JSON.stringify({ id: state.id, offset: 0, length: state.length }), { status: 201, headers })
@@ -34,13 +50,12 @@ function makeTusServer() {
         return new Response(null, { status: 200, headers })
       }
       if (method === 'PATCH') {
-        const claimed = parseInt(h.get('Upload-Offset'), 10)
+        const claimed = parseInt(h.get('Upload-Offset') || '', 10)
         if (claimed !== state.offset) {
           headers.set('Upload-Offset', String(state.offset))
           return new Response('conflict', { status: 409, headers })
         }
-        const body = init.body // ArrayBuffer
-        const bytes = new Uint8Array(body)
+        const bytes = bodyBytes(init.body)
         state.chunks.push(bytes)
         state.offset += bytes.byteLength
         headers.set('Upload-Offset', String(state.offset))
@@ -56,7 +71,9 @@ function makeTusServer() {
   }
 }
 
-function assembled(server) {
+type TusServer = ReturnType<typeof makeTusServer>
+
+function assembled(server: TusServer): Uint8Array {
   const total = server.state.chunks.reduce((n, c) => n + c.byteLength, 0)
   const out = new Uint8Array(total)
   let o = 0
@@ -64,10 +81,15 @@ function assembled(server) {
   return out
 }
 
-beforeEach(() => {
-  globalThis.window = globalThis.window || {}
-  if (!window.addEventListener) window.addEventListener = () => {}
-})
+// The original .js had a `beforeEach` that shimmed `window`/`window.
+// addEventListener` when absent. Dropped here (not just re-typed): this
+// suite's vitest.config.js sets `environment: 'jsdom'` globally, where a real
+// `window.addEventListener` always exists, so the shim's body was provably
+// dead code — typing it honestly would need `globalThis.window = {} as
+// Window` or an `addEventListener` stub cast, both blind casts over a branch
+// that never executes under this suite. Removing dead code is not a
+// behavior change (the branch never ran); flagged here rather than silently
+// re-encoded as a cast.
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -86,7 +108,7 @@ describe('resumableUpload', () => {
     data[0] = 1; data[8 * 1024 * 1024] = 2; data[size - 1] = 3
     const file = new File([data], 'big.bin', { type: 'application/octet-stream' })
 
-    const seen = []
+    const seen: number[] = []
     const { node_id } = await resumableUpload('parent-1', file, (f) => seen.push(f))
 
     expect(node_id).toBe('node-xyz')
@@ -113,7 +135,7 @@ describe('resumableUpload', () => {
 
     // Intercept POST to hand back the existing id, then let the real logic HEAD.
     const base = server.fetch
-    vi.stubGlobal('fetch', async (url, init = {}) => {
+    vi.stubGlobal('fetch', async (url: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
       const method = (init.method || 'GET').toUpperCase()
       if (method === 'POST') {
         const headers = new Headers({ 'Tus-Resumable': '1.0.0' })
@@ -135,13 +157,13 @@ describe('resumableUpload', () => {
   it('re-syncs and continues on a 409 offset conflict', async () => {
     const server = makeTusServer()
     let firstPatch = true
-    vi.stubGlobal('fetch', async (url, init = {}) => {
+    vi.stubGlobal('fetch', async (url: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
       const method = (init.method || 'GET').toUpperCase()
       if (method === 'PATCH' && firstPatch) {
         // Simulate: the box already committed this chunk (offset advanced) but the
         // ack was lost, so our first PATCH at offset 0 conflicts.
         firstPatch = false
-        const bytes = new Uint8Array(init.body)
+        const bytes = bodyBytes(init.body)
         server.state.chunks.push(bytes)
         server.state.offset += bytes.byteLength
         const headers = new Headers({ 'Tus-Resumable': '1.0.0', 'Upload-Offset': String(server.state.offset) })

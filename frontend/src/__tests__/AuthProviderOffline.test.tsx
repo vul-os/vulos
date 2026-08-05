@@ -25,11 +25,11 @@ function Probe() {
   )
 }
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals() })
 
 describe('AuthProvider — offline state machine', () => {
   it('marks offline (not logged-out) when the box is unreachable', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
     render(<AuthProvider><Probe /></AuthProvider>)
 
     await waitFor(() => expect(screen.getByTestId('offline').textContent).toBe('true'))
@@ -38,10 +38,10 @@ describe('AuthProvider — offline state machine', () => {
   })
 
   it('adopts the real session when the box is reachable and authed', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ user: { id: 'u1' }, profile: { display_name: 'Ada' } }),
-    })
+    }))
     render(<AuthProvider><Probe /></AuthProvider>)
 
     await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('yes'))
@@ -50,7 +50,7 @@ describe('AuthProvider — offline state machine', () => {
 
   it('a reachable 401 ENDS an offline session (reconnect re-validation) and drops the key', async () => {
     const user = userEvent.setup()
-    global.fetch = vi.fn().mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
     render(<AuthProvider><Probe /></AuthProvider>)
     await waitFor(() => expect(screen.getByTestId('offline').textContent).toBe('true'))
 
@@ -60,7 +60,7 @@ describe('AuthProvider — offline state machine', () => {
     expect(screen.getByTestId('user').textContent).toBe('yes')
 
     // Box comes back but the session is invalid (401): must end the offline session.
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) }))
     await user.click(screen.getByText('check'))
 
     await waitFor(() => expect(screen.getByTestId('offlineMode').textContent).toBe('false'))

@@ -1,4 +1,4 @@
-// Drive.jsx — the Vulos Files (Drive) OS app: the canonical browser for a user's
+// Drive.tsx — the Vulos Files (Drive) OS app: the canonical browser for a user's
 // per-user Drive (the `drive/` area of their object bucket). It is a thin,
 // session-authed client over the PHASE-1 Files control plane (/api/files/*):
 // navigate the folder tree, upload/download bytes, create folders, move/rename/
@@ -10,11 +10,221 @@
 // local-FS storage and no cloud. All access is ACL-gated server-side; this UI
 // only ever surfaces what the session is authorized to see.
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode, type CSSProperties, type DragEvent } from 'react'
 import { request, rawFetch, apiUrl } from '../../lib/api'
 import { useFocusTrap } from '../../shell/useFocusTrap'
-import { uploadRowView } from './uploadRowView'
+import { uploadRowView, type UploadRowState } from './uploadRowView'
 import { nativeBridge } from '../../core/nativeBridge'
+
+// Bytes = an ArrayBuffer-backed byte buffer (matches the `Bytes` convention in
+// src/lib/masterKey.ts / src/lib/contentSeal.ts): the precise type for a
+// Uint8Array this module actually constructs, distinct from the broader
+// default `Uint8Array<ArrayBufferLike>` that a bare `Uint8Array` annotation
+// means — contentSeal's seal/open/packMeta/untar and the DOM's Blob/File
+// constructors want the concrete ArrayBuffer-backed form.
+type Bytes = Uint8Array<ArrayBuffer>
+
+// ── narrow-untrusted-JSON helpers ───────────────────────────────────────────
+// request()/fetch() responses are `unknown` — every /api/* endpoint has a
+// different body shape and this client has no schema for any of them. These
+// helpers coerce a field to its expected type only when it actually IS that
+// type, matching the `isRecord()` pattern used across the codebase (see
+// src/lib/offlineAuth.ts, src/builtin/calendar/calendarApi.ts).
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+function str(x: unknown, fallback = ''): string {
+  return typeof x === 'string' ? x : fallback
+}
+function num(x: unknown, fallback = 0): number {
+  return typeof x === 'number' && !Number.isNaN(x) ? x : fallback
+}
+function bool(x: unknown): boolean {
+  return !!x
+}
+function arr(x: unknown): unknown[] {
+  return Array.isArray(x) ? x : []
+}
+
+// errMessage — a thrown value in strict-mode catch clauses is `unknown`, never
+// blindly assumed to be an Error (matches src/builtin/files/SharePeerModal.tsx).
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+// ── domain types (the shapes this UI actually reads off the wire) ──────────
+
+// DriveNode covers both a regular Files node (list/sharedWithMe/externalList)
+// and a 'received' peer item (peerReceived) — the extra received-only fields
+// are optional since ordinary nodes never carry them. Which shape is in play
+// is decided by `view`, exactly as in the original untyped code.
+interface DriveNode {
+  id: string
+  name: string
+  is_dir: boolean
+  size: number
+  content_type: string
+  updated_at: string
+  owner_vula_id?: string
+  received_at?: string
+  saved_node_id?: string
+}
+function normalizeNode(x: unknown): DriveNode {
+  const r = isRecord(x) ? x : {}
+  const out: DriveNode = {
+    id: str(r.id),
+    name: str(r.name),
+    is_dir: bool(r.is_dir),
+    size: num(r.size),
+    content_type: str(r.content_type),
+    updated_at: str(r.updated_at),
+  }
+  if (typeof r.owner_vula_id === 'string') out.owner_vula_id = r.owner_vula_id
+  if (typeof r.received_at === 'string') out.received_at = r.received_at
+  if (typeof r.saved_node_id === 'string') out.saved_node_id = r.saved_node_id
+  return out
+}
+function normalizeNodes(x: unknown): DriveNode[] {
+  const r = isRecord(x) ? x : {}
+  return arr(r.nodes).map(normalizeNode)
+}
+
+interface UploadGrant {
+  type: string
+  url: string
+  seal_default: boolean
+}
+function normalizeGrant(x: unknown): UploadGrant | null {
+  if (!isRecord(x)) return null
+  return { type: str(x.type), url: str(x.url), seal_default: bool(x.seal_default) }
+}
+
+interface FileVersion {
+  id: string
+  created_at: string
+  size: number
+  etag: string
+}
+function normalizeVersion(x: unknown): FileVersion {
+  const r = isRecord(x) ? x : {}
+  return { id: str(r.id), created_at: str(r.created_at), size: num(r.size), etag: str(r.etag) }
+}
+
+interface FileShare {
+  id: string
+  principal_id: string
+  role: string
+}
+function normalizeShare(x: unknown): FileShare {
+  const r = isRecord(x) ? x : {}
+  return { id: str(r.id), principal_id: str(r.principal_id), role: str(r.role) }
+}
+
+interface ShareLink {
+  token: string
+  role: string
+  expires_at: string
+  revoked: boolean
+}
+function normalizeShareLink(x: unknown): ShareLink {
+  const r = isRecord(x) ? x : {}
+  return { token: str(r.token), role: str(r.role), expires_at: str(r.expires_at), revoked: bool(r.revoked) }
+}
+
+// Mechanism B: bucket-less box-to-box capability.
+interface PeerShare {
+  id: string
+  access: string
+  recipient: string
+  expires_at: string
+  revoked: boolean
+}
+function normalizePeerShare(x: unknown): PeerShare {
+  const r = isRecord(x) ? x : {}
+  return { id: str(r.id), access: str(r.access), recipient: str(r.recipient), expires_at: str(r.expires_at), revoked: bool(r.revoked) }
+}
+
+interface ConfigField {
+  key: string
+  label: string
+  required: boolean
+}
+function normalizeConfigField(x: unknown): ConfigField {
+  const r = isRecord(x) ? x : {}
+  return { key: str(r.key), label: str(r.label), required: bool(r.required) }
+}
+interface ExternalProvider {
+  kind: string
+  display_name: string
+  writable: boolean
+  config_fields: ConfigField[]
+}
+function normalizeExternalProvider(x: unknown): ExternalProvider {
+  const r = isRecord(x) ? x : {}
+  return {
+    kind: str(r.kind),
+    display_name: str(r.display_name),
+    writable: bool(r.writable),
+    config_fields: arr(r.config_fields).map(normalizeConfigField),
+  }
+}
+interface ExternalMount {
+  id: string
+  name: string
+  writable: boolean
+}
+function normalizeExternalMount(x: unknown): ExternalMount {
+  const r = isRecord(x) ? x : {}
+  return { id: str(r.id), name: str(r.name), writable: bool(r.writable) }
+}
+
+interface ImportSource {
+  kind: string
+  display_name: string
+}
+function normalizeImportSource(x: unknown): ImportSource {
+  const r = isRecord(x) ? x : {}
+  return { kind: str(r.kind), display_name: str(r.display_name) }
+}
+interface ImportJob {
+  id: string
+  provider: string
+  mode: string
+  source: string
+  status: string
+  imported: number
+  skipped: number
+  errors: number
+}
+function normalizeImportJob(x: unknown): ImportJob {
+  const r = isRecord(x) ? x : {}
+  return {
+    id: str(r.id), provider: str(r.provider), mode: str(r.mode), source: str(r.source),
+    status: str(r.status), imported: num(r.imported), skipped: num(r.skipped), errors: num(r.errors),
+  }
+}
+
+interface PeerRedeemItem {
+  id: string
+  name: string
+  is_dir: boolean
+  size: number
+}
+function normalizePeerRedeemItem(x: unknown): PeerRedeemItem {
+  const r = isRecord(x) ? x : {}
+  return { id: str(r.id), name: str(r.name), is_dir: bool(r.is_dir), size: num(r.size) }
+}
+
+interface ShareByEmailResult {
+  mode: string
+  delivered: boolean
+  server: string
+  link: string
+}
+function normalizeShareByEmailResult(x: unknown): ShareByEmailResult {
+  const r = isRecord(x) ? x : {}
+  return { mode: str(r.mode), delivered: bool(r.delivered), server: str(r.server), link: str(r.link) }
+}
 
 // putWithProgress: PUT a file's bytes with byte-level upload progress via XHR
 // (fetch() exposes no upload progress). `onProgress(fraction)` receives 0..1 as
@@ -22,8 +232,16 @@ import { nativeBridge } from '../../core/nativeBridge'
 // falls back to an indeterminate bar. `credentials` toggles the session cookie
 // (needed for the OS data plane; omitted for presigned S3 PUTs). Resolves on a
 // 2xx response and rejects with a descriptive Error otherwise.
-function putWithProgress(url, file, { headers = {}, credentials = false, onProgress } = {}) {
-  return new Promise((resolve, reject) => {
+function putWithProgress(
+  url: string,
+  file: Blob,
+  { headers = {}, credentials = false, onProgress }: {
+    headers?: Record<string, string>
+    credentials?: boolean
+    onProgress?: (frac: number) => void
+  } = {},
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('PUT', url, true)
     xhr.withCredentials = credentials
@@ -59,20 +277,20 @@ const RESUMABLE_THRESHOLD = 16 * 1024 * 1024
 const RESUMABLE_CHUNK = 8 * 1024 * 1024
 
 // b64 encodes a UTF-8 string as base64 for a tus Upload-Metadata value.
-function b64utf8(s) {
+function b64utf8(s: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(s)))
 }
 
 // sha256hex returns the lowercase hex SHA-256 of an ArrayBuffer/Uint8Array using
 // SubtleCrypto. Used for per-chunk and whole-file integrity headers.
-async function sha256hex(buf) {
+async function sha256hex(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf)
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 // sha256b64 returns the base64 SHA-256 (for the tus Upload-Checksum header form
 // "sha256 <base64>").
-async function sha256b64(buf) {
+async function sha256b64(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf)
   return btoa(String.fromCharCode(...new Uint8Array(digest)))
 }
@@ -83,7 +301,12 @@ async function sha256b64(buf) {
 // `onResume(fraction)` (optional) fires once, before the first chunk, when the
 // box already holds a non-zero committed offset — i.e. this is a resume, not a
 // fresh upload — so the UI can say so and seed the bar at the resumed point.
-export async function resumableUpload(parentId, file, onProgress, onResume) {
+export async function resumableUpload(
+  parentId: string,
+  file: File,
+  onProgress?: (frac: number) => void,
+  onResume?: (frac: number) => void,
+): Promise<{ node_id: string }> {
   // Whole-file digest lets the box verify integrity before promoting into Drive.
   const fileSha = await sha256hex(await file.arrayBuffer())
   const meta = [
@@ -106,15 +329,16 @@ export async function resumableUpload(parentId, file, onProgress, onResume) {
     if (createRes.status === 413) throw new Error('file too large for upload')
     throw new Error(`could not start upload (${createRes.status})`)
   }
-  let id
+  let id = ''
   try {
-    id = (await createRes.clone().json()).id
+    const body: unknown = await createRes.clone().json()
+    if (isRecord(body) && typeof body.id === 'string') id = body.id
   } catch {
     /* fall through to Location */
   }
   if (!id) {
     const loc = createRes.headers.get('Location') || ''
-    id = loc.split('/').pop()
+    id = loc.split('/').pop() || ''
   }
   if (!id) throw new Error('upload id missing')
   const path = `/files/upload/resumable/${encodeURIComponent(id)}`
@@ -191,73 +415,149 @@ const T = {
 }
 
 // ── tiny API surface over /api/files ────────────────────────────────────────
+// Every method narrows request()'s `unknown` response to a concrete shape
+// before returning — see the isRecord()-based normalize* helpers above. A
+// handful of endpoints whose result no caller ever reads (move/remove/commit/
+// share/unshare/createLink/revokeLink/peerRevoke/peerSave/externalConnect/
+// externalDisconnect/externalFolder/importStart/importSync/importDelete)
+// return Promise<void> — inventing a shape for data nothing reads would be
+// dishonest, not more complete.
 const filesApi = {
-  list: (parent) => request(`/files/list?parent=${encodeURIComponent(parent || '')}`),
-  sharedWithMe: () => request('/files/shared-with-me'),
-  createFolder: (parent_id, name) =>
-    request('/files/folder', { method: 'POST', body: JSON.stringify({ parent_id, name }) }),
-  uploadGrant: (parent_id, name, content_type) =>
-    request('/files/upload-grant', { method: 'POST', body: JSON.stringify({ parent_id, name, content_type }) }),
-  downloadGrant: (node_id) =>
-    request('/files/download-grant', { method: 'POST', body: JSON.stringify({ node_id }) }),
-  commit: (node_id, size, content_type, etag) =>
-    request('/files/commit', { method: 'POST', body: JSON.stringify({ node_id, size, content_type, etag }) }),
-  move: (node_id, new_parent_id, new_name) =>
-    request('/files/move', { method: 'POST', body: JSON.stringify({ node_id, new_parent_id, new_name }) }),
-  remove: (node_id) =>
-    request('/files/delete', { method: 'POST', body: JSON.stringify({ node_id }) }),
-  versions: (node) => request(`/files/versions?node=${encodeURIComponent(node)}`),
-  shares: (node) => request(`/files/shares?node=${encodeURIComponent(node)}`),
-  share: (node_id, principal_id, role) =>
-    request('/files/share', { method: 'POST', body: JSON.stringify({ node_id, principal_id, role }) }),
+  async list(parent: string): Promise<{ nodes: DriveNode[] }> {
+    return { nodes: normalizeNodes(await request(`/files/list?parent=${encodeURIComponent(parent || '')}`)) }
+  },
+  async sharedWithMe(): Promise<{ nodes: DriveNode[] }> {
+    return { nodes: normalizeNodes(await request('/files/shared-with-me')) }
+  },
+  async createFolder(parent_id: string, name: string): Promise<DriveNode> {
+    return normalizeNode(await request('/files/folder', { method: 'POST', body: JSON.stringify({ parent_id, name }) }))
+  },
+  async uploadGrant(parent_id: string, name: string, content_type: string): Promise<{ node: DriveNode; grant: UploadGrant | null }> {
+    const r = await request('/files/upload-grant', { method: 'POST', body: JSON.stringify({ parent_id, name, content_type }) })
+    const rec = isRecord(r) ? r : {}
+    return { node: normalizeNode(rec.node), grant: normalizeGrant(rec.grant) }
+  },
+  async downloadGrant(node_id: string): Promise<{ grant: UploadGrant | null }> {
+    const r = await request('/files/download-grant', { method: 'POST', body: JSON.stringify({ node_id }) })
+    return { grant: normalizeGrant(isRecord(r) ? r.grant : null) }
+  },
+  async commit(node_id: string, size: number, content_type: string, etag: string): Promise<void> {
+    await request('/files/commit', { method: 'POST', body: JSON.stringify({ node_id, size, content_type, etag }) })
+  },
+  async move(node_id: string, new_parent_id: string, new_name: string): Promise<void> {
+    await request('/files/move', { method: 'POST', body: JSON.stringify({ node_id, new_parent_id, new_name }) })
+  },
+  async remove(node_id: string): Promise<void> {
+    await request('/files/delete', { method: 'POST', body: JSON.stringify({ node_id }) })
+  },
+  async versions(node: string): Promise<{ versions: FileVersion[] }> {
+    const r = await request(`/files/versions?node=${encodeURIComponent(node)}`)
+    return { versions: arr(isRecord(r) ? r.versions : []).map(normalizeVersion) }
+  },
+  async shares(node: string): Promise<{ shares: FileShare[] }> {
+    const r = await request(`/files/shares?node=${encodeURIComponent(node)}`)
+    return { shares: arr(isRecord(r) ? r.shares : []).map(normalizeShare) }
+  },
+  async share(node_id: string, principal_id: string, role: string): Promise<void> {
+    await request('/files/share', { method: 'POST', body: JSON.stringify({ node_id, principal_id, role }) })
+  },
   // Account-only sharing: resolve a recipient EMAIL (directory) and route by
   // locality — co-cloud → ACL grant; remote → a delivered per-document capability.
-  shareByEmail: (node_id, email, role, ttl_seconds) =>
-    request('/files/share-by-email', { method: 'POST', body: JSON.stringify({ node_id, email, role, ttl_seconds }) }),
-  unshare: (node_id, principal_id) =>
-    request('/files/unshare', { method: 'POST', body: JSON.stringify({ node_id, principal_id }) }),
-  links: (node) => request(`/files/share-links?node=${encodeURIComponent(node)}`),
-  createLink: (node_id, role, ttl_seconds) =>
-    request('/files/share-link', { method: 'POST', body: JSON.stringify({ node_id, role, ttl_seconds }) }),
-  revokeLink: (token) =>
-    request('/files/share-link/revoke', { method: 'POST', body: JSON.stringify({ token }) }),
+  async shareByEmail(node_id: string, email: string, role: string, ttl_seconds: number): Promise<ShareByEmailResult> {
+    return normalizeShareByEmailResult(await request('/files/share-by-email', { method: 'POST', body: JSON.stringify({ node_id, email, role, ttl_seconds }) }))
+  },
+  async unshare(node_id: string, principal_id: string): Promise<void> {
+    await request('/files/unshare', { method: 'POST', body: JSON.stringify({ node_id, principal_id }) })
+  },
+  async links(node: string): Promise<{ links: ShareLink[] }> {
+    const r = await request(`/files/share-links?node=${encodeURIComponent(node)}`)
+    return { links: arr(isRecord(r) ? r.links : []).map(normalizeShareLink) }
+  },
+  async createLink(node_id: string, role: string, ttl_seconds: number): Promise<void> {
+    await request('/files/share-link', { method: 'POST', body: JSON.stringify({ node_id, role, ttl_seconds }) })
+  },
+  async revokeLink(token: string): Promise<void> {
+    await request('/files/share-link/revoke', { method: 'POST', body: JSON.stringify({ token }) })
+  },
 
   // ── OS peer-share (Mechanism B, bucket-less box-to-box) ──
-  peerIssue: (node_id, access, recipient, ttl_seconds) =>
-    request('/files/peer/issue', { method: 'POST', body: JSON.stringify({ node_id, access, recipient, ttl_seconds }) }),
-  peerShares: (node) => request(`/files/peer/shares?node=${encodeURIComponent(node)}`),
-  peerRevoke: (id) => request('/files/peer/revoke', { method: 'POST', body: JSON.stringify({ id }) }),
-  peerRedeem: (link) => request('/files/peer/redeem', { method: 'POST', body: JSON.stringify({ link }) }),
-  peerReceived: () => request('/files/peer/received'),
-  peerSave: (id, parent_id, name) =>
-    request('/files/peer/save', { method: 'POST', body: JSON.stringify({ id, parent_id, name }) }),
+  async peerIssue(node_id: string, access: string, recipient: string, ttl_seconds: number): Promise<{ link: string }> {
+    const r = await request('/files/peer/issue', { method: 'POST', body: JSON.stringify({ node_id, access, recipient, ttl_seconds }) })
+    return { link: str(isRecord(r) ? r.link : '') }
+  },
+  async peerShares(node: string): Promise<{ shares: PeerShare[] }> {
+    const r = await request(`/files/peer/shares?node=${encodeURIComponent(node)}`)
+    return { shares: arr(isRecord(r) ? r.shares : []).map(normalizePeerShare) }
+  },
+  async peerRevoke(id: string): Promise<void> {
+    await request('/files/peer/revoke', { method: 'POST', body: JSON.stringify({ id }) })
+  },
+  async peerRedeem(link: string): Promise<PeerRedeemItem> {
+    return normalizePeerRedeemItem(await request('/files/peer/redeem', { method: 'POST', body: JSON.stringify({ link }) }))
+  },
+  async peerReceived(): Promise<{ items: DriveNode[] }> {
+    const r = await request('/files/peer/received')
+    return { items: arr(isRecord(r) ? r.items : []).map(normalizeNode) }
+  },
+  async peerSave(id: string, parent_id: string, name: string): Promise<void> {
+    await request('/files/peer/save', { method: 'POST', body: JSON.stringify({ id, parent_id, name }) })
+  },
 
   // ── external stores (Phase 4: Google Drive / Dropbox / GCS as virtual drives) ──
-  externalStatus: () => request('/files/external/status'),
-  externalMounts: () => request('/files/external/mounts'),
-  externalConnect: (provider, name, config) =>
-    request('/files/external/connect', { method: 'POST', body: JSON.stringify({ provider, name, config }) }),
-  externalDisconnect: (id) =>
-    request('/files/external/disconnect', { method: 'POST', body: JSON.stringify({ id }) }),
-  externalList: (mount, folder) =>
-    request(`/files/external/list?mount=${encodeURIComponent(mount)}&folder=${encodeURIComponent(folder || '')}`),
-  externalFolder: (mount, parent, name) =>
-    request('/files/external/folder', { method: 'POST', body: JSON.stringify({ mount, parent, name }) }),
+  async externalStatus(): Promise<{ available: boolean; providers: ExternalProvider[] }> {
+    const r = await request('/files/external/status')
+    const rec = isRecord(r) ? r : {}
+    return { available: bool(rec.available), providers: arr(rec.providers).map(normalizeExternalProvider) }
+  },
+  async externalMounts(): Promise<{ mounts: ExternalMount[] }> {
+    const r = await request('/files/external/mounts')
+    return { mounts: arr(isRecord(r) ? r.mounts : []).map(normalizeExternalMount) }
+  },
+  async externalConnect(provider: string, name: string, config: Record<string, string>): Promise<void> {
+    await request('/files/external/connect', { method: 'POST', body: JSON.stringify({ provider, name, config }) })
+  },
+  async externalDisconnect(id: string): Promise<void> {
+    await request('/files/external/disconnect', { method: 'POST', body: JSON.stringify({ id }) })
+  },
+  async externalList(mount: string, folder: string): Promise<{ nodes: DriveNode[] }> {
+    return { nodes: normalizeNodes(await request(`/files/external/list?mount=${encodeURIComponent(mount)}&folder=${encodeURIComponent(folder || '')}`)) }
+  },
+  async externalFolder(mount: string, parent: string, name: string): Promise<void> {
+    await request('/files/external/folder', { method: 'POST', body: JSON.stringify({ mount, parent, name }) })
+  },
 
   // ── import (copy provider files INTO your owned Drive — distinct from mount) ──
   // A mount is a live view that vanishes with the provider; an import is a copy
   // you keep even after disconnecting the integration or deleting the upstream.
-  importStatus: () => request('/files/import/status'),
-  importJobs: () => request('/files/import/jobs'),
-  importStart: (provider, source, mode) =>
-    request('/files/import', { method: 'POST', body: JSON.stringify({ provider, source, mode }) }),
-  importSync: (id) => request(`/files/import/jobs/${encodeURIComponent(id)}/sync`, { method: 'POST' }),
-  importDelete: (id) => request(`/files/import/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  async importStatus(): Promise<{ available: boolean; sources: ImportSource[] }> {
+    const r = await request('/files/import/status')
+    const rec = isRecord(r) ? r : {}
+    return { available: bool(rec.available), sources: arr(rec.sources).map(normalizeImportSource) }
+  },
+  async importJobs(): Promise<{ jobs: ImportJob[] }> {
+    const r = await request('/files/import/jobs')
+    return { jobs: arr(isRecord(r) ? r.jobs : []).map(normalizeImportJob) }
+  },
+  async importStart(provider: string, source: string, mode: string): Promise<void> {
+    await request('/files/import', { method: 'POST', body: JSON.stringify({ provider, source, mode }) })
+  },
+  async importSync(id: string): Promise<void> {
+    await request(`/files/import/jobs/${encodeURIComponent(id)}/sync`, { method: 'POST' })
+  },
+  async importDelete(id: string): Promise<void> {
+    await request(`/files/import/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
 }
 
 // uploadExternalOne: stream a file's bytes into a writable external mount under
 // parent, then return the created node. conflict defaults to rename-on-collision.
-async function uploadExternalOne(mountId, parentId, file, conflict = 'rename', onProgress) {
+function uploadExternalOne(
+  mountId: string,
+  parentId: string,
+  file: File,
+  conflict = 'rename',
+  onProgress?: (frac: number) => void,
+): Promise<unknown> {
   const qs = new URLSearchParams({ mount: mountId, parent: parentId || '', name: file.name, conflict })
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -282,7 +582,7 @@ async function uploadExternalOne(mountId, parentId, file, conflict = 'rename', o
 }
 
 // downloadExternal: stream a mounted-store file's bytes through the OS and save.
-async function downloadExternal(mountId, node) {
+async function downloadExternal(mountId: string, node: DriveNode): Promise<void> {
   const res = await rawFetch(
     `/files/external/content?mount=${encodeURIComponent(mountId)}&file=${encodeURIComponent(node.id)}&name=${encodeURIComponent(node.name)}`,
   )
@@ -310,7 +610,7 @@ async function downloadExternal(mountId, node) {
 // confidentiality gain. Fails closed (throws) if no master key is unlocked —
 // mirrors shareFileContentBlind's contract, never silently falls back to
 // plaintext. Returns a Blob ready to PUT.
-async function sealForCloudDefault(file) {
+async function sealForCloudDefault(file: File): Promise<Blob> {
   const { getMasterKey } = await import('../../lib/masterKey.js')
   const mk = getMasterKey()
   if (!mk) throw new Error('Unlock your account to upload to cloud storage sealed by default.')
@@ -322,8 +622,9 @@ async function sealForCloudDefault(file) {
 }
 
 // uploadOne: upload-grant → PUT bytes (direct presigned, else OS data plane) →
-// commit. Returns the committed node. `onProgress(fraction)` reports byte-level
-// PUT progress (0..1) when the transport can compute it.
+// commit. Returns the committed node (only `.id` is ever read by callers).
+// `onProgress(fraction)` reports byte-level PUT progress (0..1) when the
+// transport can compute it.
 //
 // Cloud-provisioned storage default sealing: when the upload grant advertises
 // seal_default (DEPLOY_MODE=cloud — see backend/services/files/service.go
@@ -335,7 +636,12 @@ async function sealForCloudDefault(file) {
 // AEAD call, which doesn't compose with per-chunk streaming without a wire
 // format change. See docs/FILES.md "Cloud storage default sealing" for the
 // honest, currently-shipped scope.
-async function uploadOne(parentId, file, onProgress, onResume) {
+async function uploadOne(
+  parentId: string,
+  file: File,
+  onProgress?: (frac: number) => void,
+  onResume?: (frac: number) => void,
+): Promise<{ id: string }> {
   // Large files: chunked/resumable path (each chunk ≤ relay cap; box reassembles
   // + commits server-side). Small files keep the single-shot grant→PUT→commit.
   if (file.size >= RESUMABLE_THRESHOLD) {
@@ -345,13 +651,13 @@ async function uploadOne(parentId, file, onProgress, onResume) {
     } catch (e) {
       // Fall back to single-shot when the resumable endpoint is unavailable
       // (older box: 404/503) so uploads still work; real chunk errors rethrow.
-      const msg = String(e && e.message)
+      const msg = errMessage(e)
       if (!/\(404\)|\(503\)/.test(msg)) throw e
     }
   }
   const { node, grant } = await filesApi.uploadGrant(parentId, file.name, file.type || 'application/octet-stream')
   const willSeal = !!(grant && grant.type === 'presigned' && grant.seal_default)
-  const body = willSeal ? await sealForCloudDefault(file) : file
+  const body: Blob = willSeal ? await sealForCloudDefault(file) : file
   const contentTypeHeader = willSeal ? 'application/octet-stream' : (file.type || '')
   if (grant && grant.type === 'presigned' && grant.url) {
     await putWithProgress(grant.url, body, {
@@ -374,9 +680,9 @@ async function uploadOne(parentId, file, onProgress, onResume) {
 }
 
 // downloadNodeBytes fetches a node's raw content bytes (presigned or OS data plane).
-async function downloadNodeBytes(node) {
+async function downloadNodeBytes(node: DriveNode): Promise<Bytes> {
   const { grant } = await filesApi.downloadGrant(node.id)
-  let res
+  let res: Response
   if (grant && grant.type === 'presigned' && grant.url) {
     res = await fetch(grant.url)
   } else {
@@ -388,10 +694,22 @@ async function downloadNodeBytes(node) {
 
 // downloadFolderTar fetches a folder subtree as a tar archive (owner-authed) so it
 // can be sealed for a content-blind share. Mirrors the server /peer/folder-tar route.
-async function downloadFolderTar(node) {
+async function downloadFolderTar(node: DriveNode): Promise<Bytes> {
   const res = await rawFetch(`/files/peer/folder-tar?node=${encodeURIComponent(node.id)}`)
   if (!res.ok) throw new Error(`could not read folder (${res.status})`)
   return new Uint8Array(await res.arrayBuffer())
+}
+
+// The shape recovered from a decrypted VMETA1 frame (see contentSeal.ts
+// unpackMeta) — every field defaulted so callers read straight through.
+interface DecryptedMeta {
+  name: string
+  content_type: string
+  is_dir: boolean
+}
+function normalizeSealedMeta(x: unknown): DecryptedMeta | null {
+  if (!isRecord(x)) return null
+  return { name: str(x.name), content_type: str(x.content_type), is_dir: bool(x.is_dir) }
 }
 
 // maybeDecrypt transparently decrypts WAVE-3 content-blind (VSEAL1) bytes with the
@@ -399,25 +717,36 @@ async function downloadFolderTar(node) {
 // { bytes, meta } where meta = { name, content_type, is_dir } | null. Non-sealed
 // bytes pass through with meta=null. The recipient's browser opens seals here on
 // download; the cell only ever handled the ciphertext + opaque metadata.
-async function maybeDecrypt(bytes) {
+async function maybeDecrypt(bytes: Bytes): Promise<{ bytes: Bytes; meta: DecryptedMeta | null }> {
   const { isSealed, open, unpackMeta } = await import('../../lib/contentSeal.js')
   if (!isSealed(bytes)) return { bytes, meta: null }
   const { getMasterKey } = await import('../../lib/masterKey.js')
   const mk = getMasterKey()
   if (!mk) throw new Error('This file is encrypted; unlock your account to open it.')
   const pt = await open(bytes, mk)
-  return unpackMeta(pt)
+  // unpackMeta returns { meta, payload } (see contentSeal.ts). The pre-existing
+  // .jsx did `return unpackMeta(pt)` here, which handed callers { meta, payload }
+  // while every caller destructured `{ bytes, meta }` — `bytes` was always
+  // `undefined` for sealed content (saveBlob(undefined, name) then wrote the
+  // literal string "undefined" instead of the file; nodeFileBytes' bytesToBase64
+  // would throw). That mismatch is a pre-existing bug, not a shape this typing
+  // pass can honestly preserve (TS correctly refuses to let `bytes` silently be
+  // `undefined` where every call site treats it as real bytes) — fixed here by
+  // returning the actual decrypted payload under the `bytes` key the callers
+  // already expect. Flagged prominently in the conversion report.
+  const { meta, payload } = unpackMeta(pt)
+  return { bytes: payload, meta: normalizeSealedMeta(meta) }
 }
 
 // extractSealedFolderToDrive untars a decrypted folder payload into the recipient's
 // Drive under parentId, recreating the subtree with filesApi. Returns the count of
 // created files. The cell never saw this tar — it is reconstructed client-side.
-async function extractSealedFolderToDrive(rootName, tarBytes, parentId) {
+async function extractSealedFolderToDrive(rootName: string, tarBytes: Bytes, parentId: string): Promise<number> {
   const { untar } = await import('../../lib/contentSeal.js')
   const entries = untar(tarBytes)
   const root = await filesApi.createFolder(parentId || '', rootName)
-  const dirIds = { '': root.id } // relative-path → folder node id
-  const ensureDir = async (relPath) => {
+  const dirIds: Record<string, string> = { '': root.id } // relative-path → folder node id
+  const ensureDir = async (relPath: string): Promise<string> => {
     if (relPath in dirIds) return dirIds[relPath]
     const slash = relPath.lastIndexOf('/')
     const parentRel = slash < 0 ? '' : relPath.slice(0, slash)
@@ -446,7 +775,7 @@ async function extractSealedFolderToDrive(rootName, tarBytes, parentId) {
 // ── native-bridge byte<->base64 helpers (Vulos Android app only) ───────────
 // dataUrlToBytes decodes a `data:<mime>;base64,<...>` URL (as returned by
 // nativeBridge.files.open) into raw bytes.
-function dataUrlToBytes(dataUrl) {
+function dataUrlToBytes(dataUrl: string): Bytes {
   const comma = dataUrl.indexOf(',')
   const bin = atob(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl)
   const bytes = new Uint8Array(bin.length)
@@ -456,12 +785,12 @@ function dataUrlToBytes(dataUrl) {
 
 // bytesToBase64 encodes raw bytes as plain base64 (no data: prefix) for
 // nativeBridge.files.save/share, which take `dataBase64`. Chunked to avoid
-// blowing the call stack on String.fromCharCode.apply for large files.
-function bytesToBase64(bytes) {
+// blowing the call stack on String.fromCharCode(...spread) for large files.
+function bytesToBase64(bytes: Bytes): string {
   let binary = ''
   const chunk = 0x8000
   for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk))
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
   }
   return btoa(binary)
 }
@@ -469,7 +798,7 @@ function bytesToBase64(bytes) {
 // nodeFileBytes fetches + (content-blind) decrypts a file node's bytes for a
 // device-native action (save/share), reusing the same download path the web
 // "Download" action uses. Folders are out of scope for these two actions.
-async function nodeFileBytes(node) {
+async function nodeFileBytes(node: DriveNode): Promise<{ bytes: Bytes; name: string; mime: string }> {
   const { bytes, meta } = await maybeDecrypt(await downloadNodeBytes(node))
   if (meta && meta.is_dir) throw new Error('Folders aren’t supported for this action yet')
   return {
@@ -479,7 +808,7 @@ async function nodeFileBytes(node) {
   }
 }
 
-function saveBlob(bytes, name) {
+function saveBlob(bytes: Bytes, name: string): void {
   const url = URL.createObjectURL(new Blob([bytes]))
   const a = document.createElement('a')
   a.href = url
@@ -493,7 +822,7 @@ function saveBlob(bytes, name) {
 // downloadOne: fetch bytes → (content-blind) decrypt if sealed → recover metadata →
 // save the file under its REAL name, or (a sealed folder) untar it into Drive under
 // destParentId. Returns { extractedFolder, files } when a folder was reconstructed.
-async function downloadOne(node, destParentId) {
+async function downloadOne(node: DriveNode, destParentId: string): Promise<{ extractedFolder?: string; files?: number }> {
   const { bytes, meta } = await maybeDecrypt(await downloadNodeBytes(node))
   if (meta && meta.is_dir) {
     const files = await extractSealedFolderToDrive(meta.name || node.name, bytes, destParentId || '')
@@ -509,16 +838,24 @@ async function downloadOne(node, destParentId) {
 // /files/peer/issue-sealed. The relaying cell only ever sees the sealed envelope.
 // FAIL CLOSED: a directory-resolvable recipient with NO published content key is
 // refused (never a plaintext fallback through the cell). Returns { ok, blind, note }.
-async function shareFileContentBlind(node, email, access, ttlSeconds) {
-  let disc
+interface ShareBlindResult {
+  ok: boolean
+  blind: boolean
+  result?: { delivered?: boolean; server?: string; link?: string }
+}
+async function shareFileContentBlind(node: DriveNode, email: string, access: string, ttlSeconds: number): Promise<ShareBlindResult> {
+  let disc: unknown
   try {
     disc = await request(`/peering/discover?email=${encodeURIComponent(email)}`)
   } catch {
     return { ok: false, blind: false } // not directory-resolvable → caller falls back
   }
-  const rec = disc && disc.found ? disc.result : null
+  const discRec = isRecord(disc) ? disc : {}
+  const resultRec = isRecord(discRec.result) ? discRec.result : null
+  const rec = bool(discRec.found) ? resultRec : null
   if (!rec) return { ok: false, blind: false } // co-cloud/local or unknown → caller falls back
-  if (!rec.content_pub_key) {
+  const contentPubKey = str(rec.content_pub_key)
+  if (!contentPubKey) {
     // Remote recipient that has published NO content key: cannot share content-blind.
     throw new Error(`${email} has not published an encryption key yet — cannot share securely.`)
   }
@@ -535,7 +872,7 @@ async function shareFileContentBlind(node, email, access, ttlSeconds) {
     { name: node.name, content_type: node.content_type || '', is_dir: !!node.is_dir },
     payload,
   )
-  const sealed = await seal(packed, [rec.content_pub_key, myPub])
+  const sealed = await seal(packed, [contentPubKey, myPub])
   const fd = new FormData()
   fd.append('node_id', node.id)
   fd.append('email', email)
@@ -544,13 +881,22 @@ async function shareFileContentBlind(node, email, access, ttlSeconds) {
   fd.append('sealed', new Blob([sealed], { type: 'application/octet-stream' }), 'sealed.vseal')
   const res = await rawFetch('/files/peer/issue-sealed', { method: 'POST', body: fd })
   if (!res.ok) throw new Error(`Secure share failed (${res.status})`)
-  const out = await res.json()
-  return { ok: true, blind: true, result: out }
+  const out: unknown = await res.json()
+  const outRec = isRecord(out) ? out : {}
+  return {
+    ok: true,
+    blind: true,
+    result: {
+      delivered: typeof outRec.delivered === 'boolean' ? outRec.delivered : undefined,
+      server: typeof outRec.server === 'string' ? outRec.server : undefined,
+      link: typeof outRec.link === 'string' ? outRec.link : undefined,
+    },
+  }
 }
 
 // downloadReceived: fetch a redeemed item's staged bytes, (content-blind) decrypt
 // if sealed, and trigger a save.
-async function downloadReceived(item) {
+async function downloadReceived(item: DriveNode): Promise<{ extractedFolder?: string; files?: number }> {
   const res = await rawFetch(`/files/peer/received/get?id=${encodeURIComponent(item.id)}`)
   if (!res.ok) throw new Error(`download failed (${res.status})`)
   const { bytes, meta } = await maybeDecrypt(new Uint8Array(await res.arrayBuffer()))
@@ -563,7 +909,7 @@ async function downloadReceived(item) {
 }
 
 // ── formatting helpers ───────────────────────────────────────────────────────
-function fmtSize(n) {
+function fmtSize(n: number): string {
   if (!n) return '—'
   const u = ['B', 'KB', 'MB', 'GB', 'TB']
   let i = 0
@@ -571,13 +917,13 @@ function fmtSize(n) {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
   return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${u[i]}`
 }
-function fmtDate(s) {
+function fmtDate(s: string): string {
   if (!s) return ''
   const d = new Date(s)
-  if (isNaN(d)) return ''
+  if (isNaN(d.getTime())) return ''
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
-function fileGlyph(node) {
+function fileGlyph(node: { is_dir: boolean; name: string }): string {
   if (node.is_dir) return '📁'
   const ext = (node.name.split('.').pop() || '').toLowerCase()
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return '🖼'
@@ -591,7 +937,15 @@ function fileGlyph(node) {
 }
 
 // ── small primitives ─────────────────────────────────────────────────────────
-function Btn({ children, onClick, primary, disabled, title, small }) {
+interface BtnProps {
+  children: ReactNode
+  onClick?: () => void
+  primary?: boolean
+  disabled?: boolean
+  title?: string
+  small?: boolean
+}
+function Btn({ children, onClick, primary, disabled, title, small }: BtnProps) {
   return (
     <button
       onClick={onClick}
@@ -617,11 +971,17 @@ function Btn({ children, onClick, primary, disabled, title, small }) {
   )
 }
 
-function Modal({ title, onClose, children, width = 460 }) {
+interface ModalProps {
+  title: ReactNode
+  onClose: () => void
+  children: ReactNode
+  width?: number
+}
+function Modal({ title, onClose, children, width = 460 }: ModalProps) {
   // A11Y: trap focus while open + restore to the opener on close; Esc dismisses.
   const trapRef = useFocusTrap(true)
   useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose() }
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [onClose])
@@ -655,16 +1015,24 @@ function Modal({ title, onClose, children, width = 460 }) {
   )
 }
 
-const inputStyle = {
+const inputStyle: CSSProperties = {
   width: '100%', padding: '8px 11px', fontSize: 13, borderRadius: 8,
   border: `1px solid ${T.borderStrong}`, background: T.bg, color: T.text, outline: 'none',
   boxSizing: 'border-box',
 }
 
 // ── prompt modal (name input for folder / rename) ────────────────────────────
-function PromptModal({ title, label, initial, confirmText, onConfirm, onClose }) {
+interface PromptModalProps {
+  title: string
+  label: string
+  initial?: string
+  confirmText?: string
+  onConfirm: (value: string) => void
+  onClose: () => void
+}
+function PromptModal({ title, label, initial, confirmText, onConfirm, onClose }: PromptModalProps) {
   const [val, setVal] = useState(initial || '')
-  const ref = useRef(null)
+  const ref = useRef<HTMLInputElement>(null)
   useEffect(() => { ref.current?.focus(); ref.current?.select() }, [])
   const submit = () => { const v = val.trim(); if (v) onConfirm(v) }
   return (
@@ -684,26 +1052,35 @@ function PromptModal({ title, label, initial, confirmText, onConfirm, onClose })
 }
 
 // ── move (folder picker) modal ───────────────────────────────────────────────
-function MoveModal({ node, onMoved, onClose }) {
-  const [stack, setStack] = useState([{ id: '', name: 'My Drive' }])
-  const [folders, setFolders] = useState([])
+interface TrailCrumb {
+  id: string
+  name: string
+}
+interface MoveModalProps {
+  node: DriveNode
+  onMoved: () => void
+  onClose: () => void
+}
+function MoveModal({ node, onMoved, onClose }: MoveModalProps) {
+  const [stack, setStack] = useState<TrailCrumb[]>([{ id: '', name: 'My Drive' }])
+  const [folders, setFolders] = useState<DriveNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState(null)
+  const [err, setErr] = useState<string | null>(null)
   const cur = stack[stack.length - 1]
 
-  const load = useCallback(async (parent) => {
+  const load = useCallback(async (parent: string) => {
     setLoading(true); setErr(null)
     try {
       const r = await filesApi.list(parent)
       setFolders((r.nodes || []).filter((n) => n.is_dir && n.id !== node.id))
-    } catch (e) { setErr(e.message || 'Failed to load') } finally { setLoading(false) }
+    } catch (e) { setErr(errMessage(e) || 'Failed to load') } finally { setLoading(false) }
   }, [node.id])
 
   useEffect(() => { load(cur.id) }, [cur.id, load])
 
   const doMove = async () => {
     try { await filesApi.move(node.id, cur.id || '', ''); onMoved() }
-    catch (e) { setErr(e.message || 'Move failed') }
+    catch (e) { setErr(errMessage(e) || 'Move failed') }
   }
 
   return (
@@ -747,11 +1124,15 @@ function MoveModal({ node, onMoved, onClose }) {
 }
 
 // ── versions modal ───────────────────────────────────────────────────────────
-function VersionsModal({ node, onClose }) {
-  const [versions, setVersions] = useState(null)
-  const [err, setErr] = useState(null)
+interface VersionsModalProps {
+  node: DriveNode
+  onClose: () => void
+}
+function VersionsModal({ node, onClose }: VersionsModalProps) {
+  const [versions, setVersions] = useState<FileVersion[] | null>(null)
+  const [err, setErr] = useState<string | null>(null)
   useEffect(() => {
-    filesApi.versions(node.id).then((r) => setVersions(r.versions || [])).catch((e) => setErr(e.message || 'Failed'))
+    filesApi.versions(node.id).then((r) => setVersions(r.versions || [])).catch((e: unknown) => setErr(errMessage(e) || 'Failed'))
   }, [node.id])
   return (
     <Modal title={`Versions — ${node.name}`} onClose={onClose}>
@@ -782,14 +1163,18 @@ const LINK_TTLS = [
   { label: '7 days', s: 604800 },
   { label: '30 days', s: 2592000 },
 ]
-function ShareModal({ node, onClose }) {
-  const [shares, setShares] = useState([])
-  const [links, setLinks] = useState([])
-  const [err, setErr] = useState(null)
+interface ShareModalProps {
+  node: DriveNode
+  onClose: () => void
+}
+function ShareModal({ node, onClose }: ShareModalProps) {
+  const [shares, setShares] = useState<FileShare[]>([])
+  const [links, setLinks] = useState<ShareLink[]>([])
+  const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('viewer')
-  const [note, setNote] = useState(null)
+  const [note, setNote] = useState<string | null>(null)
   const [linkRole, setLinkRole] = useState('viewer')
   const [linkTtl, setLinkTtl] = useState(604800)
   const [copied, setCopied] = useState('')
@@ -798,7 +1183,7 @@ function ShareModal({ node, onClose }) {
     try {
       const [s, l] = await Promise.all([filesApi.shares(node.id), filesApi.links(node.id)])
       setShares(s.shares || []); setLinks(l.links || []); setErr(null)
-    } catch (e) { setErr(e.message || 'Failed to load sharing') }
+    } catch (e) { setErr(errMessage(e) || 'Failed to load sharing') }
   }, [node.id])
   useEffect(() => { reload() }, [reload])
 
@@ -838,29 +1223,29 @@ function ShareModal({ node, onClose }) {
       setErr(null)
       await reload()
     }
-    catch (e) { setErr(e.message || 'Share failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Share failed') } finally { setBusy(false) }
   }
-  const removeShare = async (p) => {
+  const removeShare = async (p: string) => {
     setBusy(true)
     try { await filesApi.unshare(node.id, p); await reload() }
-    catch (e) { setErr(e.message || 'Revoke failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Revoke failed') } finally { setBusy(false) }
   }
   const addLink = async () => {
     setBusy(true)
     try { await filesApi.createLink(node.id, linkRole, linkTtl); await reload() }
-    catch (e) { setErr(e.message || 'Link create failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Link create failed') } finally { setBusy(false) }
   }
-  const killLink = async (token) => {
+  const killLink = async (token: string) => {
     setBusy(true)
     try { await filesApi.revokeLink(token); await reload() }
-    catch (e) { setErr(e.message || 'Revoke failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Revoke failed') } finally { setBusy(false) }
   }
-  const copyLink = async (token) => {
+  const copyLink = async (token: string) => {
     const url = `${location.origin}/?share=${token}`
     try { await navigator.clipboard.writeText(url); setCopied(token); setTimeout(() => setCopied(''), 1500) } catch { /* ignore */ }
   }
 
-  const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '4px 0 10px' }
+  const section: CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '4px 0 10px' }
 
   return (
     <Modal title={`Share — ${node.name}`} onClose={onClose} width={520}>
@@ -935,9 +1320,13 @@ const CAP_TTLS = [
   { label: '1 day', s: 86400 },
   { label: '7 days', s: 604800 },
 ]
-function PeerShareModal({ node, onClose }) {
-  const [shares, setShares] = useState([])
-  const [err, setErr] = useState(null)
+interface PeerShareModalProps {
+  node: DriveNode
+  onClose: () => void
+}
+function PeerShareModal({ node, onClose }: PeerShareModalProps) {
+  const [shares, setShares] = useState<PeerShare[]>([])
+  const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [access, setAccess] = useState('viewer')
   const [recipient, setRecipient] = useState('')
@@ -947,7 +1336,7 @@ function PeerShareModal({ node, onClose }) {
 
   const reload = useCallback(async () => {
     try { const r = await filesApi.peerShares(node.id); setShares(r.shares || []); setErr(null) }
-    catch (e) { setErr(e.message || 'Failed to load') }
+    catch (e) { setErr(errMessage(e) || 'Failed to load') }
   }, [node.id])
   useEffect(() => { reload() }, [reload])
 
@@ -957,17 +1346,17 @@ function PeerShareModal({ node, onClose }) {
       const r = await filesApi.peerIssue(node.id, access, recipient.trim(), ttl)
       setLink(r.link || '')
       await reload()
-    } catch (e) { setErr(e.message || 'Generate failed') } finally { setBusy(false) }
+    } catch (e) { setErr(errMessage(e) || 'Generate failed') } finally { setBusy(false) }
   }
-  const revoke = async (id) => {
+  const revoke = async (id: string) => {
     setBusy(true)
     try { await filesApi.peerRevoke(id); await reload() }
-    catch (e) { setErr(e.message || 'Revoke failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Revoke failed') } finally { setBusy(false) }
   }
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { /* ignore */ }
   }
-  const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '4px 0 10px' }
+  const section: CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '4px 0 10px' }
 
   return (
     <Modal title={`Share via peer — ${node.name}`} onClose={onClose} width={540}>
@@ -1029,23 +1418,28 @@ function PeerShareModal({ node, onClose }) {
 }
 
 // ── redeem modal (paste a capability link → fetch over p2p → preview/save) ───
-function RedeemModal({ onClose, onRedeemed }) {
+interface RedeemModalProps {
+  onClose: () => void
+  onRedeemed?: () => void
+}
+function RedeemModal({ onClose, onRedeemed }: RedeemModalProps) {
   const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-  const [item, setItem] = useState(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [item, setItem] = useState<PeerRedeemItem | null>(null)
 
   const redeem = async () => {
     const v = link.trim()
     if (!v) return
     setBusy(true); setErr(null)
     try { const it = await filesApi.peerRedeem(v); setItem(it); onRedeemed?.() }
-    catch (e) { setErr(e.message || 'Redeem failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Redeem failed') } finally { setBusy(false) }
   }
   const save = async () => {
+    if (!item) return
     setBusy(true)
     try { await filesApi.peerSave(item.id, '', item.name); onClose() }
-    catch (e) { setErr(e.message || 'Save failed') } finally { setBusy(false) }
+    catch (e) { setErr(errMessage(e) || 'Save failed') } finally { setBusy(false) }
   }
 
   return (
@@ -1091,7 +1485,17 @@ function RedeemModal({ onClose, onRedeemed }) {
 }
 
 // ── row action menu ──────────────────────────────────────────────────────────
-function RowMenu({ node, onAction, onClose }) {
+type NodeActionKind =
+  | 'download' | 'savedevice' | 'sharedevice'
+  | 'rename' | 'move' | 'share' | 'peershare' | 'versions' | 'delete'
+type MenuItem = readonly [NodeActionKind, string]
+
+interface RowMenuProps {
+  node: DriveNode
+  onAction: (kind: NodeActionKind) => void
+  onClose: () => void
+}
+function RowMenu({ node, onAction, onClose }: RowMenuProps) {
   useEffect(() => {
     const h = () => onClose()
     window.addEventListener('click', h)
@@ -1101,17 +1505,17 @@ function RowMenu({ node, onAction, onClose }) {
   // .available), invisible in a plain browser/PWA — the web download/share
   // rows above stay the default there.
   const nativeFiles = nativeBridge.files.available
-  const items = [
-    !node.is_dir && ['download', 'Download'],
-    !node.is_dir && nativeFiles && ['savedevice', 'Save to device'],
-    !node.is_dir && nativeFiles && ['sharedevice', 'Share to app…'],
-    ['rename', 'Rename'],
-    ['move', 'Move…'],
-    ['share', 'Share…'],
-    ['peershare', 'Share via peer…'],
-    !node.is_dir && ['versions', 'Versions'],
-    ['delete', 'Delete'],
-  ].filter(Boolean)
+  const items = ([
+    !node.is_dir && (['download', 'Download'] as const),
+    !node.is_dir && nativeFiles && (['savedevice', 'Save to device'] as const),
+    !node.is_dir && nativeFiles && (['sharedevice', 'Share to app…'] as const),
+    ['rename', 'Rename'] as const,
+    ['move', 'Move…'] as const,
+    ['share', 'Share…'] as const,
+    ['peershare', 'Share via peer…'] as const,
+    !node.is_dir && (['versions', 'Versions'] as const),
+    ['delete', 'Delete'] as const,
+  ] as (MenuItem | false)[]).filter((x): x is MenuItem => x !== false)
   return (
     <div
       onClick={(e) => e.stopPropagation()}
@@ -1139,16 +1543,21 @@ function RowMenu({ node, onAction, onClose }) {
 }
 
 // ── connect-external modal (mount Google Drive / Dropbox / GCS) ──────────────
-function ConnectModal({ providers, onConnect, onClose }) {
+interface ConnectModalProps {
+  providers: ExternalProvider[]
+  onConnect: (provider: string, config: Record<string, string>) => Promise<void>
+  onClose: () => void
+}
+function ConnectModal({ providers, onConnect, onClose }: ConnectModalProps) {
   const [provider, setProvider] = useState(providers[0]?.kind || '')
-  const [config, setConfig] = useState({})
+  const [config, setConfig] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
+  const [err, setErr] = useState<string | null>(null)
   const sel = providers.find((p) => p.kind === provider)
   const fields = sel?.config_fields || []
 
   // Reset collected config whenever the chosen provider changes.
-  const pick = (kind) => { setProvider(kind); setConfig({}) }
+  const pick = (kind: string) => { setProvider(kind); setConfig({}) }
 
   const missing = fields.some((f) => f.required && !(config[f.key] || '').trim())
 
@@ -1157,9 +1566,9 @@ function ConnectModal({ providers, onConnect, onClose }) {
     try { await onConnect(provider, config); onClose() }
     catch (e) {
       // A 409 means the account hasn't linked the provider in cloud settings yet.
-      const msg = /409|not connected/i.test(e.message || '')
+      const msg = /409|not connected/i.test(errMessage(e))
         ? 'This account has not connected the provider yet. Connect it in your cloud account settings, then try again.'
-        : (e.message || 'Connect failed')
+        : (errMessage(e) || 'Connect failed')
       setErr(msg)
     } finally { setBusy(false) }
   }
@@ -1206,7 +1615,15 @@ function ConnectModal({ providers, onConnect, onClose }) {
 // persist after the integration is disconnected or the upstream file is deleted.
 // Lets the user pick a source, browse to a folder (or "everything"), choose
 // "Import once" vs "Keep in sync", and shows job progress + history.
-function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
+interface ImportModalProps {
+  sources: ImportSource[]
+  jobs: ImportJob[]
+  onStart: (provider: string, source: string, mode: string) => Promise<void>
+  onSync: (id: string) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}
+function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }: ImportModalProps) {
   const [provider, setProvider] = useState(sources[0]?.kind || '')
   const [mode, setMode] = useState('once')
   // Folder picker over the provider tree (via a throwaway-style browse). For the
@@ -1214,22 +1631,22 @@ function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
   // provider browsing reuses the mount list endpoint when a mount exists.
   const [source, setSource] = useState('')
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
+  const [err, setErr] = useState<string | null>(null)
   const sel = sources.find((p) => p.kind === provider)
 
   const start = async () => {
     setBusy(true); setErr(null)
     try { await onStart(provider, source.trim(), mode) }
     catch (e) {
-      const msg = /409|not connected/i.test(e.message || '')
+      const msg = /409|not connected/i.test(errMessage(e))
         ? 'This account has not connected the provider yet. Connect it in your cloud account settings, then try again.'
-        : (e.message || 'Import failed to start')
+        : (errMessage(e) || 'Import failed to start')
       setErr(msg)
     } finally { setBusy(false) }
   }
 
-  const section = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '16px 0 8px' }
-  const statusColor = (s) => s === 'done' ? 'var(--status-success)' : s === 'error' ? T.danger : T.accent
+  const section: CSSProperties = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textFaint, margin: '16px 0 8px' }
+  const statusColor = (s: string): string => s === 'done' ? 'var(--status-success)' : s === 'error' ? T.danger : T.accent
 
   return (
     <Modal title="Import from Google / Microsoft" onClose={onClose} width={560}>
@@ -1306,27 +1723,65 @@ function ImportModal({ sources, jobs, onStart, onSync, onDelete, onClose }) {
   )
 }
 
+// ── modal state (what's open above the main list) ────────────────────────────
+type ModalState =
+  | { kind: 'newfolder' }
+  | { kind: 'rename' | 'move' | 'share' | 'peershare' | 'versions'; node: DriveNode }
+
+type DriveView = 'mydrive' | 'shared' | 'received' | `ext:${string}`
+const VIEW_NAMES: Record<string, string> = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
+const NAV_ITEMS: [DriveView, string, string][] = [
+  ['mydrive', '📁', 'My Drive'],
+  ['shared', '👥', 'Shared with me'],
+  ['received', '📥', 'Received'],
+]
+
+interface UploadItem {
+  id: string
+  name: string
+  size: number
+  pct: number | null
+  state: UploadRowState
+}
+
+// Shape of an inbound native-app share (Vulos Android's share sheet →
+// nativeBridge.files.onShareIn). nativeBridge.js is untyped JS (see the
+// module's own header comment on why every method degrades honestly rather
+// than crashing outside the app) so this is an explicit expected-shape
+// annotation at the JS/TS boundary, not a runtime-validated narrow — matches
+// the original code's behaviour exactly, which also never validated it.
+interface NativeShareItem {
+  dataUrl?: string
+  uri: string
+  name?: string
+  mime?: string
+}
+interface NativeShareMessage {
+  items?: NativeShareItem[]
+  text?: string
+}
+
 // ── main app ─────────────────────────────────────────────────────────────────
 export default function Drive() {
-  const [view, setView] = useState('mydrive') // 'mydrive' | 'shared'
-  const [trail, setTrail] = useState([{ id: '', name: 'My Drive' }])
-  const [nodes, setNodes] = useState([])
+  const [view, setView] = useState<DriveView>('mydrive')
+  const [trail, setTrail] = useState<TrailCrumb[]>([{ id: '', name: 'My Drive' }])
+  const [nodes, setNodes] = useState<DriveNode[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [menuFor, setMenuFor] = useState(null)
-  const [modal, setModal] = useState(null) // { kind, node }
+  const [error, setError] = useState<string | null>(null)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [modal, setModal] = useState<ModalState | null>(null)
   const [redeemOpen, setRedeemOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
-  const [extStatus, setExtStatus] = useState({ available: false, providers: [] })
-  const [importStatus, setImportStatus] = useState({ available: false, sources: [] })
-  const [importJobs, setImportJobs] = useState([])
-  const [mounts, setMounts] = useState([])
-  const [busy, setBusy] = useState(null) // status text
+  const [extStatus, setExtStatus] = useState<{ available: boolean; providers: ExternalProvider[] }>({ available: false, providers: [] })
+  const [importStatus, setImportStatus] = useState<{ available: boolean; sources: ImportSource[] }>({ available: false, sources: [] })
+  const [importJobs, setImportJobs] = useState<ImportJob[]>([])
+  const [mounts, setMounts] = useState<ExternalMount[]>([])
+  const [busy, setBusy] = useState<string | null>(null) // status text
   // Per-file upload progress. Each entry: { id, name, size, pct (0..1|null), state }.
   // pct === null → indeterminate (transport can't report bytes). state:
   // 'uploading' | 'done' | 'error'. Cleared shortly after the batch settles.
-  const [uploads, setUploads] = useState([])
+  const [uploads, setUploads] = useState<UploadItem[]>([])
   // Purely-visual: on narrow screens the fixed sidebar becomes a slide-over
   // drawer toggled by a menu button in the toolbar (no data-flow impact).
   const [navOpen, setNavOpen] = useState(false)
@@ -1334,8 +1789,8 @@ export default function Drive() {
   // The active external mount, if the current view is one ("ext:<mountID>").
   const extMountId = view.startsWith('ext:') ? view.slice(4) : ''
   const extMount = mounts.find((m) => m.id === extMountId)
-  const fileInputRef = useRef(null)
-  const dropRef = useRef(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
   const cur = trail[trail.length - 1]
@@ -1389,7 +1844,7 @@ export default function Drive() {
         setNodes(r.nodes || [])
       }
     } catch (e) {
-      setError(e.message || 'Failed to load')
+      setError(errMessage(e) || 'Failed to load')
       setNodes([])
     } finally {
       setLoading(false)
@@ -1404,7 +1859,7 @@ export default function Drive() {
   // No-op (subscribe() itself no-ops) in a plain browser/PWA.
   useEffect(() => {
     if (!nativeBridge.files.available) return
-    const off = nativeBridge.files.onShareIn(async (msg) => {
+    const off = nativeBridge.files.onShareIn(async (msg: NativeShareMessage) => {
       const items = msg.items || []
       let count = 0
       try {
@@ -1422,69 +1877,68 @@ export default function Drive() {
           setTimeout(() => setBusy(null), 2500)
           await refresh()
         }
-      } catch (e) { setError(e.message || 'Could not save the shared item') }
+      } catch (e) { setError(errMessage(e) || 'Could not save the shared item') }
     })
     return off
   }, [cur.id, view, refresh])
 
-  const openFolder = (node) => setTrail([...trail, { id: node.id, name: node.name }])
-  const gotoCrumb = (i) => setTrail(trail.slice(0, i + 1))
-  const VIEW_NAMES = { shared: 'Shared with me', received: 'Received', mydrive: 'My Drive' }
-  const switchView = (v, rootName) => { setView(v); setTrail([{ id: '', name: rootName || VIEW_NAMES[v] || 'My Drive' }]) }
+  const openFolder = (node: DriveNode) => setTrail([...trail, { id: node.id, name: node.name }])
+  const gotoCrumb = (i: number) => setTrail(trail.slice(0, i + 1))
+  const switchView = (v: DriveView, rootName?: string) => { setView(v); setTrail([{ id: '', name: rootName || VIEW_NAMES[v] || 'My Drive' }]) }
 
-  const connectExternal = async (provider, config) => {
+  const connectExternal = async (provider: string, config: Record<string, string>) => {
     await filesApi.externalConnect(provider, '', config)
     await loadExternal()
   }
-  const disconnectExternal = async (m) => {
+  const disconnectExternal = async (m: ExternalMount) => {
     if (!window.confirm(`Disconnect “${m.name}”? Your files stay in ${m.name}; this only removes the drive from Vulos.`)) return
     try {
       await filesApi.externalDisconnect(m.id)
       if (extMountId === m.id) switchView('mydrive')
       await loadExternal()
-    } catch (e) { setError(e.message || 'Disconnect failed') }
+    } catch (e) { setError(errMessage(e) || 'Disconnect failed') }
   }
 
   // Import handlers. After a start/sync we refresh the job list (and My Drive,
   // since copies land there) so progress + new files show up.
-  const startImport = async (provider, source, mode) => {
+  const startImport = async (provider: string, source: string, mode: string) => {
     await filesApi.importStart(provider, source, mode)
     await loadImport()
     setTimeout(() => { loadImport(); if (view === 'mydrive') refresh() }, 1500)
   }
-  const syncImport = async (id) => {
+  const syncImport = async (id: string) => {
     try { await filesApi.importSync(id); await loadImport() }
-    catch (e) { setError(e.message || 'Sync failed') }
+    catch (e) { setError(errMessage(e) || 'Sync failed') }
   }
-  const deleteImport = async (id) => {
+  const deleteImport = async (id: string) => {
     if (!window.confirm('Remove this import? Your imported files stay in your Drive; this only stops tracking the import.')) return
     try { await filesApi.importDelete(id); await loadImport() }
-    catch (e) { setError(e.message || 'Remove failed') }
+    catch (e) { setError(errMessage(e) || 'Remove failed') }
   }
 
-  const saveReceived = async (item) => {
+  const saveReceived = async (item: DriveNode) => {
     setBusy(`Saving ${item.name} to Drive…`)
     try { await filesApi.peerSave(item.id, '', item.name); await refresh() }
-    catch (e) { setError(e.message || 'Save failed') } finally { setBusy(null) }
+    catch (e) { setError(errMessage(e) || 'Save failed') } finally { setBusy(null) }
   }
 
-  const onRowOpen = (node) => {
+  const onRowOpen = (node: DriveNode) => {
     if (node.is_dir) { openFolder(node); return }
     if (extMountId) {
       setBusy(`Downloading ${node.name}…`)
-      downloadExternal(extMountId, node).catch((e) => setError(e.message || 'Download failed')).finally(() => setBusy(null))
+      downloadExternal(extMountId, node).catch((e: unknown) => setError(errMessage(e) || 'Download failed')).finally(() => setBusy(null))
       return
     }
     handle('download', node)
   }
 
-  const handle = async (kind, node) => {
+  const handle = async (kind: NodeActionKind, node: DriveNode) => {
     if (kind === 'download') {
       setBusy(`Downloading ${node.name}…`)
       try {
         const r = await downloadOne(node, cur.id)
         if (r && r.extractedFolder) await refresh() // a sealed folder was untarred into Drive
-      } catch (e) { setError(e.message || 'Download failed') } finally { setBusy(null) }
+      } catch (e) { setError(errMessage(e) || 'Download failed') } finally { setBusy(null) }
       return
     }
     if (kind === 'savedevice' || kind === 'sharedevice') {
@@ -1494,13 +1948,13 @@ export default function Drive() {
         const dataBase64 = bytesToBase64(f.bytes)
         if (kind === 'savedevice') await nativeBridge.files.save({ name: f.name, mime: f.mime, dataBase64 })
         else await nativeBridge.files.share({ name: f.name, mime: f.mime, dataBase64 })
-      } catch (e) { setError(e.message || `${kind === 'savedevice' ? 'Save' : 'Share'} failed`) } finally { setBusy(null) }
+      } catch (e) { setError(errMessage(e) || `${kind === 'savedevice' ? 'Save' : 'Share'} failed`) } finally { setBusy(null) }
       return
     }
     if (kind === 'delete') {
       if (!window.confirm(`Delete “${node.name}”${node.is_dir ? ' and its contents' : ''}?`)) return
       setBusy('Deleting…')
-      try { await filesApi.remove(node.id); await refresh() } catch (e) { setError(e.message || 'Delete failed') } finally { setBusy(null) }
+      try { await filesApi.remove(node.id); await refresh() } catch (e) { setError(errMessage(e) || 'Delete failed') } finally { setBusy(null) }
       return
     }
     setModal({ kind, node })
@@ -1509,23 +1963,23 @@ export default function Drive() {
   // A writable external mount is an upload/new-folder target, just like My Drive.
   const extWritable = !!extMount?.writable
 
-  const doUpload = async (fileList) => {
+  const doUpload = async (fileList: FileList | File[] | null) => {
     const files = Array.from(fileList || [])
     if (files.length === 0) return
     // Seed the progress list — one row per file, so the user sees the whole
     // batch at once with a determinate bar filling per byte-progress.
-    const queue = files.map((f, i) => ({ id: `${Date.now()}-${i}-${f.name}`, name: f.name, size: f.size, pct: 0, state: 'uploading' }))
+    const queue: UploadItem[] = files.map((f, i) => ({ id: `${Date.now()}-${i}-${f.name}`, name: f.name, size: f.size, pct: 0, state: 'uploading' }))
     setUploads(queue)
-    const setState = (id, state) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, state } : x)))
+    const setState = (id: string, state: UploadRowState) => setUploads((u) => u.map((x) => (x.id === id ? { ...x, state } : x)))
     let anyError = false
     for (const item of queue) {
       const f = files[queue.indexOf(item)]
-      const onProgress = (frac) => setUploads((u) => u.map((x) => (
+      const onProgress = (frac: number) => setUploads((u) => u.map((x) => (
         x.id === item.id ? { ...x, pct: Math.max(0, Math.min(1, frac)), state: x.state === 'resuming' ? 'uploading' : x.state } : x
       )))
       // Mark the row as resuming when the box already holds committed bytes, so
       // the user sees "resuming" (with the bar pre-seeded) rather than a fresh 0%.
-      const onResume = (frac) => setUploads((u) => u.map((x) => (
+      const onResume = (frac: number) => setUploads((u) => u.map((x) => (
         x.id === item.id ? { ...x, pct: Math.max(0, Math.min(1, frac)), state: 'resuming' } : x
       )))
       try {
@@ -1535,7 +1989,7 @@ export default function Drive() {
       } catch (e) {
         anyError = true
         setState(item.id, 'error')
-        setError(`Upload of ${f.name} failed: ${e.message || e}`)
+        setError(`Upload of ${f.name} failed: ${errMessage(e)}`)
       }
     }
     // Keep the completed batch visible briefly, then clear (leave errors up a
@@ -1554,20 +2008,20 @@ export default function Drive() {
       const file = new File([dataUrlToBytes(picked.dataUrl)], picked.name || 'file', { type: picked.mime || 'application/octet-stream' })
       await doUpload([file])
     } catch (e) {
-      if (e && e.message !== 'cancelled') setError(e.message || 'Could not open file')
+      if (errMessage(e) !== 'cancelled') setError(errMessage(e) || 'Could not open file')
     }
   }
 
   // Where uploads/new-folder are allowed: My Drive, or a writable external mount.
   const canWrite = view === 'mydrive' || extWritable
   const readOnlyView = !canWrite // shared / received / read-only external aren't targets
-  const onDrop = (e) => {
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault(); setDragOver(false)
     if (readOnlyView) return
     if (e.dataTransfer?.files?.length) doUpload(e.dataTransfer.files)
   }
 
-  const closeModal = async (reload) => { setModal(null); if (reload) await refresh() }
+  const closeModal = async (reload?: boolean) => { setModal(null); if (reload) await refresh() }
 
   // ── render ──────────────────────────────────────────────────────────────
   return (
@@ -1580,7 +2034,7 @@ export default function Drive() {
           <span style={{ fontSize: 18, lineHeight: 1 }} aria-hidden="true">🗂</span>
           <span style={{ fontSize: 15, fontWeight: 700, color: T.text, letterSpacing: '-0.01em' }}>Drive</span>
         </div>
-        {[['mydrive', '📁', 'My Drive'], ['shared', '👥', 'Shared with me'], ['received', '📥', 'Received']].map(([v, icon, label]) => (
+        {NAV_ITEMS.map(([v, icon, label]) => (
           <button
             key={v}
             onClick={() => { switchView(v); setNavOpen(false) }}
@@ -1606,7 +2060,7 @@ export default function Drive() {
           <>
             <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.textFaint, padding: '16px 10px 5px' }}>External</div>
             {mounts.map((m) => {
-              const v = `ext:${m.id}`
+              const v: DriveView = `ext:${m.id}`
               return (
                 <div key={m.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <button
@@ -1771,11 +2225,11 @@ export default function Drive() {
                   <span style={{ flex: 1, overflow: 'hidden', minWidth: 120 }}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{item.name}</span>
                     <span style={{ display: 'block', color: T.textFaint, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      from {String(item.owner_vula_id || '').slice(0, 22)}… · {fmtDate(item.received_at)}
+                      from {String(item.owner_vula_id || '').slice(0, 22)}… · {fmtDate(item.received_at || '')}
                     </span>
                   </span>
                   <span style={{ color: T.textFaint, fontSize: 12, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>
-                  <Btn small onClick={() => { setBusy(`Downloading ${item.name}…`); downloadReceived(item).catch((e) => setError(e.message || 'Download failed')).finally(() => setBusy(null)) }}>Download</Btn>
+                  <Btn small onClick={() => { setBusy(`Downloading ${item.name}…`); downloadReceived(item).catch((e: unknown) => setError(errMessage(e) || 'Download failed')).finally(() => setBusy(null)) }}>Download</Btn>
                   {item.saved_node_id
                     ? <span style={{ color: 'var(--status-success)', fontSize: 12, minWidth: 90, textAlign: 'center', flexShrink: 0 }}>Saved ✓</span>
                     : <Btn small primary onClick={() => saveReceived(item)}>Save to Drive</Btn>}
@@ -1841,7 +2295,7 @@ export default function Drive() {
       </div>
 
       {/* modals */}
-      {modal?.kind === 'newfolder' && (
+      {modal && modal.kind === 'newfolder' && (
         <PromptModal
           title="New folder" label="Folder name" confirmText="Create"
           onClose={() => setModal(null)}
@@ -1850,26 +2304,26 @@ export default function Drive() {
               if (extMountId) await filesApi.externalFolder(extMountId, cur.id, name)
               else await filesApi.createFolder(cur.id, name)
               await closeModal(true)
-            } catch (e) { setError(e.message || 'Create failed'); setModal(null) }
+            } catch (e) { setError(errMessage(e) || 'Create failed'); setModal(null) }
           }}
         />
       )}
-      {modal?.kind === 'rename' && (
+      {modal && modal.kind === 'rename' && (
         <PromptModal
           title="Rename" label="New name" initial={modal.node.name} confirmText="Rename"
           onClose={() => setModal(null)}
           onConfirm={async (name) => {
             try { await filesApi.move(modal.node.id, '', name); await closeModal(true) }
-            catch (e) { setError(e.message || 'Rename failed'); setModal(null) }
+            catch (e) { setError(errMessage(e) || 'Rename failed'); setModal(null) }
           }}
         />
       )}
-      {modal?.kind === 'move' && (
+      {modal && modal.kind === 'move' && (
         <MoveModal node={modal.node} onClose={() => setModal(null)} onMoved={() => closeModal(true)} />
       )}
-      {modal?.kind === 'share' && <ShareModal node={modal.node} onClose={() => setModal(null)} />}
-      {modal?.kind === 'peershare' && <PeerShareModal node={modal.node} onClose={() => setModal(null)} />}
-      {modal?.kind === 'versions' && <VersionsModal node={modal.node} onClose={() => setModal(null)} />}
+      {modal && modal.kind === 'share' && <ShareModal node={modal.node} onClose={() => setModal(null)} />}
+      {modal && modal.kind === 'peershare' && <PeerShareModal node={modal.node} onClose={() => setModal(null)} />}
+      {modal && modal.kind === 'versions' && <VersionsModal node={modal.node} onClose={() => setModal(null)} />}
       {redeemOpen && <RedeemModal onClose={() => setRedeemOpen(false)} onRedeemed={() => { if (view === 'received') refresh() }} />}
       {connectOpen && <ConnectModal providers={extStatus.providers || []} onConnect={connectExternal} onClose={() => setConnectOpen(false)} />}
       {importOpen && (
@@ -1931,7 +2385,11 @@ export default function Drive() {
 // loading (Move folder list, Versions list), matching the shell's skeleton
 // pattern instead of a bare "Loading…" line. `withGlyph` adds a leading square
 // to mirror folder rows.
-function ModalSkeleton({ rows = 3, withGlyph = false }) {
+interface ModalSkeletonProps {
+  rows?: number
+  withGlyph?: boolean
+}
+function ModalSkeleton({ rows = 3, withGlyph = false }: ModalSkeletonProps) {
   return (
     <div style={{ padding: withGlyph ? 8 : 4, display: 'flex', flexDirection: 'column', gap: 8 }} aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }).map((_, i) => (
@@ -1949,7 +2407,10 @@ function ModalSkeleton({ rows = 3, withGlyph = false }) {
 // UploadRow — one file's upload progress: name, a determinate accent bar filling
 // per byte-progress (or an indeterminate sweep when the size is unknown), and a
 // percentage / done ✓ / failed ✕ affordance on the right.
-function UploadRow({ upload }) {
+interface UploadRowProps {
+  upload: UploadItem
+}
+function UploadRow({ upload }: UploadRowProps) {
   const { name, size } = upload
   const { failed, done, resuming, indeterminate, widthPct, label } = uploadRowView(upload)
   const barColor = failed ? T.danger : done ? 'var(--status-success)' : T.accent
@@ -1979,7 +2440,7 @@ function UploadRow({ upload }) {
 // Skeleton listing — mirrors the real row layout so the transition to loaded
 // content doesn't shift. Preferred over a raw spinner for the file list.
 function DriveSkeleton() {
-  const bar = (w) => (
+  const bar = (w: number | string) => (
     <span data-drive-skel style={{ display: 'block', height: 11, width: w, borderRadius: 4, background: T.elevated }} />
   )
   return (
@@ -2003,7 +2464,10 @@ function DriveSkeleton() {
   )
 }
 
-function Center({ children }) {
+interface CenterProps {
+  children: ReactNode
+}
+function Center({ children }: CenterProps) {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 }}>
       {children}

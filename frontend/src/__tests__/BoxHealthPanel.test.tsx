@@ -2,15 +2,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 
 // Mock the telemetry WS hook so the panel renders deterministic live stats.
-let mockTelemetry = { stats: null, connected: false }
+interface TelemetryStats {
+  cpu: number
+  mem_percent: number
+  mem_used: number
+  mem_total: number
+  load_avg: string
+  uptime: string
+  hostname: string
+}
+let mockTelemetry: { stats: TelemetryStats | null, connected: boolean } = { stats: null, connected: false }
 vi.mock('../core/useTelemetry', () => ({
   useTelemetry: () => mockTelemetry,
 }))
 
 import BoxHealthPanel from '../core/settings/BoxHealthPanel.jsx'
 
-function mockEndpoints({ health, healthStatus = 200, sys }) {
-  global.fetch = vi.fn((url) => {
+function mockEndpoints({ health, healthStatus = 200, sys }: { health?: unknown, healthStatus?: number, sys?: unknown }) {
+  vi.stubGlobal('fetch', vi.fn((url: string) => {
     const u = String(url)
     if (u.includes('/api/health')) {
       return Promise.resolve({ ok: healthStatus === 200, status: healthStatus, json: () => Promise.resolve(health) })
@@ -19,11 +28,11 @@ function mockEndpoints({ health, healthStatus = 200, sys }) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(sys) })
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
-  })
+  }))
 }
 
 beforeEach(() => { mockTelemetry = { stats: null, connected: false } })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('BoxHealthPanel — live status', () => {
   it('renders a healthy banner and the health checks', async () => {
@@ -71,7 +80,7 @@ describe('BoxHealthPanel — live status', () => {
   })
 
   it('degrades gracefully when the health probe is unreachable', async () => {
-    global.fetch = vi.fn(() => Promise.reject(new Error('network')))
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network'))))
     render(<BoxHealthPanel />)
     expect(await screen.findByText(/Health status unavailable/i)).toBeTruthy()
   })

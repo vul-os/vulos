@@ -22,7 +22,7 @@
 
 const BOUNDARY_CHARS = new Set([' ', '-', '_', '.', '/', ':', '\t'])
 
-function isBoundary(prevChar, char) {
+function isBoundary(prevChar: string | undefined, char: string): boolean {
   if (prevChar === undefined) return true // start of string
   if (BOUNDARY_CHARS.has(prevChar)) return true
   // camelCase / lower→UPPER transition (e.g. "openHome" → boundary at H)
@@ -38,7 +38,7 @@ function isBoundary(prevChar, char) {
  * @param {string} target the candidate label
  * @returns {number} higher is better; -Infinity means no subsequence match
  */
-export function fuzzyScore(query, target) {
+export function fuzzyScore(query: string | null | undefined, target: string | null | undefined): number {
   if (query == null || query === '') return 0
   if (target == null || target === '') return -Infinity
 
@@ -100,7 +100,7 @@ export function fuzzyScore(query, target) {
 /**
  * Return whether `query` fuzzy-matches `target` at all.
  */
-export function fuzzyMatches(query, target) {
+export function fuzzyMatches(query: string | null | undefined, target: string | null | undefined): boolean {
   return fuzzyScore(query, target) > -Infinity
 }
 
@@ -114,9 +114,23 @@ export function fuzzyMatches(query, target) {
  * @param {number} [opts.limit]  cap the number of returned items
  * @returns {Array<{item:any, score:number}>} matched items, best first
  */
-export function fuzzyRank(query, items, keyFn, opts = {}) {
+export interface FuzzyRankOpts {
+  limit?: number
+}
+
+export interface FuzzyRankResult<T> {
+  item: T
+  score: number
+}
+
+export function fuzzyRank<T>(
+  query: string | null | undefined,
+  items: T[],
+  keyFn: (item: T) => string | string[],
+  opts: FuzzyRankOpts = {}
+): FuzzyRankResult<T>[] {
   const q = (query || '').trim()
-  const scored = []
+  const scored: FuzzyRankResult<T>[] = []
   for (const item of items) {
     const keys = keyFn(item)
     const list = Array.isArray(keys) ? keys : [keys]

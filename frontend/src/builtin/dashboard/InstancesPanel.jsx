@@ -4,7 +4,7 @@
  * Polls /api/instances every 10 s; fetches /api/routing/apps per instance on demand.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Pill, EmptyState, Banner } from '../../core/settings/ui.jsx'
+import { Pill, EmptyState, Banner } from '../../core/settings/ui'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 

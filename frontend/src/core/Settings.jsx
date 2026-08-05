@@ -27,7 +27,7 @@ import { SettingsIcon } from './AppIcons.jsx'
 import {
   Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
   StatTile, InfoList, InfoRow, EmptyState, Banner,
-} from './settings/ui.jsx'
+} from './settings/ui'
 
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for

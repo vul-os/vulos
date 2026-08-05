@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { nativeBridge } from '../nativeBridge'
-import { Section, Card, SettingRow, Toggle, Pill } from './ui.jsx'
+import { Section, Card, SettingRow, Toggle, Pill } from './ui'
 
 // ---------------------------------------------------------------------------
 // DevicePanel — Settings -> Devices -> This device (Vulos Android app only).
@@ -12,13 +12,18 @@ import { Section, Card, SettingRow, Toggle, Pill } from './ui.jsx'
 // a plain browser/PWA.
 // ---------------------------------------------------------------------------
 
+interface LauncherStatus {
+  isDefault?: boolean
+  canRequest?: boolean
+}
+
 const BIOMETRIC_KEY = 'vulos.biometric.unlock'
-const readBiometricPref = () => { try { return localStorage.getItem(BIOMETRIC_KEY) === 'on' } catch { return false } }
+const readBiometricPref = (): boolean => { try { return localStorage.getItem(BIOMETRIC_KEY) === 'on' } catch { return false } }
 
 export default function DevicePanel() {
-  const [serviceOn, setServiceOn] = useState(null) // null = loading
+  const [serviceOn, setServiceOn] = useState<boolean | null>(null) // null = loading
   const [serviceBusy, setServiceBusy] = useState(false)
-  const [launcherStatus, setLauncherStatus] = useState(null)
+  const [launcherStatus, setLauncherStatus] = useState<LauncherStatus | null>(null)
   const [biometricOn, setBiometricOn] = useState(readBiometricPref)
 
   const refreshService = useCallback(() => {
@@ -32,7 +37,7 @@ export default function DevicePanel() {
 
   useEffect(() => { refreshService(); refreshLauncher() }, [refreshService, refreshLauncher])
 
-  const toggleService = async (next) => {
+  const toggleService = async (next: boolean) => {
     setServiceBusy(true)
     try {
       await (next ? nativeBridge.notify.enableService() : nativeBridge.notify.disableService())
@@ -42,7 +47,7 @@ export default function DevicePanel() {
     }
   }
 
-  const toggleBiometric = (next) => {
+  const toggleBiometric = (next: boolean) => {
     setBiometricOn(next)
     try { localStorage.setItem(BIOMETRIC_KEY, next ? 'on' : 'off') } catch { /* storage unavailable */ }
   }

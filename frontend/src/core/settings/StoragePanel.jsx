@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Section, Card, Field, InfoList, InfoRow, Banner, Pill } from './ui.jsx'
+import { Section, Card, Field, InfoList, InfoRow, Banner, Pill } from './ui'
 
 // ---------------------------------------------------------------------------
 // STORE-BYO-01: Per-account storage-backend selector

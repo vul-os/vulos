@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { requireStepUp } from '../../lib/stepup'
-import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from './ui.jsx'
+import { Section, Field, Card, InfoList, InfoRow, Pill, Banner, StatTile } from './ui'
 
 // ---------------------------------------------------------------------------
 // RelayPanel — Settings -> Network -> Relay & Reachability (box-owner only

@@ -1,5 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+interface CachedIdentity {
+  name?: string
+}
+
+function toCachedIdentity(x: unknown): CachedIdentity | null {
+  if (!isRecord(x)) return null
+  return { name: typeof x.name === 'string' ? x.name : undefined }
+}
+
 // OfflineDataPanel — user control over offline access (OFFLINE-AUTH-01).
 //
 // Offline access is enrolled implicitly on a successful online login (the OS
@@ -9,18 +22,18 @@ import { useState, useEffect, useCallback } from 'react'
 // which wipes the cached credential (and the shell-held app caches).
 
 export default function OfflineDataPanel() {
-  const [enrolled, setEnrolled] = useState(null) // null = loading
-  const [identity, setIdentity] = useState(null)
+  const [enrolled, setEnrolled] = useState<boolean | null>(null) // null = loading
+  const [identity, setIdentity] = useState<CachedIdentity | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      const oa = await import('../../lib/offlineAuth.js')
+      const oa = await import('../../lib/offlineAuth')
       const on = await oa.isEnrolled().catch(() => false)
       const id = on ? await oa.getCachedIdentity().catch(() => null) : null
       setEnrolled(on)
-      setIdentity(id)
+      setIdentity(toCachedIdentity(id))
     } catch {
       setEnrolled(false)
     }
@@ -31,7 +44,7 @@ export default function OfflineDataPanel() {
   const forget = useCallback(async () => {
     setBusy(true)
     try {
-      const oa = await import('../../lib/offlineAuth.js')
+      const oa = await import('../../lib/offlineAuth')
       await oa.wipe() // clears the credential + dispatches vulos:offline-wipe (shell clears app caches)
     } catch { /* best-effort */ }
     setBusy(false)

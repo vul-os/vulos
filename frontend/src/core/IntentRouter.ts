@@ -1,6 +1,53 @@
-import { searchApps } from './AppRegistry'
+import { searchApps, type App } from './AppRegistry'
 
-export function classifyIntent(input) {
+export interface EmptyIntent {
+  type: 'empty'
+}
+
+export interface SystemIntent {
+  type: 'system'
+  action: 'open_settings' | 'open_files'
+  label: string
+  section?: string
+}
+
+export interface CommandIntent {
+  type: 'command'
+  value: string
+}
+
+export interface LaunchServiceIntent {
+  type: 'launch_service'
+  service: App
+}
+
+export interface ServiceSuggestionsIntent {
+  type: 'service_suggestions'
+  matches: App[]
+}
+
+export interface MathIntent {
+  type: 'math'
+  value: string
+}
+
+export interface MissionIntent {
+  type: 'mission'
+  value: string
+}
+
+export type Intent =
+  | EmptyIntent
+  | SystemIntent
+  | CommandIntent
+  | LaunchServiceIntent
+  | ServiceSuggestionsIntent
+  | MathIntent
+  | MissionIntent
+
+type SystemCommand = Omit<SystemIntent, 'type'>
+
+export function classifyIntent(input: string): Intent {
   const trimmed = input.trim()
   if (!trimmed) return { type: 'empty' }
 
@@ -10,7 +57,7 @@ export function classifyIntent(input) {
   // `files` command opens the File Explorer builtin.
   if (trimmed.startsWith('/')) {
     const cmd = trimmed.slice(1).toLowerCase().trim()
-    const sys = {
+    const sys: Record<string, SystemCommand> = {
       settings: { action: 'open_settings', label: 'Settings', section: 'ai' },
       persona: { action: 'open_settings', label: 'Settings', section: 'ai' },
       wifi: { action: 'open_settings', label: 'WiFi', section: 'wifi' },

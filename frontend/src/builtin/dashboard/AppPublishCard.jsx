@@ -5,7 +5,7 @@
  * /api/apps/{id}/deployment (public URL) every 5 s.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Meter, Pill, EmptyState, Banner } from '../../core/settings/ui.jsx'
+import { Meter, Pill, EmptyState, Banner } from '../../core/settings/ui'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 

@@ -14,15 +14,21 @@
 // (the store's `muted` pref) is honoured by the BOX before it ever sends a push,
 // so we surface that relationship inline rather than duplicating the control.
 
-import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
-import { enableWebPush, disableWebPush } from './webPush'
-import { probeState } from './webPushProbe'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode } from 'react'
+import { enableWebPush, disableWebPush, type WebPushDeps } from './webPush'
+import { probeState, type PushProbeState } from './webPushProbe'
 import { getPrefs, subscribePrefs } from '../notificationStore'
 
-export default function WebPushToggle({ deps }) {
-  const [state, setState] = useState('loading') // loading|unsupported|unconfigured|denied|on|off
+type ToggleState = 'loading' | PushProbeState
+
+interface WebPushToggleProps {
+  deps?: WebPushDeps
+}
+
+export default function WebPushToggle({ deps }: WebPushToggleProps) {
+  const [state, setState] = useState<ToggleState>('loading') // loading|unsupported|unconfigured|denied|on|off
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
   const mounted = useRef(true)
   const prefs = useSyncExternalStore(subscribePrefs, getPrefs)
 
@@ -32,7 +38,7 @@ export default function WebPushToggle({ deps }) {
     return () => { mounted.current = false }
   }, [deps])
 
-  const toggle = useCallback(async (next) => {
+  const toggle = useCallback(async (next: boolean) => {
     setBusy(true)
     setError(null)
     try {
@@ -122,9 +128,15 @@ export default function WebPushToggle({ deps }) {
   )
 }
 
+interface ExplainRowProps {
+  label: ReactNode
+  hint: ReactNode
+  muted?: boolean
+}
+
 // ExplainRow — a non-interactive row that mirrors the Toggle layout so a
 // disabled/unavailable push state reads consistently in the list.
-function ExplainRow({ label, hint, muted }) {
+function ExplainRow({ label, hint, muted }: ExplainRowProps) {
   return (
     <div className="flex items-center justify-between py-2">
       <span className="text-sm">

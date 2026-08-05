@@ -3,7 +3,19 @@ import {
   startLocationReporting,
   stopLocationReporting,
   getLocationReportingStatus,
-} from '../location/reporter.js'
+} from '../location/reporter'
+
+interface LocationStatus {
+  active: boolean
+  lastError: string | null
+  lastSentTs: number | null
+}
+
+type LocationErrorCode = 'permission_denied' | 'position_unavailable' | 'timeout' | 'unavailable'
+
+function isLocationErrorCode(x: string): x is LocationErrorCode {
+  return x === 'permission_denied' || x === 'position_unavailable' || x === 'timeout' || x === 'unavailable'
+}
 
 // ---------------------------------------------------------------------------
 // LocationPanel — opt-in device location sharing (LOCATION-01, client half).
@@ -21,7 +33,7 @@ import {
 // Shared preference key — App.jsx's boot hook reads the same key.
 export const LOCATION_SHARE_KEY = 'vulos.location.share'
 
-function isEnabled() {
+function isEnabled(): boolean {
   try {
     return localStorage.getItem(LOCATION_SHARE_KEY) === 'on'
   } catch {
@@ -31,7 +43,7 @@ function isEnabled() {
 
 export default function LocationPanel() {
   const [enabled, setEnabled] = useState(isEnabled)
-  const [status, setStatus] = useState(() => getLocationReportingStatus())
+  const [status, setStatus] = useState<LocationStatus>(() => getLocationReportingStatus())
 
   // Poll the reporter status while the panel is open so the user sees it go
   // active / surface a permission error.
@@ -56,7 +68,7 @@ export default function LocationPanel() {
     })
   }, [])
 
-  const errorLabel = {
+  const errorLabel: Record<LocationErrorCode, string> = {
     permission_denied: 'Location permission was denied in your browser.',
     position_unavailable: 'Your device could not determine a position.',
     timeout: 'Getting a position timed out — trying again.',
@@ -106,7 +118,7 @@ export default function LocationPanel() {
         <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-tertiary)' }}>
           {status.lastError ? (
             <span style={{ color: 'var(--status-warning, #f0b232)' }}>
-              {errorLabel[status.lastError] || `Reporting issue: ${status.lastError}`}
+              {isLocationErrorCode(status.lastError) ? errorLabel[status.lastError] : `Reporting issue: ${status.lastError}`}
             </span>
           ) : status.active ? (
             <span style={{ color: 'var(--status-success, #35c081)' }}>

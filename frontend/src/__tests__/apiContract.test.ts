@@ -34,7 +34,7 @@ const REPO = resolve(import.meta.dirname, '../../..')
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'test-results'])
 
-function walk(dir, exts, out = []) {
+function walk(dir: string, exts: string[], out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     if (SKIP_DIRS.has(entry)) continue
     const path = join(dir, entry)
@@ -53,8 +53,8 @@ function walk(dir, exts, out = []) {
  * itself, and treating it as a route would match every path and defeat the
  * whole check.
  */
-function backendRoutes() {
-  const routes = new Set()
+function backendRoutes(): string[] {
+  const routes = new Set<string>()
   for (const file of walk(join(REPO, 'backend'), ['.go'])) {
     if (file.endsWith('_test.go')) continue
     const src = readFileSync(file, 'utf8')
@@ -78,8 +78,8 @@ function backendRoutes() {
  * prefix (used by offlineQueue's `path.startsWith('/api/')` guard) and prose
  * containing an ellipsis (`/api/...` in a doc comment).
  */
-function frontendPaths() {
-  const calls = new Map()
+function frontendPaths(): Map<string, Set<string>> {
+  const calls = new Map<string, Set<string>>()
   for (const file of walk(join(FRONTEND, 'src'), ['.js', '.jsx', '.ts', '.tsx'])) {
     if (file.includes('__tests__') || /\.test\.jsx?$/.test(file)) continue
     const src = readFileSync(file, 'utf8')
@@ -90,8 +90,12 @@ function frontendPaths() {
         .replace(/\$\{[^}]*\}/g, '{}') // `${id}` → single-segment wildcard
         .replace(/\?.*$/, '') // drop query string
         .replace(/\/+$/, '') // drop trailing slash
-      if (!calls.has(path)) calls.set(path, new Set())
-      calls.get(path).add(relative(REPO, file))
+      let files = calls.get(path)
+      if (!files) {
+        files = new Set<string>()
+        calls.set(path, files)
+      }
+      files.add(relative(REPO, file))
     }
   }
   return calls
@@ -103,7 +107,7 @@ function frontendPaths() {
  * to absorb a literal backend segment (that laxity would let a call to
  * `/api/instances/${id}` be "served" by `POST /api/instances/provision`).
  */
-function served(path, routes) {
+function served(path: string, routes: string[]): boolean {
   const want = path.split('/')
   return routes.some(route => {
     if (route.endsWith('/')) {
