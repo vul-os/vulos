@@ -33,6 +33,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+          # The lockfile moved to frontend/ with the rest of the web tier.
+          # setup-node resolves this from the repo root, so without it the step
+          # fails outright: "Dependencies lock file is not found".
+          cache-dependency-path: frontend/package-lock.json
 
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
