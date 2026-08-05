@@ -991,6 +991,15 @@ while :; do
   printf '  Server:    %s\n' "$svc"
   printf '  HTTP:      %s\n' "$http"
   printf '  HTTPS:     %s\n' "$https"
+  # When HTTPS is not up, show the reason. "off" with no explanation is a dead
+  # end for a box owner and for anyone debugging a box they cannot log into —
+  # which is every box, since no console credentials are configured. The [lan]
+  # log line says whether the listener failed to bind, found no LAN address, or
+  # was simply never enabled.
+  if [ "$https" != "up" ]; then
+    reason=$(journalctl -u vulos.service --no-pager 2>/dev/null | grep -a '\[lan\]' | tail -1 | sed 's/.*\[lan\] //' | cut -c1-70)
+    [ -n "$reason" ] && printf '             %s\n' "$reason"
+  fi
   printf '\n  This console is status-only. Manage the box from the browser.\n'
   sleep 15
 done
