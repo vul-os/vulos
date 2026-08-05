@@ -105,6 +105,16 @@ interface GeneratorOpts {
 
 type GeneratorBoolField = 'upper' | 'lower' | 'digits' | 'symbols'
 
+// Character-set toggle buttons the generator panel renders. A typed const
+// (rather than an inline array literal) so each `field` keeps its
+// GeneratorBoolField literal type without a cast.
+const GENERATOR_TOGGLES: { field: GeneratorBoolField; label: string }[] = [
+  { field: 'upper', label: 'A–Z' },
+  { field: 'lower', label: 'a–z' },
+  { field: 'digits', label: '0–9' },
+  { field: 'symbols', label: '!@#' },
+]
+
 function useGenerator() {
   const [opts, setOpts] = useState<GeneratorOpts>({ length: 20, upper: true, lower: true, digits: true, symbols: true })
   const [result, setResult] = useState('')
@@ -688,12 +698,7 @@ function GeneratorPanel({ onInsert, onClose }: { onInsert?: (pwd: string) => voi
 
       {/* Character set toggles */}
       <div className="flex gap-2 flex-wrap">
-        {([
-          { field: 'upper', label: 'A–Z' },
-          { field: 'lower', label: 'a–z' },
-          { field: 'digits', label: '0–9' },
-          { field: 'symbols', label: '!@#' },
-        ] as { field: GeneratorBoolField; label: string }[]).map(({ field, label }) => (
+        {GENERATOR_TOGGLES.map(({ field, label }) => (
           <button
             key={field}
             onClick={() => toggle(field)}
@@ -732,7 +737,7 @@ function GeneratorPanel({ onInsert, onClose }: { onInsert?: (pwd: string) => voi
             </button>
             {onInsert && (
               <button
-                onClick={() => { onInsert(gen.result); onClose && onClose() }}
+                onClick={() => { onInsert(gen.result); if (onClose) onClose() }}
                 className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] shrink-0 ml-1 transition-colors px-2 py-1"
               >
                 Use

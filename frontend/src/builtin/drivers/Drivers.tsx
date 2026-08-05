@@ -1,64 +1,129 @@
 import { useState, useEffect } from 'react'
 
-const classIcons = {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+/** Message from a thrown value — errors here are `unknown` in strict mode's
+ *  catch clauses, never blindly assumed to be an Error. */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/** A hardware device row from GET /api/drivers. */
+interface DriverDevice {
+  id: string
+  name?: string
+  vendor?: string
+  bus?: string
+  class?: string
+  driver?: string
+  driver_state?: string
+  module?: string
+}
+
+function isDriverDevice(x: unknown): x is DriverDevice {
+  return isRecord(x) && typeof x.id === 'string'
+}
+
+/** A loaded kernel module row from GET /api/drivers. */
+interface KernelModule {
+  name: string
+  size: number
+  used_by?: string
+}
+
+function isKernelModule(x: unknown): x is KernelModule {
+  return isRecord(x) && typeof x.name === 'string' && typeof x.size === 'number'
+}
+
+interface DriversStatus {
+  devices: DriverDevice[]
+  modules: KernelModule[]
+  kernel?: string
+}
+
+/** Narrows the untrusted GET /api/drivers response into a {@link DriversStatus},
+ *  dropping any device/module row that doesn't have its required fields. */
+function toStatus(x: unknown): DriversStatus {
+  if (!isRecord(x)) return { devices: [], modules: [] }
+  return {
+    devices: Array.isArray(x.devices) ? x.devices.filter(isDriverDevice) : [],
+    modules: Array.isArray(x.modules) ? x.modules.filter(isKernelModule) : [],
+    kernel: typeof x.kernel === 'string' ? x.kernel : undefined,
+  }
+}
+
+interface ActionMsg {
+  text: string
+  type: 'info' | 'ok' | 'err'
+}
+
+const classIcons: Record<string, string> = {
   display: '🖥', network: '📡', audio: '🔊', storage: '💾',
   usb: '🔌', bridge: '🔗', serial: '📟', other: '⚙',
 }
 
-const classLabels = {
+const classLabels: Record<string, string> = {
   display: 'Display', network: 'Network', audio: 'Audio', storage: 'Storage',
   usb: 'USB', bridge: 'Bridge', serial: 'Serial', other: 'Other',
 }
 
 export default function Drivers() {
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState<DriversStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('devices')
   const [modFilter, setModFilter] = useState('')
-  const [actionMsg, setActionMsg] = useState(null)
+  const [actionMsg, setActionMsg] = useState<ActionMsg | null>(null)
 
   const refresh = () => {
     setLoading(true)
-    fetch('/api/drivers').then(r => r.json()).then(s => {
-      setStatus(s)
+    fetch('/api/drivers').then(r => r.json()).then((s: unknown) => {
+      setStatus(toStatus(s))
       setLoading(false)
     }).catch(() => setLoading(false))
   }
 
   useEffect(() => { refresh() }, [])
 
-  const loadMod = async (name) => {
+  const loadMod = async (name: string) => {
     setActionMsg({ text: `Loading ${name}...`, type: 'info' })
     try {
       const res = await fetch('/api/drivers/load', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ module: name }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) {
+        const body: unknown = await res.json()
+        throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Request failed')
+      }
       setActionMsg({ text: `${name} loaded`, type: 'ok' })
       refresh()
     } catch (e) {
-      setActionMsg({ text: `Failed: ${e.message}`, type: 'err' })
+      setActionMsg({ text: `Failed: ${errMessage(e)}`, type: 'err' })
     }
   }
 
-  const unloadMod = async (name) => {
+  const unloadMod = async (name: string) => {
     setActionMsg({ text: `Unloading ${name}...`, type: 'info' })
     try {
       const res = await fetch('/api/drivers/unload', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ module: name }),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) {
+        const body: unknown = await res.json()
+        throw new Error(isRecord(body) && typeof body.error === 'string' ? body.error : 'Request failed')
+      }
       setActionMsg({ text: `${name} unloaded`, type: 'ok' })
       refresh()
     } catch (e) {
-      setActionMsg({ text: `Failed: ${e.message}`, type: 'err' })
+      setActionMsg({ text: `Failed: ${errMessage(e)}`, type: 'err' })
     }
   }
 
   // Group devices by class
-  const grouped = {}
+  const grouped: Record<string, DriverDevice[]> = {}
   if (status?.devices) {
     for (const d of status.devices) {
       const cls = d.class || 'other'
@@ -157,7 +222,10 @@ export default function Drivers() {
                           {d.driver_state}
                         </span>
                         {d.module && d.driver_state !== 'active' && (
-                          <button onClick={() => loadMod(d.module)}
+                          // d.module is checked truthy by the guard just above, but that
+                          // narrowing doesn't cross into this onClick closure — asserted,
+                          // not re-guarded, to keep the click handler trivial.
+                          <button onClick={() => loadMod(d.module!)}
                             className="text-[12px] font-medium accent-text hover-accent-text rounded-md px-1.5 py-0.5 hover-accent-bg-soft transition-colors duration-(--motion-fast)">
                             Load
                           </button>

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import userEvent, { type UserEvent } from '@testing-library/user-event'
 import Vault from './Vault'
 
-// Vault.transfer.test.jsx — the import/export UI contract.
+// Vault.transfer.test.tsx — the import/export UI contract.
 //
 // These endpoints existed in the backend but were never mounted, so the UI never
 // had a way to reach them: a user could not migrate off an incumbent password
@@ -15,21 +15,52 @@ import Vault from './Vault'
 
 const MASTER = 'correct-horse-battery-staple'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// asRecord narrows an untrusted request body before any field access — the
+// mock server's own equivalent of the isRecord narrowing Vault.tsx uses at
+// its real fetch boundaries. Throws (fails the test loudly) rather than
+// silently reading fields off something that isn't the object shape a
+// request body was expected to be.
+function asRecord(x: unknown): Record<string, unknown> {
+  if (!isRecord(x)) throw new Error('expected an object request body')
+  return x
+}
+
+// The shape every mock `fetch` in this file resolves to — deliberately NOT
+// a full `Response` (no headers/status text/body stream): the component only
+// ever reads `.ok` and `.json()`, and `vi.stubGlobal` (unlike a direct
+// `global.fetch =` assignment) accepts this narrower stand-in without lying
+// about it being a real Response.
+interface MockFetchResponse {
+  ok: boolean
+  status?: number
+  json: () => Promise<unknown>
+}
+
+interface FetchCall {
+  url: string
+  opts: RequestInit
+  body: unknown
+}
+
 // unlock the vault and land on the entry list.
-async function openVault(user) {
+async function openVault(user: UserEvent) {
   render(<Vault />)
   await user.type(screen.getByPlaceholderText('Master password'), MASTER)
   await user.click(screen.getByRole('button', { name: /unlock vault/i }))
   await screen.findByPlaceholderText('Search vault…')
 }
 
-async function openTransfer(user) {
+async function openTransfer(user: UserEvent) {
   await user.click(screen.getByRole('button', { name: /import or export vault/i }))
   await screen.findByRole('tab', { name: 'Import' })
 }
 
 // A File whose FileReader path works under jsdom.
-function csvFile() {
+function csvFile(): File {
   return new File(
     ['name,url,username,password\nx,https://x.example,alice,pw1\n'],
     'chrome.csv',
@@ -43,21 +74,21 @@ function csvFile() {
 // the selected format, so a .csv cannot be attached while "Bitwarden (.json)" is
 // selected — the browser filters it out. Choosing the format first is exactly
 // what a real user does.
-async function chooseCsvAndUpload(user) {
+async function chooseCsvAndUpload(user: UserEvent) {
   await user.selectOptions(screen.getByLabelText(/where are they coming from/i), 'chrome-csv')
   await user.upload(screen.getByLabelText(/^File/i), csvFile())
 }
 
 describe('Vault unlock', () => {
   beforeEach(() => {
-    global.fetch = vi.fn(async (url) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string): Promise<MockFetchResponse> => {
       if (url === '/api/auth/vault/unlock') return { ok: true, json: async () => ({ status: 'unlocked' }) }
       // The REAL shape: GET /api/auth/vault/entries returns a BARE JSON ARRAY.
       if (url === '/api/auth/vault/entries') {
         return { ok: true, json: async () => ([{ id: 'e1', url: 'https://x.example', username: 'alice' }]) }
       }
       return { ok: false, status: 404, json: async () => ({}) }
-    })
+    }))
   })
 
   // Regression: the vault used to blank-screen on EVERY unlock.
@@ -81,12 +112,12 @@ describe('Vault unlock', () => {
 })
 
 describe('Vault import/export', () => {
-  let calls
+  let calls: FetchCall[]
 
   beforeEach(() => {
     calls = []
-    global.fetch = vi.fn(async (url, opts = {}) => {
-      calls.push({ url, opts, body: opts.body ? JSON.parse(opts.body) : null })
+    vi.stubGlobal('fetch', vi.fn(async (url: string, opts: RequestInit = {}): Promise<MockFetchResponse> => {
+      calls.push({ url, opts, body: typeof opts.body === 'string' ? JSON.parse(opts.body) : null })
 
       if (url === '/api/auth/vault/unlock') {
         return { ok: true, json: async () => ({ status: 'unlocked' }) }
@@ -110,11 +141,11 @@ describe('Vault import/export', () => {
         return { ok: true, json: async () => ({ data: btoa('ciphertext') }) }
       }
       return { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
-    })
+    }))
 
     // jsdom has no object-URL plumbing for the download path.
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock')
-    global.URL.revokeObjectURL = vi.fn()
+    URL.createObjectURL = vi.fn(() => 'blob:mock')
+    URL.revokeObjectURL = vi.fn()
   })
 
   afterEach(() => {
@@ -155,19 +186,21 @@ describe('Vault import/export', () => {
       expect(calls.some(c => c.url === '/api/auth/vault/import')).toBe(true)
     })
     const req = calls.find(c => c.url === '/api/auth/vault/import')
-    expect(req.body.format).toBe('chrome-csv')
-    expect(atob(req.body.data)).toContain('alice')
+    if (!req) throw new Error('expected an import request')
+    const body = asRecord(req.body)
+    expect(body.format).toBe('chrome-csv')
+    expect(atob(String(body.data))).toContain('alice')
   })
 
   it('surfaces an import error instead of pretending it worked', async () => {
-    global.fetch = vi.fn(async (url) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string): Promise<MockFetchResponse> => {
       if (url === '/api/auth/vault/unlock') return { ok: true, json: async () => ({}) }
       if (url === '/api/auth/vault/entries') return { ok: true, json: async () => [] }
       if (url === '/api/auth/vault/import') {
         return { ok: false, status: 413, json: async () => ({ error: 'file contains 90000 entries, limit is 20000' }) }
       }
       return { ok: false, status: 404, json: async () => ({}) }
-    })
+    }))
 
     const user = userEvent.setup()
     await openVault(user)
@@ -213,23 +246,25 @@ describe('Vault import/export', () => {
       expect(calls.some(c => c.url === '/api/auth/vault/export')).toBe(true)
     })
     const req = calls.find(c => c.url === '/api/auth/vault/export')
+    if (!req) throw new Error('expected an export request')
+    const body = asRecord(req.body)
     // The master password is the step-up; the backup password only encrypts the file.
-    expect(req.body.master_password).toBe(MASTER)
-    expect(req.body.password).toBe('backup-password')
+    expect(body.master_password).toBe(MASTER)
+    expect(body.password).toBe('backup-password')
 
     expect(await screen.findByRole('status')).toHaveTextContent(/downloaded/i)
-    expect(global.URL.createObjectURL).toHaveBeenCalled()
+    expect(URL.createObjectURL).toHaveBeenCalled()
   })
 
   it('shows a wrong-master-password step-up failure as an error', async () => {
-    global.fetch = vi.fn(async (url) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string): Promise<MockFetchResponse> => {
       if (url === '/api/auth/vault/unlock') return { ok: true, json: async () => ({}) }
       if (url === '/api/auth/vault/entries') return { ok: true, json: async () => [] }
       if (url === '/api/auth/vault/export') {
         return { ok: false, status: 401, json: async () => ({ error: 'wrong master password' }) }
       }
       return { ok: false, status: 404, json: async () => ({}) }
-    })
+    }))
 
     const user = userEvent.setup()
     await openVault(user)

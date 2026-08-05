@@ -1,6 +1,97 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ComponentType, type FormEvent } from 'react'
 import AskAIButton from '../../core/AskAIButton'
-import SharePeerModal from './SharePeerModal.jsx'
+import SharePeerModal, { type ShareTarget } from './SharePeerModal.jsx'
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+/** A parsed `ls -la` row for the current directory. */
+interface FileEntry {
+  name: string
+  size: number
+  perms: string
+  links: number
+  owner: string
+  group: string
+  isDir: boolean
+  isLink: boolean
+  linkTarget: string | null
+  modified: string
+}
+
+/** The right-hand preview pane's content — one of a directory placeholder, an
+ *  image placeholder, a text head, or a semantic-search hit. `entry` is only
+ *  ever populated for a real filesystem row (not a semantic hit), but is kept
+ *  optional on every variant so the JSX can read `preview.entry?.x` without
+ *  narrowing on `type` first. */
+type Preview =
+  | { type: 'dir'; name: string; entry: FileEntry }
+  | { type: 'image'; path: string; name: string; entry: FileEntry }
+  | { type: 'text'; content: string; name: string; path: string; entry: FileEntry }
+  | { type: 'semantic'; name: string; path: string; score: number; content: string; entry?: undefined }
+
+interface NameSearchItem {
+  path: string
+  name: string
+}
+
+/** A hit from POST /api/recall/search — untrusted network JSON, so every
+ *  field is optional and narrowed defensively in toSemanticItem() below. */
+interface SemanticSearchItem {
+  path?: string
+  name?: string
+  score?: number
+  content?: string
+  metadata?: { abs_path?: string; path?: string }
+}
+
+/** Narrows one untrusted /api/recall/search hit into a {@link SemanticSearchItem},
+ *  reading only the fields the preview pane actually uses and only when they
+ *  have the expected primitive type. */
+function toSemanticItem(x: unknown): SemanticSearchItem {
+  if (!isRecord(x)) return {}
+  const rawMeta = x.metadata
+  const metadata = isRecord(rawMeta)
+    ? {
+        abs_path: typeof rawMeta.abs_path === 'string' ? rawMeta.abs_path : undefined,
+        path: typeof rawMeta.path === 'string' ? rawMeta.path : undefined,
+      }
+    : undefined
+  return {
+    path: typeof x.path === 'string' ? x.path : undefined,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    score: typeof x.score === 'number' ? x.score : undefined,
+    content: typeof x.content === 'string' ? x.content : undefined,
+    metadata,
+  }
+}
+
+type SearchResults =
+  | { type: 'name'; items: NameSearchItem[] }
+  | { type: 'semantic'; items: SemanticSearchItem[] }
+
+/** Row selection key: a numeric index into `sorted` for normal listing rows,
+ *  or a `s${i}`/`f${i}` string id for semantic/name search result rows. */
+type SelectedId = number | string | null
+
+interface CtxMenuState {
+  x: number
+  y: number
+  entry: FileEntry
+  filePath: string
+}
+
+interface Breadcrumb {
+  label: string
+  path: string
+}
+
+interface SidebarPlace {
+  label: string
+  path: string
+  Icon: ComponentType<{ className?: string }>
+}
 
 /* ── SVG Icon Components ── */
 
@@ -186,10 +277,10 @@ const SHELL_EXTS = new Set(['sh', 'bash', 'zsh', 'fish'])
 const PDF_EXTS = new Set(['pdf'])
 const LOCK_EXTS = new Set(['lock', 'env'])
 
-function FileIcon({ name, isDir, isLink, className = '' }) {
+function FileIcon({ name, isDir, isLink, className = '' }: { name: string; isDir: boolean; isLink: boolean; className?: string }) {
   if (isDir) return <IconFolder className={`accent-text ${className}`} />
   if (isLink) return <IconLink className={`text-cyan-400 ${className}`} />
-  const ext = name.split('.').pop().toLowerCase()
+  const ext = (name.split('.').pop() || '').toLowerCase()
   if (CODE_EXTS.has(ext)) return <IconCode className={`text-emerald-400 ${className}`} />
   if (IMAGE_EXTS.has(ext)) return <IconImage className={`text-pink-400 ${className}`} />
   if (VIDEO_EXTS.has(ext)) return <IconVideo className={`text-purple-400 ${className}`} />
@@ -206,7 +297,7 @@ function FileIcon({ name, isDir, isLink, className = '' }) {
 
 /* ── Sidebar places with icon components ── */
 
-const SIDEBAR_PLACES = [
+const SIDEBAR_PLACES: SidebarPlace[] = [
   { label: 'Home', path: '~', Icon: IconHome },
   { label: 'Desktop', path: '~/Desktop', Icon: IconDesktop },
   { label: 'Documents', path: '~/Documents', Icon: IconDocuments },
@@ -216,33 +307,33 @@ const SIDEBAR_PLACES = [
   { label: 'Videos', path: '~/Videos', Icon: IconVideo },
 ]
 
-const SIDEBAR_SYSTEM = [
+const SIDEBAR_SYSTEM: SidebarPlace[] = [
   { label: 'Root', path: '/', Icon: IconDisk },
   { label: 'Tmp', path: '/tmp', Icon: IconTemp },
 ]
 
 /* ── Helpers ── */
 
-function fmtSize(b) {
+function fmtSize(b: number): string {
   if (b < 1024) return `${b} B`
   if (b < 1048576) return `${(b / 1024).toFixed(1)} K`
   if (b < 1073741824) return `${(b / 1048576).toFixed(1)} M`
   return `${(b / 1073741824).toFixed(1)} G`
 }
 
-async function exec(command) {
+async function exec(command: string): Promise<string> {
   const res = await fetch('/api/exec', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command }),
   })
-  const data = await res.json()
-  return data.output || ''
+  const data: unknown = await res.json()
+  return isRecord(data) && typeof data.output === 'string' ? data.output : ''
 }
 
 /* ── AI helper ── */
 
-function dispatchAskAI(prompt) {
+function dispatchAskAI(prompt: string): void {
   window.dispatchEvent(new CustomEvent('vulos:chat', { detail: prompt }))
 }
 
@@ -250,16 +341,16 @@ function dispatchAskAI(prompt) {
 
 export default function FileManager() {
   const [cwd, setCwd] = useState('~')
-  const [entries, setEntries] = useState([])
+  const [entries, setEntries] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(false)
   // Distinguishes "this directory really is empty" from "we couldn't read it"
   // (offline box / permission denied) — the two looked identical before.
   const [loadError, setLoadError] = useState(false)
-  const [selected, setSelected] = useState(null)
-  const [preview, setPreview] = useState(null)
+  const [selected, setSelected] = useState<SelectedId>(null)
+  const [preview, setPreview] = useState<Preview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [query, setQuery] = useState('')
-  const [searchResults, setSearchResults] = useState(null)
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null)
   const [searchMode] = useState('name')
   const [sortCol, setSortCol] = useState('name')
   const [sortAsc, setSortAsc] = useState(true)
@@ -268,10 +359,10 @@ export default function FileManager() {
   const [pathInput, setPathInput] = useState('')
   const [editingPath, setEditingPath] = useState(false)
   const [hidden, setHidden] = useState(false)
-  const [resolvedHome, setResolvedHome] = useState(null)
-  const [ctxMenu, setCtxMenu] = useState(null) // { x, y, entry, filePath }
-  const [shareTarget, setShareTarget] = useState(null) // { name, path, isDir } for peer share
-  const searchRef = useRef(null)
+  const [resolvedHome, setResolvedHome] = useState<string | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null)
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null) // for peer share
+  const searchRef = useRef<HTMLInputElement>(null)
 
   // Resolve actual home path once
   useEffect(() => {
@@ -281,7 +372,7 @@ export default function FileManager() {
     })
   }, [])
 
-  const loadDir = useCallback(async (dir, pushHistory = true) => {
+  const loadDir = useCallback(async (dir: string, pushHistory = true) => {
     setLoading(true)
     setLoadError(false)
     setSearchResults(null)
@@ -291,7 +382,7 @@ export default function FileManager() {
       const flag = hidden ? '-la' : '-lA'
       const out = await exec(`ls ${flag} --color=never "${dir}" 2>/dev/null | tail -n +2`)
       const lines = out.split('\n').filter(l => l.trim())
-      const parsed = lines.map(line => {
+      const parsed = lines.map((line): FileEntry | null => {
         const parts = line.split(/\s+/)
         if (parts.length < 9) return null
         const perms = parts[0]
@@ -315,7 +406,7 @@ export default function FileManager() {
           linkTarget,
           modified: `${parts[5]} ${parts[6]} ${parts[7]}`,
         }
-      }).filter(Boolean)
+      }).filter((e): e is FileEntry => e !== null)
       setEntries(parsed)
       setCwd(dir)
       setPathInput(dir)
@@ -333,7 +424,7 @@ export default function FileManager() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadDir('~', true) }, [])
 
-  const navigate = (name) => {
+  const navigate = (name: string) => {
     const target = cwd === '/' ? `/${name}` : `${cwd}/${name}`
     loadDir(target)
   }
@@ -358,7 +449,7 @@ export default function FileManager() {
     loadDir(history[newIdx], false)
   }
 
-  const handlePathSubmit = (e) => {
+  const handlePathSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setEditingPath(false)
     if (pathInput.trim()) loadDir(pathInput.trim())
@@ -374,8 +465,8 @@ export default function FileManager() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query, top_k: 30 }),
         })
-        const results = await res.json()
-        setSearchResults({ type: 'semantic', items: results || [] })
+        const raw: unknown = await res.json()
+        setSearchResults({ type: 'semantic', items: Array.isArray(raw) ? raw.map(toSemanticItem) : [] })
       } catch {
         setSearchResults({ type: 'semantic', items: [] })
       }
@@ -385,7 +476,7 @@ export default function FileManager() {
         const paths = out.split('\n').filter(l => l.trim())
         setSearchResults({
           type: 'name',
-          items: paths.map(p => ({ path: p, name: p.split('/').pop() })),
+          items: paths.map(p => ({ path: p, name: p.split('/').pop() || p })),
         })
       } catch {
         setSearchResults({ type: 'name', items: [] })
@@ -393,14 +484,14 @@ export default function FileManager() {
     }
   }
 
-  const selectEntry = async (entry, idx) => {
+  const selectEntry = async (entry: FileEntry, idx: number) => {
     setSelected(idx)
     if (entry.isDir) {
       setPreview({ type: 'dir', name: entry.name, entry })
       return
     }
     const filePath = cwd === '/' ? `/${entry.name}` : `${cwd}/${entry.name}`
-    const ext = entry.name.split('.').pop().toLowerCase()
+    const ext = (entry.name.split('.').pop() || '').toLowerCase()
     const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico']
 
     if (imageExts.includes(ext)) {
@@ -422,7 +513,7 @@ export default function FileManager() {
   useEffect(() => {
     if (!ctxMenu) return
     const close = () => setCtxMenu(null)
-    const onKey = (e) => { if (e.key === 'Escape') setCtxMenu(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtxMenu(null) }
     const id = setTimeout(() => {
       window.addEventListener('pointerdown', close)
       window.addEventListener('keydown', onKey)
@@ -461,15 +552,15 @@ export default function FileManager() {
     return sortAsc ? cmp : -cmp
   })
 
-  const toggleSort = (col) => {
+  const toggleSort = (col: string) => {
     if (sortCol === col) setSortAsc(!sortAsc)
     else { setSortCol(col); setSortAsc(true) }
   }
 
-  const sortArrow = (col) => sortCol === col ? (sortAsc ? ' \u2191' : ' \u2193') : ''
+  const sortArrow = (col: string) => sortCol === col ? (sortAsc ? ' ↑' : ' ↓') : ''
 
   // Check which sidebar item is active
-  const isActive = (place) => {
+  const isActive = (place: SidebarPlace) => {
     if (place.path === '~' && (cwd === '~' || cwd === resolvedHome)) return true
     if (place.path.startsWith('~/') && resolvedHome) {
       const expanded = resolvedHome + place.path.slice(1)
@@ -478,9 +569,9 @@ export default function FileManager() {
     return cwd === place.path
   }
 
-  const breadcrumbs = cwd === '~'
+  const breadcrumbs: Breadcrumb[] = cwd === '~'
     ? [{ label: '~', path: '~' }]
-    : cwd.split('/').reduce((acc, part, i) => {
+    : cwd.split('/').reduce<Breadcrumb[]>((acc, part, i) => {
         if (!part && i === 0) {
           acc.push({ label: '/', path: '/' })
         } else if (part) {
@@ -491,12 +582,12 @@ export default function FileManager() {
       }, [])
 
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault()
         searchRef.current?.focus()
       }
-      if (e.key === 'Backspace' && !e.target.closest('input')) {
+      if (e.key === 'Backspace' && !(e.target instanceof Element && e.target.closest('input'))) {
         e.preventDefault()
         goUp()
       }
@@ -701,7 +792,7 @@ export default function FileManager() {
                       key={i}
                       className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
                         ${selected === `s${i}` ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
-                      onClick={() => { setSelected(`s${i}`); setPreview({ type: 'semantic', name, path: p, score: r.score, content: r.content }) }}
+                      onClick={() => { setSelected(`s${i}`); setPreview({ type: 'semantic', name: name || '', path: p, score: r.score || 0, content: r.content || '' }) }}
                       onDoubleClick={() => {
                         const dir = p.split('/').slice(0, -1).join('/')
                         if (dir) loadDir(dir)
@@ -714,7 +805,7 @@ export default function FileManager() {
                           {Math.round((r.score || 0) * 100)}%
                         </span>
                       </span>
-                      <span className="w-16 shrink-0 text-right text-neutral-700">{'\u2014'}</span>
+                      <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
                       <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                         {p.split('/').slice(0, -1).join('/')}
                       </span>
@@ -737,7 +828,7 @@ export default function FileManager() {
                       <FileIcon name={r.name} isDir={false} isLink={false} />
                       <span className="truncate">{r.name}</span>
                     </span>
-                    <span className="w-16 shrink-0 text-right text-neutral-700">{'\u2014'}</span>
+                    <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
                     <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                       {r.path}
                     </span>
@@ -771,7 +862,7 @@ export default function FileManager() {
                     )}
                   </span>
                   <span className="w-16 shrink-0 text-right text-neutral-600 tabular-nums">
-                    {entry.isDir ? '\u2014' : fmtSize(entry.size)}
+                    {entry.isDir ? '—' : fmtSize(entry.size)}
                   </span>
                   <span className="w-32 shrink-0 text-right text-neutral-600 truncate tabular-nums">
                     {entry.modified}
@@ -813,7 +904,7 @@ export default function FileManager() {
                 <FileIcon
                   name={preview.name}
                   isDir={preview.type === 'dir'}
-                  isLink={preview.entry?.isLink}
+                  isLink={!!preview.entry?.isLink}
                 />
                 <span className="text-xs font-medium text-neutral-200 truncate">
                   {preview.name}

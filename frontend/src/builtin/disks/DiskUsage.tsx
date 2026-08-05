@@ -1,5 +1,45 @@
 import { useState, useEffect } from 'react'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+/** A filesystem mount from GET /api/disks. */
+interface Mount {
+  mount_point: string
+  device: string
+  fs_type: string
+  used_mb: number
+  free_mb: number
+  total_mb: number
+  percent: number
+}
+
+function isMount(x: unknown): x is Mount {
+  return isRecord(x)
+    && typeof x.mount_point === 'string'
+    && typeof x.device === 'string'
+    && typeof x.fs_type === 'string'
+    && typeof x.used_mb === 'number'
+    && typeof x.free_mb === 'number'
+    && typeof x.total_mb === 'number'
+    && typeof x.percent === 'number'
+}
+
+/** A directory-breakdown row from GET /api/disks/breakdown. */
+interface BreakdownEntry {
+  name: string
+  path: string
+  size_mb: number
+}
+
+function isBreakdownEntry(x: unknown): x is BreakdownEntry {
+  return isRecord(x)
+    && typeof x.name === 'string'
+    && typeof x.path === 'string'
+    && typeof x.size_mb === 'number'
+}
+
 const COLORS = [
   '#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#eab308',
   '#22c55e', '#06b6d4', '#6366f1', '#f43f5e', '#14b8a6',
@@ -7,13 +47,19 @@ const COLORS = [
   '#10b981', '#6d28d9', '#e11d48', '#0891b2', '#65a30d',
 ]
 
-function fmtSize(mb) {
+function fmtSize(mb: number | null | undefined): string {
   if (mb == null) return '—'
   if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB'
   return mb + ' MB'
 }
 
-function DonutChart({ segments, size = 160, label, sublabel }) {
+interface DonutSegment {
+  label: string
+  value: number
+  color: string
+}
+
+function DonutChart({ segments, size = 160, label, sublabel }: { segments: DonutSegment[]; size?: number; label?: string; sublabel?: string }) {
   const cx = size / 2, cy = size / 2
   const outerR = size / 2 - 4
   const innerR = outerR * 0.62
@@ -66,13 +112,13 @@ function DonutChart({ segments, size = 160, label, sublabel }) {
   )
 }
 
-function usageTone(percent) {
+function usageTone(percent: number): { bar: string; text: string } {
   if (percent > 90) return { bar: 'bg-danger', text: 'text-danger' }
   if (percent > 70) return { bar: 'bg-warning', text: 'text-warning' }
   return { bar: 'accent-bg', text: 'accent-text' }
 }
 
-function UsageBar({ percent, className = '' }) {
+function UsageBar({ percent, className = '' }: { percent: number; className?: string }) {
   const { bar } = usageTone(percent)
   return (
     <div className={`w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden ${className}`}>
@@ -82,32 +128,36 @@ function UsageBar({ percent, className = '' }) {
   )
 }
 
-function Spinner({ className = 'w-6 h-6' }) {
+function Spinner({ className = 'w-6 h-6' }: { className?: string }) {
   return <div className={`spinner rounded-full ${className}`} role="status" aria-label="Loading" />
 }
 
 export default function DiskUsage() {
-  const [mounts, setMounts] = useState(null)
-  const [selectedMount, setSelectedMount] = useState(null)
-  const [breakdown, setBreakdown] = useState(null)
+  const [mounts, setMounts] = useState<Mount[] | null>(null)
+  const [selectedMount, setSelectedMount] = useState<Mount | null>(null)
+  const [breakdown, setBreakdown] = useState<BreakdownEntry[] | null>(null)
   const [breakdownPath, setBreakdownPath] = useState('/')
   const [loading, setLoading] = useState(true)
   const [breakdownLoading, setBreakdownLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/disks').then(r => r.json()).then(d => {
-      setMounts(d.mounts || [])
-      if (d.mounts?.length) setSelectedMount(d.mounts[0])
+    fetch('/api/disks').then(r => r.json()).then((d: unknown) => {
+      const list = isRecord(d) && Array.isArray(d.mounts) ? d.mounts.filter(isMount) : []
+      setMounts(list)
+      if (list.length) setSelectedMount(list[0])
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
 
-  const loadBreakdown = (path) => {
+  const loadBreakdown = (path: string) => {
     setBreakdownPath(path)
     setBreakdownLoading(true)
     fetch('/api/disks/breakdown?path=' + encodeURIComponent(path))
       .then(r => r.json())
-      .then(d => { setBreakdown(d); setBreakdownLoading(false) })
+      .then((d: unknown) => {
+        setBreakdown(Array.isArray(d) ? d.filter(isBreakdownEntry) : [])
+        setBreakdownLoading(false)
+      })
       .catch(() => setBreakdownLoading(false))
   }
 
@@ -116,7 +166,7 @@ export default function DiskUsage() {
     if (selectedMount) loadBreakdown(selectedMount.mount_point)
   }, [selectedMount])
 
-  const breakdownSegments = (breakdown || []).map((d, i) => ({
+  const breakdownSegments: DonutSegment[] = (breakdown || []).map((d, i) => ({
     label: d.name,
     value: d.size_mb,
     color: COLORS[i % COLORS.length],
@@ -130,7 +180,7 @@ export default function DiskUsage() {
     }
   }
 
-  const mountSegments = selectedMount ? [
+  const mountSegments: DonutSegment[] = selectedMount ? [
     { label: 'Used', value: selectedMount.used_mb, color: 'var(--accent)' },
     { label: 'Free', value: selectedMount.free_mb, color: 'var(--border-default)' },
   ] : []
