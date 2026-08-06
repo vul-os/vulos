@@ -11,50 +11,109 @@ import { Pill, EmptyState, Banner } from '../../core/settings/ui'
 const IP_POLL_MS = 10_000
 const IP_RESOURCE_POLL_MS = 15_000
 
+// ── wire narrowing ───────────────────────────────────────────────────────────
+// Wire replies are untrusted network JSON — narrow field-by-field rather than
+// trusting the array/object shape wholesale (matches src/lib/offlineAuth.ts,
+// src/builtin/drive/Drive.tsx).
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function errMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback
+}
+
+type IpInstanceType = 'cloud' | 'device'
+
+interface IpInstance {
+  id: string
+  display_name?: string
+  type: IpInstanceType
+  online: boolean
+  last_seen?: string
+  is_owner: boolean
+  store_only: boolean
+  cpu_pct?: number
+  ram_pct?: number
+}
+
+interface IpRoutingApp {
+  app_id: string
+  instance_id: string
+  fqdn?: string
+}
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 // ipError turns a failed box response into the message the box actually sent,
 // so a refusal (403 admin-only, 409 owner, 404 gone) reaches the user instead of
 // a generic shrug.
-async function ipError(r, fallback) {
+async function ipError(r: Response, fallback: string): Promise<Error> {
   try {
-    const body = await r.json()
-    if (body && body.error) return new Error(body.error)
+    const body: unknown = await r.json()
+    if (isRecord(body) && body.error) return new Error(String(body.error))
   } catch { /* not JSON */ }
   return new Error(fallback)
 }
 
-// ipFetchInstances reads the registry roster. The box serves the registry's own
-// shape — { instances: [{ ulid, kind, status, last_seen_at, role, … }] } — which
-// this maps onto the panel's view model.
-async function ipFetchInstances() {
-  const r = await fetch('/api/instances')
-  if (!r.ok) throw await ipError(r, 'instances fetch failed')
-  const body = await r.json()
-  const list = Array.isArray(body) ? body : (body?.instances || [])
-  return list.map(inst => ({
-    id: inst.ulid,
-    display_name: inst.display_name,
-    type: inst.kind === 'cloud' ? 'cloud' : 'device',
-    online: inst.status === 'online',
-    last_seen: inst.last_seen_at,
-    is_owner: inst.role === 'owner',
+// toIpInstance narrows one registry row. `ulid` is the only field this view
+// cannot function without; every other field degrades to a safe default
+// (matches the original's unguarded reads, which relied on those fields being
+// absent-safe by usage — `!!`, `=== 'x'`, template interpolation).
+function toIpInstance(x: unknown): IpInstance | null {
+  if (!isRecord(x)) return null
+  const id = typeof x.ulid === 'string' ? x.ulid : null
+  if (!id) return null
+  return {
+    id,
+    display_name: typeof x.display_name === 'string' ? x.display_name : undefined,
+    type: x.kind === 'cloud' ? 'cloud' : 'device',
+    online: x.status === 'online',
+    last_seen: typeof x.last_seen_at === 'string' ? x.last_seen_at : undefined,
+    is_owner: x.role === 'owner',
     // NODE-CAP-01: a store-only member syncs but is never a route/ingress
     // target. Absent/false = serving (the safe default from a box or CP that
     // predates the field).
-    store_only: !!inst.store_only,
-    cpu_pct: inst.cpu_pct,
-    ram_pct: inst.ram_pct,
-  }))
+    store_only: !!x.store_only,
+    cpu_pct: typeof x.cpu_pct === 'number' ? x.cpu_pct : undefined,
+    ram_pct: typeof x.ram_pct === 'number' ? x.ram_pct : undefined,
+  }
 }
 
-async function ipFetchRoutingApps() {
+// ipFetchInstances reads the registry roster. The box serves the registry's own
+// shape — { instances: [{ ulid, kind, status, last_seen_at, role, … }] } — which
+// this maps onto the panel's view model. A bare array body is also accepted
+// (as the original did); anything else — or a non-array `instances` field —
+// yields no rows rather than a cast, matching the narrowing pattern used
+// throughout the codebase for untrusted JSON.
+async function ipFetchInstances(): Promise<IpInstance[]> {
+  const r = await fetch('/api/instances')
+  if (!r.ok) throw await ipError(r, 'instances fetch failed')
+  const body: unknown = await r.json()
+  const list = Array.isArray(body)
+    ? body
+    : (isRecord(body) && Array.isArray(body.instances) ? body.instances : [])
+  return list.map(toIpInstance).filter((i): i is IpInstance => i !== null)
+}
+
+function toIpRoutingApp(x: unknown): IpRoutingApp | null {
+  if (!isRecord(x)) return null
+  const appId = typeof x.app_id === 'string' ? x.app_id : null
+  const instanceId = typeof x.instance_id === 'string' ? x.instance_id : null
+  if (!appId || !instanceId) return null
+  return { app_id: appId, instance_id: instanceId, fqdn: typeof x.fqdn === 'string' ? x.fqdn : undefined }
+}
+
+async function ipFetchRoutingApps(): Promise<IpRoutingApp[]> {
   const r = await fetch('/api/routing/apps')
   if (!r.ok) return []
-  return r.json() // [{app_id, instance_id, fqdn}]
+  const body: unknown = await r.json() // [{app_id, instance_id, fqdn}]
+  if (!Array.isArray(body)) return []
+  return body.map(toIpRoutingApp).filter((a): a is IpRoutingApp => a !== null)
 }
 
-async function ipRenameInstance(id, name) {
+async function ipRenameInstance(id: string, name: string): Promise<unknown> {
   const r = await fetch(`/api/instances/${id}/rename`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -64,7 +123,7 @@ async function ipRenameInstance(id, name) {
   return r.json()
 }
 
-async function ipRemoveInstance(id) {
+async function ipRemoveInstance(id: string): Promise<unknown> {
   const r = await fetch(`/api/instances/${id}`, { method: 'DELETE' })
   if (!r.ok) throw await ipError(r, 'remove failed')
   return r.json()
@@ -74,7 +133,7 @@ async function ipRemoveInstance(id) {
 // store_only=true → syncs but is never a route target. For this box (owner) the
 // change is effective immediately; for a remote peer it is a local-view change
 // until the control plane round-trips the flag.
-async function ipSetStoreOnly(id, storeOnly) {
+async function ipSetStoreOnly(id: string, storeOnly: boolean): Promise<unknown> {
   const r = await fetch(`/api/instances/${id}/store-only`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -86,7 +145,7 @@ async function ipSetStoreOnly(id, storeOnly) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function formatLastSeen(ts) {
+function formatLastSeen(ts: string | undefined): string {
   if (!ts) return 'Never'
   const now = Date.now()
   const ms = now - new Date(ts).getTime()
@@ -96,14 +155,18 @@ function formatLastSeen(ts) {
   return `${Math.floor(ms / 86_400_000)}d ago`
 }
 
-function truncateId(id) {
+function truncateId(id: string): string {
   if (!id) return ''
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id
 }
 
 // ── OnlineBadge ───────────────────────────────────────────────────────────────
 
-function OnlineBadge({ online }) {
+interface OnlineBadgeProps {
+  online: boolean
+}
+
+function OnlineBadge({ online }: OnlineBadgeProps) {
   return online
     ? <Pill tone="success" pulse>Online</Pill>
     : <Pill tone="neutral">Offline</Pill>
@@ -111,7 +174,12 @@ function OnlineBadge({ online }) {
 
 // ── ResourceMiniBar ──────────────────────────────────────────────────────────
 
-function ResourceMiniBar({ label, pct }) {
+interface ResourceMiniBarProps {
+  label: string
+  pct: number | undefined
+}
+
+function ResourceMiniBar({ label, pct }: ResourceMiniBarProps) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
   const color = clamp > 80 ? 'bg-[var(--status-warning)]' : clamp > 60 ? 'accent-bg' : 'bg-[var(--text-ghost)]'
   return (
@@ -127,11 +195,17 @@ function ResourceMiniBar({ label, pct }) {
 
 // ── RenameModal ───────────────────────────────────────────────────────────────
 
-function RenameModal({ instance, onSave, onCancel }) {
+interface RenameModalProps {
+  instance: IpInstance
+  onSave: (name: string) => void
+  onCancel: () => void
+}
+
+function RenameModal({ instance, onSave, onCancel }: RenameModalProps) {
   const [name, setName] = useState(instance.display_name || '')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-  const inputRef = useRef(null)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 50) }, [])
 
@@ -143,7 +217,7 @@ function RenameModal({ instance, onSave, onCancel }) {
       await ipRenameInstance(instance.id, name.trim())
       onSave(name.trim())
     } catch (e) {
-      setError(e.message || 'Rename failed.')
+      setError(errMessage(e, 'Rename failed.'))
     }
     finally { setSaving(false) }
   }, [instance.id, name, saving, onSave])
@@ -177,9 +251,15 @@ function RenameModal({ instance, onSave, onCancel }) {
 
 // ── RemoveConfirmModal ────────────────────────────────────────────────────────
 
-function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
+interface RemoveConfirmModalProps {
+  instance: IpInstance
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function RemoveConfirmModal({ instance, onConfirm, onCancel }: RemoveConfirmModalProps) {
   const [removing, setRemoving] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleConfirm = useCallback(async () => {
     if (removing) return
@@ -190,7 +270,7 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
       onConfirm()
     } catch (e) {
       // The instance stays in the list: the box did not remove it.
-      setError(e.message || 'Remove failed.')
+      setError(errMessage(e, 'Remove failed.'))
     }
     finally { setRemoving(false) }
   }, [instance.id, removing, onConfirm])
@@ -223,10 +303,18 @@ function RemoveConfirmModal({ instance, onConfirm, onCancel }) {
 
 // ── InstanceCard ──────────────────────────────────────────────────────────────
 
-function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }) {
+interface InstanceCardProps {
+  instance: IpInstance
+  apps: IpRoutingApp[]
+  onRename: () => void
+  onRemove: () => void
+  onStoreOnlyChanged: (instanceId: string, storeOnly: boolean) => void
+}
+
+function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }: InstanceCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [toggling, setToggling] = useState(false)
-  const [toggleErr, setToggleErr] = useState(null)
+  const [toggleErr, setToggleErr] = useState<string | null>(null)
   const instanceApps = (apps || []).filter(a => a.instance_id === instance.id)
 
   const handleToggleStoreOnly = useCallback(async () => {
@@ -239,7 +327,7 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
       onStoreOnlyChanged(instance.id, next)
     } catch (e) {
       // Leave the state as-is: the box did not change it.
-      setToggleErr(e.message || 'Update failed.')
+      setToggleErr(errMessage(e, 'Update failed.'))
     } finally {
       setToggling(false)
     }
@@ -372,19 +460,27 @@ function InstanceCard({ instance, apps, onRename, onRemove, onStoreOnlyChanged }
 
 // ── InstancesPanel (main export) ─────────────────────────────────────────────
 
+// PendingStoreOnly is the optimistic-override record for one instance: the
+// store_only value the user just set, and how many more polls it may override
+// before we trust the server instead (see loadData).
+interface PendingStoreOnly {
+  value: boolean
+  ttl: number
+}
+
 export default function InstancesPanel() {
-  const [instances, setInstances] = useState(null) // null = loading
-  const [apps, setApps] = useState([])
-  const [error, setError] = useState(null)
-  const [renaming, setRenaming] = useState(null)   // instance object
-  const [removing, setRemoving] = useState(null)   // instance object
-  const pollRef = useRef(null)
+  const [instances, setInstances] = useState<IpInstance[] | null>(null) // null = loading
+  const [apps, setApps] = useState<IpRoutingApp[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<IpInstance | null>(null)   // instance object
+  const [removing, setRemoving] = useState<IpInstance | null>(null)   // instance object
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // NODE-CAP-01: optimistic-override map (id → store_only just set by the user).
   // The 10s poll does a wholesale setInstances; a GET that was already in flight
   // when the user toggled would otherwise resolve with pre-toggle data and
   // revert the switch for one cycle. We re-apply pending values over every poll
   // result until the server reflects them, then drop the override.
-  const pendingStoreOnlyRef = useRef({})
+  const pendingStoreOnlyRef = useRef<Record<string, PendingStoreOnly>>({})
 
   const loadData = useCallback(async () => {
     try {
@@ -393,7 +489,7 @@ export default function InstancesPanel() {
         ipFetchRoutingApps(),
       ])
       const pending = pendingStoreOnlyRef.current
-      const liveIds = new Set()
+      const liveIds = new Set<string>()
       const merged = (instData || []).map(i => {
         liveIds.add(i.id)
         const p = pending[i.id]
@@ -426,20 +522,20 @@ export default function InstancesPanel() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
     pollRef.current = setInterval(loadData, IP_POLL_MS)
-    return () => clearInterval(pollRef.current)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadData])
 
-  const handleRenameSuccess = useCallback((instanceId, newName) => {
+  const handleRenameSuccess = useCallback((instanceId: string, newName: string) => {
     setInstances(prev => (prev || []).map(i => i.id === instanceId ? { ...i, display_name: newName } : i))
     setRenaming(null)
   }, [])
 
-  const handleRemoveSuccess = useCallback((instanceId) => {
+  const handleRemoveSuccess = useCallback((instanceId: string) => {
     setInstances(prev => (prev || []).filter(i => i.id !== instanceId))
     setRemoving(null)
   }, [])
 
-  const handleStoreOnlyChanged = useCallback((instanceId, storeOnly) => {
+  const handleStoreOnlyChanged = useCallback((instanceId: string, storeOnly: boolean) => {
     // Record the override (with a small poll budget) so an in-flight poll can't
     // revert it, but it can't override server truth forever either (see loadData).
     pendingStoreOnlyRef.current[instanceId] = { value: storeOnly, ttl: 3 }

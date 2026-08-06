@@ -1,5 +1,5 @@
 /**
- * IncomingCall.jsx — PEER-24
+ * IncomingCall.tsx — PEER-24
  *
  * Shell-wide modal that surfaces when a remote peer initiates a call.
  *
@@ -24,13 +24,35 @@ import { notify } from '../../../core/notificationStore'
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/peering/stream`
 
+// isRecord/errMessage narrow `unknown` boundary values (fetch JSON bodies,
+// the peering WS frame, caught errors under strict's useUnknownInCatchVariables)
+// without any/casts — same pattern as src/lib/offlineAuth.ts and
+// src/builtin/peering/Messages.tsx.
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function errMessage(e: unknown, fallback: string): string {
+  return (isRecord(e) && typeof e.message === 'string' && e.message) || fallback
+}
+
+// window.webkitAudioContext is the vendor-prefixed constructor Safari still
+// requires; it's absent from lib.dom.d.ts. Augmenting the ambient DOM type
+// (rather than casting `window`) fixes this honestly — same idiom as
+// StreamViewer.tsx's RTCRtpReceiver.playoutDelayHint augmentation.
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext
+  }
+}
+
 /** Synthesise a short ringtone with the Web Audio API (no file dependency). */
-function useRingtone(ringing) {
-  const ctxRef = useRef(null)
-  const intervalRef = useRef(null)
+function useRingtone(ringing: boolean): void {
+  const ctxRef = useRef<AudioContext | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopRing = useCallback(() => {
-    clearInterval(intervalRef.current)
+    if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = null
     if (ctxRef.current) {
       ctxRef.current.close()
@@ -40,22 +62,26 @@ function useRingtone(ringing) {
 
   const playBell = useCallback(() => {
     try {
-      if (!ctxRef.current || ctxRef.current.state === 'closed') {
-        ctxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+      let ctx = ctxRef.current
+      if (!ctx || ctx.state === 'closed') {
+        const AudioCtor = window.AudioContext ?? window.webkitAudioContext
+        if (!AudioCtor) return
+        ctx = new AudioCtor()
+        ctxRef.current = ctx
       }
-      const ctx = ctxRef.current
-      if (ctx.state === 'suspended') ctx.resume()
+      const activeCtx = ctx
+      if (activeCtx.state === 'suspended') activeCtx.resume()
 
       // Two-tone ring: 880 Hz then 1046 Hz
       const freqs = [880, 1046]
       freqs.forEach((freq, idx) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
+        const osc = activeCtx.createOscillator()
+        const gain = activeCtx.createGain()
         osc.connect(gain)
-        gain.connect(ctx.destination)
+        gain.connect(activeCtx.destination)
         osc.frequency.value = freq
         osc.type = 'sine'
-        const t = ctx.currentTime + idx * 0.18
+        const t = activeCtx.currentTime + idx * 0.18
         gain.gain.setValueAtTime(0, t)
         gain.gain.linearRampToValueAtTime(0.22, t + 0.04)
         gain.gain.linearRampToValueAtTime(0, t + 0.16)
@@ -80,10 +106,35 @@ function useRingtone(ringing) {
 
 // ---------- call history fetcher ------------------------------------------
 
+// Backend shape (GET /api/peering/call/history) — narrowed field-by-field
+// from `unknown` rather than trusted, since it comes straight off the wire.
+interface CallHistoryEntry {
+  id: string
+  direction: string // 'inbound' | 'outbound'
+  started_at: string | null
+  duration_sec: number
+  peer_display?: string
+  peer_id?: string
+  status: string // 'completed' | 'missed' | 'rejected' | 'outgoing' | other
+}
+
+function toCallHistoryEntry(x: unknown): CallHistoryEntry | null {
+  if (!isRecord(x)) return null
+  return {
+    id: typeof x.id === 'string' ? x.id : '',
+    direction: typeof x.direction === 'string' ? x.direction : '',
+    started_at: typeof x.started_at === 'string' ? x.started_at : null,
+    duration_sec: typeof x.duration_sec === 'number' ? x.duration_sec : 0,
+    peer_display: typeof x.peer_display === 'string' ? x.peer_display : undefined,
+    peer_id: typeof x.peer_id === 'string' ? x.peer_id : undefined,
+    status: typeof x.status === 'string' ? x.status : '',
+  }
+}
+
 function useCallHistory() {
-  const [history, setHistory] = useState([])
+  const [history, setHistory] = useState<CallHistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -91,10 +142,11 @@ function useCallHistory() {
     try {
       const res = await fetch('/api/peering/call/history?limit=50')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setHistory(data || [])
+      const data: unknown = await res.json()
+      const list = Array.isArray(data) ? data : []
+      setHistory(list.map(toCallHistoryEntry).filter((e): e is CallHistoryEntry => e !== null))
     } catch (err) {
-      setError(err.message)
+      setError(errMessage(err, 'Failed to load history'))
     } finally {
       setLoading(false)
     }
@@ -107,20 +159,22 @@ function useCallHistory() {
 
 // ---------- status badge --------------------------------------------------
 
-function StatusBadge({ status }) {
-  const cfg = {
-    completed: { label: 'Completed', cls: 'text-success' },
-    missed:    { label: 'Missed',    cls: 'text-danger' },
-    rejected:  { label: 'Rejected',  cls: 'text-warning' },
-    outgoing:  { label: 'Outgoing',  cls: 'accent-text' },
-  }[status] || { label: status, cls: 'text-[var(--text-tertiary)]' }
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  completed: { label: 'Completed', cls: 'text-success' },
+  missed:    { label: 'Missed',    cls: 'text-danger' },
+  rejected:  { label: 'Rejected',  cls: 'text-warning' },
+  outgoing:  { label: 'Outgoing',  cls: 'accent-text' },
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CFG[status] || { label: status, cls: 'text-[var(--text-tertiary)]' }
 
   return <span className={`text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
 }
 
 // ---------- call history panel --------------------------------------------
 
-function CallHistoryPanel({ onClose }) {
+function CallHistoryPanel({ onClose }: { onClose: () => void }) {
   const { history, loading, error, refresh } = useCallHistory()
 
   return (
@@ -173,7 +227,7 @@ function CallHistoryPanel({ onClose }) {
   )
 }
 
-function CallHistoryRow({ entry }) {
+function CallHistoryRow({ entry }: { entry: CallHistoryEntry }) {
   const isInbound = entry.direction === 'inbound'
   const started = entry.started_at ? new Date(entry.started_at) : null
   const dateStr = started
@@ -215,7 +269,7 @@ function CallHistoryRow({ entry }) {
   )
 }
 
-function formatDuration(secs) {
+function formatDuration(secs: number): string {
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return m > 0 ? `${m}m ${s}s` : `${s}s`
@@ -223,7 +277,20 @@ function formatDuration(secs) {
 
 // ---------- incoming call modal -------------------------------------------
 
-function IncomingCallModal({ call, onAccept, onReject }) {
+interface IncomingCallState {
+  callId: string
+  peerId: string
+  peerDisplay: string
+  peerAvatar: string | null
+}
+
+interface IncomingCallModalProps {
+  call: IncomingCallState
+  onAccept: () => void
+  onReject: () => void
+}
+
+function IncomingCallModal({ call, onAccept, onReject }: IncomingCallModalProps) {
   useRingtone(true)
 
   return (
@@ -320,9 +387,9 @@ function IncomingCallModal({ call, onAccept, onReject }) {
  * connection to the notification stream and manages all state internally.
  */
 export default function IncomingCall() {
-  const [incomingCall, setIncomingCall] = useState(null)   // { callId, peerId, peerDisplay, peerAvatar }
+  const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const wsRef = useRef(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
   // Connect to the notification stream and watch for peering call signals.
   useEffect(() => {
@@ -333,25 +400,29 @@ export default function IncomingCall() {
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
 
-      ws.onmessage = (e) => {
+      ws.onmessage = (e: MessageEvent) => {
         try {
-          const frame = JSON.parse(e.data)
+          const parsed: unknown = JSON.parse(e.data)
+          if (!isRecord(parsed)) return
           // Peering hub wraps every message as { channel, from, payload }.
           // Call signals arrive on the "signal" channel; the inner payload
           // carries { type, call_id, from_id, ... }.
-          if (frame.channel !== 'signal') return
-          const sig = frame.payload || {}
+          if (parsed.channel !== 'signal') return
+          const sig = isRecord(parsed.payload) ? parsed.payload : {}
+          const from = typeof parsed.from === 'string' ? parsed.from : ''
 
           if (sig.type === 'incoming-call') {
+            const callId = typeof sig.call_id === 'string' ? sig.call_id : ''
+            const fromId = typeof sig.from_id === 'string' ? sig.from_id : ''
             setIncomingCall({
-              callId:      sig.call_id  || '',
-              peerId:      sig.from_id  || frame.from || '',
-              peerDisplay: sig.from_id  || frame.from || 'Unknown',
+              callId,
+              peerId:      fromId || from,
+              peerDisplay: fromId || from || 'Unknown',
               peerAvatar:  null,
             })
           } else if (sig.type === 'hangup' || sig.type === 'reject') {
             // Remote peer cancelled or we got a reject — dismiss the modal.
-            const cancelId = sig.call_id
+            const cancelId = typeof sig.call_id === 'string' ? sig.call_id : undefined
             setIncomingCall((cur) =>
               cur && cur.callId === cancelId ? null : cur
             )

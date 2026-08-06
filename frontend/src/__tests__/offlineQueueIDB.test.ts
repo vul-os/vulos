@@ -47,7 +47,7 @@ function makeFakeIndexedDB() {
     // them in order, then fire oncomplete.
     const issue = (apply: (req: FakeRequest) => void): FakeRequest => {
       const req: FakeRequest = { onsuccess: null, onerror: null, result: undefined }
-      pending.push(() => { apply(req); req.onsuccess && req.onsuccess() })
+      pending.push(() => { apply(req); if (req.onsuccess) req.onsuccess() })
       return req
     }
     return {
@@ -79,7 +79,7 @@ function makeFakeIndexedDB() {
         // tx.oncomplete, run them in order then complete the transaction.
         later(() => {
           for (const run of pending) run()
-          tx.oncomplete && tx.oncomplete()
+          if (tx.oncomplete) tx.oncomplete()
         })
         return {
           objectStore: () => store,
@@ -104,7 +104,7 @@ function makeFakeIndexedDB() {
       req.result = makeDB(name)
       later(() => {
         if (fresh && req.onupgradeneeded) req.onupgradeneeded()
-        req.onsuccess && req.onsuccess()
+        if (req.onsuccess) req.onsuccess()
       })
       return req
     },

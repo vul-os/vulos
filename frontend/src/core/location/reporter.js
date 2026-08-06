@@ -77,6 +77,8 @@ function handleError(err, cfg) {
     try {
       cfg.onError(err);
     } catch {
+      // The consumer's own onError threw. Swallow it: a broken error handler
+      // must not take down location reporting.
     }
   }
 }
@@ -145,6 +147,7 @@ function stopLocationReporting() {
       activeGeo.clearWatch(watchId);
     }
   } catch {
+    // clearWatch can throw if the watch is already gone. Nothing to do.
   }
   watchId = null;
   if (pollTimer != null) {

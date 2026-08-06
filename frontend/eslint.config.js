@@ -76,7 +76,13 @@ export default defineConfig([
     rules: {
       // Superseded by the TS-aware version, which understands type-only imports.
       'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // argsIgnorePattern: the codebase already marks deliberately-unused
+      // parameters with a leading underscore (e.g. webPush's _subscription,
+      // kept for call-site clarity). The .jsx config expressed that intent via
+      // an eslint-disable comment naming the base `no-unused-vars` rule, which
+      // silently stops matching once the file is .ts and the TS-aware rule
+      // takes over.
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
     },
   },
   {
