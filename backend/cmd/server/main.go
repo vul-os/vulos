@@ -160,6 +160,7 @@ func main() {
 
 	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
 	versionFlag := flag.Bool("version", false, "Print the server version and exit.")
+	printPairingFlag := flag.Bool("print-pairing", false, "Print this box's LAN pairing payload (name, address, certificate fingerprint) and exit. Run this over SSH/console to get the value a native client pins.")
 	flag.Parse()
 
 	if *versionFlag {
@@ -185,6 +186,13 @@ func main() {
 	}
 
 	cfg := config.Load(activeEnv.String())
+
+	// PAIR-01: `-print-pairing` is a one-shot CLI print, not a server boot —
+	// same shape as -version above. It needs cfg (box name, instance id) but
+	// none of the heavy service initialization below, so it exits here.
+	if *printPairingFlag {
+		os.Exit(runPrintPairingCLI(cfg))
+	}
 
 	// DEPLOY_MODE: standalone|os|cloud (typed enum, read once, self-reported at
 	// boot). Unset ⇒ standalone — today's default behavior unchanged. Drives
@@ -1024,6 +1032,12 @@ func main() {
 	// Auth routes
 	authHandler.Register(mux)
 	registerAdminTokenRoutes(mux, authStore, home) // AT10: rotating admin token
+
+	// PAIR-01: LAN pairing payload for the in-browser pairing flow (the CLI
+	// equivalent is `vulos -print-pairing`, handled earlier as an early exit).
+	// Session-gated — see registerLANPairingRoutes for why this is deliberately
+	// NOT in auth's publicPaths.
+	registerLANPairingRoutes(mux, cfg, lanPairingCertSource(cfg.InstanceID))
 
 	// TOTP vault routes (/api/auth/totp/*)
 	totpHandler := authvault.NewHandler()

@@ -185,6 +185,35 @@ var publicPrefixes = []string{
 	"/api/v1/",
 }
 
+// PublicPaths returns a copy of the unauthenticated path allow-list.
+//
+// It exists so a test in ANOTHER package can assert the allow-list matches a
+// reviewed, canonical set exactly. That assertion used to be claimed but not
+// performed: services/security_test.go's SEC-HARD-08 built a list of expected
+// public paths and then only logged it, so this map and that list drifted to
+// 39 entries versus 18 without any test noticing. Adding a route here is the
+// single highest-consequence edit in this file — it removes authentication
+// from an endpoint — so it must be impossible to do silently.
+//
+// Returns a copy: a caller mutating the result must not be able to widen the
+// live allow-list.
+func PublicPaths() map[string]bool {
+	out := make(map[string]bool, len(publicPaths))
+	for k, v := range publicPaths {
+		out[k] = v
+	}
+	return out
+}
+
+// PublicPrefixes returns a copy of the unauthenticated path-prefix allow-list.
+// A prefix is strictly more dangerous than a single path — it exempts an
+// entire subtree — so it is asserted by the same test, for the same reason.
+func PublicPrefixes() []string {
+	out := make([]string, len(publicPrefixes))
+	copy(out, publicPrefixes)
+	return out
+}
+
 func isPublicPath(rawPath string) bool {
 	// SECURITY (path-traversal auth bypass): the middleware sees r.URL.Path, which
 	// retains raw ".." / "." segments (Go's http.ServeMux only cleans the path

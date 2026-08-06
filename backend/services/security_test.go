@@ -454,30 +454,102 @@ func TestHTTP_MaxBytesReader_CriticalPOSTHandlers(t *testing.T) {
 //
 // Guards: SECURITY-OSS.md §7 — any new route is auto-protected unless
 // deliberately added to publicPaths.
+//
+// HISTORY — this test made exactly the claim above and did not perform it.
+// expectedPublicPaths was built and then passed only to t.Logf; it was never
+// compared against the real map. The two drifted to 39 live entries versus 18
+// expected — in BOTH directions, since the expected list still named
+// /api/auth/cloudlogin, /api/auth/cloud/status and /api/auth/cloud/signup,
+// which no longer exist — and the test stayed green throughout. It was found
+// by mutation: adding a route to publicPaths did not fail it. Removing
+// authentication from an endpoint is the highest-consequence edit in
+// handlers.go, so the assertion is now real and compared in both directions.
 func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
-	// This is the canonical list as of SECURITY-OSS.md audit 2026-05-21.
-	// When a new legitimate public route is added, it must be added here too,
-	// with a comment explaining why it is safe to expose unauthenticated.
+	// The canonical allow-list. A route may only appear here after a conscious
+	// decision that it is safe to serve with NO session, and the reason must
+	// say what actually authorizes it — "public" is not a reason, "the handler
+	// does its own owner-or-token gate" is.
 	expectedPublicPaths := map[string]string{
-		"/health":                      "health probe — no sensitive data",
-		"/api/auth/me":                 "returns empty without a valid session",
-		"/api/auth/logout":             "logout is harmless without a session",
-		"/api/auth/register":           "first-user registration — protected at handler level",
-		"/api/auth/login":              "credential submission — auth not yet established",
-		"/api/auth/status":             "setup status check — no sensitive data",
-		"/api/setup/status":            "setup completion flag — no sensitive data",
-		"/api/setup/join-code":         "INIT-10: unauthenticated join-code decode",
-		"/api/setup/join":              "INIT-08: cluster join at setup time",
-		"/api/setup/join/status":       "INIT-08: join progress poll at setup time",
-		"/api/browser/status":          "browser availability — no sensitive data",
-		"/manifest.json":               "PWA manifest — no sensitive data",
-		"/api/auth/cloudlogin":         "CLOGIN-01: cloud login — creds validated server-side",
-		"/api/auth/cloud/status":       "CLOGIN-01: enrollment status — no sensitive data",
-		"/api/auth/cloud/signup":       "CLOGIN-04: cloud account creation at setup time",
-		"/api/auth/pin/unlock":         "CLOGIN-06: PIN unlock — rate-limited, lock screen only",
-		"/api/auth/pin/status":         "CLOGIN-06: lockout status — displayed on lock screen",
-		"/api/auth/fingerprint/status": "CLOGIN-07: hw availability — shown on lock screen",
-		"/api/auth/fingerprint/verify": "CLOGIN-07: biometric verify — rate-limited, lock screen",
+		"/health":                         "liveness probe — no sensitive data",
+		"/healthz":                        "trivial liveness probe (status page) — no auth",
+		"/api/auth/me":                    "returns empty without a valid session",
+		"/api/auth/logout":                "logout is harmless without a session",
+		"/api/auth/register":              "first-user registration — protected at handler level",
+		"/api/auth/login":                 "credential submission — auth not yet established",
+		"/api/auth/status":                "setup status check — no sensitive data",
+		"/api/setup/status":               "setup completion flag — no sensitive data",
+		"/api/setup/mode":                 "INIT-09: unauthenticated sync-mode poll (setup wizard)",
+		"/api/setup/apps":                 "BUNDLE-01: suite selection at onboarding (pre-account)",
+		"/api/setup/join-code":            "INIT-10: unauthenticated join-code decode",
+		"/api/setup/join":                 "INIT-08: cluster join at setup time",
+		"/api/setup/join/status":          "INIT-08: join progress poll at setup time",
+		"/api/browser/status":             "browser availability — no sensitive data",
+		"/manifest.json":                  "PWA manifest — no sensitive data",
+		"/api/identity/check":             "IDENTITY-01: username availability at setup time (rate-limited on the CP). NOT /api/identity/claim, which stays session-gated",
+		"/api/gateway":                    "GATEWAY-01: GET is a public read; POST/DELETE do their OWN owner-or-first-boot gate in the handler",
+		"/api/gateway/check":              "GATEWAY-01: dry-run validate + SSRF-scoped probe (setup-time; no persistence)",
+		"/api/auth/masterkey/recover":     "WAVE2-RECOVERY: phrase-based password reset (user is locked out by definition)",
+		"/api/auth/pin/unlock":            "CLOGIN-06: PIN unlock — rate-limited, lock screen only",
+		"/api/auth/pin/status":            "CLOGIN-06: lockout status — displayed on lock screen",
+		"/api/auth/fingerprint/status":    "CLOGIN-07: hw availability — shown on lock screen",
+		"/api/auth/fingerprint/verify":    "CLOGIN-07: biometric verify — rate-limited, lock screen",
+		"/api/auth/passkey/login/begin":   "LOGINISO-01: start passkey assertion — user not yet logged in",
+		"/api/auth/passkey/login/finish":  "LOGINISO-01: finish passkey assertion + issue session",
+		"/api/auth/qr/begin":              "LOGINISO-02: kiosk requests a QR challenge",
+		"/api/auth/qr/poll":               "LOGINISO-02: kiosk polls for approval",
+		"/init-passphrase":                "managed-box vault unlock — gated by X-Burst-Secret header, not a session cookie",
+		"/api/files/peer/serve":           "FILES-2B: box-to-box capability fetch — authed by signed capability + fetch proof",
+		"/api/files/internal/content-key": "WAVE-7: internal cell→box lookup — authed by X-Vulos-Internal-Auth shared secret",
+		"/metrics":                        "OBS: handler does its OWN owner-or-scrape-token gate (VULOS_METRICS_TOKEN); no auth = 403 at the handler, so NOT actually public",
+
+		// Server-to-server peering. These are reached by REMOTE boxes with no OS
+		// session here; each authenticates with its own mechanism. Client-facing
+		// peering routes are deliberately absent so they stay session-gated.
+		"/.well-known/vula-id":               "PEER-12: self-certifying identity, public fields only, signature-verifiable",
+		"/api/peering/relay/deposit":         "PEER-38: Ed25519-signed request + mutual-trust contact check in the handler",
+		"/api/peering/relay/pickup":          "PEER-38: Ed25519-signed Authorization header",
+		"/api/peering/relay/ack":             "PEER-38: recipient-authenticated, deletes only its own blobs",
+		"/api/peering/relay/attest":          "relay attestation evidence document — public, read-only",
+		"/api/peering/prekeys/claim":         "X3DH: OPK claim — signed prekey signature is the authorization; revoked identities fail closed",
+		"/api/peering/prekeys/publish":       "X3DH: browser peer publishes its PUBLIC bundle; forged/revoked bundles fail closed",
+		"/api/peering/profile/notify-change": "S2S cache-eviction hint — only evicts a locally-cached public profile, self-heals",
+	}
+
+	// The assertion this test previously only claimed to make. Both directions
+	// matter: an unexpected entry means authentication was removed from a route
+	// without review, and a missing entry means this list is stale and no longer
+	// describes what the middleware actually does.
+	actual := auth.PublicPaths()
+	for path := range actual {
+		if _, ok := expectedPublicPaths[path]; !ok {
+			t.Errorf("SEC-HARD-08 REGRESSION: %q is in publicPaths but NOT in this reviewed list — "+
+				"a route was made unauthenticated without security review. Add it here with the reason "+
+				"it is safe, or remove it from publicPaths.", path)
+		}
+	}
+	for path := range expectedPublicPaths {
+		if !actual[path] {
+			t.Errorf("SEC-HARD-08 STALE: %q is listed here but is NOT in publicPaths — "+
+				"this reviewed list no longer matches the middleware. Remove it here if the route is gone.", path)
+		}
+	}
+
+	// Prefixes exempt an entire subtree, so they are strictly more dangerous
+	// than a single path and are pinned exactly the same way.
+	expectedPublicPrefixes := map[string]string{
+		"/assets/":              "static frontend assets — no sensitive data",
+		"/__pubweb__/":          "PUBWEB: gateway PublicHandler IS the authorization — serves only opt-in public apps, strips client X-Vulos-* headers, injects no identity",
+		"/api/peering/inbound/": "peering.InboundMiddleware IS the authentication — fails closed on missing/invalid Ed25519 envelope signature, revoked sender, or non-approved contact",
+		"/api/v1/":              "PUBLICAPI: vkl_ bearer-token auth in services/publicapi. /api/developer/keys is NOT under this prefix and stays session-gated",
+	}
+	for _, prefix := range auth.PublicPrefixes() {
+		if _, ok := expectedPublicPrefixes[prefix]; !ok {
+			t.Errorf("SEC-HARD-08 REGRESSION: prefix %q is public but NOT in this reviewed list — "+
+				"an entire subtree was made unauthenticated without security review.", prefix)
+		}
+	}
+	if got, want := len(auth.PublicPrefixes()), len(expectedPublicPrefixes); got != want {
+		t.Errorf("SEC-HARD-08: publicPrefixes has %d entries, reviewed list has %d", got, want)
 	}
 
 	// Verify the public path list compiles by running a minimal test server
