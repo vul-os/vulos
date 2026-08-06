@@ -227,12 +227,38 @@ jobs:
       # Deliberately NOT --skip-if-unavailable: QEMU is installed right here, so
       # a missing binary is a real failure, not an environment quirk. If this
       # step cannot boot the image, the release does not publish.
+      # OVMF's filenames are not stable across distro versions: Ubuntu 24.04
+      # ships OVMF_CODE_4M.fd / OVMF_VARS_4M.fd, older releases shipped
+      # OVMF_CODE.fd / OVMF_VARS.fd, and some package the pair under
+      # /usr/share/ovmf. Hardcoding one spelling broke this step on the runner
+      # while QEMU itself installed fine, so resolve the pair at runtime and
+      # export it. Code and vars MUST come from the same variant — a 4M code
+      # blob with a 2M vars template does not boot.
       - name: Install QEMU + OVMF for the boot gate
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 ovmf
           qemu-system-x86_64 --version | head -1
-          ls -la /usr/share/OVMF/OVMF_CODE.fd /usr/share/OVMF/OVMF_VARS.fd
+
+          CODE=""; VARS=""
+          for c in /usr/share/OVMF/OVMF_CODE_4M.fd \
+                   /usr/share/OVMF/OVMF_CODE.fd \
+                   /usr/share/ovmf/OVMF_CODE.fd \
+                   /usr/share/qemu/OVMF_CODE.fd; do
+            [ -f "$c" ] || continue
+            v="${c/CODE/VARS}"
+            [ -f "$v" ] || continue
+            CODE="$c"; VARS="$v"; break
+          done
+          if [ -z "$CODE" ]; then
+            echo "::error::BOOT-01: no matching OVMF code+vars pair found after installing ovmf"
+            find /usr/share -name 'OVMF*' -o -name '*OVMF*.fd' 2>/dev/null | head -20
+            exit 1
+          fi
+          echo "OVMF_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "OVMF_VARS=$VARS" >> "$GITHUB_ENV"
+          ls -la "$CODE" "$VARS"
           if [ -e /dev/kvm ]; then echo "KVM available — native speed"; else echo "no /dev/kvm — TCG (slower)"; fi
 
       - name: BOOT-01 — boot the built amd64 image and assert it serves
@@ -243,11 +269,15 @@ jobs:
           IMG=vulos-boot-test.img
           gunzip -c "vulos-${VERSION}-x86_64.img.gz" > "$IMG"
 
-          cp /usr/share/OVMF/OVMF_VARS.fd /tmp/vars.fd
+          # OVMF_CODE / OVMF_VARS are resolved by the step above (the filenames
+          # differ across distro versions). A writable COPY of the vars template
+          # is mandatory: pflash vars are written during boot, and pointing at
+          # the read-only package file makes firmware init fail.
+          cp "$OVMF_VARS" /tmp/vars.fd
           ACCEL=tcg; [ -e /dev/kvm ] && ACCEL=kvm
           qemu-system-x86_64 \
             -machine q35 -accel "$ACCEL" -cpu max -smp 4 -m 6144 \
-            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
             -drive if=pflash,format=raw,file=/tmp/vars.fd \
             -drive if=virtio,format=raw,file="$IMG" \
             -device virtio-vga -device qemu-xhci -device usb-kbd \
