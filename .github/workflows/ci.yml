@@ -75,6 +75,34 @@ jobs:
       - name: Test
         run: cd backend && go test ./...
 
+  clients-core:
+    name: clients/core Build, Vet & Test
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      # clients/core is its own Go module (shared security core consumed by
+      # desktop/android/ios — see clients/core/doc.go), so it gets its own
+      # go-version-file/cache-dependency-path rather than backend's.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: clients/core/go.mod
+          cache-dependency-path: clients/core/go.sum
+
+      - name: Build
+        run: cd clients/core && go build ./...
+
+      - name: Vet
+        run: cd clients/core && go vet ./...
+
+      # Includes the pinning mutation-coverage suite: correct-pin connects,
+      # wrong-pin is rejected, an unpaired box cannot obtain a TLSConfig, and
+      # a tampered pairing payload fails to pair — see clients/core/pinning_test.go.
+      - name: Test
+        run: cd clients/core && go test ./... -count=1
+
   gofmt:
     name: gofmt Check
     runs-on: ubuntu-latest
@@ -90,12 +118,12 @@ jobs:
 
       - name: Check gofmt
         run: |
-          UNFORMATTED=$(gofmt -l backend/)
+          UNFORMATTED=$(gofmt -l backend/ clients/core/)
           if [ -n "$UNFORMATTED" ]; then
             echo "The following files have gofmt drift:"
             echo "$UNFORMATTED"
             echo ""
-            echo "Run: gofmt -w backend/"
+            echo "Run: gofmt -w backend/ clients/core/"
             exit 1
           fi
 

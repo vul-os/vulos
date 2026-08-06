@@ -45,8 +45,21 @@
 //
 // # Status
 //
-// SCAFFOLD ONLY. Every function below returns ErrNotImplemented. Nothing here
-// performs cryptography yet. The stubs deliberately fail loudly rather than
-// returning zero values, because a pinning routine that quietly returns "trusted"
-// is far more dangerous than one that is obviously absent.
+// Implemented: SPKI fingerprinting, pin-verified TLSConfig/Client, the
+// vulos://pair payload codec, Pair (dial-verify-then-store), a FileStore
+// reference Store, and Discover.
+//
+// Discover has a real limitation worth calling out: the box side
+// (backend/internal/lan) advertises a fixed, non-per-box mDNS hostname
+// ("vulos.local") via a hostname-resolution mDNS server, not a DNS-SD service
+// type with PTR/SRV/TXT records. There is nothing to "browse" — Discover
+// resolves that one name. On a LAN with more than one Vulos box this can only
+// ever find "a" box named vulos.local, not distinguish between several. That
+// is a property of the current wire format, not something invented in this
+// client.
+//
+// Any function that still cannot do its job (e.g. a platform Store shim that
+// hasn't been ported) should return ErrNotImplemented rather than a zero
+// value — a pinning routine that quietly returns "trusted" is far more
+// dangerous than one that is obviously absent.
 package core
