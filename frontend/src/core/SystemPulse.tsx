@@ -1,12 +1,78 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode, type RefObject } from 'react'
 import PublicAppsWarning from './PublicAppsWarning'
 import { useTelemetry } from './useTelemetry'
 import { useTheme } from './ThemeProvider'
-import { useAuth } from '../auth/AuthProvider'
+import { useAuth, type AuthProfile } from '../auth/AuthProvider'
 import NotificationCenter from '../shell/NotificationCenter'
 
+// isRecord narrows the `unknown` telemetry/wifi payloads (parsed straight off
+// a WebSocket/fetch response — a trust boundary) before any property access,
+// same guard as lib/offlineAuth.ts's isRecord().
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// Stats mirrors the shape of one telemetry WebSocket frame (see useTelemetry.ts).
+// Every field is independently narrowed from `unknown`, never asserted.
+interface Stats {
+  cpu?: number
+  mem_percent?: number
+  mem_used?: number
+  mem_total?: number
+  battery?: number
+  charging?: boolean
+  temp?: number
+  uptime?: string
+  hostname?: string
+}
+
+function toStats(x: unknown): Stats | null {
+  if (!isRecord(x)) return null
+  return {
+    cpu: typeof x.cpu === 'number' ? x.cpu : undefined,
+    mem_percent: typeof x.mem_percent === 'number' ? x.mem_percent : undefined,
+    mem_used: typeof x.mem_used === 'number' ? x.mem_used : undefined,
+    mem_total: typeof x.mem_total === 'number' ? x.mem_total : undefined,
+    battery: typeof x.battery === 'number' ? x.battery : undefined,
+    charging: typeof x.charging === 'boolean' ? x.charging : undefined,
+    temp: typeof x.temp === 'number' ? x.temp : undefined,
+    uptime: typeof x.uptime === 'string' ? x.uptime : undefined,
+    hostname: typeof x.hostname === 'string' ? x.hostname : undefined,
+  }
+}
+
+interface WifiStatus {
+  connected?: boolean
+  ssid?: string
+  ip?: string
+}
+
+function toWifiStatus(x: unknown): WifiStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    connected: typeof x.connected === 'boolean' ? x.connected : undefined,
+    ssid: typeof x.ssid === 'string' ? x.ssid : undefined,
+    ip: typeof x.ip === 'string' ? x.ip : undefined,
+  }
+}
+
+interface WifiNetwork {
+  bssid?: string
+  ssid?: string
+  signal?: number
+}
+
+function toWifiNetworks(x: unknown): WifiNetwork[] {
+  if (!Array.isArray(x)) return []
+  return x.filter(isRecord).map(n => ({
+    bssid: typeof n.bssid === 'string' ? n.bssid : undefined,
+    ssid: typeof n.ssid === 'string' ? n.ssid : undefined,
+    signal: typeof n.signal === 'number' ? n.signal : undefined,
+  }))
+}
+
 // --- Hooks ---
-function useTime() {
+function useTime(): Date {
   const [now, setNow] = useState(new Date())
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
@@ -16,19 +82,19 @@ function useTime() {
 }
 
 
-function formatTime(date) {
+function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
-function formatTimeSec(date) {
+function formatTimeSec(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
-function formatDate(date) {
+function formatDate(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }
-function formatDateLong(date) {
+function formatDateLong(date: Date): string {
   return date.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 }
-function fmtBytes(b) {
+function fmtBytes(b: number | undefined): string {
   if (!b || b <= 0) return '0'
   const units = ['B', 'KB', 'MB', 'GB']
   let i = 0, v = b
@@ -37,7 +103,12 @@ function fmtBytes(b) {
 }
 
 // --- Battery icon SVG ---
-function BatteryIcon({ percent, charging, size = 14 }) {
+interface BatteryIconProps {
+  percent: number
+  charging?: boolean
+  size?: number
+}
+function BatteryIcon({ percent, charging, size = 14 }: BatteryIconProps) {
   const fill = percent > 20 ? (percent > 50 ? '#22c55e' : '#eab308') : '#ef4444'
   const w = Math.max(0, Math.min(100, percent)) / 100 * 8
   return (
@@ -51,7 +122,11 @@ function BatteryIcon({ percent, charging, size = 14 }) {
 }
 
 // --- WiFi icon SVG ---
-function WifiIcon({ connected, size = 14 }) {
+interface WifiIconProps {
+  connected?: boolean
+  size?: number
+}
+function WifiIcon({ connected, size = 14 }: WifiIconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       {connected ? (
@@ -74,13 +149,20 @@ function WifiIcon({ connected, size = 14 }) {
 }
 
 // --- Dropdown wrapper ---
-function Dropdown({ open, onClose, align = 'right', containerRef, children }) {
-  const ref = useRef(null)
+interface DropdownProps {
+  open: boolean
+  onClose: () => void
+  align?: 'right' | 'left'
+  containerRef?: RefObject<HTMLElement | null>
+  children: ReactNode
+}
+function Dropdown({ open, onClose, align = 'right', containerRef, children }: DropdownProps) {
+  const ref = useRef<HTMLDivElement | null>(null)
   // Close on click outside, but ignore clicks on the trigger button
   useEffect(() => {
     if (!open) return
-    const listener = (e) => {
-      if (ref.current && !ref.current.contains(e.target) &&
+    const listener = (e: MouseEvent) => {
+      if (ref.current && e.target instanceof Node && !ref.current.contains(e.target) &&
           (!containerRef?.current || !containerRef.current.contains(e.target))) {
         onClose()
       }
@@ -100,7 +182,10 @@ function Dropdown({ open, onClose, align = 'right', containerRef, children }) {
 }
 
 // --- Clock + Calendar Dropdown ---
-function ClockDropdown({ now }) {
+interface ClockDropdownProps {
+  now: Date
+}
+function ClockDropdown({ now }: ClockDropdownProps) {
   const [monthOffset, setMonthOffset] = useState(0)
 
   const viewDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
@@ -112,7 +197,7 @@ function ClockDropdown({ now }) {
   const isCurrentMonth = monthOffset === 0
   const monthName = viewDate.toLocaleDateString([], { month: 'long', year: 'numeric' })
 
-  const days = []
+  const days: (number | null)[] = []
   for (let i = 0; i < firstDay; i++) days.push(null)
   for (let d = 1; d <= daysInMonth; d++) days.push(d)
 
@@ -198,19 +283,20 @@ function ClockDropdown({ now }) {
 
 // --- WiFi Dropdown ---
 function WifiDropdown() {
-  const [status, setStatus] = useState(null)
-  const [networks, setNetworks] = useState(null)
+  const [status, setStatus] = useState<WifiStatus | null>(null)
+  const [networks, setNetworks] = useState<WifiNetwork[] | null>(null)
   const [scanning, setScanning] = useState(false)
 
   useEffect(() => {
-    fetch('/api/wifi/status').then(r => r.json()).then(setStatus).catch(() => {})
+    fetch('/api/wifi/status').then(r => r.json()).then((data: unknown) => setStatus(toWifiStatus(data))).catch(() => {})
   }, [])
 
   const scan = async () => {
     setScanning(true)
     try {
       const res = await fetch('/api/wifi/scan')
-      setNetworks(await res.json())
+      const data: unknown = await res.json()
+      setNetworks(toWifiNetworks(data))
     } catch { setNetworks([]) }
     setScanning(false)
   }
@@ -261,7 +347,13 @@ function WifiDropdown() {
 }
 
 // --- Battery Dropdown ---
-function BatteryDropdown({ battery, charging, temp, uptime }) {
+interface BatteryDropdownProps {
+  battery: number
+  charging?: boolean
+  temp: number | null
+  uptime: string | null
+}
+function BatteryDropdown({ battery, charging, temp, uptime }: BatteryDropdownProps) {
   const timeLeft = charging ? 'Charging' : battery > 80 ? 'Full day' : battery > 50 ? 'Several hours' : battery > 20 ? 'A few hours' : 'Low'
   return (
     <div className="w-[240px]">
@@ -286,7 +378,7 @@ function BatteryDropdown({ battery, charging, temp, uptime }) {
           <span className="text-neutral-500">Estimate</span>
           <span className="text-neutral-300">{timeLeft}</span>
         </div>
-        {temp > 0 && (
+        {temp !== null && temp > 0 && (
           <div className="flex justify-between text-xs">
             <span className="text-neutral-500">Temperature</span>
             <span className="text-neutral-300">{temp}°C</span>
@@ -304,25 +396,36 @@ function BatteryDropdown({ battery, charging, temp, uptime }) {
 }
 
 // --- System Info Dropdown (from topbar logo) ---
-function SystemDropdown({ stats, connected, profile, onLogout }) {
-  const cpu = stats ? Math.round(stats.cpu) : null
-  const mem = stats ? Math.round(stats.mem_percent) : null
-  const battery = stats?.battery >= 0 ? stats.battery : null
+interface SystemDropdownProps {
+  stats: Stats | null
+  connected: boolean
+  profile: AuthProfile | null
+  onLogout: () => Promise<void>
+}
+function SystemDropdown({ stats, connected, profile, onLogout }: SystemDropdownProps) {
+  const cpu = stats?.cpu !== undefined ? Math.round(stats.cpu) : null
+  const mem = stats?.mem_percent !== undefined ? Math.round(stats.mem_percent) : null
+  const battery = stats?.battery !== undefined && stats.battery >= 0 ? stats.battery : null
   const charging = stats?.charging ?? false
-  const temp = stats?.temp > 0 ? Math.round(stats.temp) : null
+  const temp = stats?.temp !== undefined && stats.temp > 0 ? Math.round(stats.temp) : null
   const uptime = stats?.uptime || null
   const hostname = stats?.hostname || 'vula'
+  // profile's fields come from the /api/auth/me response (see AuthProvider's
+  // AuthProfile — an index signature of `unknown`), so narrow to string here
+  // rather than trusting the network shape.
+  const displayName = typeof profile?.display_name === 'string' ? profile.display_name : undefined
+  const username = typeof profile?.username === 'string' ? profile.username : undefined
 
   return (
     <div className="w-[260px]">
       {/* Profile */}
       <div className="px-4 pt-3 pb-2.5 flex items-center gap-3">
         <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center text-sm font-semibold text-neutral-300 shrink-0">
-          {(profile?.display_name || profile?.username || '?')[0].toUpperCase()}
+          {(displayName || username || '?')[0].toUpperCase()}
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-medium text-neutral-200 truncate">{profile?.display_name || profile?.username}</div>
-          <div className="text-[12px] text-neutral-500 truncate">{profile?.username}</div>
+          <div className="text-sm font-medium text-neutral-200 truncate">{displayName || username}</div>
+          <div className="text-[12px] text-neutral-500 truncate">{username}</div>
         </div>
       </div>
 
@@ -347,12 +450,12 @@ function SystemDropdown({ stats, connected, profile, onLogout }) {
             <span className="text-neutral-300 font-mono">{mem}%</span>
           </div>
           <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${mem > 80 ? 'bg-red-500' : mem > 50 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${mem}%` }} />
+            <div className={`h-full rounded-full ${(mem ?? 0) > 80 ? 'bg-red-500' : (mem ?? 0) > 50 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${mem}%` }} />
           </div>
           {stats?.mem_used && (
             <div className="text-[12px] text-neutral-600">{fmtBytes(stats.mem_used)} / {fmtBytes(stats.mem_total)}</div>
           )}
-          {temp > 0 && (
+          {temp !== null && temp > 0 && (
             <div className="flex justify-between text-xs">
               <span className="text-neutral-500">Temperature</span>
               <span className="text-neutral-300">{temp}\u00b0C</span>
@@ -386,27 +489,39 @@ function SystemDropdown({ stats, connected, profile, onLogout }) {
   )
 }
 
+type DropdownName = 'wifi' | 'battery' | 'clock' | 'system'
+
+interface LifePulseProps {
+  compact?: boolean
+  className?: string
+}
+
 // ============================================================
 // MAIN EXPORT — Compact topbar mode
 // ============================================================
-export default function LifePulse({ compact = false, className = '' }) {
+export default function LifePulse({ compact = false, className = '' }: LifePulseProps) {
   const now = useTime()
-  const { stats, connected } = useTelemetry()
+  const { stats: rawStats, connected } = useTelemetry()
+  // toStats() narrows the hook's `unknown` payload into a fresh object each
+  // call; memoized on rawStats so `stats` keeps a stable identity between
+  // renders (matching the original untyped code, where `stats` was the raw
+  // hook value itself) instead of reallocating every render.
+  const stats = useMemo(() => toStats(rawStats), [rawStats])
   const { isDark, toggle } = useTheme()
-  const [openDropdown, setOpenDropdown] = useState(null)
+  const [openDropdown, setOpenDropdown] = useState<DropdownName | null>(null)
 
-  const battery = stats?.battery >= 0 ? stats.battery : null
+  const battery = stats?.battery !== undefined && stats.battery >= 0 ? stats.battery : null
   const charging = stats?.charging ?? false
-  const temp = stats?.temp > 0 ? Math.round(stats.temp) : null
+  const temp = stats?.temp !== undefined && stats.temp > 0 ? Math.round(stats.temp) : null
   const uptime = stats?.uptime || null
 
   // Refs for each trigger button so Dropdown can ignore clicks on them
-  const wifiRef = useRef(null)
-  const batteryRef = useRef(null)
-  const clockRef = useRef(null)
-  const systemRef = useRef(null)
+  const wifiRef = useRef<HTMLDivElement | null>(null)
+  const batteryRef = useRef<HTMLDivElement | null>(null)
+  const clockRef = useRef<HTMLDivElement | null>(null)
+  const systemRef = useRef<HTMLDivElement | null>(null)
 
-  const toggleDropdown = useCallback((name) => {
+  const toggleDropdown = useCallback((name: DropdownName) => {
     setOpenDropdown(prev => prev === name ? null : name)
   }, [])
   const closeDropdown = useCallback(() => setOpenDropdown(null), [])
@@ -423,7 +538,7 @@ export default function LifePulse({ compact = false, className = '' }) {
             <WifiIcon connected={connected} size={14} />
           </StatusButton>
           <Dropdown open={openDropdown === 'wifi'} onClose={closeDropdown} containerRef={wifiRef}>
-            <WifiDropdown connected={connected} />
+            <WifiDropdown />
           </Dropdown>
         </div>
 
@@ -499,7 +614,13 @@ export default function LifePulse({ compact = false, className = '' }) {
   )
 }
 
-function StatusButton({ children, onClick, active, wide }) {
+interface StatusButtonProps {
+  children: ReactNode
+  onClick?: () => void
+  active?: boolean
+  wide?: boolean
+}
+function StatusButton({ children, onClick, active, wide }: StatusButtonProps) {
   return (
     <button onClick={onClick}
       className={`h-8 flex items-center justify-center rounded-md transition-colors text-neutral-400 hover:text-neutral-200
@@ -510,7 +631,13 @@ function StatusButton({ children, onClick, active, wide }) {
   )
 }
 
-function PulseCard({ label, value, sub, dot }) {
+interface PulseCardProps {
+  label: ReactNode
+  value: ReactNode
+  sub?: ReactNode
+  dot?: 'green' | 'yellow' | 'red'
+}
+function PulseCard({ label, value, sub, dot }: PulseCardProps) {
   return (
     <div className="bg-neutral-900/60 backdrop-blur-sm rounded-lg border border-neutral-800/50 px-3 py-2.5">
       <div className="flex items-center gap-1.5">

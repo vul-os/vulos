@@ -1,4 +1,4 @@
-// CommandPalette.jsx — the unified OS command palette (WAVE-12).
+// CommandPalette.tsx — the unified OS command palette (WAVE-12).
 //
 // ⌘K / Ctrl+K from anywhere opens one fast, keyboard-driven palette. It is the
 // signature "fast, coherent home": jump to any app, search your mail, run a
@@ -24,19 +24,23 @@
 // Graceful degradation: Apps/Actions are pure client state and always work.
 // Mail and Ask depend on the box; when unreachable they show an inline note
 // instead of failing the palette.
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import {
+  useState, useEffect, useRef, useCallback, useMemo,
+  type ReactNode, type ReactElement, type RefObject, type Dispatch, type SetStateAction,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { useFocusTrap } from './useFocusTrap'
 import { useNarrow } from './useNarrow'
 import './shell-chrome.css'
 import { useShell } from '../providers/ShellProvider'
 import { useTheme } from '../core/ThemeProvider'
 import { useSovereignty } from '../core/useSovereignty'
-import { getApps, getAppById } from '../core/AppRegistry'
+import { getApps, getAppById, type App } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { fuzzyRank } from '../core/fuzzy'
 import { classifyAsk } from '../core/askRouting'
-import { runAgentTurn } from '../core/agentStream'
-import { getCommands, subscribeCommands } from '../core/commandRegistry'
+import { runAgentTurn, type AgentProposal, type AgentStatusEvent } from '../core/agentStream'
+import { getCommands, subscribeCommands, type Command } from '../core/commandRegistry'
 import { setPendingSettingsSection } from '../core/settingsNav'
 import { setPendingLaunchQuery } from '../core/launchParams'
 import { isBuiltinComponent } from './builtinApps'
@@ -44,19 +48,23 @@ import { isBuiltinComponent } from './builtinApps'
 // Assistant panel + Home (tokenised colours, structured "what will happen").
 import { ProposalCard } from '../builtin/assistant/ProposalCard'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
 const RECENT_KEY = 'vulos-cmdk-recent'
 const MAX_APPS = 6
 const MAX_ACTIONS = 5
 const MAX_MAIL = 5
 
-function loadRecent() {
+function loadRecent(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY)
-    const ids = raw ? JSON.parse(raw) : []
-    return Array.isArray(ids) ? ids : []
+    const ids: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : []
   } catch { return [] }
 }
-function pushRecent(id) {
+function pushRecent(id: string): void {
   try {
     const ids = loadRecent().filter(x => x !== id)
     ids.unshift(id)
@@ -66,11 +74,57 @@ function pushRecent(id) {
 
 // A monospace keyboard chip, matching the shell's mono-accent system.
 // Token-driven (vshell-kbd) so it stays legible in both light and dark themes.
-function Kbd({ children }) {
+function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="vshell-kbd">{children}</kbd>
 }
 
-const SECTION_LABEL = { app: 'Apps', mail: 'Mail', action: 'Actions', ask: 'Ask' }
+// ── Mail search result shape ─────────────────────────────────────────────────
+// Narrowed from `unknown` JSON off GET /api/mail/search — a trust boundary, so
+// every field is checked rather than assumed (mirrors AppRegistry.ts's
+// toInstalledApp/toAI5App narrowing pattern).
+interface MailMessage {
+  uid?: string
+  message_id?: string
+  subject?: string
+  from_name?: string
+  from?: string
+  preview?: string
+  unread?: boolean
+}
+
+function toMailMessage(x: Record<string, unknown>): MailMessage {
+  return {
+    uid: typeof x.uid === 'string' ? x.uid : undefined,
+    message_id: typeof x.message_id === 'string' ? x.message_id : undefined,
+    subject: typeof x.subject === 'string' ? x.subject : undefined,
+    from_name: typeof x.from_name === 'string' ? x.from_name : undefined,
+    from: typeof x.from === 'string' ? x.from : undefined,
+    preview: typeof x.preview === 'string' ? x.preview : undefined,
+    unread: typeof x.unread === 'boolean' ? x.unread : undefined,
+  }
+}
+
+type MailState = 'idle' | 'loading' | 'ok' | 'error' | 'empty'
+
+// ── The inline Ask (assistant) card state ────────────────────────────────────
+interface AskState {
+  status: 'thinking' | 'answer' | 'proposal' | 'error'
+  answer: string
+  proposal?: AgentProposal | null
+  proposalState?: 'pending' | 'busy' | 'done' | 'rejected'
+  statusLine?: string
+}
+
+// ── The flattened, navigable row list ────────────────────────────────────────
+type RowKind = 'app' | 'mail' | 'action' | 'ask'
+
+interface AppRow { kind: 'app'; id: string; app: App }
+interface MailRow { kind: 'mail'; id: string; msg: MailMessage }
+interface ActionRow { kind: 'action'; id: string; cmd: Command }
+interface AskRow { kind: 'ask'; id: string; prompt: string }
+type PaletteRow = AppRow | MailRow | ActionRow | AskRow
+
+const SECTION_LABEL: Record<RowKind, string> = { app: 'Apps', mail: 'Mail', action: 'Actions', ask: 'Ask' }
 
 export default function CommandPalette() {
   const {
@@ -83,21 +137,21 @@ export default function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
-  const [recentIds, setRecentIds] = useState([])
+  const [recentIds, setRecentIds] = useState<string[]>([])
   const [, forceCmdsTick] = useState(0)
 
   // Mail search state (debounced).
-  const [mailResults, setMailResults] = useState([])
-  const [mailState, setMailState] = useState('idle') // idle|loading|ok|error|empty
+  const [mailResults, setMailResults] = useState<MailMessage[]>([])
+  const [mailState, setMailState] = useState<MailState>('idle')
 
   // Ask (assistant) inline state.
-  const [ask, setAsk] = useState(null) // { status, answer, proposal, proposalState }
+  const [ask, setAsk] = useState<AskState | null>(null)
 
-  const inputRef = useRef(null)
-  const rowRefs = useRef([])
+  const inputRef = useRef<HTMLInputElement>(null)
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([])
   // Aborts an in-flight streaming Ask turn when the palette closes/unmounts, so
   // the SSE fetch is torn down instead of streaming into a dismissed card.
-  const askCtl = useRef(null)
+  const askCtl = useRef<AbortController | null>(null)
   // A11Y: trap focus inside the dialog while open + restore to the opener on close.
   const trapRef = useFocusTrap(open)
 
@@ -119,7 +173,7 @@ export default function CommandPalette() {
 
   // Global ⌘K / Ctrl+K to open, Esc to close.
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
         setOpen(v => {
@@ -138,29 +192,31 @@ export default function CommandPalette() {
   }, [open, close])
 
   // ── The command context handed to every action's run(ctx) ─────────────────
-  const openApp = useCallback((appId, opts = {}) => {
+  const openApp = useCallback((appId: string, opts: Record<string, unknown> = {}) => {
     const app = getAppById(appId)
     if (!app) return
     pushRecent(appId)
-    if ((opts.query || opts.hash) && app.url) {
+    const optQuery = typeof opts.query === 'string' ? opts.query : undefined
+    const optHash = typeof opts.hash === 'string' ? opts.hash : undefined
+    if ((optQuery || optHash) && app.url) {
       // Deep-link a web app by augmenting its URL (best-effort — the app honors
       // ?compose=1 / #… if it supports it, otherwise it just opens).
       let url = app.url
-      if (opts.query) url += (url.includes('?') ? '&' : '?') + opts.query
-      if (opts.hash) url += '#' + opts.hash
+      if (optQuery) url += (url.includes('?') ? '&' : '?') + optQuery
+      if (optHash) url += '#' + optHash
       openWindow({ appId: app.id, title: app.name, url, icon: app.icon })
     } else {
       // Deep-link a BUILTIN app: it has no URL, so stash the query for its
       // factory to consume on mount (e.g. Calendar honours ?action=new by
       // pre-opening the new-event editor). Must be set BEFORE launchApp, which
       // instantiates the builtin component synchronously.
-      if (opts.query && isBuiltinComponent(app.id)) setPendingLaunchQuery(app.id, opts.query)
+      if (optQuery && isBuiltinComponent(app.id)) setPendingLaunchQuery(app.id, optQuery)
       launchApp(app, { openWindow })
     }
     close()
   }, [openWindow, close])
 
-  const openUrl = useCallback((url, title, icon) => {
+  const openUrl = useCallback((url: string, title?: string, icon?: string) => {
     openWindow({ appId: '_webview_' + Date.now(), title, url, icon })
     close()
   }, [openWindow, close])
@@ -176,7 +232,7 @@ export default function CommandPalette() {
       windows.filter(w => !w.minimized).forEach(w => minimizeWindow(w.id))
       close()
     },
-    openSettings: (section) => { setPendingSettingsSection(section); openApp('persona') },
+    openSettings: (section?: string) => { setPendingSettingsSection(section); openApp('persona') },
     openTransparency: () => { sovereignty.openPanel?.(); close() },
     toggleTheme: () => { theme.toggle?.(); close() },
     lock: () => {
@@ -192,10 +248,10 @@ export default function CommandPalette() {
   // the Ask route (so a leading "?" / "ask " doesn't pollute name matching).
   const searchText = (askInfo.explicit ? askInfo.prompt : query).trim()
 
-  const appRows = useMemo(() => {
+  const appRows = useMemo<App[]>(() => {
     if (!searchText) {
       // Empty state → recent apps.
-      return recentIds.map(getAppById).filter(Boolean).slice(0, MAX_APPS)
+      return recentIds.map(getAppById).filter((a): a is App => Boolean(a)).slice(0, MAX_APPS)
     }
     return fuzzyRank(searchText, getApps(),
       a => [a.name, ...(a.keywords || []), a.description || ''],
@@ -204,7 +260,7 @@ export default function CommandPalette() {
   }, [searchText, recentIds])
 
   const commands = getCommands(ctx)
-  const actionRows = useMemo(() => {
+  const actionRows = useMemo<Command[]>(() => {
     if (!searchText) return commands.slice(0, MAX_ACTIONS)
     return fuzzyRank(searchText, commands,
       c => [c.title, c.subtitle || '', ...(c.keywords || [])],
@@ -223,13 +279,15 @@ export default function CommandPalette() {
     const t = setTimeout(() => {
       fetch(`/api/mail/search?q=${encodeURIComponent(q)}&limit=${MAX_MAIL}`, { credentials: 'include', signal: ctrl.signal })
         .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-        .then(data => {
-          const msgs = data?.messages || []
+        .then((data: unknown) => {
+          const msgs = isRecord(data) && Array.isArray(data.messages)
+            ? data.messages.filter(isRecord).map(toMailMessage)
+            : []
           setMailResults(msgs)
           setMailState(msgs.length ? 'ok' : 'empty')
         })
         .catch(err => {
-          if (err.name === 'AbortError') return
+          if (isRecord(err) && err.name === 'AbortError') return
           setMailResults([])
           setMailState('error')
         })
@@ -238,13 +296,13 @@ export default function CommandPalette() {
   }, [open, searchText, askInfo.explicit])
 
   // ── Flattened, navigable row list (order = display order) ─────────────────
-  const rows = useMemo(() => {
-    const out = []
+  const rows = useMemo<PaletteRow[]>(() => {
+    const out: PaletteRow[] = []
     if (askInfo.ask) {
       out.push({ kind: 'ask', id: 'ask', prompt: askInfo.prompt })
     }
     for (const a of appRows) out.push({ kind: 'app', id: 'app:' + a.id, app: a })
-    for (const m of mailResults) out.push({ kind: 'mail', id: 'mail:' + (m.uid || m.message_id || m.subject), msg: m })
+    for (const m of mailResults) out.push({ kind: 'mail', id: 'mail:' + (m.uid || m.message_id || m.subject || ''), msg: m })
     for (const c of actionRows) out.push({ kind: 'action', id: 'action:' + c.id, cmd: c })
     return out
   }, [askInfo, appRows, mailResults, actionRows])
@@ -263,7 +321,7 @@ export default function CommandPalette() {
   // STREAMED (wave-17): the answer streams token-by-token into the inline card;
   // a mutating action still arrives as a PROPOSAL (Approve → /execute). Falls
   // back to the non-streaming /agent if streaming can't be established.
-  const runAsk = useCallback(async (prompt) => {
+  const runAsk = useCallback(async (prompt: string) => {
     const p = (prompt || '').trim()
     if (!p) return
     setAsk({ status: 'thinking', answer: '', proposal: null })
@@ -274,9 +332,9 @@ export default function CommandPalette() {
         message: p,
         history: [],
         signal: ctl.signal,
-        onToken: (_delta, full) => setAsk({ status: 'answer', answer: full }),
-        onStatus: (ev) => setAsk(a => (a && a.status === 'thinking' ? { ...a, statusLine: ev.content } : a)),
-        onProposal: (proposal) => setAsk({ status: 'proposal', answer: '', proposal, proposalState: 'pending' }),
+        onToken: (_delta: string, full: string) => setAsk({ status: 'answer', answer: full }),
+        onStatus: (ev: AgentStatusEvent) => setAsk(a => (a && a.status === 'thinking' ? { ...a, statusLine: ev.content } : a)),
+        onProposal: (proposal: AgentProposal) => setAsk({ status: 'proposal', answer: '', proposal, proposalState: 'pending' }),
       })
       if (result.error) {
         setAsk({ status: 'error', answer: result.error })
@@ -287,7 +345,7 @@ export default function CommandPalette() {
       }
     } catch (err) {
       // Aborted by unmount/close: the card is gone — do not write dead state.
-      if (err?.name !== 'AbortError') setAsk({ status: 'error', answer: 'Could not reach the assistant. Is the box online?' })
+      if (!(isRecord(err) && err.name === 'AbortError')) setAsk({ status: 'error', answer: 'Could not reach the assistant. Is the box online?' })
     } finally {
       if (askCtl.current === ctl) askCtl.current = null
     }
@@ -303,19 +361,21 @@ export default function CommandPalette() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: ask?.proposal?.id }),
       })
-      const data = await res.json().catch(() => ({}))
+      const data: unknown = await res.json().catch(() => ({}))
+      const d = isRecord(data) ? data : {}
       if (!res.ok) {
-        setAsk(a => a ? { ...a, proposalState: 'pending', answer: (a.answer ? a.answer + '\n' : '') + (data.error || `Could not complete (${res.status}).`) } : a)
+        const errMsg = typeof d.error === 'string' ? d.error : `Could not complete (${res.status}).`
+        setAsk(a => a ? { ...a, proposalState: 'pending', answer: (a.answer ? a.answer + '\n' : '') + errMsg } : a)
         return
       }
-      setAsk(a => a ? { ...a, proposalState: 'done', answer: data.result || a.answer } : a)
+      setAsk(a => a ? { ...a, proposalState: 'done', answer: typeof d.result === 'string' ? d.result : a.answer } : a)
     } catch {
       setAsk(a => a ? { ...a, proposalState: 'pending', answer: 'Could not reach the assistant to run the action.' } : a)
     }
   }, [ask])
 
   // ── Activate a row (Enter / click) ────────────────────────────────────────
-  const activate = useCallback((row) => {
+  const activate = useCallback((row: PaletteRow | undefined) => {
     if (!row) {
       // No row selected but the query is a question → ask anyway.
       if (askInfo.ask) runAsk(askInfo.prompt)
@@ -339,7 +399,7 @@ export default function CommandPalette() {
   const proposalPending = ask?.status === 'proposal' && ask?.proposalState === 'pending'
 
   // ── Keyboard nav ──────────────────────────────────────────────────────────
-  const onKeyDown = useCallback((e) => {
+  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLInputElement>) => {
     // When a proposal awaits approval, offer explicit Y/N shortcuts and let Tab
     // fall through to the focus trap so the Approve/Reject buttons are reachable
     // (Tab is otherwise captured for section-cycling — see below).
@@ -472,10 +532,20 @@ export default function CommandPalette() {
   )
 }
 
+interface RenderSectionsArgs {
+  rows: PaletteRow[]
+  selectedIdx: number
+  setSelectedIdx: Dispatch<SetStateAction<number>>
+  activate: (row: PaletteRow | undefined) => void
+  mailState: MailState
+  showAskSection: boolean
+  rowRefs: RefObject<(HTMLDivElement | null)[]>
+}
+
 // Render the flat row list grouped under section headers, in order.
-function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection, rowRefs }) {
-  const out = []
-  let lastKind = null
+function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState, showAskSection, rowRefs }: RenderSectionsArgs): ReactElement[] {
+  const out: ReactElement[] = []
+  let lastKind: RowKind | null = null
   if (rowRefs) rowRefs.current = []
   rows.forEach((row, i) => {
     if (row.kind !== lastKind) {
@@ -505,7 +575,15 @@ function renderSections({ rows, selectedIdx, setSelectedIdx, activate, mailState
   return out
 }
 
-function Row({ row, active, onHover, onClick, rowRef }) {
+interface RowProps {
+  row: PaletteRow
+  active: boolean
+  onHover: () => void
+  onClick: () => void
+  rowRef?: (el: HTMLDivElement | null) => void
+}
+
+function Row({ row, active, onHover, onClick, rowRef }: RowProps): ReactElement | null {
   const base = 'vshell-row w-full flex items-center gap-3 px-4 py-2 mx-0 text-left cursor-pointer'
   const titleColor = { color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }
   const iconStyle = { color: 'var(--text-tertiary)' }
@@ -557,8 +635,14 @@ function Row({ row, active, onHover, onClick, rowRef }) {
   return null
 }
 
+interface AskResultProps {
+  ask: AskState
+  onApprove: () => void
+  onReject: () => void
+}
+
 // Inline assistant answer / proposal — a compact reuse of the wave-9 flow.
-function AskResult({ ask, onApprove, onReject }) {
+function AskResult({ ask, onApprove, onReject }: AskResultProps) {
   return (
     <div aria-live="polite" className="vshell-border-t px-4 py-3 max-h-[30vh] overflow-y-auto shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-base) 30%, transparent)' }}>
       <div className="flex items-center gap-2 mb-1.5">

@@ -1,5 +1,5 @@
 /**
- * Drive.integration.test.jsx — wave-28 shell integration suite.
+ * Drive.integration.test.tsx — wave-28 shell integration suite.
  *
  * Renders the REAL Drive app (src/builtin/drive/Drive.jsx) against MSW-backed
  * /api/files/* endpoints and exercises the core file operations:
@@ -20,12 +20,23 @@ import { server, http, HttpResponse } from './msw/server.js'
 
 import Drive from '../../builtin/drive/Drive.jsx'
 
-const ROOT_NODES = [
+// Raw wire shape as returned by /api/files/list, before Drive's own
+// normalizeNode() fills in the rest — mock payloads only need the fields the
+// fixtures below actually set.
+interface RawNode {
+  id: string
+  name: string
+  is_dir: boolean
+  size?: number
+  content_type?: string
+}
+
+const ROOT_NODES: RawNode[] = [
   { id: 'f1', name: 'Photos', is_dir: true },
   { id: 'n1', name: 'budget.xlsx', is_dir: false, size: 2048, content_type: 'application/vnd.ms-excel' },
 ]
 
-function mockList(byParent) {
+function mockList(byParent: Record<string, RawNode[]>) {
   server.use(http.get('/api/files/list', ({ request }) => {
     const parent = new URL(request.url).searchParams.get('parent') || ''
     return HttpResponse.json({ nodes: byParent[parent] || [] })
@@ -54,7 +65,7 @@ describe('Drive — list + navigate (integration)', () => {
 
 describe('Drive — mutations (integration)', () => {
   it('creating a folder POSTs to /api/files/folder', async () => {
-    let folderBody = null
+    let folderBody: unknown = null
     mockList({ '': [] })
     server.use(http.post('/api/files/folder', async ({ request }) => {
       folderBody = await request.json()
@@ -70,7 +81,7 @@ describe('Drive — mutations (integration)', () => {
   })
 
   it('renaming a node POSTs the new name to /api/files/move', async () => {
-    let moveBody = null
+    let moveBody: unknown = null
     mockList({ '': ROOT_NODES })
     server.use(http.post('/api/files/move', async ({ request }) => {
       moveBody = await request.json()
@@ -90,7 +101,7 @@ describe('Drive — mutations (integration)', () => {
   })
 
   it('delete confirms, then POSTs to /api/files/delete', async () => {
-    let deleteBody = 'NOT_CALLED'
+    let deleteBody: unknown = 'NOT_CALLED'
     mockList({ '': ROOT_NODES })
     server.use(http.post('/api/files/delete', async ({ request }) => {
       deleteBody = await request.json()
@@ -109,7 +120,7 @@ describe('Drive — mutations (integration)', () => {
 describe('Drive — upload progress (integration)', () => {
   it('upload runs grant → commit and shows a per-file Done row', async () => {
     let grantCalled = false
-    let commitBody = null
+    let commitBody: unknown = null
     mockList({ '': [] })
     server.use(
       http.post('/api/files/upload-grant', async () => {
@@ -126,7 +137,9 @@ describe('Drive — upload progress (integration)', () => {
     // Stub XMLHttpRequest so the byte-PUT resolves instantly with a 200; the
     // grant + commit fetches remain real (MSW).
     class FakeXHR {
-      constructor() { this.upload = {}; this.status = 200 }
+      upload: { onprogress?: (e: { lengthComputable: boolean; total: number; loaded: number }) => void } = {}
+      status = 200
+      onload?: () => void
       open() {}
       setRequestHeader() {}
       send() { this.upload.onprogress?.({ lengthComputable: true, total: 10, loaded: 10 }); this.onload?.() }
@@ -139,6 +152,7 @@ describe('Drive — upload progress (integration)', () => {
 
     const file = new File(['pdf-bytes'], 'report.pdf', { type: 'application/pdf' })
     const input = container.querySelector('input[type="file"]')
+    if (!(input instanceof HTMLInputElement)) throw new Error('expected a file input in the Drive toolbar')
     await user.upload(input, file)
 
     await waitFor(() => expect(grantCalled).toBe(true))

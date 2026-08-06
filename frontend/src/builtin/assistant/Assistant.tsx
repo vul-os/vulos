@@ -10,7 +10,7 @@
  * auditable. A minimal picker lets the operator choose the tier.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { runAgentTurn } from '../../core/agentStream'
+import { runAgentTurn, type AgentProposal, type AgentStep } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
 // The tier vocabulary + labels + dot colors are the SHARED contract with the
 // backend Guard, the TrustBadge and the TransparencyPanel — import the single
@@ -20,10 +20,100 @@ import { useAutoGrow } from '../../core/useAutoGrow'
 import { TIERS, tierInfo } from '../../core/sovereignty'
 // The confirmation-gate + tool-trace surfaces are shared across every assistant
 // surface (this panel, Home, the Command Palette) so they stay pixel-identical
-// and retheme with the shell's --status-* tokens. See ./ProposalCard.jsx.
-import { ProposalCard, StepTrace } from './ProposalCard'
+// and retheme with the shell's --status-* tokens. See ./ProposalCard.tsx.
+import { ProposalCard, StepTrace, type ProposalState, type StepTraceItem } from './ProposalCard'
 
-function SovereigntyBadge({ status, onClick }) {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// ── /api/assistant/status shape ─────────────────────────────────────────────
+// Narrowed off the wire (a trust boundary) rather than trusted as `any` — see
+// isRecord()-style narrowing in src/lib/offlineAuth.ts. Mirrors the JSON built
+// by GET /api/assistant/status and POST /api/assistant/tier in
+// routes_assistant.go (the `sovereignty` block is backend Sovereignty, see
+// services/assistant/sovereign.go — note `allowed` there, distinct from
+// core/sovereignty.ts's SovereigntyBlock, which is a different consumer's
+// narrower view and doesn't carry it).
+interface AssistantSovereignty {
+  tier?: string
+  label?: string
+  reason?: string
+  provider?: string
+  model?: string
+  endpoint?: string
+  allowed?: boolean
+  external_allowed?: boolean
+}
+
+interface AssistantTierOption {
+  tier: string
+  label?: string
+}
+
+interface AssistantStatus {
+  tier?: string
+  label?: string
+  sovereignty?: AssistantSovereignty
+  tier_options?: AssistantTierOption[]
+  mail_source?: string
+  semantic_index?: boolean
+  files_enabled?: boolean
+  reminders_enabled?: boolean
+}
+
+function toAssistantSovereignty(x: unknown): AssistantSovereignty | undefined {
+  if (!isRecord(x)) return undefined
+  const out: AssistantSovereignty = {}
+  if (typeof x.tier === 'string') out.tier = x.tier
+  if (typeof x.label === 'string') out.label = x.label
+  if (typeof x.reason === 'string') out.reason = x.reason
+  if (typeof x.provider === 'string') out.provider = x.provider
+  if (typeof x.model === 'string') out.model = x.model
+  if (typeof x.endpoint === 'string') out.endpoint = x.endpoint
+  if (typeof x.allowed === 'boolean') out.allowed = x.allowed
+  if (typeof x.external_allowed === 'boolean') out.external_allowed = x.external_allowed
+  return out
+}
+
+function toAssistantTierOptions(x: unknown): AssistantTierOption[] | undefined {
+  if (!Array.isArray(x)) return undefined
+  const opts: AssistantTierOption[] = []
+  for (const o of x) {
+    if (isRecord(o) && typeof o.tier === 'string') {
+      opts.push({ tier: o.tier, label: typeof o.label === 'string' ? o.label : undefined })
+    }
+  }
+  return opts
+}
+
+// Only assigns keys that were actually present on the wire, so merging this
+// into the previous status (`{...prev, ...toAssistantStatus(raw)}`) matches
+// the original untyped `{...prev, ...raw}` spread — a key absent from the
+// response (e.g. POST /tier's narrower reply) must NOT clobber a field
+// `prev` already had with `undefined`.
+function toAssistantStatus(x: unknown): AssistantStatus | null {
+  if (!isRecord(x)) return null
+  const out: AssistantStatus = {}
+  if (typeof x.tier === 'string') out.tier = x.tier
+  if (typeof x.label === 'string') out.label = x.label
+  const sovereignty = toAssistantSovereignty(x.sovereignty)
+  if (sovereignty) out.sovereignty = sovereignty
+  const tierOptions = toAssistantTierOptions(x.tier_options)
+  if (tierOptions) out.tier_options = tierOptions
+  if (typeof x.mail_source === 'string') out.mail_source = x.mail_source
+  if (typeof x.semantic_index === 'boolean') out.semantic_index = x.semantic_index
+  if (typeof x.files_enabled === 'boolean') out.files_enabled = x.files_enabled
+  if (typeof x.reminders_enabled === 'boolean') out.reminders_enabled = x.reminders_enabled
+  return out
+}
+
+interface SovereigntyBadgeProps {
+  status: AssistantStatus | null
+  onClick: () => void
+}
+
+function SovereigntyBadge({ status, onClick }: SovereigntyBadgeProps) {
   if (!status) return null
   const tier = status.tier || status.sovereignty?.tier || 'external'
   const info = tierInfo(tier)
@@ -52,7 +142,16 @@ function SovereigntyBadge({ status, onClick }) {
 // external still need the egress opt-in), so this labels the posture honestly —
 // it can never weaken the guarantee.
 
-function TierPicker({ status, options, current, onPick, busy, onClose }) {
+interface TierPickerProps {
+  status: AssistantStatus | null
+  options?: AssistantTierOption[]
+  current?: string
+  onPick: (tier: string) => void
+  busy: boolean
+  onClose: () => void
+}
+
+function TierPicker({ status, options, current, onPick, busy, onClose }: TierPickerProps) {
   const opts = options && options.length ? options : [
     { tier: 'local', label: TIERS.local.label },
     { tier: 'sovereign', label: TIERS.sovereign.label },
@@ -101,14 +200,28 @@ function TierPicker({ status, options, current, onPick, busy, onClose }) {
 
 // ── Quick actions ────────────────────────────────────────────────────────────
 
-const QUICK = [
+interface QuickAction {
+  id: string
+  label: string
+  prompt: null
+}
+
+const QUICK: QuickAction[] = [
   { id: 'attention', label: 'What needs my attention', prompt: null },
   { id: 'summarize', label: 'Summarize my inbox', prompt: null },
 ]
 
 // ── Message bubble ───────────────────────────────────────────────────────────
 
-function Bubble({ role, content, pending, error, onRetry }) {
+interface BubbleProps {
+  role: 'user' | 'assistant'
+  content?: string
+  pending?: boolean
+  error?: boolean
+  onRetry?: () => void
+}
+
+function Bubble({ role, content, pending, error, onRetry }: BubbleProps) {
   const isUser = role === 'user'
   return (
     <div className={`flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -150,27 +263,58 @@ function Bubble({ role, content, pending, error, onRetry }) {
   )
 }
 
+// core/agentStream.ts's AgentStep declares `args?: Record<string, unknown>` and
+// `result?: unknown`, but the wire value is always a pre-formatted STRING —
+// ToolStep.Args/Result in backend/services/assistant/agent.go are `string`
+// (compactArgs/truncate build them server-side), so agentStream.ts's
+// `isRecord(x.args)` narrowing check can never match a real response and
+// silently drops it to `undefined`. That mistyping is in an already-typed
+// file out of scope for this pass; this narrows honestly at the boundary
+// instead of casting, and renders exactly what StepTrace expects (see
+// StepTraceItem in ./ProposalCard.tsx).
+function toStepTraceItem(s: AgentStep): StepTraceItem {
+  return {
+    tool: s.tool,
+    content: s.content,
+    args: typeof s.args === 'string' ? s.args : undefined,
+    result: typeof s.result === 'string' ? s.result : undefined,
+  }
+}
+
 // ── Panel ────────────────────────────────────────────────────────────────────
 
+// One transcript entry. `proposal` + `state` render the ProposalCard gate;
+// `steps` renders the read-only tool trace (see ./ProposalCard.tsx).
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  pending?: boolean
+  error?: boolean
+  proposal?: AgentProposal
+  state?: ProposalState
+  steps?: StepTraceItem[]
+}
+
 export default function Assistant() {
-  const [status, setStatus] = useState(null)
-  const [messages, setMessages] = useState([])
+  const [status, setStatus] = useState<AssistantStatus | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [tierBusy, setTierBusy] = useState(false)
-  const scrollRef = useRef(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useAutoGrow(input, { maxHeight: 128 })
   // Aborts the in-flight streaming turn when the window is closed mid-stream.
   // Without this the SSE fetch + its reader keep running after unmount and the
   // token/status callbacks call setState on a gone component (React warning +
   // a leaked reader holding the response buffer). Cleared on turn completion.
-  const streamCtl = useRef(null)
+  const streamCtl = useRef<AbortController | null>(null)
 
   useEffect(() => {
     fetch('/api/assistant/status', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then(setStatus)
+      .then((raw: unknown) => setStatus(toAssistantStatus(raw)))
       .catch(() => {})
   }, [])
 
@@ -181,14 +325,14 @@ export default function Assistant() {
   // Esc closes the tier picker (matches the shell's overlay dismissal contract).
   useEffect(() => {
     if (!pickerOpen) return
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setPickerOpen(false) } }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setPickerOpen(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [pickerOpen])
 
   // Operator picks the sovereignty tier. The backend Guard remains
   // authoritative; the returned status carries the honest resulting tier.
-  const pickTier = useCallback(async (tier) => {
+  const pickTier = useCallback(async (tier: string) => {
     setTierBusy(true)
     try {
       const res = await fetch('/api/assistant/tier', {
@@ -198,7 +342,8 @@ export default function Assistant() {
         body: JSON.stringify({ tier }),
       })
       if (res.ok) {
-        const data = await res.json().catch(() => null)
+        const raw: unknown = await res.json().catch(() => null)
+        const data = toAssistantStatus(raw)
         if (data) setStatus(s => ({ ...(s || {}), ...data }))
       }
     } catch { /* leave status as-is */ } finally {
@@ -210,11 +355,11 @@ export default function Assistant() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  const push = useCallback((role, content) => {
+  const push = useCallback((role: Message['role'], content: string) => {
     setMessages(m => [...m, { role, content, id: Math.random().toString(36).slice(2) }])
   }, [])
 
-  const patchLast = useCallback((content, pending, error = false) => {
+  const patchLast = useCallback((content: string, pending: boolean, error = false) => {
     setMessages(m => {
       const copy = m.slice()
       const last = copy[copy.length - 1]
@@ -223,12 +368,12 @@ export default function Assistant() {
     })
   }, [])
 
-  const patchById = useCallback((id, patch) => {
+  const patchById = useCallback((id: string, patch: Partial<Message>) => {
     setMessages(m => m.map(msg => (msg.id === id ? { ...msg, ...patch } : msg)))
   }, [])
 
   // JSON skills (attention / summarize / search) — single-shot answers.
-  const runSkill = useCallback(async (path, body, userLabel) => {
+  const runSkill = useCallback(async (path: string, body?: Record<string, unknown>, userLabel?: string) => {
     if (busy) return
     if (userLabel) push('user', userLabel)
     push('assistant', '')
@@ -241,12 +386,17 @@ export default function Assistant() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body || {}),
       })
-      const data = await res.json().catch(() => ({}))
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
       if (!res.ok) {
-        patchLast(data.error || `Request failed (${res.status})`, false, true)
+        const errMsg = typeof data.error === 'string' ? data.error : `Request failed (${res.status})`
+        patchLast(errMsg, false, true)
         return
       }
-      patchLast(data.answer ?? data.draft ?? JSON.stringify(data), false)
+      const answer = typeof data.answer === 'string' ? data.answer
+        : typeof data.draft === 'string' ? data.draft
+          : JSON.stringify(data)
+      patchLast(answer, false)
     } catch {
       patchLast('Could not reach the assistant. Is the box online?', false, true)
     } finally {
@@ -256,7 +406,7 @@ export default function Assistant() {
 
   // Approve a proposal → POST it to /api/assistant/execute (the second half of
   // the confirmation round-trip). Only here does a mutating action actually run.
-  const approveProposal = useCallback(async (msgId, proposal) => {
+  const approveProposal = useCallback(async (msgId: string, proposal: AgentProposal) => {
     patchById(msgId, { state: 'busy' })
     try {
       // Send ONLY the opaque proposal id: the server executes the args it stored
@@ -268,21 +418,23 @@ export default function Assistant() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: proposal.id }),
       })
-      const data = await res.json().catch(() => ({}))
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
       if (!res.ok) {
         patchById(msgId, { state: 'pending' })
-        push('assistant', data.error || `Could not complete the action (${res.status}).`)
+        const errMsg = typeof data.error === 'string' ? data.error : `Could not complete the action (${res.status}).`
+        push('assistant', errMsg)
         return
       }
       patchById(msgId, { state: 'done' })
-      if (data.result) push('assistant', data.result)
+      if (typeof data.result === 'string') push('assistant', data.result)
     } catch {
       patchById(msgId, { state: 'pending' })
       push('assistant', 'Could not reach the assistant to run the action.')
     }
   }, [patchById, push])
 
-  const rejectProposal = useCallback((msgId) => {
+  const rejectProposal = useCallback((msgId: string) => {
     patchById(msgId, { state: 'rejected' })
   }, [patchById])
 
@@ -292,7 +444,7 @@ export default function Assistant() {
   // PROPOSAL for a mutating action, which we render with Approve/Reject. History
   // is the prior user/assistant text turns (proposals excluded). runAgentTurn
   // falls back to the non-streaming /agent if streaming can't be established.
-  const sendChat = useCallback(async (text) => {
+  const sendChat = useCallback(async (text: string) => {
     if (busy || !text.trim()) return
     // Errored turns (failed streams / unreachable box) are excluded from history
     // so a Retry — which may still see the failed bubble in this closure before
@@ -305,7 +457,7 @@ export default function Assistant() {
     patchLast('', true)
     setBusy(true)
     // Accumulate the read-only tool trace so we can show WHAT the assistant did.
-    const liveSteps = []
+    const liveSteps: StepTraceItem[] = []
     const ctl = new AbortController()
     streamCtl.current = ctl
     try {
@@ -317,7 +469,7 @@ export default function Assistant() {
         onToken: (_delta, full) => patchLast(full, true),
         // A read-only tool started: show a transient status line + record it.
         onStatus: (ev) => patchLast(ev.content || 'thinking…', true),
-        onStep: (step) => { liveSteps.push(step) },
+        onStep: (step) => { liveSteps.push(toStepTraceItem(step)) },
         // A mutating action: convert the pending bubble into a proposal card.
         onProposal: (proposal) => {
           setMessages(m => {
@@ -332,7 +484,7 @@ export default function Assistant() {
       })
       // The terminal event may carry a richer trace (args + result); prefer it,
       // else fall back to the status-derived steps collected above.
-      const finalSteps = (result.steps && result.steps.length) ? result.steps : liveSteps
+      const finalSteps = (result.steps && result.steps.length) ? result.steps.map(toStepTraceItem) : liveSteps
       if (result.error) {
         patchLast(result.error, false, true)
       } else if (result.proposal) {
@@ -359,7 +511,8 @@ export default function Assistant() {
       // Aborted by unmount/window-close: the component is gone, so do NOT touch
       // state (that is the leak/warning we are preventing). Any other failure is
       // surfaced in the bubble.
-      if (err?.name !== 'AbortError') patchLast('Could not reach the assistant.', false, true)
+      const isAbort = isRecord(err) && err.name === 'AbortError'
+      if (!isAbort) patchLast('Could not reach the assistant.', false, true)
     } finally {
       if (streamCtl.current === ctl) streamCtl.current = null
       // Skip the state update if this turn was aborted (component unmounted).
@@ -367,7 +520,10 @@ export default function Assistant() {
     }
   }, [busy, messages, push, patchLast])
 
-  const submit = (e) => {
+  // The composer <form>'s onSubmit and the textarea's Enter-key onKeyDown call
+  // submit with their own (different) event types — this is the minimal shape
+  // both React.FormEvent and React.KeyboardEvent satisfy.
+  const submit = (e?: { preventDefault: () => void }) => {
     e?.preventDefault()
     const text = input.trim()
     if (!text) return
@@ -386,13 +542,14 @@ export default function Assistant() {
       // Trailing errored assistant bubble.
       if (copy.length && copy[copy.length - 1].role === 'assistant') copy.pop()
       // Its originating user turn.
-      if (copy.length && copy[copy.length - 1].role === 'user') text = copy.pop().content
+      const trailingUser = copy.length && copy[copy.length - 1].role === 'user' ? copy.pop() : undefined
+      if (trailingUser) text = trailingUser.content
       return copy
     })
     if (text) setTimeout(() => sendChat(text), 0)
   }, [busy, sendChat])
 
-  const onQuick = (q) => {
+  const onQuick = (q: QuickAction) => {
     if (q.id === 'attention') runSkill('/api/assistant/attention', {}, 'What needs my attention today?')
     else if (q.id === 'summarize') runSkill('/api/assistant/summarize', { scope: 'inbox' }, 'Summarize my inbox')
   }
@@ -484,15 +641,16 @@ export default function Assistant() {
         )}
         {messages.map((m, i) => {
           const isLast = i === messages.length - 1
-          return m.proposal ? (
+          const proposal = m.proposal
+          return proposal ? (
             <div key={m.id} className="flex justify-start flex-col gap-2 items-start min-w-0 w-full">
               {m.content && <Bubble role="assistant" content={m.content} />}
               <StepTrace steps={m.steps} className="max-w-[86%] sm:max-w-[80%]" />
               <div className="max-w-[86%] sm:max-w-[80%] w-full">
                 <ProposalCard
-                  proposal={m.proposal}
+                  proposal={proposal}
                   state={m.state}
-                  onApprove={() => approveProposal(m.id, m.proposal)}
+                  onApprove={() => approveProposal(m.id, proposal)}
                   onReject={() => rejectProposal(m.id)}
                 />
               </div>

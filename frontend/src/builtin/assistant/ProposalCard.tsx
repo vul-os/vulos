@@ -15,8 +15,9 @@
  * escaped React text (never innerHTML) — a proposal or tool result may quote
  * untrusted mail content, so it must never be interpreted as markup.
  */
+import type { AgentProposal } from '../../core/agentStream'
 
-const PROPOSAL_VERB = {
+const PROPOSAL_VERB: Record<string, string> = {
   send_email: 'Send email',
   create_calendar_event: 'Create event',
   add_contact: 'Add contact',
@@ -24,13 +25,15 @@ const PROPOSAL_VERB = {
   rsvp_invite: 'RSVP to invite',
 }
 
+type ProposalArgs = Record<string, unknown>
+
 // The legible "what will happen" summary line: pull the few args that name the
 // TARGET of the action (who/what/when) so the user sees the concrete effect at a
 // glance, above the free-text body. Order is deliberate; unknown tools fall back
 // to nothing (the summary line already carries the intent).
-function keyFacts(tool, args) {
-  const facts = []
-  const add = (label, value) => { if (value != null && value !== '') facts.push([label, String(value)]) }
+function keyFacts(tool: string | undefined, args: ProposalArgs): Array<[string, string]> {
+  const facts: Array<[string, string]> = []
+  const add = (label: string, value: unknown) => { if (value != null && value !== '') facts.push([label, String(value)]) }
   switch (tool) {
     case 'send_email':
       add('To', args.to)
@@ -70,11 +73,26 @@ function keyFacts(tool, args) {
  *   approveKey / rejectKey — optional aria-keyshortcuts (e.g. the palette binds
  *                Y/N globally, so it advertises them on the buttons for AT users)
  */
-export function ProposalCard({ proposal, state, onApprove, onReject, compact = false, approveKey, rejectKey }) {
-  const verb = PROPOSAL_VERB[proposal.tool] || 'Action'
-  const args = proposal.args || {}
+export type ProposalState = 'pending' | 'busy' | 'done' | 'rejected'
+
+export interface ProposalCardProps {
+  proposal: AgentProposal
+  state?: ProposalState
+  onApprove: () => void
+  onReject: () => void
+  compact?: boolean
+  approveKey?: string
+  rejectKey?: string
+}
+
+export function ProposalCard({ proposal, state, onApprove, onReject, compact = false, approveKey, rejectKey }: ProposalCardProps) {
+  const verb = PROPOSAL_VERB[proposal.tool ?? ''] || 'Action'
+  const args: ProposalArgs = proposal.args || {}
   const facts = keyFacts(proposal.tool, args)
-  const body = args.body || args.notes
+  // args.body / args.notes are free-text mail/event content, always a string
+  // from the backend's JSON — narrowed rather than rendered as `unknown`.
+  const bodyRaw = args.body || args.notes
+  const body = typeof bodyRaw === 'string' ? bodyRaw : undefined
   const settled = state === 'done' || state === 'rejected'
 
   return (
@@ -171,7 +189,7 @@ export function ProposalCard({ proposal, state, onApprove, onReject, compact = f
 // turn (search_mail, read_thread, …). A transparency win: the user can see WHAT
 // the assistant looked at to reach its answer. Every field is escaped React text.
 
-const STEP_VERB = {
+const STEP_VERB: Record<string, string> = {
   search_mail: 'Searched mail',
   read_thread: 'Read a thread',
   find_contact: 'Looked up a contact',
@@ -180,7 +198,26 @@ const STEP_VERB = {
   list_reminders: 'Checked reminders',
 }
 
-export function StepTrace({ steps, className = '' }) {
+// A tool-trace entry. Two shapes accumulate into the same `steps` array (see
+// core/agentStream.ts's runAgentTurn comment): a live {tool, content} entry
+// recorded off each 'status' event, later possibly REPLACED wholesale by the
+// terminal proposal event's richer trace. args/result there are backend-
+// formatted display strings (ToolStep.Args/Result in routes_assistant.go's
+// agent.go are `string`, already summarised/truncated server-side) — not
+// structured data, so they render directly as text.
+export interface StepTraceItem {
+  tool?: string
+  content?: string
+  args?: string
+  result?: string
+}
+
+export interface StepTraceProps {
+  steps?: StepTraceItem[] | null
+  className?: string
+}
+
+export function StepTrace({ steps, className = '' }: StepTraceProps) {
   if (!steps || !steps.length) return null
   const n = steps.length
   return (
@@ -202,7 +239,7 @@ export function StepTrace({ steps, className = '' }) {
         {steps.map((s, i) => (
           <li key={i} className="pl-3 text-[12px] leading-snug relative">
             <span className="absolute -left-[3px] top-1.5 w-1.5 h-1.5 rounded-full bg-neutral-700" aria-hidden="true" />
-            <div className="text-neutral-300">{STEP_VERB[s.tool] || (s.tool || 'tool')}</div>
+            <div className="text-neutral-300">{STEP_VERB[s.tool ?? ''] || (s.tool || 'tool')}</div>
             {s.args && <div className="text-neutral-600 font-mono break-words">{s.args}</div>}
             {s.result && (
               <div className="text-neutral-500 whitespace-pre-wrap break-words mt-0.5 max-h-24 overflow-y-auto">{s.result}</div>

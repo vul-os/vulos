@@ -26,7 +26,7 @@ vi.mock('../core/useWallpaper.jsx', () => ({ useWallpaper: () => ({ wallpaper: n
 vi.mock('../core/PublicAppsManager', () => ({ PamVisibilityControl: () => null }))
 vi.mock('../core/settings/StoragePanel.jsx', () => ({ default: () => null }))
 
-import Settings from '../core/Settings.jsx'
+import Settings from '../core/Settings'
 
 // container.querySelector returns Element | null; the drawer tests assert the
 // node exists before interacting with it, so this narrows honestly instead of

@@ -1,5 +1,14 @@
-import { Component, useCallback, useEffect, useRef, useState } from 'react'
-import { useShell } from '../providers/ShellProvider'
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react'
+import { useShell, type ShellWindow } from '../providers/ShellProvider'
 import AppIcon from '../core/AppIcons'
 import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
 import { iframeSandboxForURL } from '../core/AppOrigins'
@@ -22,16 +31,14 @@ import './shell-chrome.css'
 
 // WINDOW MOTION — read the user's reduced-motion preference at call time so the
 // open/close/minimize choreography can collapse to instant state changes.
-function prefersReducedMotion() {
-  return typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
 // Aim the genie/minimize shrink at the dock area (bottom-center of the
 // viewport) relative to the window's own box, so the window appears to fly
 // toward the dock rather than collapsing in place.
-function dockTransformOrigin(win) {
+function dockTransformOrigin(win: ShellWindow): string {
   try {
     const vw = window.innerWidth
     const vh = window.innerHeight
@@ -48,20 +55,28 @@ function dockTransformOrigin(win) {
   }
 }
 
+interface WindowErrorBoundaryProps {
+  children: ReactNode
+}
+
+interface WindowErrorBoundaryState {
+  error: Error | null
+}
+
 // WindowErrorBoundary — catches errors thrown by a window's app component so
 // a single broken app cannot crash the entire desktop shell.
-class WindowErrorBoundary extends Component {
-  constructor(props) {
+class WindowErrorBoundary extends Component<WindowErrorBoundaryProps, WindowErrorBoundaryState> {
+  constructor(props: WindowErrorBoundaryProps) {
     super(props)
     this.state = { error: null }
   }
-  static getDerivedStateFromError(error) { return { error } }
-  componentDidCatch(error, info) {
+  static getDerivedStateFromError(error: Error): WindowErrorBoundaryState { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[window] app error caught by boundary:', error, info?.componentStack)
   }
   render() {
     if (this.state.error) {
-      const msg = this.state.error?.message || String(this.state.error)
+      const msg = this.state.error.message || String(this.state.error)
       return (
         <div className="vwin-fallback absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
           <div className="text-[color:var(--text-tertiary)] text-sm mb-2">App error</div>
@@ -86,11 +101,21 @@ class WindowErrorBoundary extends Component {
 // React), so this fills that gap (REVIEW item 5).
 const IFRAME_LOAD_TIMEOUT_MS = 12000
 
-function IframeApp({ url, title, appId, sandbox, dragging }) {
-  const [status, setStatus] = useState('loading') // 'loading' | 'ok' | 'error'
+type IframeStatus = 'loading' | 'ok' | 'error'
+
+interface IframeAppProps {
+  url: string | undefined
+  title: string | undefined
+  appId: string
+  sandbox: string
+  dragging: boolean
+}
+
+function IframeApp({ url, title, appId, sandbox, dragging }: IframeAppProps) {
+  const [status, setStatus] = useState<IframeStatus>('loading')
   const [attempt, setAttempt] = useState(0)
-  const timerRef = useRef(null)
-  const frameRef = useRef(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const frameRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -121,7 +146,16 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
   // Cache-bust on retry so a transiently-down app re-fetches rather than
   // serving a stale failed response. The bridge seed goes in the fragment, so it
   // survives the query-string cache-bust and never reaches the server.
-  const busted = attempt === 0 ? url : `${url}${url.includes('?') ? '&' : '?'}_r=${attempt}`
+  //
+  // ESCAPE (justified, single call site): IframeApp is only ever mounted from
+  // Window's content switch below in the branch where win.component and
+  // win.html are both unset — i.e. a url-backed window. `url` is typed
+  // optional here only because ShellWindow's other window kinds (component /
+  // html) don't set it; for THIS component it is always defined. The non-null
+  // assertion below preserves the original untyped JS's unguarded
+  // `url.includes(...)` call exactly, rather than silently changing behaviour
+  // for a case (`url` undefined) that never occurs in practice.
+  const busted = attempt === 0 ? url : `${url}${url!.includes('?') ? '&' : '?'}_r=${attempt}`
   const src = appId ? appFrameSrc(busted, appId) : busted
 
   return (
@@ -163,7 +197,14 @@ function IframeApp({ url, title, appId, sandbox, dragging }) {
   )
 }
 
-export default function Window({ win, pointerBlock }) {
+type WindowPhase = 'opening' | 'open' | 'minimizing' | 'minimized' | 'restoring' | 'closing'
+
+interface WindowProps {
+  win: ShellWindow
+  pointerBlock?: boolean
+}
+
+export default function Window({ win, pointerBlock }: WindowProps) {
   const { closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, tileWindow, openNativeWindow, activeWindow } = useShell()
   const [dragging, setDragging] = useState(false)
   // BMINIT-18: in v2 labwc native mode the compositor (labwc SSD) owns
@@ -178,10 +219,10 @@ export default function Window({ win, pointerBlock }) {
   // minimized flag; 'closing' is a deferred-removal exit. Compositor-only
   // (transform/opacity) and disabled under prefers-reduced-motion.
   const reduceMotion = prefersReducedMotion()
-  const [phase, setPhase] = useState(reduceMotion ? 'open' : 'opening')
+  const [phase, setPhase] = useState<WindowPhase>(reduceMotion ? 'open' : 'opening')
   const [closing, setClosing] = useState(false)
   const prevMinimized = useRef(win.minimized)
-  const animTimer = useRef(null)
+  const animTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Mount: settle from 'opening' to 'open' on the next frame so the transition runs.
   useEffect(() => {
@@ -230,16 +271,16 @@ export default function Window({ win, pointerBlock }) {
 
   const SNAP_PREVIEW = 48 // zone (px) to show snap preview while dragging
 
-  const [snapZone, setSnapZone] = useState(null) // 'left' | 'right' | 'top' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  const [snapZone, setSnapZone] = useState<string | null>(null) // 'left' | 'right' | 'top' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
   // Geometry + edge-detection now live in the pure, tested windowTiling module.
   // tileWindow() applies the geometry AND records the tile zone (+ pre-tile
   // floating geometry) so the drag-snap path and the keyboard-tiling path stay
   // in lock-step and share one restore path.
-  const applySnap = useCallback((zone) => tileWindow(win.id, zone), [win.id, tileWindow])
+  const applySnap = useCallback((zone: string) => tileWindow(win.id, zone), [win.id, tileWindow])
 
-  const onDragStart = useCallback((e) => {
-    if (e.target.closest('[data-no-drag]')) return
+  const onDragStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.target instanceof Element && e.target.closest('[data-no-drag]')) return
     e.preventDefault()
     focusWindow(win.id)
     setDragging(true)
@@ -251,13 +292,13 @@ export default function Window({ win, pointerBlock }) {
     // Track the live snap zone in a local (the `snapZone` state is stale inside
     // these closures — it's captured at drag-start), so pointerup applies the
     // zone the pointer was actually over.
-    let liveZone = null
-    const onMove = (ev) => {
+    let liveZone: string | null = null
+    const onMove = (ev: PointerEvent) => {
       moveWindow(win.id, { x: Math.max(0, ev.clientX - ox), y: Math.max(0, ev.clientY - oy) })
       liveZone = snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
       setSnapZone(liveZone)
     }
-    const onUp = (ev) => {
+    const onUp = (ev: PointerEvent) => {
       setDragging(false)
       const zone = liveZone || snapZoneForPoint(ev.clientX, ev.clientY, vw, vh, SNAP_PREVIEW)
       setSnapZone(null)
@@ -270,11 +311,11 @@ export default function Window({ win, pointerBlock }) {
     window.addEventListener('pointerup', onUp)
   }, [win, focusWindow, moveWindow, applySnap])
 
-  const onResizeStart = useCallback((e) => {
+  const onResizeStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     const sx = e.clientX, sy = e.clientY, sw = win.size.width, sh = win.size.height
-    const onMove = (ev) => resizeWindow(win.id, { width: Math.max(360, sw + ev.clientX - sx), height: Math.max(240, sh + ev.clientY - sy) })
+    const onMove = (ev: PointerEvent) => resizeWindow(win.id, { width: Math.max(360, sw + ev.clientX - sx), height: Math.max(240, sh + ev.clientY - sy) })
     const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp) }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -352,15 +393,15 @@ export default function Window({ win, pointerBlock }) {
                 await fetch('/api/ai-apps/save', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ title: win._saveable.title, html: win._saveable.html, python: win._saveable.python || '' }),
+                  body: JSON.stringify({ title: win._saveable?.title, html: win._saveable?.html, python: win._saveable?.python || '' }),
                 })
                 const el = document.activeElement
-                if (el) { el.textContent = '\u2713'; setTimeout(() => { el.textContent = '\uD83D\uDCBE' }, 1000) }
+                if (el) { el.textContent = '✓'; setTimeout(() => { el.textContent = '💾' }, 1000) }
               }}
               title="Save this AI app"
               className="vwin-chrome-btn focus-primary w-5 h-5 flex items-center justify-center rounded-full text-[9px] mr-0.5"
             >
-              {'\uD83D\uDCBE'}
+              {'💾'}
             </button>
           )}
         </div>
@@ -431,7 +472,11 @@ export default function Window({ win, pointerBlock }) {
   )
 }
 
-function SnapPreview({ zone }) {
+interface SnapPreviewProps {
+  zone: string
+}
+
+function SnapPreview({ zone }: SnapPreviewProps) {
   const g = tileGeometry(zone, window.innerWidth, window.innerHeight, MENU_BAR_H)
   if (!g) return null
   return (

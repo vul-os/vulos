@@ -1,4 +1,83 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+
+// isRecord narrows an `unknown` value (parsed JSON from a fetch response — a
+// trust boundary) to a plain object before any property access, same guard
+// as lib/offlineAuth.ts's isRecord().
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+interface PkgRepo {
+  url?: string
+  enabled?: boolean
+}
+
+interface PkgStatus {
+  installed_count?: number
+  repos?: PkgRepo[]
+}
+
+function toPkgRepo(x: Record<string, unknown>): PkgRepo {
+  return {
+    url: typeof x.url === 'string' ? x.url : undefined,
+    enabled: typeof x.enabled === 'boolean' ? x.enabled : undefined,
+  }
+}
+
+function toPkgStatus(x: unknown): PkgStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    installed_count: typeof x.installed_count === 'number' ? x.installed_count : undefined,
+    repos: Array.isArray(x.repos) ? x.repos.filter(isRecord).map(toPkgRepo) : undefined,
+  }
+}
+
+// Installed/search-result package entries. `name` is required by every call
+// site (used as a React key and for the icon initial), so a malformed entry
+// missing it degrades to '' rather than crashing the list render.
+interface Pkg {
+  name: string
+  version?: string
+  description?: string
+}
+
+interface SearchPkg extends Pkg {
+  installed?: boolean
+}
+
+function toPkg(x: Record<string, unknown>): Pkg {
+  return {
+    name: typeof x.name === 'string' ? x.name : '',
+    version: typeof x.version === 'string' ? x.version : undefined,
+    description: typeof x.description === 'string' ? x.description : undefined,
+  }
+}
+
+function toPkgList(x: unknown): Pkg[] | null {
+  if (!Array.isArray(x)) return null
+  return x.filter(isRecord).map(toPkg)
+}
+
+function toSearchPkgList(x: unknown): SearchPkg[] | null {
+  if (!Array.isArray(x)) return null
+  return x.filter(isRecord).map(r => ({
+    ...toPkg(r),
+    installed: typeof r.installed === 'boolean' ? r.installed : undefined,
+  }))
+}
+
+// Reads the `{ error }` shape the /api/packages/* endpoints send on failure.
+// Only a string `.error` is trusted (matches the isRecord narrowing pattern
+// used elsewhere); a non-string/missing field falls back to an empty Error
+// message exactly as `new Error(undefined)` did in the original untyped code.
+async function extractErrorMessage(res: Response): Promise<string | undefined> {
+  const data: unknown = await res.json()
+  return isRecord(data) && typeof data.error === 'string' ? data.error : undefined
+}
+
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
 
 const ICON_COLORS = [
   'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500',
@@ -6,13 +85,17 @@ const ICON_COLORS = [
   'bg-pink-500', 'bg-orange-500', 'bg-lime-500', 'bg-fuchsia-500',
 ]
 
-function colorForName(name) {
+function colorForName(name: string): string {
   let h = 0
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
   return ICON_COLORS[Math.abs(h) % ICON_COLORS.length]
 }
 
-function PkgIcon({ name, size = 'md' }) {
+interface PkgIconProps {
+  name: string
+  size?: 'md' | 'lg'
+}
+function PkgIcon({ name, size = 'md' }: PkgIconProps) {
   const sz = size === 'lg' ? 'w-10 h-10 text-base' : 'w-8 h-8 text-sm'
   return (
     <div className={`${sz} ${colorForName(name)} rounded-xl flex items-center justify-center font-bold text-white shrink-0 shadow-sm`}>
@@ -21,7 +104,16 @@ function PkgIcon({ name, size = 'md' }) {
   )
 }
 
-function Toast({ msg, onDismiss }) {
+interface ActionMsg {
+  text: string
+  type: 'ok' | 'err' | 'info'
+}
+
+interface ToastProps {
+  msg: ActionMsg
+  onDismiss: () => void
+}
+function Toast({ msg, onDismiss }: ToastProps) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
@@ -61,7 +153,15 @@ function Toast({ msg, onDismiss }) {
   )
 }
 
-const SIDEBAR_ITEMS = [
+type TabId = 'installed' | 'search' | 'updates' | 'repos'
+
+interface SidebarItem {
+  id: TabId
+  label: string
+  icon: ReactNode
+}
+
+const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'installed', label: 'Installed', icon: (
     <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -85,20 +185,20 @@ const SIDEBAR_ITEMS = [
 ]
 
 export default function Packages() {
-  const [tab, setTab] = useState('installed')
-  const [status, setStatus] = useState(null)
-  const [installed, setInstalled] = useState(null)
+  const [tab, setTab] = useState<TabId>('installed')
+  const [status, setStatus] = useState<PkgStatus | null>(null)
+  const [installed, setInstalled] = useState<Pkg[] | null>(null)
   const [search, setSearch] = useState('')
-  const [searchResults, setSearchResults] = useState(null)
+  const [searchResults, setSearchResults] = useState<SearchPkg[] | null>(null)
   const [searching, setSearching] = useState(false)
-  const [actionMsg, setActionMsg] = useState(null)
+  const [actionMsg, setActionMsg] = useState<ActionMsg | null>(null)
   const [updating, setUpdating] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
   const [filter, setFilter] = useState('')
-  const searchRef = useRef(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
-  const refreshStatus = () => fetch('/api/packages/status').then(r => r.json()).then(setStatus).catch(() => {})
-  const refreshInstalled = () => fetch('/api/packages/installed').then(r => r.json()).then(setInstalled).catch(() => {})
+  const refreshStatus = () => fetch('/api/packages/status').then(r => r.json()).then((data: unknown) => setStatus(toPkgStatus(data))).catch(() => {})
+  const refreshInstalled = () => fetch('/api/packages/installed').then(r => r.json()).then((data: unknown) => setInstalled(toPkgList(data))).catch(() => {})
 
   useEffect(() => { refreshStatus(); refreshInstalled() }, [])
 
@@ -107,7 +207,8 @@ export default function Packages() {
     setSearching(true)
     try {
       const res = await fetch('/api/packages/search?q=' + encodeURIComponent(search.trim()))
-      setSearchResults(await res.json())
+      const data: unknown = await res.json()
+      setSearchResults(toSearchPkgList(data))
     } catch { setSearchResults([]) }
     setSearching(false)
   }, [search])
@@ -122,19 +223,19 @@ export default function Packages() {
     if (tab === 'search') searchRef.current?.focus()
   }, [tab])
 
-  const action = async (endpoint, body, msg) => {
+  const action = async (endpoint: string, body: Record<string, unknown>, msg: string): Promise<void> => {
     setActionMsg({ text: msg + '...', type: 'info' })
     try {
       const res = await fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) throw new Error(await extractErrorMessage(res))
       setActionMsg({ text: msg + ' complete', type: 'ok' })
       refreshStatus(); refreshInstalled()
       if (tab === 'search') doSearch()
     } catch (e) {
-      setActionMsg({ text: `Failed: ${e.message}`, type: 'err' })
+      setActionMsg({ text: `Failed: ${errMessage(e)}`, type: 'err' })
     }
   }
 
@@ -143,11 +244,11 @@ export default function Packages() {
     setActionMsg({ text: 'Updating package index...', type: 'info' })
     try {
       const res = await fetch('/api/packages/update', { method: 'POST' })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) throw new Error(await extractErrorMessage(res))
       setActionMsg({ text: 'Package index updated', type: 'ok' })
       refreshStatus()
     } catch (e) {
-      setActionMsg({ text: `Update failed: ${e.message}`, type: 'err' })
+      setActionMsg({ text: `Update failed: ${errMessage(e)}`, type: 'err' })
     }
     setUpdating(false)
   }
@@ -157,11 +258,11 @@ export default function Packages() {
     setActionMsg({ text: 'Upgrading all packages...', type: 'info' })
     try {
       const res = await fetch('/api/packages/upgrade', { method: 'POST' })
-      if (!res.ok) throw new Error((await res.json()).error)
+      if (!res.ok) throw new Error(await extractErrorMessage(res))
       setActionMsg({ text: 'System packages upgraded', type: 'ok' })
       refreshStatus(); refreshInstalled()
     } catch (e) {
-      setActionMsg({ text: `Upgrade failed: ${e.message}`, type: 'err' })
+      setActionMsg({ text: `Upgrade failed: ${errMessage(e)}`, type: 'err' })
     }
     setUpgrading(false)
   }

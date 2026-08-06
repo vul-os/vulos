@@ -3,19 +3,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { wrapMasterKeyWithPassword, getMasterKey, clearMasterKey } from '../lib/masterKey.js'
 import * as oa from '../lib/offlineAuth.js'
 
+type TaggedErr = Error & { code: string; attemptsLeft?: number }
+function isTaggedError(e: unknown): e is TaggedErr {
+  return e instanceof Error && 'code' in e && typeof e.code === 'string'
+}
+
 // In-memory KV so the crypto/attempt/wipe logic runs under jsdom (no IndexedDB).
 function memStore() {
-  const m = new Map()
+  const m = new Map<string, unknown>()
   return {
     m,
-    get: (k) => Promise.resolve(m.has(k) ? m.get(k) : null),
-    set: (k, v) => { m.set(k, v); return Promise.resolve() },
-    del: (k) => { m.delete(k); return Promise.resolve() },
+    get: (k: string) => Promise.resolve(m.has(k) ? m.get(k) : null),
+    set: (k: string, v: unknown) => { m.set(k, v); return Promise.resolve() },
+    del: (k: string) => { m.delete(k); return Promise.resolve() },
   }
 }
 
 const PASSWORD = 'correct horse battery staple'
-let mk
+let mk: Uint8Array<ArrayBuffer> | undefined
 
 async function enroll() {
   mk = crypto.getRandomValues(new Uint8Array(32))
@@ -74,12 +79,14 @@ describe('offlineAuth — fail-closed on wrong password', () => {
 
   it('reports decreasing attempts-left and still unlocks with the right password', async () => {
     await enroll()
-    const e1 = await oa.unlockOffline('x').catch(e => e)
+    const e1 = await oa.unlockOffline('x').catch((e: unknown) => e)
+    if (!isTaggedError(e1)) throw new Error('expected a TaggedError')
     expect(e1.attemptsLeft).toBe(oa.MAX_OFFLINE_ATTEMPTS - 1)
     // The correct password still works and resets the counter.
     await expect(oa.unlockOffline(PASSWORD)).resolves.toBe(true)
     oa.lock()
-    const e2 = await oa.unlockOffline('x').catch(e => e)
+    const e2 = await oa.unlockOffline('x').catch((e: unknown) => e)
+    if (!isTaggedError(e2)) throw new Error('expected a TaggedError')
     expect(e2.attemptsLeft).toBe(oa.MAX_OFFLINE_ATTEMPTS - 1) // counter was reset by the success
   })
 
@@ -88,10 +95,11 @@ describe('offlineAuth — fail-closed on wrong password', () => {
     const wipeSpy = vi.fn()
     window.addEventListener('vulos:offline-wipe', wipeSpy)
 
-    let lastErr
+    let lastErr: unknown
     for (let i = 0; i < oa.MAX_OFFLINE_ATTEMPTS; i++) {
-      lastErr = await oa.unlockOffline('wrong').catch(e => e)
+      lastErr = await oa.unlockOffline('wrong').catch((e: unknown) => e)
     }
+    if (!isTaggedError(lastErr)) throw new Error('expected a TaggedError')
     expect(lastErr.code).toBe('WIPED')
     expect(await oa.isEnrolled()).toBe(false) // envelope gone
     expect(wipeSpy).toHaveBeenCalled()        // apps signalled to drop caches
@@ -116,7 +124,8 @@ describe('offlineAuth — envelope validation (anti-downgrade)', () => {
     // Inject a low-iter envelope directly, bypassing cacheEnvelope's guard.
     await store.set('envelope', { kdf: 'pbkdf2-sha256', iter: 1, salt: 'a', iv: 'b', ct: 'c' })
 
-    const err = await oa.unlockOffline('anything').catch(e => e)
+    const err = await oa.unlockOffline('anything').catch((e: unknown) => e)
+    if (!isTaggedError(err)) throw new Error('expected a TaggedError')
     expect(err.code).toBe('CORRUPT')
     // Wiped, and no wrong-password attempt was recorded (it was structural).
     expect(await oa.isEnrolled()).toBe(false)

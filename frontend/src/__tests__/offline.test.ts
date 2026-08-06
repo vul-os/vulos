@@ -3,16 +3,46 @@ import * as Y from 'yjs'
 
 import { persistYDoc, resolveOfflineKey, offlineHost, offlineStatus } from '../lib/offline/index.js'
 
+// The on-disk record shape src/lib/offline/index.js writes/reads — that module
+// stays untyped JS on purpose (see its header: zero Vulos imports, vendorable),
+// so this mirrors its shape here rather than importing a type from it.
+interface SnapshotRecord {
+  enc: number
+  iv?: Uint8Array
+  ct?: Uint8Array
+  u?: Uint8Array
+}
+
+// The window.vulos.offline gate persistYDoc/offlineHost look for (OFFLINE-AUTH-01).
+// Not declared anywhere yet because the real implementation lives in the OS
+// shell (out of scope here) and src/lib/offline/index.js itself is untyped JS.
+interface OfflineHostGate {
+  isUnlocked: () => Promise<boolean>
+  appKey: () => Promise<CryptoKey>
+}
+
+declare global {
+  interface Window {
+    vulos?: { offline: OfflineHostGate }
+  }
+}
+
 // In-memory KV so persistence runs under jsdom (no IndexedDB), same pattern the
 // library uses for the real backend.
 function memStore() {
-  const m = new Map()
+  const m = new Map<string, SnapshotRecord>()
   return {
     m,
-    get: (k) => Promise.resolve(m.has(k) ? m.get(k) : null),
-    set: (k, v) => { m.set(k, v); return Promise.resolve() },
-    del: (k) => { m.delete(k); return Promise.resolve() },
+    get: (k: string) => Promise.resolve(m.has(k) ? m.get(k) : null),
+    set: (k: string, v: SnapshotRecord) => { m.set(k, v); return Promise.resolve() },
+    del: (k: string) => { m.delete(k); return Promise.resolve() },
   }
+}
+
+function readSnapshot(store: ReturnType<typeof memStore>): SnapshotRecord {
+  const rec = store.m.get('snapshot')
+  if (!rec) throw new Error('expected a persisted snapshot record')
+  return rec
 }
 
 const genKey = () => crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
@@ -44,7 +74,7 @@ describe('persistYDoc — offline-first local persistence', () => {
     await p1.flush()
 
     // On disk it is sealed — no plaintext update bytes.
-    const rec = store.m.get('snapshot')
+    const rec = readSnapshot(store)
     expect(rec.enc).toBe(1)
     expect(rec.iv).toBeInstanceOf(Uint8Array)
     expect(rec.ct).toBeInstanceOf(Uint8Array)
@@ -111,7 +141,7 @@ describe('persistYDoc — offline-first local persistence', () => {
     d1.getMap('m').set('secret', 'value')
     await p1.flush()
     p1.destroy()
-    expect(store.m.get('snapshot').enc).toBe(1)
+    expect(readSnapshot(store).enc).toBe(1)
 
     // Session 2: no key (host locked). The sealed cache can't be read (starts
     // clean) and — critically — an edit must NOT downgrade it to plaintext.
@@ -121,8 +151,8 @@ describe('persistYDoc — offline-first local persistence', () => {
     d2.getMap('m').set('plaintext', 'leak')
     await p2.flush()
     // The on-disk record is STILL the sealed ciphertext — no downgrade, no leak.
-    expect(store.m.get('snapshot').enc).toBe(1)
-    expect(store.m.get('snapshot').u).toBeUndefined()
+    expect(readSnapshot(store).enc).toBe(1)
+    expect(readSnapshot(store).u).toBeUndefined()
     p2.destroy()
 
     // Session 3: key back → the original sealed content is recoverable (not lost).

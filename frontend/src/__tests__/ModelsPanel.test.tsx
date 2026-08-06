@@ -9,26 +9,39 @@ vi.mock('../auth/AuthProvider', () => ({
 
 import ModelsPanel from '../core/settings/ModelsPanel.jsx'
 
-function mockModels(body, status = 200) {
-  global.fetch = vi.fn((url) => {
+// The shape every mock `fetch` in this file resolves to — deliberately NOT a
+// full `Response` (no headers/status text/body stream): the component only
+// ever reads `.ok`/`.status`/`.json()`, and `vi.stubGlobal` (unlike a direct
+// `global.fetch =` assignment) accepts this narrower stand-in without lying
+// about it being a real Response.
+interface MockFetchResponse {
+  ok: boolean
+  status?: number
+  json: () => Promise<unknown>
+}
+
+function mockModels(body: unknown, status = 200) {
+  const fetchMock = vi.fn((url: string) => {
     if (String(url).includes('/api/models')) {
       return Promise.resolve({ ok: status === 200, status, json: () => Promise.resolve(body) })
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
   })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 beforeEach(() => { mockProfile = { display_name: 'Owner', role: 'admin' } })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('ModelsPanel — RAG readiness + management', () => {
   it('hides management for non-owners', async () => {
     mockProfile = { display_name: 'User', role: 'user' }
-    mockModels({})
+    const fetchMock = mockModels({})
     render(<ModelsPanel />)
     expect(await screen.findByText(/available to the box owner only/i)).toBeTruthy()
     // Non-owner must NOT trigger the owner-only fetch.
-    expect(global.fetch).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('shows the lexical fallback indicator when no model is installed', async () => {
@@ -117,10 +130,11 @@ describe('ModelsPanel — RAG readiness + management', () => {
   })
 
   it('downloads the catalog model and flips RAG to semantic', async () => {
-    const fetchImpl = vi.fn((url, opts) => {
+    const fetchImpl = vi.fn((url: string, opts?: RequestInit): Promise<MockFetchResponse> => {
       if (String(url).includes('/api/models/download')) {
         // Assert the body carries ONLY an id (no arbitrary URL).
-        const body = JSON.parse(opts.body)
+        if (typeof opts?.body !== 'string') throw new Error('expected a JSON string body')
+        const body: unknown = JSON.parse(opts.body)
         expect(body).toEqual({ id: 'all-MiniLM-L6-v2' })
         return Promise.resolve({
           ok: true, status: 200,
@@ -143,7 +157,7 @@ describe('ModelsPanel — RAG readiness + management', () => {
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     })
-    global.fetch = fetchImpl
+    vi.stubGlobal('fetch', fetchImpl)
 
     render(<ModelsPanel />)
     const btn = await screen.findByRole('button', { name: /^Download$/ })
@@ -154,7 +168,7 @@ describe('ModelsPanel — RAG readiness + management', () => {
   })
 
   it('surfaces a failed catalog download honestly and stays lexical', async () => {
-    global.fetch = vi.fn((url) => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (String(url).includes('/api/models/download')) {
         return Promise.resolve({ ok: false, status: 502, json: () => Promise.resolve({ error: 'checksum mismatch — nothing installed' }) })
       }
@@ -165,7 +179,7 @@ describe('ModelsPanel — RAG readiness + management', () => {
         }) })
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
-    })
+    }))
     render(<ModelsPanel />)
     const btn = await screen.findByRole('button', { name: /^Download$/ })
     fireEvent.click(btn)

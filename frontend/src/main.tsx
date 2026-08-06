@@ -17,6 +17,12 @@ import { startOfflineQueueFlushLoop } from './lib/offlineQueue.js'
 // package treats the returned value as opaque and exposes it via
 // currentTierHint() for any other OS code that wants a synchronous tier
 // read at boot.
+declare global {
+  interface Window {
+    __VULOS_TIER?: string
+  }
+}
+
 function osTierHint() {
   if (typeof window !== 'undefined' && typeof window.__VULOS_TIER === 'string') {
     return window.__VULOS_TIER.toLowerCase()
@@ -48,9 +54,10 @@ try {
 // before/during render), paint a *visible* error directly to the document
 // body. The kiosk path is black-on-black in software-GL — an unhandled
 // runtime error otherwise produces an indistinguishable blank kiosk.
-function showFatal(label, err) {
-  const msg = (err && (err.stack || err.message)) || String(err)
-  const esc = s => String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))
+function showFatal(label: string, err: unknown) {
+  const msg = (err instanceof Error && (err.stack || err.message)) || String(err)
+  const escapeMap: Record<string, string> = {'<':'&lt;','>':'&gt;','&':'&amp;'}
+  const esc = (s: unknown) => String(s).replace(/[<>&]/g, c => escapeMap[c] || c)
   document.body.style.cssText = 'margin:0;padding:0;background:#7c0035;color:#fff;font:14px ui-monospace,monospace'
   document.body.innerHTML =
     '<div style="padding:32px;max-width:1100px">' +
@@ -74,7 +81,9 @@ window.addEventListener('unhandledrejection', e => {
 })
 
 try {
-  createRoot(document.getElementById('root')).render(
+  const rootEl = document.getElementById('root')
+  if (!rootEl) throw new Error("no element with id 'root' found in document")
+  createRoot(rootEl).render(
     <StrictMode>
       <App />
     </StrictMode>,

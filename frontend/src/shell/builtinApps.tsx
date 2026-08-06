@@ -12,16 +12,6 @@ import Settings from '../core/Settings'
 import { consumePendingSettingsSection } from '../core/settingsNav'
 import { consumePendingLaunchQuery } from '../core/launchParams'
 
-// core/Settings.jsx (untyped, out of scope) declares its default export as
-// `function Settings({ initialSection } = {})` — an untyped destructured
-// param with an object-literal default. TS's allowJs inference reads the
-// `{}` default as the whole prop type, so the component's *inferred* type
-// accepts no props at all, even though `initialSection` is read directly out
-// of that destructure. This is the one place in this file the real prop the
-// component reads isn't visible from its own (untyped) signature, so it's
-// restated here rather than widening BUILTIN_COMPONENTS' factory type.
-const SettingsTyped = Settings as ComponentType<{ initialSection?: string | null }>
-
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
@@ -55,7 +45,7 @@ type BuiltinFactory = () => ReactElement
 
 // BUILTIN_COMPONENTS maps app.id → a factory returning a fresh React element.
 export const BUILTIN_COMPONENTS: Record<string, BuiltinFactory> = {
-  persona: () => createElement(SettingsTyped, { initialSection: consumePendingSettingsSection() }),
+  persona: () => createElement(Settings, { initialSection: consumePendingSettingsSection() }),
   terminal: () => wrap(Terminal),
   activity: () => wrap(ActivityMonitor),
   files: () => wrap(FileManager),

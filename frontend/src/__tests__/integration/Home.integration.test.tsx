@@ -22,7 +22,7 @@ vi.mock('../../providers/ShellProvider', () => ({
 }))
 // Home reads the shared AppRegistry for quick-launch tiles + openApp.
 vi.mock('../../core/AppRegistry', () => ({
-  getAppById: (id) => ({ id, name: id, icon: '▦', url: `/app/${id}/` }),
+  getAppById: (id: string) => ({ id, name: id, icon: '▦', url: `/app/${id}/` }),
 }))
 
 import Home from '../../shell/home/Home.jsx'
@@ -34,7 +34,26 @@ const INVITE = {
   invite: { summary: 'Team sync', organizer: 'lead@acme.io', start: '2999-01-01T15:00:00Z' },
 }
 
-const HOME_PAYLOAD = {
+interface HomeReminder {
+  id: string
+  text: string
+  remind_at: string
+  done: boolean
+}
+
+interface HomePayload {
+  greeting: string
+  brief: string
+  focus: unknown[]
+  agenda: unknown[]
+  agenda_fresh: boolean
+  invites: (typeof INVITE)[]
+  activity: unknown[]
+  sovereignty: { tier: string; label: string }
+  reminders?: HomeReminder[]
+}
+
+const HOME_PAYLOAD: HomePayload = {
   greeting: 'Good evening, Ada',
   brief: 'Two threads need a reply; your 3pm moved.',
   focus: [],
@@ -45,7 +64,7 @@ const HOME_PAYLOAD = {
   sovereignty: { tier: 'local', label: 'On your device' },
 }
 
-function homeHandler(payload = HOME_PAYLOAD) {
+function homeHandler(payload: HomePayload = HOME_PAYLOAD) {
   return http.get('/api/assistant/home', () => HttpResponse.json(payload))
 }
 
@@ -104,7 +123,7 @@ describe('Home (integration)', () => {
     expect(executeCalled).toBe(false)
 
     // Approving posts ONLY the opaque id.
-    let executeBody = 'NOT_CALLED'
+    let executeBody: unknown = 'NOT_CALLED'
     server.use(http.post('/api/assistant/execute', async ({ request }) => {
       executeBody = await request.json()
       return HttpResponse.json({ result: 'RSVP sent.' })
@@ -116,7 +135,7 @@ describe('Home (integration)', () => {
   })
 
   it('WAVE-62: renders the user\'s reminders and cancels one via the direct endpoint', async () => {
-    let cancelBody = 'NOT_CALLED'
+    let cancelBody: unknown = 'NOT_CALLED'
     server.use(
       homeHandler({
         ...HOME_PAYLOAD,

@@ -1,19 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { usePeering, Channel } from '../../core/usePeering'
+import {
+  useState, useEffect, useRef, useCallback,
+  type CSSProperties, type DragEvent, type ChangeEvent, type KeyboardEvent,
+} from 'react'
+import { usePeering, Channel, type PeerFrame } from '../../core/usePeering'
 
 // MOBILE-ADAPTIVE (WAVE-30): below this width the two-pane layout (conversation
 // list + thread) collapses to a single pane that shows the list OR the open
 // thread, with a back affordance — the desktop metaphor adapts, it does not
 // shrink to an unusable ~80px thread column.
 const NARROW_QUERY = '(max-width: 640px)'
-function useNarrow() {
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia?.(NARROW_QUERY).matches
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState<boolean>(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW_QUERY).matches
   )
   useEffect(() => {
     if (!window.matchMedia) return undefined
     const mq = window.matchMedia(NARROW_QUERY)
-    const on = (e) => setNarrow(e.matches)
+    const on = (e: MediaQueryListEvent) => setNarrow(e.matches)
     mq.addEventListener('change', on)
     return () => mq.removeEventListener('change', on)
   }, [])
@@ -22,7 +25,7 @@ function useNarrow() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatTime(iso) {
+function formatTime(iso: string | undefined | null): string {
   if (!iso) return ''
   const d = new Date(iso)
   const now = new Date()
@@ -36,7 +39,7 @@ function formatTime(iso) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-function formatRelative(iso) {
+function formatRelative(iso: string | undefined | null): string {
   if (!iso) return ''
   const diff = Date.now() - new Date(iso).getTime()
   if (diff < 60_000) return 'just now'
@@ -45,7 +48,7 @@ function formatRelative(iso) {
   return formatTime(iso)
 }
 
-function initials(name) {
+function initials(name: string | null | undefined): string {
   if (!name) return '?'
   return name
     .split(' ')
@@ -54,12 +57,23 @@ function initials(name) {
     .join('')
 }
 
-function humanFileSize(bytes) {
+function humanFileSize(bytes: number | undefined | null): string {
   if (!bytes) return ''
   const units = ['B', 'KB', 'MB', 'GB']
   let i = 0, v = bytes
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++ }
   return `${v.toFixed(i > 0 ? 1 : 0)} ${units[i]}`
+}
+
+// isRecord/errMessage narrow `unknown` boundary values (fetch JSON bodies,
+// caught errors under strict's useUnknownInCatchVariables) without any/casts —
+// same pattern as src/lib/offlineAuth.ts and src/builtin/contacts/Contacts.tsx.
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function errMessage(e: unknown, fallback: string): string {
+  return (isRecord(e) && typeof e.message === 'string' && e.message) || fallback
 }
 
 // ── SVG Icons (inline, no external deps) ─────────────────────────────────────
@@ -77,12 +91,6 @@ const IconSend = () => (
 const IconPaperclip = () => (
   <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
     <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4.5a4.5 4.5 0 009 0V6a1 1 0 112 0v5.5a6.5 6.5 0 11-13 0V7a5 5 0 0110 0v4.5a2.5 2.5 0 01-5 0V8a1 1 0 012 0v3.5a.5.5 0 001 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
-  </svg>
-)
-
-const IconImage = () => (
-  <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
-    <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
   </svg>
 )
 
@@ -119,7 +127,57 @@ const IconMessages = () => (
 
 // ── Styles (CSS-in-JS inline, no external deps) ───────────────────────────────
 
-const S = {
+interface Styles {
+  root: CSSProperties
+  sidebar: CSSProperties
+  sidebarHeader: CSSProperties
+  sidebarTitle: CSSProperties
+  onlineDot: CSSProperties
+  offlineDot: CSSProperties
+  convList: CSSProperties
+  convItem: (active: boolean) => CSSProperties
+  avatar: (seed: number) => CSSProperties
+  convMeta: CSSProperties
+  convName: CSSProperties
+  convPreview: CSSProperties
+  convTime: CSSProperties
+  unreadBadge: CSSProperties
+  main: CSSProperties
+  threadHeader: CSSProperties
+  threadTitle: CSSProperties
+  threadSub: CSSProperties
+  messageArea: CSSProperties
+  dateSep: CSSProperties
+  msgRow: (mine: boolean) => CSSProperties
+  msgAvatar: (seed: number) => CSSProperties
+  bubble: (mine: boolean) => CSSProperties
+  bubbleMeta: (mine: boolean) => CSSProperties
+  metaText: CSSProperties
+  mediaAttachment: CSSProperties
+  mediaImg: CSSProperties
+  fileChip: CSSProperties
+  composer: CSSProperties
+  dropZone: (dragging: boolean) => CSSProperties
+  attachPreviews: CSSProperties
+  attachPreview: CSSProperties
+  attachImg: CSSProperties
+  attachFile: CSSProperties
+  attachRemove: CSSProperties
+  inputRow: CSSProperties
+  textInput: CSSProperties
+  iconBtn: (disabled: boolean) => CSSProperties
+  sendBtn: (canSend: boolean) => CSSProperties
+  backBtn: CSSProperties
+  uploadProgress: CSSProperties
+  empty: CSSProperties
+  emptyIconWrap: CSSProperties
+  emptyTitle: CSSProperties
+  emptyNote: CSSProperties
+  spinner: CSSProperties
+  errorBanner: CSSProperties
+}
+
+const S: Styles = {
   root: {
     display: 'flex',
     height: '100%',
@@ -524,29 +582,132 @@ const S = {
   },
 }
 
+// ── Shapes — Message/signalling wire shapes are the valuable types here.
+// All come from fetch() JSON bodies or the peering WS, so they are narrowed
+// from `unknown` field-by-field rather than trusted/cast. ───────────────────
+
+interface MessagePreview {
+  body?: string
+  type?: string
+  timestamp?: string
+}
+
+function toMessagePreview(x: unknown): MessagePreview | null {
+  if (!isRecord(x)) return null
+  return {
+    body: typeof x.body === 'string' ? x.body : undefined,
+    type: typeof x.type === 'string' ? x.type : undefined,
+    timestamp: typeof x.timestamp === 'string' ? x.timestamp : undefined,
+  }
+}
+
+// Backend returns: { conv_id, last_activity, message_count }.
+// UI expects: { id, peer_id, peer_name, last_message, unread_count }.
+interface Conversation {
+  id: string
+  conv_id?: string
+  peer_id: string
+  peer_name: string | null
+  last_message: MessagePreview | null
+  last_activity?: string
+  unread_count: number
+  message_count?: number
+}
+
+interface Attachment {
+  id?: string
+  hash?: string
+  mime_type?: string
+  type?: string
+  filename?: string
+  size?: number
+  url?: string
+  signed_url?: string
+}
+
+function toAttachment(x: unknown): Attachment | null {
+  if (!isRecord(x)) return null
+  return {
+    id: typeof x.id === 'string' ? x.id : undefined,
+    hash: typeof x.hash === 'string' ? x.hash : undefined,
+    mime_type: typeof x.mime_type === 'string' ? x.mime_type : undefined,
+    type: typeof x.type === 'string' ? x.type : undefined,
+    filename: typeof x.filename === 'string' ? x.filename : undefined,
+    size: typeof x.size === 'number' ? x.size : undefined,
+    url: typeof x.url === 'string' ? x.url : undefined,
+    signed_url: typeof x.signed_url === 'string' ? x.signed_url : undefined,
+  }
+}
+
+interface Message {
+  id?: string
+  body?: string
+  timestamp?: string
+  from?: string
+  direction?: string
+  is_mine?: boolean
+  delivered?: boolean
+  attachments?: Attachment[]
+  conversation_id?: string
+  conv_id?: string
+}
+
+function toMessage(x: unknown): Message | null {
+  if (!isRecord(x)) return null
+  return {
+    id: typeof x.id === 'string' ? x.id : undefined,
+    body: typeof x.body === 'string' ? x.body : undefined,
+    timestamp: typeof x.timestamp === 'string' ? x.timestamp : undefined,
+    from: typeof x.from === 'string' ? x.from : undefined,
+    direction: typeof x.direction === 'string' ? x.direction : undefined,
+    is_mine: typeof x.is_mine === 'boolean' ? x.is_mine : undefined,
+    delivered: typeof x.delivered === 'boolean' ? x.delivered : undefined,
+    attachments: Array.isArray(x.attachments)
+      ? x.attachments.map(toAttachment).filter((a): a is Attachment => a !== null)
+      : undefined,
+    conversation_id: typeof x.conversation_id === 'string' ? x.conversation_id : undefined,
+    conv_id: typeof x.conv_id === 'string' ? x.conv_id : undefined,
+  }
+}
+
 // ── normalizeConversation — map backend ConversationSummary to UI shape ───────
 
-function normalizeConversation(raw) {
-  // Backend returns: { conv_id, last_activity, message_count }
-  // UI expects: { id, peer_id, peer_name, last_message, unread_count }
-  if (!raw) return raw
-  const id = raw.id || raw.conv_id
+function normalizeConversation(raw: unknown): Conversation | null {
+  if (!isRecord(raw)) return null
   // Extract peer vula_id from conv_id: "<lower>_<higher>" where local node is one half.
   // We surface the full conv_id as peer_id for display; contacts can provide display names.
-  const peerName = raw.peer_name || raw.peer_id || null
+  const rawId = typeof raw.id === 'string' ? raw.id : undefined
+  const rawConvId = typeof raw.conv_id === 'string' ? raw.conv_id : undefined
+  const id = rawId || rawConvId || ''
+  const rawPeerId = typeof raw.peer_id === 'string' ? raw.peer_id : undefined
+  const rawPeerName = typeof raw.peer_name === 'string' ? raw.peer_name : undefined
+  const peerName = rawPeerName || rawPeerId || null
+  const rawLastActivity = typeof raw.last_activity === 'string' ? raw.last_activity : undefined
+  const lastMessage = toMessagePreview(raw.last_message) || (rawLastActivity ? { timestamp: rawLastActivity } : null)
   return {
-    ...raw,
+    conv_id: rawConvId,
+    last_activity: rawLastActivity,
+    message_count: typeof raw.message_count === 'number' ? raw.message_count : undefined,
     id,
-    peer_id: raw.peer_id || id,
+    peer_id: rawPeerId || id,
     peer_name: peerName,
-    last_message: raw.last_message || (raw.last_activity ? { timestamp: raw.last_activity } : null),
-    unread_count: raw.unread_count || 0,
+    last_message: lastMessage,
+    unread_count: typeof raw.unread_count === 'number' ? raw.unread_count : 0,
   }
 }
 
 // ── ConversationList ──────────────────────────────────────────────────────────
 
-function ConversationList({ conversations, activeId, onSelect, loading, wsConnected, narrow }) {
+interface ConversationListProps {
+  conversations: Conversation[]
+  activeId: string | undefined
+  onSelect: (conv: Conversation) => void
+  loading: boolean
+  wsConnected: boolean
+  narrow: boolean
+}
+
+function ConversationList({ conversations, activeId, onSelect, loading, wsConnected, narrow }: ConversationListProps) {
   const sidebarStyle = narrow
     ? { ...S.sidebar, width: '100%', minWidth: 0, borderRight: 'none' }
     : S.sidebar
@@ -617,12 +778,12 @@ function ConversationList({ conversations, activeId, onSelect, loading, wsConnec
 
 // ── MessageBubble ─────────────────────────────────────────────────────────────
 
-function MediaThumb({ attachment }) {
+function MediaThumb({ attachment }: { attachment: Attachment }) {
   const isImage = attachment.mime_type?.startsWith('image/') || attachment.type === 'image'
   // PEER-16: hash is "sha256:<hex>"; use thumb endpoint for images, fetch (signed) for others
   const hash = attachment.hash || attachment.id
-  const thumbUrl = hash ? `/api/peering/media/thumb/${hash}` : null
-  const fetchUrl = attachment.signed_url || (hash ? `/api/peering/media/fetch/${hash}` : null)
+  const thumbUrl = hash ? `/api/peering/media/thumb/${hash}` : undefined
+  const fetchUrl = attachment.signed_url || (hash ? `/api/peering/media/fetch/${hash}` : undefined)
   const url = isImage ? (thumbUrl || attachment.url) : (fetchUrl || attachment.url)
 
   if (isImage) {
@@ -653,7 +814,13 @@ function MediaThumb({ attachment }) {
   )
 }
 
-function MessageBubble({ msg, isMine, peerName }) {
+interface MessageBubbleProps {
+  msg: Message
+  isMine: boolean
+  peerName: string
+}
+
+function MessageBubble({ msg, isMine, peerName }: MessageBubbleProps) {
   const seed = (peerName || '').charCodeAt(0) % 7
   return (
     <div>
@@ -684,17 +851,49 @@ function MessageBubble({ msg, isMine, peerName }) {
 
 // ── Composer ──────────────────────────────────────────────────────────────────
 
-function Composer({ convId, onSent, disabled }) {
+interface PendingAttachment {
+  key: number
+  file: File
+  objectUrl: string
+  uploading: boolean
+  id: string | null
+  error: string | null
+  mimeType?: string
+  size?: number
+}
+
+interface UploadResponse {
+  hash?: string
+  mime_type?: string
+  size?: number
+}
+
+function toUploadResponse(x: unknown): UploadResponse {
+  if (!isRecord(x)) return {}
+  return {
+    hash: typeof x.hash === 'string' ? x.hash : undefined,
+    mime_type: typeof x.mime_type === 'string' ? x.mime_type : undefined,
+    size: typeof x.size === 'number' ? x.size : undefined,
+  }
+}
+
+interface ComposerProps {
+  convId: string | undefined
+  onSent: (msg: Message) => void
+  disabled: boolean
+}
+
+function Composer({ convId, onSent, disabled }: ComposerProps) {
   const [text, setText] = useState('')
-  const [attachments, setAttachments] = useState([]) // [{file, objectUrl, uploading, id, error}]
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
   const [dragging, setDragging] = useState(false)
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState(null)
-  const textareaRef = useRef(null)
-  const fileInputRef = useRef(null)
+  const [error, setError] = useState<string | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
 
-  const uploadFile = useCallback(async (file) => {
+  const uploadFile = useCallback(async (file: File) => {
     const key = Date.now() + Math.random()
     const objectUrl = URL.createObjectURL(file)
     setAttachments(prev => [...prev, { key, file, objectUrl, uploading: true, id: null, error: null }])
@@ -705,36 +904,39 @@ function Composer({ convId, onSent, disabled }) {
     try {
       const res = await fetch('/api/peering/media/upload', { method: 'POST', body: fd })
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-      const data = await res.json()
+      const data: unknown = await res.json()
       // Backend (PEER-16) returns { hash: "sha256:<hex>", signed_url, size, mime_type }
+      const upload = toUploadResponse(data)
       setAttachments(prev =>
-        prev.map(a => a.key === key ? { ...a, uploading: false, id: data.hash, mimeType: data.mime_type, size: data.size } : a)
+        prev.map(a => a.key === key
+          ? { ...a, uploading: false, id: upload.hash ?? null, mimeType: upload.mime_type, size: upload.size }
+          : a)
       )
     } catch (err) {
       setAttachments(prev =>
-        prev.map(a => a.key === key ? { ...a, uploading: false, error: err.message } : a)
+        prev.map(a => a.key === key ? { ...a, uploading: false, error: errMessage(err, 'Upload failed') } : a)
       )
     }
   }, [])
 
-  const handleFiles = useCallback((files) => {
+  const handleFiles = useCallback((files: File[]) => {
     for (const f of files) {
       uploadFile(f)
     }
   }, [uploadFile])
 
-  const handleDragEnter = (e) => {
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     dragCounterRef.current++
     setDragging(true)
   }
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     dragCounterRef.current--
     if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setDragging(false) }
   }
-  const handleDragOver = (e) => e.preventDefault()
-  const handleDrop = (e) => {
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault()
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     dragCounterRef.current = 0
     setDragging(false)
@@ -742,7 +944,7 @@ function Composer({ convId, onSent, disabled }) {
     if (files.length) handleFiles(files)
   }
 
-  const removeAttachment = (key) => {
+  const removeAttachment = (key: number) => {
     setAttachments(prev => {
       const a = prev.find(x => x.key === key)
       if (a?.objectUrl) URL.revokeObjectURL(a.objectUrl)
@@ -763,17 +965,18 @@ function Composer({ convId, onSent, disabled }) {
     try {
       const readyAttachments = attachments.filter(a => a.id && !a.uploading && !a.error)
 
-      const sendOne = async (bodyText) => {
+      const sendOne = async (bodyText: string): Promise<Message | null> => {
         const res = await fetch(`/api/peering/conversations/${convId}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ body: bodyText }),
         })
         if (!res.ok) throw new Error(`Send failed: ${res.status}`)
-        return res.json()
+        const data: unknown = await res.json()
+        return toMessage(data)
       }
 
-      let lastMsg = null
+      let lastMsg: Message | null = null
       // Send each media attachment as its own message with a hash reference
       for (const att of readyAttachments) {
         const label = att.file?.name ? `[media: ${att.file.name}] ${att.id}` : `[media] ${att.id}`
@@ -792,13 +995,13 @@ function Composer({ convId, onSent, disabled }) {
       textareaRef.current?.focus()
       if (lastMsg) onSent(lastMsg)
     } catch (err) {
-      setError(err.message)
+      setError(errMessage(err, 'Send failed'))
     } finally {
       setSending(false)
     }
   }
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
@@ -870,7 +1073,10 @@ function Composer({ convId, onSent, disabled }) {
             type="file"
             multiple
             style={{ display: 'none' }}
-            onChange={e => { handleFiles(Array.from(e.target.files)); e.target.value = '' }}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => {
+              handleFiles(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
           />
           <button
             style={S.iconBtn(disabled)}
@@ -910,13 +1116,21 @@ function Composer({ convId, onSent, disabled }) {
 
 // incomingCallbackRef is a stable ref the root Messages component writes into,
 // so the WS subscriber can deliver inbound frames without mutating a component.
-const incomingCallbackRef = { current: null }
+const incomingCallbackRef: { current: ((msg: Message) => void) | null } = { current: null }
 
-function ThreadView({ conversation, myVulaId, onBack }) {
-  const [messages, setMessages] = useState([])
+type ThreadItem = { type: 'date'; date: string } | { type: 'msg'; msg: Message }
+
+interface ThreadViewProps {
+  conversation: Conversation | null
+  myVulaId: string | null
+  onBack?: () => void
+}
+
+function ThreadView({ conversation, myVulaId, onBack }: ThreadViewProps) {
+  const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const bottomRef = useRef(null)
+  const [error, setError] = useState<string | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const convId = conversation?.id
 
   // Load history — clearing messages when convId is absent is intentional.
@@ -933,10 +1147,15 @@ function ThreadView({ conversation, myVulaId, onBack }) {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
-      .then(data => {
-        setMessages(Array.isArray(data) ? data : data.messages || [])
+      .then((data: unknown) => {
+        const list: unknown[] = Array.isArray(data)
+          ? data
+          : isRecord(data) && Array.isArray(data.messages)
+            ? data.messages
+            : []
+        setMessages(list.map(toMessage).filter((m): m is Message => m !== null))
       })
-      .catch(err => setError(err.message))
+      .catch((err: unknown) => setError(errMessage(err, 'Failed to load messages')))
       .finally(() => setLoading(false))
   }, [convId])
 
@@ -945,7 +1164,7 @@ function ThreadView({ conversation, myVulaId, onBack }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSent = useCallback((msg) => {
+  const handleSent = useCallback((msg: Message) => {
     setMessages(prev => {
       // Avoid duplicates if WS already delivered it
       if (prev.some(m => m.id === msg.id)) return prev
@@ -953,7 +1172,7 @@ function ThreadView({ conversation, myVulaId, onBack }) {
     })
   }, [])
 
-  const handleIncoming = useCallback((msg) => {
+  const handleIncoming = useCallback((msg: Message) => {
     if (msg.conversation_id !== convId && msg.conv_id !== convId) return
     setMessages(prev => {
       if (prev.some(m => m.id === msg.id)) return prev
@@ -971,9 +1190,9 @@ function ThreadView({ conversation, myVulaId, onBack }) {
   const seed = peerName.charCodeAt(0) % 7
 
   // Group messages by date
-  function groupByDate(msgs) {
-    const groups = []
-    let lastDate = null
+  function groupByDate(msgs: Message[]): ThreadItem[] {
+    const groups: ThreadItem[] = []
+    let lastDate: string | null = null
     for (const m of msgs) {
       const d = m.timestamp ? new Date(m.timestamp).toDateString() : null
       if (d !== lastDate) {
@@ -1053,7 +1272,7 @@ function ThreadView({ conversation, myVulaId, onBack }) {
             )
           }
           const msg = item.msg
-          const isMine = msg.from === myVulaId || msg.direction === 'out' || msg.is_mine
+          const isMine = Boolean(msg.from === myVulaId || msg.direction === 'out' || msg.is_mine)
           return (
             <MessageBubble
               key={msg.id || i}
@@ -1075,17 +1294,18 @@ function ThreadView({ conversation, myVulaId, onBack }) {
 // ── Root: Messages ────────────────────────────────────────────────────────────
 
 export default function Messages() {
-  const [conversations, setConversations] = useState([])
-  const [activeConv, setActiveConv] = useState(null)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [loadingConvs, setLoadingConvs] = useState(false)
-  const [myVulaId, setMyVulaId] = useState(null)
-  const threadRef = useRef(null)
+  const [myVulaId, setMyVulaId] = useState<string | null>(null)
 
   // Fetch own identity
   useEffect(() => {
     fetch('/api/peering/identity')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.vula_id) setMyVulaId(data.vula_id) })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: unknown) => {
+        if (isRecord(data) && typeof data.vula_id === 'string') setMyVulaId(data.vula_id)
+      })
       .catch(() => {})
   }, [])
 
@@ -1093,10 +1313,14 @@ export default function Messages() {
   const fetchConversations = useCallback(() => {
     setLoadingConvs(true)
     fetch('/api/peering/conversations')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        const raw = Array.isArray(data) ? data : data.conversations || []
-        setConversations(raw.map(normalizeConversation))
+      .then(r => (r.ok ? r.json() : []))
+      .then((data: unknown) => {
+        const raw: unknown[] = Array.isArray(data)
+          ? data
+          : isRecord(data) && Array.isArray(data.conversations)
+            ? data.conversations
+            : []
+        setConversations(raw.map(normalizeConversation).filter((c): c is Conversation => c !== null))
       })
       .catch(() => {})
       .finally(() => setLoadingConvs(false))
@@ -1109,8 +1333,10 @@ export default function Messages() {
   const { connected: wsConnected, subscribe } = usePeering()
 
   useEffect(() => {
-    const unsub = subscribe(Channel.MESSAGE, (frame) => {
-      const msg = frame.payload || frame
+    const unsub = subscribe(Channel.MESSAGE, (frame: PeerFrame) => {
+      const raw: unknown = frame.payload || frame
+      const msg = toMessage(raw)
+      if (!msg) return
 
       // Deliver to active thread if it matches
       if (incomingCallbackRef.current) {
@@ -1141,7 +1367,7 @@ export default function Messages() {
     return unsub
   }, [subscribe, activeConv, fetchConversations])
 
-  const handleSelectConv = (conv) => {
+  const handleSelectConv = (conv: Conversation) => {
     setActiveConv(conv)
     // Mark as read
     setConversations(prev =>
@@ -1181,7 +1407,6 @@ export default function Messages() {
       {showThread && (
         <div style={S.main}>
           <ThreadView
-            ref={threadRef}
             conversation={activeConv}
             myVulaId={myVulaId}
             onBack={narrow ? () => setActiveConv(null) : undefined}

@@ -124,7 +124,7 @@ describe('offlineQueue — flush', () => {
 
   it('onQueueChange listeners fire on enqueue + clear', async () => {
     const q = await freshModule()
-    const seen = []
+    const seen: number[] = []
     const off = q.onQueueChange(items => seen.push(items.length))
     q.enqueue({ body: { path: '/api/1' } })
     q.enqueue({ body: { path: '/api/2' } })
@@ -138,14 +138,19 @@ describe('offlineQueue — flush', () => {
     const q = await freshModule()
     q.enqueue({ body: { path: '/api/a' } })
 
-    let resolveReplay
-    const replay = vi.fn(() => new Promise((res) => { resolveReplay = res }))
+    // A ref object (not a bare `let`) — TS's narrowing otherwise pins a `let`
+    // reassigned only inside a nested closure to its initial `null` literal at
+    // every read site in this outer scope, regardless of the intervening
+    // flush() call that actually invokes the closure and mutates it.
+    const resolveReplayRef: { current: ((value: unknown) => void) | null } = { current: null }
+    const replay = vi.fn(() => new Promise((res) => { resolveReplayRef.current = res }))
 
     const p1 = q.flush({ replay })
     const p2 = q.flush({ replay }) // should short-circuit
     // Let the first flush start (vi resolves microtasks):
     await Promise.resolve()
-    resolveReplay({ ok: true })
+    if (!resolveReplayRef.current) throw new Error('expected replay to have been invoked')
+    resolveReplayRef.current({ ok: true })
     const [r1, r2] = await Promise.all([p1, p2])
     // Only the first flush did real work.
     expect(replay).toHaveBeenCalledTimes(1)

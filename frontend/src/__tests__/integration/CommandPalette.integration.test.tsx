@@ -1,5 +1,5 @@
 /**
- * CommandPalette.integration.test.jsx — wave-28 shell integration suite.
+ * CommandPalette.integration.test.tsx — wave-28 shell integration suite.
  *
  * Renders the REAL command palette wired to the REAL agentStream SSE client,
  * with MSW answering /api endpoints as a fake backend. This is an integration
@@ -34,7 +34,7 @@ vi.mock('../../core/AppRegistry', () => ({
     { id: 'terminal', name: 'Terminal', icon: '>_', keywords: ['shell', 'console'], description: 'Command line' },
     { id: 'drive', name: 'Drive', icon: '☁', keywords: ['files', 'storage'], description: 'Your files' },
   ],
-  getAppById: (id) => ({ terminal: { id: 'terminal', name: 'Terminal' }, drive: { id: 'drive', name: 'Drive' } }[id] || null),
+  getAppById: (id: string) => ({ terminal: { id: 'terminal', name: 'Terminal' }, drive: { id: 'drive', name: 'Drive' } }[id] || null),
 }))
 vi.mock('../../shell/launchApp', () => ({ launchApp: vi.fn() }))
 
@@ -100,7 +100,7 @@ describe('CommandPalette — Ask → assistant (integration, real SSE over MSW)'
   })
 
   it('WAVE-13: Approve posts ONLY the opaque proposal id to /api/assistant/execute', async () => {
-    let executeBody = 'NOT_CALLED'
+    let executeBody: unknown = 'NOT_CALLED'
     server.use(
       http.post('/api/assistant/agent/stream', () => sse([{ type: 'proposal', proposal: PROPOSAL }, { type: 'done' }])),
       http.post('/api/assistant/execute', async ({ request }) => {

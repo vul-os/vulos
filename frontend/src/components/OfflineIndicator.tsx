@@ -1,5 +1,5 @@
 /**
- * OfflineIndicator.jsx — visible offline banner for Vulos OS (OFFLINE-02 / -03).
+ * OfflineIndicator.tsx — visible offline banner for Vulos OS (OFFLINE-02 / -03).
  *
  * Consistent with lilmail's OfflineIndicator (MAIL-OFFLINE-01) and Diwan's
  * offline UX so the user sees the same chrome wherever the outage hits:
@@ -46,7 +46,7 @@ export default function OfflineIndicator() {
   const endpointOk = online && (endpoint !== '' || !hasConfiguredRemote())
   if (endpointOk && queueLen === 0) return null
 
-  let msg
+  let msg: string
   if (!online) {
     msg = queueLen > 0
       ? `Offline — ${queueLen} queued to send when online`
@@ -88,7 +88,11 @@ export default function OfflineIndicator() {
 // Only show the "cloud unreachable" message when the deployment actually has a
 // remote endpoint configured — otherwise same-origin IS the box and there's
 // nothing useful to tell the user.
-function hasConfiguredRemote() {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function hasConfiguredRemote(): boolean {
   try {
     const g = typeof window !== 'undefined' ? window.__VULOS_ENDPOINTS__ : null
     if (g && (g.cloud || g.lan)) return true
@@ -96,8 +100,8 @@ function hasConfiguredRemote() {
       ? localStorage.getItem('vulos.os.endpoints.v1')
       : null
     if (raw) {
-      const v = JSON.parse(raw)
-      if (v && (v.cloud || v.lan)) return true
+      const v: unknown = JSON.parse(raw)
+      if (isRecord(v) && (v.cloud || v.lan)) return true
     }
   } catch { /* ignore */ }
   return false

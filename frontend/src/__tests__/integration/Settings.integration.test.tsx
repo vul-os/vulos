@@ -23,7 +23,7 @@ vi.mock('../../core/PublicAppsManager', () => ({ PamVisibilityControl: () => nul
 vi.mock('../../core/settings/StoragePanel.jsx', () => ({ default: () => null }))
 vi.mock('../../core/settings/DataExportPanel.jsx', () => ({ default: () => null }))
 
-import Settings from '../../core/Settings.jsx'
+import Settings from '../../core/Settings'
 import { getPrefs, __resetForTests } from '../../core/notificationStore'
 
 beforeEach(() => { __resetForTests() })

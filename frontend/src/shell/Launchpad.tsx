@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore, type CSSProperties, type FormEvent } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { getApps, searchApps, subscribeApps, getAppsVersion } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
 import { AppIconTile } from '../core/AppIcons'
 import { useFocusTrap } from './useFocusTrap'
+import type { AppEntry } from './appTypes'
 import './shell-chrome.css'
 
 // The full lane-dispatch launch logic lives in the shared ./launchApp module so
@@ -13,7 +14,7 @@ import './shell-chrome.css'
 // apps over lilmail's /v1 (via /api/pim/*). Real-time comms (Talk/Meet) are
 // third-party, reached as external services rather than registered as OS apps.
 
-const categoryLabels = {
+const categoryLabels: Record<string, string> = {
   internet: 'Internet',
   productivity: 'Productivity',
   utilities: 'Utilities',
@@ -22,13 +23,51 @@ const categoryLabels = {
   system: 'System',
 }
 
+// Shape of one entry returned by GET /api/desktop/entries (apt-installed GUI
+// apps, freedesktop.org .desktop file fields). Narrowed from `unknown` JSON —
+// see isRecord()/toDesktopEntry() below, matching lib/offlineAuth.ts's
+// isRecord() narrowing pattern used across the converted TS surfaces.
+interface DesktopEntry {
+  id: string
+  name: string
+  icon?: string
+  no_display?: boolean
+  exec?: string
+  categories?: string[]
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function toDesktopEntry(x: unknown): DesktopEntry | null {
+  if (!isRecord(x) || typeof x.id !== 'string' || typeof x.name !== 'string') return null
+  return {
+    id: x.id,
+    name: x.name,
+    icon: typeof x.icon === 'string' ? x.icon : undefined,
+    no_display: typeof x.no_display === 'boolean' ? x.no_display : undefined,
+    exec: typeof x.exec === 'string' ? x.exec : undefined,
+    categories: Array.isArray(x.categories) ? x.categories.filter((c): c is string => typeof c === 'string') : undefined,
+  }
+}
+
+function toDesktopEntries(x: unknown): DesktopEntry[] {
+  return Array.isArray(x) ? x.map(toDesktopEntry).filter((e): e is DesktopEntry => e !== null) : []
+}
+
+// AppTile's '--tile-i' staggers the entrance animation via a CSS custom
+// property; CSSProperties has no index signature for those, so extend it
+// the same way Contacts.tsx's RingStyle does for '--tw-ring-color'.
+type TileStyle = CSSProperties & { '--tile-i'?: number }
+
 export default function Launchpad() {
   const { launchpadOpen, setLaunchpad, openWindow, setChat } = useShell()
   const [search, setSearch] = useState('')
   const [chatInput, setChatInput] = useState('')
-  const [desktopEntries, setDesktopEntries] = useState([])
-  const searchRef = useRef(null)
-  const chatRef = useRef(null)
+  const [desktopEntries, setDesktopEntries] = useState<DesktopEntry[]>([])
+  const searchRef = useRef<HTMLInputElement>(null)
+  const chatRef = useRef<HTMLInputElement>(null)
   // A11Y: trap focus inside the launchpad while open + restore on close.
   const trapRef = useFocusTrap(launchpadOpen)
 
@@ -37,14 +76,14 @@ export default function Launchpad() {
     if (!launchpadOpen) return
     fetch('/api/desktop/entries')
       .then(r => r.json())
-      .then(entries => setDesktopEntries(entries || []))
+      .then((entries: unknown) => setDesktopEntries(toDesktopEntries(entries)))
       .catch(() => {})
   }, [launchpadOpen])
 
   // ESC to close + focus search on open
   useEffect(() => {
     if (!launchpadOpen) return
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
@@ -75,12 +114,18 @@ export default function Launchpad() {
   const hiddenDesktopIds = new Set(['chromium-browser', 'chromium', 'org.chromium.Chromium'])
 
   // Convert desktop entries to app format, filter out duplicates and hidden entries
-  const desktopApps = desktopEntries
-    .filter(e => !e.no_display && e.exec && !baseIds.has(e.id) && !hiddenDesktopIds.has(e.id))
+  const desktopApps: AppEntry[] = desktopEntries
+    .filter((e): e is DesktopEntry & { exec: string } => !e.no_display && !!e.exec && !baseIds.has(e.id) && !hiddenDesktopIds.has(e.id))
     .map(e => ({
       id: e.id,
       name: e.name,
       icon: e.icon || e.id,
+      // No description/keywords come from a .desktop entry — AppRegistry's
+      // App type requires them, so default empty; nothing downstream (the
+      // tile grid, search filter below, or launchApp's lane dispatch) reads
+      // either field for a desktop app.
+      description: '',
+      keywords: [],
       category: mapDesktopCategory(e.categories),
       _desktop: true, // Flag for stream-based launch
       _exec: e.exec,
@@ -91,17 +136,17 @@ export default function Launchpad() {
       return a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)
     })
 
-  const apps = [...baseApps, ...desktopApps]
+  const apps: AppEntry[] = [...baseApps, ...desktopApps]
   const grouped = search.trim() ? null : groupByCategory(apps)
 
-  const launch = async (app) => {
+  const launch = async (app: AppEntry) => {
     // All lane dispatch (builtin · web · stream · native · fallback) lives in
     // the shared launchApp helper, which the ⌘K palette also uses.
     await launchApp(app, { openWindow })
     close()
   }
 
-  const handleChatSubmit = (e) => {
+  const handleChatSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!chatInput.trim()) return
     close()
@@ -229,7 +274,7 @@ export default function Launchpad() {
 }
 
 // Map freedesktop.org categories to our launchpad categories
-function mapDesktopCategory(cats) {
+function mapDesktopCategory(cats: string[] | undefined): string {
   if (!cats || cats.length === 0) return 'utilities'
   const c = cats.map(s => s.toLowerCase())
   if (c.some(s => ['game', 'amusement', 'blocksgame', 'boardgame', 'cardgame'].includes(s))) return 'media'
@@ -243,8 +288,8 @@ function mapDesktopCategory(cats) {
 }
 
 // Group apps by category (replacement for getAppsByCategory that works with merged list)
-function groupByCategory(apps) {
-  const groups = {}
+function groupByCategory(apps: AppEntry[]): Record<string, AppEntry[]> {
+  const groups: Record<string, AppEntry[]> = {}
   for (const app of apps) {
     const cat = app.category || 'utilities'
     if (!groups[cat]) groups[cat] = []
@@ -253,10 +298,15 @@ function groupByCategory(apps) {
   return groups
 }
 
+interface AppGridProps {
+  apps: AppEntry[]
+  onLaunch: (app: AppEntry) => Promise<void>
+}
+
 // The responsive tile grid. Columns reflow from 4 (phone) up to 7 (wide /
 // ultrawide) using the design-direction breakpoints (520 / 720 / 920), with a
 // wider row gap than column gap so labels breathe without drifting apart.
-function AppGrid({ apps, onLaunch }) {
+function AppGrid({ apps, onLaunch }: AppGridProps) {
   return (
     <div className="grid grid-cols-4 gap-x-2 gap-y-5 min-[520px]:grid-cols-5 min-[720px]:grid-cols-6 min-[920px]:grid-cols-7">
       {apps.map((app, i) => (
@@ -266,14 +316,21 @@ function AppGrid({ apps, onLaunch }) {
   )
 }
 
-function AppTile({ app, onLaunch, index = 0 }) {
+interface AppTileProps {
+  app: AppEntry
+  onLaunch: (app: AppEntry) => Promise<void>
+  index?: number
+}
+
+function AppTile({ app, onLaunch, index = 0 }: AppTileProps) {
+  const tileStyle: TileStyle = { '--tile-i': Math.min(index, 28) }
   return (
     <button
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
       title={app.name}
       className="vshell-tile vula-tile-in focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
-      style={{ '--tile-i': Math.min(index, 28) }}
+      style={tileStyle}
     >
       <AppIconTile id={app.id} size={60} unicode={app.icon} />
       <span className="vshell-tile-label max-w-[80px] truncate text-center text-[12px] leading-tight">

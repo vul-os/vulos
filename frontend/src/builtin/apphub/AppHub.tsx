@@ -3,7 +3,102 @@ import { refreshInstalled } from '../../core/AppRegistry'
 import { APP_LOGOS, APP_COLORS, APP_LETTERS } from '../../core/AppIcons'
 import { useTheme } from '../../core/ThemeProvider'
 
-const CATEGORY_LABELS = {
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function errorMessage(err: unknown): string {
+  return isRecord(err) && typeof err.message === 'string' ? err.message : String(err)
+}
+
+// ── Wire shapes (untyped JSON in, narrowed before use) ─────────────────────────
+//
+// The App Store browses a RICHER shape than core/AppRegistry.ts's `App` (the
+// shell-launcher-tile type): GET /api/store/registry returns backend's
+// RegistryListEntry (services/appnet/registry.go), which carries store-only
+// fields — flatpak_id, versions, latest, vetted, author, homepage, license —
+// that `App` does not model. Declared locally rather than reusing `App`,
+// which would silently drop those fields.
+interface StoreApp {
+  id: string
+  name: string
+  type?: string
+  arch?: string[]
+  flatpak_id?: string
+  description: string
+  category: string
+  author?: string
+  icon?: string
+  vetted?: boolean
+  versions?: string[]
+  latest?: string
+  installed?: boolean
+  homepage?: string
+  license?: string
+  keywords?: string[]
+}
+
+function toStoreApp(x: unknown): StoreApp | null {
+  if (!isRecord(x) || typeof x.id !== 'string' || typeof x.name !== 'string') return null
+  return {
+    id: x.id,
+    name: x.name,
+    type: typeof x.type === 'string' ? x.type : undefined,
+    arch: Array.isArray(x.arch) ? x.arch.filter((a): a is string => typeof a === 'string') : undefined,
+    flatpak_id: typeof x.flatpak_id === 'string' ? x.flatpak_id : undefined,
+    description: typeof x.description === 'string' ? x.description : '',
+    category: typeof x.category === 'string' ? x.category : '',
+    author: typeof x.author === 'string' ? x.author : undefined,
+    icon: typeof x.icon === 'string' ? x.icon : undefined,
+    vetted: typeof x.vetted === 'boolean' ? x.vetted : undefined,
+    versions: Array.isArray(x.versions) ? x.versions.filter((v): v is string => typeof v === 'string') : undefined,
+    latest: typeof x.latest === 'string' ? x.latest : undefined,
+    installed: typeof x.installed === 'boolean' ? x.installed : undefined,
+    homepage: typeof x.homepage === 'string' ? x.homepage : undefined,
+    license: typeof x.license === 'string' ? x.license : undefined,
+    keywords: Array.isArray(x.keywords) ? x.keywords.filter((k): k is string => typeof k === 'string') : undefined,
+  }
+}
+
+function toStoreApps(x: unknown): StoreApp[] {
+  return Array.isArray(x) ? x.map(toStoreApp).filter((a): a is StoreApp => a !== null) : []
+}
+
+// GET /api/store/installed returns []*AppManifest (services/appnet/manifest.go).
+// Only `id` is ever read here (membership + count), so that is all this narrows.
+interface InstalledAppRef {
+  id: string
+}
+
+function toInstalledAppRef(x: unknown): InstalledAppRef | null {
+  return isRecord(x) && typeof x.id === 'string' ? { id: x.id } : null
+}
+
+function toInstalledAppRefs(x: unknown): InstalledAppRef[] {
+  return Array.isArray(x) ? x.map(toInstalledAppRef).filter((a): a is InstalledAppRef => a !== null) : []
+}
+
+// GET /api/packages/cache returns {"ready": bool, "arch": string}.
+interface PackageCacheStatus {
+  ready: boolean
+  arch: string | null
+}
+
+function toPackageCacheStatus(x: unknown): PackageCacheStatus {
+  return {
+    ready: isRecord(x) && typeof x.ready === 'boolean' ? x.ready : false,
+    arch: isRecord(x) && typeof x.arch === 'string' ? x.arch : null,
+  }
+}
+
+interface BadgeStyle {
+  label: string
+  bg: string
+  text: string
+  border: string
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
   all: 'All Apps',
   internet: 'Internet',
   media: 'Media',
@@ -14,7 +109,7 @@ const CATEGORY_LABELS = {
   system: 'System',
 }
 
-const CATEGORY_ICONS = {
+const CATEGORY_ICONS: Record<string, string> = {
   all: 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z',
   internet: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z',
   media: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
@@ -25,21 +120,21 @@ const CATEGORY_ICONS = {
   system: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
 }
 
-const SOURCE_BADGE = {
+const SOURCE_BADGE: Record<'flatpak' | 'apt' | 'web', BadgeStyle> = {
   flatpak: { label: 'Flatpak', bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/20' },
   apt: { label: 'Apt', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
   web: { label: 'Web', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
 }
 
 // APPSTORE-08: type badge config — maps the `type` field values to display labels + styles
-const APPTYPE_BADGE = {
+const APPTYPE_BADGE: Record<'web' | 'desktop' | 'service', BadgeStyle> = {
   web:     { label: 'Web',      bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20' },
   desktop: { label: 'Streamed', bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
   service: { label: 'Service',  bg: 'bg-slate-500/10',  text: 'text-slate-400',  border: 'border-slate-500/20'  },
 }
 
 // APPSTORE-08: derive a normalised app-type key for filtering and badge rendering
-function appTypeKey(app) {
+function appTypeKey(app: StoreApp): 'web' | 'desktop' | 'service' | null {
   if (!app.type) return null
   if (app.type === 'web') return 'web'
   if (app.type === 'desktop') return 'desktop'
@@ -48,7 +143,7 @@ function appTypeKey(app) {
 }
 
 // APPSTORE-08: small per-card badge derived from the `type` field
-function AppTypeBadge({ app, className = '' }) {
+function AppTypeBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
   const key = appTypeKey(app)
   if (!key) return null
   const s = APPTYPE_BADGE[key]
@@ -59,13 +154,13 @@ function AppTypeBadge({ app, className = '' }) {
   )
 }
 
-function getSourceType(app) {
+function getSourceType(app: StoreApp): 'flatpak' | 'web' | 'apt' {
   if (app.flatpak_id) return 'flatpak'
   if (app.type === 'web') return 'web'
   return 'apt'
 }
 
-function AppIcon({ appId, letter, size = 44 }) {
+function AppIcon({ appId, letter, size = 44 }: { appId: string; letter?: string; size?: number }) {
   const [failed, setFailed] = useState(false)
   // Resolve the bundled brand mark / hue by the real app id. `letter` (the
   // registry `icon` field — often a label or emoji) is only a fallback glyph;
@@ -107,7 +202,7 @@ function AppIcon({ appId, letter, size = 44 }) {
   )
 }
 
-function SourceBadge({ app, className = '' }) {
+function SourceBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
   const src = getSourceType(app)
   const s = SOURCE_BADGE[src]
   return (
@@ -118,7 +213,7 @@ function SourceBadge({ app, className = '' }) {
 }
 
 // Animated install progress bar
-function InstallProgress({ label }) {
+function InstallProgress({ label }: { label?: string }) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center gap-2.5">
@@ -161,24 +256,24 @@ function SkeletonCard() {
 
 export default function AppHub() {
   const { isDark } = useTheme()
-  const [apps, setApps] = useState([])
-  const [installed, setInstalled] = useState([])
+  const [apps, setApps] = useState<StoreApp[]>([])
+  const [installed, setInstalled] = useState<InstalledAppRef[]>([])
   const [loading, setLoading] = useState(true)
-  const [installing, setInstalling] = useState(null) // appID being installed
+  const [installing, setInstalling] = useState<string | null>(null) // appID being installed
   const [installPhase, setInstallPhase] = useState('') // phase label
-  const [uninstalling, setUninstalling] = useState(null)
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
-  const [appTypeFilter, setAppTypeFilter] = useState('all') // APPSTORE-08
-  const [selectedApp, setSelectedApp] = useState(null)
+  const [appTypeFilter, setAppTypeFilter] = useState<'all' | 'web' | 'desktop' | 'service'>('all') // APPSTORE-08
+  const [selectedApp, setSelectedApp] = useState<StoreApp | null>(null)
   const [selectedVersion, setSelectedVersion] = useState('')
-  const [tab, setTab] = useState('browse')
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  const [cacheReady, setCacheReady] = useState(null)
-  const [systemArch, setSystemArch] = useState(null)
+  const [tab, setTab] = useState<'browse' | 'installed'>('browse')
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [cacheReady, setCacheReady] = useState<boolean | null>(null)
+  const [systemArch, setSystemArch] = useState<string | null>(null)
   const [updatingCache, setUpdatingCache] = useState(false)
-  const scrollRef = useRef(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -188,13 +283,13 @@ export default function AppHub() {
         fetch('/api/store/installed'),
         fetch('/api/packages/cache'),
       ])
-      const regData = await regRes.json()
-      const instData = await instRes.json()
-      const cacheData = await cacheRes.json()
-      setApps(regData || [])
-      setInstalled(instData || [])
+      const regData = toStoreApps(await regRes.json())
+      const instData = toInstalledAppRefs(await instRes.json())
+      const cacheData = toPackageCacheStatus(await cacheRes.json())
+      setApps(regData)
+      setInstalled(instData)
       setCacheReady(cacheData.ready)
-      setSystemArch(cacheData.arch || null)
+      setSystemArch(cacheData.arch)
     } catch {
       setApps([])
       setInstalled([])
@@ -210,14 +305,14 @@ export default function AppHub() {
       if (!res.ok) throw new Error('Update failed')
       setCacheReady(true)
     } catch (e) {
-      setError('Failed to update package index: ' + e.message)
+      setError('Failed to update package index: ' + errorMessage(e))
     }
     setUpdatingCache(false)
   }
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const installApp = async (appId, version) => {
+  const installApp = async (appId: string, version?: string) => {
     if (installing) return
     setInstalling(appId)
     const app = apps.find(a => a.id === appId)
@@ -230,10 +325,10 @@ export default function AppHub() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ app_id: appId, version: version || '' }),
       })
-      const data = await res.json().catch(() => ({}))
+      const data: unknown = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const msg = data.error || 'Install failed'
-        const detail = data.detail || ''
+        const msg = (isRecord(data) && typeof data.error === 'string' ? data.error : '') || 'Install failed'
+        const detail = isRecord(data) && typeof data.detail === 'string' ? data.detail : ''
         throw new Error(detail ? `${msg}\n${detail}` : msg)
       }
       setSuccess(`${app?.name || appId} installed successfully`)
@@ -241,13 +336,13 @@ export default function AppHub() {
       await refreshInstalled()
       await fetchData()
     } catch (e) {
-      setError(e.message)
+      setError(errorMessage(e))
     }
     setInstalling(null)
     setInstallPhase('')
   }
 
-  const uninstallApp = async (appId) => {
+  const uninstallApp = async (appId: string) => {
     if (uninstalling) return
     setUninstalling(appId)
     setError(null)
@@ -264,12 +359,12 @@ export default function AppHub() {
       await fetchData()
       if (selectedApp?.id === appId) setSelectedApp(null)
     } catch (e) {
-      setError(e.message)
+      setError(errorMessage(e))
     }
     setUninstalling(null)
   }
 
-  const isArchCompatible = (app) => {
+  const isArchCompatible = (app: StoreApp): boolean => {
     if (!systemArch || !app.arch || app.arch.length === 0) return true
     return app.arch.includes(systemArch)
   }
@@ -289,14 +384,26 @@ export default function AppHub() {
   })
 
   const categories = ['all', ...new Set(apps.map(a => a.category).filter(Boolean).sort())]
-  const installedIds = new Set((installed || []).map(a => a.id))
+  const installedIds = new Set(installed.map(a => a.id))
   const browseList = tab === 'installed' ? filtered.filter(a => a.installed || installedIds.has(a.id)) : filtered
 
-  const selectApp = (app) => {
+  const selectApp = (app: StoreApp) => {
     setSelectedApp(app)
     setSelectedVersion(app.latest || '')
     setError(null)
   }
+
+  const tabs: { id: 'browse' | 'installed'; label: string; icon: string; count?: number }[] = [
+    { id: 'browse', label: 'Browse', icon: 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z' },
+    { id: 'installed', label: 'Installed', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z', count: installed.length },
+  ]
+
+  const appTypeFilterOptions: { id: 'all' | 'web' | 'desktop' | 'service'; label: string }[] = [
+    { id: 'all',     label: 'All Types' },
+    { id: 'web',     label: 'Web' },
+    { id: 'desktop', label: 'Streamed' },
+    { id: 'service', label: 'Service' },
+  ]
 
   return (
     <div className={`relative flex h-full overflow-hidden bg-[var(--bg-base)] ${isDark ? 'text-neutral-300' : 'text-neutral-700'}`}>
@@ -324,10 +431,7 @@ export default function AppHub() {
 
         {/* Tabs */}
         <div className="px-3 pb-2 flex flex-col gap-0.5">
-          {[
-            { id: 'browse', label: 'Browse', icon: 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z' },
-            { id: 'installed', label: 'Installed', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z', count: installed?.length },
-          ].map(t => (
+          {tabs.map(t => (
             <button
               key={t.id}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors [transition-duration:var(--motion-fast)] text-left ${
@@ -337,7 +441,7 @@ export default function AppHub() {
             >
               <svg viewBox="0 0 24 24" className="w-[15px] h-[15px] flex-shrink-0" fill="currentColor" opacity={0.7}><path d={t.icon} /></svg>
               {t.label}
-              {t.count > 0 && (
+              {(t.count ?? 0) > 0 && (
                 <span className="ml-auto text-[12px] bg-[var(--bg-elevated)] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
                   {t.count}
                 </span>
@@ -350,12 +454,7 @@ export default function AppHub() {
         <div className="px-3 pt-3 border-t border-[var(--border-subtle)]">
           <div className="text-[12px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
           <div className="flex flex-col gap-0.5">
-            {[
-              { id: 'all',     label: 'All Types' },
-              { id: 'web',     label: 'Web' },
-              { id: 'desktop', label: 'Streamed' },
-              { id: 'service', label: 'Service' },
-            ].map(t => (
+            {appTypeFilterOptions.map(t => (
               <button
                 key={t.id}
                 className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors [transition-duration:var(--motion-fast)] text-left ${
@@ -365,7 +464,7 @@ export default function AppHub() {
                 }`}
                 onClick={() => setAppTypeFilter(t.id)}
               >
-                {t.id !== 'all' && APPTYPE_BADGE[t.id] && (
+                {t.id !== 'all' && (
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${APPTYPE_BADGE[t.id].bg} border ${APPTYPE_BADGE[t.id].border}`} />
                 )}
                 {t.label}
@@ -685,7 +784,7 @@ export default function AppHub() {
   )
 }
 
-function DetailRow({ label, value, link }) {
+function DetailRow({ label, value, link }: { label: string; value: string; link?: boolean }) {
   return (
     <div className="flex justify-between items-center gap-3 px-4 py-2.5 bg-[var(--bg-base)]">
       <span className="text-[12px] text-neutral-600 font-medium flex-shrink-0">{label}</span>

@@ -3,8 +3,32 @@
 // backend/services/peering/ice.go -- no import, no dependency;
 // stale-terminology finding reported separately, not fixed here.
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type RefObject,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type WheelEvent as ReactWheelEvent,
+} from 'react'
 import { applyLowLatencyHints } from './lowLatency'
+
+// RTCRtpReceiver.playoutDelayHint is a real, shipping Chrome API (see
+// lowLatency.ts) but is absent from TypeScript's lib.dom.d.ts, so the real
+// RTCRtpTransceiver returned by pc.addTransceiver() has zero declared
+// properties in common with lowLatency's LowLatencyReceiver — TS's weak-type
+// detection then rejects passing it in, even though at runtime the object is
+// exactly what LowLatencyTransceiver expects. Augmenting the ambient DOM type
+// (rather than casting the value) fixes this honestly: it is a compile-time
+// acknowledgment of a field Chrome already has, not a change to any object
+// at runtime.
+declare global {
+  interface RTCRtpReceiver {
+    playoutDelayHint?: number
+  }
+}
 
 // Cloud-gaming grade stream viewer — connects via WebRTC with split input channels.
 // Mouse: unreliable/unordered (latest-wins, high freq)
@@ -18,6 +42,85 @@ const MOD_ALT      = 4
 const MOD_META     = 8
 const MOD_CAPSLOCK = 16
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function errorMessage(err: unknown): string {
+  return isRecord(err) && typeof err.message === 'string' ? err.message : String(err)
+}
+
+// ── Wire shapes (untyped JSON in, narrowed before use) ─────────────────────────
+
+// Mirrors backend/services/stream/stream.go Session (only the fields this
+// viewer actually reads).
+interface StreamSession {
+  id: string
+  running: boolean
+  width?: number
+  height?: number
+  quality?: string
+}
+
+function toStreamSession(x: unknown): StreamSession | null {
+  if (!isRecord(x) || typeof x.id !== 'string' || typeof x.running !== 'boolean') return null
+  return {
+    id: x.id,
+    running: x.running,
+    width: typeof x.width === 'number' ? x.width : undefined,
+    height: typeof x.height === 'number' ? x.height : undefined,
+    quality: typeof x.quality === 'string' ? x.quality : undefined,
+  }
+}
+
+function toStreamSessions(x: unknown): StreamSession[] {
+  return Array.isArray(x) ? x.map(toStreamSession).filter((s): s is StreamSession => s !== null) : []
+}
+
+// Mirrors backend/services/peering/ice.go iceServer/iceConfigResponse.
+function toIceServer(x: unknown): RTCIceServer | null {
+  if (!isRecord(x) || !Array.isArray(x.urls)) return null
+  const urls = x.urls.filter((u): u is string => typeof u === 'string')
+  if (urls.length === 0) return null
+  const server: RTCIceServer = { urls }
+  if (typeof x.username === 'string') server.username = x.username
+  if (typeof x.credential === 'string') server.credential = x.credential
+  return server
+}
+
+function toIceServers(x: unknown): RTCIceServer[] {
+  if (!isRecord(x) || !Array.isArray(x.ice_servers)) return []
+  return x.ice_servers.map(toIceServer).filter((s): s is RTCIceServer => s !== null)
+}
+
+function toIceCandidateInit(x: unknown): RTCIceCandidateInit | null {
+  if (!isRecord(x)) return null
+  const init: RTCIceCandidateInit = {}
+  if (typeof x.candidate === 'string') init.candidate = x.candidate
+  if (typeof x.sdpMid === 'string' || x.sdpMid === null) init.sdpMid = x.sdpMid
+  if (typeof x.sdpMLineIndex === 'number' || x.sdpMLineIndex === null) init.sdpMLineIndex = x.sdpMLineIndex
+  if (typeof x.usernameFragment === 'string' || x.usernameFragment === null) init.usernameFragment = x.usernameFragment
+  return init
+}
+
+// Outbound input-event shapes — mirror the anonymous structs decoded by
+// backend/services/stream/stream.go's handleMouse/handleKeyboard.
+interface StreamMouseEvent {
+  t: 'mm' | 'mr' | 'md' | 'mu' | 'sc'
+  x?: number
+  y?: number
+  dx?: number
+  dy?: number
+  b?: number
+}
+
+interface StreamKbdEvent {
+  t: 'kd' | 'ku'
+  key: string
+  code: string
+  mod: number
+}
+
 // ---------------------------------------------------------------------------
 // StreamToolbar — gamer overlay: FPS selector, live RTT/quality, fullscreen,
 // MangoHud toggle.  All identifiers are gameToolbar-/streamToolbar- prefixed
@@ -26,18 +129,26 @@ const MOD_CAPSLOCK = 16
 
 const STREAM_TOOLBAR_FPS_OPTIONS = [30, 60, 90, 120]
 
+interface StreamToolbarProps {
+  sessionId: string
+  pcRef: RefObject<RTCPeerConnection | null>
+  quality: string | null
+  streamToolbarCollapsed: boolean
+  onStreamToolbarToggle: () => void
+}
+
 function StreamToolbar({
   sessionId,
   pcRef,
   quality,
   streamToolbarCollapsed,
   onStreamToolbarToggle,
-}) {
+}: StreamToolbarProps) {
   const [streamToolbarFps, setStreamToolbarFps] = useState(30)
-  const [streamToolbarRtt, setStreamToolbarRtt] = useState(null)
+  const [streamToolbarRtt, setStreamToolbarRtt] = useState<number | null>(null)
   const [streamToolbarMangoHud, setStreamToolbarMangoHud] = useState(false)
   const [streamToolbarFullscreen, setStreamToolbarFullscreen] = useState(false)
-  const streamToolbarRttRef = useRef(null)
+  const streamToolbarRttRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Poll ICE candidate-pair RTT from WebRTC stats every 2 s
   useEffect(() => {
@@ -46,12 +157,13 @@ function StreamToolbar({
       if (!pc) return
       try {
         const stats = await pc.getStats()
-        stats.forEach((report) => {
+        stats.forEach((report: unknown) => {
           if (
+            isRecord(report) &&
             report.type === 'candidate-pair' &&
             report.state === 'succeeded' &&
             report.nominated &&
-            report.currentRoundTripTime != null
+            typeof report.currentRoundTripTime === 'number'
           ) {
             setStreamToolbarRtt(Math.round(report.currentRoundTripTime * 1000))
           }
@@ -60,7 +172,9 @@ function StreamToolbar({
         // getStats can throw if PC is closing — ignore
       }
     }, 2000)
-    return () => clearInterval(streamToolbarRttRef.current)
+    return () => {
+      if (streamToolbarRttRef.current) clearInterval(streamToolbarRttRef.current)
+    }
   }, [pcRef])
 
   // Track fullscreen state from browser events
@@ -70,7 +184,7 @@ function StreamToolbar({
     return () => document.removeEventListener('fullscreenchange', onFsChange)
   }, [])
 
-  const streamToolbarSetFps = useCallback(async (fps) => {
+  const streamToolbarSetFps = useCallback(async (fps: number) => {
     setStreamToolbarFps(fps)
     try {
       await fetch('/api/stream/fps', {
@@ -240,7 +354,7 @@ function StreamToolbar({
   )
 }
 
-function getModifiers(e) {
+function getModifiers(e: ReactKeyboardEvent): number {
   let m = 0
   if (e.shiftKey) m |= MOD_SHIFT
   if (e.ctrlKey)  m |= MOD_CTRL
@@ -250,36 +364,42 @@ function getModifiers(e) {
   return m
 }
 
-export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gaming = false }) {
-  const videoRef = useRef(null)
-  const wsRef = useRef(null)
-  const pcRef = useRef(null)
-  const mouseDcRef = useRef(null)
-  const kbdDcRef = useRef(null)
-  const gpDcRef = useRef(null)
-  const gpLoopRef = useRef(null)
-  const containerRef = useRef(null)
+interface StreamViewerProps {
+  sessionId: string
+  scrollSensitivity?: number
+  gaming?: boolean
+}
+
+export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gaming = false }: StreamViewerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const pcRef = useRef<RTCPeerConnection | null>(null)
+  const mouseDcRef = useRef<RTCDataChannel | null>(null)
+  const kbdDcRef = useRef<RTCDataChannel | null>(null)
+  const gpDcRef = useRef<RTCDataChannel | null>(null)
+  const gpLoopRef = useRef<number | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const connectedRef = useRef(false)
   const lastMouseRef = useRef(0)
   const scrollAccRef = useRef(0)
-  const scrollRafRef = useRef(null)
+  const scrollRafRef = useRef<number | null>(null)
   const pointerLockedRef = useRef(false)
-  const [status, setStatus] = useState('connecting')
-  const [error, setError] = useState(null)
+  const [status, setStatus] = useState<'connecting' | 'connected'>('connecting')
+  const [error, setError] = useState<string | null>(null)
   const [pointerLocked, setPointerLocked] = useState(false)
   const streamSize = useRef({ w: 1280, h: 720 })
 
   // Stream toolbar state — GAME-08
-  const [streamToolbarQuality, setStreamToolbarQuality] = useState(null)
+  const [streamToolbarQuality, setStreamToolbarQuality] = useState<string | null>(null)
   const [streamToolbarCollapsed, setStreamToolbarCollapsed] = useState(false)
 
-  const sendMouse = useCallback((evt) => {
+  const sendMouse = useCallback((evt: StreamMouseEvent) => {
     const dc = mouseDcRef.current
     if (!dc || dc.readyState !== 'open') return
     dc.send(JSON.stringify(evt))
   }, [])
 
-  const sendKbd = useCallback((evt) => {
+  const sendKbd = useCallback((evt: StreamKbdEvent) => {
     const dc = kbdDcRef.current
     if (!dc || dc.readyState !== 'open') return
     dc.send(JSON.stringify(evt))
@@ -294,8 +414,8 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
 
     try {
       const res = await fetch('/api/stream/sessions')
-      const sessions = await res.json()
-      const session = sessions?.find(s => s.id === sessionId)
+      const sessions = toStreamSessions(await res.json())
+      const session = sessions.find(s => s.id === sessionId)
       if (!session || !session.running) {
         // eslint-disable-next-line react-hooks/immutability
         setTimeout(() => connect(), 1000)
@@ -310,14 +430,12 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       // actually applies here too. A transient fetch failure keeps
       // iceServers EMPTY rather than leaking to public Google STUN, which
       // would silently defeat VULOS_STUN_DISABLE_PUBLIC.
-      let iceServers = []
+      let iceServers: RTCIceServer[] = []
       try {
         const iceRes = await fetch('/api/peering/ice')
         if (iceRes.ok) {
-          const iceData = await iceRes.json()
-          if (Array.isArray(iceData?.ice_servers) && iceData.ice_servers.length) {
-            iceServers = iceData.ice_servers
-          }
+          const servers = toIceServers(await iceRes.json())
+          if (servers.length) iceServers = servers
         }
       } catch {
         // keep iceServers empty — never fall back to third-party STUN
@@ -367,10 +485,15 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
 
       ws.onmessage = (e) => {
         if (!e.data || typeof e.data !== 'string') return
-        let msg
+        let msg: unknown
         try { msg = JSON.parse(e.data) } catch { return }
-        if (msg.type === 'answer') pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }))
-        else if (msg.type === 'candidate' && msg.candidate) pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
+        if (!isRecord(msg)) return
+        if (msg.type === 'answer' && typeof msg.sdp === 'string') {
+          pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }))
+        } else if (msg.type === 'candidate' && msg.candidate) {
+          const init = toIceCandidateInit(msg.candidate)
+          if (init) pc.addIceCandidate(new RTCIceCandidate(init))
+        }
       }
 
       ws.onopen = async () => {
@@ -385,7 +508,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       ws.onerror = () => { if (!connectedRef.current) setError('WebSocket connection failed') }
       ws.onclose = () => { if (!connectedRef.current) setError('Signaling connection lost') }
     } catch (err) {
-      setError(err.message)
+      setError(errorMessage(err))
     }
   }, [sessionId, gaming])
 
@@ -410,8 +533,8 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   useEffect(() => {
     if (status !== 'connected') return
 
-    let prevButtons = []
-    let prevAxes = []
+    let prevButtons: boolean[] = []
+    let prevAxes: number[] = []
 
     const pollGamepad = () => {
       const gpDc = gpDcRef.current
@@ -455,13 +578,13 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    let resizeTimer = null
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       const w = Math.round(width)
       const h = Math.round(height)
       if (w < 320 || h < 200) return
-      clearTimeout(resizeTimer)
+      if (resizeTimer) clearTimeout(resizeTimer)
       resizeTimer = setTimeout(() => {
         streamSize.current = { w, h }
         fetch('/api/stream/resize', {
@@ -472,7 +595,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
       }, 300)
     })
     observer.observe(el)
-    return () => { observer.disconnect(); clearTimeout(resizeTimer) }
+    return () => { observer.disconnect(); if (resizeTimer) clearTimeout(resizeTimer) }
   }, [sessionId])
 
   // Poll adaptive quality tier from session metadata — GAME-08 toolbar.
@@ -481,8 +604,8 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     const id = setInterval(async () => {
       try {
         const res = await fetch('/api/stream/sessions')
-        const sessions = await res.json()
-        const sess = sessions?.find(s => s.id === sessionId)
+        const sessions = toStreamSessions(await res.json())
+        const sess = sessions.find(s => s.id === sessionId)
         if (sess?.quality) setStreamToolbarQuality(sess.quality)
       } catch {
         // non-fatal
@@ -493,7 +616,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
 
   const focusContainer = useCallback(() => containerRef.current?.focus(), [])
 
-  const getPos = useCallback((e) => {
+  const getPos = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     const video = videoRef.current
     if (!video) return { x: 0, y: 0 }
     const rect = video.getBoundingClientRect()
@@ -543,7 +666,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   }, [])
 
   // --- Mouse events (unreliable channel) ---
-  const onMouseMove = useCallback((e) => {
+  const onMouseMove = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (pointerLockedRef.current) {
       // Pointer-lock mode: bypass coalesce throttle, send raw deltas immediately
       const dx = e.movementX
@@ -559,7 +682,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     sendMouse({ t: 'mm', ...getPos(e) })
   }, [getPos, sendMouse])
 
-  const onMouseDown = useCallback((e) => {
+  const onMouseDown = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     e.preventDefault()
     focusContainer()
     // In gaming mode, first click acquires pointer lock instead of sending a button event
@@ -571,9 +694,9 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     sendMouse({ t: 'md', ...getPos(e), b: e.button })
   }, [gaming, status, getPos, sendMouse, focusContainer])
 
-  const onMouseUp = useCallback((e) => sendMouse({ t: 'mu', b: e.button }), [sendMouse])
+  const onMouseUp = useCallback((e: ReactMouseEvent<HTMLDivElement>) => sendMouse({ t: 'mu', b: e.button }), [sendMouse])
 
-  const onWheel = useCallback((e) => {
+  const onWheel = useCallback((e: ReactWheelEvent<HTMLDivElement>) => {
     e.preventDefault()
     scrollAccRef.current += e.deltaY * scrollSensitivity
     if (scrollRafRef.current) return
@@ -588,7 +711,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   }, [sendMouse, scrollSensitivity])
 
   // --- Keyboard events (reliable channel) ---
-  const onKeyDown = useCallback((e) => {
+  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     // Escape releases pointer lock in gaming mode; the keydown is NOT forwarded
@@ -600,7 +723,7 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     sendKbd({ t: 'kd', key: e.key, code: e.code, mod: getModifiers(e) })
   }, [gaming, sendKbd])
 
-  const onKeyUp = useCallback((e) => {
+  const onKeyUp = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     sendKbd({ t: 'ku', key: e.key, code: e.code, mod: getModifiers(e) })

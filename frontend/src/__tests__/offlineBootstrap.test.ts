@@ -22,19 +22,29 @@ async function freshModule() {
   return import('../lib/net/offlineBootstrap.js')
 }
 
+// navigator.serviceWorker / ServiceWorkerRegistration / ServiceWorker are big
+// DOM interfaces (ServiceWorkerContainer, plus EventTarget, plus a real
+// PushManager on the registration, …) that jsdom does not implement and this
+// suite has no honest way to construct — offlineBootstrap.ts only ever reads
+// the handful of members these fakes provide (register/addEventListener/
+// installing/waiting/state/postMessage). These stay plain duck-typed
+// fixtures; they're wired onto the global via setServiceWorker()'s
+// Object.defineProperty below (untyped `value`, same escape hatch as the
+// project's other jsdom-global stubs) rather than a direct assignment or cast.
+
 function makeRegistration() {
-  const listeners = {}
-  let installing = null
+  const listeners: Record<string, (() => void) | undefined> = {}
+  let installing: ReturnType<typeof makeInstallingWorker> | null = null
   const reg = {
-    waiting: null,
-    installing: null,
-    addEventListener: vi.fn((evt, fn) => {
+    waiting: null as ReturnType<typeof makeInstallingWorker> | null,
+    installing: null as ReturnType<typeof makeInstallingWorker> | null,
+    addEventListener: vi.fn((evt: string, fn: () => void) => {
       listeners[evt] = fn
     }),
-    _fireUpdateFound(newWorker) {
+    _fireUpdateFound(newWorker: ReturnType<typeof makeInstallingWorker>) {
       installing = newWorker
       reg.installing = newWorker
-      listeners.updatefound && listeners.updatefound()
+      listeners.updatefound?.()
     },
     _installing() { return installing },
   }
@@ -42,19 +52,23 @@ function makeRegistration() {
 }
 
 function makeInstallingWorker() {
-  const listeners = {}
+  const listeners: Record<string, Array<() => void> | undefined> = {}
   return {
     state: 'installing',
     postMessage: vi.fn(),
-    addEventListener: vi.fn((evt, fn) => {
+    addEventListener: vi.fn((evt: string, fn: () => void) => {
       if (!listeners[evt]) listeners[evt] = []
-      listeners[evt].push(fn)
+      listeners[evt]?.push(fn)
     }),
-    _setState(state) {
+    _setState(state: string) {
       this.state = state
       ;(listeners.statechange || []).forEach((fn) => fn())
     },
   }
+}
+
+function setServiceWorker(value: unknown): void {
+  Object.defineProperty(globalThis.navigator, 'serviceWorker', { value, configurable: true })
 }
 
 beforeEach(() => {
@@ -70,18 +84,18 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  delete globalThis.navigator.serviceWorker
+  Reflect.deleteProperty(globalThis.navigator, 'serviceWorker')
 })
 
 describe('bootstrapOffline', () => {
   it('registers the service worker exactly once across repeated calls', async () => {
     const reg = makeRegistration()
     const register = vi.fn(async () => reg)
-    globalThis.navigator.serviceWorker = {
+    setServiceWorker({
       register,
       controller: {},
       addEventListener: vi.fn(),
-    }
+    })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })))
 
     const m = await freshModule()
@@ -97,7 +111,7 @@ describe('bootstrapOffline', () => {
   })
 
   it('does not throw if serviceWorker is unavailable', async () => {
-    delete globalThis.navigator.serviceWorker
+    Reflect.deleteProperty(globalThis.navigator, 'serviceWorker')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })))
     const m = await freshModule()
     m._resetForTests()
@@ -107,11 +121,11 @@ describe('bootstrapOffline', () => {
   it('onUpdateAvailable fires once a new SW installs while controlled', async () => {
     const reg = makeRegistration()
     const register = vi.fn(async () => reg)
-    globalThis.navigator.serviceWorker = {
+    setServiceWorker({
       register,
       controller: {},                 // page IS controlled by an old SW
       addEventListener: vi.fn(),
-    }
+    })
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200 })))
 
     const m = await freshModule()

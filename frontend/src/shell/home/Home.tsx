@@ -26,23 +26,27 @@
  * semantic token, so it reads correctly in BOTH light and dark. Pure
  * presentation: no state, endpoints, labels, or a11y semantics changed.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { AppIconTile } from '../../core/AppIcons'
 import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../builtinApps'
-import { runAgentTurn } from '../../core/agentStream'
+import { runAgentTurn, type AgentProposal, type AgentStatusEvent } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
 import { notify } from '../../core/notificationStore'
 // Shared confirmation-gate card — one source of truth across every assistant
 // surface (the Assistant panel, this composer, the Command Palette).
 import { ProposalCard } from '../../builtin/assistant/ProposalCard'
 
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
 // Curated quick-launch tiles — the everyday surfaces. "All apps" opens the
 // full Launchpad, so Home complements rather than replaces it.
 const QUICK_LAUNCH = ['lilmail', 'vulos-calendar', 'drive', 'assistant', 'notes', 'terminal', 'persona']
 
-const TIER_DOT = {
+const TIER_DOT: Record<string, string> = {
   local: 'var(--status-success)',
   sovereign: 'var(--status-success)',
   brokered: 'var(--status-warning)',
@@ -60,40 +64,203 @@ const CARD_ROW = `${CARD} px-4 py-3 shadow-[var(--shadow-sm)] transition-[backgr
 const BTN = 'text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--bg-hover)_50%,transparent)] text-[color:var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[color:var(--text-primary)] transition-colors disabled:opacity-40 disabled:hover:text-[color:var(--text-secondary)]'
 const LINK = 'text-[12px] font-medium text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors'
 
+// ── /api/assistant/home response shape ───────────────────────────────────────
+// Narrowed from `unknown` JSON — a trust boundary, so every field is checked
+// rather than assumed (mirrors AppRegistry.ts's toInstalledApp/toAI5App
+// narrowing pattern). Each section fails independently server-side, so every
+// field here is optional and every renderer already falls back gracefully.
+interface FocusItem {
+  uid: string
+  subject?: string
+  from_name?: string
+  from?: string
+  preview?: string
+  folder?: string
+}
+
+interface AgendaEvent {
+  id?: string
+  title?: string
+  location?: string
+  start?: string
+  all_day?: boolean
+}
+
+interface InviteDetail {
+  summary?: string
+  start?: string
+  all_day?: boolean
+  location?: string
+  organizer?: string
+}
+
+interface Invite {
+  message_uid: string
+  subject?: string
+  from?: string
+  invite?: InviteDetail
+}
+
+interface Reminder {
+  id: string
+  text?: string
+  remind_at?: string
+}
+
+interface ActivityItem {
+  uid?: string
+  unread?: boolean
+  title?: string
+  subtitle?: string
+}
+
+interface SovereigntyInfo {
+  tier?: string
+  label?: string
+}
+
+interface HomeData {
+  greeting?: string
+  brief?: string
+  brief_error?: boolean
+  mail_error?: boolean
+  focus?: FocusItem[]
+  agenda?: AgendaEvent[]
+  agenda_fresh?: boolean
+  agenda_error?: boolean
+  invites?: Invite[]
+  invites_error?: boolean
+  reminders?: Reminder[]
+  reminders_error?: boolean
+  activity?: ActivityItem[]
+  sovereignty?: SovereigntyInfo
+}
+
+function toFocusItem(x: unknown): FocusItem | null {
+  if (!isRecord(x) || typeof x.uid !== 'string') return null
+  return {
+    uid: x.uid,
+    subject: typeof x.subject === 'string' ? x.subject : undefined,
+    from_name: typeof x.from_name === 'string' ? x.from_name : undefined,
+    from: typeof x.from === 'string' ? x.from : undefined,
+    preview: typeof x.preview === 'string' ? x.preview : undefined,
+    folder: typeof x.folder === 'string' ? x.folder : undefined,
+  }
+}
+
+function toAgendaEvent(x: unknown): AgendaEvent | null {
+  if (!isRecord(x)) return null
+  return {
+    id: typeof x.id === 'string' ? x.id : undefined,
+    title: typeof x.title === 'string' ? x.title : undefined,
+    location: typeof x.location === 'string' ? x.location : undefined,
+    start: typeof x.start === 'string' ? x.start : undefined,
+    all_day: typeof x.all_day === 'boolean' ? x.all_day : undefined,
+  }
+}
+
+function toInviteDetail(x: unknown): InviteDetail | undefined {
+  if (!isRecord(x)) return undefined
+  return {
+    summary: typeof x.summary === 'string' ? x.summary : undefined,
+    start: typeof x.start === 'string' ? x.start : undefined,
+    all_day: typeof x.all_day === 'boolean' ? x.all_day : undefined,
+    location: typeof x.location === 'string' ? x.location : undefined,
+    organizer: typeof x.organizer === 'string' ? x.organizer : undefined,
+  }
+}
+
+function toInvite(x: unknown): Invite | null {
+  if (!isRecord(x) || typeof x.message_uid !== 'string') return null
+  return {
+    message_uid: x.message_uid,
+    subject: typeof x.subject === 'string' ? x.subject : undefined,
+    from: typeof x.from === 'string' ? x.from : undefined,
+    invite: toInviteDetail(x.invite),
+  }
+}
+
+function toReminder(x: unknown): Reminder | null {
+  if (!isRecord(x) || typeof x.id !== 'string') return null
+  return {
+    id: x.id,
+    text: typeof x.text === 'string' ? x.text : undefined,
+    remind_at: typeof x.remind_at === 'string' ? x.remind_at : undefined,
+  }
+}
+
+function toActivityItem(x: unknown): ActivityItem | null {
+  if (!isRecord(x)) return null
+  return {
+    uid: typeof x.uid === 'string' ? x.uid : undefined,
+    unread: typeof x.unread === 'boolean' ? x.unread : undefined,
+    title: typeof x.title === 'string' ? x.title : undefined,
+    subtitle: typeof x.subtitle === 'string' ? x.subtitle : undefined,
+  }
+}
+
+function toSovereigntyInfo(x: unknown): SovereigntyInfo | undefined {
+  if (!isRecord(x)) return undefined
+  return {
+    tier: typeof x.tier === 'string' ? x.tier : undefined,
+    label: typeof x.label === 'string' ? x.label : undefined,
+  }
+}
+
+function toHomeData(x: unknown): HomeData {
+  if (!isRecord(x)) return {}
+  return {
+    greeting: typeof x.greeting === 'string' ? x.greeting : undefined,
+    brief: typeof x.brief === 'string' ? x.brief : undefined,
+    brief_error: typeof x.brief_error === 'boolean' ? x.brief_error : undefined,
+    mail_error: typeof x.mail_error === 'boolean' ? x.mail_error : undefined,
+    focus: Array.isArray(x.focus) ? x.focus.map(toFocusItem).filter((f): f is FocusItem => f !== null) : undefined,
+    agenda: Array.isArray(x.agenda) ? x.agenda.map(toAgendaEvent).filter((a): a is AgendaEvent => a !== null) : undefined,
+    agenda_fresh: typeof x.agenda_fresh === 'boolean' ? x.agenda_fresh : undefined,
+    agenda_error: typeof x.agenda_error === 'boolean' ? x.agenda_error : undefined,
+    invites: Array.isArray(x.invites) ? x.invites.map(toInvite).filter((i): i is Invite => i !== null) : undefined,
+    invites_error: typeof x.invites_error === 'boolean' ? x.invites_error : undefined,
+    reminders: Array.isArray(x.reminders) ? x.reminders.map(toReminder).filter((r): r is Reminder => r !== null) : undefined,
+    reminders_error: typeof x.reminders_error === 'boolean' ? x.reminders_error : undefined,
+    activity: Array.isArray(x.activity) ? x.activity.map(toActivityItem).filter((a): a is ActivityItem => a !== null) : undefined,
+    sovereignty: toSovereigntyInfo(x.sovereignty),
+  }
+}
+
 // Module-scoped cache of the last Home payload. Home remounts each time you
 // close all windows (it's the desktop backdrop), so we render the cached brief/
 // agenda instantly and refresh in the background — no skeleton + no repeat model
 // call on every return to Home.
-let cachedHome = null
+let cachedHome: HomeData | null = null
 
 // Honour the OS reduced-motion preference for the composer's scroll choreography
 // (checked at call time so a mid-session preference change is respected).
-const scrollBehavior = () =>
+const scrollBehavior = (): ScrollBehavior =>
   (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
     ? 'auto' : 'smooth'
 
 // ── tiny date/time helpers ───────────────────────────────────────────────────
-const fmtDate = (d) => d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-function eventTime(iso) {
-  const d = new Date(iso)
-  if (isNaN(d)) return ''
+const fmtDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+function eventTime(iso: string | null | undefined): string {
+  const d = new Date(iso ?? '')
+  if (isNaN(d.getTime())) return ''
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
-function isToday(iso) {
-  const d = new Date(iso); const n = new Date()
+function isToday(iso: string | null | undefined): boolean {
+  const d = new Date(iso ?? ''); const n = new Date()
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()
 }
-function relDay(iso) {
-  const d = new Date(iso); if (isNaN(d)) return ''
+function relDay(iso: string | null | undefined): string {
+  const d = new Date(iso ?? ''); if (isNaN(d.getTime())) return ''
   if (isToday(iso)) return 'Today'
   const t = new Date(); t.setDate(t.getDate() + 1)
   if (d.toDateString() === t.toDateString()) return 'Tomorrow'
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 // A reminder's fire time as "Today · 15:00" / "Mon Jul 7 · 15:00".
-function reminderWhen(iso) {
-  const d = new Date(iso); if (isNaN(d)) return ''
+function reminderWhen(iso: string | null | undefined): string {
+  const d = new Date(iso ?? ''); if (isNaN(d.getTime())) return ''
   return `${relDay(iso)} · ${fmtTime(d)}`
 }
 
@@ -101,7 +268,13 @@ function reminderWhen(iso) {
 // A labelled block: an accent tick + eyebrow (SANS, not mono) on the left, an
 // optional action/status on the right. The tick and tightened tracking give each
 // section a crisp, intentional header instead of a lone grey caption.
-function Section({ label, right, children, className = '' }) {
+interface SectionProps {
+  label: string
+  right?: ReactNode
+  children?: ReactNode
+  className?: string
+}
+function Section({ label, right, children, className = '' }: SectionProps) {
   return (
     <section className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-3.5">
@@ -116,31 +289,48 @@ function Section({ label, right, children, className = '' }) {
   )
 }
 
+// ── inline agent composer transcript entry ───────────────────────────────────
+interface Turn {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  pending?: boolean
+  proposal?: AgentProposal | null
+  state?: 'pending' | 'busy' | 'done' | 'rejected'
+}
+
+// Both the composer <form>'s onSubmit and the textarea's Enter-key onKeyDown
+// call submitAsk with their own (different) event types — this is the minimal
+// shape both React.FormEvent and React.KeyboardEvent satisfy.
+interface PreventableEvent {
+  preventDefault: () => void
+}
+
 export default function Home() {
   const { openWindow, setLaunchpad } = useShell()
-  const [data, setData] = useState(cachedHome)
+  const [data, setData] = useState<HomeData | null>(cachedHome)
   const [loading, setLoading] = useState(!cachedHome)
   const [offline, setOffline] = useState(false)
   const [clock, setClock] = useState(new Date())
-  const [dismissed, setDismissed] = useState(() => new Set()) // snoozed/handled focus uids
-  const [snoozing, setSnoozing] = useState(null) // uid awaiting confirm | 'busy:<uid>'
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set()) // snoozed/handled focus uids
+  const [snoozing, setSnoozing] = useState<string | null>(null) // uid awaiting confirm | 'busy:<uid>'
 
   // Composer + inline agent transcript
   const [input, setInput] = useState('')
-  const [turns, setTurns] = useState([]) // {id, role, content, pending, proposal, state}
+  const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
-  const composerRef = useRef(null)
-  const transcriptRef = useRef(null)
+  const composerRef = useRef<HTMLDivElement>(null)
+  const transcriptRef = useRef<HTMLDivElement>(null)
   const inputRef = useAutoGrow(input, { maxHeight: 160 })
   // Aborts an in-flight streaming agent turn on unmount so the SSE fetch is torn
   // down instead of leaking and writing to dead component state.
-  const agentCtl = useRef(null)
+  const agentCtl = useRef<AbortController | null>(null)
 
   const load = useCallback(() => {
     setLoading(true)
     fetch('/api/assistant/home', { credentials: 'include' })
       .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() })
-      .then(d => { cachedHome = d; setData(d); setOffline(false) })
+      .then((d: unknown) => { const home = toHomeData(d); cachedHome = home; setData(home); setOffline(false) })
       .catch(() => setOffline(true))
       .finally(() => setLoading(false))
   }, [])
@@ -151,7 +341,7 @@ export default function Home() {
   useEffect(() => { transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: scrollBehavior() }) }, [turns])
 
   // ── app launching (shared builtin map; web apps open by url) ────────────────
-  const openApp = useCallback((appId) => {
+  const openApp = useCallback((appId: string) => {
     const app = getAppById(appId)
     if (!app) { setLaunchpad(true); return }
     if (isBuiltinComponent(appId)) {
@@ -170,7 +360,7 @@ export default function Home() {
   // The final answer streams token-by-token into the pending bubble; a mutating
   // action still arrives as a PROPOSAL (Approve/Reject → /execute). runAgentTurn
   // falls back to the non-streaming /agent if streaming can't be established.
-  const runAgent = useCallback(async (text) => {
+  const runAgent = useCallback(async (text: string) => {
     if (busy || !text.trim()) return
     const history = turns
       .filter(t => (t.role === 'user' || t.role === 'assistant') && !t.proposal && t.content)
@@ -178,7 +368,7 @@ export default function Home() {
     const uid = Math.random().toString(36).slice(2)
     const aid = Math.random().toString(36).slice(2)
     setTurns(t => [...t, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', pending: true }])
-    const patchAid = (patch) => setTurns(t => t.map(x => (x.id === aid ? { ...x, ...patch } : x)))
+    const patchAid = (patch: Partial<Turn>) => setTurns(t => t.map(x => (x.id === aid ? { ...x, ...patch } : x)))
     setBusy(true)
     const ctl = new AbortController()
     agentCtl.current = ctl
@@ -187,23 +377,23 @@ export default function Home() {
         message: text,
         history,
         signal: ctl.signal,
-        onToken: (_delta, full) => patchAid({ content: full, pending: true }),
-        onStatus: (ev) => patchAid({ content: ev.content || 'thinking…', pending: true }),
-        onProposal: (proposal) => patchAid({ pending: false, proposal, state: 'pending' }),
+        onToken: (_delta: string, full: string) => patchAid({ content: full, pending: true }),
+        onStatus: (ev: AgentStatusEvent) => patchAid({ content: ev.content || 'thinking…', pending: true }),
+        onProposal: (proposal: AgentProposal) => patchAid({ pending: false, proposal, state: 'pending' }),
       })
       if (result.error) patchAid({ pending: false, content: result.error })
       else if (result.proposal) patchAid({ pending: false })
       else patchAid({ pending: false, content: result.answer || 'No response.' })
     } catch (err) {
       // Aborted by unmount: component is gone — do not write dead state.
-      if (err?.name !== 'AbortError') patchAid({ pending: false, content: 'Could not reach the assistant.' })
+      if (!(isRecord(err) && err.name === 'AbortError')) patchAid({ pending: false, content: 'Could not reach the assistant.' })
     } finally {
       if (agentCtl.current === ctl) agentCtl.current = null
       if (!ctl.signal.aborted) setBusy(false)
     }
   }, [busy, turns])
 
-  const submitAsk = (e) => {
+  const submitAsk = (e?: PreventableEvent) => {
     e?.preventDefault()
     const text = input.trim()
     if (!text) return
@@ -211,7 +401,7 @@ export default function Home() {
     runAgent(text)
   }
 
-  const replyWith = useCallback((item) => {
+  const replyWith = useCallback((item: FocusItem) => {
     const who = item.from_name || item.from
     const prompt = `Draft a reply to "${item.subject}" from ${who}.`
     setInput('')
@@ -223,7 +413,7 @@ export default function Home() {
   // response arrives as a LEDGER-GATED proposal in the composer (Approve/Reject
   // → /execute) — never an auto-executed action. It only names the source
   // message id + the chosen response; the model builds the rsvp_invite proposal.
-  const rsvpInvite = useCallback((inv, response) => {
+  const rsvpInvite = useCallback((inv: Invite, response: string) => {
     const iv = inv.invite || {}
     const prompt = `RSVP ${response} to the calendar invite "${iv.summary || inv.subject}" (message ${inv.message_uid}).`
     setInput('')
@@ -232,7 +422,7 @@ export default function Home() {
   }, [runAgent])
 
   // Approve/reject an inline proposal (send_email etc from the composer flow).
-  const approve = useCallback(async (id, proposal) => {
+  const approve = useCallback(async (id: string, proposal: AgentProposal) => {
     setTurns(t => t.map(x => x.id === id ? { ...x, state: 'busy' } : x))
     try {
       // Send ONLY the opaque proposal id; the server runs its stored args.
@@ -241,22 +431,23 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: proposal.id }),
       })
-      const d = await res.json().catch(() => ({}))
+      const data: unknown = await res.json().catch(() => ({}))
+      const d = isRecord(data) ? data : {}
       setTurns(t => t.map(x => x.id === id ? { ...x, state: res.ok ? 'done' : 'pending' } : x))
-      if (res.ok && d.result) {
-        setTurns(t => [...t, { id: Math.random().toString(36).slice(2), role: 'assistant', content: d.result }])
+      if (res.ok && typeof d.result === 'string') {
+        setTurns(t => [...t, { id: Math.random().toString(36).slice(2), role: 'assistant', content: d.result as string }])
       }
     } catch {
       setTurns(t => t.map(x => x.id === id ? { ...x, state: 'pending' } : x))
     }
   }, [])
-  const reject = useCallback((id) => setTurns(t => t.map(x => x.id === id ? { ...x, state: 'rejected' } : x)), [])
+  const reject = useCallback((id: string) => setTurns(t => t.map(x => x.id === id ? { ...x, state: 'rejected' } : x)), [])
 
   // ── snooze a focus item — a DIRECT, user-initiated triage on a message the
   // user can see. This is not an LLM proposal, so it uses the dedicated
   // /api/assistant/triage endpoint (deterministic, session-authed, triage-only)
   // rather than the ledger-gated /execute. ──────────────────────────────────
-  const snooze = useCallback(async (item) => {
+  const snooze = useCallback(async (item: FocusItem) => {
     setSnoozing(`busy:${item.uid}`)
     try {
       const res = await fetch('/api/assistant/triage', {
@@ -278,9 +469,9 @@ export default function Home() {
   // OWN reminder — NOT an LLM proposal — so it hits the dedicated endpoint
   // (server scopes the cancel by user id). Setting a reminder still goes through
   // the ledger-gated agent flow (the composer), never auto-created. ───────────
-  const [remindersDismissed, setRemindersDismissed] = useState(() => new Set())
-  const [remindersBusy, setRemindersBusy] = useState(null) // id being cancelled
-  const cancelReminder = useCallback(async (rem) => {
+  const [remindersDismissed, setRemindersDismissed] = useState<Set<string>>(() => new Set())
+  const [remindersBusy, setRemindersBusy] = useState<string | null>(null) // id being cancelled
+  const cancelReminder = useCallback(async (rem: Reminder) => {
     setRemindersBusy(rem.id)
     try {
       const res = await fetch('/api/assistant/reminders/cancel', {
@@ -431,7 +622,7 @@ export default function Home() {
                   <div className="min-w-0">
                     <div className="text-[13.5px] text-[color:var(--text-primary)] font-semibold truncate">{iv.summary || inv.subject || '(untitled invite)'}</div>
                     <div className="text-[12px] text-[color:var(--text-muted)] mt-0.5 truncate">
-                      {!isNaN(new Date(iv.start)) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
+                      {!isNaN(new Date(iv.start ?? '').getTime()) && `${relDay(iv.start)}${iv.all_day ? ' · all day' : ` · ${eventTime(iv.start)}`}`}
                       {iv.location ? ` · ${iv.location}` : ''}
                     </div>
                     <div className="text-[12px] text-[color:var(--text-faint)] mt-0.5 truncate">from {iv.organizer || inv.from}</div>
@@ -613,12 +804,18 @@ export default function Home() {
 
           {turns.length > 0 && (
             <div ref={transcriptRef} role="log" aria-label="Assistant conversation" className="mt-3 max-h-72 overflow-y-auto space-y-2.5 px-1">
-              {turns.map(t => (
-                t.proposal ? (
+              {turns.map(t => {
+                const proposal = t.proposal
+                return proposal ? (
                   <div key={t.id} className="space-y-2">
                     {t.content && <div className="text-[13px] text-[color:var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{t.content}</div>}
-                    <ProposalCard proposal={t.proposal} state={t.state} compact
-                      onApprove={() => approve(t.id, t.proposal)} onReject={() => reject(t.id)} />
+                    {/* approveKey/rejectKey passed as undefined: ProposalCard.jsx (out of
+                        scope, untyped) destructures them with no default, so TS infers
+                        them as required — they are genuinely optional at runtime (only
+                        feed an aria-keyshortcuts hint), matching CommandPalette's own
+                        typed usage of this same shared card. */}
+                    <ProposalCard proposal={proposal} state={t.state} compact approveKey={undefined} rejectKey={undefined}
+                      onApprove={() => approve(t.id, proposal)} onReject={() => reject(t.id)} />
                   </div>
                 ) : (
                   <div key={t.id} className={`flex ${t.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -634,7 +831,7 @@ export default function Home() {
                     </div>
                   </div>
                 )
-              ))}
+              })}
             </div>
           )}
         </div>

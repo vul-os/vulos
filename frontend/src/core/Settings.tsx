@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore, type ReactNode, type FormEvent, type ChangeEvent } from 'react'
 import {
   subscribePrefs, getPrefs, setMuted, setSound, setSourceEnabled, getSources,
 } from './notificationStore'
 import { useAuth } from '../auth/AuthProvider'
+import type { AuthProfile } from '../auth/AuthProvider'
 import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper'
 import { PamVisibilityControl } from './PublicAppsManager'
@@ -29,11 +30,46 @@ import {
   StatTile, InfoList, InfoRow, EmptyState, Banner,
 } from './settings/ui'
 
+// isRecord narrows an `unknown` value (typically parsed JSON from a fetch
+// response) to a plain object before any property access — the same guard
+// AuthProvider.tsx / BoxHealthPanel.tsx / nativeBridge.ts use at their own
+// trust boundaries. Every `/api/...` response in this file is untrusted wire
+// JSON and is narrowed through this (or a per-endpoint `toX` built on it)
+// rather than trusted wholesale.
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+// errorMessage stringifies a *caught exception* (e.g. from a rejected fetch
+// promise) — distinct from errField below, which reads a `.error` string off
+// an untrusted JSON *response body*.
+function errorMessage(err: unknown): string {
+  return isRecord(err) && typeof err.message === 'string' ? err.message : String(err)
+}
+
+// errField reads the common `{ error: "..." }` failure shape used across this
+// file's `/api/...` endpoints off an untrusted parsed JSON response body.
+function errField(x: unknown): string | undefined {
+  return isRecord(x) && typeof x.error === 'string' ? x.error : undefined
+}
+
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
 // owner-only sections) and a compact glyph used as a subtle nav affordance.
 // Ordering within a group is intentional. Flattened into `baseSections` below.
-const sectionGroups = [
+interface SettingsSectionDef {
+  id: string
+  label: string
+  owner?: boolean
+  nativeOnly?: boolean
+}
+
+interface SettingsSectionGroup {
+  label: string
+  items: SettingsSectionDef[]
+}
+
+const sectionGroups: SettingsSectionGroup[] = [
   {
     label: 'Intelligence',
     items: [
@@ -112,7 +148,7 @@ const sectionGroups = [
 
 // baseSections is the flat list (order preserved from the groups) used for
 // lookups: initial-section validation and the active-label header.
-const baseSections = sectionGroups.flatMap(g => g.items)
+const baseSections: SettingsSectionDef[] = sectionGroups.flatMap(g => g.items)
 
 // sectionsFor returns the sections visible to a given role. Owner-only sections
 // (marked owner:true) are hidden from non-owners so the surface stays owner-
@@ -120,17 +156,17 @@ const baseSections = sectionGroups.flatMap(g => g.items)
 // the security boundary.
 // visible — owner-gate AND the nativeOnly gate (Android-app-only sections,
 // e.g. "This device", stay hidden in a plain browser/PWA).
-function visible(s, isOwner) {
+function visible(s: SettingsSectionDef, isOwner: boolean): boolean {
   return (!s.owner || isOwner) && (!s.nativeOnly || nativeBridge.inApp)
 }
 
-function sectionsFor(isOwner) {
+function sectionsFor(isOwner: boolean): SettingsSectionDef[] {
   return baseSections.filter(s => visible(s, isOwner))
 }
 
 // groupsFor returns the section groups visible to a given role, dropping any
 // group left empty after owner-only/native-only filtering.
-function groupsFor(isOwner) {
+function groupsFor(isOwner: boolean): SettingsSectionGroup[] {
   return sectionGroups
     .map(g => ({ ...g, items: g.items.filter(s => visible(s, isOwner)) }))
     .filter(g => g.items.length > 0)
@@ -139,10 +175,16 @@ function groupsFor(isOwner) {
 // SettingsModal — a small, accessible dialog wrapper: focus trap + focus
 // restore, Esc + backdrop click to close, role/aria-modal, responsive width.
 // Shared so any Settings panel modal gets the same keyboard contract.
-function SettingsModal({ title, onClose, children }) {
+interface SettingsModalProps {
+  title?: string
+  onClose: () => void
+  children?: ReactNode
+}
+
+function SettingsModal({ title, onClose, children }: SettingsModalProps) {
   const trapRef = useFocusTrap(true)
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
@@ -169,7 +211,14 @@ function SettingsModal({ title, onClose, children }) {
 // the mobile drawer so aria-current + styling stay identical. Groups are
 // rendered with a small uppercase label; the active item carries an accent left
 // bar + accent-tinted surface so the current section reads at a glance.
-function SettingsNav({ active, onSelect, idPrefix, groups }) {
+interface SettingsNavProps {
+  active: string
+  onSelect: (id: string) => void
+  idPrefix?: string
+  groups: SettingsSectionGroup[]
+}
+
+function SettingsNav({ active, onSelect, idPrefix, groups }: SettingsNavProps) {
   return (
     <div className="px-2 space-y-5">
       {groups.map(g => (
@@ -214,12 +263,20 @@ function SettingsNav({ active, onSelect, idPrefix, groups }) {
   )
 }
 
-export default function Settings({ initialSection } = {}) {
+export interface SettingsProps {
+  // May be `null` (e.g. from settingsNav.ts's consumePendingSettingsSection(),
+  // which types its "nothing pending" case as null) as well as `undefined`
+  // (e.g. IntentRouter's optional `section?: string`) — both real call sites,
+  // both meaning "no preference, default to the first section".
+  initialSection?: string | null
+}
+
+export default function Settings({ initialSection }: SettingsProps) {
   const { profile, updateProfile, logout } = useAuth()
   const isOwner = profile?.role === 'admin'
   const sections = sectionsFor(isOwner)
   const groups = groupsFor(isOwner)
-  const [active, setActive] = useState(
+  const [active, setActive] = useState<string>(
     initialSection && sections.some(s => s.id === initialSection) ? initialSection : 'ai',
   )
   const layout = useViewport()
@@ -229,10 +286,10 @@ export default function Settings({ initialSection } = {}) {
   const activeLabel = sections.find(s => s.id === active)?.label || 'Settings'
 
   // Close the drawer + return focus when navigating (mobile) or on Esc.
-  const selectSection = (id) => { setActive(id); setDrawerOpen(false) }
+  const selectSection = (id: string) => { setActive(id); setDrawerOpen(false) }
   useEffect(() => {
     if (!isMobile || !drawerOpen) return
-    const onKey = (e) => { if (e.key === 'Escape') setDrawerOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [isMobile, drawerOpen])
@@ -335,21 +392,48 @@ export default function Settings({ initialSection } = {}) {
   )
 }
 
+// updateProfile's shape (a partial patch merged server-side) — mirrors
+// AuthProvider.tsx's `updateProfile: (updates: Record<string, unknown>) =>
+// Promise<void>`, imported by every panel below that saves profile fields.
+type UpdateProfileFn = (updates: Record<string, unknown>) => Promise<void>
+
 // --- AI ---
-function AISettings({ profile, updateProfile }) {
-  const [provider, setProvider] = useState(profile?.ai_provider || 'ollama')
-  const [model, setModel] = useState(profile?.ai_model || '')
+interface AiStatus {
+  available?: boolean
+  error?: string
+  provider?: string
+  model?: string
+}
+function toAiStatus(x: unknown): AiStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    available: typeof x.available === 'boolean' ? x.available : undefined,
+    error: typeof x.error === 'string' ? x.error : undefined,
+    provider: typeof x.provider === 'string' ? x.provider : undefined,
+    model: typeof x.model === 'string' ? x.model : undefined,
+  }
+}
+
+interface AISettingsProps {
+  profile: AuthProfile | null
+  updateProfile: UpdateProfileFn
+}
+
+function AISettings({ profile, updateProfile }: AISettingsProps) {
+  const [provider, setProvider] = useState(typeof profile?.ai_provider === 'string' ? profile.ai_provider : 'ollama')
+  const [model, setModel] = useState(typeof profile?.ai_model === 'string' ? profile.ai_model : '')
   const [apiKey, setApiKey] = useState('')
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState<AiStatus | null>(null)
 
   useEffect(() => {
-    fetch('/api/ai/status').then(r => r.json()).then(setStatus).catch(() => {})
+    fetch('/api/ai/status').then(r => r.json()).then((d: unknown) => setStatus(toAiStatus(d))).catch(() => {})
   }, [])
 
   const save = () => updateProfile({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined })
 
   const isLocal = provider === 'ollama'
-  const providerLabel = { ollama: 'Ollama (on-device)', claude: 'Claude (Anthropic)', openai: 'OpenAI', custom: 'Custom (OpenAI-compatible)' }[provider]
+  const PROVIDER_LABELS: Record<string, string> = { ollama: 'Ollama (on-device)', claude: 'Claude (Anthropic)', openai: 'OpenAI', custom: 'Custom (OpenAI-compatible)' }
+  const providerLabel = PROVIDER_LABELS[provider]
 
   return (
     <Section
@@ -565,7 +649,7 @@ function AppearanceSettings() {
 // localStorage so it survives reloads. Applied eagerly on load in main.jsx.
 const DENSITY_KEY = 'vulos.density'
 function DensityPicker() {
-  const [density, setDensity] = useState(() => {
+  const [density, setDensity] = useState<string>(() => {
     try { return localStorage.getItem(DENSITY_KEY) || 'comfortable' } catch { return 'comfortable' }
   })
   // Apply the DOM/localStorage side-effects reactively when density changes.
@@ -573,7 +657,7 @@ function DensityPicker() {
     try { localStorage.setItem(DENSITY_KEY, density) } catch { /* noop */ }
     if (typeof document !== 'undefined') document.documentElement.dataset.density = density
   }, [density])
-  const apply = (v) => setDensity(v)
+  const apply = (v: string) => setDensity(v)
   return (
     <div className="flex gap-2">
       {[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }].map(opt => (
@@ -593,14 +677,28 @@ function DensityPicker() {
 }
 
 function WallpaperPicker() {
-  const { wallpaper, setWallpaper } = useWallpaper()
-  const fileRef = useRef(null)
+  // useWallpaper() types as `WallpaperContextValue | null` (null only before
+  // WallpaperProvider mounts — see core/useWallpaper.tsx). App.tsx wraps the
+  // whole app in WallpaperProvider, so this is never actually null at runtime
+  // here; handled null-safely (no-op fallback) rather than asserted non-null,
+  // to keep this an honest type rather than a cast on another file's context.
+  const wallpaperCtx = useWallpaper()
+  const wallpaper = wallpaperCtx?.wallpaper ?? null
+  const setWallpaper = wallpaperCtx?.setWallpaper ?? (() => {})
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleFile = (e) => {
+  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = () => setWallpaper(reader.result)
+    reader.onload = () => {
+      // FileReader.result is `string | ArrayBuffer | null`; readAsDataURL
+      // always yields a string on success, narrowed explicitly rather than
+      // asserted so a genuinely non-string result (which would indicate a
+      // wrong read* method was used) degrades to null instead of lying.
+      const result = reader.result
+      setWallpaper(typeof result === 'string' ? result : null)
+    }
     reader.readAsDataURL(file)
   }
 
@@ -645,7 +743,11 @@ const ACCENT_PRESETS = [
   { label: 'Cyan',    value: '#06b6d4' },
 ]
 
-function AccentPicker({ accent, setAccent }) {
+interface AccentPickerProps {
+  accent: string
+  setAccent: (c: string) => void
+}
+function AccentPicker({ accent, setAccent }: AccentPickerProps) {
   return (
     <div>
       {/* Preset swatches */}
@@ -714,19 +816,57 @@ function AccentPicker({ accent, setAccent }) {
 }
 
 // --- WiFi ---
+interface WifiStatus {
+  connected?: boolean
+  ssid?: string
+  ip?: string
+}
+function toWifiStatus(x: unknown): WifiStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    connected: typeof x.connected === 'boolean' ? x.connected : undefined,
+    ssid: typeof x.ssid === 'string' ? x.ssid : undefined,
+    ip: typeof x.ip === 'string' ? x.ip : undefined,
+  }
+}
+interface WifiNetwork {
+  bssid?: string
+  ssid?: string
+  signal?: number
+  band?: string
+  security?: string
+}
+function toWifiNetwork(x: unknown): WifiNetwork | null {
+  if (!isRecord(x)) return null
+  return {
+    bssid: typeof x.bssid === 'string' ? x.bssid : undefined,
+    ssid: typeof x.ssid === 'string' ? x.ssid : undefined,
+    signal: typeof x.signal === 'number' ? x.signal : undefined,
+    band: typeof x.band === 'string' ? x.band : undefined,
+    security: typeof x.security === 'string' ? x.security : undefined,
+  }
+}
+function toWifiNetworks(x: unknown): WifiNetwork[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toWifiNetwork).filter((n): n is WifiNetwork => n !== null)
+}
+
 function WiFiSettings() {
-  const [status, setStatus] = useState(null)
-  const [networks, setNetworks] = useState(null)
+  const [status, setStatus] = useState<WifiStatus | null>(null)
+  const [networks, setNetworks] = useState<WifiNetwork[] | null>(null)
   const [scanning, setScanning] = useState(false)
-  const [connectSSID, setConnectSSID] = useState(null)
+  const [connectSSID, setConnectSSID] = useState<string | null>(null)
   const [password, setPassword] = useState('')
 
-  const refresh = () => fetch('/api/wifi/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const refresh = () => fetch('/api/wifi/status').then(r => r.json()).then((d: unknown) => setStatus(toWifiStatus(d))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const scan = async () => {
     setScanning(true)
-    const res = await fetch('/api/wifi/scan').then(r => r.json()).then(d => Array.isArray(d) ? d : []).catch(() => [])
+    const res: WifiNetwork[] = await fetch('/api/wifi/scan')
+      .then(r => r.json())
+      .then((d: unknown) => toWifiNetworks(d))
+      .catch(() => [])
     setNetworks(res)
     setScanning(false)
   }
@@ -747,13 +887,13 @@ function WiFiSettings() {
       )}
       <button onClick={scan} disabled={scanning} className="btn mb-4">{scanning ? 'Scanning...' : 'Scan Networks'}</button>
       {networks && networks.map(n => (
-        <div key={n.bssid || n.ssid} className="flex items-center justify-between gap-3 py-2 border-b border-[var(--border-default)]">
+        <div key={n.bssid || n.ssid || ''} className="flex items-center justify-between gap-3 py-2 border-b border-[var(--border-default)]">
           <div className="min-w-0">
             <span className="text-sm">{n.ssid || '(hidden)'}</span>
             <span className="text-xs text-[var(--text-muted)] ml-2 block sm:inline">{n.signal}dBm · {n.band} · {n.security || 'open'}</span>
           </div>
           <button
-            onClick={() => setConnectSSID(n.ssid)}
+            onClick={() => setConnectSSID(n.ssid ?? null)}
             aria-label={`Connect to ${n.ssid || 'hidden network'}`}
             className="shrink-0 text-xs text-[var(--accent)] hover:text-[var(--accent)]"
           >
@@ -776,17 +916,46 @@ function WiFiSettings() {
 }
 
 // --- Bluetooth ---
+interface BluetoothDevice {
+  address: string
+  name?: string
+  type?: string
+  connected?: boolean
+  paired?: boolean
+}
+function toBluetoothDevice(x: unknown): BluetoothDevice | null {
+  if (!isRecord(x) || typeof x.address !== 'string') return null
+  return {
+    address: x.address,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    type: typeof x.type === 'string' ? x.type : undefined,
+    connected: typeof x.connected === 'boolean' ? x.connected : undefined,
+    paired: typeof x.paired === 'boolean' ? x.paired : undefined,
+  }
+}
+interface BluetoothStatus {
+  powered?: boolean
+  devices?: BluetoothDevice[]
+}
+function toBluetoothStatus(x: unknown): BluetoothStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    powered: typeof x.powered === 'boolean' ? x.powered : undefined,
+    devices: Array.isArray(x.devices) ? x.devices.map(toBluetoothDevice).filter((d): d is BluetoothDevice => d !== null) : undefined,
+  }
+}
+
 function BluetoothSettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/bluetooth/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const [status, setStatus] = useState<BluetoothStatus | null>(null)
+  const refresh = () => fetch('/api/bluetooth/status').then(r => r.json()).then((d: unknown) => setStatus(toBluetoothStatus(d))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
-  const setPower = (on) => fetch('/api/bluetooth/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(refresh)
-  const scan = (on) => fetch('/api/bluetooth/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(() => setTimeout(refresh, 3000))
-  const pair = (addr) => fetch('/api/bluetooth/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const connect = (addr) => fetch('/api/bluetooth/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const disconnect = (addr) => fetch('/api/bluetooth/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const remove = (addr) => fetch('/api/bluetooth/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
+  const setPower = (on: boolean) => fetch('/api/bluetooth/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(refresh)
+  const scan = (on: boolean) => fetch('/api/bluetooth/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(() => setTimeout(refresh, 3000))
+  const pair = (addr: string) => fetch('/api/bluetooth/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
+  const connect = (addr: string) => fetch('/api/bluetooth/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
+  const disconnect = (addr: string) => fetch('/api/bluetooth/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
+  const remove = (addr: string) => fetch('/api/bluetooth/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
 
   return (
     <Section title="Bluetooth">
@@ -818,14 +987,47 @@ function BluetoothSettings() {
 }
 
 // --- Audio ---
+interface AudioDeviceT {
+  id: string | number
+  name: string
+  volume: number
+  muted?: boolean
+  default?: boolean
+}
+function toAudioDevice(x: unknown): AudioDeviceT | null {
+  if (!isRecord(x)) return null
+  if (typeof x.id !== 'string' && typeof x.id !== 'number') return null
+  if (typeof x.name !== 'string') return null
+  return {
+    id: x.id,
+    name: x.name,
+    volume: typeof x.volume === 'number' ? x.volume : 0,
+    muted: typeof x.muted === 'boolean' ? x.muted : undefined,
+    default: typeof x.default === 'boolean' ? x.default : undefined,
+  }
+}
+interface AudioStatus {
+  backend?: string
+  outputs?: AudioDeviceT[]
+  inputs?: AudioDeviceT[]
+}
+function toAudioStatus(x: unknown): AudioStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    backend: typeof x.backend === 'string' ? x.backend : undefined,
+    outputs: Array.isArray(x.outputs) ? x.outputs.map(toAudioDevice).filter((d): d is AudioDeviceT => d !== null) : undefined,
+    inputs: Array.isArray(x.inputs) ? x.inputs.map(toAudioDevice).filter((d): d is AudioDeviceT => d !== null) : undefined,
+  }
+}
+
 function AudioSettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/audio/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const [status, setStatus] = useState<AudioStatus | null>(null)
+  const refresh = () => fetch('/api/audio/status').then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
-  const setVol = (id, type, volume) => fetch('/api/audio/volume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, volume }) }).then(r => r.json()).then(setStatus)
-  const setMute = (id, type, muted) => fetch('/api/audio/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, muted }) }).then(r => r.json()).then(setStatus)
-  const setDef = (id, type) => fetch('/api/audio/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type }) }).then(r => r.json()).then(setStatus)
+  const setVol = (id: string | number, type: string, volume: number) => fetch('/api/audio/volume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, volume }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
+  const setMute = (id: string | number, type: string, muted: boolean) => fetch('/api/audio/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, muted }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
+  const setDef = (id: string | number, type: string) => fetch('/api/audio/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
 
   return (
     <Section title="Sound">
@@ -842,7 +1044,14 @@ function AudioSettings() {
   )
 }
 
-function AudioDevice({ device, type, onVolume, onMute, onDefault }) {
+interface AudioDeviceProps {
+  device: AudioDeviceT
+  type: 'output' | 'input'
+  onVolume: (id: string | number, type: string, volume: number) => void
+  onMute: (id: string | number, type: string, muted: boolean) => void
+  onDefault: (id: string | number, type: string) => void
+}
+function AudioDevice({ device, type, onVolume, onMute, onDefault }: AudioDeviceProps) {
   return (
     <div className="py-2 border-b border-[var(--border-default)]">
       <div className="flex items-center justify-between gap-3 mb-1">
@@ -872,13 +1081,55 @@ function AudioDevice({ device, type, onVolume, onMute, onDefault }) {
 }
 
 // --- Display ---
+interface DisplayOutput {
+  name: string
+  connected?: boolean
+  primary?: boolean
+  modes?: string[]
+  resolution?: string
+}
+function toDisplayOutput(x: unknown): DisplayOutput | null {
+  if (!isRecord(x) || typeof x.name !== 'string') return null
+  return {
+    name: x.name,
+    connected: typeof x.connected === 'boolean' ? x.connected : undefined,
+    primary: typeof x.primary === 'boolean' ? x.primary : undefined,
+    modes: Array.isArray(x.modes) ? x.modes.filter((m): m is string => typeof m === 'string') : undefined,
+    resolution: typeof x.resolution === 'string' ? x.resolution : undefined,
+  }
+}
+interface DisplayBrightness {
+  device?: string
+  current?: number
+}
+function toDisplayBrightness(x: unknown): DisplayBrightness | undefined {
+  if (!isRecord(x)) return undefined
+  return {
+    device: typeof x.device === 'string' ? x.device : undefined,
+    current: typeof x.current === 'number' ? x.current : undefined,
+  }
+}
+interface DisplayStatus {
+  brightness?: DisplayBrightness
+  compositor?: string
+  outputs?: DisplayOutput[]
+}
+function toDisplayStatus(x: unknown): DisplayStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    brightness: toDisplayBrightness(x.brightness),
+    compositor: typeof x.compositor === 'string' ? x.compositor : undefined,
+    outputs: Array.isArray(x.outputs) ? x.outputs.map(toDisplayOutput).filter((o): o is DisplayOutput => o !== null) : undefined,
+  }
+}
+
 function DisplaySettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/display/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const [status, setStatus] = useState<DisplayStatus | null>(null)
+  const refresh = () => fetch('/api/display/status').then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
-  const setBrightness = (v) => fetch('/api/display/brightness', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brightness: v }) }).then(r => r.json()).then(setStatus)
-  const setRes = (output, res) => fetch('/api/display/resolution', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ output, resolution: res }) }).then(r => r.json()).then(setStatus)
+  const setBrightness = (v: number) => fetch('/api/display/brightness', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brightness: v }) }).then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d)))
+  const setRes = (output: string, res: string) => fetch('/api/display/resolution', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ output, resolution: res }) }).then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d)))
 
   return (
     <Section title="Display">
@@ -896,7 +1147,7 @@ function DisplaySettings() {
             <span className="text-sm font-medium">{o.name}</span>
             {o.primary && <span className="text-[12px] text-[var(--accent)]">primary</span>}
           </div>
-          {o.connected && o.modes?.length > 0 && (
+          {o.connected && !!o.modes && o.modes.length > 0 && (
             <select value={o.resolution || ''} onChange={e => setRes(o.name, e.target.value)} className="input mt-1">
               {o.modes.map(m => <option key={m} value={m}>{m}{m === o.resolution ? ' (current)' : ''}</option>)}
             </select>
@@ -908,19 +1159,43 @@ function DisplaySettings() {
 }
 
 // --- Energy ---
+interface EnergyStatus {
+  battery_percent?: number
+  battery_charging?: boolean
+  mode?: string
+  cpu_governor?: string
+  screen_on?: boolean
+  screen_dimmed?: boolean
+  idle_duration?: string
+}
+function toEnergyStatus(x: unknown): EnergyStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    battery_percent: typeof x.battery_percent === 'number' ? x.battery_percent : undefined,
+    battery_charging: typeof x.battery_charging === 'boolean' ? x.battery_charging : undefined,
+    mode: typeof x.mode === 'string' ? x.mode : undefined,
+    cpu_governor: typeof x.cpu_governor === 'string' ? x.cpu_governor : undefined,
+    screen_on: typeof x.screen_on === 'boolean' ? x.screen_on : undefined,
+    screen_dimmed: typeof x.screen_dimmed === 'boolean' ? x.screen_dimmed : undefined,
+    idle_duration: typeof x.idle_duration === 'string' ? x.idle_duration : undefined,
+  }
+}
+
 function EnergySettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/energy/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const [status, setStatus] = useState<EnergyStatus | null>(null)
+  const refresh = () => fetch('/api/energy/status').then(r => r.json()).then((d: unknown) => setStatus(toEnergyStatus(d))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
-  const setMode = (mode) => fetch('/api/energy/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }).then(r => r.json()).then(setStatus)
+  const setMode = (mode: string) => fetch('/api/energy/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }).then(r => r.json()).then((d: unknown) => setStatus(toEnergyStatus(d)))
+
+  const batteryPercent = status?.battery_percent
 
   return (
     <Section title="Battery & Energy">
-      {status?.battery_percent >= 0 && (
+      {batteryPercent !== undefined && batteryPercent >= 0 && (
         <div className="mb-4">
-          <span className="text-2xl font-light">{status.battery_percent}%</span>
-          <span className="text-sm text-[var(--text-muted)] ml-2">{status.battery_charging ? 'Charging' : 'On Battery'}</span>
+          <span className="text-2xl font-light">{batteryPercent}%</span>
+          <span className="text-sm text-[var(--text-muted)] ml-2">{status?.battery_charging ? 'Charging' : 'On Battery'}</span>
         </div>
       )}
       <Field label="Power Mode">
@@ -948,7 +1223,12 @@ function EnergySettings() {
 // --- NET-09: Connection Mode ---
 // Additive section. Read/POST /api/network/mode. Matches the visual style of
 // the TURN section above. All identifiers are prefixed NET9_ or connmode-.
-const NET9_MODES = [
+interface NET9_Mode {
+  id: string
+  label: string
+  desc: string
+}
+const NET9_MODES: NET9_Mode[] = [
   {
     id: 'fabric',
     label: 'Fabric',
@@ -971,11 +1251,38 @@ const NET9_MODES = [
   },
 ]
 
+interface NetworkModeStatusDetail {
+  domain?: string
+  instance_id?: string
+}
+function toNetworkModeStatusDetail(x: unknown): NetworkModeStatusDetail | undefined {
+  if (!isRecord(x)) return undefined
+  return {
+    domain: typeof x.domain === 'string' ? x.domain : undefined,
+    instance_id: typeof x.instance_id === 'string' ? x.instance_id : undefined,
+  }
+}
+interface NetworkModeResponse {
+  mode?: string
+  external_listener_blocked?: boolean
+  status?: NetworkModeStatusDetail
+  error?: string
+}
+function toNetworkModeResponse(x: unknown): NetworkModeResponse {
+  if (!isRecord(x)) return {}
+  return {
+    mode: typeof x.mode === 'string' ? x.mode : undefined,
+    external_listener_blocked: typeof x.external_listener_blocked === 'boolean' ? x.external_listener_blocked : undefined,
+    status: toNetworkModeStatusDetail(x.status),
+    error: typeof x.error === 'string' ? x.error : undefined,
+  }
+}
+
 function NET9_ConnectionModeSettings() {
-  const [current, setCurrent] = useState(null) // server-confirmed mode
-  const [pending, setPending] = useState(null) // user-selected mode (pre-apply)
+  const [current, setCurrent] = useState<string | null>(null) // server-confirmed mode
+  const [pending, setPending] = useState<string | null>(null) // user-selected mode (pre-apply)
   const [blocked, setBlocked] = useState(false)
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState<NetworkModeStatusDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -985,14 +1292,15 @@ function NET9_ConnectionModeSettings() {
     setLoading(true)
     fetch('/api/network/mode')
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
-      .then(d => {
-        setCurrent(d.mode)
-        setPending(d.mode)
+      .then((raw: unknown) => {
+        const d = toNetworkModeResponse(raw)
+        setCurrent(d.mode ?? null)
+        setPending(d.mode ?? null)
         setBlocked(!!d.external_listener_blocked)
         setStatus(d.status || null)
         setError('')
       })
-      .catch(e => setError(e.message || 'failed to load'))
+      .catch((e: unknown) => setError(errorMessage(e) || 'failed to load'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -1010,19 +1318,20 @@ function NET9_ConnectionModeSettings() {
       body: JSON.stringify({ mode: pending }),
     })
       .then(async r => {
-        const body = await r.json().catch(() => ({}))
+        const raw: unknown = await r.json().catch(() => ({}))
+        const body = toNetworkModeResponse(raw)
         if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status))
         return body
       })
       .then(d => {
-        setCurrent(d.mode)
-        setPending(d.mode)
+        setCurrent(d.mode ?? null)
+        setPending(d.mode ?? null)
         setBlocked(!!d.external_listener_blocked)
         setStatus(d.status || null)
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       })
-      .catch(e => setError(e.message || 'failed to apply'))
+      .catch((e: unknown) => setError(errorMessage(e) || 'failed to apply'))
       .finally(() => setSaving(false))
   }
 
@@ -1127,13 +1436,28 @@ function NET9_ConnectionModeSettings() {
   )
 }
 
+interface NetworkConfig {
+  app_url?: string
+  error?: string
+}
+function toNetworkConfig(x: unknown): NetworkConfig | null {
+  if (!isRecord(x)) return null
+  return {
+    app_url: typeof x.app_url === 'string' ? x.app_url : undefined,
+    error: typeof x.error === 'string' ? x.error : undefined,
+  }
+}
+
 function NetworkSettings() {
-  const [config, setConfig] = useState({ app_url: 'http://localhost:8080' })
+  const [config, setConfig] = useState<NetworkConfig>({ app_url: 'http://localhost:8080' })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    fetch('/api/network/config').then(r => r.ok ? r.json() : null).then(d => d && !d.error && setConfig(d)).catch(() => {})
+    fetch('/api/network/config').then(r => r.ok ? r.json() : null).then((raw: unknown) => {
+      const d = toNetworkConfig(raw)
+      if (d && !d.error) setConfig(d)
+    }).catch(() => {})
   }, [])
 
   const saveConfig = () => {
@@ -1142,7 +1466,11 @@ function NetworkSettings() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config)
-    }).then(r => r.json()).then(d => { setConfig(d); setSaved(true); setTimeout(() => setSaved(false), 2000) }).finally(() => setSaving(false))
+    }).then(r => r.json()).then((raw: unknown) => {
+      setConfig(d => toNetworkConfig(raw) ?? d)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }).finally(() => setSaving(false))
   }
 
   return (
@@ -1170,21 +1498,53 @@ function NetworkSettings() {
 }
 
 // --- TURN / WebRTC (NET-10) ---
+interface TurnConfig {
+  host?: string
+  port?: number
+  realm?: string
+  configured?: boolean
+  error?: string
+}
+function toTurnConfig(x: unknown): TurnConfig | null {
+  if (!isRecord(x)) return null
+  return {
+    host: typeof x.host === 'string' ? x.host : undefined,
+    port: typeof x.port === 'number' ? x.port : undefined,
+    realm: typeof x.realm === 'string' ? x.realm : undefined,
+    configured: typeof x.configured === 'boolean' ? x.configured : undefined,
+    error: typeof x.error === 'string' ? x.error : undefined,
+  }
+}
+interface TurnTestResult {
+  success?: boolean
+  latency_ms?: number
+  error?: string
+}
+function toTurnTestResult(x: unknown): TurnTestResult | null {
+  if (!isRecord(x)) return null
+  return {
+    success: typeof x.success === 'boolean' ? x.success : undefined,
+    latency_ms: typeof x.latency_ms === 'number' ? x.latency_ms : undefined,
+    error: typeof x.error === 'string' ? x.error : undefined,
+  }
+}
+
 function TURNSettingsSection() {
   const [host, setHost] = useState('')
-  const [port, setPort] = useState(3478)
+  const [port, setPort] = useState<number | string>(3478)
   const [realm, setRealm] = useState('vulos')
   const [secret, setSecret] = useState('')
   const [configured, setConfigured] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [testResult, setTestResult] = useState(null)
+  const [testResult, setTestResult] = useState<TurnTestResult | null>(null)
   const [testing, setTesting] = useState(false)
 
   useEffect(() => {
     fetch('/api/turn/config')
       .then(r => r.ok ? r.json() : null)
-      .then(d => {
+      .then((raw: unknown) => {
+        const d = toTurnConfig(raw)
         if (!d || d.error) return
         setHost(d.host || '')
         setPort(d.port || 3478)
@@ -1203,7 +1563,8 @@ function TURNSettingsSection() {
       body: JSON.stringify({ host, port: Number(port), realm, secret: secret || undefined }),
     })
       .then(r => r.json())
-      .then(d => {
+      .then((raw: unknown) => {
+        const d = toTurnConfig(raw)
         if (d && !d.error) {
           setConfigured(!!d.configured)
           setSecret('')
@@ -1219,8 +1580,8 @@ function TURNSettingsSection() {
     setTestResult(null)
     fetch('/api/turn/test', { method: 'POST' })
       .then(r => r.json())
-      .then(setTestResult)
-      .catch(e => setTestResult({ success: false, error: e.message }))
+      .then((raw: unknown) => setTestResult(toTurnTestResult(raw)))
+      .catch((e: unknown) => setTestResult({ success: false, error: errorMessage(e) }))
       .finally(() => setTesting(false))
   }
 
@@ -1296,10 +1657,15 @@ function TURNSettingsSection() {
 }
 
 // --- Account ---
-function AccountSettings({ profile, updateProfile, logout }) {
-  const [name, setName] = useState(profile?.display_name || '')
-  const [locale, setLocale] = useState(profile?.locale || 'en')
-  const [tz, setTz] = useState(profile?.timezone || '')
+interface AccountSettingsProps {
+  profile: AuthProfile | null
+  updateProfile: UpdateProfileFn
+  logout: () => Promise<void>
+}
+function AccountSettings({ profile, updateProfile, logout }: AccountSettingsProps) {
+  const [name, setName] = useState(typeof profile?.display_name === 'string' ? profile.display_name : '')
+  const [locale, setLocale] = useState(typeof profile?.locale === 'string' ? profile.locale : 'en')
+  const [tz, setTz] = useState(typeof profile?.timezone === 'string' ? profile.timezone : '')
 
   const save = () => updateProfile({ display_name: name, locale, timezone: tz })
 
@@ -1314,23 +1680,46 @@ function AccountSettings({ profile, updateProfile, logout }) {
   )
 }
 
+// A `{ type: 'ok' | 'err'; text }` status line, shared by the two lock-screen-
+// credential panels below (Device PIN + Fingerprint).
+interface StatusMsg { type: 'ok' | 'err'; text: string }
+
 // --- Device PIN (CLOGIN-06) ---
 //
 // Allows the user to set / change / disable the device-local PIN used for
 // lock-screen unlock. Requires a full-auth session to change the PIN
 // (enforced server-side; the UI shows an informational note).
+interface PinStatus {
+  has_pin?: boolean
+  permanent_lock?: boolean
+  locked?: boolean
+  locked_until?: string
+  attempts_left?: number
+}
+function toPinStatus(x: unknown): PinStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    has_pin: typeof x.has_pin === 'boolean' ? x.has_pin : undefined,
+    permanent_lock: typeof x.permanent_lock === 'boolean' ? x.permanent_lock : undefined,
+    locked: typeof x.locked === 'boolean' ? x.locked : undefined,
+    locked_until: typeof x.locked_until === 'string' ? x.locked_until : undefined,
+    attempts_left: typeof x.attempts_left === 'number' ? x.attempts_left : undefined,
+  }
+}
+
 function DevicePINSettings() {
-  const [status, setStatus] = useState(null)       // lockout status from server
-  const [hasPIN, setHasPIN] = useState(null)       // whether a PIN is currently set
+  const [status, setStatus] = useState<PinStatus | null>(null)       // lockout status from server
+  const [hasPIN, setHasPIN] = useState<boolean | null>(null)       // whether a PIN is currently set
   const [newPIN, setNewPIN] = useState('')
   const [confirmPIN, setConfirmPIN] = useState('')
-  const [msg, setMsg] = useState(null)             // { type: 'ok'|'err', text }
+  const [msg, setMsg] = useState<StatusMsg | null>(null)             // { type: 'ok'|'err', text }
   const [busy, setBusy] = useState(false)
 
   const loadStatus = () => {
     fetch('/api/auth/pin/status')
       .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((raw: unknown) => {
+        const data = toPinStatus(raw)
         if (data) {
           setStatus(data)
           setHasPIN(data.has_pin !== false)
@@ -1341,7 +1730,7 @@ function DevicePINSettings() {
 
   useEffect(() => { loadStatus() }, [])
 
-  const handleSet = async (e) => {
+  const handleSet = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setMsg(null)
 
@@ -1365,9 +1754,9 @@ function DevicePINSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: newPIN }),
       })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setMsg({ type: 'err', text: data.error || 'Failed to set PIN' })
+        setMsg({ type: 'err', text: errField(data) || 'Failed to set PIN' })
       } else {
         setMsg({ type: 'ok', text: 'PIN set — takes effect on next lock' })
         setNewPIN('')
@@ -1391,9 +1780,9 @@ function DevicePINSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: '' }),
       })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setMsg({ type: 'err', text: data.error || 'Failed to remove PIN' })
+        setMsg({ type: 'err', text: errField(data) || 'Failed to remove PIN' })
       } else {
         setMsg({ type: 'ok', text: 'PIN removed' })
         setHasPIN(false)
@@ -1522,16 +1911,32 @@ function DevicePINSettings() {
 // device (available=true from GET /api/auth/fingerprint/status). Hidden when
 // no hardware is detected. Configurable per-profile; disabling requires a
 // full-auth session (enforced server-side).
+interface FingerprintStatus {
+  available?: boolean
+  enrolled?: boolean
+  hardware_note?: string
+  failures_left?: number
+}
+function toFingerprintStatus(x: unknown): FingerprintStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    available: typeof x.available === 'boolean' ? x.available : undefined,
+    enrolled: typeof x.enrolled === 'boolean' ? x.enrolled : undefined,
+    hardware_note: typeof x.hardware_note === 'string' ? x.hardware_note : undefined,
+    failures_left: typeof x.failures_left === 'number' ? x.failures_left : undefined,
+  }
+}
+
 function FingerprintSettings() {
-  const [status, setStatus] = useState(null)   // FingerprintStatus from server
-  const [msg, setMsg] = useState(null)          // { type: 'ok'|'err', text }
+  const [status, setStatus] = useState<FingerprintStatus | null>(null)   // FingerprintStatus from server
+  const [msg, setMsg] = useState<StatusMsg | null>(null)          // { type: 'ok'|'err', text }
   const [busy, setBusy] = useState(false)
   const [enrolling, setEnrolling] = useState(false)
 
   const loadStatus = () => {
     fetch('/api/auth/fingerprint/status')
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setStatus(data) })
+      .then((raw: unknown) => { const data = toFingerprintStatus(raw); if (data) setStatus(data) })
       .catch(() => {})
   }
 
@@ -1542,9 +1947,9 @@ function FingerprintSettings() {
     setMsg(null)
     try {
       const res = await fetch('/api/auth/fingerprint/enroll/start', { method: 'POST' })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setMsg({ type: 'err', text: data.error || 'Could not start enrollment' })
+        setMsg({ type: 'err', text: errField(data) || 'Could not start enrollment' })
       } else {
         setEnrolling(true)
         setMsg({ type: 'ok', text: 'Scan your finger on the reader — then press Done.' })
@@ -1561,10 +1966,10 @@ function FingerprintSettings() {
     setMsg(null)
     try {
       const res = await fetch('/api/auth/fingerprint/enroll/stop', { method: 'POST' })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setMsg({ type: 'err', text: data.error || 'Enrollment did not complete' })
-      } else if (data.enrolled) {
+        setMsg({ type: 'err', text: errField(data) || 'Enrollment did not complete' })
+      } else if (isRecord(data) && data.enrolled) {
         setMsg({ type: 'ok', text: 'Fingerprint enrolled — you can now unlock with your finger.' })
         setEnrolling(false)
         loadStatus()
@@ -1585,9 +1990,9 @@ function FingerprintSettings() {
     setMsg(null)
     try {
       const res = await fetch('/api/auth/fingerprint/remove', { method: 'POST' })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setMsg({ type: 'err', text: data.error || 'Could not remove fingerprint' })
+        setMsg({ type: 'err', text: errField(data) || 'Could not remove fingerprint' })
       } else {
         setMsg({ type: 'ok', text: 'Fingerprint unlock removed.' })
         loadStatus()
@@ -1662,7 +2067,7 @@ function FingerprintSettings() {
         {status.enrolled && (
           <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
             <span className="text-xs text-[var(--text-muted)]">Unlock attempts left</span>
-            <span className={`text-sm ${status.failures_left <= 1 ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
+            <span className={`text-sm ${(status.failures_left ?? 0) <= 1 ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
               {status.failures_left} of 3
             </span>
           </div>
@@ -1761,6 +2166,49 @@ function FingerprintSettings() {
 }
 
 // --- AI Apps Gallery ---
+interface AiApp {
+  id: string
+  title?: string
+  created?: string
+  has_python?: string
+}
+function toAiApp(x: unknown): AiApp | null {
+  if (!isRecord(x) || typeof x.id !== 'string') return null
+  return {
+    id: x.id,
+    title: typeof x.title === 'string' ? x.title : undefined,
+    created: typeof x.created === 'string' ? x.created : undefined,
+    has_python: typeof x.has_python === 'string' ? x.has_python : undefined,
+  }
+}
+function toAiApps(x: unknown): AiApp[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toAiApp).filter((a): a is AiApp => a !== null)
+}
+interface AiAppVersion {
+  version: string
+  timestamp?: string
+  brief?: string
+}
+function toAiAppVersion(x: unknown): AiAppVersion | null {
+  if (!isRecord(x) || (typeof x.version !== 'string' && typeof x.version !== 'number')) return null
+  return {
+    version: String(x.version),
+    timestamp: typeof x.timestamp === 'string' ? x.timestamp : undefined,
+    brief: typeof x.brief === 'string' ? x.brief : undefined,
+  }
+}
+function toAiAppVersions(x: unknown): AiAppVersion[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toAiAppVersion).filter((v): v is AiAppVersion => v !== null)
+}
+interface AiAppConfig {
+  edit_disabled?: boolean
+}
+function toAiAppConfig(x: unknown): AiAppConfig | null {
+  if (!isRecord(x)) return null
+  return { edit_disabled: typeof x.edit_disabled === 'boolean' ? x.edit_disabled : undefined }
+}
 
 // AIAppPreview — opens a saved AI app inside a SANDBOXED iframe (opaque origin:
 // `allow-scripts` only, deliberately NO `allow-same-origin`) instead of the old
@@ -1770,7 +2218,11 @@ function FingerprintSettings() {
 // reach the OS origin. The served HTML also ships a `sandbox` CSP as
 // defense-in-depth (see routes_aiapps_security.go), so it is inert even if
 // re-opened top-level. This mirrors the shell's in-window sandbox for AI apps.
-function AIAppPreview({ app, onClose }) {
+interface AIAppPreviewProps {
+  app: AiApp
+  onClose: () => void
+}
+function AIAppPreview({ app, onClose }: AIAppPreviewProps) {
   return (
     <SettingsModal title={app.title || 'AI App'} onClose={onClose}>
       <div className="w-full h-[60vh] rounded-lg overflow-hidden border border-[var(--border-default)] bg-[var(--bg-base)]">
@@ -1789,19 +2241,24 @@ function AIAppPreview({ app, onClose }) {
   )
 }
 
-function AIAppVersions({ appId, onClose, editDisabled }) {
-  const [versions, setVersions] = useState([])
+interface AIAppVersionsProps {
+  appId: string
+  onClose: () => void
+  editDisabled: boolean
+}
+function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
+  const [versions, setVersions] = useState<AiAppVersion[]>([])
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
     fetch(`/api/ai-apps/${appId}/versions`)
       .then(r => r.json())
-      .then(setVersions)
+      .then((raw: unknown) => setVersions(toAiAppVersions(raw)))
       .catch(() => setVersions([]))
   }, [appId])
 
-  const rollback = async (version) => {
+  const rollback = async (version: string) => {
     setBusy(true)
     setMsg('')
     try {
@@ -1811,8 +2268,8 @@ function AIAppVersions({ appId, onClose, editDisabled }) {
         body: JSON.stringify({ version }),
       })
       if (r.status === 503) { setMsg('AI-app editing is disabled by the administrator'); return }
-      const d = await r.json()
-      if (!r.ok) setMsg(d.error || 'Rollback failed')
+      const d: unknown = await r.json()
+      if (!r.ok) setMsg(errField(d) || 'Rollback failed')
       else setMsg('Rolled back successfully')
     } catch {
       setMsg('Request failed')
@@ -1850,23 +2307,23 @@ function AIAppVersions({ appId, onClose, editDisabled }) {
 }
 
 function AIAppsSettings() {
-  const [apps, setApps] = useState([])
+  const [apps, setApps] = useState<AiApp[]>([])
   const [visRefreshKey, setVisRefreshKey] = useState(0)
-  const [versionsOpen, setVersionsOpen] = useState(null)
-  const [preview, setPreview] = useState(null)
+  const [versionsOpen, setVersionsOpen] = useState<string | null>(null)
+  const [preview, setPreview] = useState<AiApp | null>(null)
   const [editDisabled, setEditDisabled] = useState(false)
-  const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then(setApps).catch(() => {}), [])
+  const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then((raw: unknown) => setApps(toAiApps(raw))).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
   // Surface the DISABLE_AI_APP_EDIT kill-switch so mutating actions render as
   // clearly-disabled controls + a banner, not just a failure toast on click.
   useEffect(() => {
     fetch('/api/ai-apps/config')
       .then(r => r.ok ? r.json() : null)
-      .then(c => setEditDisabled(!!(c && c.edit_disabled)))
+      .then((raw: unknown) => setEditDisabled(!!toAiAppConfig(raw)?.edit_disabled))
       .catch(() => {})
   }, [])
 
-  const remove = async (id) => {
+  const remove = async (id: string) => {
     const r = await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
     if (r.status === 503) { setEditDisabled(true); return }
     if (versionsOpen === id) setVersionsOpen(null)
@@ -1874,7 +2331,7 @@ function AIAppsSettings() {
   }
 
   const handleVisChanged = useCallback(() => { setVisRefreshKey(k => k + 1) }, [])
-  const toggleVersions = (id) => { setVersionsOpen(prev => prev === id ? null : id) }
+  const toggleVersions = (id: string) => { setVersionsOpen(prev => prev === id ? null : id) }
 
   return (
     <Section title="AI-Generated Apps">
@@ -1916,12 +2373,35 @@ function AIAppsSettings() {
 }
 
 // --- Vault / Backup ---
+interface VaultStatus {
+  initialized?: boolean
+  last_backup?: string
+}
+function toVaultStatus(x: unknown): VaultStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    initialized: typeof x.initialized === 'boolean' ? x.initialized : undefined,
+    last_backup: typeof x.last_backup === 'string' ? x.last_backup : undefined,
+  }
+}
+interface VaultSync {
+  total_snapshots?: number
+  other_devices?: string[]
+}
+function toVaultSync(x: unknown): VaultSync | null {
+  if (!isRecord(x)) return null
+  return {
+    total_snapshots: typeof x.total_snapshots === 'number' ? x.total_snapshots : undefined,
+    other_devices: Array.isArray(x.other_devices) ? x.other_devices.filter((d): d is string => typeof d === 'string') : undefined,
+  }
+}
+
 function VaultSettings() {
-  const [status, setStatus] = useState(null)
-  const [sync, setSync] = useState(null)
+  const [status, setStatus] = useState<VaultStatus | null>(null)
+  const [sync, setSync] = useState<VaultSync | null>(null)
   const refresh = () => {
-    fetch('/api/vault/status').then(r => r.json()).then(setStatus).catch(() => {})
-    fetch('/api/vault/sync').then(r => r.json()).then(setSync).catch(() => {})
+    fetch('/api/vault/status').then(r => r.json()).then((raw: unknown) => setStatus(toVaultStatus(raw))).catch(() => {})
+    fetch('/api/vault/sync').then(r => r.json()).then((raw: unknown) => setSync(toVaultSync(raw))).catch(() => {})
   }
   useEffect(() => { refresh() }, [])
 
@@ -1941,10 +2421,10 @@ function VaultSettings() {
             <button onClick={backup} className="btn">Backup Now</button>
             <button onClick={syncDevice} className="btn">Sync to This Device</button>
           </div>
-          {sync?.other_devices?.length > 0 && (
+          {(sync?.other_devices?.length ?? 0) > 0 && (
             <>
               <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Other Devices</h3>
-              {sync.other_devices.map(d => <p key={d} className="text-sm text-[var(--text-tertiary)]">{d}</p>)}
+              {sync?.other_devices?.map(d => <p key={d} className="text-sm text-[var(--text-tertiary)]">{d}</p>)}
             </>
           )}
         </>
@@ -1957,9 +2437,25 @@ function VaultSettings() {
 }
 
 // --- Recall / Search ---
+interface RecallStatus {
+  indexed_files?: number
+  total_files?: number
+  last_index?: string
+  indexing?: boolean
+}
+function toRecallStatus(x: unknown): RecallStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    indexed_files: typeof x.indexed_files === 'number' ? x.indexed_files : undefined,
+    total_files: typeof x.total_files === 'number' ? x.total_files : undefined,
+    last_index: typeof x.last_index === 'string' ? x.last_index : undefined,
+    indexing: typeof x.indexing === 'boolean' ? x.indexing : undefined,
+  }
+}
+
 function RecallSettings() {
-  const [status, setStatus] = useState(null)
-  const refresh = () => fetch('/api/recall/status').then(r => r.json()).then(setStatus).catch(() => {})
+  const [status, setStatus] = useState<RecallStatus | null>(null)
+  const refresh = () => fetch('/api/recall/status').then(r => r.json()).then((raw: unknown) => setStatus(toRecallStatus(raw))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const reindex = () => fetch('/api/recall/index', { method: 'POST' }).then(refresh)
@@ -1981,22 +2477,52 @@ function RecallSettings() {
 }
 
 // --- Storage / Cluster Sync (CLUSTER-06) ---
+// NOTE: this component is not currently rendered anywhere — Settings' own
+// "storage" section renders the imported ./settings/StoragePanel instead (see
+// the `active === 'storage'` branch above). Pre-existing dead code (already
+// unreachable before this file was typed); left in place rather than removed,
+// per "typing pass only, no behaviour changes" — it is still fully typed below
+// since TS type-checks function bodies whether or not they are ever called.
+interface StorageStatus {
+  configured?: boolean
+  bucket?: string
+  region?: string
+  size_gb?: number
+  used_gb?: number
+}
+function toStorageStatus(x: unknown): StorageStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    configured: typeof x.configured === 'boolean' ? x.configured : undefined,
+    bucket: typeof x.bucket === 'string' ? x.bucket : undefined,
+    region: typeof x.region === 'string' ? x.region : undefined,
+    size_gb: typeof x.size_gb === 'number' ? x.size_gb : undefined,
+    used_gb: typeof x.used_gb === 'number' ? x.used_gb : undefined,
+  }
+}
+interface StorageForm {
+  endpoint: string
+  bucket: string
+  region: string
+  access_key: string
+  secret_key: string
+}
 function StorageSettings() {
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState<StorageStatus | null>(null)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ endpoint: '', bucket: '', region: 'us-east-1', access_key: '', secret_key: '' })
+  const [form, setForm] = useState<StorageForm>({ endpoint: '', bucket: '', region: 'us-east-1', access_key: '', secret_key: '' })
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
 
   const refresh = () =>
     fetch('/api/storage/status')
       .then(r => r.json())
-      .then(setStatus)
+      .then((raw: unknown) => setStatus(toStorageStatus(raw)))
       .catch(() => {})
 
   useEffect(() => { refresh() }, [])
 
-  const enable = async (e) => {
+  const enable = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setSaving(true)
     setSaveMsg('')
@@ -2012,8 +2538,8 @@ function StorageSettings() {
         setTimeout(() => setSaveMsg(''), 3000)
         refresh()
       } else {
-        const d = await res.json().catch(() => ({}))
-        setSaveMsg(d.error || 'Failed to save')
+        const d: unknown = await res.json().catch(() => ({}))
+        setSaveMsg(errField(d) || 'Failed to save')
       }
     } catch {
       setSaveMsg('Could not reach server')
@@ -2022,7 +2548,7 @@ function StorageSettings() {
     }
   }
 
-  const fmtGB = (gb) => (gb > 0 ? `${gb.toFixed(1)} GB` : '—')
+  const fmtGB = (gb: number) => (gb > 0 ? `${gb.toFixed(1)} GB` : '—')
 
   return (
     <Section title="Storage / Cluster Sync">
@@ -2049,11 +2575,11 @@ function StorageSettings() {
             </div>
             <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
               <span className="text-xs text-[var(--text-muted)]">Allocated</span>
-              <span className="text-sm text-[var(--text-secondary)]">{fmtGB(status.size_gb)}</span>
+              <span className="text-sm text-[var(--text-secondary)]">{fmtGB(status.size_gb ?? 0)}</span>
             </div>
             <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
               <span className="text-xs text-[var(--text-muted)]">Used</span>
-              <span className="text-sm text-[var(--text-secondary)]">{fmtGB(status.used_gb)}</span>
+              <span className="text-sm text-[var(--text-secondary)]">{fmtGB(status.used_gb ?? 0)}</span>
             </div>
           </>
         )}
@@ -2138,9 +2664,33 @@ function StorageSettings() {
 // services via VULOS_STORAGE_MODE / VULOS_MINIO_* env vars. The CRDT sync
 // layer (STORE-SYNC-01 / OFFICE-SYNC-01 / SYNC-P2P-01) lives in the sibling
 // repos and is engaged purely by the mode flip — no UI plumbing required.
+interface StorageModeConfig {
+  mode?: string
+  minio_endpoint?: string
+  minio_region?: string
+  minio_bucket?: string
+  minio_creds_ref?: string
+}
+function toStorageModeConfig(x: unknown): StorageModeConfig | null {
+  if (!isRecord(x)) return null
+  return {
+    mode: typeof x.mode === 'string' ? x.mode : undefined,
+    minio_endpoint: typeof x.minio_endpoint === 'string' ? x.minio_endpoint : undefined,
+    minio_region: typeof x.minio_region === 'string' ? x.minio_region : undefined,
+    minio_bucket: typeof x.minio_bucket === 'string' ? x.minio_bucket : undefined,
+    minio_creds_ref: typeof x.minio_creds_ref === 'string' ? x.minio_creds_ref : undefined,
+  }
+}
+interface StorageModeDraft {
+  mode: string
+  minio_endpoint: string
+  minio_region: string
+  minio_bucket: string
+  minio_creds_ref: string
+}
 function StorageModeSettings() {
-  const [cfg, setCfg] = useState(null)
-  const [draft, setDraft] = useState({
+  const [cfg, setCfg] = useState<StorageModeConfig | null>(null)
+  const [draft, setDraft] = useState<StorageModeDraft>({
     mode: 'local-fs',
     minio_endpoint: 'http://127.0.0.1:9000',
     minio_region: 'auto',
@@ -2153,7 +2703,8 @@ function StorageModeSettings() {
   useEffect(() => {
     fetch('/api/storagemode')
       .then(r => r.json())
-      .then(d => {
+      .then((raw: unknown) => {
+        const d = toStorageModeConfig(raw) || {}
         setCfg(d)
         // Seed the draft from the current config so the form is in sync.
         setDraft(prev => ({
@@ -2174,20 +2725,20 @@ function StorageModeSettings() {
     try {
       // Send the SELECTED mode — never a hard-coded backend, or the picker
       // silently becomes a two-state toggle that always lands on hosted.
-      const body = draft.mode === 'local-minio-sync' ? draft : { mode: draft.mode || 'local-fs' }
+      const body: StorageModeDraft | { mode: string } = draft.mode === 'local-minio-sync' ? draft : { mode: draft.mode || 'local-fs' }
       const res = await fetch('/api/storagemode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       if (res.ok) {
-        const d = await res.json()
+        const d = toStorageModeConfig(await res.json())
         setCfg(d)
         setMsg('Saved — restart vulos-bundle.target to apply')
         setTimeout(() => setMsg(''), 4000)
       } else {
-        const e = await res.json().catch(() => ({}))
-        setMsg(e.error || 'Failed to save')
+        const e: unknown = await res.json().catch(() => ({}))
+        setMsg(errField(e) || 'Failed to save')
       }
     } catch {
       setMsg('Could not reach server')
@@ -2290,18 +2841,43 @@ function StorageModeSettings() {
 }
 
 // --- Users & Profiles ---
-function UsersSettings({ profile }) {
-  const [profiles, setProfiles] = useState([])
+interface ProfileEntry {
+  user_id: string
+  display_name?: string
+  role: string
+}
+function toProfileEntry(x: unknown): ProfileEntry | null {
+  if (!isRecord(x) || typeof x.user_id !== 'string' || typeof x.role !== 'string') return null
+  return {
+    user_id: x.user_id,
+    display_name: typeof x.display_name === 'string' ? x.display_name : undefined,
+    role: x.role,
+  }
+}
+function toProfileEntries(x: unknown): ProfileEntry[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toProfileEntry).filter((p): p is ProfileEntry => p !== null)
+}
+interface NewUserDraft {
+  username: string
+  password: string
+  displayName: string
+}
+interface UsersSettingsProps {
+  profile: AuthProfile | null
+}
+function UsersSettings({ profile }: UsersSettingsProps) {
+  const [profiles, setProfiles] = useState<ProfileEntry[]>([])
   const [pin, setPin] = useState('')
-  const [newUser, setNewUser] = useState({ username: '', password: '', displayName: '' })
+  const [newUser, setNewUser] = useState<NewUserDraft>({ username: '', password: '', displayName: '' })
   const [addError, setAddError] = useState('')
   const [addSuccess, setAddSuccess] = useState('')
-  const refresh = () => fetch('/api/profiles').then(r => r.json()).then(setProfiles).catch(() => {})
+  const refresh = () => fetch('/api/profiles').then(r => r.json()).then((raw: unknown) => setProfiles(toProfileEntries(raw))).catch(() => {})
   useEffect(() => { refresh() }, [])
 
   const isAdmin = profile?.role === 'admin'
 
-  const setRole = async (userId, role) => {
+  const setRole = async (userId: string, role: string) => {
     await fetch(`/api/profiles/${userId}/role`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -2310,13 +2886,13 @@ function UsersSettings({ profile }) {
     refresh()
   }
 
-  const removeUser = async (userId) => {
+  const removeUser = async (userId: string) => {
     if (!confirm('Remove this user? This cannot be undone.')) return
     await fetch(`/api/profiles/${userId}`, { method: 'DELETE' })
     refresh()
   }
 
-  const addUser = async (e) => {
+  const addUser = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setAddError('')
     setAddSuccess('')
@@ -2330,9 +2906,9 @@ function UsersSettings({ profile }) {
           display_name: newUser.displayName || newUser.username,
         }),
       })
-      const data = await res.json()
+      const data: unknown = await res.json()
       if (!res.ok) {
-        setAddError(data.error || 'Failed to create user')
+        setAddError(errField(data) || 'Failed to create user')
         return
       }
       setNewUser({ username: '', password: '', displayName: '' })
@@ -2415,7 +2991,7 @@ function UsersSettings({ profile }) {
               'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'
             }`}>{p.role}</span>
           </div>
-          {isAdmin && p.user_id !== profile.user_id && (
+          {isAdmin && p.user_id !== profile?.user_id && (
             <div className="flex gap-2 shrink-0">
               <select value={p.role} onChange={e => setRole(p.user_id, e.target.value)}
                 aria-label={`Role for ${p.display_name || 'user'}`}
@@ -2443,21 +3019,49 @@ function UsersSettings({ profile }) {
 // check found and lets the owner explicitly choose to download + stage it;
 // a security release additionally fires a priority notification, but even
 // then nothing is staged until the button below is clicked.
+interface OsUpdateStatus {
+  latest_version?: string
+  current_version?: string
+  available?: boolean
+  is_security?: boolean
+  severity?: string
+  published_at?: string
+  checked_at?: string
+  channel_url?: string
+  notes?: string
+  last_error?: string
+}
+function toOsUpdateStatus(x: unknown): OsUpdateStatus | null {
+  if (!isRecord(x)) return null
+  return {
+    latest_version: typeof x.latest_version === 'string' ? x.latest_version : undefined,
+    current_version: typeof x.current_version === 'string' ? x.current_version : undefined,
+    available: typeof x.available === 'boolean' ? x.available : undefined,
+    is_security: typeof x.is_security === 'boolean' ? x.is_security : undefined,
+    severity: typeof x.severity === 'string' ? x.severity : undefined,
+    published_at: typeof x.published_at === 'string' ? x.published_at : undefined,
+    checked_at: typeof x.checked_at === 'string' ? x.checked_at : undefined,
+    channel_url: typeof x.channel_url === 'string' ? x.channel_url : undefined,
+    notes: typeof x.notes === 'string' ? x.notes : undefined,
+    last_error: typeof x.last_error === 'string' ? x.last_error : undefined,
+  }
+}
+
 function OSUpdateSettings() {
-  const [status, setStatus] = useState(null)
+  const [status, setStatus] = useState<OsUpdateStatus | null>(null)
   const [staging, setStaging] = useState(false)
-  const [stageResult, setStageResult] = useState(null)
+  const [stageResult, setStageResult] = useState('')
   const [error, setError] = useState('')
 
   const refresh = () => {
     fetch('/api/os/update/status')
       .then(async r => {
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status))
-        setStatus(d)
+        const raw: unknown = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(errField(raw) || ('HTTP ' + r.status))
+        setStatus(toOsUpdateStatus(raw))
         setError('')
       })
-      .catch(e => setError(e.message || 'Could not reach server'))
+      .catch((e: unknown) => setError(errorMessage(e) || 'Could not reach server'))
   }
 
   useEffect(() => { refresh() }, [])
@@ -2469,16 +3073,16 @@ function OSUpdateSettings() {
       'until you separately reboot — the box keeps running the current version until then.'
     )) return
     setStaging(true)
-    setStageResult(null)
+    setStageResult('')
     setError('')
     try {
       const r = await fetch('/api/os/update/stage', { method: 'POST' })
-      const d = await r.json().catch(() => ({}))
+      const d: unknown = await r.json().catch(() => ({}))
       if (r.ok) {
-        setStageResult(d.message || 'Staged — reboot to activate')
+        setStageResult((isRecord(d) && typeof d.message === 'string' ? d.message : '') || 'Staged — reboot to activate')
         refresh()
       } else {
-        setError(d.error || ('HTTP ' + r.status))
+        setError(errField(d) || ('HTTP ' + r.status))
       }
     } catch {
       setError('Request failed')
@@ -2502,7 +3106,7 @@ function OSUpdateSettings() {
               Security update{status?.severity ? ` — ${status.severity}` : ''}
             </p>
             <p className="text-xs text-[var(--status-danger)]/90 mt-0.5">
-              Version {status.latest_version} addresses a security issue. Staging and rebooting soon is recommended.
+              Version {status?.latest_version} addresses a security issue. Staging and rebooting soon is recommended.
             </p>
           </div>
         </div>
@@ -2604,20 +3208,83 @@ function OSUpdateSettings() {
 }
 
 // --- About ---
+interface HealthPayload {
+  status?: string
+}
+function toHealthPayload(x: unknown): HealthPayload | null {
+  if (!isRecord(x)) return null
+  return { status: typeof x.status === 'string' ? x.status : undefined }
+}
+interface SysInfo {
+  device_model?: string
+  hostname?: string
+  os_version?: string
+  kernel?: string
+  arch?: string
+  cpu_model?: string
+  cpu_cores?: number
+  mem_used_mb?: number
+  mem_total_mb?: number
+  mem_percent?: number
+  storage_total_mb?: number
+  storage_used_mb?: number
+  battery?: number
+  charging?: boolean
+  gpu_device?: string
+  gpu_vendor?: string
+  gpu_tier?: string
+  gpu_encoder?: string
+  gpu_codec?: string
+  gpu_av1?: boolean
+  gpu_pipewire?: boolean
+  uptime?: string
+}
+function toSysInfo(x: unknown): SysInfo | null {
+  if (!isRecord(x)) return null
+  return {
+    device_model: typeof x.device_model === 'string' ? x.device_model : undefined,
+    hostname: typeof x.hostname === 'string' ? x.hostname : undefined,
+    os_version: typeof x.os_version === 'string' ? x.os_version : undefined,
+    kernel: typeof x.kernel === 'string' ? x.kernel : undefined,
+    arch: typeof x.arch === 'string' ? x.arch : undefined,
+    cpu_model: typeof x.cpu_model === 'string' ? x.cpu_model : undefined,
+    cpu_cores: typeof x.cpu_cores === 'number' ? x.cpu_cores : undefined,
+    mem_used_mb: typeof x.mem_used_mb === 'number' ? x.mem_used_mb : undefined,
+    mem_total_mb: typeof x.mem_total_mb === 'number' ? x.mem_total_mb : undefined,
+    mem_percent: typeof x.mem_percent === 'number' ? x.mem_percent : undefined,
+    storage_total_mb: typeof x.storage_total_mb === 'number' ? x.storage_total_mb : undefined,
+    storage_used_mb: typeof x.storage_used_mb === 'number' ? x.storage_used_mb : undefined,
+    battery: typeof x.battery === 'number' ? x.battery : undefined,
+    charging: typeof x.charging === 'boolean' ? x.charging : undefined,
+    gpu_device: typeof x.gpu_device === 'string' ? x.gpu_device : undefined,
+    gpu_vendor: typeof x.gpu_vendor === 'string' ? x.gpu_vendor : undefined,
+    gpu_tier: typeof x.gpu_tier === 'string' ? x.gpu_tier : undefined,
+    gpu_encoder: typeof x.gpu_encoder === 'string' ? x.gpu_encoder : undefined,
+    gpu_codec: typeof x.gpu_codec === 'string' ? x.gpu_codec : undefined,
+    gpu_av1: typeof x.gpu_av1 === 'boolean' ? x.gpu_av1 : undefined,
+    gpu_pipewire: typeof x.gpu_pipewire === 'boolean' ? x.gpu_pipewire : undefined,
+    uptime: typeof x.uptime === 'string' ? x.uptime : undefined,
+  }
+}
+interface LegalDoc {
+  title: string
+  text: string
+}
+
 function AboutSettings() {
-  const [health, setHealth] = useState(null)
-  const [sys, setSys] = useState(null)
+  const [health, setHealth] = useState<HealthPayload | null>(null)
+  const [sys, setSys] = useState<SysInfo | null>(null)
   // Open-source licence notices + GPL/LGPL written offer, fetched on demand.
-  const [legal, setLegal] = useState(null)      // { title, text } or null
-  const [legalErr, setLegalErr] = useState(null)
+  const [legal, setLegal] = useState<LegalDoc | null>(null)      // { title, text } or null
+  const [legalErr, setLegalErr] = useState<string | null>(null)
   const [legalLoading, setLegalLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/health').then(r => r.json()).then(setHealth).catch(() => {})
-    fetch('/api/system/info').then(r => r.json()).then(setSys).catch(() => {})
+    fetch('/health').then(r => r.json()).then((raw: unknown) => setHealth(toHealthPayload(raw))).catch(() => {})
+    fetch('/api/system/info').then(r => r.json()).then((raw: unknown) => setSys(toSysInfo(raw))).catch(() => {})
   }, [])
 
-  const openLegal = (title, url) => {
+  const openLegal = (title: string, url: string) => {
     setLegalErr(null)
     setLegalLoading(true)
     setLegal({ title, text: '' })
@@ -2628,10 +3295,13 @@ function AboutSettings() {
       .finally(() => setLegalLoading(false))
   }
 
-  const fmtMB = (mb) => {
+  const fmtMB = (mb: number | undefined) => {
     if (!mb) return '—'
     return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'
   }
+
+  const memPercent = sys?.mem_percent
+  const battery = sys?.battery
 
   return (
     <div>
@@ -2658,23 +3328,23 @@ function AboutSettings() {
         <InfoRow label="Processor" value={sys?.cpu_model || `${sys?.cpu_cores || '—'} cores`} />
         <InfoRow label="CPU Cores" value={sys?.cpu_cores} />
         <InfoRow label="Memory" value={sys ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : '—'} />
-        {sys?.mem_percent > 0 && (
+        {memPercent !== undefined && memPercent > 0 && (
           <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
             <span className="text-xs text-[var(--text-muted)]">RAM Usage</span>
             <div className="flex items-center gap-2">
               <div className="w-32 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${sys.mem_percent > 80 ? 'bg-[var(--status-danger)]' : sys.mem_percent > 60 ? 'bg-[var(--status-warning)]' : 'bg-[var(--accent)]'}`}
-                  style={{ width: `${Math.min(sys.mem_percent, 100)}%` }}
+                  className={`h-full rounded-full transition-all ${memPercent > 80 ? 'bg-[var(--status-danger)]' : memPercent > 60 ? 'bg-[var(--status-warning)]' : 'bg-[var(--accent)]'}`}
+                  style={{ width: `${Math.min(memPercent, 100)}%` }}
                 />
               </div>
-              <span className="text-xs text-[var(--text-tertiary)] w-10 text-right">{Math.round(sys.mem_percent)}%</span>
+              <span className="text-xs text-[var(--text-tertiary)] w-10 text-right">{Math.round(memPercent)}%</span>
             </div>
           </div>
         )}
         <InfoRow label="Storage" value={sys?.storage_total_mb ? `${fmtMB(sys.storage_used_mb)} used of ${fmtMB(sys.storage_total_mb)}` : '—'} />
-        {sys?.battery >= 0 && (
-          <InfoRow label="Battery" value={`${sys.battery}%${sys.charging ? ' (Charging)' : ''}`} />
+        {battery !== undefined && battery >= 0 && (
+          <InfoRow label="Battery" value={`${battery}%${sys?.charging ? ' (Charging)' : ''}`} />
         )}
       </div>
 
@@ -2771,7 +3441,7 @@ function AboutSettings() {
 // --- Notifications (WAVE-13) ---
 // Wired to the framework-agnostic notificationStore. All prefs persist to
 // localStorage via the store; the shell bell + toaster honour them live.
-const NOTIF_SOURCE_LABELS = {
+const NOTIF_SOURCE_LABELS: Record<string, string> = {
   mail: 'Mail', assistant: 'Assistant', system: 'System', sync: 'Sync', ai: 'AI',
 }
 function NotificationsSettings() {

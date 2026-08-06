@@ -5,7 +5,7 @@
  * /api/apps/{id}/deployment (public URL) every 5 s.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Meter, Pill, EmptyState, Banner } from '../../core/settings/ui'
+import { Pill, EmptyState, Banner } from '../../core/settings/ui'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -14,15 +14,82 @@ const APC_POLL_MS = 5_000
 const APC_MEM_HIGH_DEFAULT = 128 * 1024 * 1024
 const APC_WARN_THRESHOLD = 0.8 // 80 % of memory.high
 
-// ── API helpers ───────────────────────────────────────────────────────────────
+// Mirrors backend/services/appnet/visibility_api.go's Visibility field
+// ("private" | "local" | "public"; default "private").
+type ApcVisibility = 'private' | 'local' | 'public'
 
-async function apcFetchVisibility() {
-  const r = await fetch('/api/apps/visibility')
-  if (!r.ok) throw new Error('vis fetch failed')
-  return r.json() // [{app_id, visibility}]
+interface ApcVisibilityEntry {
+  app_id: string
+  visibility: ApcVisibility
 }
 
-async function apcPatchVisibility(appId, visibility) {
+interface ApcCgroupEntry {
+  app_id: string
+  cpu_pct?: number
+  mem_current?: number
+  mem_high?: number
+  mem_max?: number
+}
+
+interface ApcDeployment {
+  fqdn?: string
+}
+
+// ── wire narrowing ───────────────────────────────────────────────────────────
+// Wire replies are untrusted network JSON — narrow field-by-field rather than
+// trusting the array/object shape wholesale.
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function isApcVisibility(v: unknown): v is ApcVisibility {
+  return v === 'private' || v === 'local' || v === 'public'
+}
+
+function toApcVisibilityEntry(x: unknown): ApcVisibilityEntry | null {
+  if (!isRecord(x)) return null
+  const appId = typeof x.app_id === 'string' ? x.app_id : null
+  const visibility = isApcVisibility(x.visibility) ? x.visibility : null
+  if (!appId || !visibility) return null
+  return { app_id: appId, visibility }
+}
+function toApcVisibilityEntries(x: unknown): ApcVisibilityEntry[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toApcVisibilityEntry).filter((e): e is ApcVisibilityEntry => e !== null)
+}
+
+function toApcCgroupEntry(x: unknown): ApcCgroupEntry | null {
+  if (!isRecord(x)) return null
+  const appId = typeof x.app_id === 'string' ? x.app_id : null
+  if (!appId) return null
+  return {
+    app_id: appId,
+    cpu_pct: typeof x.cpu_pct === 'number' ? x.cpu_pct : undefined,
+    mem_current: typeof x.mem_current === 'number' ? x.mem_current : undefined,
+    mem_high: typeof x.mem_high === 'number' ? x.mem_high : undefined,
+    mem_max: typeof x.mem_max === 'number' ? x.mem_max : undefined,
+  }
+}
+function toApcCgroupEntries(x: unknown): ApcCgroupEntry[] {
+  if (!Array.isArray(x)) return []
+  return x.map(toApcCgroupEntry).filter((e): e is ApcCgroupEntry => e !== null)
+}
+
+function toApcDeployment(x: unknown): ApcDeployment | null {
+  if (!isRecord(x)) return null
+  return { fqdn: typeof x.fqdn === 'string' ? x.fqdn : undefined }
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+async function apcFetchVisibility(): Promise<ApcVisibilityEntry[]> {
+  const r = await fetch('/api/apps/visibility')
+  if (!r.ok) throw new Error('vis fetch failed')
+  return toApcVisibilityEntries(await r.json())
+}
+
+async function apcPatchVisibility(appId: string, visibility: ApcVisibility): Promise<unknown> {
   const r = await fetch(`/api/apps/${appId}/visibility`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -32,25 +99,31 @@ async function apcPatchVisibility(appId, visibility) {
   return r.json()
 }
 
-async function apcFetchCgroups() {
+async function apcFetchCgroups(): Promise<ApcCgroupEntry[]> {
   const r = await fetch('/api/cgroups/status')
   if (!r.ok) return []
-  return r.json() // [{app_id, cpu_pct, mem_current, mem_high, mem_max}]
+  return toApcCgroupEntries(await r.json())
 }
 
-async function apcFetchDeployment(appId) {
+async function apcFetchDeployment(appId: string): Promise<ApcDeployment | null> {
   const r = await fetch(`/api/apps/${appId}/deployment`)
   if (!r.ok) return null
-  return r.json() // {fqdn, ...} or null
+  return toApcDeployment(await r.json())
 }
 
-async function apcPurgeCache(appId) {
+async function apcPurgeCache(appId: string): Promise<void> {
   await fetch(`/api/apps/${appId}/cache/purge`, { method: 'POST' })
 }
 
 // ── ResourceBar ──────────────────────────────────────────────────────────────
 
-function ResourceBar({ label, pct, warn }) {
+interface ResourceBarProps {
+  label: string
+  pct: number
+  warn: boolean
+}
+
+function ResourceBar({ label, pct, warn }: ResourceBarProps) {
   const clamp = Math.min(Math.max(pct || 0, 0), 100)
   const barColor = warn ? 'bg-[var(--status-warning)]' : clamp > 60 ? 'accent-bg' : 'bg-[var(--text-ghost)]'
 
@@ -72,7 +145,12 @@ function ResourceBar({ label, pct, warn }) {
 
 // ── MemWarningBanner ─────────────────────────────────────────────────────────
 
-function MemWarningBanner({ appId, memPct }) {
+interface MemWarningBannerProps {
+  appId: string
+  memPct: number
+}
+
+function MemWarningBanner({ appId, memPct }: MemWarningBannerProps) {
   if (memPct < APC_WARN_THRESHOLD * 100) return null
   return (
     <div className="mt-2">
@@ -83,8 +161,14 @@ function MemWarningBanner({ appId, memPct }) {
 
 // ── AppCard ──────────────────────────────────────────────────────────────────
 
-function AppCard({ app, cgroupInfo, onToggle }) {
-  const [deployment, setDeployment] = useState(null)
+interface AppCardProps {
+  app: ApcVisibilityEntry
+  cgroupInfo: ApcCgroupEntry | undefined
+  onToggle: () => void
+}
+
+function AppCard({ app, cgroupInfo, onToggle }: AppCardProps) {
+  const [deployment, setDeployment] = useState<ApcDeployment | null>(null)
   const [loadingDeploy, setLoadingDeploy] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [purging, setPurging] = useState(false)
@@ -103,7 +187,7 @@ function AppCard({ app, cgroupInfo, onToggle }) {
 
   const handleToggle = useCallback(async () => {
     if (toggling) return
-    const next = isPublic ? 'private' : 'public'
+    const next: ApcVisibility = isPublic ? 'private' : 'public'
     setToggling(true)
     try {
       await apcPatchVisibility(app.app_id, next)
@@ -127,10 +211,9 @@ function AppCard({ app, cgroupInfo, onToggle }) {
   }, [app.app_id, purging])
 
   // cgroup data
-  const cg = cgroupInfo || {}
-  const memHigh = cg.mem_high || APC_MEM_HIGH_DEFAULT
-  const memCurrent = cg.mem_current || 0
-  const cpuPct = cg.cpu_pct || 0
+  const memHigh = cgroupInfo?.mem_high || APC_MEM_HIGH_DEFAULT
+  const memCurrent = cgroupInfo?.mem_current || 0
+  const cpuPct = cgroupInfo?.cpu_pct || 0
   const memPct = memHigh > 0 ? (memCurrent / memHigh) * 100 : 0
   const memWarn = memPct >= APC_WARN_THRESHOLD * 100
 
@@ -218,10 +301,10 @@ function AppCard({ app, cgroupInfo, onToggle }) {
 // Lists all installed apps with publish toggle + resource usage.
 
 export default function AppPublishCard() {
-  const [apps, setApps] = useState(null)  // null = loading
-  const [cgroups, setCgroups] = useState({}) // keyed by app_id
-  const [error, setError] = useState(null)
-  const timerRef = useRef(null)
+  const [apps, setApps] = useState<ApcVisibilityEntry[] | null>(null)  // null = loading
+  const [cgroups, setCgroups] = useState<Record<string, ApcCgroupEntry>>({}) // keyed by app_id
+  const [error, setError] = useState<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -235,7 +318,7 @@ export default function AppPublishCard() {
       setError(null)
 
       // Index cgroup data by app_id
-      const cgMap = {}
+      const cgMap: Record<string, ApcCgroupEntry> = {}
       for (const entry of (cgData || [])) {
         cgMap[entry.app_id] = entry
       }
@@ -250,7 +333,7 @@ export default function AppPublishCard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
     timerRef.current = setInterval(loadData, APC_POLL_MS)
-    return () => clearInterval(timerRef.current)
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [loadData])
 
   const publicApps = (apps || []).filter(a => a.visibility === 'public')

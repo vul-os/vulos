@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, createElement, lazy, Suspense, type FormEvent, type KeyboardEvent, type ComponentType } from 'react'
+import { useState, useRef, useEffect, useCallback, createElement, lazy, Suspense, type FormEvent, type KeyboardEvent } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import type { ShellMessage } from '../providers/ShellProvider'
 import { classifyIntent } from './IntentRouter'
@@ -8,15 +8,6 @@ import { useVoice } from './useVoice'
 import Settings from './Settings'
 // Lazy-loaded so it stays in its own chunk (Launchpad also lazy-loads it).
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
-
-// ESCAPE (justified, single call site): Settings.jsx is not yet converted to
-// TS (2823 lines — out of scope for this pass) and its `{ initialSection } =
-// {}` destructuring default gives TS's JS-inference no declared prop shape
-// (inferred as `{}`), so passing `initialSection` below — a prop Settings.jsx
-// genuinely reads at runtime to pick the sidebar section — doesn't typecheck
-// against the inferred signature. Widened at this one boundary rather than
-// casting broadly; remove once Settings.jsx is converted.
-const SettingsWithSection = Settings as unknown as ComponentType<{ initialSection?: string }>
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -322,7 +313,7 @@ Only output the viewport block — no explanations outside it.`
         if (intent.action === 'open_files') {
           openWindow({ appId: 'files', title: 'File Explorer', icon: '⊡', component: createElement(Suspense, { fallback: null }, createElement(FileManager)) })
         } else if (intent.action === 'open_settings') {
-          openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(SettingsWithSection, { initialSection: intent.section }) })
+          openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(Settings, { initialSection: intent.section }) })
         } else {
           addMessage('system', `${intent.label}`)
         }
