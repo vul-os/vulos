@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // mdnsHostname is the zero-config name the box advertises over multicast DNS.
@@ -103,7 +104,7 @@ func New(cfg Config) (*Service, error) {
 
 	lanIP := cfg.LANIP
 	if lanIP == nil {
-		lanIP = detectLANIP()
+		lanIP = detectLANIPWaiting()
 	}
 
 	return &Service{
@@ -289,6 +290,53 @@ func isWildcardHost(host string) bool {
 // services (e.g. the fabric P2P sync discoverer) can advertise the same IP the
 // LAN listener is bound to without re-implementing detection.
 func DetectLANIP() net.IP { return detectLANIP() }
+
+// detectLANIPWaiting is detectLANIP with a bounded wait for the address to
+// actually exist.
+//
+// WHY: the address is resolved ONCE, at construction, and the listener never
+// re-binds. vulos.service starts on network.target, which fires when networking
+// starts — not when DHCP has assigned an address — and dhcpcd provides nothing
+// later than that (network-online.target has no provider in this image, so
+// ordering on it would be inert). A box whose lease arrived a second late
+// therefore detected no LAN IP, fell back to loopback, and served LAN HTTPS
+// that nothing on the LAN could reach — permanently, and silently.
+//
+// That is not a cosmetic failure: a browser on http://<lan-ip> is not a secure
+// context, so window.crypto.subtle is undefined and src/lib's master key,
+// content sealing and offline auth cannot run at all. LAN HTTPS is what fixes
+// that, so it binding loopback defeats its entire purpose.
+//
+// Observed on a QEMU boot as "HTTPS: loopback-only" on the console status
+// screen. Waits up to lanIPWaitTotal, polling every lanIPWaitStep; falls back
+// to whatever detectLANIP last returned (loopback) so an genuinely
+// network-less box still starts rather than blocking the boot.
+const (
+	lanIPWaitTotal = 30 * time.Second
+	lanIPWaitStep  = 500 * time.Millisecond
+)
+
+// detectLANIPFn is a seam: tests replace it to simulate an address that
+// arrives late. Without it the poll loop is untestable on any machine that
+// already has a LAN address — the loop would exit on the first iteration and a
+// broken wait would look identical to a working one.
+var detectLANIPFn = detectLANIP
+
+func detectLANIPWaiting() net.IP {
+	deadline := time.Now().Add(lanIPWaitTotal)
+	for {
+		ip := detectLANIPFn()
+		if ip != nil && !ip.IsLoopback() {
+			return ip
+		}
+		if time.Now().After(deadline) {
+			log.Printf("[lan] no non-loopback IPv4 after %s — binding loopback; "+
+				"LAN HTTPS will NOT be reachable from the LAN until restart", lanIPWaitTotal)
+			return ip
+		}
+		time.Sleep(lanIPWaitStep)
+	}
+}
 
 // detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling
 // back to 127.0.0.1 when nothing routable is found (so the service is still

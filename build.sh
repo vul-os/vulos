@@ -917,7 +917,18 @@ chmod 440 "$ROOTFS/etc/sudoers.d/sudo-group"
 cat > "$ROOTFS/etc/systemd/system/vulos.service" << 'EOF'
 [Unit]
 Description=Vulos Server
-After=network.target
+# network-ONLINE, not network.target. network.target fires when networking
+# STARTS, not when an address has been assigned, so with any DHCP latency the
+# LAN HTTPS listener detected no LAN IP, fell back to loopback, and bound
+# 127.0.0.1 — permanently, since the address is resolved once at startup and
+# never re-bound. The box then served LAN HTTPS that nothing on the LAN could
+# reach, which silently costs every browser its secure context (no
+# crypto.subtle, so src/lib's master key / content sealing / offline auth
+# cannot run at all). Caught by the console status screen reporting
+# "HTTPS: loopback-only" on a QEMU boot. The deploy path already ordered on
+# network-online.target; the image did not.
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
