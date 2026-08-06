@@ -4,7 +4,7 @@ The software-level setup wizard that runs after the OS boots for the first time.
 
 > **Goal.** Take a brand-new instance from "blank disk" to "running, identifiable, recoverable." Generate a stable ULID, pick a hostname, optionally provision MinIO for cluster sync, register an emergency SSH key, and walk the user through a printable Recovery Kit (JSON + QR). Joining an existing cluster is a parallel sub-flow: paste S3 creds → sync → done.
 > **Non-goals.** Re-running on every boot. We gate on `instance.json` so this fires once.
-> **Status.** Complete. All INIT tasks shipped. The full wizard UI — Identity, Storage, SSH, Recovery Kit (INIT-05/06), and the Join sub-flow with Syncing screen + PIN (INIT-09) — is implemented in `src/auth/Setup.jsx`. Join codes, optional recovery-kit backup, and the boot-mode router are all in.
+> **Status.** Complete. All INIT tasks shipped. The full wizard UI — Identity, Storage, SSH, Recovery Kit (INIT-05/06), and the Join sub-flow with Syncing screen + PIN (INIT-09) — is implemented in `src/auth/Setup.tsx`. Join codes, optional recovery-kit backup, and the boot-mode router are all in.
 
 ---
 

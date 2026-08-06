@@ -2,7 +2,7 @@
 
 **Branch:** `audit/SEC-WEBAPPS`  
 **Date:** 2026-05-21  
-**Scope:** `apps/` (20 bundled web apps), `src/shell/Window.jsx`, `src/layouts/MobileStack.jsx`, `src/shell/Popout.jsx`, `src/App.jsx`, `backend/services/gateway/`, `backend/services/appfs/`, `backend/services/webproxy/`, `backend/cmd/server/`
+**Scope:** `apps/` (20 bundled web apps), `src/shell/Window.tsx`, `src/layouts/MobileStack.tsx`, `src/shell/Popout.tsx`, `src/App.tsx`, `backend/services/gateway/`, `backend/services/appfs/`, `backend/services/webproxy/`, `backend/cmd/server/`
 
 ---
 
@@ -113,10 +113,10 @@ The `appfs` service correctly sandboxes each app under `~/.vulos/{appID}/` and v
 ## 5. postMessage
 
 ### Finding
-No `window.addEventListener('message', ...)` receiver existed in the shell host (`src/App.jsx`, `src/providers/ShellProvider.jsx`, or other shell files). Apps communicate with the backend via WebSocket and fetch, not cross-frame postMessage.
+No `window.addEventListener('message', ...)` receiver existed in the shell host (`src/App.tsx`, `src/providers/ShellProvider.tsx`, or other shell files). Apps communicate with the backend via WebSocket and fetch, not cross-frame postMessage.
 
 ### Fix applied
-Added a defensive `usePostMessageGuard()` hook to `src/App.jsx` (`Shell` component) that:
+Added a defensive `usePostMessageGuard()` hook to `src/App.tsx` (`Shell` component) that:
 1. Registers a `message` event listener on `window`.
 2. Silently discards any message from an origin other than `window.location.origin`.
 3. Drops same-origin messages too (no shell command protocol is currently defined).
@@ -199,10 +199,10 @@ These bypassed the host proxy and exposed the user's IP to third-party services 
 | `apps/notes/index.html` | Fixed XSS: escaped `n.title` in `renderList()` |
 | `apps/social/index.html` | Added trust-assumption comment on `actual.content` |
 | `apps/weather/index.html` | Rerouted 3 external fetches through `/api/proxy/` |
-| `src/App.jsx` | Added `usePostMessageGuard()` hook |
-| `src/shell/Window.jsx` | Added `referrerPolicy="no-referrer"` to app iframe |
-| `src/layouts/MobileStack.jsx` | Added `referrerPolicy="no-referrer"` to app iframe |
-| `src/shell/Popout.jsx` | Added `referrerPolicy="no-referrer"` to fullscreen iframe |
+| `src/App.tsx` | Added `usePostMessageGuard()` hook |
+| `src/shell/Window.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
+| `src/layouts/MobileStack.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
+| `src/shell/Popout.tsx` | Added `referrerPolicy="no-referrer"` to fullscreen iframe |
 | `backend/services/gateway/gateway.go` | Added `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` headers |
 | `backend/cmd/server/main.go` | Added `secHeadersMiddleware` wrapping all responses |
 

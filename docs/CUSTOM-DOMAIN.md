@@ -38,7 +38,7 @@ full connection-mode reference, DNS, TLS and ports are in
 ## 2. Give a published app its own domain
 
 When you publish an app, it gets a default subdomain. To put your **own** domain
-on it, use **Settings → Custom Domain** (`src/core/settings/DomainPanel.jsx`).
+on it, use **Settings → Custom Domain** (`src/core/settings/DomainPanel.tsx`).
 
 ### Prerequisite
 

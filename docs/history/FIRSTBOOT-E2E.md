@@ -15,7 +15,7 @@ absent.  At the OS-account-creation step the user chooses one of three shapes:
 Historical note: earlier drafts described a fourth option that linked the OS
 account to a hosted identity. That no longer exists — Vulos is free, self-hosted
 software with no hosted account, sign-in, or enrolment. The only account concept
-is the user's own local account on their own box (see `src/auth/Setup.jsx`).
+is the user's own local account on their own box (see `src/auth/Setup.tsx`).
 
 ---
 

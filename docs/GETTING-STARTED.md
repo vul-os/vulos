@@ -107,7 +107,7 @@ Or use the dev script:
 ## First boot
 
 When you open Vulos for the first time you will be taken through a multi-step
-setup wizard (`src/auth/Setup.jsx`). Choosing **New** at the first fork takes
+setup wizard (`src/auth/Setup.tsx`). Choosing **New** at the first fork takes
 you through:
 
 1. **Welcome** and **New vs. Join** — start a fresh install, or join an existing Vulos box/cluster.

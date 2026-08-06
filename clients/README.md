@@ -32,7 +32,7 @@ dependency Vulos exists to avoid) or a click-through warning on every device.
 
 Worse, a browser on `http://192.168.1.50` is not a *secure context*, so
 `crypto.subtle` is undefined and the security-critical modules in `src/lib/`
-cannot run at all. See `src/lib/secureContext.js`.
+cannot run at all. See `src/lib/secureContext.ts`.
 
 A native client sidesteps both problems: it owns its TLS stack, so it can pin
 the box's key directly — no CA, no DNS, no warning — and its webview is a

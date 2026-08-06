@@ -291,9 +291,9 @@ Validation rule: `^[a-z0-9][a-z0-9-]*[a-z0-9]$` (lowercase alphanumeric + single
 - `backend/services/appnet/registry.go` — validate app IDs don't contain `--`
 
 **Frontend:**
-- `src/core/AppRegistry.js` — app URLs use new scheme
-- `src/builtin/stream/StreamViewer.jsx` — WebRTC connection URLs
-- `src/auth/Setup.jsx` — instance name validation in init wizard
+- `src/core/AppRegistry.ts` — app URLs use new scheme
+- `src/builtin/stream/StreamViewer.tsx` — WebRTC connection URLs
+- `src/auth/Setup.tsx` — instance name validation in init wizard
 - Any hardcoded subdomain references
 
 **Control-plane interaction (instance side):**

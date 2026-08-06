@@ -398,7 +398,7 @@ func (c *Cluster) Health() map[string]any
 ### Phase 4: MinIO App Integration
 
 1. Add MinIO to `registry.json` (see entry above)
-2. Storage settings UI in `src/core/Settings.jsx`:
+2. Storage settings UI in `src/core/Settings.tsx`:
    - Toggle storage node on/off
    - Disk allocation slider
    - Peer list with status

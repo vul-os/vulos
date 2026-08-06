@@ -54,7 +54,7 @@ All 30 D94 track tasks (OSDIST-/SEED-/NETB-/SIGN-/VERITY-/LEASE-/SYNC-/CONC-/COL
 **joinsync JSON field name mismatch**
 
 `backend/services/joinsync/joinsync.go:95-99` expects `bucket`, `region`, `access`, `secret`.
-`src/auth/Setup.jsx:557-561` posts `s3_bucket`, `s3_region`, `s3_access_key`, `s3_secret_key`.
+`src/auth/Setup.tsx:557-561` posts `s3_bucket`, `s3_region`, `s3_access_key`, `s3_secret_key`.
 
 Go's `encoding/json` silently ignores unknown fields. The join handler receives an empty `JoinRequest` and returns `ErrBadRequest("bucket")`. Setup wizard silently fails to join.
 
@@ -200,7 +200,7 @@ The header says these tasks were "reopened as todo" but individual task entries 
 
 ### Immediate (block shipped functionality)
 
-1. **Fix joinsync field name mismatch** (M1): `src/auth/Setup.jsx:557-561` → rename to `bucket`, `region`, `access`, `secret` OR add json tags to `JoinRequest`. Every user who tries to join an existing cluster hits this silently.
+1. **Fix joinsync field name mismatch** (M1): `src/auth/Setup.tsx:557-561` → rename to `bucket`, `region`, `access`, `secret` OR add json tags to `JoinRequest`. Every user who tries to join an existing cluster hits this silently.
 
 2. **Add `/api/setup/mode` to `publicPaths`** (M2): `backend/services/auth/handlers.go:114` → add `"/api/setup/mode": true`. Every new-instance setup wizard hangs at the sync step.
 

@@ -135,7 +135,7 @@ Secret     string `json:"secret"`
 Passphrase string `json:"passphrase"`
 ```
 
-`src/auth/Setup.jsx` (lines 557-560) posts:
+`src/auth/Setup.tsx` (lines 557-560) posts:
 
 ```js
 {

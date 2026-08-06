@@ -68,7 +68,7 @@ A few conventions:
 The single most useful thing to know if you're reading existing code:
 
 - **Worktree isolation.** Code-modifying agents run in their own git worktree, commit to `task/<ID>`, never push. The orchestrator merges with `--no-ff` into `main` (D3).
-- **Hot-file serialization.** Never run two concurrent workers whose key files overlap. Hot files (`backend/cmd/server/main.go`, `backend/services/stream/pool.go`, `stream.go`, `src/core/AppRegistry.js`, etc.) are serialized: ≤1 in-flight task touches each at a time (D9, D13).
+- **Hot-file serialization.** Never run two concurrent workers whose key files overlap. Hot files (`backend/cmd/server/main.go`, `backend/services/stream/pool.go`, `stream.go`, `src/core/AppRegistry.ts`, etc.) are serialized: ≤1 in-flight task touches each at a time (D9, D13).
 - **Greenfield bias.** Prefer brand-new `apps/<x>/` and `backend/services/<pkg>/` packages — they auto-merge cleanly regardless of stale base (D13).
 - **Main-branch guard.** Every merge batch asserts `HEAD == main` before and after (D14).
 - **Build-gate every merge.** Run `go build ./...` only at merge time, not in routine state checks (D28). On clean-merge-but-build-break, recover with `git reset --hard HEAD~1` (D18).

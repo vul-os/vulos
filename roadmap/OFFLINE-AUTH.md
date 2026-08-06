@@ -1,6 +1,6 @@
 # Offline Auth — the OS gate for offline access (OFFLINE-AUTH-01)
 
-> **Status.** 🟢 **v1 built (shell side), reviewed, unit-tested.** Implemented: `src/lib/offlineAuth.js` (gate + per-app keys + attempt-cap/wipe), the `onEnvelope` cache hook in `src/lib/masterKey.js`, enrollment in `src/auth/LoginScreen.jsx`, offline detection + session in `src/auth/AuthProvider.jsx`, `src/auth/OfflineLockScreen.jsx`, and the boot wiring in `src/App.jsx`. **Not yet done:** apps adopting the gate (needs an `AppBridge` message — see Known gaps), a user-facing "forget offline data" control, and cache-at-rest encryption (deferred per MOB-04). Builds on the shipped client-side master-key unwrap (`src/lib/masterKey.js`) and the server device-PIN (`backend/services/auth/devicepin.go`).
+> **Status.** 🟢 **v1 built (shell side), reviewed, unit-tested.** Implemented: `src/lib/offlineAuth.ts` (gate + per-app keys + attempt-cap/wipe), the `onEnvelope` cache hook in `src/lib/masterKey.ts`, enrollment in `src/auth/LoginScreen.tsx`, offline detection + session in `src/auth/AuthProvider.tsx`, `src/auth/OfflineLockScreen.tsx`, and the boot wiring in `src/App.tsx`. **Not yet done:** apps adopting the gate (needs an `AppBridge` message — see Known gaps), a user-facing "forget offline data" control, and cache-at-rest encryption (deferred per MOB-04). Builds on the shipped client-side master-key unwrap (`src/lib/masterKey.ts`) and the server device-PIN (`backend/services/auth/devicepin.go`).
 
 **The split (the whole point):** **each app decides *what* it caches offline** (per [OFFLINE.md](OFFLINE.md)'s manifest — `none`/`read`/`read-write`); **the OS owns *auth*.** An app never renders cached data until the OS says the offline session is unlocked. Most offline logic lives in the apps; the OS owns exactly one thing here — the gate.
 
@@ -16,7 +16,7 @@ The trap to avoid: a **UI-only** offline lock — check a PIN, then render plain
 
 ## The construction — reuse the master key, don't invent a credential
 
-The client already does the exact thing we need. At online login, `src/lib/masterKey.js` fetches the **password-wrapped master-key envelope** and unwraps it **entirely client-side**: `PBKDF2-HMAC-SHA256(password, salt, 600k) → AES-256-GCM unwrap`, **fail-closed** (a wrong password fails the GCM auth tag → no key), then derives per-content keys via `HKDF-SHA256(masterKey, "vulos-content:<domain>:<id>")`.
+The client already does the exact thing we need. At online login, `src/lib/masterKey.ts` fetches the **password-wrapped master-key envelope** and unwraps it **entirely client-side**: `PBKDF2-HMAC-SHA256(password, salt, 600k) → AES-256-GCM unwrap`, **fail-closed** (a wrong password fails the GCM auth tag → no key), then derives per-content keys via `HKDF-SHA256(masterKey, "vulos-content:<domain>:<id>")`.
 
 Offline auth is that same flow, sourced from a local cache instead of the network:
 
@@ -93,7 +93,7 @@ The OS does not know or care what an app caches. It only answers "is the user al
 
 Recorded so they aren't mistaken for "done":
 
-- ✅ **Apps can reach the seam** (done). `src/core/AppBridge.js` exposes `vulos.offline.state`/`vulos.offline.appKey` verbs, and the injected app client (`backend/services/gateway/origin_bridge.go`) surfaces `window.vulos.offline.{isUnlocked,appKey}`. `appId` is the trusted frame identity, never app-supplied, so an app can only ever get its own non-extractable key. **Remaining:** an actual app (Notes) *using* it to gate/encrypt — the seam exists; adoption is per-app.
+- ✅ **Apps can reach the seam** (done). `src/core/AppBridge.ts` exposes `vulos.offline.state`/`vulos.offline.appKey` verbs, and the injected app client (`backend/services/gateway/origin_bridge.go`) surfaces `window.vulos.offline.{isUnlocked,appKey}`. `appId` is the trusted frame identity, never app-supplied, so an app can only ever get its own non-extractable key. **Remaining:** an actual app (Notes) *using* it to gate/encrypt — the seam exists; adoption is per-app.
 - ✅ **User-facing control** (done). Settings → Account & Security → **Offline Data** discloses that enrollment is implicit-on-login and offers "Forget offline data on this device" (`wipe()`). Enrollment is still implicit (now disclosed); making it explicit opt-in is optional.
 - ⚠️ **`wipe()` clears the shell-owned app data** (`AppBridge.clearAllAppData()` on the wipe event) **and** the credential — but an app's **own-origin** IndexedDB/caches can only be cleared by the app itself (on a shell→app wipe broadcast, not yet defined). The OS guarantees the credential is gone; per-app own-origin bytes need app cooperation.
 - **Cloud sign-in (`CloudSignIn.jsx`) never enrolls** — and the master-key envelope is *password*-wrapped, so a passwordless cloud flow can't produce one. Offline access is currently a password-login feature; document/resolve for cloud users.

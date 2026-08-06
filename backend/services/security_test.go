@@ -804,8 +804,9 @@ func stripJSComments(src string) string {
 
 // origin01RepoRoot walks up from the test's working directory (backend/services)
 // until it finds the repo root — the directory holding both frontend/ and
-// backend/. The web tier lives in frontend/ (alongside backend/ and clients/),
-// so the marker file is frontend/src/core/AppOrigins.js.
+// backend/. The marker is frontend/src/core/AppOrigins.*: the extension is
+// resolved rather than hardcoded, because pinning it to .js meant the whole
+// test died the moment that file became TypeScript.
 func origin01RepoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -813,7 +814,7 @@ func origin01RepoRoot(t *testing.T) string {
 		t.Fatalf("getwd: %v", err)
 	}
 	for i := 0; i < 6; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "frontend", "src", "core", "AppOrigins.js")); err == nil {
+		if p := appOriginsPath(dir); p != "" {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -822,7 +823,21 @@ func origin01RepoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatal("could not locate repo root (no frontend/src/core/AppOrigins.js above the test dir)")
+	t.Fatal("could not locate repo root (no frontend/src/core/AppOrigins.* above the test dir)")
+	return ""
+}
+
+// appOriginsPath returns the repo-relative path of the origin gate under root,
+// or "" if it is not there. The gate has been .js and is now .ts; resolving the
+// extension keeps this test working across that change instead of silently
+// losing its subject.
+func appOriginsPath(root string) string {
+	for _, ext := range []string{".ts", ".js", ".tsx", ".jsx"} {
+		rel := "frontend/src/core/AppOrigins" + ext
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
+			return rel
+		}
+	}
 	return ""
 }
 
@@ -830,17 +845,27 @@ func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
 	root := origin01RepoRoot(t)
 	srcDir := filepath.Join(root, "frontend", "src")
 
-	// The single sanctioned site: AppOrigins.js, inside the origin-comparison gate.
-	const sanctioned = "frontend/src/core/AppOrigins.js"
+	// The single sanctioned site: AppOrigins.*, inside the origin-comparison gate.
+	sanctioned := appOriginsPath(root)
+	if sanctioned == "" {
+		t.Fatal("frontend/src/core/AppOrigins.* not found — this test has lost its subject")
+	}
 
 	var offenders []string
+	scanned := 0
 	err := filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return err
 		}
-		if ext := filepath.Ext(path); ext != ".js" && ext != ".jsx" {
+		// .ts/.tsx as well as .js/.jsx. Scanning only JavaScript meant that after
+		// the TypeScript migration this walk covered 4 files instead of 227 — a
+		// security gate that passes because it examined almost nothing.
+		switch filepath.Ext(path) {
+		case ".js", ".jsx", ".ts", ".tsx":
+		default:
 			return nil
 		}
+		scanned++
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -864,6 +889,15 @@ func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
 		t.Fatalf("walk src: %v", err)
 	}
 
+	// Coverage floor. Without this the test reports PASS when a rename or a
+	// filter change leaves it scanning nothing — which is exactly what the
+	// js-only extension filter above did.
+	if scanned < 150 {
+		t.Fatalf("ORIGIN-01 scanned only %d frontend source files; expected >=150. "+
+			"The walk has lost its subject (extension filter or path wrong), so a "+
+			"pass here would prove nothing.", scanned)
+	}
+
 	if len(offenders) > 0 {
 		t.Errorf("ORIGIN-01 REGRESSION: `allow-same-origin` is granted outside %s.\n"+
 			"An app frame on the shell's origin with allow-same-origin can read the shell's\n"+
@@ -884,16 +918,28 @@ func TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck(t *testing.T) {
 	}
 
 	// The dead needsSameOrigin() allowlist must not come back as a sandbox input.
-	for _, f := range []string{"frontend/src/shell/Window.jsx", "frontend/src/layouts/MobileStack.jsx", "frontend/src/shell/Popout.jsx"} {
-		data, err := os.ReadFile(filepath.Join(root, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
-		}
-		if strings.Contains(string(data), "import { needsSameOrigin }") {
+	for _, stem := range []string{"frontend/src/shell/Window", "frontend/src/layouts/MobileStack", "frontend/src/shell/Popout"} {
+		f, data := readAnyExt(t, root, stem)
+		if strings.Contains(data, "import { needsSameOrigin }") {
 			t.Errorf("%s imports needsSameOrigin — the allowlist approach was removed; "+
 				"the sandbox must come from iframeSandboxForURL(url)", f)
 		}
 	}
+}
+
+// readAnyExt reads stem with whichever source extension exists, failing the test
+// if none does. A hardcoded extension here silently skipped these three files
+// once they became .tsx.
+func readAnyExt(t *testing.T, root, stem string) (string, string) {
+	t.Helper()
+	for _, ext := range []string{".tsx", ".ts", ".jsx", ".js"} {
+		rel := stem + ext
+		if b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
+			return rel, string(b)
+		}
+	}
+	t.Fatalf("no source file found for %s.{tsx,ts,jsx,js}", stem)
+	return "", ""
 }
 
 // TestSecurityHeaders_PresentOnEveryServedResponse asserts that the middleware

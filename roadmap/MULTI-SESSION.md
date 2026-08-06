@@ -2,7 +2,7 @@
 
 Status: **takeover shipped**; **multi-session is NOT implemented** — this doc is
 the design for it and is referenced from the code comments in
-`backend/services/auth/sessions.go` and `src/auth/AuthProvider.jsx`.
+`backend/services/auth/sessions.go` and `src/auth/AuthProvider.tsx`.
 
 ## What ships today — SESSION-TAKEOVER
 

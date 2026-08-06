@@ -5,7 +5,7 @@ architecture changes that fall outside a lint-only cleanup.
 
 ---
 
-## src/auth/AuthProvider.jsx:64
+## src/auth/AuthProvider.tsx:64
 
 **Rule:** `react-refresh/only-export-components`
 
@@ -19,7 +19,7 @@ not a pure lint fix.
 
 ---
 
-## src/auth/Setup.jsx:731
+## src/auth/Setup.tsx:731
 
 **Rule:** `react-hooks/set-state-in-effect`
 
@@ -34,7 +34,7 @@ call into a callback or using `useLayoutEffect`), which is a behavioral change.
 
 ---
 
-## src/auth/Setup.jsx:2104
+## src/auth/Setup.tsx:2104
 
 **Rule:** `react-hooks/exhaustive-deps` (warning)
 
@@ -49,7 +49,7 @@ stabilized with `useCallback` in the parent — a behavioral/structural change.
 
 ---
 
-## src/auth/Setup.jsx:2619
+## src/auth/Setup.tsx:2619
 
 **Rule:** `react-hooks/exhaustive-deps` (warning)
 

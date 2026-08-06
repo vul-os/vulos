@@ -27,9 +27,9 @@ Two properties of Vulos specifically make untyped JS more expensive here than in
 
 **1. `src/lib/` is a security boundary, not UI code.** `contentSeal.js`, `masterKey.js`, `offlineAuth.js`, `offlineQueue.js`, and `stepup.js` implement crypto envelopes and the step-up auth state machine. A silent shape mismatch — a key arriving as a base64 `string` where a `Uint8Array` was expected, an `undefined` that stringifies to `"undefined"` before being sealed — is a **security** defect, not a rendering glitch.
 
-**2. The backend is statically typed and discards that at the wire.** ~145k lines of production Go define every response shape, and all of it is erased the moment a payload crosses into `src/lib/api.js`. That boundary is mechanically typeable from definitions that already exist — generated wire types structurally prevent the drift that has been this project's dominant defect class.
+**2. The backend is statically typed and discards that at the wire.** ~145k lines of production Go define every response shape, and all of it is erased the moment a payload crosses into `src/lib/api.ts`. That boundary is mechanically typeable from definitions that already exist — generated wire types structurally prevent the drift that has been this project's dominant defect class.
 
-Secondary: the largest components are past the size where shapes fit in a reader's head — `src/core/Settings.jsx` (2,823 lines), `src/auth/Setup.jsx` (2,646), `src/builtin/drive/Drive.jsx` (2,012). These stay `.jsx` under this phase; converting them to `.tsx` is a future, separate decision — not implied by D97, which authorizes `src/lib/` TypeScript specifically.
+Secondary: the largest components are past the size where shapes fit in a reader's head — `src/core/Settings.tsx` (2,823 lines), `src/auth/Setup.tsx` (2,646), `src/builtin/drive/Drive.tsx` (2,012). These stay `.jsx` under this phase; converting them to `.tsx` is a future, separate decision — not implied by D97, which authorizes `src/lib/` TypeScript specifically.
 
 ---
 
@@ -47,7 +47,7 @@ This is recorded so the migration is never oversold as a general defect-rate fix
 
 ## Parse, don't cast
 
-Types at a trust boundary are worthless without runtime validation. Casting unvalidated JSON to a TypeScript interface (`const x = json as MyType`) is **typed fiction** — and it is worse than staying untyped, because it *reads* as safe while it has validated nothing. Every place `src/lib/api.js` (or its TS successor) and `src/lib/net/endpoints.js` receive a network response must parse and validate the shape at runtime, not merely assert a compile-time type onto it. This applies whether the type comes from a hand-written `.d.ts` or the Go-generated one described in TYPE-03 below.
+Types at a trust boundary are worthless without runtime validation. Casting unvalidated JSON to a TypeScript interface (`const x = json as MyType`) is **typed fiction** — and it is worse than staying untyped, because it *reads* as safe while it has validated nothing. Every place `src/lib/api.ts` (or its TS successor) and `src/lib/net/endpoints.ts` receive a network response must parse and validate the shape at runtime, not merely assert a compile-time type onto it. This applies whether the type comes from a hand-written `.d.ts` or the Go-generated one described in TYPE-03 below.
 
 ## vulos-cloud is deliberately NOT migrating
 
@@ -80,8 +80,8 @@ Each phase is independently landable and independently revertible. TYPE-01 gates
 |---|---|---|---|
 | **TYPE-01** | Baseline config: `tsconfig.json` with `allowJs: true`, `checkJs: false`, `strict: true`, `noEmit: true`, `jsx: "react-jsx"`. `npm run typecheck`. CI job. | `tsconfig.json`, `package.json`, `.github/workflows/` | **Landed**, probe-verified. |
 | **TYPE-02** | Migrate the SDK to real TypeScript, file-by-file: `masterKey.js` → `contentSeal.js` → `offlineAuth.js` → `stepup.js` → `offlineQueue.js` become `.ts`. Runtime validation added at every boundary the module receives untrusted input (parse, don't cast). | `src/lib/*.ts` | In progress. |
-| **TYPE-03** | Type the API boundary: emit `src/lib/api.types.d.ts` describing every response shape, consumed by `api.js`/its TS successor and `src/lib/net/endpoints.js`. Runtime-validated on receipt, not just typed. | new `.d.ts`, `src/lib/api.js` | Design (source-of-truth choice below). |
-| **TYPE-04** | Extend to shell core — `src/providers/`, `src/core/AppRegistry.js`, `src/lib/net/`. Explicitly **not** the large leaf components. | `src/core/`, `src/providers/` | Not started. |
+| **TYPE-03** | Type the API boundary: emit `src/lib/api.types.d.ts` describing every response shape, consumed by `api.js`/its TS successor and `src/lib/net/endpoints.ts`. Runtime-validated on receipt, not just typed. | new `.d.ts`, `src/lib/api.ts` | Design (source-of-truth choice below). |
+| **TYPE-04** | Extend to shell core — `src/providers/`, `src/core/AppRegistry.ts`, `src/lib/net/`. Explicitly **not** the large leaf components. | `src/core/`, `src/providers/` | Not started. |
 | **TYPE-05** | Enforcement: flip the CI job to blocking for migrated files; ESLint rule so a `.ts` file can't silently regress or lose coverage. | `eslint.config.js`, CI | Not started. |
 
 ### TYPE-03 needs a source of truth

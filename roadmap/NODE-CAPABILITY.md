@@ -49,7 +49,7 @@ All in `backend/internal/multiinstance` unless noted. Field name `store_only` th
 | **Owner-authoritative preserve** — `Upsert`'s `ON CONFLICT` keeps an existing **owner** row's `store_only` in SQL (`CASE WHEN instances.role='owner' …`), so a sync/rotation/identity upsert can never clobber a locally-set owner store-only. Done in SQL, so it's atomic (no read-then-write TOCTOU vs a concurrent `SetStoreOnly`). Only `SetStoreOnly` changes an existing owner's value. | `registry.go` |
 | Seed the flag from `VULOS_STORE_ONLY` on the box's **first** self-registration (later refreshes preserve the operator's Settings choice) | `appsync.go` |
 | `PATCH /api/instances/{ulid}/store-only` (admin-gated) | `cmd/server/routes_instances_manage.go` |
-| Per-instance toggle + "Sync-only" badge (Instances dashboard panel, admin/owner) | `src/builtin/dashboard/InstancesPanel.jsx` |
+| Per-instance toggle + "Sync-only" badge (Instances dashboard panel, admin/owner) | `src/builtin/dashboard/InstancesPanel.tsx` |
 
 Tests: `store_only_test.go` — default-is-serving, persistence, setter, routing exclusion (both branches), fan-out exclusion, wire round-trip. The migration-fold equivalence proof (`migrate_equiv_test.go`) mirrors the new column.
 

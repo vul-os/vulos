@@ -123,7 +123,7 @@ flowchart TD
 ## Browser architecture (BROWSER-03)
 
 Vulos ships **two user-selectable browsers**, side by side in the launcher, so
-you can pick per task (both are registered in `src/core/AppRegistry.js`):
+you can pick per task (both are registered in `src/core/AppRegistry.ts`):
 
 1. **Smart Browser** (`id: browser`) — the client-side web app under
    `apps/browser/`. It opens in the host browser as an in-shell web-app lane
@@ -248,7 +248,7 @@ All three ride the same pool + GPU encoder seam, but with different tunings:
    no lookahead, CBR, a 1-second GOP to bound keyframe-recovery latency), and
    a minimal receive-side jitter buffer on the client
    (`RTCRtpReceiver.playoutDelayHint = 0`, Chromium only —
-   `src/builtin/stream/lowLatency.js`). The resolved `gaming` flag is echoed
+   `src/builtin/stream/lowLatency.ts`). The resolved `gaming` flag is echoed
    back to `StreamViewer` so gaming input behaviour (pointer-lock) activates.
 3. **Streaming Chrome** (`services/webbrowser`). A per-user persistent-profile
    Chromium session on the pool, launched via `POST /api/browser/launch` — see
