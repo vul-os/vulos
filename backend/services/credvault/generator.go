@@ -267,6 +267,49 @@ func passphraseWordlist() []string {
 	return builtinWordlist
 }
 
+// wordlistFor returns the passphrase wordlist with any word CONTAINING the
+// separator removed.
+//
+// The EFF list has four hyphenated entries — drop-down, felt-tip, t-shirt,
+// yo-yo. With the default "-" separator, drawing one produces a passphrase
+// whose separator no longer delimits words: a 3-word phrase splits into 4
+// parts, and with Capitalize the extra part is lowercase ("Drop-down"), so the
+// documented "capitalises the first letter of each word" contract is visibly
+// broken. Anything that reconstructs the words by splitting on the separator —
+// a UI showing them as chips, a user counting them, a re-entry field —
+// disagrees with what was generated.
+//
+// It surfaced as a ~1.5% flaky test (3 words x 10 iterations against 4/7776),
+// which in a release-gating suite means roughly 1 run in 65 fails for reasons
+// unrelated to the change under test.
+//
+// Filtering rather than re-drawing keeps generation constant-time and free of
+// a rejection loop. The entropy cost is nil at the stated precision:
+// log2(7776) = 12.925 bits/word, log2(7772) = 12.924.
+//
+// An empty separator filters nothing (every string contains ""), which is
+// correct: with no separator there are no word boundaries to corrupt.
+func wordlistFor(separator string) []string {
+	wl := passphraseWordlist()
+	if separator == "" {
+		return wl
+	}
+	out := make([]string, 0, len(wl))
+	for _, w := range wl {
+		if !strings.Contains(w, separator) {
+			out = append(out, w)
+		}
+	}
+	// A pathological separator (say "e") could filter the list down to nothing
+	// or near-nothing, which would panic rand.Int or silently gut entropy. Fall
+	// back to the unfiltered list: a passphrase with an ambiguous separator is
+	// far better than a crash or a 3-word alphabet.
+	if len(out) < len(wl)/2 {
+		return wl
+	}
+	return out
+}
+
 // builtinWordlist is a minimal built-in word list used as a fallback when the
 // embedded EFF Large Wordlist is unavailable. It is large enough to give
 // adequate entropy for 4+ word passphrases (~7.6 bits/word × 4 ≈ 30 bits) but
@@ -299,7 +342,7 @@ var builtinWordlist = []string{
 
 func generatePassphrase(cfg PassphraseConfig) (string, error) {
 	cfg = cfg.defaults()
-	wl := passphraseWordlist()
+	wl := wordlistFor(cfg.Separator)
 	n := big.NewInt(int64(len(wl)))
 
 	words := make([]string, cfg.WordCount)

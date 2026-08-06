@@ -504,3 +504,74 @@ func TestGenerateUnknownMode(t *testing.T) {
 		t.Fatal("expected error for unknown mode")
 	}
 }
+
+// TestWordlistFor_ExcludesSeparatorBearingWords asserts DETERMINISTICALLY that
+// no candidate word contains the separator.
+//
+// The pre-existing TestGeneratePassphraseCapitalize covers this only by chance:
+// it draws 3 words 10 times against the 4 hyphenated entries in the EFF list
+// (drop-down, felt-tip, t-shirt, yo-yo), so it catches the bug about 1.5% of
+// the time — it failed in a release run while passing locally and in CI on the
+// same commit. This test inspects the candidate set directly, so it cannot
+// flake in either direction.
+func TestWordlistFor_ExcludesSeparatorBearingWords(t *testing.T) {
+	for _, sep := range []string{"-", ".", "_", " "} {
+		wl := wordlistFor(sep)
+		if len(wl) == 0 {
+			t.Fatalf("wordlistFor(%q) returned an empty wordlist", sep)
+		}
+		for _, w := range wl {
+			if strings.Contains(w, sep) {
+				t.Errorf("wordlistFor(%q) kept %q, which contains the separator — "+
+					"a passphrase built from it splits into more parts than it has words", sep, w)
+			}
+		}
+	}
+
+	// The hyphenated EFF entries are the concrete case that broke. Assert the
+	// filter removes exactly them rather than trusting the loop above to have
+	// had something to do — if the embed were ever replaced by a list with no
+	// hyphens, this test would silently stop testing anything.
+	full := passphraseWordlist()
+	if len(full) < 7000 {
+		t.Skip("EFF wordlist not embedded; the builtin fallback has no hyphenated words")
+	}
+	var hyphenated int
+	for _, w := range full {
+		if strings.Contains(w, "-") {
+			hyphenated++
+		}
+	}
+	if hyphenated == 0 {
+		t.Fatal("expected the EFF wordlist to contain hyphenated words; the filter is now untested")
+	}
+	if got, want := len(wordlistFor("-")), len(full)-hyphenated; got != want {
+		t.Errorf("wordlistFor(\"-\") kept %d words, want %d (%d hyphenated removed)", got, want, hyphenated)
+	}
+}
+
+// TestGeneratePassphrase_SplitsIntoExactlyWordCount asserts the separator
+// actually delimits words: splitting a generated passphrase must yield exactly
+// WordCount parts, every one of them capitalised. This is the user-visible
+// contract that the hyphenated words broke.
+func TestGeneratePassphrase_SplitsIntoExactlyWordCount(t *testing.T) {
+	const iterations = 500 // >> the ~1.5%/run odds the old test relied on
+	for i := 0; i < iterations; i++ {
+		pw, err := Generate(GeneratorConfig{
+			Mode:       ModePassphrase,
+			Passphrase: PassphraseConfig{WordCount: 3, Separator: "-", Capitalize: true},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(pw, "-")
+		if len(parts) != 3 {
+			t.Fatalf("passphrase %q split into %d parts, want 3 — a wordlist entry contains the separator", pw, len(parts))
+		}
+		for _, w := range parts {
+			if w == "" || w[0] < 'A' || w[0] > 'Z' {
+				t.Fatalf("part %q not capitalised in %q", w, pw)
+			}
+		}
+	}
+}
