@@ -21,38 +21,24 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-08-05
-
-### Fixed
-
-- **The OS image booted but never ran Vulos.** `vulos.service` invoked
-  `vulos-server -env main`; `env.Parse` accepts only `local`/`dev`/`prod` and
-  treats anything else as fatal, so the server exited immediately and
-  crash-looped every 3s while systemd still reported "Started vulos.service"
-  (`Type=simple` only means the process was forked). Every image before this
-  one served nothing. Now `-env prod` — the only environment that binds all
-  interfaces; `local`/`dev` bind loopback and would leave a box unreachable.
-  Verified by booting the built image on both architectures and confirming
-  `GET /api/setup/status` returns 200.
-- **The live-boot smoke gate could not fail.** It passed on *either* a serial
-  pattern or an HTTP probe, and the serial pattern (`login:`) always matches a
-  successful boot — so the HTTP check its own comments called "the gold-standard
-  fully-running check" never gated anything, which is how the above shipped.
-  HTTP is now the only signal that can pass the gate.
-- **`crypto.subtle` was undefined on the box's most likely address.** A browser
-  on `http://<lan-ip>` is not a secure context, so `masterKey`, `contentSeal`
-  and `offlineAuth` could not run at all. Those entry points now fail with a
-  clear message naming both remedies instead of a bare `TypeError`.
-- **Padding vanished wherever `safe-px` met a Tailwind `px-*` utility.** Both
-  set the same property at equal specificity, and with no left/right inset
-  (portrait, essentially every phone) the `env()` won at `0px` — content sat
-  flush against the screen edge.
-- **The phone status bar clipped its public-apps warning badge** at 390px. The
-  date is now hidden below the `sm` breakpoint; the badge is the one element in
-  that bar that must never be lost.
+## [0.1.0] - 2026-08-06
 
 ### Added
 
+- **Native clients can authenticate a box by certificate pin** (`clients/core`).
+  Trust is anchored to the SHA-256 of the certificate's SubjectPublicKeyInfo
+  rather than the certificate itself, so the box re-mints its self-signed cert
+  on every start — as it does — without invalidating a single paired client.
+  `TLSConfig` refuses to return a config for an unpaired box, so no code path
+  can hand back one that skips verification, and `Pair` authenticates against
+  the fingerprint carried in the pairing payload rather than the one read off
+  the wire. Discovery is not trust: a discovered box stays untrusted until
+  paired.
+- **A box can tell you its fingerprint.** `vulos -print-pairing` prints the box
+  name, LAN address, human-readable fingerprint and `vulos://pair?…` payload for
+  a user at the console or over SSH; `GET /api/lan/pairing` returns the same
+  payload for the in-browser flow, behind the OS session gate. Both share one
+  builder so they cannot drift. Without this, pinning had no way to start.
 - **A console status screen.** A freshly flashed box previously booted to a bare
   `login:` prompt with no credentials configured — the one screen in front of
   the user said nothing about the address, the URL to open, or whether the
@@ -70,29 +56,6 @@ Versioning: [SemVer](https://semver.org/).
   the frontend's view of the API is derived from the Go declarations rather than
   hand-written and left to drift.
 
-### Changed
-
-- **The LAN TLS key now persists** across reboots, so accepting the self-signed
-  certificate is genuinely a one-time action and future certificate pinning is
-  possible. A world-readable key is treated as compromised and rotated.
-- **`src/lib/` is TypeScript** (the security-critical client SDK), on TypeScript
-  6 — 7 is the native compiler and `typescript-eslint` refuses to run against
-  it, which would have silently dropped `react-hooks` linting from converted
-  files.
-- **Repository layout is now three peers**: `backend/` (Go), `frontend/` (web),
-  `clients/` (native). `mobile/` became `clients/android`.
-
-### Security
-
-- **Production signing ceremony run.** The App Hub registry and the OS trust
-  chain are now signed with a production release key (root-anchored), replacing
-  the development anchor. `make verify-registry-prod` — the release gate — now
-  passes, so tagged releases build and publish flashable images again instead of
-  halting. A one-command ceremony (`make ceremony`) generates the root + release
-  keypairs, signs the cert and registry, installs the public trust material into
-  `keys/`, and collects the private keys into an offline vault.
-
-### Added
 
 - **Reach — Vulos's own reachability stack.** A box behind NAT is now reachable
   from anywhere using only software in this repository: no third-party tunnel
@@ -123,137 +86,9 @@ Versioning: [SemVer](https://semver.org/).
     loopback `/tls-ask` gate answering from grants, so Caddy's on-demand TLS
     issues one certificate per box with no DNS-01 challenge and no DNS API
     credentials.
-
 - **`GET /api/network/reach`** — session-authed reachability status (endpoint
   health, per-link state, public URLs). Token-free by construction.
 
-### Changed
-
-- **`VULOS_RENDEZVOUS_URL` accepts a comma-separated LIST**, and peer-reachability
-  resolve now tries several relays in order. Each rendezvous entry becomes its own
-  discovery source and a source that errors is skipped rather than failing the
-  set, so listing two or three under different operators removes discovery as a
-  single point of failure — the substrate spec's shape (KOTVA §4.2.1(3)). A single
-  URL is a one-element list and behaves exactly as before.
-
-- **The default relay provider is now `vulos`, not `ephor`.** Ephor remains a
-  fully supported alternative — it speaks the same rendezvous contract, so
-  selecting it is a genuine swap rather than a downgrade. Any unrecognised
-  persisted provider name (including the old `"ephor"` default) fails safe to the
-  new default exactly as before.
-
-- **Ingress status reports what is TRUE.** `relayconfig.IngressInfo()` previously
-  returned a hardcoded `https://relay.vulos.org` whether or not anything was
-  running there, so Settings could show a confident "relay-tunnel" for a box that
-  was in fact unreachable from the internet. It now reports the live tunnel state,
-  or says plainly that no relay is configured.
-
-### Security
-
-- **Header-trust boundary between relay and box.** The relay strips every
-  `X-Vulos-Reach-*` header from inbound client requests — unconditionally and by
-  prefix, so a header added later is covered automatically — then sets the ones it
-  vouches for; the agent translates those into `r.RemoteAddr` and a synthetic
-  `r.TLS` state and strips them again before any OS handler sees them. Without the
-  translation every tunnelled client would share one rate-limit bucket and session
-  cookies would lose `Secure` on exactly the requests that crossed the public
-  internet. An unparseable vouched client IP **fails closed**.
-- **A relay never runs open.** No grants configured is a startup refusal, not a
-  permissive default: an open relay is an open proxy under the operator's own
-  domain and certificate.
-- **Revocation reaches ESTABLISHED tunnels**, swept every 20s. A working tunnel
-  never reconnects, so a revocation applying only to new connections would leave a
-  compromised box connected indefinitely.
-- **Reconnect without hijack.** A re-registration presenting the same credential
-  evicts the stale session immediately (so a rebooted box is not unreachable while
-  a half-open TCP connection times out); one presenting a *different* credential is
-  refused, even when both grants list the name.
-- **Direct-endpoint ownership probe** — an advertised direct endpoint must echo a
-  one-time nonce before the relay will publish it, so an agent cannot point clients
-  at a third party. The probe is the relay's only agent-influenced outbound request
-  and is SSRF-screened at connect time against the resolved IP (defeating DNS
-  rebinding), refuses redirects, and is off by default.
-- **Secret-bearing files must be mode 0600** — both the box's endpoints file and
-  the relay's grants file are refused, not warned about, if world-accessible.
-- **Uniform rejections.** Tunnel-registration and rendezvous-announce failures
-  answer identically regardless of cause, so probing cannot reveal which part of a
-  forgery to fix.
-
-### Fixed
-
-- **Data race and handshake desync in the tunnel control channel.** The yamux
-  session was constructed before the relay finished writing its `ready` frame, so
-  two goroutines could write the same WebSocket concurrently and a peer could read
-  a binary frame where it expected the text handshake. The handshake now completes
-  fully before the connection is handed to yamux. Caught by the package's own
-  race-enabled tests.
-
-### Changed
-
-- **ESLint cleanup + wired into CI.** An independent verification pass found
-  `npm run lint` reporting 12 errors / 18 warnings — small enough to actually
-  clear rather than defer. Fixed all 12 errors: an unused `req` param in an
-  e2e route stub, a genuinely-unused `no-unused-vars`-flagged arg in
-  `webPush.js` (documented inline, matching the repo's existing
-  underscore-prefix-plus-disable-comment convention), and 10
-  `react-refresh/only-export-components` hits in `src/auth/CloudSignIn.jsx`,
-  `src/auth/GatewayChoice.jsx`, and `src/builtin/drive/Drive.jsx` — each of
-  these files deliberately co-locates a component with plain helper
-  functions/hooks it exports for direct unit testing (documented in each
-  file's header comment); rather than a blanket rule disable, added
-  file-scoped `allowExportNames` overrides in `eslint.config.js` naming the
-  exact non-component exports. Of the 18 warnings, fixed 5: a dead
-  `eslint-disable-line no-proto` (the rule isn't even enabled) in
-  `appBridge.test.js`, and 4 real `react-hooks/exhaustive-deps` hits caused by
-  un-memoized values recreated every render — `ShellProvider.jsx`'s
-  `allWindows` array (now wrapped in `useMemo`, which also stabilizes
-  `closeWindow`/`focusWindow`/`minimizeWindow` identities) and `Window.jsx`'s
-  `applySnap` (now a stable `useCallback`), plus a genuinely-unused
-  `resizeWindow` dep that fell out of that same callback. The remaining 13
-  warnings are deliberate patterns, left as warnings rather than silenced:
-  mount-only-fetch effects with intentionally empty deps (`Setup.jsx`,
-  `FileManager.jsx`), effects/memos deliberately narrowed to specific
-  primitive fields of a larger object to avoid over-firing (`Setup.jsx`
-  `config`, `ShellProvider.jsx` `state`, `ThemeProvider.jsx`'s `tick`
-  invalidation-signal trick), unmount-only cleanup effects with `[]` deps
-  (`useMeshCall.js`, `useSFUCall.js`), forward-reference TDZ cases where the
-  callback is declared before the helper it calls and adding the dep would
-  crash the component at mount (`useSFUCall.js` ×2, `useVideoCall.js`,
-  `Portal.jsx` — the same TDZ reasoning is already documented in-file for a
-  sibling callback), and `FileManager.jsx`'s `goUp`, whose only real
-  dependency (`cwd`) is already tracked. `npm run lint` now runs as part of
-  the `frontend` CI job (`.github/workflows/ci.yml`), alongside the existing
-  `npm run build` and `npm run test:e2e` frontend checks.
-
-- **Docs: retired the last live-looking meethost/SFU-host references.**
-  `docs/NETWORKING.md`'s "Hosting big calls: BYO SFU" section still described
-  `VULOS_SFU_HOST`, `VULOS_SFU_ENDPOINT`, `VULOS_SFU_WORKER_BINARY`,
-  `VULOS_SFU_REGION`, and `GET /api/meethost/status` as if they were live
-  config — none of it exists in the code anymore (only a `// former Meet-SFU
-  host registry` comment remains in `main.go`), so it read as a working
-  feature. Replaced with an accurate description of the sovereign P2P
-  Messages builtin's in-process Pion SFU (`/api/sfu/rooms/*`, small mesh cap,
-  no host-registry escalation) and pointed to COMMS.md for third-party
-  large-group video. Also dropped `docs/ARCHITECTURE.md`'s name-drop of the
-  dead `internal/meethost` / `VULOS_SFU_HOST` identifiers (the retirement
-  note itself was already accurate) and swapped the dead `[meethost]` log tag
-  in `docs/TROUBLESHOOTING.md`'s grep list for the real `[gpuhost]` tag. This
-  doc set is ingested by the public docs site build, so fixing it here is the
-  actual fix for the stale copy found there.
-- **Documented the Web Push / DMTAP Wake capability deviation.** The DMTAP
-  substrate spec (`substrate/ROLES.md` §8, capability ⑤ Wake) defines wake
-  pushes as strictly content-free — an opaque token, device pulls the real
-  object afterward. `backend/internal/webpush` instead sends real
-  RFC-8291-encrypted notification content (title/body/tag/url) directly to
-  the vendor. Assessed this as a deliberate superset (the vendor still never
-  reads plaintext either way; sending real content saves a round trip) that
-  gives up the spec's fixed ciphertext-size metadata privacy (payload size
-  now correlates with notification length) — no silent behavior change, no
-  new mode added, just written down. Full rationale in
-  `backend/internal/webpush/README.md`, cross-linked from
-  `docs/ARCHITECTURE.md` and `docs/CLOUD.md`.
-
-### Added
 
 - **Conduit homeserver, enabled.** The `conduit` registry entry (self-hosted
   Matrix homeserver) shipped `_disabled: true` pending a verified upstream
@@ -306,7 +141,163 @@ Versioning: [SemVer](https://semver.org/).
   and additive: it does not change `registry.json` or install-time
   verification. New targets `make publish-feed` / `make verify-feed`.
 
+### Changed
+
+- **The release now refuses to publish an image that does not boot** (BOOT-01).
+  Nothing in CI had ever verified this: the existing live-boot job is green on
+  every run because it *skips* — GitHub's runners have no QEMU. The new gate
+  boots the exact artifact about to be uploaded, asserts it serves
+  `/api/setup/status`, and asserts LAN HTTPS answers on the box's routable
+  address rather than loopback. It runs before both publish steps, and unlike
+  the old job it does not skip when QEMU is absent.
+- **Generated wire types are now gated.** `gen:wire-types:check` already existed
+  and worked, but ran in no workflow, no Makefile target and no hook, so a
+  change to a Go response struct would leave the TypeScript view silently stale
+  while every other gate stayed green.
+- **The LAN TLS key now persists** across reboots, so accepting the self-signed
+  certificate is genuinely a one-time action and future certificate pinning is
+  possible. A world-readable key is treated as compromised and rotated.
+- **`src/lib/` is TypeScript** (the security-critical client SDK), on TypeScript
+  6 — 7 is the native compiler and `typescript-eslint` refuses to run against
+  it, which would have silently dropped `react-hooks` linting from converted
+  files.
+- **Repository layout is now three peers**: `backend/` (Go), `frontend/` (web),
+  `clients/` (native). `mobile/` became `clients/android`.
+
+
+- **`VULOS_RENDEZVOUS_URL` accepts a comma-separated LIST**, and peer-reachability
+  resolve now tries several relays in order. Each rendezvous entry becomes its own
+  discovery source and a source that errors is skipped rather than failing the
+  set, so listing two or three under different operators removes discovery as a
+  single point of failure — the substrate spec's shape (KOTVA §4.2.1(3)). A single
+  URL is a one-element list and behaves exactly as before.
+- **The default relay provider is now `vulos`, not `ephor`.** Ephor remains a
+  fully supported alternative — it speaks the same rendezvous contract, so
+  selecting it is a genuine swap rather than a downgrade. Any unrecognised
+  persisted provider name (including the old `"ephor"` default) fails safe to the
+  new default exactly as before.
+- **Ingress status reports what is TRUE.** `relayconfig.IngressInfo()` previously
+  returned a hardcoded `https://relay.vulos.org` whether or not anything was
+  running there, so Settings could show a confident "relay-tunnel" for a box that
+  was in fact unreachable from the internet. It now reports the live tunnel state,
+  or says plainly that no relay is configured.
+
+
+- **ESLint cleanup + wired into CI.** An independent verification pass found
+  `npm run lint` reporting 12 errors / 18 warnings — small enough to actually
+  clear rather than defer. Fixed all 12 errors: an unused `req` param in an
+  e2e route stub, a genuinely-unused `no-unused-vars`-flagged arg in
+  `webPush.js` (documented inline, matching the repo's existing
+  underscore-prefix-plus-disable-comment convention), and 10
+  `react-refresh/only-export-components` hits in `src/auth/CloudSignIn.jsx`,
+  `src/auth/GatewayChoice.jsx`, and `src/builtin/drive/Drive.jsx` — each of
+  these files deliberately co-locates a component with plain helper
+  functions/hooks it exports for direct unit testing (documented in each
+  file's header comment); rather than a blanket rule disable, added
+  file-scoped `allowExportNames` overrides in `eslint.config.js` naming the
+  exact non-component exports. Of the 18 warnings, fixed 5: a dead
+  `eslint-disable-line no-proto` (the rule isn't even enabled) in
+  `appBridge.test.js`, and 4 real `react-hooks/exhaustive-deps` hits caused by
+  un-memoized values recreated every render — `ShellProvider.jsx`'s
+  `allWindows` array (now wrapped in `useMemo`, which also stabilizes
+  `closeWindow`/`focusWindow`/`minimizeWindow` identities) and `Window.jsx`'s
+  `applySnap` (now a stable `useCallback`), plus a genuinely-unused
+  `resizeWindow` dep that fell out of that same callback. The remaining 13
+  warnings are deliberate patterns, left as warnings rather than silenced:
+  mount-only-fetch effects with intentionally empty deps (`Setup.jsx`,
+  `FileManager.jsx`), effects/memos deliberately narrowed to specific
+  primitive fields of a larger object to avoid over-firing (`Setup.jsx`
+  `config`, `ShellProvider.jsx` `state`, `ThemeProvider.jsx`'s `tick`
+  invalidation-signal trick), unmount-only cleanup effects with `[]` deps
+  (`useMeshCall.js`, `useSFUCall.js`), forward-reference TDZ cases where the
+  callback is declared before the helper it calls and adding the dep would
+  crash the component at mount (`useSFUCall.js` ×2, `useVideoCall.js`,
+  `Portal.jsx` — the same TDZ reasoning is already documented in-file for a
+  sibling callback), and `FileManager.jsx`'s `goUp`, whose only real
+  dependency (`cwd`) is already tracked. `npm run lint` now runs as part of
+  the `frontend` CI job (`.github/workflows/ci.yml`), alongside the existing
+  `npm run build` and `npm run test:e2e` frontend checks.
+- **Docs: retired the last live-looking meethost/SFU-host references.**
+  `docs/NETWORKING.md`'s "Hosting big calls: BYO SFU" section still described
+  `VULOS_SFU_HOST`, `VULOS_SFU_ENDPOINT`, `VULOS_SFU_WORKER_BINARY`,
+  `VULOS_SFU_REGION`, and `GET /api/meethost/status` as if they were live
+  config — none of it exists in the code anymore (only a `// former Meet-SFU
+  host registry` comment remains in `main.go`), so it read as a working
+  feature. Replaced with an accurate description of the sovereign P2P
+  Messages builtin's in-process Pion SFU (`/api/sfu/rooms/*`, small mesh cap,
+  no host-registry escalation) and pointed to COMMS.md for third-party
+  large-group video. Also dropped `docs/ARCHITECTURE.md`'s name-drop of the
+  dead `internal/meethost` / `VULOS_SFU_HOST` identifiers (the retirement
+  note itself was already accurate) and swapped the dead `[meethost]` log tag
+  in `docs/TROUBLESHOOTING.md`'s grep list for the real `[gpuhost]` tag. This
+  doc set is ingested by the public docs site build, so fixing it here is the
+  actual fix for the stale copy found there.
+- **Documented the Web Push / DMTAP Wake capability deviation.** The DMTAP
+  substrate spec (`substrate/ROLES.md` §8, capability ⑤ Wake) defines wake
+  pushes as strictly content-free — an opaque token, device pulls the real
+  object afterward. `backend/internal/webpush` instead sends real
+  RFC-8291-encrypted notification content (title/body/tag/url) directly to
+  the vendor. Assessed this as a deliberate superset (the vendor still never
+  reads plaintext either way; sending real content saves a round trip) that
+  gives up the spec's fixed ciphertext-size metadata privacy (payload size
+  now correlates with notification length) — no silent behavior change, no
+  new mode added, just written down. Full rationale in
+  `backend/internal/webpush/README.md`, cross-linked from
+  `docs/ARCHITECTURE.md` and `docs/CLOUD.md`.
+
 ### Fixed
+
+- **LAN HTTPS bound loopback on any box whose DHCP lease arrived late.** The
+  address was resolved once at construction with no rebind, and the unit started
+  on `network.target`, which fires when networking starts rather than when an
+  address exists. Such a box served LAN HTTPS that nothing on the LAN could
+  reach, permanently, while looking healthy — and a browser on a plain-HTTP LAN
+  origin is not a secure context, so `crypto.subtle` is undefined and none of
+  `src/lib` can run.
+- **A wordlist entry containing the separator broke generated passphrases.** The
+  EFF list has four hyphenated words and the default separator is `-`, so a
+  three-word passphrase could split into four parts with an uncapitalised one
+  among them (`Saloon-Hardcopy-Yo-yo`). Generation now draws from a wordlist
+  filtered of any word containing the separator; the entropy cost is nil at the
+  stated precision.
+- **The live loader entry and `isLiveBoot()` disagreed.** The entry wrote a bare
+  `vulos.live` while the code tests for `vulos.live=1`. Harmless today, since
+  systemd is PID 1 on the live image, but a trap for anything later routing a
+  live boot through `vulos-init`.
+- **The OS image booted but never ran Vulos.** `vulos.service` invoked
+  `vulos-server -env main`; `env.Parse` accepts only `local`/`dev`/`prod` and
+  treats anything else as fatal, so the server exited immediately and
+  crash-looped every 3s while systemd still reported "Started vulos.service"
+  (`Type=simple` only means the process was forked). Every image before this
+  one served nothing. Now `-env prod` — the only environment that binds all
+  interfaces; `local`/`dev` bind loopback and would leave a box unreachable.
+  Verified by booting the built image on both architectures and confirming
+  `GET /api/setup/status` returns 200.
+- **The live-boot smoke gate could not fail.** It passed on *either* a serial
+  pattern or an HTTP probe, and the serial pattern (`login:`) always matches a
+  successful boot — so the HTTP check its own comments called "the gold-standard
+  fully-running check" never gated anything, which is how the above shipped.
+  HTTP is now the only signal that can pass the gate.
+- **`crypto.subtle` was undefined on the box's most likely address.** A browser
+  on `http://<lan-ip>` is not a secure context, so `masterKey`, `contentSeal`
+  and `offlineAuth` could not run at all. Those entry points now fail with a
+  clear message naming both remedies instead of a bare `TypeError`.
+- **Padding vanished wherever `safe-px` met a Tailwind `px-*` utility.** Both
+  set the same property at equal specificity, and with no left/right inset
+  (portrait, essentially every phone) the `env()` won at `0px` — content sat
+  flush against the screen edge.
+- **The phone status bar clipped its public-apps warning badge** at 390px. The
+  date is now hidden below the `sm` breakpoint; the badge is the one element in
+  that bar that must never be lost.
+
+
+- **Data race and handshake desync in the tunnel control channel.** The yamux
+  session was constructed before the relay finished writing its `ready` frame, so
+  two goroutines could write the same WebSocket concurrently and a peer could read
+  a binary frame where it expected the text handshake. The handshake now completes
+  fully before the connection is handed to yamux. Caught by the package's own
+  race-enabled tests.
+
 
 - Stale "52 committed registry.json entries" comments in
   `registry_acceptance_test.go`, `registry_lossless_test.go`, and
@@ -314,6 +305,57 @@ Versioning: [SemVer](https://semver.org/).
   were added (registry is now 55 entries).
 
 ---
+
+### Security
+
+- **The allow-list of unauthenticated routes was never actually checked.** The
+  test asserting `publicPaths` is exhaustive built its expected list and then
+  only logged it. The two had drifted to 39 live entries against 18 expected —
+  in both directions — and it stayed green throughout. Removing authentication
+  from a route, the highest-consequence edit in that file, required no review.
+  It now compares both directions and covers the path *prefixes* too, which are
+  more dangerous still because they exempt an entire subtree.
+- **Push is not equally sovereign on every platform, and now says so.** Apple
+  requires all background push, Safari Web Push included, to transit APNs. The
+  payload stays end-to-end encrypted, but the fact and timing of a push are
+  visible to Apple regardless. Documented as the platform restriction it is.
+- **Production signing ceremony run.** The App Hub registry and the OS trust
+  chain are now signed with a production release key (root-anchored), replacing
+  the development anchor. `make verify-registry-prod` — the release gate — now
+  passes, so tagged releases build and publish flashable images again instead of
+  halting. A one-command ceremony (`make ceremony`) generates the root + release
+  keypairs, signs the cert and registry, installs the public trust material into
+  `keys/`, and collects the private keys into an offline vault.
+
+
+- **Header-trust boundary between relay and box.** The relay strips every
+  `X-Vulos-Reach-*` header from inbound client requests — unconditionally and by
+  prefix, so a header added later is covered automatically — then sets the ones it
+  vouches for; the agent translates those into `r.RemoteAddr` and a synthetic
+  `r.TLS` state and strips them again before any OS handler sees them. Without the
+  translation every tunnelled client would share one rate-limit bucket and session
+  cookies would lose `Secure` on exactly the requests that crossed the public
+  internet. An unparseable vouched client IP **fails closed**.
+- **A relay never runs open.** No grants configured is a startup refusal, not a
+  permissive default: an open relay is an open proxy under the operator's own
+  domain and certificate.
+- **Revocation reaches ESTABLISHED tunnels**, swept every 20s. A working tunnel
+  never reconnects, so a revocation applying only to new connections would leave a
+  compromised box connected indefinitely.
+- **Reconnect without hijack.** A re-registration presenting the same credential
+  evicts the stale session immediately (so a rebooted box is not unreachable while
+  a half-open TCP connection times out); one presenting a *different* credential is
+  refused, even when both grants list the name.
+- **Direct-endpoint ownership probe** — an advertised direct endpoint must echo a
+  one-time nonce before the relay will publish it, so an agent cannot point clients
+  at a third party. The probe is the relay's only agent-influenced outbound request
+  and is SSRF-screened at connect time against the resolved IP (defeating DNS
+  rebinding), refuses redirects, and is off by default.
+- **Secret-bearing files must be mode 0600** — both the box's endpoints file and
+  the relay's grants file are refused, not warned about, if world-accessible.
+- **Uniform rejections.** Tunnel-registration and rendezvous-announce failures
+  answer identically regardless of cause, so probing cannot reveal which part of a
+  forgery to fix.
 
 ## Pre-release development history
 
