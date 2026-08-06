@@ -80,7 +80,10 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
 Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your apps, settings, and workspace follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
 
 <div align="center">
-<img src="docs/assets/peer-sync-light.svg" alt="Your phone reaches your own Vulos instances from anywhere; a home box and a laptop you own stay in sync as peers over their own Ed25519 identities." width="880" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/peer-sync-dark.svg" />
+  <img src="docs/assets/peer-sync-light.svg" alt="Your phone reaches your own Vulos instances from anywhere; a home box and a laptop you own stay in sync as peers over their own Ed25519 identities." width="880" />
+</picture>
 </div>
 
 <sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same-LAN nodes today, with broader structured-data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
@@ -212,7 +215,10 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 ## One binary, three ways to run
 
 <div align="center">
-<img src="docs/assets/run-light.svg" alt="The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server." width="820" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/run-dark.svg" />
+  <img src="docs/assets/run-light.svg" alt="The same single Vulos image runs on a mini-PC, a spare laptop, or a cloud server." width="820" />
+</picture>
 </div>
 
 Vulos is built to be owned end to end. Deploy it to your own server:
