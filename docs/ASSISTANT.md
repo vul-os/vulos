@@ -161,7 +161,7 @@ If the configured model endpoint's tier is blocked, these endpoints return **428
 1. In the agent turn, the model resolves the time to a concrete local datetime and calls `set_reminder` — which, like every mutating tool, becomes a **proposal**.
 2. You approve; `POST /api/assistant/execute` writes the reminder to a durable per-user SQLite store (`~/.vulos/db/reminders.db`). The store validates the time (must be in the future, at most 10 years out) and bounds the text (500 chars) and count (200 pending per user).
 3. A scheduler polls the store every **15 seconds** for due reminders. It is restart-safe: reminders that came due while the box was off fire on the first sweep after boot, and each fires exactly once.
-4. A fired reminder raises a high-priority OS notification scoped to *your* account only — reminder text never broadcasts to other accounts on the box. It is delivered to the shell's Notification Center over the live notification stream, and — if you enabled Web Push under **Settings → Notifications** — pushed to your device with an end-to-end-encrypted (RFC 8291) payload sent directly from your box to your browser vendor.
+4. A fired reminder raises a high-priority OS notification scoped to *your* account only — reminder text never broadcasts to other accounts on the box. It is delivered to the shell's Notification Center over the live notification stream, and — if you enabled Web Push under **Settings → Notifications** — pushed to your device with an end-to-end-encrypted (RFC 8291) payload sent directly from your box to your browser vendor. On iOS that vendor is always Apple (APNs) — see the iOS note under [Notifications](USER-GUIDE.md#notifications) in the User Guide.
 
 You can list reminders any time (`GET /api/assistant/reminders`, or just ask "what are my reminders"), and cancel one either by clicking it in the shell (direct, deterministic) or by asking the assistant (which proposes `cancel_reminder` for approval).
 
@@ -262,7 +262,7 @@ AI_PROVIDER=claude AI_API_KEY=sk-ant-… VULOS_AI_TIER=brokered VULOS_ASSISTANT_
 | Mail bodies, file contents, calendar, contacts, reminders used as model context | **Never** on `local`. On `sovereign`/`brokered`/`external`, only to the endpoint you configured, and only if the tier is permitted |
 | Embeddings of your mail (the semantic index) | **Never** — the mail index refuses non-local embedders outright, independent of the model tier |
 | Proposal execution (sending mail, creating events) | Talks only to your local mail service; the send itself then goes wherever email goes, as with any mail client |
-| Reminder notifications via Web Push (opt-in) | An end-to-end-encrypted payload goes from your box directly to your browser vendor's push relay; the vendor routes it but cannot read it |
+| Reminder notifications via Web Push (opt-in) | An end-to-end-encrypted payload goes from your box directly to your browser vendor's push relay; the vendor routes it but cannot read it. On iOS the vendor is always Apple — there is no sovereign delivery path on that platform (see the User Guide's [Notifications](USER-GUIDE.md#notifications) section) |
 | Model downloads | Outbound fetch from the pinned Hugging Face catalog only, hash-verified |
 
 Everything in the first row is enforced by code (the Guard choke point plus the on-instance embedder certification), not by policy. The threat model behind this design is written up in [THREAT-MODEL.md](THREAT-MODEL.md), and the broader box hardening picture in [SECURITY.md](SECURITY.md).

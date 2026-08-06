@@ -312,6 +312,8 @@ The toggle at the bottom of the notification panel (also in **Settings → Notif
 
 Notification preferences live on this device (browser storage), matching the per-device nature of Web Push.
 
+**The iOS exception.** Push delivery is not equally sovereign on every platform. On Android and desktop browsers, your box hands the encrypted payload to the browser vendor's push relay (Chrome/FCM, Firefox/Mozilla) purely as a delivery pipe. On iOS, Apple requires all background push — including Safari Web Push — to transit **APNs**, Apple's own push service; there is no way to reach an iPhone in the background without it. The notification payload itself is still end-to-end encrypted (Apple relays ciphertext it cannot read), but the fact that a push occurred, and when, is visible to Apple's infrastructure regardless. This is a platform restriction Apple imposes, not a gap in Vulos's own push stack — see decision D96 in [decisions.md](decisions.md) for the full reasoning.
+
 ---
 
 ## The Settings app
