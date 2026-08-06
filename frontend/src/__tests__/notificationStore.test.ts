@@ -7,6 +7,7 @@ import {
   normalize, shouldLog, shouldToast, mergeById, coercePrefs,
   __resetForTests,
 } from '../core/notificationStore'
+import type { NotificationItem, NotificationPrefs } from '../core/notificationStore'
 import {
   extractSignals, processHomeData, __resetForTests as resetNotifier,
 } from '../core/notifiers/attentionNotifier'
@@ -15,6 +16,25 @@ import {
 // the shell bell + toaster subscribe. These pin the seam contract — dispatch,
 // unread accounting, read/dismiss/clear, the pure filter logic (mute / per-source
 // / critical bypass), rate-limiting, and the backend-bridge sink.
+
+// mergeById()/shouldLog()/shouldToast() take a full NotificationItem /
+// NotificationPrefs — these tests only exercise a couple of fields (id/ts/read,
+// sources/muted), so these factories fill the rest with inert defaults rather
+// than the tests hand-building complete records everywhere.
+function mkItem(overrides: { id: string; ts: number; read?: boolean }): NotificationItem {
+  return {
+    id: overrides.id,
+    title: 'x',
+    source: 'test',
+    level: 'info',
+    read: overrides.read ?? false,
+    ts: overrides.ts,
+    origin: 'local',
+  }
+}
+function mkPrefs(overrides: Partial<NotificationPrefs>): NotificationPrefs {
+  return { muted: false, sound: true, sources: {}, ...overrides }
+}
 
 beforeEach(() => { __resetForTests(); resetNotifier() })
 
@@ -71,30 +91,33 @@ describe('normalize()', () => {
 
 describe('filter logic (pure)', () => {
   it('shouldLog is false only when a source is explicitly off', () => {
-    expect(shouldLog({ sources: {} }, 'mail')).toBe(true)
-    expect(shouldLog({ sources: { mail: false } }, 'mail')).toBe(false)
+    expect(shouldLog(mkPrefs({ sources: {} }), 'mail')).toBe(true)
+    expect(shouldLog(mkPrefs({ sources: { mail: false } }), 'mail')).toBe(false)
   })
   it('shouldToast honours mute but critical always breaks through', () => {
-    expect(shouldToast({ muted: true, sources: {} }, 'mail', 'info')).toBe(false)
-    expect(shouldToast({ muted: true, sources: {} }, 'mail', 'critical')).toBe(true)
-    expect(shouldToast({ muted: false, sources: {} }, 'mail', 'info')).toBe(true)
+    expect(shouldToast(mkPrefs({ muted: true, sources: {} }), 'mail', 'info')).toBe(false)
+    expect(shouldToast(mkPrefs({ muted: true, sources: {} }), 'mail', 'critical')).toBe(true)
+    expect(shouldToast(mkPrefs({ muted: false, sources: {} }), 'mail', 'info')).toBe(true)
   })
   it('a source that is off suppresses even critical toasts', () => {
-    expect(shouldToast({ muted: false, sources: { mail: false } }, 'mail', 'critical')).toBe(false)
+    expect(shouldToast(mkPrefs({ muted: false, sources: { mail: false } }), 'mail', 'critical')).toBe(false)
   })
 })
 
 describe('mergeById()', () => {
   it('inserts new, updates existing by id, keeps newest-first + bounded', () => {
-    let list = []
-    list = mergeById(list, { id: 'a', ts: 1 })
-    list = mergeById(list, { id: 'b', ts: 2 })
+    let list: NotificationItem[] = []
+    list = mergeById(list, mkItem({ id: 'a', ts: 1 }))
+    list = mergeById(list, mkItem({ id: 'b', ts: 2 }))
     expect(list.map(n => n.id)).toEqual(['b', 'a'])
-    list = mergeById(list, { id: 'a', ts: 3, read: true })
+    list = mergeById(list, mkItem({ id: 'a', ts: 3, read: true }))
     expect(list).toHaveLength(2)
-    expect(list.find(n => n.id === 'a').read).toBe(true)
-    const big = Array.from({ length: 200 }, (_, i) => ({ id: `x${i}`, ts: 100 + i }))
-    const merged = big.reduce((acc, n) => mergeById(acc, n, 100), [])
+    const updatedA = list.find(n => n.id === 'a')
+    if (!updatedA) throw new Error('expected item a in the merged list')
+    expect(updatedA.read).toBe(true)
+    const big = Array.from({ length: 200 }, (_, i) => mkItem({ id: `x${i}`, ts: 100 + i }))
+    const empty: NotificationItem[] = []
+    const merged = big.reduce((acc, n) => mergeById(acc, n, 100), empty)
     expect(merged).toHaveLength(100)
   })
 })
@@ -102,6 +125,7 @@ describe('mergeById()', () => {
 describe('mutations', () => {
   it('markRead flips a single item; markAllRead clears the count', () => {
     const a = notify({ title: 'a' }).id
+    if (!a) throw new Error('expected an id')
     notify({ title: 'b' })
     expect(getUnreadCount()).toBe(2)
     markRead(a)
@@ -111,6 +135,7 @@ describe('mutations', () => {
   })
   it('dismiss removes the item and its live toast', () => {
     const id = notify({ title: 'a' }).id
+    if (!id) throw new Error('expected an id')
     expect(getToasts()).toHaveLength(1)
     dismiss(id)
     expect(getItems()).toHaveLength(0)
@@ -201,6 +226,7 @@ describe('backend bridge (ingest + remote sink)', () => {
     const sink = { markRead: vi.fn() }
     setRemoteSink(sink)
     const id = notify({ title: 'local' }).id
+    if (!id) throw new Error('expected an id')
     markRead(id)
     expect(sink.markRead).not.toHaveBeenCalled()
   })

@@ -17,8 +17,17 @@
 // server side in backend/services/gateway/origin_test.go, and the bridge protocol
 // itself in src/__tests__/appBridge.test.js.)
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { installBackend } from './mock-backend.js'
+
+// APP_PROBE (below) stashes its bridge MessagePort on `window.__port` so this
+// spec can drive a write through it — a real global the probe's own inline
+// script sets, not something this file invents.
+declare global {
+  interface Window {
+    __port?: MessagePort
+  }
+}
 
 // A probe that behaves like a real app frame: it reports what it can reach, and
 // it speaks the ORIGIN-01 bridge protocol (hello + storage writes over a
@@ -87,7 +96,7 @@ const EVIL_PROBE = `<!doctype html><html><body><script>
   try { parent.postMessage({ type: 'vulos.bridge.hello', v: 1 }, document.referrer || '*', [new MessageChannel().port2]); } catch (e) {}
 </script></body></html>`
 
-async function boot(page, overrides = {}) {
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
   await installBackend(page, {
     // The default self-hosted box: no base domain → no per-app origins, so apps
     // stay on the shell-origin path prefix and must run opaque.
@@ -119,7 +128,7 @@ async function boot(page, overrides = {}) {
   })
 }
 
-async function launch(page, appName) {
+async function launch(page: Page, appName: string) {
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
     await page.keyboard.press('Meta+k')
@@ -130,7 +139,7 @@ async function launch(page, appName) {
   await page.keyboard.press('Enter')
 }
 
-const clockFrameEl = (page) => page.locator('iframe[src*="/app/clock/"]')
+const clockFrameEl = (page: Page) => page.locator('iframe[src*="/app/clock/"]')
 
 test('a formerly same-origin app (Clock) is framed WITHOUT allow-same-origin', async ({ page }) => {
   await boot(page)
@@ -182,7 +191,9 @@ test('the bridge gives the app its storage back — scoped to the app, inside th
 
   // The app writes a preference over the bridge, exactly as the injected shim does.
   const appFrame = page.frames().find((f) => f.url().includes('/app/clock/'))
+  if (!appFrame) throw new Error('clock app frame not found')
   await appFrame.evaluate(() => {
+    if (!window.__port) throw new Error('bridge port never landed on window.__port')
     window.__port.postMessage({ v: 1, type: 'vulos.storage.set', key: 'clock.worldClocks', value: '["utc","jst"]' })
   })
 
@@ -211,6 +222,7 @@ test('the app gets its data back on relaunch (the seed makes it readable at boot
   // opted-in apps do, and why they needed a real origin before.
   const src = await frameEl.getAttribute('src')
   expect(src, 'app frame must carry the storage seed').toContain('#__vulos_s=')
+  if (!src) throw new Error('unreachable — the expect above already failed on a null src')
   // The seed is in the FRAGMENT: it is never sent to the server.
   expect(src.split('#')[0]).not.toContain('__vulos_s')
 
@@ -275,7 +287,7 @@ test('the browser itself drops a postMessage whose targetOrigin is not the paren
   await boot(page)
 
   const delivered = await page.evaluate(async () => {
-    const received = []
+    const received: string[] = []
     window.addEventListener('message', (e) => { if (e.data?.probe) received.push(e.data.probe) })
 
     const f = document.createElement('iframe')

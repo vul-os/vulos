@@ -1,4 +1,4 @@
-// Contacts.test.jsx — the standalone Contacts app.
+// Contacts.test.tsx — the standalone Contacts app.
 //
 // Guards: it lists contacts, shows a detail pane on select, opens the editor to
 // create/edit (write goes to the /v1 seam), and degrades to "Connect Mail" when
@@ -6,28 +6,38 @@
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { Contact, ContactFormInput } from '../contactsApi'
 
 const openWindow = vi.fn()
 vi.mock('../../../providers/ShellProvider', () => ({ useShell: () => ({ openWindow }) }))
 const launchApp = vi.fn()
-vi.mock('../../../shell/launchApp', () => ({ launchApp: (...a) => launchApp(...a) }))
-vi.mock('../../../core/AppRegistry', () => ({ getAppById: (id) => ({ id }) }))
+vi.mock('../../../shell/launchApp', () => ({ launchApp: (...a: unknown[]) => launchApp(...a) }))
+vi.mock('../../../core/AppRegistry', () => ({ getAppById: (id: string) => ({ id }) }))
 
 const api = vi.hoisted(() => ({
-  listContacts: vi.fn(),
-  createContact: vi.fn(),
-  updateContact: vi.fn(),
-  deleteContact: vi.fn(),
+  listContacts: vi.fn<(q?: string) => Promise<Contact[]>>(),
+  createContact: vi.fn<(c: ContactFormInput) => Promise<unknown>>(),
+  updateContact: vi.fn<(id: string, c: ContactFormInput) => Promise<unknown>>(),
+  deleteContact: vi.fn<(id: string) => Promise<unknown>>(),
 }))
 vi.mock('../contactsApi', async () => {
-  const real = await vi.importActual('../contactsApi')
+  const real = await vi.importActual<typeof import('../contactsApi')>('../contactsApi')
   return { ...real, ...api }
 })
 
 import Contacts from '../Contacts'
 
-function contact(over = {}) {
+function contact(over: Partial<Contact> = {}): Contact {
   return { id: 'u1', name: 'Ada Lovelace', org: 'Vulos', title: 'Eng', note: 'note', emails: ['ada@x.com'], phones: ['+1 555'], ...over }
+}
+
+// Structural selectors (data-contact-editor input) aren't reachable via
+// getByLabelText, so narrow the querySelector result to a real input rather
+// than casting it.
+function inputEl(sel: string): HTMLInputElement {
+  const el = document.querySelector(sel)
+  if (!(el instanceof HTMLInputElement)) throw new Error(`expected an input: ${sel}`)
+  return el
 }
 
 beforeEach(() => {
@@ -55,7 +65,7 @@ it('creates a contact via the /v1 seam', async () => {
   fireEvent.click(screen.getByLabelText('New contact'))
   const name = await screen.findByText('New contact')
   expect(name).toBeInTheDocument()
-  const nameInput = document.querySelector('[data-contact-editor] input')
+  const nameInput = inputEl('[data-contact-editor] input')
   fireEvent.change(nameInput, { target: { value: 'Grace Hopper' } })
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(api.createContact).toHaveBeenCalled())
@@ -67,7 +77,7 @@ it('edits an existing contact via the /v1 update seam', async () => {
   await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
   fireEvent.click(screen.getByText('Ada Lovelace'))
   fireEvent.click(await screen.findByText('Edit'))
-  const nameInput = document.querySelector('[data-contact-editor] input')
+  const nameInput = inputEl('[data-contact-editor] input')
   fireEvent.change(nameInput, { target: { value: 'Ada L.' } })
   fireEvent.click(screen.getByText('Save'))
   await waitFor(() => expect(api.updateContact).toHaveBeenCalled())

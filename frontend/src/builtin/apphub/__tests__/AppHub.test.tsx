@@ -1,4 +1,4 @@
-// AppHub.test.jsx — the App Store / App Hub browse+search UI.
+// AppHub.test.tsx — the App Store / App Hub browse+search UI.
 //
 // Guard: the search box must match on registry `keywords` in addition to
 // name/description/id. Before this fix, RegistryListEntry (the shape
@@ -9,31 +9,48 @@
 
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { App } from '../../../core/AppRegistry'
 
-vi.mock('../../../core/AppRegistry', () => ({ refreshInstalled: vi.fn() }))
+vi.mock('../../../core/AppRegistry', () => ({ refreshInstalled: vi.fn<() => Promise<App[]>>() }))
 
 import AppHub from '../AppHub'
 
-function mockRegistry(apps) {
-  global.fetch = vi.fn((url) => {
+function mockRegistry(apps: unknown) {
+  vi.stubGlobal('fetch', vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(async (url) => {
     const u = String(url)
     if (u.includes('/api/store/registry')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(apps) })
+      return new Response(JSON.stringify(apps), { status: 200 })
     }
     if (u.includes('/api/store/installed')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return new Response(JSON.stringify([]), { status: 200 })
     }
     if (u.includes('/api/packages/cache')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ready: true, arch: 'amd64' }) })
+      return new Response(JSON.stringify({ ready: true, arch: 'amd64' }), { status: 200 })
     }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
-  })
+    return new Response(JSON.stringify({}), { status: 200 })
+  }))
 }
 
 afterEach(() => cleanup())
 beforeEach(() => vi.clearAllMocks())
 
-const APPS = [
+// The GET /api/store/registry wire shape (services/appnet/registry.go's
+// RegistryListEntry) — a store-only shape AppHub.tsx's local StoreApp
+// narrows from, not the shell-launcher `App` type.
+interface RegistryFixtureApp {
+  id: string
+  name: string
+  type: string
+  arch: string[]
+  description: string
+  category: string
+  keywords: string[]
+  versions: string[]
+  latest: string
+  installed: boolean
+}
+
+const APPS: RegistryFixtureApp[] = [
   {
     id: 'conduit',
     name: 'Conduit',

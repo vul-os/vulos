@@ -18,7 +18,7 @@
 //   • an inbound `sms_received` frame over the WS feed surfaces in the UI
 //   • a "no modem" state renders when /api/telephony/status reports none
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Request, type WebSocketRoute } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -48,14 +48,21 @@ const THREAD_MESSAGES = [
   { direction: 'incoming', body: 'See you tomorrow', ts: NOW, status: 'delivered' },
 ]
 
-function json(body, status = 200) {
+function json(body: unknown, status = 200) {
   return { status, contentType: 'application/json', body: JSON.stringify(body) }
 }
+
+type FulfillSpec = ReturnType<typeof json>
+type RouteEntry = FulfillSpec | ((req: Request) => FulfillSpec)
 
 // Serve the phone HTML (and a stub for its stylesheet) on the app route, and wire
 // the telephony REST surface. `overrides` (keyed by "METHOD /path") and
 // `statusSpec` let individual tests drive the modem-present / modem-absent cases.
-async function servePhone(page, { statusSpec = json(STATUS_PRESENT), overrides = {} } = {}) {
+async function servePhone(
+  page: Page,
+  { statusSpec = json(STATUS_PRESENT), overrides = {} }:
+    { statusSpec?: FulfillSpec; overrides?: Record<string, RouteEntry> } = {},
+) {
   // The app document + its co-located assets (vulos-tokens.css). Anything that
   // isn't a known asset falls through to index.html (the app's own SPA fallback).
   await page.route('**/app/phone/**', (route) => {
@@ -66,7 +73,7 @@ async function servePhone(page, { statusSpec = json(STATUS_PRESENT), overrides =
     return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: PHONE_HTML })
   })
 
-  const table = {
+  const table: Record<string, RouteEntry> = {
     'GET /api/telephony/status': statusSpec,
     'GET /api/telephony/sms/threads': json(THREADS),
     // The app builds this path with encodeURIComponent(number), so the leading
@@ -91,7 +98,7 @@ async function servePhone(page, { statusSpec = json(STATUS_PRESENT), overrides =
 }
 
 test('renders the SMS thread list from the backend', async ({ page }) => {
-  const errors = []
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await servePhone(page)
   await page.goto('/app/phone/')
@@ -104,10 +111,10 @@ test('renders the SMS thread list from the backend', async ({ page }) => {
 })
 
 test('sending an SMS POSTs {to, body} to the send endpoint', async ({ page }) => {
-  let sentBody = null
+  let sentBody: unknown = null
   await servePhone(page, {
     overrides: {
-      'POST /api/telephony/sms/send': (req) => {
+      'POST /api/telephony/sms/send': (req: Request) => {
         sentBody = req.postDataJSON()
         return json({ ok: true, status: 'sent' })
       },
@@ -129,8 +136,11 @@ test('sending an SMS POSTs {to, body} to the send endpoint', async ({ page }) =>
 
 test('an inbound SMS over the WebSocket feed surfaces in the UI', async ({ page }) => {
   // Mock the telephony WS: we act as the server and push a frame to the client.
-  let telWs = null
-  await page.routeWebSocket('**/api/telephony/ws', (ws) => { telWs = ws })
+  // Held in a boxed property (not a bare `let`) — TS's flow narrowing can't see
+  // through the closure assignment on a plain local, which would otherwise leave
+  // `telState.ws` typed `never` after the null check below.
+  const telState: { ws: WebSocketRoute | null } = { ws: null }
+  await page.routeWebSocket('**/api/telephony/ws', (ws) => { telState.ws = ws })
 
   await servePhone(page)
   await page.goto('/app/phone/')
@@ -138,11 +148,12 @@ test('an inbound SMS over the WebSocket feed surfaces in the UI', async ({ page 
   // Wait for the app to open the socket (its status chip flips to "Live") and the
   // route handler to hand us the server end.
   await expect(page.locator('#ws-label')).toHaveText('Live', { timeout: 15_000 })
-  await expect.poll(() => !!telWs, { timeout: 5_000 }).toBe(true)
+  await expect.poll(() => !!telState.ws, { timeout: 5_000 }).toBe(true)
+  if (!telState.ws) throw new Error('telephony WS route never connected')
 
   // Push an inbound SMS. handleWSMessage renders a toast "SMS from <from>: <body>"
   // (and refreshes the thread list).
-  telWs.send(JSON.stringify({ type: 'sms_received', from: '+15559998888', body: 'Ping from the void' }))
+  telState.ws.send(JSON.stringify({ type: 'sms_received', from: '+15559998888', body: 'Ping from the void' }))
 
   await expect(page.getByText(/SMS from \+15559998888: Ping from the void/)).toBeVisible({ timeout: 5_000 })
 })

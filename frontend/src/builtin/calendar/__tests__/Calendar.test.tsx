@@ -1,4 +1,4 @@
-// Calendar.test.jsx — the standalone Calendar app.
+// Calendar.test.tsx — the standalone Calendar app.
 //
 // Guards: it renders the month grid without white-screening, surfaces events,
 // switches to the agenda, opens the editor to create an event (write goes to the
@@ -6,22 +6,23 @@
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { CalendarEvent, EventFormInput } from '../calendarApi'
 
 const openWindow = vi.fn()
 vi.mock('../../../providers/ShellProvider', () => ({ useShell: () => ({ openWindow }) }))
 const launchApp = vi.fn()
-vi.mock('../../../shell/launchApp', () => ({ launchApp: (...a) => launchApp(...a) }))
-vi.mock('../../../core/AppRegistry', () => ({ getAppById: (id) => ({ id }) }))
+vi.mock('../../../shell/launchApp', () => ({ launchApp: (...a: unknown[]) => launchApp(...a) }))
+vi.mock('../../../core/AppRegistry', () => ({ getAppById: (id: string) => ({ id }) }))
 
 // Mock the /v1 seam so the component test is about the UI, not the network.
 const api = vi.hoisted(() => ({
-  listEvents: vi.fn(),
-  createEvent: vi.fn(),
-  updateEvent: vi.fn(),
-  deleteEvent: vi.fn(),
+  listEvents: vi.fn<(from: Date | string, to: Date | string) => Promise<CalendarEvent[]>>(),
+  createEvent: vi.fn<(ev: EventFormInput) => Promise<unknown>>(),
+  updateEvent: vi.fn<(id: string, ev: EventFormInput) => Promise<unknown>>(),
+  deleteEvent: vi.fn<(id: string) => Promise<unknown>>(),
 }))
 vi.mock('../calendarApi', async () => {
-  const real = await vi.importActual('../calendarApi')
+  const real = await vi.importActual<typeof import('../calendarApi')>('../calendarApi')
   return { ...real, ...api }
 })
 
@@ -47,7 +48,7 @@ it('renders the month grid without crashing', async () => {
 it('shows an event and reveals it in the agenda view', async () => {
   const start = new Date(Date.now() + 60 * 60 * 1000)
   api.listEvents.mockResolvedValue([
-    { id: 'e1', title: 'Launch review', start: start.toISOString(), _start: start, _end: null, location: 'War room', notes: '', allDay: false },
+    { id: 'e1', title: 'Launch review', start: start.toISOString(), end: '', _start: start, _end: null, location: 'War room', notes: '', allDay: false },
   ])
   render(<Calendar />)
   await waitFor(() => expect(screen.getAllByText('Launch review').length).toBeGreaterThan(0))
@@ -69,7 +70,7 @@ it('opens the editor and creates an event via the /v1 seam', async () => {
 it('edits an existing event via the /v1 update seam', async () => {
   const start = new Date(Date.now() + 60 * 60 * 1000)
   api.listEvents.mockResolvedValue([
-    { id: 'e1', title: 'Launch review', start: start.toISOString(), _start: start, _end: null, location: '', notes: '', allDay: false },
+    { id: 'e1', title: 'Launch review', start: start.toISOString(), end: '', _start: start, _end: null, location: '', notes: '', allDay: false },
   ])
   render(<Calendar />)
   const evt = await screen.findAllByText('Launch review')
@@ -86,7 +87,7 @@ it('edits an existing event via the /v1 update seam', async () => {
 it('deletes an existing event via the /v1 seam', async () => {
   const start = new Date(Date.now() + 60 * 60 * 1000)
   api.listEvents.mockResolvedValue([
-    { id: 'e1', title: 'Dentist', start: start.toISOString(), _start: start, _end: null, location: '', notes: '', allDay: false },
+    { id: 'e1', title: 'Dentist', start: start.toISOString(), end: '', _start: start, _end: null, location: '', notes: '', allDay: false },
   ])
   render(<Calendar />)
   const evt = await screen.findAllByText('Dentist')

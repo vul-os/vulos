@@ -17,37 +17,62 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const SW_SRC = readFileSync(
-  resolve(__dirname, '../../public/sw.js'),
+  resolve(import.meta.dirname, '../../public/sw.js'),
   'utf8'
 )
 
 // Minimal in-memory Cache + CacheStorage. Keyed by URL pathname so it doesn't
 // matter whether the request URL is full ('https://app/...') or a relative
 // shell path ('/index.html') — both forms resolve to the same key.
-function keyOf(reqOrUrl) {
-  const u = String(reqOrUrl?.url ?? reqOrUrl ?? '')
+//
+// This harness only implements the handful of members sw.js and this suite
+// actually exercise — not the full Request/Response/Cache/CacheStorage/
+// Clients DOM surface (jsdom doesn't implement the Cache API at all, and
+// sw.js runs outside jsdom's globals anyway via the `new Function` scope
+// below). The interfaces below are the harness's OWN contract, not a stand-in
+// for lib.dom's real types.
+
+interface FakeRequest {
+  url: string
+  method: string
+  mode: string
+  clone: () => FakeRequest
+}
+
+interface FakeResponse {
+  status?: number
+  type?: string
+  ok?: boolean
+  body?: string
+  clone?: () => FakeResponse
+}
+
+function keyOf(reqOrUrl: FakeRequest | string | undefined): string {
+  const u = typeof reqOrUrl === 'string' ? reqOrUrl : (reqOrUrl?.url ?? '')
   try { return new URL(u, 'https://app.vulos.org/').pathname } catch { return u }
 }
 function makeCache() {
-  const store = new Map()
+  const store = new Map<string, FakeResponse>()
   return {
-    addAll: vi.fn(async (urls) => { for (const u of urls) store.set(keyOf(u), { ok: true, body: 'shell' }) }),
-    put: vi.fn(async (req, res) => { store.set(keyOf(req), res) }),
-    match: vi.fn(async (req) => store.get(keyOf(req)) || undefined),
+    addAll: vi.fn(async (urls: string[]) => { for (const u of urls) store.set(keyOf(u), { ok: true, body: 'shell' }) }),
+    put: vi.fn(async (req: FakeRequest, res: FakeResponse) => { store.set(keyOf(req), res) }),
+    match: vi.fn(async (req: FakeRequest | string) => store.get(keyOf(req)) || undefined),
     keys: vi.fn(async () => [...store.keys()]),
     _store: store,
   }
 }
 function makeCaches() {
-  const all = new Map()
+  const all = new Map<string, ReturnType<typeof makeCache>>()
   return {
-    open: vi.fn(async (name) => {
+    open: vi.fn(async (name: string) => {
       if (!all.has(name)) all.set(name, makeCache())
-      return all.get(name)
+      const cache = all.get(name)
+      if (!cache) throw new Error('unreachable: cache was just set above')
+      return cache
     }),
     keys: vi.fn(async () => [...all.keys()]),
-    delete: vi.fn(async (name) => all.delete(name)),
-    match: vi.fn(async (req) => {
+    delete: vi.fn(async (name: string) => all.delete(name)),
+    match: vi.fn(async (req: FakeRequest | string) => {
       for (const cache of all.values()) {
         const hit = await cache.match(req)
         if (hit) return hit
@@ -59,7 +84,7 @@ function makeCaches() {
 }
 
 // Minimal Request / Response surrogates.
-function makeRequest(url, init = {}) {
+function makeRequest(url: string, init: { method?: string; mode?: string } = {}): FakeRequest {
   return {
     url,
     method: init.method || 'GET',
@@ -67,7 +92,7 @@ function makeRequest(url, init = {}) {
     clone() { return makeRequest(url, init) },
   }
 }
-function makeResponse(body = 'ok', { status = 200, type = 'basic' } = {}) {
+function makeResponse(body = 'ok', { status = 200, type = 'basic' }: { status?: number; type?: string } = {}): FakeResponse {
   return {
     status,
     type,
@@ -77,18 +102,53 @@ function makeResponse(body = 'ok', { status = 200, type = 'basic' } = {}) {
   }
 }
 
-function loadSW({ fetchImpl } = {}) {
-  const handlers = {}
+// ── SW event surrogate ───────────────────────────────────────────────────────
+// sw.js reads only these members off each event kind; a single, all-optional
+// shape covers install/activate/message/fetch/push/notificationclick without
+// six separate near-identical interfaces.
+interface PushDataLike {
+  json: () => unknown
+  text: () => string
+}
+interface SWEvt {
+  waitUntil?: (p: Promise<unknown>) => void
+  respondWith?: (p: Promise<FakeResponse>) => void
+  request?: FakeRequest
+  data?: { type?: string } | PushDataLike | null
+  notification?: { close: () => void; data?: { url?: string } }
+  _wait?: Promise<unknown>
+  _response?: Promise<FakeResponse>
+}
+type SWHandler = (evt: SWEvt) => void | Promise<void>
+
+interface FakeClient {
+  focus?: () => unknown
+  navigate?: (url: string) => Promise<void>
+}
+interface NotificationOptionsLike {
+  body?: string
+  tag?: string
+  icon?: string
+  badge?: string
+  data?: { url?: string; source?: string }
+}
+
+interface LoadSWOptions {
+  fetchImpl?: (req: FakeRequest) => Promise<FakeResponse>
+}
+
+function loadSW({ fetchImpl }: LoadSWOptions = {}) {
+  const handlers: Record<string, SWHandler> = {}
   const self = {
     skipWaiting: vi.fn(),
-    addEventListener: vi.fn((evt, fn) => { handlers[evt] = fn }),
+    addEventListener: vi.fn((evt: string, fn: SWHandler) => { handlers[evt] = fn }),
     clients: {
       claim: vi.fn(async () => {}),
-      matchAll: vi.fn(async () => []),
-      openWindow: vi.fn(async () => ({})),
+      matchAll: vi.fn(async (): Promise<FakeClient[]> => []),
+      openWindow: vi.fn(async (): Promise<FakeClient> => ({})),
     },
     registration: {
-      showNotification: vi.fn(async () => {}),
+      showNotification: vi.fn<(title: string, options: NotificationOptionsLike) => Promise<void>>(async () => {}),
     },
   }
   const caches = makeCaches()
@@ -108,21 +168,21 @@ function loadSW({ fetchImpl } = {}) {
 
 // waitUntil/respondWith helpers: capture the promise/response the handler
 // passed in so the test can await it.
-function fireInstall(handlers) {
-  const evt = { waitUntil: vi.fn((p) => { evt._wait = p }) }
+function fireInstall(handlers: Record<string, SWHandler>) {
+  const evt: SWEvt = { waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }) }
   handlers.install(evt)
   return evt._wait
 }
-function fireActivate(handlers) {
-  const evt = { waitUntil: vi.fn((p) => { evt._wait = p }) }
+function fireActivate(handlers: Record<string, SWHandler>) {
+  const evt: SWEvt = { waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }) }
   handlers.activate(evt)
   return evt._wait
 }
-function fireFetch(handlers, request) {
-  const evt = {
+function fireFetch(handlers: Record<string, SWHandler>, request: FakeRequest): SWEvt {
+  const evt: SWEvt = {
     request,
     _response: undefined,
-    respondWith: vi.fn((p) => { evt._response = p }),
+    respondWith: vi.fn((p: Promise<FakeResponse>) => { evt._response = p }),
   }
   handlers.fetch(evt)
   return evt
@@ -173,6 +233,7 @@ describe('public/sw.js — OS service worker', () => {
     const req = makeRequest('https://app.vulos.org/index.html')
     const evt = fireFetch(handlers, req)
     const resp = await evt._response
+    if (!resp) throw new Error('expected fetch handler to respondWith a response')
     expect(resp.body).toBe('shell')           // came from cache
     // fetch may still fire for background revalidation — that's fine; the
     // returned response is the cached one, which is what matters.
@@ -202,6 +263,7 @@ describe('public/sw.js — OS service worker', () => {
     const evt = fireFetch(handlers, req)
     const resp = await evt._response
     expect(resp).toBeDefined()
+    if (!resp) throw new Error('expected fetch handler to respondWith a response')
     expect(resp.body).toBe('shell')
     void caches
   })
@@ -211,17 +273,18 @@ describe('public/sw.js — OS service worker', () => {
     const req = makeRequest('https://app.vulos.org/some-image.png')
     const evt = fireFetch(handlers, req)
     const resp = await evt._response
+    if (!resp) throw new Error('expected fetch handler to respondWith a response')
     expect(resp.type).toBe('error')
   })
 
   // ── Web Push (PUSH-CELL-01) ────────────────────────────────────────────────
-  function firePush(handlers, dataObj) {
-    const evt = {
+  function firePush(handlers: Record<string, SWHandler>, dataObj: unknown): SWEvt {
+    const evt: SWEvt = {
       data: dataObj === undefined ? null : {
-        json: () => JSON.parse(JSON.stringify(dataObj)),
+        json: () => { const v: unknown = JSON.parse(JSON.stringify(dataObj)); return v },
         text: () => (typeof dataObj === 'string' ? dataObj : JSON.stringify(dataObj)),
       },
-      waitUntil: vi.fn((p) => { evt._wait = p }),
+      waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }),
     }
     handlers.push(evt)
     return evt
@@ -236,7 +299,7 @@ describe('public/sw.js — OS service worker', () => {
     expect(title).toBe('New mail')
     expect(options.body).toBe('from Alice')
     expect(options.tag).toBe('alert')
-    expect(options.data.url).toBe('/mail')
+    expect(options.data?.url).toBe('/mail')
   })
 
   it('push: falls back to a default title and empty payload safely', async () => {
@@ -247,15 +310,15 @@ describe('public/sw.js — OS service worker', () => {
     const [title, options] = self.registration.showNotification.mock.calls[0]
     expect(title).toBe('Vulos')          // default title
     expect(options.body).toBe('')        // empty body
-    expect(options.data.url).toBe('/')   // default deep-link
+    expect(options.data?.url).toBe('/')   // default deep-link
   })
 
   it('push: a non-JSON payload degrades to a text body', async () => {
     const { handlers, self } = loadSW()
     // json() throws → handler falls back to text().
-    const evt = {
+    const evt: SWEvt = {
       data: { json: () => { throw new Error('not json') }, text: () => 'plain alert' },
-      waitUntil: vi.fn((p) => { evt._wait = p }),
+      waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }),
     }
     handlers.push(evt)
     await evt._wait
@@ -268,7 +331,7 @@ describe('public/sw.js — OS service worker', () => {
     const { handlers, self } = loadSW()
     self.clients.matchAll = vi.fn(async () => [focused])
     const notification = { close: vi.fn(), data: { url: '/mail/42' } }
-    const evt = { notification, waitUntil: vi.fn((p) => { evt._wait = p }) }
+    const evt: SWEvt = { notification, waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }) }
     handlers.notificationclick(evt)
     await evt._wait
     expect(notification.close).toHaveBeenCalled()
@@ -281,7 +344,7 @@ describe('public/sw.js — OS service worker', () => {
     const { handlers, self } = loadSW()
     self.clients.matchAll = vi.fn(async () => [])
     const notification = { close: vi.fn(), data: { url: '/talk' } }
-    const evt = { notification, waitUntil: vi.fn((p) => { evt._wait = p }) }
+    const evt: SWEvt = { notification, waitUntil: vi.fn((p: Promise<unknown>) => { evt._wait = p }) }
     handlers.notificationclick(evt)
     await evt._wait
     expect(self.clients.openWindow).toHaveBeenCalledWith('/talk')

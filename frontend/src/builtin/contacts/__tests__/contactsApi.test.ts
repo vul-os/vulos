@@ -1,28 +1,36 @@
-// contactsApi.test.js — the Contacts surface's /v1 seam (via /api/pim/contacts).
+// contactsApi.test.ts — the Contacts surface's /v1 seam (via /api/pim/contacts).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { normalizeContact, listContacts, createContact, updateContact, deleteContact } from '../contactsApi'
 
-function mockFetch(status, body) {
-  return vi.fn().mockResolvedValue({
-    ok: status < 300,
-    status,
-    text: async () => (typeof body === 'string' ? body : JSON.stringify(body ?? '')),
-  })
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
 }
 
-beforeEach(() => { global.fetch = mockFetch(200, { contacts: [] }) })
+function mockFetch(status: number, body?: unknown) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body ?? '')
+  // Real Response objects (not a duck-typed stand-in): a non-null empty-string
+  // body isn't a valid init for a no-content status like 204, so an empty
+  // text falls back to `undefined` — matching the real absence of a body.
+  return vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+    async () => new Response(text || undefined, { status }),
+  )
+}
+
+beforeEach(() => { vi.stubGlobal('fetch', mockFetch(200, { contacts: [] })) })
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('normalizeContact', () => {
   it('maps uid/name/emails/phones/org/title/note', () => {
     const c = normalizeContact({ uid: 'u1', name: 'Ada', emails: ['a@x.com', ''], phones: ['123'], org: 'Vulos', title: 'Eng', note: 'hi' })
+    if (!c) throw new Error('expected a normalized contact')
     expect(c).toMatchObject({ id: 'u1', name: 'Ada', org: 'Vulos', title: 'Eng', note: 'hi' })
     expect(c.emails).toEqual(['a@x.com']) // blank filtered
     expect(c.phones).toEqual(['123'])
   })
   it('tolerates missing arrays', () => {
     const c = normalizeContact({ name: 'X' })
+    if (!c) throw new Error('expected a normalized contact')
     expect(c.emails).toEqual([])
     expect(c.phones).toEqual([])
   })
@@ -30,12 +38,12 @@ describe('normalizeContact', () => {
 
 describe('listContacts', () => {
   it('reads {contacts:[]} and sorts by name', async () => {
-    global.fetch = mockFetch(200, { contacts: [{ uid: '2', name: 'Bob' }, { uid: '1', name: 'Ada' }] })
+    vi.stubGlobal('fetch', mockFetch(200, { contacts: [{ uid: '2', name: 'Bob' }, { uid: '1', name: 'Ada' }] }))
     const cs = await listContacts()
     expect(cs.map((c) => c.name)).toEqual(['Ada', 'Bob'])
   })
   it('throws on non-ok so the UI can show "unavailable"', async () => {
-    global.fetch = mockFetch(502, 'mail service unreachable')
+    vi.stubGlobal('fetch', mockFetch(502, 'mail service unreachable'))
     await expect(listContacts()).rejects.toThrow()
   })
 })
@@ -43,27 +51,34 @@ describe('listContacts', () => {
 describe('write path', () => {
   it('createContact POSTs to /api/pim/contacts and omits empty fields', async () => {
     const spy = mockFetch(201, { contact: { uid: 'new' } })
-    global.fetch = spy
+    vi.stubGlobal('fetch', spy)
     await createContact({ name: 'Ada', emails: ['a@x.com', ''], phones: [''], org: '', note: 'n' })
     const [url, opts] = spy.mock.calls[0]
     expect(url).toBe('/api/pim/contacts')
+    if (!opts) throw new Error('expected call options')
     expect(opts.method).toBe('POST')
-    const sent = JSON.parse(opts.body)
+    if (typeof opts.body !== 'string') throw new Error('expected a JSON string body')
+    const sent: unknown = JSON.parse(opts.body)
     expect(sent).toMatchObject({ name: 'Ada', emails: ['a@x.com'], note: 'n' })
+    if (!isRecord(sent)) throw new Error('expected a JSON object body')
     expect(sent.phones).toBeUndefined() // all-blank list dropped
     expect(sent.org).toBeUndefined()
   })
   it('updateContact PUTs the id-scoped path', async () => {
     const spy = mockFetch(200, { contact: {} })
-    global.fetch = spy
+    vi.stubGlobal('fetch', spy)
     await updateContact('u 1', { name: 'X' })
-    expect(spy.mock.calls[0][0]).toBe('/api/pim/contacts/u%201')
-    expect(spy.mock.calls[0][1].method).toBe('PUT')
+    const [url, opts] = spy.mock.calls[0]
+    expect(url).toBe('/api/pim/contacts/u%201')
+    if (!opts) throw new Error('expected call options')
+    expect(opts.method).toBe('PUT')
   })
   it('deleteContact DELETEs and tolerates an empty body', async () => {
     const spy = mockFetch(204, '')
-    global.fetch = spy
+    vi.stubGlobal('fetch', spy)
     await expect(deleteContact('u1')).resolves.toBeNull()
-    expect(spy.mock.calls[0][1].method).toBe('DELETE')
+    const [, opts] = spy.mock.calls[0]
+    if (!opts) throw new Error('expected call options')
+    expect(opts.method).toBe('DELETE')
   })
 })

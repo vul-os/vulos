@@ -20,7 +20,7 @@
 // Chromium so the ledger contract is pinned end-to-end, at the network layer, in
 // the actual production build.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Request } from '@playwright/test'
 import { installBackend, json, sseBody, HOME_PAYLOAD } from './mock-backend.js'
 
 // A future-dated invite so relative-day formatting is stable regardless of when
@@ -34,14 +34,14 @@ const INVITE = {
 
 // Boot into the shell and wait until we're past auth. The menu-bar Applications
 // button is the shell-mounted marker used by the other OS specs.
-async function boot(page, overrides = {}) {
+async function boot(page: Page, overrides: Record<string, unknown> = {}) {
   await installBackend(page, overrides)
   await page.goto('/')
   await expect(page.getByTitle('Applications')).toBeVisible({ timeout: 15_000 })
 }
 
 // The Home composer input (distinct from the ⌘K palette input).
-function composer(page) {
+function composer(page: Page) {
   return page.getByLabel('Ask your assistant')
 }
 
@@ -109,7 +109,7 @@ test('WAVE-49: the streamed answer is a polite live region; the user turn is not
 
 test('WAVE-40/13: RSVP to an invite routes through the agent as a ledger-gated proposal, never auto-sent', async ({ page }) => {
   let executeCount = 0
-  let executeBody = null
+  let executeBody: unknown = null
   await boot(page, {
     'GET /api/assistant/home': json({ ...HOME_PAYLOAD, invites: [INVITE] }),
     // The mutating RSVP arrives ONLY as a proposal — the SSE stream never carries
@@ -118,7 +118,7 @@ test('WAVE-40/13: RSVP to an invite routes through the agent as a ledger-gated p
       { type: 'proposal', proposal: { id: 'prop_rsvp_e2e', tool: 'rsvp_invite', summary: 'RSVP accept to Team sync', args: {} } },
       { type: 'done' },
     ]),
-    'POST /api/assistant/execute': (req) => {
+    'POST /api/assistant/execute': (req: Request) => {
       executeCount++
       executeBody = JSON.parse(req.postData() || '{}')
       return json({ result: 'RSVP sent.' })
@@ -163,13 +163,13 @@ test('WAVE-13: Home composer — Reject sends nothing; a proposal never leaks ar
 })
 
 test('WAVE-13: a contacts (add_contact) proposal also posts only the opaque id', async ({ page }) => {
-  let executeBody = null
+  let executeBody: unknown = null
   await boot(page, {
     'POST /api/assistant/agent/stream': sseBody([
       { type: 'proposal', proposal: { id: 'prop_contact_e2e', tool: 'add_contact', summary: 'Add Dana Ruiz to contacts', args: { name: 'Dana Ruiz', email: 'dana@acme.io' } } },
       { type: 'done' },
     ]),
-    'POST /api/assistant/execute': (req) => { executeBody = JSON.parse(req.postData() || '{}'); return json({ result: 'Contact added.' }) },
+    'POST /api/assistant/execute': (req: Request) => { executeBody = JSON.parse(req.postData() || '{}'); return json({ result: 'Contact added.' }) },
   })
   await composer(page).fill('add dana to my contacts')
   await page.getByRole('button', { name: 'Send' }).click()

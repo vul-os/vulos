@@ -21,7 +21,7 @@
 // (src/__tests__/offlineAuth.test.js); this is the real-DOM, real-WebCrypto,
 // real-IndexedDB proof of the end-to-end gate.
 
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { webcrypto } from 'node:crypto'
 import { installBackend } from './mock-backend.js'
 
@@ -33,13 +33,26 @@ const IDENTITY = { id: 'u1', name: 'Ada Lovelace' }
 // bytes as corrupt) — fixed for determinism.
 const MASTER_KEY = new Uint8Array(32).fill(7)
 
-const b64 = (u8) => Buffer.from(u8).toString('base64')
+const b64 = (u8: Uint8Array) => Buffer.from(u8).toString('base64')
+
+interface PasswordEnvelope {
+  v: number
+  kdf: string
+  iter: number
+  salt: string
+  iv: string
+  ct: string
+}
 
 // buildPasswordEnvelope mirrors src/lib/masterKey.js wrapMasterKeyWithPassword:
 // PBKDF2-HMAC-SHA256(password, salt, 600k) → AES-256-GCM(masterKey) with AAD
 // 'vulos-mk-pw-v1'. The shell's unwrapMasterKeyWithPassword must accept it, so
 // the shapes (kdf name, iter, base64 salt/iv/ct, AAD) match exactly.
-async function buildPasswordEnvelope(masterKey, password, iter = 600000) {
+async function buildPasswordEnvelope(
+  masterKey: Uint8Array<ArrayBuffer>,
+  password: string,
+  iter = 600000,
+): Promise<PasswordEnvelope> {
   const te = new TextEncoder()
   const salt = webcrypto.getRandomValues(new Uint8Array(16))
   const iv = webcrypto.getRandomValues(new Uint8Array(12))
@@ -59,7 +72,7 @@ async function buildPasswordEnvelope(masterKey, password, iter = 600000) {
   return { v: 1, kdf: 'pbkdf2-sha256', iter, salt: b64(salt), iv: b64(iv), ct: b64(ct) }
 }
 
-let ENVELOPE
+let ENVELOPE: PasswordEnvelope
 
 test.beforeAll(async () => {
   ENVELOPE = await buildPasswordEnvelope(MASTER_KEY, PASSWORD)
@@ -68,9 +81,13 @@ test.beforeAll(async () => {
 // Seed the offline-auth IndexedDB store the way the client's idbStore does
 // (DB 'vulos-offline-auth' v1, out-of-line store 'kv'): the wrapped envelope at
 // 'envelope' and the greeting identity at 'identity'.
-async function seedOfflineEnrollment(page, envelope, identity) {
+async function seedOfflineEnrollment(
+  page: Page,
+  envelope: PasswordEnvelope,
+  identity: typeof IDENTITY,
+) {
   await page.evaluate(async ({ env, id }) => {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const req = indexedDB.open('vulos-offline-auth', 1)
       req.onupgradeneeded = () => req.result.createObjectStore('kv')
       req.onerror = () => reject(req.error)
@@ -90,8 +107,8 @@ async function seedOfflineEnrollment(page, envelope, identity) {
 // Boot the shell with the box unreachable (auth/me aborts → AuthProvider marks
 // `offline`) and the device offline-enrolled (seeded IDB). Returns after the
 // offline lock screen has rendered.
-async function bootOfflineLocked(page) {
-  const errors = []
+async function bootOfflineLocked(page: Page) {
+  const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
 
   await installBackend(page)
@@ -114,7 +131,7 @@ async function bootOfflineLocked(page) {
 
 // A shell chrome marker present in every layout (desktop + mobile): the menubar
 // notification bell. Its presence proves the shell mounted (the cached view).
-const shellMounted = (page) =>
+const shellMounted = (page: Page) =>
   page.getByRole('button', { name: /unread|^Notifications$/i }).first()
 
 test('the offline lock screen appears when the box is unreachable and the device is enrolled', async ({ page }) => {
