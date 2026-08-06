@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.jsx'
+import App from './App'
 import { getInitialResolvedTheme } from './core/ThemeProvider.jsx'
 // RELAY-CLIENT-04: relay-client shared package, with OS-specific seams.
 // configure() MUST run before any other relay-client import touches localStorage

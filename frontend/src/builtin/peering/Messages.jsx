@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { usePeering, Channel } from '../../core/usePeering.js'
+import { usePeering, Channel } from '../../core/usePeering'
 
 // MOBILE-ADAPTIVE (WAVE-30): below this width the two-pane layout (conversation
 // list + thread) collapses to a single pane that shows the list OR the open

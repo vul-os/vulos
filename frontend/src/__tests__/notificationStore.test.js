@@ -6,10 +6,10 @@ import {
   subscribe, subscribePrefs, setRemoteSink,
   normalize, shouldLog, shouldToast, mergeById, coercePrefs,
   __resetForTests,
-} from '../core/notificationStore.js'
+} from '../core/notificationStore'
 import {
   extractSignals, processHomeData, __resetForTests as resetNotifier,
-} from '../core/notifiers/attentionNotifier.js'
+} from '../core/notifiers/attentionNotifier'
 
 // The notificationStore is the Wave-13 "notify()" seam: any surface posts to it,
 // the shell bell + toaster subscribe. These pin the seam contract — dispatch,

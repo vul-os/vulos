@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { runAgentTurn } from '../core/agentStream'
+import { runAgentTurn, type AgentProposal, type AgentStatusEvent } from '../core/agentStream'
 
 interface SSEFrame {
   type: string
@@ -56,7 +56,7 @@ describe('runAgentTurn (streaming)', () => {
     const result = await runAgentTurn({
       message: 'when is my invoice due?',
       onToken: (delta: string) => tokens.push(delta),
-      onStatus: (ev: { tool: string }) => statuses.push(ev.tool),
+      onStatus: (ev: AgentStatusEvent) => statuses.push(ev.tool || ''),
     })
     expect(tokens).toEqual(['You owe ', '$128.40.'])
     expect(statuses).toEqual(['search_mail'])
@@ -76,8 +76,8 @@ describe('runAgentTurn (streaming)', () => {
       { type: 'done' },
     ]))
     vi.stubGlobal('fetch', fetchMock)
-    let gotProposal: typeof proposal | null = null
-    const result = await runAgentTurn({ message: 'email dana', onProposal: (p: typeof proposal) => { gotProposal = p } })
+    let gotProposal: AgentProposal | null = null
+    const result = await runAgentTurn({ message: 'email dana', onProposal: (p: AgentProposal) => { gotProposal = p } })
     expect(gotProposal).toEqual(proposal)
     expect(result.proposal).toEqual(proposal)
     expect(result.answer).toBe('')
@@ -121,8 +121,8 @@ describe('runAgentTurn (streaming)', () => {
       .mockRejectedValueOnce(new TypeError('network down'))
       .mockResolvedValueOnce({ ok: true, json: async () => ({ proposal }) })
     vi.stubGlobal('fetch', fetchMock)
-    let gotProposal: typeof proposal | null = null
-    const result = await runAgentTurn({ message: 'email x', onProposal: (p: typeof proposal) => { gotProposal = p } })
+    let gotProposal: AgentProposal | null = null
+    const result = await runAgentTurn({ message: 'email x', onProposal: (p: AgentProposal) => { gotProposal = p } })
     expect(gotProposal).toEqual(proposal)
     expect(result.proposal).toEqual(proposal)
     expect(result.streamed).toBe(false)
@@ -160,7 +160,11 @@ describe('runAgentTurn (streaming)', () => {
       },
     }))
     vi.stubGlobal('fetch', fetchMock)
-    await expect(runAgentTurn({ message: 'x', signal: {} })).rejects.toMatchObject({ name: 'AbortError' })
+    // A real (never-triggered) AbortSignal — the abort in this test is
+    // simulated by the mocked reader rejecting, not by actually calling
+    // AbortController.abort(), so an un-aborted signal exercises the same
+    // "signal was passed through" path honestly, without a fake stand-in.
+    await expect(runAgentTurn({ message: 'x', signal: new AbortController().signal })).rejects.toMatchObject({ name: 'AbortError' })
     // Exactly one request — no fallback to /agent after an abort.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe('/api/assistant/agent/stream')

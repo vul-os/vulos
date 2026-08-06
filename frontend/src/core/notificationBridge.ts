@@ -29,8 +29,8 @@ interface StoreAction {
 }
 
 interface StoreNotif {
-  id?: unknown
-  title?: unknown
+  id?: string
+  title?: string
   body?: unknown
   source: string
   level: 'info' | 'warning' | 'urgent' | 'critical'
@@ -61,8 +61,8 @@ function fromBackend(n: Record<string, unknown>): StoreNotif {
     actions.push({ id: 'open', label: 'Open', url: typeof n.action === 'string' ? n.action : undefined })
   }
   return {
-    id: n.id,
-    title: n.title,
+    id: typeof n.id === 'string' ? n.id : undefined,
+    title: typeof n.title === 'string' ? n.title : undefined,
     body: n.body,
     source: typeof n.source === 'string' ? n.source : 'system',
     level,

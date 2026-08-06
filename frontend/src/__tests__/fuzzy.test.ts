@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fuzzyScore, fuzzyMatches, fuzzyRank } from '../core/fuzzy.js'
+import { fuzzyScore, fuzzyMatches, fuzzyRank } from '../core/fuzzy'
 
 // The fuzzy scorer is the ranking heart of the ⌘K palette. These pin the
 // contract: subsequence matching, no-match sentinel, and the bonus ordering

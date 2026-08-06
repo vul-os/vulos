@@ -16,7 +16,7 @@ vi.mock('../core/useTelemetry', () => ({
   useTelemetry: () => mockTelemetry,
 }))
 
-import BoxHealthPanel from '../core/settings/BoxHealthPanel.jsx'
+import BoxHealthPanel from '../core/settings/BoxHealthPanel'
 
 function mockEndpoints({ health, healthStatus = 200, sys }: { health?: unknown, healthStatus?: number, sys?: unknown }) {
   vi.stubGlobal('fetch', vi.fn((url: string) => {

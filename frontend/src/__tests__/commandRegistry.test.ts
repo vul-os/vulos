@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   registerCommand, unregisterCommand, getCommands, runCommand,
   subscribeCommands, BUILTIN_COMMANDS,
-} from '../core/commandRegistry.js'
+} from '../core/commandRegistry'
 
 // The command registry is the "Actions" seam: built-ins ship with the OS, and
 // apps contribute more via registerCommand. These pin the seam contract —
@@ -84,14 +84,34 @@ describe('commandRegistry — the seam', () => {
   })
 
   it('rejects malformed commands', () => {
-    expect(() => registerCommand({ title: 'no id' })).toThrow()
-    expect(() => registerCommand({ id: 'x', title: 'no run' })).toThrow()
+    // Deliberately malformed (missing id / run) — exercising the runtime
+    // guard, not the compile-time Command shape. Routed through
+    // Reflect.apply (whose fallback overload's argumentsList is untyped,
+    // same category as JSON.parse's return) rather than a cast, since the
+    // whole point is a caller that ISN'T type-checked — e.g. a plain-JS
+    // plugin — sending the registry deliberately-invalid data.
+    expect(() => Reflect.apply(registerCommand, undefined, [{ title: 'no id' }])).toThrow()
+    expect(() => Reflect.apply(registerCommand, undefined, [{ id: 'x', title: 'no run' }])).toThrow()
   })
 
   it('filters by the when() predicate against the context', () => {
-    registerCommand({ id: TEST_ID, title: 'Conditional', when: (c: { flag: boolean }) => c.flag === true, run: () => {} })
-    expect(getCommands({ flag: true }).find(c => c.id === TEST_ID)).toBeTruthy()
-    expect(getCommands({ flag: false }).find(c => c.id === TEST_ID)).toBeUndefined()
+    // Drives the SAME when()-gates-visibility seam as before, but through a
+    // closed-over flag rather than an extra field bolted onto the context
+    // object — CommandContext is now a real, closed shape, so the predicate
+    // is exercised via its actual signature (ctx) => boolean instead of a
+    // fake unrelated context shape.
+    let flag = false
+    registerCommand({
+      id: TEST_ID,
+      title: 'Conditional',
+      when: () => flag === true,
+      run: () => {},
+    })
+    const ctx = makeCtx()
+    flag = true
+    expect(getCommands(ctx).find(c => c.id === TEST_ID)).toBeTruthy()
+    flag = false
+    expect(getCommands(ctx).find(c => c.id === TEST_ID)).toBeUndefined()
   })
 
   it('notifies subscribers on change', () => {

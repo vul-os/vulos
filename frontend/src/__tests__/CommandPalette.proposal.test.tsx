@@ -62,7 +62,7 @@ async function openPaletteAndPropose(user: UserEvent) {
 }
 
 function createFetchMock() {
-  return vi.fn(async (_url: string, _opts?: RequestInit) => ({
+  return vi.fn<(url: string, opts?: RequestInit) => Promise<{ ok: boolean, json: () => Promise<{ result: string }> }>>(async () => ({
     ok: true,
     json: async () => ({ result: 'Done.' }),
   }))

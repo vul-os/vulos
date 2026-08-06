@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 
-import AdoptPortManager from '../core/AdoptPortManager.jsx'
+import AdoptPortManager from '../core/AdoptPortManager'
 
 interface AdoptedPort {
   id: string
