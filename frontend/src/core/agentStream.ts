@@ -31,11 +31,15 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 }
 
 // AgentProposal — a mutating action awaiting approval (the wave-9
-// confirmation-gate card; see builtin/assistant/ProposalCard.jsx, which reads
+// confirmation-gate card; see builtin/assistant/ProposalCard.tsx, which reads
 // tool/args/summary/from_content/warning off exactly this object) plus the
-// opaque `id` the caller POSTs back to /api/assistant/execute. Mirrors
-// shell/agentTypes.ts's AgentProposal (a currently-unused typed view of this
-// module, kept in sync by field name).
+// opaque `id` the caller POSTs back to /api/assistant/execute.
+//
+// This used to be mirrored by shell/agentTypes.ts, a hand-written typed view
+// of this module kept in sync by field name. That file existed only because
+// this module was untyped JavaScript; the TypeScript migration made it
+// redundant by construction, so it has been deleted rather than left to drift
+// against the definition it duplicated.
 export interface AgentProposal {
   id: string
   tool?: string

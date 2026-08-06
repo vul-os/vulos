@@ -30,11 +30,30 @@ jobs:
           # apply to action inputs.
           cache-dependency-path: frontend/package-lock.json
 
+      # src/types/wire.ts is generated from Go declarations by scripts/wiregen,
+      # so checking it for drift needs a Go toolchain as well as Node.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
       - name: Install dependencies
         run: npm ci
 
       - name: Lint
         run: npm run lint
+
+      # WIRE-01: frontend/src/types/wire.ts is generated from the Go wire types
+      # (see its header). The generator and this --check mode already existed,
+      # but ran in no workflow, no Makefile target and no hook — so a change to
+      # a Go response struct would silently leave the TypeScript view stale, and
+      # every other gate would stay green because a stale-but-valid .ts file
+      # typechecks, lints and builds perfectly well.
+      #
+      # Verified to have teeth rather than assumed: renaming a single generated
+      # interface makes this step print "is stale" and exit 1.
+      - name: Check generated wire types are not stale (WIRE-01)
+        run: npm run gen:wire-types:check
 
       # Foundation for the JS -> TS migration: checkJs is off in tsconfig.json
       # so this only checks .ts/.tsx files (src/lib/ is converted), and is
