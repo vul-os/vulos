@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  # Manual re-run. CI and E2E trigger only on branch pushes, so when a push
+  # event is lost (a GitHub queue stall dropped both for one commit) there was
+  # no way to re-run the gates without an empty commit.
+  workflow_dispatch:
   push:
     branches:
       - main

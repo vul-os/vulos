@@ -6,6 +6,10 @@ name: E2E
 # or database is needed, so this job is self-contained on a standard runner.
 
 on:
+  # Manual re-run. CI and E2E trigger only on branch pushes, so when a push
+  # event is lost (a GitHub queue stall dropped both for one commit) there was
+  # no way to re-run the gates without an empty commit.
+  workflow_dispatch:
   push:
     branches:
       - main
