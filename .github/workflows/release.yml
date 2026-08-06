@@ -209,6 +209,91 @@ jobs:
           sha256sum -c SHA256SUMS
           cat SHA256SUMS
 
+      # ── BOOT-01: the image we are about to publish must actually boot ────────
+      # Until now NOTHING in CI verified this. ci.yml's SMOKE-02 job exists and
+      # is green on every run, but it SKIPS: GitHub's runners have no QEMU, so
+      # --skip-if-unavailable prints an itemised skip and exits 0. The skip is
+      # honest and loud, but the net effect was that "CI green" never meant "the
+      # image boots" — and two earlier releases shipped images that did not run
+      # at all, which is the single failure this project has actually had.
+      #
+      # This gates the ARTIFACT rather than the source tree: it boots the exact
+      # .img.gz that is about to be uploaded. amd64 only — the runner is x86_64,
+      # so this is the arch it can boot without nested emulation (arm64 would be
+      # emulated-inside-emulated and is covered by the maintainer's local HVF
+      # run). KVM is used when the runner exposes /dev/kvm and TCG otherwise, so
+      # this works either way, just slower without it.
+      #
+      # Deliberately NOT --skip-if-unavailable: QEMU is installed right here, so
+      # a missing binary is a real failure, not an environment quirk. If this
+      # step cannot boot the image, the release does not publish.
+      - name: Install QEMU + OVMF for the boot gate
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf
+          qemu-system-x86_64 --version | head -1
+          ls -la /usr/share/OVMF/OVMF_CODE.fd /usr/share/OVMF/OVMF_VARS.fd
+          if [ -e /dev/kvm ]; then echo "KVM available — native speed"; else echo "no /dev/kvm — TCG (slower)"; fi
+
+      - name: BOOT-01 — boot the built amd64 image and assert it serves
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          IMG=vulos-boot-test.img
+          gunzip -c "vulos-${VERSION}-x86_64.img.gz" > "$IMG"
+
+          cp /usr/share/OVMF/OVMF_VARS.fd /tmp/vars.fd
+          ACCEL=tcg; [ -e /dev/kvm ] && ACCEL=kvm
+          qemu-system-x86_64 \
+            -machine q35 -accel "$ACCEL" -cpu max -smp 4 -m 6144 \
+            -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+            -drive if=pflash,format=raw,file=/tmp/vars.fd \
+            -drive if=virtio,format=raw,file="$IMG" \
+            -device virtio-vga -device qemu-xhci -device usb-kbd \
+            -netdev user,id=n0,hostfwd=tcp:127.0.0.1:9088-:8080,hostfwd=tcp:127.0.0.1:9443-:443 \
+            -device virtio-net-pci,netdev=n0 \
+            -serial file:/tmp/boot-serial.log -display none &
+          QEMU_PID=$!
+          trap 'kill $QEMU_PID 2>/dev/null || true' EXIT
+
+          # /api/setup/status is the readiness signal: it is public (so no auth
+          # is needed) and only answers once the server is routing. /api/health
+          # is auth-gated and would 401 even on a healthy box.
+          echo "waiting for the box to serve (accel=$ACCEL)…"
+          for i in $(seq 1 100); do
+            sleep 15
+            if ! kill -0 $QEMU_PID 2>/dev/null; then
+              echo "::error::BOOT-01: QEMU exited before the box served — the image does not boot"
+              tail -60 /tmp/boot-serial.log || true
+              exit 1
+            fi
+            if curl -fsS --max-time 5 http://127.0.0.1:9088/api/setup/status >/dev/null 2>&1; then
+              echo "BOOT-01: HTTP 200 after ~$((i*15))s"
+              BOOTED=1; break
+            fi
+          done
+          if [ "${BOOTED:-0}" != "1" ]; then
+            echo "::error::BOOT-01: the image never served /api/setup/status — refusing to publish"
+            tail -80 /tmp/boot-serial.log || true
+            exit 1
+          fi
+
+          # LAN HTTPS must be bound to the box's ROUTABLE address, not loopback.
+          # QEMU user-mode hostfwd connects to the guest's DHCP address
+          # (10.0.2.15), so if the listener regressed to 127.0.0.1 this forward
+          # is refused. That regression shipped once already: a browser on a
+          # plain-HTTP LAN origin is not a secure context, so crypto.subtle is
+          # undefined and the whole of src/lib (master key, content sealing,
+          # offline auth) cannot run at all.
+          if ! curl -fsSk --max-time 20 https://127.0.0.1:9443/api/setup/status >/dev/null 2>&1; then
+            echo "::error::BOOT-01: LAN HTTPS is not reachable on the box's LAN address — it bound loopback"
+            exit 1
+          fi
+          echo "BOOT-01: LAN HTTPS reachable on the box's LAN address"
+
+          rm -f "$IMG"
+
       # ── Extract CHANGELOG section for this release ───────────────────────────
       - name: Extract CHANGELOG notes
         id: changelog
@@ -243,6 +328,7 @@ jobs:
           name: vulos-images-${{ steps.version.outputs.VERSION }}
           path: |
             vulos-*.img.gz
+            vulos-*-rootfs.tar.gz
             SHA256SUMS
           retention-days: 7
           if-no-files-found: error

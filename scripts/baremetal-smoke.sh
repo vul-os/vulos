@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 # Vula OS — bare-metal boot smoke harness
 #
+# ⚠ THIS HARNESS CANNOT CURRENTLY PASS. Read this before spending time on it.
+#
+# It builds `build.sh --disk`, whose loader entry sets init=/sbin/vulos-init.
+# vulos-init therefore runs as PID 1 and reaches the VERITY-02 gate, which
+# reads /etc/vulos/stable.json — and NO build step writes that file. The gate
+# log.Fatalf()s, init exits 1, and the kernel panics with "Attempted to kill
+# init!". Confirmed by mounting the built image: /etc/vulos/ contains only
+# os-bucket-url, release-cert.json and trust-anchor.pub.
+#
+# What we actually SHIP is `build.sh --live`, whose loader entry has no init=,
+# so systemd is PID 1, vulos-init never runs, and VERITY-02 is never reached.
+# That path boots and is covered by scripts/smoke-liveusb.sh (locally) and by
+# the BOOT-01 gate in .github/workflows/release.yml (which boots the exact
+# artifact before publishing it).
+#
+# So this script tests an image variant that is neither shipped nor bootable.
+# It is referenced by no workflow, no Makefile target and no doc, which is why
+# nobody noticed. Fixing it means either making --disk builds produce a signed
+# stable.json, or giving vulos-init a documented dev mode — both real work, and
+# neither should be done by weakening VERITY-02, which is a fail-closed
+# security gate. Left in place rather than deleted because the disk/installed
+# path is a genuine target; it just is not finished.
+#
 # Builds a genuinely UEFI-bootable image (build.sh --disk) inside a
 # reproducible Docker builder, boots it in QEMU, and asserts the OS reached
 # a serving desktop — exercising the real boot chain:

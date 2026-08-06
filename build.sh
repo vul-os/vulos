@@ -1205,8 +1205,18 @@ if [ "$LIVE_MODE" = "1" ]; then
   mcopy -i "$LIVE_ESP_IMG" "$OUTDIR/_live_loader.conf" "::/loader/loader.conf"
   # root=LABEL=VULOS-LIVE-DATA: initramfs mounts the ext4 data partition, finds
   # /image.squashfs there, and overlays it with a tmpfs upper layer (vulos-live hook).
-  # vulos.live: activates the hook. quiet splash plymouth.theme=vulos: branded splash.
-  printf 'title  Vulos Live\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=VULOS-LIVE-DATA ro vulos.live quiet splash plymouth.theme=vulos console=tty1 console=ttyAMA0,115200\n' \
+  # vulos.live=1: activates the hook. quiet splash plymouth.theme=vulos: branded splash.
+  #
+  # The "=1" is load-bearing even though the initramfs hook's cmdline_has()
+  # accepts a bare token: backend/cmd/init's isLiveBoot() tests for the exact
+  # string "vulos.live=1", and internal/installer/esp.go already writes it that
+  # way. This entry wrote a bare "vulos.live", so the two disagreed. Today that
+  # is masked — the live image boots systemd as PID 1 rather than vulos-init, so
+  # isLiveBoot() is never consulted — but anything that later routes a live boot
+  # through vulos-init would hit the VERITY-02 gate, find no /etc/vulos/
+  # stable.json, and panic. Spelling it the same way everywhere removes a trap
+  # rather than fixing a live bug.
+  printf 'title  Vulos Live\nlinux  /vmlinuz\ninitrd /initrd.img\noptions root=LABEL=VULOS-LIVE-DATA ro vulos.live=1 quiet splash plymouth.theme=vulos console=tty1 console=ttyAMA0,115200\n' \
     > "$OUTDIR/_live_entry.conf"
   mcopy -i "$LIVE_ESP_IMG" "$OUTDIR/_live_entry.conf" "::/loader/entries/vulos.conf"
   rm -f "$OUTDIR/_live_loader.conf" "$OUTDIR/_live_entry.conf"
