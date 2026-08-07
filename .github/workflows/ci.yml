@@ -239,33 +239,27 @@ jobs:
         # misconfigured runner — it will fail loudly only on a real regression.
         run: sh scripts/smoke-peering.sh
 
-  smoke-liveusb:
-    name: SMOKE-02 — Live-USB QEMU Boot
-    runs-on: ubuntu-latest
-    needs: [backend, frontend]
-    # This job requires QEMU + OVMF + docker, which is not available on standard
-    # GitHub-hosted runners. It is skipped unless the commit message contains
-    # "[smoke-liveusb]" or the PR has the "smoke-liveusb" label, or the branch
-    # is main/staging. Enable on a self-hosted runner with QEMU+docker for full
-    # live-boot regression (SMOKE-02 AC: "Runs headless in CI").
-    if: >-
-      contains(github.event.head_commit.message, '[smoke-liveusb]') ||
-      contains(github.event.pull_request.title, '[smoke-liveusb]') ||
-      github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run live-USB QEMU smoke test (SMOKE-02)
-        # Requires: qemu-system-x86_64, OVMF firmware, docker.
-        #
-        # --skip-if-unavailable makes a MISSING TOOL (and only that) a loud,
-        # itemised skip that exits 0 — the log names every assertion that was
-        # not checked. A build error, boot hang, or failed assertion still
-        # exits 1 and fails this job.
-        #
-        # Deliberately NOT `|| true`: that swallowed real boot regressions as
-        # well as unavailability, so this step could never fail for any reason.
-        run: bash scripts/smoke-liveusb.sh --no-build --skip-if-unavailable
+  # SMOKE-02 (live-USB QEMU boot) was REMOVED here on 2026-08-07, and this note
+  # is deliberately left in its place.
+  #
+  # It ran `smoke-liveusb.sh --no-build --skip-if-unavailable` and was green on
+  # every single run for one reason: GitHub's runners have no QEMU, so it printed
+  # an itemised skip and exited 0. The skip was well built — it named every
+  # assertion it had not checked, far better than `|| true`. But the net effect
+  # was a permanently-passing job, so "CI green" never meant "the image boots".
+  # Two releases shipped images that did not run at all while this job was green.
+  #
+  # Boot coverage now lives where it actually bites: BOOT-01 in release.yml
+  # installs QEMU, boots the exact .img.gz about to be published, and asserts it
+  # serves /api/setup/status AND that LAN HTTPS is bound to the box's routable
+  # address rather than loopback. It does NOT skip when QEMU is absent, and it
+  # runs before both publish steps — a non-booting image cannot be released.
+  #
+  # Not reinstated per-push on purpose: a full image build is ~75 minutes per
+  # architecture, a poor trade on every main push for coverage that already gates
+  # the artifact at release. Run it locally when touching the boot chain:
+  #   bash scripts/smoke-liveusb.sh      # live image
+  #   bash scripts/baremetal-smoke.sh    # installed-to-disk image
 
   docker:
     name: Docker Build

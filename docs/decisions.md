@@ -61,6 +61,7 @@ A few conventions:
 | D96 | 2026-08-04 | Native installable clients (Windows/macOS/Linux/Android/iOS): `mobile/`→`clients/`, one shared Go core + thin per-platform shells (Wails/gomobile), Tauri evaluated and rejected; TOFU/pinned-SPKI trust model for a local box; push is already sovereign on Android (foreground service, no FCM), APNs unavoidable on iOS | **active rule** — F's Android UnifiedPush option shipped box-side, see D98 |
 | D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 | D98 | 2026-08-07 | UnifiedPush (UP-CELL-01) implemented box-side, alongside Web Push, per D96-F: user-registered distributor endpoint, SSRF-screened via the shared `safedial` guard, same DND/owner-targeting choke point, prune-on-404/410; flag-gated (`VULOS_PUSH_UNIFIEDPUSH_ENABLE`); no client UI yet — see gap noted below | **active rule** |
+| D99 | 2026-08-07 | Both run modes supported (installed-to-disk primary, live-from-flash ephemeral); disk artifact BUILT by CI unsigned and SIGNED OFFLINE by the founder, manifest shipped as a release asset — founder-builds-everything rejected (cannot build amd64 locally), key-in-CI and box-self-signs rejected | **active rule** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -662,3 +663,65 @@ D96-F left two open calls: whether to add UnifiedPush as an Android option, and 
 2. **iOS is unchanged and still not sovereign.** UnifiedPush has no iOS distributor — Apple's platform rules are the same rules that make APNs unavoidable for Web Push (D96-F). A user on iOS gets nothing new from this entry; the APNs exception documented in `docs/USER-GUIDE.md` stands exactly as written.
 
 Without a distributor app installed, UnifiedPush registration is a dead end on Android too (there's no endpoint to obtain) — this is additive capability for the subset of Android users who install one, not a change to the default experience for anyone else.
+
+---
+
+## D99 (2026-08-07) — Both run modes are supported; the disk image is built by CI and signed offline
+
+**A. Both modes, install primary.** Vulos supports two ways to run on your own
+hardware, and both are first-class:
+
+1. **Installed to the machine's disk** — the primary path. Persistent ext4 root
+   (`LABEL=vulos-root`), `init=/sbin/vulos-init`, VERITY-02 signature gate, A/B
+   slots and rollback. This is what "your own personal server" means.
+2. **Live from flash** — supported, deliberately ephemeral. Read-only squashfs
+   with a tmpfs writable layer, so nothing survives a reboot. This is how you try
+   Vulos without touching an internal disk, and how you run a disposable
+   always-clean desktop. Ephemerality is the trade, not a defect.
+
+Until this entry, only mode 2 shipped, and nothing said so — a user who flashed
+the published image lost every account and file on first reboot. The docs now
+state it plainly (README, USER-GUIDE, GETTING-STARTED, release notes).
+
+**B. The problem: CI cannot sign.** `build.sh --disk` needs the release private
+key to sign `/etc/vulos/stable.json`, and aborts without it — deliberately, since
+an unsigned build produces an image that panics at VERITY-02 rather than one that
+boots insecurely. But CI holds **no** private key by design (release.yml's
+REGISTRY-SIGN: *"signing is a human operation on an offline machine"*). So the
+disk artifact cannot be produced by a tagged CI build as things stood.
+
+**C. Decision: separate BUILDING from SIGNING.** CI builds, unsigned, both
+architectures. The founder signs a manifest offline — a small JSON and
+`backend/cmd/sign sign-image`, seconds, no build toolchain — and the signed
+`stable.json` + `.sig` ship as release assets. The installer places them when
+installing to disk.
+
+This works because the build already computes the content-identity root hash over
+a rootfs with any stale manifest **removed**, then writes the manifest back in.
+The hash therefore does not cover the manifest, so signing after the build does
+not invalidate it. Not circular; verified in `build.sh`'s `--disk` section.
+
+**D. Options rejected.**
+
+- *Founder builds the whole disk image offline.* Appealing, and it was the
+  owner's first instinct. Rejected on a concrete constraint: the founder's
+  machine **cannot build amd64** — `apt` deadlocks under qemu-user emulation
+  during the cross-arch rootfs build, which is why every x86_64 image so far has
+  come from CI's native runner. This would have shipped an arm64-only install
+  path, and x86_64 is most of the audience for a permanent install.
+- *Release key in CI secrets.* Fully automated, and abandons the offline custody
+  that the entire key ceremony exists to provide. Rejected.
+- *Box self-signs at install or first boot.* No manual step, but VERITY-02 would
+  then verify the box against a key the box itself holds — the gate stops meaning
+  anything. Rejected.
+
+**E. The cost, stated plainly.** A release becomes two phases: a tag no longer
+produces a complete release on its own, because someone must sign in between. A
+half-finished release sitting unnoticed is its own failure mode, so the workflow
+should publish the live image immediately and mark the disk artifact as *pending
+signature* — visible, not silent.
+
+**F. What is NOT yet true.** `vulos-install --disk` is being built and has not
+landed. Until it does, the only persistent paths are installing onto a server you
+already run (`./build.sh --deploy`) or the self-host bundle. Documentation must
+not describe bare-metal installation as available before that command ships.
