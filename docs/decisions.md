@@ -61,7 +61,7 @@ A few conventions:
 | D96 | 2026-08-04 | Native installable clients (Windows/macOS/Linux/Android/iOS): `mobile/`→`clients/`, one shared Go core + thin per-platform shells (Wails/gomobile), Tauri evaluated and rejected; TOFU/pinned-SPKI trust model for a local box; push is already sovereign on Android (foreground service, no FCM), APNs unavoidable on iOS | **active rule** — F's Android UnifiedPush option shipped box-side, see D98 |
 | D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 | D98 | 2026-08-07 | UnifiedPush (UP-CELL-01) implemented box-side, alongside Web Push, per D96-F: user-registered distributor endpoint, SSRF-screened via the shared `safedial` guard, same DND/owner-targeting choke point, prune-on-404/410; flag-gated (`VULOS_PUSH_UNIFIEDPUSH_ENABLE`); no client UI yet — see gap noted below | **active rule** |
-| D99 | 2026-08-07 | Both run modes supported (installed-to-disk primary, live-from-flash ephemeral); disk artifact BUILT by CI unsigned and SIGNED OFFLINE by the founder, manifest shipped as a release asset — founder-builds-everything rejected (cannot build amd64 locally), key-in-CI and box-self-signs rejected | **active rule** |
+| D99 | 2026-08-07 | Both run modes supported (installed-to-disk primary, live-from-flash ephemeral); CI publishes the live images + the content-identity roothash, the maintainer signs `stable.json` OFFLINE against it, and `vulos-install --disk` builds the persistent system on the target — founder-builds-everything rejected (cannot build amd64 locally), key-in-CI and box-self-signs rejected | **active rule** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -690,11 +690,21 @@ boots insecurely. But CI holds **no** private key by design (release.yml's
 REGISTRY-SIGN: *"signing is a human operation on an offline machine"*). So the
 disk artifact cannot be produced by a tagged CI build as things stood.
 
-**C. Decision: separate BUILDING from SIGNING.** CI builds, unsigned, both
-architectures. The founder signs a manifest offline — a small JSON and
+**C. Decision: separate BUILDING from SIGNING.** CI builds unsigned, both
+architectures. The maintainer signs a manifest offline — a small JSON and
 `backend/cmd/sign sign-image`, seconds, no build toolchain — and the signed
 `stable.json` + `.sig` ship as release assets. The installer places them when
 installing to disk.
+
+*Corrected 2026-08-07, after implementing it.* An earlier draft of this entry
+said CI builds "the disk artifact". It does not, and there is no such artifact.
+`vulos-install --disk` unpacks the **live squashfs** onto the target's ext4
+root, so the thing CI publishes is the live images plus the content-identity
+roothash (`vulos-<version>-<arch>.roothash`, computed by VERITY-01 over that
+same squashfs) — and the disk layout is constructed on the target machine at
+install time. `build.sh --disk` still exists, but only produces a local image
+for the boot smoke harness; it is not a release artifact. Recorded because a
+decision entry that does not match the code is worse than none.
 
 This works because the build already computes the content-identity root hash over
 a rootfs with any stale manifest **removed**, then writes the manifest back in.
