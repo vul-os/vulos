@@ -68,12 +68,20 @@ die() {
     exit 1
 }
 
+# Progress goes to STDERR, like die() above. stdout is reserved for exactly one
+# thing: the root hash. This script both prints progress AND echoes the hash for
+# `$(...)` capture, and it prints MORE progress after the hash — so with progress
+# on stdout a caller capturing stdout got the whole transcript, ANSI codes
+# included. That is not hypothetical: it put the entire log into stable.json's
+# roothash field, and VERITY-02 then refused the image at boot with a kernel
+# panic. Callers should still prefer the roothash FILE (the documented output
+# contract below), but stdout is now safe to capture either way.
 info() {
-    printf '%b\n' "${BLUE}  ▸ [gen-verity] $*${NC}"
+    printf '%b\n' "${BLUE}  ▸ [gen-verity] $*${NC}" >&2
 }
 
 ok() {
-    printf '%b\n' "  ${GREEN}✓${NC} [gen-verity] $*"
+    printf '%b\n' "  ${GREEN}✓${NC} [gen-verity] $*" >&2
 }
 
 dim() {

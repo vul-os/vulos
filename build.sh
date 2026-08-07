@@ -1161,11 +1161,19 @@ if [ "$LIVE_MODE" = "1" ]; then
   VERITY_HASHTREE="$OUTDIR/os-core.hashtree"
   VERITY_ROOTHASH_FILE="$OUTDIR/os-core.roothash"
   echo "${BLUE}▸ Generating dm-verity hash tree + root hash (VERITY-01)...${NC}"
-  VERITY_ROOT_HASH="$("$ROOT_DIR/scripts/verity/gen-verity.sh" \
-      "$SQUASHFS" "$VERITY_HASHTREE" "$VERITY_ROOTHASH_FILE")" || {
+  # Same as the --disk path: take the hash from the FILE, not from stdout, which
+  # also carries progress lines. Here the value is only logged, so a garbled one
+  # was merely confusing rather than fatal — but reading the documented output
+  # file keeps both call sites honest and stops this becoming load-bearing later.
+  "$ROOT_DIR/scripts/verity/gen-verity.sh" \
+      "$SQUASHFS" "$VERITY_HASHTREE" "$VERITY_ROOTHASH_FILE" || {
     echo "${RED}✗ gen-verity.sh failed — aborting live build${NC}"
     exit 1
   }
+  VERITY_ROOT_HASH=""
+  if [ -f "$VERITY_ROOTHASH_FILE" ]; then
+    VERITY_ROOT_HASH="$(tr -d ' \t\r\n' < "$VERITY_ROOTHASH_FILE")"
+  fi
   if [ -n "$VERITY_ROOT_HASH" ]; then
     echo "  ${GREEN}✓${NC} dm-verity root hash: $VERITY_ROOT_HASH"
     echo "  ${GREEN}✓${NC} hash tree  → os-core.hashtree"
@@ -1288,6 +1296,157 @@ if [ "$DISK_MODE" = "1" ]; then
     exit 1
   fi
   echo "  ${DIM}kernel: $(basename "$KIMG")  initrd: $(basename "$IIMG")${NC}"
+
+  # ═══════════════════════════════════
+  # VERITY-01 + VERITY-02: sign a boot-time stable.json before packing (--disk)
+  #
+  # --disk's loader entry sets init=/sbin/vulos-init (unlike --live, where
+  # systemd is PID 1 and vulos-init never runs). vulos-init therefore reaches
+  # the VERITY-02 pivot gate (backend/cmd/init/main.go verifyOSBeforeBoot),
+  # which log.Fatalf()s — killing PID 1, panicking the kernel — unless
+  # /etc/vulos/stable.json + stable.json.sig already exist and verify. No
+  # earlier build step wrote them, so every --disk image was structurally
+  # unbootable. This step writes them, or refuses to produce the image.
+  #
+  # Root hash: --disk ships an ext4 root, not a squashfs+dm-verity device, so
+  # there is nothing to mount VERITY-02's root hash against at runtime yet
+  # (that block-level check is a separate, not-yet-wired piece — see
+  # backend/cmd/verify/verifier.go's VerifySquashfsBeforePivot doc comment).
+  # What we CAN do honestly today is give stable.json a real, content-derived
+  # identity: pack a throwaway squashfs snapshot of this exact $ROOTFS (after
+  # SEED-01/03 embedded trust-anchor.pub + release-cert.json, so they count
+  # toward the identity) and run it through the same VERITY-01 tool the --live
+  # path uses (scripts/verity/gen-verity.sh) to get its dm-verity root hash.
+  # The snapshot is discarded — --disk never ships it — this is purely how we
+  # derive a root hash the release key can honestly sign. gen-verity.sh exits
+  # 0 with an EMPTY hash when veritysetup is unavailable (by design, so `sh -n`
+  # checks and unprivileged CI don't abort); we do NOT tolerate that here — an
+  # empty/fabricated root hash would let VERITY-02 pass without ever having
+  # verified anything, defeating its fail-closed purpose. So a missing
+  # veritysetup fails the --disk build loudly instead.
+  #
+  # Payload shape: /etc/vulos/stable.json is parsed by vulos-init as
+  # verify.ImagePayload (path/roothash/size/min_epoch/released_at — 5 fields),
+  # and its signature is checked through the release-cert chain. That is the
+  # SAME struct `sign-image` signs. It is a different, smaller struct than
+  # cmd/sign's ManifestPayload (7 fields incl. channel/latest, verified
+  # instead against the root anchor directly by services/osdist — the REMOTE
+  # OTA-bucket os/stable.json, a different artifact that happens to share a
+  # filename). Signing with `sign-manifest` here would produce a signature
+  # over the wrong struct — canonical(ManifestPayload) never equals
+  # canonical(ImagePayload) — so verifyOSBeforeBoot's re-derived canonical
+  # bytes would never match and VERITY-02 would HALT boot regardless of how
+  # correct everything else was. `sign-image` is the one whose signed struct
+  # actually matches this file.
+  # ═══════════════════════════════════
+  echo "${BLUE}▸ Generating dm-verity root hash for stable.json (VERITY-01)...${NC}"
+  command -v mksquashfs >/dev/null 2>&1 || {
+    echo "${RED}✗ --disk needs 'mksquashfs' (install: squashfs-tools) to derive the${NC}"
+    echo "${RED}  content-identity root hash for stable.json${NC}"
+    exit 1
+  }
+  DISK_IDENTITY_SQUASHFS="$OUTDIR/_disk-identity.squashfs"
+  DISK_IDENTITY_HASHTREE="$OUTDIR/_disk-identity.hashtree"
+  DISK_IDENTITY_ROOTHASH_FILE="$OUTDIR/_disk-identity.roothash"
+  # With --reuse-rootfs $ROOTFS may still carry stable.json/.sig from a prior
+  # run; strip them before hashing so the identity is always over the rest of
+  # the image, never over a previous run's own manifest.
+  rm -f "$ROOTFS/etc/vulos/stable.json" "$ROOTFS/etc/vulos/stable.json.sig"
+  mksquashfs "$ROOTFS" "$DISK_IDENTITY_SQUASHFS" -comp xz -noappend -quiet
+  DISK_IDENTITY_SIZE=$(stat -c%s "$DISK_IDENTITY_SQUASHFS")
+  # Read the hash from the FILE gen-verity.sh writes, not from its stdout.
+  # That file is the script's documented output contract; stdout also carries
+  # progress lines, including some emitted AFTER the hash. Capturing stdout put
+  # the whole ANSI-coloured transcript into the roothash field, VERITY-02
+  # rejected the manifest, and the image kernel-panicked at boot — while the
+  # build reported success. gen-verity.sh now logs to stderr as well, so this is
+  # belt and braces; the file remains the authoritative source.
+  "$ROOT_DIR/scripts/verity/gen-verity.sh" \
+      "$DISK_IDENTITY_SQUASHFS" "$DISK_IDENTITY_HASHTREE" "$DISK_IDENTITY_ROOTHASH_FILE" || {
+    echo "${RED}✗ gen-verity.sh failed — aborting disk build${NC}"
+    exit 1
+  }
+  DISK_ROOT_HASH=""
+  if [ -f "$DISK_IDENTITY_ROOTHASH_FILE" ]; then
+    DISK_ROOT_HASH="$(tr -d ' \t\r\n' < "$DISK_IDENTITY_ROOTHASH_FILE")"
+  fi
+  rm -f "$DISK_IDENTITY_SQUASHFS" "$DISK_IDENTITY_HASHTREE" "$DISK_IDENTITY_ROOTHASH_FILE"
+  # A dm-verity root hash is a SHA-256 in lowercase hex: exactly 64 hex chars.
+  # Assert the shape rather than trusting whatever came back — an empty, padded
+  # or log-contaminated value must abort the build here, not surface as an
+  # unbootable image hours later.
+  case "$DISK_ROOT_HASH" in
+    *[!0-9a-f]* | "" ) DISK_ROOT_HASH="" ;;
+    * ) [ "${#DISK_ROOT_HASH}" -eq 64 ] || DISK_ROOT_HASH="" ;;
+  esac
+  if [ -z "$DISK_ROOT_HASH" ]; then
+    echo "${RED}✗ VERITY-01: veritysetup not found — cannot compute a real dm-verity root${NC}"
+    echo "${RED}  hash, so --disk cannot honestly sign a stable.json (a fabricated or empty${NC}"
+    echo "${RED}  root hash would let VERITY-02 pass having verified nothing). Install${NC}"
+    echo "${RED}  cryptsetup-bin (veritysetup) and re-run --disk.${NC}"
+    exit 1
+  fi
+  echo "  ${GREEN}✓${NC} dm-verity root hash (content identity): $DISK_ROOT_HASH"
+
+  # ── Resolve + sanity-check the release private key ──
+  # Same resolution order as embed-anchor.sh's other overrides: explicit env
+  # var for production, keys/release.priv.json as the repo-local dev fallback.
+  DISK_RELEASE_PRIV="${VULOS_RELEASE_PRIV_KEY:-$ROOT_DIR/keys/release.priv.json}"
+  if [ ! -f "$DISK_RELEASE_PRIV" ]; then
+    echo "${RED}✗ --disk needs a release private key to sign /etc/vulos/stable.json —${NC}"
+    echo "${RED}  VERITY-02 refuses to boot without one (backend/cmd/init verifyOSBeforeBoot).${NC}"
+    echo "${RED}  Not found: $DISK_RELEASE_PRIV${NC}"
+    echo "${RED}  Set VULOS_RELEASE_PRIV_KEY to the release private key matching the cert at${NC}"
+    echo "${RED}  \$ROOTFS/etc/vulos/release-cert.json (SEED-01), or place a matching dev key${NC}"
+    echo "${RED}  at keys/release.priv.json. See docs/KEY-CEREMONY.md.${NC}"
+    exit 1
+  fi
+
+  # The embedded cert (already placed in $ROOTFS by embed-anchor.sh, SEED-01)
+  # authorises exactly one release pubkey. Signing with a key whose public
+  # half does not match it would produce a stable.json that fails VERITY-02
+  # at BOOT rather than at build time — precisely the silent-unbootable-image
+  # failure mode this whole change exists to close. Catch it here instead.
+  DISK_CERT="$ROOTFS/etc/vulos/release-cert.json"
+  DISK_CERT_PUBKEY="$(grep -o '"release_pubkey"[[:space:]]*:[[:space:]]*"[0-9a-f]*"' "$DISK_CERT" 2>/dev/null | grep -o '[0-9a-f]\{64\}')"
+  DISK_PRIV_PUBKEY="$(grep -o '"public_key"[[:space:]]*:[[:space:]]*"[0-9a-f]*"' "$DISK_RELEASE_PRIV" 2>/dev/null | grep -o '[0-9a-f]\{64\}')"
+  if [ -z "$DISK_CERT_PUBKEY" ] || [ -z "$DISK_PRIV_PUBKEY" ] || [ "$DISK_CERT_PUBKEY" != "$DISK_PRIV_PUBKEY" ]; then
+    echo "${RED}✗ --disk: release private key does not match the embedded release cert${NC}"
+    echo "${RED}  cert   ($DISK_CERT) authorises pubkey: ${DISK_CERT_PUBKEY:-<unreadable>}${NC}"
+    echo "${RED}  key    ($DISK_RELEASE_PRIV) public half: ${DISK_PRIV_PUBKEY:-<unreadable>}${NC}"
+    echo "${RED}  Signing with this key would produce a stable.json that fails VERITY-02${NC}"
+    echo "${RED}  at boot, not at build time. Use the release key whose public half the${NC}"
+    echo "${RED}  cert (\$VULOS_RELEASE_CERT / keys/release-cert.json) actually certifies,${NC}"
+    echo "${RED}  or set VULOS_RELEASE_PRIV_KEY explicitly.${NC}"
+    exit 1
+  fi
+
+  DISK_MIN_EPOCH="$(grep -o '"min_epoch"[[:space:]]*:[[:space:]]*[0-9]*' "$DISK_CERT" 2>/dev/null | grep -o '[0-9]*$')"
+  [ -n "$DISK_MIN_EPOCH" ] || DISK_MIN_EPOCH=0
+  DISK_RELEASED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  DISK_IMAGE_PATH="vulos-${ARCH}.img"
+
+  STABLE_JSON="$ROOTFS/etc/vulos/stable.json"
+  STABLE_SIG="$ROOTFS/etc/vulos/stable.json.sig"
+
+  echo "${BLUE}▸ Signing stable.json (VERITY-02, backend/cmd/sign sign-image)...${NC}"
+  ( cd "$ROOT_DIR/backend" && go run ./cmd/sign sign-image \
+      -release-priv "$DISK_RELEASE_PRIV" \
+      -key-id "vulos-disk-$(date -u +%Y%m%d)" \
+      -path "$DISK_IMAGE_PATH" \
+      -roothash "$DISK_ROOT_HASH" \
+      -size "$DISK_IDENTITY_SIZE" \
+      -min-epoch "$DISK_MIN_EPOCH" \
+      -released-at "$DISK_RELEASED_AT" \
+      -out "$STABLE_SIG" ) || {
+    echo "${RED}✗ sign-image failed — aborting disk build${NC}"
+    exit 1
+  }
+  printf '{"path":"%s","roothash":"%s","size":%s,"min_epoch":%s,"released_at":"%s"}' \
+    "$DISK_IMAGE_PATH" "$DISK_ROOT_HASH" "$DISK_IDENTITY_SIZE" "$DISK_MIN_EPOCH" "$DISK_RELEASED_AT" \
+    > "$STABLE_JSON"
+  chmod 0444 "$STABLE_JSON" "$STABLE_SIG"
+  echo "  ${GREEN}✓${NC} /etc/vulos/stable.json + .sig written → VERITY-02 has a manifest to verify"
 
   # ── ext4 root, populated from $ROOTFS with no mount/loop (mke2fs -d) ──
   ROOT_MB=$(( $(du -sm "$ROOTFS" | cut -f1) + 1024 ))

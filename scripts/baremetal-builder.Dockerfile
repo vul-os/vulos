@@ -3,7 +3,10 @@
 # build.sh needs a Linux host (debootstrap/chroot) and cannot run on macOS.
 # This is the reproducible builder the smoke harness runs the build inside:
 # Go toolchain + Node + debootstrap + the loop-free image tools
-# (mke2fs -d, mtools, parted) so --disk works without privileged mounts.
+# (mke2fs -d, mtools, parted) so --disk works without privileged mounts, plus
+# cryptsetup-bin (veritysetup) so VERITY-01 can produce a real dm-verity root
+# hash for the stable.json that --disk now signs (VERITY-02) — without it the
+# build refuses to fabricate a bogus root hash and fails loudly instead.
 #
 # Built/cached automatically by scripts/baremetal-smoke.sh.
 FROM golang:trixie
@@ -15,6 +18,7 @@ ENV GOTOOLCHAIN=auto
 RUN apt-get update && apt-get install -y --no-install-recommends \
       debootstrap \
       e2fsprogs dosfstools mtools parted squashfs-tools \
+      cryptsetup-bin \
       xz-utils zstd ca-certificates curl git \
  && rm -rf /var/lib/apt/lists/*
 

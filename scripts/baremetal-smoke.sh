@@ -79,6 +79,44 @@ command -v docker >/dev/null 2>&1 || die "docker not found (OrbStack)"
 command -v qemu-system-aarch64 >/dev/null 2>&1 || die "qemu-system-aarch64 not found (brew install qemu)"
 [ -f "$EDK2_CODE" ] || die "UEFI firmware missing: $EDK2_CODE"
 
+# ── 0. Throwaway smoke-test signing keys ────────────────────────────────────
+# --disk now signs a boot-time /etc/vulos/stable.json (VERITY-02) with a
+# release key whose public half the embedded release cert must certify. The
+# repo's checked-in keys/release-cert.json is PRODUCTION ceremony output
+# (docs/KEY-CEREMONY.md) — its private half is deliberately not on this
+# machine, and any keys/release.priv.json lying around locally is not
+# guaranteed to match it (build.sh now checks this and refuses to sign with a
+# non-matching key rather than produce an image that fails at boot). Rather
+# than depend on either, this harness generates its own throwaway root +
+# release keypair and cert with backend/cmd/sign — the same tool a real fork
+# build uses (see build.sh's "Fork procedure" header) — and points build.sh
+# at it via the existing VULOS_TRUST_ANCHOR_PUBKEY / VULOS_RELEASE_CERT /
+# VULOS_RELEASE_PRIV_KEY overrides. None of this is secret or committed;
+# cached under output/ across runs like the rootfs, regenerated on --rebuild.
+SMOKE_KEYS="$OUTDIR/_smoke-keys"
+if [ ! -f "$SMOKE_KEYS/release-cert.json" ] || [ "$REBUILD" = "1" ]; then
+  say "Generating throwaway smoke-test signing keys…"
+  rm -rf "$SMOKE_KEYS"
+  mkdir -p "$SMOKE_KEYS"
+  (
+    cd "$REPO/backend" &&
+    go run ./cmd/sign gen-key \
+      -out-priv "$SMOKE_KEYS/root.priv.json" -out-pub "$SMOKE_KEYS/root.pub.json" >/dev/null &&
+    go run ./cmd/sign gen-key \
+      -out-priv "$SMOKE_KEYS/release.priv.json" -out-pub "$SMOKE_KEYS/release.pub.json" >/dev/null &&
+    go run ./cmd/sign export-anchor \
+      -pub "$SMOKE_KEYS/root.pub.json" -out "$SMOKE_KEYS/trust-anchor.pub" >/dev/null &&
+    go run ./cmd/sign issue-release-cert \
+      -root-priv "$SMOKE_KEYS/root.priv.json" \
+      -release-pub "$SMOKE_KEYS/release.pub.json" \
+      -key-id "baremetal-smoke" \
+      -not-after "2099-01-01T00:00:00Z" \
+      -min-epoch 0 \
+      -out "$SMOKE_KEYS/release-cert.json" >/dev/null
+  ) || die "failed to generate smoke-test signing keys"
+  ok "smoke-test signing keys: $SMOKE_KEYS"
+fi
+
 # ── 1. Build ────────────────────────────────────────────────────────────────
 if [ "$NO_BUILD" = "0" ]; then
   say "Building builder image (cached after first run)…"
@@ -92,12 +130,19 @@ if [ "$NO_BUILD" = "0" ]; then
   # bind mount can't represent ("tar failed"). So build into the vulos-bm-work
   # Docker volume (OUTDIR=/work/output, also persists rootfs for --reuse-rootfs)
   # and copy only the finished disk image back to the bind-mounted /src/output.
+  # /src is the bind-mounted repo, so the smoke keys generated above at
+  # $OUTDIR/_smoke-keys (= $REPO/output/_smoke-keys) are visible in-container
+  # at /src/output/_smoke-keys — independent of build.sh's own /work/output.
   docker run --rm --privileged \
     -v "$REPO":/src -w /src \
     -v vulos-bm-work:/work \
     -v vulos-bm-gocache:/root/.cache/go-build \
     -v vulos-bm-gomod:/go/pkg/mod \
     -v vulos-bm-npm:/root/.npm \
+    -e VULOS_TRUST_ANCHOR_PUBKEY=/src/output/_smoke-keys/trust-anchor.pub \
+    -e VULOS_RELEASE_CERT=/src/output/_smoke-keys/release-cert.json \
+    -e VULOS_RELEASE_PRIV_KEY=/src/output/_smoke-keys/release.priv.json \
+    -e VULOS_OS_BUCKET_URL=https://os.vulos.org \
     "$BUILDER_IMG" \
     bash -c "mkdir -p /work/output && ./build.sh --arm64 --device generic-arm64 --disk $REUSE /work/output && mkdir -p /src/output && cp -f /work/output/vulos-${ARCH}.img /src/output/vulos-${ARCH}.img"
 fi
