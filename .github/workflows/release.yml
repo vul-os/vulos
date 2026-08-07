@@ -194,6 +194,27 @@ jobs:
               exit 1
             fi
             cp "$tb" "vulos-${VERSION}-${label}-rootfs.tar.gz"
+
+            # D99: the content identity an offline signature is made over.
+            # VERITY-01 computes this over the live squashfs — which is exactly
+            # what `vulos-install --disk` unpacks onto the target's ext4 root —
+            # so it is the hash a stable.json must carry for VERITY-02 to accept
+            # the installed system. CI cannot sign it (no private key on
+            # runners, deliberately), so it is published for the founder to sign
+            # offline and the signed manifest is uploaded afterwards.
+            #
+            # Fail loudly if absent: a silently missing roothash means nobody
+            # can produce a valid manifest, and the install path is dead for
+            # that release without anything saying so.
+            rh="out-${arch}/os-core.roothash"
+            if [ ! -s "$rh" ]; then
+              echo "::error::no os-core.roothash in out-${arch}/ — VERITY-01 did not run (is cryptsetup-bin present in the builder?). Without it no stable.json can be signed and --disk installs cannot be verified."
+              ls -la "out-${arch}" || true
+              exit 1
+            fi
+            cp "$rh" "vulos-${VERSION}-${label}.roothash"
+            echo "  roothash (${label}): $(cat "$rh")"
+
             sudo rm -rf "out-${arch}"
             echo "::endgroup::"
           }
@@ -432,6 +453,29 @@ jobs:
 
             Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz` file.
 
+            ### Installing to disk (persistent)
+
+            `vulos-install --disk /dev/sdX`, run from a booted live session,
+            installs Vulos onto the machine's own drive — persistent ext4 root,
+            signed-manifest verification at boot, A/B slots and rollback.
+
+            It needs a **signed manifest**, which is not produced by CI. The
+            release private key is never on a CI runner (see
+            `docs/KEY-CEREMONY.md`), so signing is a deliberate offline step:
+
+            ```bash
+            # Signed offline by the maintainer, against the roothash published here:
+            backend/cmd/sign sign-image \
+              -roothash "$(cat vulos-${{ steps.version.outputs.VERSION }}-x86_64.roothash)" \
+              -release-priv keys/release.priv.json \
+              -out stable.json
+            ```
+
+            **If `stable.json` and `stable.json.sig` are not listed among the
+            assets above, this release has not been signed yet and disk installs
+            cannot be verified.** The live images are unaffected and work as
+            published. Rationale and the options rejected are in decision D99.
+
             ### Verify your download
 
             ```bash
@@ -439,6 +483,8 @@ jobs:
             ```
 
             `SHA256SUMS` covers every image and rootfs tarball in this release.
+            The `.roothash` files are the content identity a signed `stable.json`
+            is made over — they are not secret and prove nothing on their own.
 
             ### Cloud server
 
@@ -459,6 +505,7 @@ jobs:
           files: |
             vulos-*.img.gz
             vulos-*-rootfs.tar.gz
+            vulos-*.roothash
             SHA256SUMS
             keys/trust-anchor.pub
             keys/release-cert.json
