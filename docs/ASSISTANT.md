@@ -263,6 +263,7 @@ AI_PROVIDER=claude AI_API_KEY=sk-ant-… VULOS_AI_TIER=brokered VULOS_ASSISTANT_
 | Embeddings of your mail (the semantic index) | **Never** — the mail index refuses non-local embedders outright, independent of the model tier |
 | Proposal execution (sending mail, creating events) | Talks only to your local mail service; the send itself then goes wherever email goes, as with any mail client |
 | Reminder notifications via Web Push (opt-in) | An end-to-end-encrypted payload goes from your box directly to your browser vendor's push relay; the vendor routes it but cannot read it. On iOS the vendor is always Apple — there is no sovereign delivery path on that platform (see the User Guide's [Notifications](USER-GUIDE.md#notifications) section) |
+| Reminder notifications via UnifiedPush (Android, opt-in, API-only for now) | Goes to a push endpoint YOU nominate (a distributor you installed, e.g. self-hosted ntfy) instead of a browser vendor — removes the vendor from the path on Android. No Settings UI yet; no distributor exists for iOS, so this doesn't change the Web Push row above on that platform |
 | Model downloads | Outbound fetch from the pinned Hugging Face catalog only, hash-verified |
 
 Everything in the first row is enforced by code (the Guard choke point plus the on-instance embedder certification), not by policy. The threat model behind this design is written up in [THREAT-MODEL.md](THREAT-MODEL.md), and the broader box hardening picture in [SECURITY.md](SECURITY.md).

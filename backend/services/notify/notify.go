@@ -175,6 +175,12 @@ type Service struct {
 	// PUSH-CELL-01 additive field: the cell-side Web Push send-path. nil = no
 	// Web Push (in-app WebSocket path unchanged). Set via SetPush.
 	push *pushBinding
+
+	// UP-CELL-01 additive field: the cell-side UnifiedPush send-path,
+	// ALONGSIDE (never instead of) Web Push above. nil = no UnifiedPush (both
+	// the in-app WebSocket path and the Web Push path are unchanged). Set via
+	// SetUnifiedPush.
+	up *upBinding
 }
 
 func New() *Service {
@@ -215,6 +221,12 @@ func (s *Service) SendNotification(n Notification) *Notification {
 	// attached a live binding; only owner-targeted notifications are pushed and
 	// DND/prefs are respected inside. Runs async — never blocks this caller.
 	s.maybeWebPush(n)
+
+	// UP-CELL-01: additively fan out to the owner's registered UnifiedPush
+	// endpoint(s) too — the SAME owner-targeting and DND/prefs checks as Web
+	// Push above, just a different transport. No-op unless SetUnifiedPush has
+	// attached a live binding. Runs async — never blocks this caller.
+	s.maybeUnifiedPush(n)
 
 	log.Printf("[notify] %s (%s/%s): %s", n.Priority, n.Type, n.Subtype, n.Title)
 	return &n

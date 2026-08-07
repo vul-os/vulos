@@ -1613,6 +1613,10 @@ func main() {
 	// Shares the DND policy from the ext routes so a user in Do-Not-Disturb is
 	// not web-pushed. Additive + flag-gated (no-op without VAPID keys).
 	registerNotifyPushRoutes(mux, notifySvc, home, notifyExtSvc.dnd)
+	// UP-CELL-01: cell-side UnifiedPush send-path (D96-F) — ALONGSIDE Web
+	// Push above, never instead of it. Shares the SAME DND policy. Additive +
+	// flag-gated (no-op without VULOS_PUSH_UNIFIEDPUSH_ENABLE=1).
+	registerNotifyUnifiedPushRoutes(mux, notifySvc, home, notifyExtSvc.dnd)
 
 	// Open Router — GET /api/router/classify?app=<id> → {lane}
 	// Used by the shell launcher to dispatch per lane (WebApp/CPUStream/GPURoute/etc).
