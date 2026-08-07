@@ -10,7 +10,7 @@ assignees: ""
 
 Please follow the process described in [SECURITY.md](../../SECURITY.md):
 
-- Email **security@vulos.org**, or
+- Email **exolutionza@gmail.com**, or
 - Use GitHub's private **"Report a vulnerability"** feature in the Security tab.
 
 Public issues are visible to everyone and may put users at risk before a fix is available.

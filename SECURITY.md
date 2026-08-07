@@ -69,7 +69,7 @@ your own peers — never a silent Vulos-owned analytics sink.
 
 ## How to Report
 
-**Email:** security@vulos.org  
+**Email:** exolutionza@gmail.com  
 **PGP key:** TODO — not yet published. No encryption key exists for this
 address today; treat reports over plain email as unencrypted until a key is
 published at `https://vulos.org/.well-known/security.txt` and linked here. If

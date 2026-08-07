@@ -75,7 +75,7 @@ The doc has two kinds of entries:
 
 **Please do not file security issues as public GitHub issues.**
 
-If you've found a security problem in Vula OS — anything that lets one user reach another user's data, escape the sandbox, run code as a different user, or bypass auth — email **security@vulos.org** (or, until that mailbox exists, message the repo owner directly).
+If you've found a security problem in Vula OS — anything that lets one user reach another user's data, escape the sandbox, run code as a different user, or bypass auth — email **exolutionza@gmail.com**.
 
 Include:
 
