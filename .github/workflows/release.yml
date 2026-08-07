@@ -402,12 +402,22 @@ jobs:
           body: |
             ## Vulos ${{ steps.version.outputs.VERSION }}
 
-            ### Bare metal (flash to USB)
+            ### Bare metal — live session (flash to USB)
 
             | Platform | File | Devices |
             |----------|------|---------|
             | x86_64 | `vulos-${{ steps.version.outputs.VERSION }}-x86_64.img.gz` | PC, laptop, server |
             | ARM64 | `vulos-${{ steps.version.outputs.VERSION }}-arm64.img.gz` | Generic ARM64 (UEFI-booting SBCs and VMs) |
+
+            > **This is a live session, not an install.** The root filesystem is
+            > read-only and the writable layer lives in RAM, so accounts, files
+            > and settings **do not survive a reboot**. It is the right way to
+            > try Vulos on real hardware, or to run a disposable always-clean
+            > desktop from USB — not somewhere to keep anything.
+            >
+            > To keep your data today, install onto a server you already run
+            > (`./build.sh --deploy`) or use the self-host bundle. A persistent
+            > disk-installed image for bare metal is in progress.
 
             > **Raspberry Pi is not covered by the ARM64 image above.** It is a
             > `generic-arm64` build: a stock `linux-image-arm64` with no
