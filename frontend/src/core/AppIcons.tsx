@@ -581,6 +581,14 @@ const SG: Record<string, ReactNode> = {
   ),
   connmode: G.social,
   network: G.globe,
+  lanpairing: (
+    <>
+      <rect x="3.4" y="3.4" width="6.2" height="6.2" rx="1.1" />
+      <rect x="14.4" y="3.4" width="6.2" height="6.2" rx="1.1" />
+      <rect x="3.4" y="14.4" width="6.2" height="6.2" rx="1.1" />
+      <path d="M14.4 14.4h2.9v2.9h-2.9zM19.5 14.4v2.9M14.4 19.5h2.9M19.5 19.5h1.1" />
+    </>
+  ),
   domain: (
     <>
       <path d="M9.6 14.4l4.8-4.8" />

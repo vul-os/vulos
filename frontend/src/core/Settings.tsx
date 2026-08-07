@@ -21,6 +21,7 @@ import WebhooksPanel from './settings/WebhooksPanel'
 import DeveloperPanel from './settings/DeveloperPanel'
 import DomainPanel from './settings/DomainPanel'
 import CDNPanel from './settings/CDNPanel'
+import LANPairingPanel from './settings/LANPairingPanel'
 import LocationPanel from './settings/LocationPanel'
 import DevicePanel from './settings/DevicePanel'
 import { nativeBridge } from './nativeBridge'
@@ -111,6 +112,7 @@ const sectionGroups: SettingsSectionGroup[] = [
     items: [
       { id: 'connmode', label: 'Connection Mode' },
       { id: 'network', label: 'Remote Access' },
+      { id: 'lanpairing', label: 'Native Pairing' },
       { id: 'domain', label: 'Custom Domain' },
       { id: 'relay', label: 'Relay & Reachability', owner: true },
       { id: 'cdn', label: 'CDN', owner: true },
@@ -368,6 +370,7 @@ export default function Settings({ initialSection }: SettingsProps) {
         {active === 'storagemode' && <StorageModeSettings />}
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
+        {active === 'lanpairing' && <LANPairingPanel />}
         {active === 'domain' && <DomainPanel />}
         {active === 'relay' && <RelayPanel />}
         {active === 'cdn' && <CDNPanel />}
