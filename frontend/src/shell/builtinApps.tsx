@@ -11,6 +11,7 @@ import { createElement, lazy, Suspense, type ComponentType, type ReactElement } 
 import Settings from '../core/Settings'
 import { consumePendingSettingsSection } from '../core/settingsNav'
 import { consumePendingLaunchQuery } from '../core/launchParams'
+import type { WindowSize } from '../providers/ShellProvider'
 
 const Terminal = lazy(() => import('../builtin/terminal/Terminal'))
 const ActivityMonitor = lazy(() => import('../builtin/activity/ActivityMonitor'))
@@ -72,6 +73,15 @@ export const BUILTIN_COMPONENTS: Record<string, BuiltinFactory> = {
 
 // Apps that should only ever have one window open at a time.
 export const BUILTIN_SINGLETONS: Set<string> = new Set(['persona', 'apphub', 'dashboard', 'assistant'])
+
+// Per-app initial window size, opt-in — every builtin not listed here keeps
+// the shell's flat 720x500 default (see ShellProvider's OPEN_WINDOW). Settings
+// ('persona') is the one app with a nav rail down one side plus card-based
+// content, so 720x500 left nearly every panel pre-scrolled on open; every
+// other builtin is unaffected.
+export const BUILTIN_WINDOW_SIZE: Partial<Record<string, WindowSize>> = {
+  persona: { width: 860, height: 620 },
+}
 
 // builtinComponent returns a fresh element for a builtin id, or null if the id
 // is not a React builtin (e.g. a web/stream app).

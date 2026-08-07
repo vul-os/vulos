@@ -6,6 +6,7 @@ import { searchApps, type App } from './AppRegistry'
 import { appFrameURLFor } from './AppOrigins'
 import { useVoice } from './useVoice'
 import Settings from './Settings'
+import { BUILTIN_WINDOW_SIZE } from '../shell/builtinApps'
 // Lazy-loaded so it stays in its own chunk (Launchpad also lazy-loads it).
 const FileManager = lazy(() => import('../builtin/files/FileManager'))
 
@@ -313,7 +314,11 @@ Only output the viewport block — no explanations outside it.`
         if (intent.action === 'open_files') {
           openWindow({ appId: 'files', title: 'File Explorer', icon: '⊡', component: createElement(Suspense, { fallback: null }, createElement(FileManager)) })
         } else if (intent.action === 'open_settings') {
-          openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(Settings, { initialSection: intent.section }) })
+          // Same initial size as the command-palette/Launchpad path (appId
+          // differs — 'settings' here vs the builtin registry's 'persona' —
+          // this is a pre-existing split this pass doesn't otherwise touch;
+          // see BUILTIN_WINDOW_SIZE's comment for why Settings gets one).
+          openWindow({ appId: 'settings', title: intent.label || 'Settings', icon: '⚙', component: createElement(Settings, { initialSection: intent.section }), size: BUILTIN_WINDOW_SIZE.persona })
         } else {
           addMessage('system', `${intent.label}`)
         }

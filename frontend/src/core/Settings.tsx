@@ -300,7 +300,12 @@ export default function Settings({ initialSection }: SettingsProps) {
     <div className="flex flex-col sm:flex-row h-full bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Desktop sidebar rail */}
       <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 lg:w-60 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
-        <div className="sticky top-0 z-10 px-4 pt-5 pb-3 bg-[var(--bg-surface)]/80 backdrop-blur-sm border-b border-[var(--border-subtle)]">
+        {/* Solid (not translucent) — this header is `sticky`, so the section
+            list scrolls underneath it. A semi-transparent fill here let the
+            nav item scrolled directly beneath show through and overlap
+            "Configure your device", producing illegible ghosted text once a
+            group scrolled under the fold (visible in both themes). */}
+        <div className="sticky top-0 z-10 px-4 pt-5 pb-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
           <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
           <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Configure your device</p>
         </div>
@@ -333,7 +338,8 @@ export default function Settings({ initialSection }: SettingsProps) {
             aria-label="Settings sections"
             className="w-72 max-w-[82vw] h-full bg-[var(--bg-surface)] border-r border-[var(--border-default)] overflow-y-auto shadow-2xl animate-[fadeIn_0.12s_ease-out]"
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3.5 bg-[var(--bg-surface)]/90 backdrop-blur-sm border-b border-[var(--border-subtle)]">
+            {/* Solid — same reasoning as the desktop rail's sticky header above. */}
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3.5 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
               <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
               <button
                 onClick={() => setDrawerOpen(false)}
@@ -884,11 +890,18 @@ function WiFiSettings() {
   return (
     <Section title="WiFi">
       {status && (
-        <div className={`text-sm mb-4 ${status.connected ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
-          {status.connected ? `Connected to ${status.ssid} (${status.ip})` : 'Not connected'}
+        <div className="mb-4">
+          <Pill tone={status.connected ? 'success' : 'neutral'}>
+            {status.connected ? `Connected to ${status.ssid} (${status.ip})` : 'Not connected'}
+          </Pill>
         </div>
       )}
       <button onClick={scan} disabled={scanning} className="btn mb-4">{scanning ? 'Scanning...' : 'Scan Networks'}</button>
+      {/* A scan that legitimately finds nothing previously rendered no
+          feedback at all — indistinguishable from "haven't scanned yet". */}
+      {networks && networks.length === 0 && (
+        <EmptyState icon="wifi" title="No networks found" hint="Move closer to your router, or try scanning again." />
+      )}
       {networks && networks.map(n => (
         <div key={n.bssid || n.ssid || ''} className="flex items-center justify-between gap-3 py-2 border-b border-[var(--border-default)]">
           <div className="min-w-0">
@@ -1430,11 +1443,7 @@ function NET9_ConnectionModeSettings() {
         </button>
       </div>
 
-      {error && (
-        <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
     </Section>
   )
 }
@@ -1649,11 +1658,11 @@ function TURNSettingsSection() {
       </div>
 
       {testResult && (
-        <div className={`mt-3 text-xs rounded px-3 py-2 ${testResult.success ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]' : 'bg-[var(--status-danger-soft)] text-[var(--status-danger)]'}`}>
+        <Banner tone={testResult.success ? 'success' : 'danger'}>
           {testResult.success
             ? `Reachable — latency ${testResult.latency_ms} ms`
             : `Unreachable: ${testResult.error || 'connection failed'}`}
-        </div>
+        </Banner>
       )}
     </Section>
   )
@@ -1669,15 +1678,38 @@ function AccountSettings({ profile, updateProfile, logout }: AccountSettingsProp
   const [name, setName] = useState(typeof profile?.display_name === 'string' ? profile.display_name : '')
   const [locale, setLocale] = useState(typeof profile?.locale === 'string' ? profile.locale : 'en')
   const [tz, setTz] = useState(typeof profile?.timezone === 'string' ? profile.timezone : '')
+  // Every other panel in this file (WiFi's connect, OS Update's stage,
+  // TURN's save, …) confirms an action with a saving/saved/error cycle —
+  // this Save button silently did nothing, the one place in Settings you
+  // couldn't tell whether your click landed.
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
 
-  const save = () => updateProfile({ display_name: name, locale, timezone: tz })
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    setError('')
+    try {
+      await updateProfile({ display_name: name, locale, timezone: tz })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e: unknown) {
+      setError(errorMessage(e) || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Section title="Account">
       <Field label="Display Name"><input value={name} onChange={e => setName(e.target.value)} className="input" /></Field>
       <Field label="Language"><input value={locale} onChange={e => setLocale(e.target.value)} placeholder="en" className="input" /></Field>
       <Field label="Timezone"><input value={tz} onChange={e => setTz(e.target.value)} placeholder="Africa/Johannesburg" className="input" /></Field>
-      <button onClick={save} className="btn mt-3">Save</button>
+      <button onClick={save} disabled={saving} className="btn mt-3 disabled:opacity-50">
+        {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+      </button>
+      {error && <p className="mt-2 text-xs text-[var(--status-danger)]">{error}</p>}
       <button onClick={logout} className="btn-ghost mt-6 text-[var(--status-danger)]">Log Out</button>
     </Section>
   )
@@ -2743,13 +2775,32 @@ function UsersSettings({ profile }: UsersSettingsProps) {
     }
   }
 
+  // This request previously had no failure path at all — a rejected fetch
+  // (offline, 500, …) left the PIN field silently cleared with no sign
+  // anything went wrong, unlike every other mutating action in this file.
+  const [pinMsg, setPinMsg] = useState<StatusMsg | null>(null)
+  const [pinSaving, setPinSaving] = useState(false)
   const savePin = async () => {
-    await fetch('/api/auth/pin/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }),
-    })
-    setPin('')
+    setPinSaving(true)
+    setPinMsg(null)
+    try {
+      const res = await fetch('/api/auth/pin/set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+      const data: unknown = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setPinMsg({ type: 'err', text: errField(data) || 'Failed to update PIN' })
+        return
+      }
+      setPinMsg({ type: 'ok', text: pin ? 'PIN set' : 'PIN removed' })
+      setPin('')
+    } catch {
+      setPinMsg({ type: 'err', text: 'Could not reach server' })
+    } finally {
+      setPinSaving(false)
+    }
   }
 
   return (
@@ -2761,8 +2812,15 @@ function UsersSettings({ profile }: UsersSettingsProps) {
           <input type="password" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/[^0-9]/g, ''))}
             aria-label="Lock screen PIN"
             placeholder="4–8 digit PIN" maxLength={8} className="input w-40 max-w-[55vw]" />
-          <button onClick={savePin} className="btn">{pin ? 'Set PIN' : 'Remove PIN'}</button>
+          <button onClick={savePin} disabled={pinSaving} className="btn disabled:opacity-50">
+            {pinSaving ? 'Saving…' : pin ? 'Set PIN' : 'Remove PIN'}
+          </button>
         </div>
+        {pinMsg && (
+          <p className={`mt-2 text-xs ${pinMsg.type === 'ok' ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'}`}>
+            {pinMsg.text}
+          </p>
+        )}
       </div>
 
       {/* Add user (admin only) */}

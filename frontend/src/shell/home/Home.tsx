@@ -30,7 +30,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { AppIconTile } from '../../core/AppIcons'
-import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from '../builtinApps'
+import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS, BUILTIN_WINDOW_SIZE } from '../builtinApps'
 import { runAgentTurn, type AgentProposal, type AgentStatusEvent } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
 import { notify } from '../../core/notificationStore'
@@ -345,7 +345,7 @@ export default function Home() {
     const app = getAppById(appId)
     if (!app) { setLaunchpad(true); return }
     if (isBuiltinComponent(appId)) {
-      openWindow({ appId, title: app.name, icon: app.icon, component: builtinComponent(appId), singleton: BUILTIN_SINGLETONS.has(appId) })
+      openWindow({ appId, title: app.name, icon: app.icon, component: builtinComponent(appId), singleton: BUILTIN_SINGLETONS.has(appId), size: BUILTIN_WINDOW_SIZE[appId] })
     } else if (app.url) {
       openWindow({ appId, title: app.name, url: app.url, icon: app.icon })
     } else {

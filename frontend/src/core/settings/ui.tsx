@@ -151,19 +151,23 @@ export function Divider() {
 
 interface ToggleProps {
   label?: ReactNode
+  // ariaLabel names the control when it is rendered bare (no `label`, e.g.
+  // passed as a SettingRow's `control` — the row's own label text is visible
+  // but not programmatically associated with this button).
+  ariaLabel?: string
   checked?: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
 }
 
 // ── Toggle — accent-driven switch. Standalone or inside a SettingRow. ────────
-export function Toggle({ label, checked, onChange, disabled }: ToggleProps) {
+export function Toggle({ label, ariaLabel, checked, onChange, disabled }: ToggleProps) {
   const btn = (
     <button
       type="button"
       role="switch"
       aria-checked={!!checked}
-      aria-label={typeof label === 'string' ? label : undefined}
+      aria-label={ariaLabel ?? (typeof label === 'string' ? label : undefined)}
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       style={checked ? { background: 'var(--accent)' } : undefined}

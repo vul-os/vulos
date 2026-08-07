@@ -10,7 +10,7 @@
 // non-hook getNativeMode() getter, so it can be called from event handlers,
 // command `run(ctx)` callbacks, etc.
 import { createElement, lazy, Suspense, type ReactElement } from 'react'
-import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS } from './builtinApps'
+import { builtinComponent, isBuiltinComponent, BUILTIN_SINGLETONS, BUILTIN_WINDOW_SIZE } from './builtinApps'
 import { getNativeMode } from '../core/useNativeMode'
 import { resolveAppFrameURL, appFrameURLFor } from '../core/AppOrigins'
 import type { AppEntry } from './appTypes'
@@ -30,6 +30,7 @@ export interface LaunchAppDeps {
     component?: ReactElement | null
     html?: string | null
     singleton?: boolean
+    size?: { width: number; height: number }
   }) => void
 }
 
@@ -64,7 +65,7 @@ export async function launchApp(app: AppEntry | null | undefined, { openWindow }
   if (!app) return
 
   if (isBuiltinComponent(app.id)) {
-    openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtinComponent(app.id), singleton: BUILTIN_SINGLETONS.has(app.id) })
+    openWindow({ appId: app.id, title: app.name, icon: app.icon, component: builtinComponent(app.id), singleton: BUILTIN_SINGLETONS.has(app.id), size: BUILTIN_WINDOW_SIZE[app.id] })
     return
   }
 

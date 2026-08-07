@@ -27,7 +27,7 @@ import Settings from '../../core/Settings'
 import { getPrefs, __resetForTests } from '../../core/notificationStore'
 
 beforeEach(() => { __resetForTests() })
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('Settings — navigation + notification prefs (integration)', () => {
   it('navigates from the section rail into the Notifications panel', async () => {
@@ -61,5 +61,55 @@ describe('Settings — navigation + notification prefs (integration)', () => {
     expect(getPrefs().sound).toBe(true)
     await user.click(sound)
     expect(getPrefs().sound).toBe(false)
+  })
+})
+
+// These three pin behaviour added in this pass — each closes a real gap
+// (Account's Save button gave no feedback at all; a WiFi scan that found
+// nothing rendered no different from "haven't scanned yet"; the Users &
+// Profiles PIN setter had no failure path).
+describe('Settings — save/empty-state feedback (integration)', () => {
+  it('Account: Save shows Saving… then Saved', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })))
+    const user = userEvent.setup()
+    render(<Settings />)
+    await user.click(screen.getByRole('button', { name: 'Account' }))
+    const save = await screen.findByRole('button', { name: /^Save$/ })
+    await user.click(save)
+    expect(await screen.findByRole('button', { name: 'Saved' })).toBeInTheDocument()
+  })
+
+  it('WiFi: scanning to zero results shows an empty state, not silence', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/wifi/scan')) return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    }))
+    const user = userEvent.setup()
+    render(<Settings />)
+    await user.click(screen.getByRole('button', { name: 'WiFi' }))
+    await user.click(await screen.findByRole('button', { name: 'Scan Networks' }))
+    expect(await screen.findByText('No networks found')).toBeInTheDocument()
+  })
+
+  it('Users & Profiles: the Lock Screen PIN setter reports success', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })))
+    const user = userEvent.setup()
+    render(<Settings />)
+    await user.click(screen.getByRole('button', { name: 'Users & Profiles' }))
+    const pin = await screen.findByLabelText('Lock screen PIN')
+    await user.type(pin, '1234')
+    await user.click(screen.getByRole('button', { name: 'Set PIN' }))
+    expect(await screen.findByText('PIN set')).toBeInTheDocument()
+  })
+
+  it('Users & Profiles: a failed PIN save reports the error, not silence', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) })))
+    const user = userEvent.setup()
+    render(<Settings />)
+    await user.click(screen.getByRole('button', { name: 'Users & Profiles' }))
+    const pin = await screen.findByLabelText('Lock screen PIN')
+    await user.type(pin, '1234')
+    await user.click(screen.getByRole('button', { name: 'Set PIN' }))
+    expect(await screen.findByText('boom')).toBeInTheDocument()
   })
 })

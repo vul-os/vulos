@@ -415,7 +415,7 @@ export default function RelayPanel() {
       desc="The built-in Vulos relay is the default reachability path — it just works, nothing to configure. You can bring your own instead: BYO STUN/TURN, a libp2p relay peer, a WireGuard mesh, or none at all if this box has a static IP. Pier is a supported alternative relay."
       actions={config && <Pill tone="accent">{activeMeta?.label?.replace(/ \(default\)/, '') || config.provider}</Pill>}
     >
-      {loadError && <Banner tone="info">{loadError}</Banner>}
+      {loadError && <Banner tone="danger">{loadError}</Banner>}
 
       {config && (
         <Card title="Current reachability" desc="What is resolving right now across the three reachability concerns.">

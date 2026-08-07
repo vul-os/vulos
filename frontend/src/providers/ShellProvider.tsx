@@ -136,7 +136,13 @@ export type ShellAction =
       // dedup — shell/launchApp.js, shell/home/Home.jsx) but openWindow()
       // below does NOT forward it to this action today, so it is currently
       // inert. Preserved exactly as-is; not a bug this pass fixes.
-      ; singleton?: boolean }
+      ; singleton?: boolean
+      // Optional initial size, opt-in per caller. Every window has opened at
+      // a flat 720x500 regardless of app; every caller but Settings' still
+      // omits this and gets that unchanged default. Settings passes a larger
+      // size because its nav rail + content (Cards up to max-w-2xl) made
+      // nearly every panel start pre-scrolled at 720x500 — see Portal.tsx.
+      ; size?: WindowSize }
   | { type: 'CLOSE_WINDOW'; id: number }
   | { type: 'FOCUS_WINDOW'; id: number }
   | { type: 'MOVE_WINDOW'; id: number; position: WindowPosition; keepTile?: boolean }
@@ -195,7 +201,9 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         _saveable: action._saveable || null,
         icon: action.icon || '',
         position: { x: 60 + (desk.windows.length % 6) * 32, y: 50 + (desk.windows.length % 6) * 32 },
-        size: { width: 720, height: 500 },
+        // Every caller but Settings omits `size` and gets this unchanged
+        // default — see the OPEN_WINDOW action type's comment.
+        size: action.size || { width: 720, height: 500 },
         minimized: false,
       }]
       desk.activeWindow = id
@@ -529,6 +537,9 @@ export interface OpenWindowOptions {
    *  currently forwarded by openWindow() below — see the ShellAction
    *  'OPEN_WINDOW' comment. Preserved as-is. */
   singleton?: boolean
+  /** Optional initial window size. Omit to get the shared 720x500 default —
+   *  see the 'OPEN_WINDOW' ShellAction comment. */
+  size?: WindowSize
 }
 
 /** Loose input accepted by openNativeWindow — DesktopContextMenu.jsx passes a
@@ -628,8 +639,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     return out
   }, [state.desktops, state.activeDesktop])
 
-  const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable }: OpenWindowOptions) => {
-    dispatch({ type: 'OPEN_WINDOW', appId, title, url, icon, component, html, _saveable })
+  const openWindow = useCallback(({ appId, title, url, icon, component, html, _saveable, size }: OpenWindowOptions) => {
+    dispatch({ type: 'OPEN_WINDOW', appId, title, url, icon, component, html, _saveable, size })
   }, [])
   const closeWindow = useCallback((id: number) => {
     // Find the window to check if it's a running app that needs stopping

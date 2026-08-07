@@ -4,6 +4,7 @@ import {
   stopLocationReporting,
   getLocationReportingStatus,
 } from '../location/reporter'
+import { Section, Card, SettingRow, Toggle } from './ui'
 
 interface LocationStatus {
   active: boolean
@@ -41,6 +42,13 @@ function isEnabled(): boolean {
   }
 }
 
+const ERROR_LABEL: Record<LocationErrorCode, string> = {
+  permission_denied: 'Location permission was denied in your browser.',
+  position_unavailable: 'Your device could not determine a position.',
+  timeout: 'Getting a position timed out — trying again.',
+  unavailable: 'This device has no geolocation available.',
+}
+
 export default function LocationPanel() {
   const [enabled, setEnabled] = useState(isEnabled)
   const [status, setStatus] = useState<LocationStatus>(() => getLocationReportingStatus())
@@ -52,83 +60,48 @@ export default function LocationPanel() {
     return () => clearInterval(id)
   }, [])
 
-  const toggle = useCallback(() => {
-    setEnabled((on) => {
-      const next = !on
-      try {
-        if (next) localStorage.setItem(LOCATION_SHARE_KEY, 'on')
-        else localStorage.removeItem(LOCATION_SHARE_KEY)
-      } catch {
-        /* localStorage unavailable — the live start/stop below still applies */
-      }
-      if (next) startLocationReporting()
-      else stopLocationReporting()
-      setStatus(getLocationReportingStatus())
-      return next
-    })
+  const toggle = useCallback((next: boolean) => {
+    try {
+      if (next) localStorage.setItem(LOCATION_SHARE_KEY, 'on')
+      else localStorage.removeItem(LOCATION_SHARE_KEY)
+    } catch {
+      /* localStorage unavailable — the live start/stop below still applies */
+    }
+    if (next) startLocationReporting()
+    else stopLocationReporting()
+    setStatus(getLocationReportingStatus())
+    setEnabled(next)
   }, [])
 
-  const errorLabel: Record<LocationErrorCode, string> = {
-    permission_denied: 'Location permission was denied in your browser.',
-    position_unavailable: 'Your device could not determine a position.',
-    timeout: 'Getting a position timed out — trying again.',
-    unavailable: 'This device has no geolocation available.',
-  }
-
   return (
-    <div style={{ maxWidth: 560 }}>
-      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650, color: 'var(--text-primary)' }}>Location</h2>
-      <p style={{ marginTop: 8, fontSize: 14, lineHeight: 1.55, color: 'var(--text-tertiary)' }}>
-        Share this device’s location with your box so apps like maps and weather can use it —
-        without each app asking you separately. Your position is sent only to your own box and
-        never leaves it.
-      </p>
-
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          marginTop: 20,
-          padding: '14px 16px',
-          borderRadius: 'var(--radius-md, 10px)',
-          background: 'var(--bg-elevated, rgba(255,255,255,0.04))',
-          border: '1px solid var(--border-default, rgba(255,255,255,0.08))',
-          cursor: 'pointer',
-        }}
-      >
-        <span>
-          <span style={{ display: 'block', fontWeight: 550, color: 'var(--text-primary)' }}>
-            Share this device’s location
-          </span>
-          <span style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}>
-            Off by default. Sends your position to your box while this device is signed in.
-          </span>
-        </span>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={toggle}
-          style={{ width: 18, height: 18, accentColor: 'var(--accent, #5b6cff)', flexShrink: 0 }}
+    <Section
+      icon="location"
+      title="Location"
+      desc="Share this device's location with your box so apps like maps and weather can use it — without each app asking you separately. Your position is sent only to your own box and never leaves it."
+    >
+      <Card>
+        <SettingRow
+          label="Share this device's location"
+          desc="Off by default. Sends your position to your box while this device is signed in."
+          control={<Toggle checked={enabled} onChange={toggle} ariaLabel="Share this device's location" />}
         />
-      </label>
 
-      {enabled && (
-        <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text-tertiary)' }}>
-          {status.lastError ? (
-            <span style={{ color: 'var(--status-warning, #f0b232)' }}>
-              {isLocationErrorCode(status.lastError) ? errorLabel[status.lastError] : `Reporting issue: ${status.lastError}`}
-            </span>
-          ) : status.active ? (
-            <span style={{ color: 'var(--status-success, #35c081)' }}>
-              Reporting your location to your box{status.lastSentTs ? ' — last update just now.' : '…'}
-            </span>
-          ) : (
-            <span>Starting…</span>
-          )}
-        </div>
-      )}
-    </div>
+        {enabled && (
+          <p className="mt-3 pt-3 border-t border-[var(--border-subtle)] text-xs leading-relaxed">
+            {status.lastError ? (
+              <span className="text-[var(--status-warning)]">
+                {isLocationErrorCode(status.lastError) ? ERROR_LABEL[status.lastError] : `Reporting issue: ${status.lastError}`}
+              </span>
+            ) : status.active ? (
+              <span className="text-[var(--status-success)]">
+                Reporting your location to your box{status.lastSentTs ? ' — last update just now.' : '…'}
+              </span>
+            ) : (
+              <span className="text-[var(--text-tertiary)]">Starting…</span>
+            )}
+          </p>
+        )}
+      </Card>
+    </Section>
   )
 }

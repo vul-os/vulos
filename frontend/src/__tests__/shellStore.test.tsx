@@ -28,6 +28,18 @@ function win(over: Partial<ShellWindow> = {}): ShellWindow {
   return { id: 1, appId: 'terminal', title: 'Terminal', position: { x: 100, y: 100 }, size: { width: 720, height: 500 }, minimized: false, ...over }
 }
 
+describe('shellReducer — OPEN_WINDOW size', () => {
+  it('defaults to 720x500 when no size is given (every existing caller)', () => {
+    const s = shellReducer(baseState(), { type: 'OPEN_WINDOW', appId: 'terminal', title: 'Terminal' })
+    expect(s.desktops['desktop-1'].windows[0].size).toEqual({ width: 720, height: 500 })
+  })
+
+  it('honours an explicit size (Settings opts into a larger initial window)', () => {
+    const s = shellReducer(baseState(), { type: 'OPEN_WINDOW', appId: 'persona', title: 'Settings', size: { width: 860, height: 620 } })
+    expect(s.desktops['desktop-1'].windows[0].size).toEqual({ width: 860, height: 620 })
+  })
+})
+
 describe('shellReducer — TILE_WINDOW', () => {
   it('applies geometry, records the tile, and preserves the floating geometry', () => {
     const g = tileGeometry('left', 1000, 800)
