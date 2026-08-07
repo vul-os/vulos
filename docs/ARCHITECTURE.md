@@ -293,6 +293,13 @@ Video calling is third-party: install Jitsi Meet / Element Call from the App Sto
 
 ## OS distribution (bare metal)
 
+> This describes the target design for an **installed, persistent** bare-metal
+> box (`build.sh --disk`), which is not yet a published release artifact. The
+> currently published `.img.gz` is a **live session** — read-only root,
+> RAM-only writable layer, nothing persists across a reboot — and has no A/B
+> slots or update path to roll back, because it never writes to the machine's
+> disk in the first place. See [USER-GUIDE.md → Two ways to run Vulos](USER-GUIDE.md#two-ways-to-run-vulos).
+
 ```mermaid
 flowchart TD
     A["Signed squashfs"] --> B["dm-verity Merkle tree"]

@@ -30,7 +30,7 @@ Vulos is a **sovereign personal server** — your own computer in the cloud (or 
 
 Nothing here runs on someone else's servers by default. Your data sits on hardware you control, your AI runs through a gateway you own, and there's no third party you have to sign in through to use any of it. The idea isn't secrecy for its own sake — it's **agency**: keeping your inbox, calendar, files, and AI on a machine that answers to you.
 
-It runs the same whether you flash it to a mini-PC, boot it on a spare laptop, or deploy it to a cloud server. One clone, one build, and it's yours.
+Run it on hardware you own two ways: installed on a machine's own disk, so it persists like any normal computer, or booted live from a flash drive to try it with nothing touching your internal disk. See [Two ways to run it](#two-ways-to-run-it) below for which is which.
 
 > *"Vula" is isiZulu for "open."*
 
@@ -212,7 +212,7 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 
 ---
 
-## One binary, three ways to run
+## Two ways to run it
 
 <div align="center">
 <picture>
@@ -221,19 +221,25 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 </picture>
 </div>
 
-Vulos is built to be owned end to end. Deploy it to your own server:
+Vulos is built to be owned end to end, and there are two legitimate ways to put it on hardware you own — pick based on whether you want it to stick around.
+
+**Install it — the primary path, for a box you're keeping.** Point the deploy script at a server you already run (a VPS, a home box, anything reachable over SSH) and it installs the real, persistent OS there: your accounts, files, and settings live on that machine's own disk and survive a reboot.
 
 ```bash
 ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
 ```
 
-Or flash a signed image to bare metal:
+A from-scratch installer that writes a persistent system directly onto a bare-metal machine's *internal* disk — no separate server required — is in progress and not yet published; the self-host bundle (`curl -fsSL https://get.vulos.org | sudo bash`, see [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)) is another persistent, disk-installed option available today for any Linux machine.
+
+**Try it live from a flash drive — for testing, demos, or a disposable machine.** The published `.img.gz` boots a full Vulos desktop straight off a USB stick:
 
 ```bash
 gunzip -c vulos-v0.1.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
-The image is forkable — supply your own trust-anchor key for a fully independent build. See **[docs/DEPLOY.md](docs/DEPLOY.md)** and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
+This is a live session, not an install. The root filesystem is a read-only image and the writable layer lives in RAM, so **nothing you do persists** — accounts, files, and settings are gone the moment you reboot or pull the drive. That's by design: it's the fastest way to try Vulos on real hardware, or to carry a desktop that's always clean on boot, without ever touching the machine's own disk.
+
+The image is forkable — supply your own trust-anchor key for a fully independent build. Full detail on both paths, including how to move from a live session to something that persists: **[docs/USER-GUIDE.md → Two ways to run Vulos](docs/USER-GUIDE.md#two-ways-to-run-vulos)**, **[docs/DEPLOY.md](docs/DEPLOY.md)**, and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
 
 ---
 
@@ -258,6 +264,9 @@ Vulos is free — the software charges nothing and there's no account, subscript
 
 **What hardware do I need?**
 A mini-PC, a spare laptop, or a cloud server all work — the same image runs on each. GPU is optional and only matters for accelerated app streaming. Requirements are in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
+
+**Does flashing the USB image install Vulos, or just let me try it?**
+Just try it, today. The published `.img.gz` boots a live session — the root filesystem is read-only and the writable layer lives in RAM — so accounts, files, and settings are gone on the next reboot. Installing onto a machine's own disk so it persists is the primary path and is being built; deploying to a server you already run (`./build.sh --deploy`), the self-host bundle, and Docker all persist normally today — it's specifically the bare-metal flash image that's currently live-only. See [Two ways to run it](#two-ways-to-run-it).
 
 **Is the AI free?**
 "Sovereign AI" means your gateway and your keys, not a bundled frontier model. Bring your own provider key (you pay that provider directly) or run local models where your hardware allows, so nothing leaves the box. See [docs/ASSISTANT.md](docs/ASSISTANT.md).

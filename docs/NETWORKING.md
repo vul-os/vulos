@@ -196,7 +196,7 @@ This is the no-broker option. It works identically whether the box is bare metal
 1. **Rent a VPS and note its public IPv4/IPv6 address.** Any provider works; Vulos is the same binary regardless of who you rent from.
 2. **Point a DNS `A` (and `AAAA`, if you have IPv6) record at it** — e.g. `box1.example.net → 203.0.113.10`. Use whatever DNS provider you already use for the domain; nothing in Vulos provisions this for you in direct mode (that's different from the *published-app-subdomain* DNS automation below).
 3. **Open port 443 in the provider's firewall/security group.** Cloud VPS providers usually block everything by default at the network layer, on top of any host firewall — check both. Nothing else needs to be open; see [Ports](#ports) below.
-4. **Install Vulos on the VPS** (Docker, the binary, or a flashed image — see [DEPLOY.md](DEPLOY.md)) and set:
+4. **Install Vulos on the VPS** (Docker, the binary, or `./build.sh --deploy` over SSH — see [DEPLOY.md](DEPLOY.md); not the live USB flash image, which is a RAM-only session meant for trying Vulos on hardware you're sitting in front of, not a rented VPS you want to persist) and set:
    ```bash
    VULOS_ENV=prod
    VULOS_DIRECT_ENABLE=1

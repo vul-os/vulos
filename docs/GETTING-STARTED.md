@@ -2,6 +2,8 @@
 
 This guide covers how to install Vulos, run it for the first time, and get through first-boot setup. For deeper configuration options see [CONFIGURATION.md](CONFIGURATION.md). For the full architecture see [ARCHITECTURE.md](ARCHITECTURE.md).
 
+> **Persistence varies by option.** Options 1, 2, and 4 below install Vulos onto a disk that's already there, so your data survives a reboot. Option 3 (bare-metal USB flash) is a **live session** — it boots off the USB with a RAM-only writable layer and nothing is written to the machine's internal disk, so accounts, files, and settings do not survive a reboot. See [USER-GUIDE.md → Two ways to run Vulos](USER-GUIDE.md#two-ways-to-run-vulos) for the full picture, including the disk-installer that's being built for bare metal.
+
 ---
 
 ## Requirements
@@ -54,9 +56,9 @@ cd vulos
 
 This pushes the full stack (Go binary, frontend, GStreamer, Caddy) over SSH and wires up systemd units.
 
-### Option 3 — Bare-metal USB flash
+### Option 3 — Bare-metal USB flash (live session, not an install)
 
-Download the `.img.gz` from [Releases](https://github.com/vul-os/vulos/releases) and flash:
+Download the `.img.gz` from [Releases](https://github.com/vul-os/vulos/releases) and flash it to a USB stick:
 
 ```bash
 gunzip -c vulos-vX.X.X-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
@@ -69,7 +71,9 @@ Or use [Balena Etcher](https://etcher.balena.io/) — drag and drop the `.img.gz
 | x86_64 | `vulos-vX.X.X-x86_64.img.gz` |
 | ARM64 | `vulos-vX.X.X-arm64.img.gz` |
 
-Vulos boots into a fullscreen kiosk browser running the React shell. Native Linux apps stream into browser windows via WebRTC — no VNC, no remote desktop.
+Boot a machine off the USB stick and Vulos comes up in a fullscreen kiosk browser running the React shell, with native Linux apps streaming into browser windows via WebRTC — no VNC, no remote desktop, nothing to install first.
+
+**This is a live session, running entirely off the USB stick and RAM — it does not touch the machine's internal disk.** The root filesystem is a read-only image with the writable layer in RAM, so the account you create, any files you add, and any settings you change are gone the moment you reboot or pull the drive. It's the right way to try Vulos on real hardware, run a demo, or keep a disposable rescue desktop that's always clean on boot — it is not where you want to keep anything you care about. A persistent, disk-installed path for bare metal is being built; until it ships, use Option 1, 2, or 4 for a box you intend to keep. See [USER-GUIDE.md → Two ways to run Vulos](USER-GUIDE.md#two-ways-to-run-vulos).
 
 ### Option 4 — Full self-hosted bundle (OS + office)
 
@@ -165,7 +169,9 @@ sudo systemctl restart vulos-bundle.target
 
 ### Bare metal
 
-Vulos uses A/B slots with auto-rollback. A signed update is fetched from `os.vulos.org` and staged to the inactive slot. On next boot the slot activates; if services do not come up cleanly within the threshold the bootloader flips back automatically.
+This describes the target design for an **installed, persistent** bare-metal box: Vulos uses A/B slots with auto-rollback, where a signed update is fetched from `os.vulos.org` and staged to the inactive slot, the slot activates on next boot, and the bootloader flips back automatically if services don't come up cleanly within the threshold. The disk-installed system this applies to is not yet published — see Option 3's note above and [USER-GUIDE.md → Two ways to run Vulos](USER-GUIDE.md#two-ways-to-run-vulos).
+
+There is no "upgrade" step for the **live USB session** (Option 3): it boots the exact image on the stick every time, so you get a newer version by downloading a newer `.img.gz` and reflashing.
 
 ### Database schema
 

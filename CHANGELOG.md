@@ -21,6 +21,19 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs now say plainly that the published USB image is a live session, not
+  an install.** The root filesystem is read-only with a RAM-only writable
+  layer, so accounts, files, and settings do not survive a reboot on the
+  currently published `.img.gz` — nothing previously said so. README.md,
+  docs/GETTING-STARTED.md, docs/USER-GUIDE.md, and docs/ARCHITECTURE.md now
+  distinguish the two supported ways to run Vulos on hardware you own:
+  installing it (the primary path — persists like a normal computer, today
+  via `./build.sh --deploy` or the self-host bundle; a dedicated bare-metal
+  disk installer is in progress) versus trying it live from flash (available
+  today, intentionally ephemeral).
+
 ## [0.1.0] - 2026-08-06
 
 ### Added
