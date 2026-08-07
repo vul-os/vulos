@@ -127,8 +127,8 @@ func TestVerifySquashfsDigest_NoSHA256Field(t *testing.T) {
 func TestWriteLiveBootEntry_CreatesEntry(t *testing.T) {
 	tmpESP := t.TempDir()
 
-	if err := writeLiveBootEntryAt(context.Background(), tmpESP); err != nil {
-		t.Fatalf("writeLiveBootEntryAt: %v", err)
+	if err := writeLiveBootEntry(context.Background(), tmpESP); err != nil {
+		t.Fatalf("writeLiveBootEntry: %v", err)
 	}
 
 	entryPath := filepath.Join(tmpESP, "loader", "entries", "vulos-live.conf")
@@ -217,29 +217,4 @@ func TestWriteBootableESP_EmptyTargetDisk(t *testing.T) {
 	if !strings.Contains(err.Error(), "TargetDisk") {
 		t.Errorf("error should mention TargetDisk, got: %v", err)
 	}
-}
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-// writeLiveBootEntryAt is a testable variant of writeLiveBootEntry that accepts
-// an explicit mount path instead of the package-level espTmpMount constant.
-func writeLiveBootEntryAt(_ context.Context, mountPath string) error {
-	entriesDir := filepath.Join(mountPath, "loader", "entries")
-	if err := os.MkdirAll(entriesDir, 0o755); err != nil {
-		return err
-	}
-	loaderConf := "timeout 5\ndefault vulos-live.conf\n"
-	if err := os.WriteFile(filepath.Join(mountPath, "loader", "loader.conf"), []byte(loaderConf), 0o644); err != nil {
-		return err
-	}
-	entry := strings.Join([]string{
-		"# Vulos OS — live USB boot entry (written by BMINIT-14 installer)",
-		"title   Vulos OS (live USB)",
-		"linux   /EFI/vulos/vmlinuz",
-		"initrd  /EFI/vulos/initramfs.img",
-		"options root=LABEL=vulos-root ro quiet splash",
-		"        vulos.live=1 toram",
-		"        vulos.squashfs=/EFI/vulos/os-core.squashfs",
-	}, "\n") + "\n"
-	return os.WriteFile(filepath.Join(entriesDir, "vulos-live.conf"), []byte(entry), 0o644)
 }

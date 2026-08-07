@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -165,17 +166,17 @@ func WriteBootableESP(ctx context.Context, cfg Config) error {
 	// 6. Install the systemd-boot EFI binary via bootctl so the UEFI firmware
 	//    finds it at the standard fallback path EFI/BOOT/bootx64.efi.
 	log.Printf("[esp] installing systemd-boot via bootctl")
-	if err := installBootctlESP(ctx); err != nil {
+	if err := installBootctlESP(ctx, espTmpMount); err != nil {
 		// Non-fatal: if bootctl is unavailable, copy the EFI stub directly.
 		log.Printf("[esp] bootctl unavailable (%v) — copying EFI stub directly", err)
-		if stubErr := copyEFIStub(ctx); stubErr != nil {
+		if stubErr := copyEFIStub(ctx, espTmpMount); stubErr != nil {
 			return fmt.Errorf("esp: EFI stub install: %w (bootctl also failed: %v)", stubErr, err)
 		}
 	}
 	prog(95)
 
 	// 7. Write the systemd-boot loader entry for live (toram) boot.
-	if err := writeLiveBootEntry(ctx); err != nil {
+	if err := writeLiveBootEntry(ctx, espTmpMount); err != nil {
 		return fmt.Errorf("esp: boot entry: %w", err)
 	}
 	prog(99)
@@ -277,10 +278,7 @@ func populateESP(ctx context.Context, squashfsPath string, prog func(int)) error
 	prog(20)
 
 	// Discover initramfs source.
-	initramfsSrc := espInitramfsSrc
-	if _, err := os.Stat(initramfsSrc); os.IsNotExist(err) {
-		initramfsSrc = espInitramfsAlt
-	}
+	initramfsSrc := resolveInitramfsSrc()
 
 	// Seed files to copy: src → dest relative to ESP mount.
 	type copySpec struct {
@@ -330,6 +328,10 @@ func populateESP(ctx context.Context, squashfsPath string, prog func(int)) error
 }
 
 // resolveKernelSrc finds the best available kernel binary on the live system.
+// Falls back to a versioned /boot/vmlinuz-* glob (build.sh's --disk and --live
+// sections both discover the kernel this way: `ls boot/vmlinuz-* | sort -V |
+// tail -1`) so the installer finds the same kernel a fresh Debian install
+// would boot, not just the live-medium's fixed-name copies.
 func resolveKernelSrc() string {
 	candidates := []string{
 		"/boot/vmlinuz",
@@ -341,7 +343,32 @@ func resolveKernelSrc() string {
 			return c
 		}
 	}
-	return ""
+	return latestGlobMatch("/boot/vmlinuz-*")
+}
+
+// resolveInitramfsSrc finds the best available initramfs/initrd image on the
+// live system, falling back to a versioned /boot/initrd.img-* glob (mirrors
+// build.sh's kernel/initrd discovery — see resolveKernelSrc).
+func resolveInitramfsSrc() string {
+	candidates := []string{espInitramfsSrc, espInitramfsAlt}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return latestGlobMatch("/boot/initrd.img-*")
+}
+
+// latestGlobMatch returns the lexicographically-last match for pattern
+// (mirrors build.sh's `ls -1 ... | sort -V | tail -1` kernel/initrd
+// discovery), or "" if there are no matches or the pattern is malformed.
+func latestGlobMatch(pattern string) string {
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	sort.Strings(matches)
+	return matches[len(matches)-1]
 }
 
 // espCopyFile copies src to dest, creating dest's parent directory if needed.
@@ -418,12 +445,14 @@ func copyFileWithProgress(src, dest string, prog func(int), startPct, endPct int
 
 // ─── Bootloader installation ──────────────────────────────────────────────────
 
-// installBootctlESP uses bootctl to install systemd-boot into espTmpMount.
-// The --no-variables flag avoids writing NVRAM entries from the live session
-// (the firmware will find EFI/BOOT/bootx64.efi via the removable media path).
-func installBootctlESP(ctx context.Context) error {
+// installBootctlESP uses bootctl to install systemd-boot into mountPath (an
+// already-mounted ESP). The --no-variables flag avoids writing NVRAM entries
+// from the live session (the firmware will find EFI/BOOT/bootx64.efi via the
+// removable media path). Shared by both the live-USB and install-to-disk
+// paths — do not fork a second copy of this logic.
+func installBootctlESP(ctx context.Context, mountPath string) error {
 	return runCmd(ctx, "bootctl",
-		"--path="+espTmpMount,
+		"--path="+mountPath,
 		"install",
 		"--no-variables",
 	)
@@ -432,8 +461,9 @@ func installBootctlESP(ctx context.Context) error {
 // copyEFIStub is a fallback for environments where bootctl is not available.
 // It copies the systemd-boot EFI stub from known system paths to both the
 // UEFI removable media path (EFI/BOOT/bootx64.efi) and the standard
-// systemd-boot path (EFI/systemd/systemd-bootx64.efi).
-func copyEFIStub(ctx context.Context) error {
+// systemd-boot path (EFI/systemd/systemd-bootx64.efi) under mountPath.
+// Shared by both the live-USB and install-to-disk paths.
+func copyEFIStub(ctx context.Context, mountPath string) error {
 	candidates := []string{
 		"/usr/lib/systemd/boot/efi/systemd-bootx64.efi",
 		"/usr/share/efi-x86_64/systemd-bootx64.efi",
@@ -451,8 +481,8 @@ func copyEFIStub(ctx context.Context) error {
 	}
 
 	targets := []string{
-		filepath.Join(espTmpMount, "EFI", "BOOT", "bootx64.efi"),
-		filepath.Join(espTmpMount, "EFI", "systemd", "systemd-bootx64.efi"),
+		filepath.Join(mountPath, "EFI", "BOOT", "bootx64.efi"),
+		filepath.Join(mountPath, "EFI", "systemd", "systemd-bootx64.efi"),
 	}
 	for _, dest := range targets {
 		if err := espCopyFile(ctx, stubSrc, dest); err != nil {
@@ -468,15 +498,18 @@ func copyEFIStub(ctx context.Context) error {
 // writeLiveBootEntry writes a systemd-boot loader entry that performs a toram
 // live boot from the squashfs on the USB ESP.  The entry passes vulos.live=1
 // so vulos-init knows to skip OSDIST-03 boot-counter and VERITY-02 checks.
-func writeLiveBootEntry(ctx context.Context) error {
-	entriesDir := filepath.Join(espTmpMount, "loader", "entries")
+// mountPath is the already-mounted ESP root (espTmpMount in production;
+// esp_test.go passes a t.TempDir() so the real function is exercised, not a
+// duplicate).
+func writeLiveBootEntry(ctx context.Context, mountPath string) error {
+	entriesDir := filepath.Join(mountPath, "loader", "entries")
 	if err := os.MkdirAll(entriesDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir entries: %w", err)
 	}
 
 	// Also write loader/loader.conf so systemd-boot uses a short timeout.
 	loaderConf := "timeout 5\ndefault vulos-live.conf\n"
-	loaderConfPath := filepath.Join(espTmpMount, "loader", "loader.conf")
+	loaderConfPath := filepath.Join(mountPath, "loader", "loader.conf")
 	if err := os.WriteFile(loaderConfPath, []byte(loaderConf), 0o644); err != nil {
 		return fmt.Errorf("write loader.conf: %w", err)
 	}
