@@ -284,6 +284,18 @@ const DEMO_PROCESSES = [
   { pid: 1310, name: 'jellyfin', command: '/opt/apps/jellyfin/jellyfin', user: 'ada', state: 'running', cpu: 6.4, mem_rss: 512 * 1e6, threads: 22 },
   { pid: 1422, name: 'chromium', command: 'chromium --type=renderer', user: 'ada', state: 'sleeping', cpu: 3.8, mem_rss: 210 * 1e6, threads: 10 },
   { pid: 1508, name: 'sshd', command: '/usr/sbin/sshd -D', user: 'root', state: 'sleeping', cpu: 0.1, mem_rss: 12 * 1e6, threads: 1 },
+  // Rows 7-13 exist for the TABLET shot. Half of a 1024x768 tablet is a tall
+  // pane, and six processes left roughly a third of it blank — the window read
+  // as half-loaded rather than busy. A real box runs more than six things, so
+  // filling the table is also the more honest picture. The desktop `tiled` shot
+  // shares this data and simply scrolls the extras out of view.
+  { pid: 1601, name: 'postgres', command: '/usr/lib/postgresql/bin/postgres', user: 'postgres', state: 'sleeping', cpu: 1.9, mem_rss: 224 * 1e6, threads: 9 },
+  { pid: 1655, name: 'coturn', command: '/usr/bin/turnserver -c /etc/turnserver.conf', user: 'turn', state: 'running', cpu: 1.4, mem_rss: 38 * 1e6, threads: 6 },
+  { pid: 1702, name: 'vulos-relayd', command: '/usr/bin/vulos relay serve', user: 'ada', state: 'running', cpu: 1.1, mem_rss: 64 * 1e6, threads: 7 },
+  { pid: 1788, name: 'ollama', command: '/usr/local/bin/ollama serve', user: 'ada', state: 'sleeping', cpu: 0.9, mem_rss: 742 * 1e6, threads: 11 },
+  { pid: 1844, name: 'caddy', command: '/usr/bin/caddy run --config /etc/caddy/Caddyfile', user: 'root', state: 'running', cpu: 0.6, mem_rss: 54 * 1e6, threads: 8 },
+  { pid: 1902, name: 'systemd-journald', command: '/lib/systemd/systemd-journald', user: 'root', state: 'sleeping', cpu: 0.3, mem_rss: 28 * 1e6, threads: 3 },
+  { pid: 1977, name: 'dhcpcd', command: '/usr/sbin/dhcpcd -q -b', user: 'root', state: 'sleeping', cpu: 0.1, mem_rss: 9 * 1e6, threads: 1 },
 ]
 const DEMO_NET_CONNS = [
   { proto: 'tcp', local_addr: '10.0.0.4', local_port: 443, remote_addr: '203.0.113.9', remote_port: 51422, state: 'ESTABLISHED', process: 'lilmail' },
@@ -781,11 +793,22 @@ const SHOTS = [
     viewport: { width: 390, height: 844 },
     async drive(page) {
       await page.waitForTimeout(700)
-      // Calendar/Contacts/Files rather than the Terminal: a full-bleed black
-      // terminal card dominates the switcher and reads as a defect next to the
-      // light cards around it. These three also crop gracefully — each shows a
-      // recognisable slice of real content rather than a cut-off table row.
-      for (const name of ['Calendar', 'Contacts', 'File Explorer']) {
+      // App choice matters more than it looks, and an earlier version of this
+      // comment got it exactly backwards. It dropped the Terminal on the theory
+      // that "a full-bleed black terminal card dominates the switcher and reads
+      // as a defect", and claimed Calendar/Contacts/Files "crop gracefully".
+      // Comparing the two rendered shots side by side, both claims are false:
+      // Calendar's card lands on an EMPTY week grid that reads as a broken
+      // panel, and File Explorer ends up cut off mid-row — the precise failure
+      // that rationale said it was avoiding. The Terminal it removed was what
+      // made the shot legible as several DIFFERENT apps rather than three
+      // near-identical white cards.
+      //
+      // So: File Explorer (a complete listing plus its "12 items" footer),
+      // Terminal (visually distinct, and the only card that reads instantly as
+      // a different kind of app), Contacts (avatars and names survive the crop).
+      // Nothing here shows an empty state at this card height.
+      for (const name of ['File Explorer', 'Terminal', 'Contacts']) {
         await launchApp(page, name, { maximize: false })
         await page.waitForTimeout(300)
         await page.getByRole('button', { name: 'Home' }).first().click().catch(() => {})
@@ -818,13 +841,21 @@ const SHOTS = [
     // 1024x768 would be too small for their content to read.
     viewport: { width: 1024, height: 768 },
     async drive(page) {
+      // Activity Monitor on the right rather than the Terminal. Half of a
+      // 1024x768 tablet is a TALL pane, and both File Explorer (12 rows) and
+      // the Terminal (a short scrollback) run out of content well before the
+      // bottom — the previous version of this shot was roughly 40% empty in
+      // both panes and read as two half-loaded windows. Activity Monitor fills
+      // its pane: four coloured stat cards across the top, then a process
+      // table. It is also what makes the desktop `tiled` shot work, for the
+      // same reason.
       await launchApp(page, 'File Explorer', { maximize: false })
-      await launchApp(page, 'Terminal', { maximize: false })
+      await launchApp(page, 'Activity Monitor', { maximize: false })
       // Reverse launch order — see the `tiled` shot.
-      await snapWindow(page, 'Terminal', ['Right'], 'right')
+      await snapWindow(page, 'Activity Monitor', ['Right'], 'right')
       await snapWindow(page, 'File Explorer', ['Left'], 'left')
       await page.waitForTimeout(400)
-      await assertTiled(page, [['File Explorer', 'left'], ['Terminal', 'right']])
+      await assertTiled(page, [['File Explorer', 'left'], ['Activity Monitor', 'right']])
     },
   },
 ]
