@@ -458,3 +458,48 @@ func TestWriteSlotABootEntry_CreatesEntryFile(t *testing.T) {
 		t.Errorf("entry missing initramfs reference: %s", content)
 	}
 }
+
+// TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires pins the boot entry
+// to the contract the initramfs hook actually enforces, rather than to whatever
+// the entry happened to say.
+//
+// The netboot root partition holds only the slot-a squashfs; the OS is inside
+// it. scripts/initramfs/vulos-live is the only thing that mounts it, it is
+// gated on `cmdline_has vulos.live`, and it is the sole consumer of
+// vulos.squashfs=. So an entry without the vulos.live token boots a machine to
+// a partition containing no operating system — and that is exactly what shipped
+// here, while the function's own doc comment said the token WAS passed.
+//
+// Asserting both together is the point: vulos.squashfs= without vulos.live is
+// meaningless, so a test that checked only the former would have stayed green
+// through the bug.
+func TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires(t *testing.T) {
+	espMount := t.TempDir()
+	svc := New() // real commander, matching TestWriteSlotABootEntry_CreatesEntryFile
+
+	// May error on a non-Linux host (cp of /boot/vmlinuz), but the entry file
+	// itself is still written — that is what we assert on.
+	if err := svc.writeSlotABootEntry(context.Background(), espMount); err != nil {
+		t.Logf("writeSlotABootEntry: %v (may be expected off-target)", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(espMount, "loader", "entries", "vulos-slot-a.conf"))
+	if err != nil {
+		t.Fatalf("read entry: %v", err)
+	}
+	content := string(raw)
+
+	// The hook's own matcher accepts a bare token or key=value; assert the form
+	// we actually write, so a rename to something the hook does NOT match fails.
+	if !strings.Contains(content, "vulos.live=0") {
+		t.Errorf("entry omits vulos.live=0 — scripts/initramfs/vulos-live is gated on cmdline_has vulos.live, "+
+			"so without it the slot-a squashfs is never mounted and the box boots a partition with no OS:\n%s", content)
+	}
+	if !strings.Contains(content, "vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs") {
+		t.Errorf("entry omits the slot-a squashfs path the hook reads:\n%s", content)
+	}
+	// toram belongs to the live-USB path only: this box mounts the squashfs from
+	// its own disk, and pulling it into RAM would defeat the slot layout.
+	if strings.Contains(content, "toram") {
+		t.Errorf("slot-a entry must not pass toram — the squashfs is mounted from the local slot:\n%s", content)
+	}
+}

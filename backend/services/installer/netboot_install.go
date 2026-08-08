@@ -488,8 +488,22 @@ func (s *Service) writeSlotABootEntry(ctx context.Context, espMount string) erro
 		"title   Vulos OS (slot-a)",
 		"linux   " + kernelRelPath,
 		"initrd  /EFI/vulos/initramfs.img",
+		// vulos.live=0 is REQUIRED, not decorative. The root partition holds
+		// only /var/cache/vulos/slot-a/os-core.squashfs — the OS itself is
+		// inside that squashfs — and the only thing that mounts it is the
+		// scripts/initramfs/vulos-live hook. That hook is gated on
+		// `cmdline_has vulos.live`, which matches a bare token OR a key=value,
+		// so "=0" activates it while reading as "not a live-USB session". It
+		// also consumes vulos.squashfs=, so without the token that parameter is
+		// inert and the machine boots a partition with no OS on it.
+		//
+		// This line previously omitted the token while the doc comment above
+		// claimed it was passed. Nothing caught it because no test tied the
+		// entry to the hook's requirement and nothing exercises a real netboot;
+		// TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires now does the
+		// first half.
 		"options root=LABEL=vulos-root ro quiet splash",
-		"        vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs",
+		"        vulos.live=0 vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs",
 	}, "\n") + "\n"
 
 	entryPath := filepath.Join(entriesDir, "vulos-slot-a.conf")
