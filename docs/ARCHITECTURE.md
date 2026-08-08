@@ -189,7 +189,7 @@ sequenceDiagram
 
     Client->>Agent: POST /api/assistant/agent {message}
     Agent->>Guard: Guard(cfg, allowExternal)
-    Note right of Guard: classify tier; block if external & not opted-in
+    Note right of Guard: classify tier, block if external & not opted-in
     Agent->>Model: prompt (mail content framed as UNTRUSTED DATA)
     Model-->>Agent: read-only tool calls (run server-side)
     alt side-effecting action
