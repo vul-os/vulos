@@ -55,7 +55,7 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/apphub-light.png" alt="The app hub" width="100%" /><br /><sub><b>App hub</b> — install what you want, remove what you don't.</sub></td>
-    <td width="50%"><img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — a proactive home with your agenda, assistant, and apps" width="100%" /><br /><sub><b>Desktop</b> — a proactive home with your agenda, assistant, and apps.</sub></td>
+    <td width="50%"><img src="docs/screenshots/hero-light.png" alt="The Vulos desktop — wallpaper, menu bar, dock, and the ambient clock/agenda/notifications widgets" width="100%" /><br /><sub><b>Desktop</b> — wallpaper, dock, and ambient widgets; ⌘Space to find any app.</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/files-light.png" alt="The Files app" width="100%" /><br /><sub><b>Files</b> — your storage, with real permissions and sealed sharing.</sub></td>
