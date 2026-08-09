@@ -921,44 +921,76 @@ function WiFiSettings() {
   }
 
   return (
-    <Section title="WiFi">
-      {status && (
-        <div className="mb-4">
-          <Pill tone={status.connected ? 'success' : 'neutral'}>
-            {status.connected ? `Connected to ${status.ssid} (${status.ip})` : 'Not connected'}
-          </Pill>
-        </div>
+    <Section
+      icon="wifi"
+      title="WiFi"
+      desc="Wireless networks this box can see, and the one it is using."
+      actions={status && (
+        <Pill tone={status.connected ? 'success' : 'neutral'}>
+          {status.connected ? `Connected — ${status.ssid}` : 'Not connected'}
+        </Pill>
       )}
-      <button onClick={scan} disabled={scanning} className="btn mb-4">{scanning ? 'Scanning...' : 'Scan Networks'}</button>
-      {/* A scan that legitimately finds nothing previously rendered no
-          feedback at all — indistinguishable from "haven't scanned yet". */}
-      {networks && networks.length === 0 && (
-        <EmptyState icon="wifi" title="No networks found" hint="Move closer to your router, or try scanning again." />
+    >
+      {status?.connected && (
+        <Card title="Current network">
+          <InfoList>
+            <InfoRow label="Network" value={status.ssid} />
+            <InfoRow label="IP address" value={status.ip} mono />
+          </InfoList>
+        </Card>
       )}
-      {networks && networks.map(n => (
-        <div key={n.bssid || n.ssid || ''} className="flex items-center justify-between gap-3 py-2 border-b border-[var(--border-default)]">
-          <div className="min-w-0">
-            <span className="text-sm">{n.ssid || '(hidden)'}</span>
-            <span className="text-xs text-[var(--text-muted)] ml-2 block sm:inline">{n.signal}dBm · {n.band} · {n.security || 'open'}</span>
-          </div>
-          <button
-            onClick={() => setConnectSSID(n.ssid ?? null)}
-            aria-label={`Connect to ${n.ssid || 'hidden network'}`}
-            className="shrink-0 text-xs text-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            Connect
+
+      <Card
+        icon="wifi"
+        title="Available networks"
+        desc="Scanning does not connect to anything — it only lists what is in range."
+        aside={
+          <button onClick={scan} disabled={scanning} className="btn-secondary text-sm">
+            {scanning ? 'Scanning…' : 'Scan Networks'}
           </button>
-        </div>
-      ))}
+        }
+        bodyClassName={networks && networks.length ? 'divide-y divide-[var(--border-subtle)]' : ''}
+      >
+        {/* A scan that legitimately finds nothing previously rendered no
+            feedback at all — indistinguishable from "haven't scanned yet". */}
+        {!networks && <p className="text-sm text-[var(--text-muted)]">Scan to see networks in range.</p>}
+        {networks && networks.length === 0 && (
+          <EmptyState icon="wifi" title="No networks found" hint="Move closer to your router, or try scanning again." />
+        )}
+        {networks?.map(n => (
+          <SettingRow
+            key={n.bssid || n.ssid || ''}
+            label={n.ssid || '(hidden)'}
+            desc={`${n.signal}dBm · ${n.band} · ${n.security || 'open'}`}
+            control={
+              <button
+                onClick={() => setConnectSSID(n.ssid ?? null)}
+                aria-label={`Connect to ${n.ssid || 'hidden network'}`}
+                className="btn-secondary text-sm"
+              >
+                Connect
+              </button>
+            }
+          />
+        ))}
+      </Card>
+
       {connectSSID && (
-        <div className="mt-3 p-3 bg-[var(--bg-surface)] rounded-lg">
-          <p className="text-sm mb-2">Connect to {connectSSID}</p>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="input mb-2" />
-          <div className="flex gap-2">
-            <button onClick={connect} className="btn">Connect</button>
-            <button onClick={() => setConnectSSID(null)} className="btn-ghost">Cancel</button>
-          </div>
-        </div>
+        <Card
+          title={`Connect to ${connectSSID}`}
+          footer={
+            <Actions>
+              <button onClick={() => setConnectSSID(null)} className="btn-ghost text-sm">Cancel</button>
+              <button onClick={connect} className="btn-primary text-sm">Connect</button>
+            </Actions>
+          }
+        >
+          <Field label="Password" htmlFor="wifi-password">
+            <Narrow size="lg">
+              <input id="wifi-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Network password" className="input" />
+            </Narrow>
+          </Field>
+        </Card>
       )}
     </Section>
   )
@@ -1007,29 +1039,49 @@ function BluetoothSettings() {
   const remove = (addr: string) => fetch('/api/bluetooth/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
 
   return (
-    <Section title="Bluetooth">
-      <Toggle label="Bluetooth" checked={status?.powered} onChange={(v) => setPower(v)} />
+    <Section
+      icon="bluetooth"
+      title="Bluetooth"
+      desc="Pair keyboards, headsets and other peripherals with this box."
+      actions={<Pill tone={status?.powered ? 'success' : 'neutral'}>{status?.powered ? 'On' : 'Off'}</Pill>}
+    >
+      <Card title="Radio">
+        <SettingRow
+          label="Bluetooth"
+          desc="Turning the radio off disconnects every paired device."
+          control={<Toggle ariaLabel="Bluetooth" checked={status?.powered} onChange={(v) => setPower(v)} />}
+        />
+      </Card>
+
       {status?.powered && (
-        <>
-          <button onClick={() => scan(true)} className="btn mt-3 mb-3">Scan for Devices</button>
+        <Card
+          title="Devices"
+          desc="Devices in range, plus anything already paired with this box."
+          aside={<button onClick={() => scan(true)} className="btn-secondary text-sm">Scan for Devices</button>}
+          bodyClassName={status?.devices?.length ? 'divide-y divide-[var(--border-subtle)]' : ''}
+        >
+          {!status?.devices?.length && (
+            <EmptyState icon="bluetooth" title="No devices yet" hint="Put a device into pairing mode, then scan." />
+          )}
           {status?.devices?.map(d => {
             const dn = d.name || d.address
             return (
-              <div key={d.address} className="flex items-center justify-between gap-3 py-2 border-b border-[var(--border-default)]">
-                <div className="min-w-0">
-                  <span className="text-sm truncate block sm:inline">{dn}</span>
-                  <span className="text-xs text-[var(--text-muted)] sm:ml-2 block sm:inline">{d.type}{d.connected ? ' · connected' : d.paired ? ' · paired' : ''}</span>
-                </div>
-                <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-                  {!d.paired && <button onClick={() => pair(d.address)} aria-label={`Pair with ${dn}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent)]">Pair</button>}
-                  {d.paired && !d.connected && <button onClick={() => connect(d.address)} aria-label={`Connect to ${dn}`} className="text-xs text-[var(--accent)] hover:text-[var(--accent)]">Connect</button>}
-                  {d.connected && <button onClick={() => disconnect(d.address)} aria-label={`Disconnect from ${dn}`} className="text-xs text-[var(--status-warning)] hover:text-[var(--status-warning)]">Disconnect</button>}
-                  {d.paired && <button onClick={() => remove(d.address)} aria-label={`Forget ${dn}`} className="text-xs text-[var(--status-danger)] hover:text-[var(--status-danger)]">Remove</button>}
-                </div>
-              </div>
+              <SettingRow
+                key={d.address}
+                label={dn}
+                desc={`${d.type || 'device'}${d.connected ? ' · connected' : d.paired ? ' · paired' : ''}`}
+                control={
+                  <div className="flex gap-2 flex-wrap justify-end">
+                    {!d.paired && <button onClick={() => pair(d.address)} aria-label={`Pair with ${dn}`} className="btn-secondary text-sm">Pair</button>}
+                    {d.paired && !d.connected && <button onClick={() => connect(d.address)} aria-label={`Connect to ${dn}`} className="btn-secondary text-sm">Connect</button>}
+                    {d.connected && <button onClick={() => disconnect(d.address)} aria-label={`Disconnect from ${dn}`} className="btn-ghost text-sm">Disconnect</button>}
+                    {d.paired && <button onClick={() => remove(d.address)} aria-label={`Forget ${dn}`} className="btn-ghost text-sm text-[var(--status-danger)]">Remove</button>}
+                  </div>
+                }
+              />
             )
           })}
-        </>
+        </Card>
       )}
     </Section>
   )

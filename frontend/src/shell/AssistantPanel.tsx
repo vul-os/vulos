@@ -64,7 +64,17 @@ export default function AssistantPanel() {
   return (
     <aside
       aria-label="Assistant"
-      className={`vassist-panel fixed z-40 flex flex-col ${
+      // `vassist-panel` never had a stylesheet — no rule for that class exists
+      // anywhere in src — so the aside itself was fully TRANSPARENT. The
+      // Assistant inside paints its own background, but the chrome strip above
+      // it did not, and the desktop (widgets, wallpaper, the clock) showed
+      // straight through the top of the panel. The surface is declared here.
+      style={{
+        background: 'var(--bg-surface)',
+        boxShadow: 'var(--shadow-xl)',
+        borderLeft: narrow ? undefined : '1px solid var(--border-default)',
+      }}
+      className={`fixed z-40 flex flex-col overflow-hidden ${
         narrow
           ? 'inset-x-0 bottom-0 top-8 rounded-t-2xl'
           : 'right-0 top-8 bottom-0 w-[min(420px,42vw)]'
@@ -72,8 +82,9 @@ export default function AssistantPanel() {
     >
       {/* Panel chrome. Deliberately titleless — the Assistant renders its own
           identity header directly below, and repeating it would read as two
-          apps stacked. */}
-      <div className="shrink-0 h-9 flex items-center justify-end gap-1 px-2 vshell-border-b">
+          apps stacked. No bottom border either: a rule here plus the
+          Assistant's own header rule 36px lower read as two stacked bars. */}
+      <div className="shrink-0 h-9 flex items-center justify-end gap-1 px-2">
         <button onClick={popOut} title="Open in a window" aria-label="Open assistant in a window" className="vshell-btn focus-primary w-7 h-7 flex items-center justify-center rounded-md">
           <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 4h6v6M20 4l-8 8M18 14v4.5A1.5 1.5 0 0116.5 20h-11A1.5 1.5 0 014 18.5v-11A1.5 1.5 0 015.5 6H10" />

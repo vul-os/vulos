@@ -129,6 +129,11 @@ function toAssistantStatus(x: unknown): AssistantStatus | null {
 // window, so borders/backgrounds read as full-width chrome.
 const COLUMN = 'mx-auto w-full max-w-[44rem]'
 
+// Width reserved on the right of every full-width band for the instance rail,
+// which only exists once the SURFACE is at least 64rem wide (container query —
+// the 420px slide-over never shows it, however wide the desktop behind it is).
+const RAIL_GUTTER = '@5xl:pr-[16rem]'
+
 // ── Sovereignty badge ────────────────────────────────────────────────────────
 
 interface SovereigntyBadgeProps {
@@ -240,6 +245,117 @@ function TierPicker({ status, options, current, onPick, busy, onClose }: TierPic
   )
 }
 
+// ── Instance rail ────────────────────────────────────────────────────────────
+//
+// THE answer to "a maximized window is 1600px of chat with a paragraph in it".
+// A conversation does not want to be 1600px wide, so the leftover width is not
+// a reading problem to solve with more measure — it is space the app should
+// spend on something. It spends it on the one thing this assistant has that a
+// hosted one does not: a standing, honest account of WHERE it runs, WHAT it can
+// reach, and the fact that it stops before it acts.
+//
+// Every value here comes off GET /api/assistant/status. Nothing is asserted
+// that the backend did not report: a capability whose flag is absent from the
+// payload is not rendered at all, rather than rendered as "off".
+
+function RailHeading({ children }: { children: ReactNode }) {
+  return <div className="mono text-[10px] uppercase tracking-[0.14em] text-neutral-600">{children}</div>
+}
+
+function RailFact({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] text-neutral-500 leading-tight">{label}</div>
+      <div className={`text-[12px] text-neutral-300 leading-snug break-words ${mono ? 'mono' : ''}`}>{value}</div>
+    </div>
+  )
+}
+
+function RailCapability({ label, on }: { label: string; on: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className={`shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center ${on ? 'bg-success-soft text-success' : 'text-neutral-600'}`}>
+        {on ? (
+          <svg viewBox="0 0 20 20" fill="currentColor" width="9" height="9" aria-hidden="true">
+            <path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 111.4-1.4l2.8 2.79 6.8-6.79a1 1 0 011.4 0z" clipRule="evenodd" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 20 20" fill="currentColor" width="9" height="9" aria-hidden="true"><rect x="4" y="9" width="12" height="2" rx="1" /></svg>
+        )}
+      </span>
+      <span className={on ? 'text-neutral-300' : 'text-neutral-600'}>{label}</span>
+      <span className="ml-auto mono text-[10px] uppercase tracking-[0.08em] text-neutral-600">{on ? 'on' : 'off'}</span>
+    </div>
+  )
+}
+
+function InstanceRail({ status, onChangeTier }: { status: AssistantStatus | null; onChangeTier: () => void }) {
+  // No status means the box never answered. An empty rail of headings with
+  // nothing under them is worse than no rail, and inventing values would be a
+  // lie about the very thing this panel exists to be honest about.
+  if (!status) return null
+  const tier = status.tier || status.sovereignty?.tier || 'external'
+  const info = tierInfo(tier)
+  const model = [status.sovereignty?.provider, status.sovereignty?.model].filter(Boolean).join(' · ')
+  const endpoint = status.sovereignty?.endpoint
+  const caps: Array<[string, boolean]> = []
+  if (typeof status.semantic_index === 'boolean') caps.push(['Semantic search', status.semantic_index])
+  if (typeof status.files_enabled === 'boolean') caps.push(['Your files', status.files_enabled])
+  if (typeof status.reminders_enabled === 'boolean') caps.push(['Reminders', status.reminders_enabled])
+
+  return (
+    <aside
+      aria-label="This instance"
+      className="hidden @5xl:flex w-[16rem] shrink-0 flex-col gap-6 overflow-y-auto border-l border-[var(--border-default)] bg-[var(--bg-surface)] px-5 py-6"
+    >
+      <section className="flex flex-col gap-2.5">
+        <RailHeading>Where it runs</RailHeading>
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: info.dot, boxShadow: `0 0 0 3px color-mix(in srgb, ${info.dot} 16%, transparent)` }} />
+          <span className={`text-[13px] font-medium ${info.tone}`}>{status.label || info.label}</span>
+        </div>
+        <p className="text-[12px] text-neutral-500 leading-relaxed">{status.sovereignty?.reason || info.blurb}</p>
+        {model && <RailFact label="Model" value={model} mono />}
+        {endpoint && <RailFact label="Endpoint" value={endpoint} mono />}
+        <button
+          type="button"
+          onClick={onChangeTier}
+          className="self-start text-[12px] font-medium accent-text hover:underline underline-offset-2 focus-primary rounded"
+        >
+          Change where it runs
+        </button>
+      </section>
+
+      {(status.mail_source || caps.length > 0) && (
+        <section className="flex flex-col gap-2.5">
+          <RailHeading>What it can reach</RailHeading>
+          {status.mail_source && (
+            <RailFact
+              label="Mail"
+              // The built-in engine's internal id is not a user-facing brand;
+              // only a provider the user actually connected gets named.
+              value={status.mail_source === 'lilmail' ? 'Your mailbox, on this box' : status.mail_source}
+            />
+          )}
+          {caps.length > 0 && (
+            <div className="flex flex-col gap-1.5 pt-0.5">
+              {caps.map(([label, on]) => <RailCapability key={label} label={label} on={on} />)}
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="mt-auto flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-4">
+        <RailHeading>Before it acts</RailHeading>
+        <p className="text-[12px] text-neutral-500 leading-relaxed">
+          Reading happens on its own. Anything that sends, changes or creates stops here and waits for
+          you to approve it.
+        </p>
+      </section>
+    </aside>
+  )
+}
+
 // ── Quick actions ────────────────────────────────────────────────────────────
 
 interface QuickAction {
@@ -308,7 +424,9 @@ function AssistantTurn({ content, pending, error, onRetry, steps, children }: As
             )}
           </div>
         ) : content ? (
-          <div className="w-full text-[13.5px] @xl:text-[14px] leading-[1.75] text-neutral-200 whitespace-pre-wrap break-words">
+          /* ~78 characters at this size. The COLUMN is sized for the composer
+             and the header, which want to be wider than a line of prose. */
+          <div className="w-full max-w-[33rem] text-[13.5px] @xl:text-[14px] leading-[1.75] text-neutral-200 whitespace-pre-wrap break-words">
             {content}
             {pending && (
               <span
@@ -664,7 +782,11 @@ export default function Assistant() {
 
       {/* Header — a full-width band whose CONTENT is held in the shared column,
           so the badge sits beside the title instead of 1400px away from it. */}
-      <header className="flex-shrink-0 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
+      {/* `@5xl:pr-[16rem]` on every full-width band reserves exactly the rail's
+          width, so the band's inner COLUMN centres over the SAME box the
+          conversation column centres over. Without it the header's title would
+          sit 128px left of the answer beneath it. */}
+      <header className={`flex-shrink-0 border-b border-[var(--border-default)] bg-[var(--bg-surface)] ${RAIL_GUTTER}`}>
         <div className={`${COLUMN} px-4 @xl:px-6 py-2.5 flex items-center gap-3`}>
           <span className="w-8 h-8 rounded-[10px] flex items-center justify-center accent-bg-soft accent-text text-[15px] leading-none flex-shrink-0" aria-hidden="true">✦</span>
           <div className="min-w-0">
@@ -708,7 +830,7 @@ export default function Assistant() {
       )}
 
       {blocked && (
-        <div className="flex-shrink-0 bg-danger-soft border-b border-danger-soft">
+        <div className={`flex-shrink-0 bg-danger-soft border-b border-danger-soft ${RAIL_GUTTER}`}>
           <div className={`${COLUMN} px-4 @xl:px-6 py-2.5 flex items-start gap-2.5 text-[12.5px] text-danger leading-relaxed`}>
             <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 mt-px" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
               <path d="M8 1.75l6.25 11.5H1.75L8 1.75z" strokeLinejoin="round" /><path d="M8 6.5v3.25M8 11.6v.1" strokeLinecap="round" />
@@ -722,6 +844,11 @@ export default function Assistant() {
         </div>
       )}
 
+      {/* Body: the conversation column, and — once the surface is wide enough
+          to have width to spare — the instance rail beside it, running the
+          full height from the header to the foot of the window. */}
+      <div className="flex-1 min-h-0 flex">
+      <div className="flex-1 min-w-0 flex flex-col">
       {/* Conversation.
           TOP-anchored, deliberately. The previous pass bottom-anchored short
           transcripts (`min-h-full` + `justify-end`) to close the gap above the
@@ -732,8 +859,8 @@ export default function Assistant() {
           follow-up row, so the space under the last answer is offered back to
           the user instead of left blank. */}
       <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
-        className="flex-1 overflow-y-auto overscroll-contain">
-        <div className={`${COLUMN} px-4 @xl:px-6 ${empty ? 'h-full' : 'py-6 flex flex-col gap-5'}`}>
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className={`${COLUMN} px-4 @xl:px-6 ${empty ? 'h-full' : 'min-h-full py-6 flex flex-col gap-5'}`}>
           {empty ? (
             <div className="h-full flex flex-col items-center justify-center text-center select-none py-8 pb-14">
               <div
@@ -808,6 +935,11 @@ export default function Assistant() {
                 )
               })}
               {showFollowUps && (
+                /* Directly under the answer, NOT floated to the foot of the
+                   canvas with `mt-auto` — that was tried, and a lone chip
+                   stranded 600px below the text it follows reads as an orphan
+                   and puts the hole in the middle of the page instead of at
+                   the end of it. */
                 <div className="va-rise flex flex-wrap items-center gap-2 pl-9 pt-0.5">
                   <span className="mono text-[10px] uppercase tracking-[0.14em] text-neutral-600 pr-0.5">Next</span>
                   {followUps.map(q => (
@@ -883,6 +1015,9 @@ export default function Assistant() {
           </div>
         </div>
       </form>
+      </div>
+        <InstanceRail status={status} onChangeTier={() => setPickerOpen(true)} />
+      </div>
     </div>
   )
 }

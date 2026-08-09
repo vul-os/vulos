@@ -73,6 +73,19 @@
   --text-invisible: #23262e;
   --graph-grid: #171a20;
 
+  /* Chart series — a 4-way categorical ramp for metric graphs (Activity
+     Monitor's CPU/Memory/Network/Disk, Disk Usage's breakdown donut). Kept
+     SEPARATE from --accent so a user-chosen accent never silently recolours a
+     metric out from under its legend. `-soft` is the area-fill tint. */
+  --chart-1: #6b8cff;
+  --chart-2: #a78bfa;
+  --chart-3: #35c081;
+  --chart-4: #f0b232;
+  --chart-1-soft: color-mix(in srgb, var(--chart-1) 16%, transparent);
+  --chart-2-soft: color-mix(in srgb, var(--chart-2) 16%, transparent);
+  --chart-3-soft: color-mix(in srgb, var(--chart-3) 16%, transparent);
+  --chart-4-soft: color-mix(in srgb, var(--chart-4) 16%, transparent);
+
   /* Elevation / shadows — deeper + layered in dark, with an inset top-light so
      lifted surfaces read as a true "pane of glass" off the near-black canvas. */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
