@@ -113,3 +113,52 @@ it('degrades to Connect Mail when /v1 is down', async () => {
   fireEvent.click(screen.getByText('Connect Mail →'))
   expect(launchApp).toHaveBeenCalled()
 })
+
+// ── Rail ordering + A–Z grouping (added with the desktop polish pass) ────────
+// The rail used to render the wire order, which is the MERGE order (CardDAV
+// cards first, then device/SIM-only extras appended) — so a SIM contact called
+// "Mum" sorted after "Thabo". These assert the rendered DOM order, not just
+// that the names exist, so a regression that drops the sort fails here.
+
+function railNames(): string[] {
+  return Array.from(document.querySelectorAll('[data-contacts-app] li button'))
+    .map((b) => b.querySelector('span > span > span')?.textContent || '')
+    .filter(Boolean)
+}
+
+it('orders the rail alphabetically regardless of the order the box returned', async () => {
+  api.listContacts.mockResolvedValue([
+    contact({ id: 'u1', name: 'Thabo Mokoena', emails: ['t@x.com'] }),
+    contact({ id: 'u2', name: 'Ada Lovelace', emails: ['ada@x.com'] }),
+    contact({ id: 'u3', name: 'Mum', emails: ['mum@x.com'] }),
+  ])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  expect(railNames()).toEqual(['Ada Lovelace', 'Mum', 'Thabo Mokoena'])
+})
+
+it('heads each alphabetical run with its letter, once', async () => {
+  api.listContacts.mockResolvedValue([
+    contact({ id: 'u1', name: 'Ada Lovelace', emails: ['ada@x.com'] }),
+    contact({ id: 'u2', name: 'Alan Turing', emails: ['alan@x.com'] }),
+    contact({ id: 'u3', name: 'Grace Hopper', emails: ['grace@x.com'] }),
+  ])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  const letters = Array.from(document.querySelectorAll('[data-contacts-app] section > h2'))
+    .map((h) => h.textContent)
+  // Two A's share ONE heading — a per-row heading would read ['A','A','G'].
+  expect(letters).toEqual(['A', 'G'])
+})
+
+it('offers to add details on a card that has none', async () => {
+  api.listContacts.mockResolvedValue([
+    contact({ id: 'u1', name: 'Ada Lovelace', emails: [], phones: [], note: '' }),
+  ])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  expect(await screen.findByText(/No email, phone or notes on this card yet/)).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Add details'))
+  expect(document.querySelector('[data-contact-editor]')).toBeTruthy()
+})
