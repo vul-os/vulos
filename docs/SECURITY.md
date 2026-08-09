@@ -74,7 +74,7 @@ A short PIN (4–8 digits) can unlock the box on a device where you've already f
 
 ### QR / phone approval, fingerprint
 
-- **QR login** lets a kiosk or shared screen be approved from an already-authenticated phone; the challenge is short-lived and single-use, so no reusable secret is typed on the untrusted device.
+- **QR login** lets a kiosk or shared screen be approved from an already-authenticated phone; the challenge is short-lived and single-use, so no reusable secret is typed on the untrusted device. `POST /api/auth/qr/begin` also sets a **browser-binding cookie** (`vulos_qr_bind`, `HttpOnly`, `SameSite=Strict`, path-scoped to `/api/auth/qr/`), and `GET /api/auth/qr/poll` refuses with 403 unless that cookie matches the challenge id (QRSEC-02). This closes a login-CSRF/session-fixation hole: poll is public, is a GET, and on success sets a 90-day session cookie that is `SameSite=None` over HTTPS — so without the bind, an attacker could begin and approve their *own* challenge and then get a victim's browser to adopt that session with nothing more than an `<img src=…/api/auth/qr/poll?id=…>` tag. The bind cookie is not a credential; it only asserts "this browser is the one that asked", and the check runs *before* the poll so a cross-site probe cannot consume the challenge either.
 - **Fingerprint** enrollment/verify endpoints exist for hardware that supports it (`/api/auth/fingerprint/*`); the presence checks are part of the hardware checks that `prod` enforces and `local`/`dev` skip.
 
 ### TOTP
