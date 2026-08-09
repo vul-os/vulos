@@ -5,7 +5,7 @@ package main
 //
 //   registerJoinRoutes      (routes_join.go)      — POST /api/setup/join,
 //                                                    GET  /api/setup/join/status
-//   registerJoinCodeRoutes  (routes_joincode.go)  — GET  /api/cluster/join-code (admin),
+//   registerJoinCodeRoutes  (routes_joincode.go)  — POST /api/cluster/join-code (admin),
 //                                                    POST /api/setup/join-code (public)
 //
 // These endpoints are public (added to auth.publicPaths) and perform network +
@@ -17,7 +17,7 @@ package main
 //     limited by another IP's burst).
 //   * join-code validation: an unknown short-code → 404, an expired one → 410,
 //     and a one-time code is consumed (second decode → 404).
-//   * forged identity: the admin-only GET /api/cluster/join-code trusts ONLY
+//   * forged identity: the admin-only POST /api/cluster/join-code trusts ONLY
 //     the session-derived X-User-ID; a caller who forges a random/unknown
 //     X-User-ID (i.e. one with no admin profile) is refused 403 — the header
 //     alone never confers admin.
@@ -193,19 +193,19 @@ func TestJoinCode_AdminGate_ForgedUserIDRejected(t *testing.T) {
 	registerJoinCodeRoutes(mux, home, store)
 
 	// Forged / unknown user id — no profile → not admin → 403.
-	wForged := jsReq(mux, http.MethodGet, "/api/cluster/join-code", "203.0.113.5", "attacker-forged-id", "")
+	wForged := jsReq(mux, http.MethodPost, "/api/cluster/join-code", "203.0.113.5", "attacker-forged-id", "")
 	if wForged.Code != http.StatusForbidden {
 		t.Fatalf("forged X-User-ID on admin route: expected 403, got %d", wForged.Code)
 	}
 
 	// Empty user id — also 403 (GetProfile("") not ok).
-	wEmpty := jsReq(mux, http.MethodGet, "/api/cluster/join-code", "203.0.113.5", "", "")
+	wEmpty := jsReq(mux, http.MethodPost, "/api/cluster/join-code", "203.0.113.5", "", "")
 	if wEmpty.Code != http.StatusForbidden {
 		t.Fatalf("empty X-User-ID on admin route: expected 403, got %d", wEmpty.Code)
 	}
 
 	// Real admin — 200 with a short_code.
-	wAdmin := jsReq(mux, http.MethodGet, "/api/cluster/join-code", "203.0.113.5", adminID, "")
+	wAdmin := jsReq(mux, http.MethodPost, "/api/cluster/join-code", "203.0.113.5", adminID, "")
 	if wAdmin.Code != http.StatusOK {
 		t.Fatalf("admin issue join-code: expected 200, got %d (body %s)", wAdmin.Code, wAdmin.Body.String())
 	}

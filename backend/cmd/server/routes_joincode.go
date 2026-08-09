@@ -14,15 +14,24 @@ import (
 
 // registerJoinCodeRoutes mounts the join-code endpoints on mux.
 //
-//	GET  /api/cluster/join-code   — admin-only; issues a new code + QR payload.
+//	POST /api/cluster/join-code   — admin-only; issues a new code + QR payload.
 //	POST /api/setup/join-code     — no auth; decodes a short code for the setup wizard.
 //
 // The POST endpoint applies best-effort IP rate-limiting to slow abuse.
 func registerJoinCodeRoutes(mux *http.ServeMux, home string, authStore *auth.Store) {
 	rl := newJCRateLimiter()
 
-	// GET /api/cluster/join-code — admin only, 1h TTL join code.
-	mux.HandleFunc("GET /api/cluster/join-code", func(w http.ResponseWriter, r *http.Request) {
+	// POST /api/cluster/join-code — admin only, 1h TTL join code.
+	//
+	// SEC-JOINCODE-GET-01: this used to be a GET. Issuing a join code is not a
+	// read — joincode.Issue MINTS a live cluster credential (the record embeds
+	// the cluster S3 access key and secret) and PERSISTS it under ~/.vulos/db.
+	// As a GET it was reachable by plain navigation or <img src=...> from any
+	// page an admin happened to visit. The attacker could not read the response
+	// (no CORS), but every hit minted another valid 1-hour credential and grew
+	// the on-disk code DB unattended. A credential-issuing endpoint must not be
+	// a GET.
+	mux.HandleFunc("POST /api/cluster/join-code", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if p, ok := authStore.GetProfile(userID); !ok || p.Role != auth.RoleAdmin {
 			jcWriteErr(w, http.StatusForbidden, "admin only")

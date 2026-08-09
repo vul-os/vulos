@@ -2127,66 +2127,7 @@ func main() {
 
 	// --- System Settings ---
 
-	// WiFi
-	mux.HandleFunc("GET /api/wifi/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, wifiSvc.Status(r.Context()))
-	})
-	mux.HandleFunc("GET /api/wifi/scan", func(w http.ResponseWriter, r *http.Request) {
-		networks, err := wifiSvc.Scan(r.Context())
-		if err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-		writeJSON(w, networks)
-	})
-	mux.HandleFunc("POST /api/wifi/connect", func(w http.ResponseWriter, r *http.Request) {
-		// SEC: connecting to a network is a privileged host mutation — admin only.
-		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
-			writeErr(w, 403, "admin only")
-			return
-		}
-		var req struct {
-			SSID     string `json:"ssid"`
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeErr(w, 400, "invalid request")
-			return
-		}
-		execAuditLog(r, "POST /api/wifi/connect", fmt.Sprintf("ssid=%q", req.SSID))
-		if err := wifiSvc.Connect(r.Context(), req.SSID, req.Password); err != nil {
-			writeErr(w, 500, err.Error())
-			return
-		}
-		writeJSON(w, map[string]string{"status": "connecting"})
-	})
-	mux.HandleFunc("POST /api/wifi/disconnect", func(w http.ResponseWriter, r *http.Request) {
-		// SEC: disconnecting from a network is a privileged host mutation — admin only.
-		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
-			writeErr(w, 403, "admin only")
-			return
-		}
-		execAuditLog(r, "POST /api/wifi/disconnect", "wifi disconnect")
-		wifiSvc.Disconnect(r.Context())
-		writeJSON(w, map[string]string{"status": "disconnected"})
-	})
-	mux.HandleFunc("GET /api/wifi/saved", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, wifiSvc.SavedNetworks(r.Context()))
-	})
-	mux.HandleFunc("POST /api/wifi/forget", func(w http.ResponseWriter, r *http.Request) {
-		// SEC: forgetting a saved network is a privileged host mutation — admin only.
-		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
-			writeErr(w, 403, "admin only")
-			return
-		}
-		var req struct {
-			SSID string `json:"ssid"`
-		}
-		json.NewDecoder(r.Body).Decode(&req)
-		execAuditLog(r, "POST /api/wifi/forget", fmt.Sprintf("ssid=%q", req.SSID))
-		wifiSvc.ForgetNetwork(r.Context(), req.SSID)
-		writeJSON(w, map[string]string{"status": "forgotten"})
-	})
+	registerWiFiRoutes(mux, wifiSvc, authStore)
 
 	// Ethernet
 	mux.HandleFunc("GET /api/ethernet/status", func(w http.ResponseWriter, r *http.Request) {
