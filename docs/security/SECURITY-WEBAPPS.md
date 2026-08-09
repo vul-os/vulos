@@ -2,7 +2,21 @@
 
 **Branch:** `audit/SEC-WEBAPPS`  
 **Date:** 2026-05-21  
-**Scope:** `apps/` (20 bundled web apps), `src/shell/Window.tsx`, `src/layouts/MobileStack.tsx`, `src/shell/Popout.tsx`, `src/App.tsx`, `backend/services/gateway/`, `backend/services/appfs/`, `backend/services/webproxy/`, `backend/cmd/server/`
+**Scope:** `frontend/apps/` (20 bundled web apps *at the time of the audit*), `frontend/src/shell/Window.tsx`, `frontend/src/layouts/MobileStack.tsx`, `frontend/src/shell/Popout.tsx`, `frontend/src/App.tsx`, `backend/services/gateway/`, `backend/services/appfs/`, `backend/services/webproxy/`, `backend/cmd/server/`
+
+> **Currency note (added by a later docs audit).** This is a dated record, and
+> the bundled-app set has since drifted. Three apps named below no longer
+> exist: `apps/social` (removed 2026-07-23, noted in §2), `apps/maps` and
+> `apps/calendar` — calendar is now a React built-in under
+> `frontend/src/builtin/calendar/`, not a bundled HTML app. Three apps that
+> exist today (`image-editor`, `phone`, `system-info`) were **not** in this
+> audit's scope. Findings and fixes below are preserved as written; they are
+> the record of what was done in May, not a statement about today's tree.
+>
+> The one claim re-verified against the current tree: of the 16
+> `frontend/apps/*/index.html` files present now, **15 carry the CSP meta
+> tag**. The exception is `frontend/apps/site-template/index.html`, which was
+> added after this audit and has none.
 
 ---
 
@@ -45,7 +59,7 @@ The gateway also now injects `Permissions-Policy: camera=(), microphone=(), geol
 
 ## 2. XSS
 
-### Finding — FIXED: `apps/notes/index.html` unescaped title
+### Finding — FIXED: `frontend/apps/notes/index.html` unescaped title
 `renderList()` (line 108) interpolated `n.title` into innerHTML without escaping:
 
 ```js
@@ -82,9 +96,9 @@ All other apps that use `innerHTML` with user-supplied data were verified to use
 | `appfs` `GET/PUT/DELETE /api/appdata/{app}/{path}` | `backend/services/appfs/appfs.go` | **Safe** — `safeJoin()` rejects `..`, absolute paths, and validates canonical prefix. |
 | Desktop icons `GET /api/desktop/icon/{name}` | `backend/services/desktop/desktop.go` | **Safe** — rejects `/` and `..` in name before calling `findSystemIcon()`. |
 | Static frontend `GET /` | `backend/cmd/server/main.go` | **Safe** — uses `http.FileServer(http.Dir(webrootDir))` with `filepath.Clean()`. |
-| Music `audio.src = "/audio/" + encodeURIComponent(track.path)` | `apps/music/index.html` | **Backend-dependent** — path is server-assigned from `/api/library` response; not user-typed. Risk is low if library API sanitizes. |
-| Gallery `/media/{path}` | `apps/gallery/index.html` | **Backend-dependent** — same pattern; path from `/api/media` response. |
-| Screenshot `/api/file/{name}` | `apps/screenshot/index.html` | **Backend-dependent** — `encodeURIComponent(name)` used; name comes from `/api/screenshots` list. |
+| Music `audio.src = "/audio/" + encodeURIComponent(track.path)` | `frontend/apps/music/index.html` | **Backend-dependent** — path is server-assigned from `/api/library` response; not user-typed. Risk is low if library API sanitizes. |
+| Gallery `/media/{path}` | `frontend/apps/gallery/index.html` | **Backend-dependent** — same pattern; path from `/api/media` response. |
+| Screenshot `/api/file/{name}` | `frontend/apps/screenshot/index.html` | **Backend-dependent** — `encodeURIComponent(name)` used; name comes from `/api/screenshots` list. |
 
 No direct `../` injection vectors found in frontend code. All file paths passed to fetch calls are either server-provided enumerations or `encodeURIComponent`-encoded user inputs going to backend endpoints.
 
@@ -113,10 +127,10 @@ The `appfs` service correctly sandboxes each app under `~/.vulos/{appID}/` and v
 ## 5. postMessage
 
 ### Finding
-No `window.addEventListener('message', ...)` receiver existed in the shell host (`src/App.tsx`, `src/providers/ShellProvider.tsx`, or other shell files). Apps communicate with the backend via WebSocket and fetch, not cross-frame postMessage.
+No `window.addEventListener('message', ...)` receiver existed in the shell host (`frontend/src/App.tsx`, `frontend/src/providers/ShellProvider.tsx`, or other shell files). Apps communicate with the backend via WebSocket and fetch, not cross-frame postMessage.
 
 ### Fix applied
-Added a defensive `usePostMessageGuard()` hook to `src/App.tsx` (`Shell` component) that:
+Added a defensive `usePostMessageGuard()` hook to `frontend/src/App.tsx` (`Shell` component) that:
 1. Registers a `message` event listener on `window`.
 2. Silently discards any message from an origin other than `window.location.origin`.
 3. Drops same-origin messages too (no shell command protocol is currently defined).
@@ -148,7 +162,7 @@ All localStorage keys use an app-specific prefix. Storage isolation is enforced 
 
 ## 7. External Fetch
 
-### Finding — FIXED: `apps/weather/index.html` direct external fetches
+### Finding — FIXED: `frontend/apps/weather/index.html` direct external fetches
 The weather app made three direct cross-origin `fetch()` calls:
 1. `https://ip-api.com/json/?fields=...` — IP geolocation
 2. `https://geocoding-api.open-meteo.com/v1/search?...` — city search
@@ -167,22 +181,22 @@ These bypassed the host proxy and exposed the user's IP to third-party services 
 
 ## 8. App Permissions on First Launch
 
-### Camera (`apps/camera/index.html`)
+### Camera (`frontend/apps/camera/index.html`)
 `navigator.mediaDevices.getUserMedia()` is called on first use of the capture button (user-initiated). The browser's native permission prompt appears before any stream is granted. No silent auto-request at load time.
 
-### Microphone (`apps/voice-recorder/index.html`)
+### Microphone (`frontend/apps/voice-recorder/index.html`)
 `navigator.mediaDevices.getUserMedia({ audio: true })` is called only when the record button is pressed. User-initiated.
 
 ### Geolocation (`apps/maps/index.html`)
 `navigator.geolocation.getCurrentPosition()` is called only when the "locate me" button is clicked. User-initiated.
 
-### Notifications (`apps/calendar/index.html`, `apps/clock/index.html`)
+### Notifications (`apps/calendar/index.html`, `frontend/apps/clock/index.html`)
 `Notification.requestPermission()` is called only when the user explicitly clicks a "Enable Notifications" button. User-initiated.
 
-### Clipboard (`apps/calculator/index.html`, `apps/screenshot/index.html`, `apps/text-editor/index.html`)
+### Clipboard (`frontend/apps/calculator/index.html`, `frontend/apps/screenshot/index.html`, `frontend/apps/text-editor/index.html`)
 `navigator.clipboard.writeText/write()` is triggered by explicit copy/save actions. Clipboard read is not used (only write).
 
-### Screen Capture (`apps/screenshot/index.html`)
+### Screen Capture (`frontend/apps/screenshot/index.html`)
 `navigator.mediaDevices.getDisplayMedia()` is called only when the "Start Recording" or "Capture" button is pressed. User-initiated.
 
 **Assessment:** All sensitive permission requests are user-initiated (tied to explicit UI actions). No permissions are requested on page load. This is compliant with best practice.
@@ -195,14 +209,14 @@ These bypassed the host proxy and exposed the user's IP to third-party services 
 
 | File | Change |
 |---|---|
-| `apps/*/index.html` (all 20) | Added `<meta http-equiv="Content-Security-Policy">` |
-| `apps/notes/index.html` | Fixed XSS: escaped `n.title` in `renderList()` |
+| `frontend/apps/*/index.html` (all 20) | Added `<meta http-equiv="Content-Security-Policy">` |
+| `frontend/apps/notes/index.html` | Fixed XSS: escaped `n.title` in `renderList()` |
 | `apps/social/index.html` | Added trust-assumption comment on `actual.content` |
-| `apps/weather/index.html` | Rerouted 3 external fetches through `/api/proxy/` |
-| `src/App.tsx` | Added `usePostMessageGuard()` hook |
-| `src/shell/Window.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
-| `src/layouts/MobileStack.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
-| `src/shell/Popout.tsx` | Added `referrerPolicy="no-referrer"` to fullscreen iframe |
+| `frontend/apps/weather/index.html` | Rerouted 3 external fetches through `/api/proxy/` |
+| `frontend/src/App.tsx` | Added `usePostMessageGuard()` hook |
+| `frontend/src/shell/Window.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
+| `frontend/src/layouts/MobileStack.tsx` | Added `referrerPolicy="no-referrer"` to app iframe |
+| `frontend/src/shell/Popout.tsx` | Added `referrerPolicy="no-referrer"` to fullscreen iframe |
 | `backend/services/gateway/gateway.go` | Added `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` headers |
 | `backend/cmd/server/main.go` | Added `secHeadersMiddleware` wrapping all responses |
 

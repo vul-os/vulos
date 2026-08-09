@@ -16,7 +16,7 @@ For the daily-driver walkthrough of first sign-in see
 
 ## What is created on first boot
 
-The setup wizard (`src/auth/Setup.tsx`) collects three things that together make
+The setup wizard (`frontend/src/auth/Setup.tsx`) collects three things that together make
 up your account:
 
 | Thing | What it is | Where it lives |

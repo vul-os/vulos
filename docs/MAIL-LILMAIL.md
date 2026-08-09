@@ -32,7 +32,7 @@ vendored into this repo.
   authentication is email/password + 2FA/passkey/QR only; there is no
   Google OAuth or third-party identity provider at the OS level.
 - **Embedding.** The OS shell embeds LilMail same-window via an `<iframe>`.
-  It is registered as the `lilmail` app in `src/core/AppRegistry.ts` and framed
+  It is registered as the `lilmail` app in `frontend/src/core/AppRegistry.ts` and framed
   at the gateway-proxied path `/app/lilmail/` — the same seam every other
   proxied app uses, so it inherits the gateway's response hardening
   (`frame-ancestors` pinned to the shell origin, `Permissions-Policy`,

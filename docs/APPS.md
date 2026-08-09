@@ -19,7 +19,7 @@ There is no separate "bot" runtime — a bot *is* a platform app holding a token
 
 ## Bundled apps
 
-The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, Diwan, PDF Viewer, Sheets, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`apps/notes/app.json`):
+The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, Diwan, PDF Viewer, Sheets, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`frontend/apps/notes/app.json`):
 
 ```json
 {
@@ -76,7 +76,7 @@ honest "Connect Mail" state rather than an error. See `backend/cmd/server/routes
 Vulos ships **two user-selectable browsers** as separate launcher tiles, so you
 can choose per task:
 
-- **Smart Browser** — a client-side web app (`apps/browser/`) that opens in your
+- **Smart Browser** — a client-side web app (`frontend/apps/browser/`) that opens in your
   host browser. No server-side session, no stream — the light option.
 - **Streaming Chrome** — a **real Chromium running on the box**, streamed to the
   shell over WebRTC with a **persistent per-user profile** (cookies, history,
