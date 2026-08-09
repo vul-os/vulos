@@ -33,7 +33,7 @@ Either way, per-user **storage isolation always applies** — it protects the bo
 
 ```mermaid
 flowchart TD
-    Browser["Browser (React SPA)<br/>src/ — shell, AI Home, ⌘K, served from /"]
+    Browser["Browser (React SPA)<br/>frontend/src/ — shell, AI Home, Spotlight + ⌘K, served from /"]
     Browser -->|"WebSocket / HTTP / SSE"| Backend
 
     subgraph Backend["Go HTTP backend (backend/cmd/server/)"]
@@ -83,7 +83,7 @@ flowchart TD
 
 | Directory | Purpose |
 |-----------|---------|
-| `frontend/src/shell/` | Window manager, dock, Mission Control, launchpad, AI Home, ⌘K palette, notification center |
+| `frontend/src/shell/` | Window manager, dock, menu bar, Mission Control, Launchpad, Spotlight (⌘Space), AI Home, ⌘K command palette, notification center, ambient desktop widgets |
 | `frontend/src/auth/` | Login, passkey enrollment, QR login, setup wizard |
 | `frontend/src/core/` | App registry, settings panel, system pulse |
 | `frontend/src/builtin/` | Built-in apps: assistant, terminal, files/drive, app hub, dashboard, peering, notes |
@@ -103,7 +103,7 @@ flowchart TD
 | `backend/services/files/` | Files service: viewer/editor/owner ACL, sealed (content-blind) shares, share-by-email, resumable (tus-style) chunked upload promote |
 | `backend/services/upload/` | Resumable upload manager (tus core: Create/Head/Patch/Delete/Sweep), SQLite-persisted offset for resume-across-restart, per-chunk checksum, abandoned-partial sweep |
 | `backend/services/notify/` | Notifications (types, priority, TTL, DND, WebSocket delivery) + cell-side **Web Push** send-path (VAPID, per-owner subscription store, RFC 8291) + cell-side **UnifiedPush** send-path (user-registered distributor endpoint, alongside Web Push) |
-| `backend/services/joincode/`, `joinsync/`, `cloudenroll/` | Device/box join tokens, join ceremony, RFC 8628 enrollment |
+| `backend/services/joincode/`, `joinsync/` | Device/box join tokens and the join ceremony. (A `cloudenroll/` package was listed here but does not exist in this repository — the Vulos Cloud account/enrolment surface was removed.) |
 | `backend/services/peering/` | Ed25519 peering, VulaID key lifecycle, single reachability seam (`resolvePeerBaseURL`) over the relay, Drop |
 | `backend/services/stream/` | WebRTC stream pool, bitrate control |
 | `backend/services/gpu/` | GPU capability detection (NVENC, VA-API, software) |
@@ -123,10 +123,10 @@ flowchart TD
 ## Browser architecture (BROWSER-03)
 
 Vulos ships **two user-selectable browsers**, side by side in the launcher, so
-you can pick per task (both are registered in `src/core/AppRegistry.ts`):
+you can pick per task (both are registered in `frontend/src/core/AppRegistry.ts`):
 
 1. **Smart Browser** (`id: browser`) — the client-side web app under
-   `apps/browser/`. It opens in the host browser as an in-shell web-app lane
+   `frontend/apps/browser/`. It opens in the host browser as an in-shell web-app lane
    entry and creates **no** server-side session. This is the light,
    zero-stream option; `POST /api/open` returns a
    `{"action":"open_in_host_browser","url":"..."}` instruction so the shell can
@@ -248,7 +248,7 @@ All three ride the same pool + GPU encoder seam, but with different tunings:
    no lookahead, CBR, a 1-second GOP to bound keyframe-recovery latency), and
    a minimal receive-side jitter buffer on the client
    (`RTCRtpReceiver.playoutDelayHint = 0`, Chromium only —
-   `src/builtin/stream/lowLatency.ts`). The resolved `gaming` flag is echoed
+   `frontend/src/builtin/stream/lowLatency.ts`). The resolved `gaming` flag is echoed
    back to `StreamViewer` so gaming input behaviour (pointer-lock) activates.
 3. **Streaming Chrome** (`services/webbrowser`). A per-user persistent-profile
    Chromium session on the pool, launched via `POST /api/browser/launch` — see
