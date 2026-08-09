@@ -221,7 +221,7 @@ On bare metal, Vulos boots only what your trust anchor signed. The chain, end to
 4. **Netboot halts without it.** In a netboot (`vulos.netboot=1`), the initramfs (`scripts/initramfs/vulos-live`) requires the verity/signature inputs to be present and valid; if they are absent the boot **fails closed** instead of degrading to an unverified mount. The iPXE stick likewise `imgverify`s the kernel and initramfs against the baked anchor before executing anything (`scripts/netboot/`).
 5. **Install verifies before writing.** The netboot-to-install path verifies the squashfs signature against the pinned anchor *before a single byte* reaches the permanent slot, and the destructive endpoint is admin-gated.
 6. **Rollback protection.** A signed `stable.json` manifest carries a `min_epoch`; the device persists a monotonically increasing epoch floor (`/var/lib/vulos/epoch-floor.json`) that can rise but never fall. An older *signed-but-vulnerable* image below the floor is refused.
-7. **A/B slots.** Updates stage into the inactive slot only (`slot-a`/`slot-b` with an atomically-written `boot-state.json` tracking active/pending/last-known-good), so a bad update rolls back instead of bricking the box.
+7. **A/B slots — staging is real, the flip is not.** Updates stage into the inactive slot only (`slot-a`/`slot-b` with an atomically-written `boot-state.json` tracking active/pending/last-known-good). What that bookkeeping *cannot* do today is change which slot the machine boots — see the honest note below.
 
 You can run the same check the initramfs runs, by hand:
 
@@ -243,7 +243,28 @@ The A/B state is a single JSON file per box:
 }
 ```
 
-Updates stage into the slot that is *not* active (staging into the active slot is refused outright), the flip is an atomic file rename, and `last_known_good` is what a failed boot falls back to. The writable data partition is entirely separate from both slots — a rollback never touches your files.
+Updates stage into the slot that is *not* active (staging into the active slot is refused outright), every mutation of this file is an atomic write-then-rename, and `last_known_good` records the slot a failed boot *should* fall back to. The writable data partition is entirely separate from both slots — a rollback would never touch your files.
+
+> **Known gap — the slot flip has no effect (OSDIST-FLIP-01).** Writing
+> `boot-state.json` is not the same as switching slots, and today nothing
+> rewrites the bootloader entry. The installer's `writeSlotABootEntry` writes
+> the systemd-boot entry **once, at install time, hardcoded to slot-a**
+> (`vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs`), and
+> the initramfs (`scripts/initramfs/vulos-live`) reads only that kernel
+> cmdline — it never opens `boot-state.json`. Consequences to plan around:
+>
+> - A staged OS update **does not become active** when you reboot; the box
+>   keeps running slot-a.
+> - When the boot counter passes `VULOS_BOOT_THRESHOLD`, `init` *records* a
+>   rollback and logs, in as many words, that it **has no effect on the next
+>   boot**. Do not read that log line as "the box protected itself".
+>
+> Everything below the flip — signature verification, the epoch floor,
+> staging into the inactive slot, the boot counter — is real and does what
+> this page says. Closing the gap needs an entry rewriter that runs on flip
+> (ESP mounted writable) or an initramfs that selects the slot from
+> `boot-state.json`, and it must be proven by an actual reboot
+> (`scripts/netboot-install-smoke.sh`), not by a unit test.
 
 If you build your own images: the netboot fail-closed gate needs `os-core.roothash.sig` and the `vulos-verify-sig` binary present in the initramfs — a build that omits them produces netboots that halt (correctly) rather than boot unverified.
 

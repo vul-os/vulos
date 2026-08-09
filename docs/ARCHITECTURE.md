@@ -308,14 +308,29 @@ Video calling is third-party: install Jitsi Meet / Element Call from the App Sto
 flowchart TD
     A["Signed squashfs"] --> B["dm-verity Merkle tree"]
     B --> C["A/B slots"]
-    C --> D["bootloader (boot counter)"]
-    D --> E["auto-rollback if services don't come up"]
+    C --> D["boot counter in boot-state.json"]
+    D --> E["rollback RECORDED — not yet acted on (OSDIST-FLIP-01)"]
 ```
 
 - OS ships as a signed, immutable squashfs pulled from `os.vulos.org`
 - dm-verity enforces block-level integrity at runtime via the initramfs
-- A/B slot auto-rollback: new image staged to inactive slot; if it doesn't come up clean the bootloader flips back
+- A/B slots: a new image is staged into the inactive slot, and `init` counts
+  boots and decides when a rollback is warranted
 - Trust anchor: Ed25519 public key baked into the seed at flash time; forks supply their own key + bucket URL
+
+> **The slot flip does not work yet (OSDIST-FLIP-01).** Everything above the
+> flip is real — staging, verification, the boot counter, the
+> `last_known_good` bookkeeping in `boot-state.json` — but *nothing rewrites
+> the bootloader entry*. `services/installer`'s `writeSlotABootEntry` writes
+> the systemd-boot entry **once, at install time, hardcoded to slot-a**
+> (`vulos.slot=a vulos.squashfs=…/slot-a/os-core.squashfs`), and
+> `scripts/initramfs/vulos-live` reads only that kernel cmdline — it never
+> consults `boot-state.json`. So a staged update does not become active on
+> reboot, and a rollback is *recorded* (with a loud log line saying it had no
+> effect) rather than performed. Closing this needs either an entry rewriter
+> that runs on flip with the ESP mounted writable, or an initramfs that reads
+> `boot-state.json` and picks the slot itself — and either way it has to be
+> proven by an actual reboot via `scripts/netboot-install-smoke.sh`.
 
 ---
 

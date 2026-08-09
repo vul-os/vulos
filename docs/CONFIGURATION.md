@@ -304,7 +304,7 @@ starts.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_BOOT_THRESHOLD` | `3` | Consecutive failed boots before init automatically rolls back to the previous OS slot |
+| `VULOS_BOOT_THRESHOLD` | `3` | Consecutive failed boots before init decides a rollback to the previous OS slot is warranted. **The rollback is currently only recorded** in `boot-state.json` — nothing rewrites the bootloader entry, so it does not change which slot boots (OSDIST-FLIP-01; init logs this explicitly). See [ARCHITECTURE.md](ARCHITECTURE.md) |
 | `VULOS_PREWARM_BROWSER` | auto-detected from host profile | Whether to pre-warm the Chromium/WPE browser process at boot |
 | `VULOS_NATIVE_MODE_V2` | off | Opts into the v2 native-launch/labwc window path instead of the v1 always-stream/cage path. Also settable via the `vulos.native-mode=v2` kernel cmdline parameter |
 

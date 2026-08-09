@@ -112,7 +112,7 @@ Open `http://<the address shown>:8080` in a browser on **any other device on the
 
 ## Installing to disk (the primary path)
 
-Installing to the machine's own disk is the way to actually keep a Vulos box — this is what "your own personal server on hardware you own" means in practice. It turns the live session above into a permanent install: a persistent ext4 root, signature-verified at every boot, with A/B slots so a bad update can roll itself back.
+Installing to the machine's own disk is the way to actually keep a Vulos box — this is what "your own personal server on hardware you own" means in practice. It turns the live session above into a permanent install: a persistent ext4 root, signature-verified at every boot, with A/B slots that updates stage into. (The slots exist and staging works; the automatic *flip* between them does not yet — see the OS-update note below.)
 
 > **Honesty check:** `vulos-install --disk` is real code that runs today — it isn't a placeholder — but it has not yet been run end-to-end against a physical disk on real hardware outside development testing. Keep the USB stick handy the first time you try it, and don't run it against a machine holding data you haven't backed up.
 
@@ -294,7 +294,18 @@ curl http://localhost:8080/metrics | grep vulos_
 
 ## Upgrading
 
-**Bare metal — live USB or installed to disk.** Vulos checks its release channel in the background automatically; that check only ever verifies, it never downloads or stages anything on its own. To actually upgrade: **Settings → OS Update** shows the running version and the latest verified one, and lets you explicitly **Download & stage** it — staging downloads, verifies, and writes the release to the inactive A/B slot, but the box keeps running the current version until you reboot. If the new version doesn't come up cleanly, the bootloader automatically rolls back to the last-known-good slot. There is no upgrade step for the **live USB session** — it boots the exact image on the stick every time, so you get a newer version by downloading a newer `.img.gz` and reflashing.
+**Bare metal — live USB or installed to disk.** Vulos checks its release channel in the background automatically; that check only ever verifies, it never downloads or stages anything on its own. To actually upgrade: **Settings → OS Update** shows the running version and the latest verified one, and lets you explicitly **Download & stage** it — staging downloads, verifies, and writes the release to the inactive A/B slot. There is no upgrade step for the **live USB session** — it boots the exact image on the stick every time, so you get a newer version by downloading a newer `.img.gz` and reflashing.
+
+> **Staging works; activating the staged image does not yet (OSDIST-FLIP-01).**
+> The slot flip is unfinished: the systemd-boot entry is written once at
+> install time hardcoded to slot-a, and the initramfs reads only that kernel
+> cmdline — it never consults `boot-state.json`. So a staged update **stays
+> staged** across a reboot, and the failed-boot rollback is recorded in
+> `boot-state.json` but not performed (init logs that it had no effect).
+> Until this lands, treat "Download & stage" as verifying and pre-fetching a
+> release, not as installing it, and re-flash the USB stick to change the
+> running OS version. See [ARCHITECTURE.md](ARCHITECTURE.md) and
+> [SECURITY.md](SECURITY.md) for the full picture.
 
 **Docker:**
 
