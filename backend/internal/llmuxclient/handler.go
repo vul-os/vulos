@@ -190,7 +190,7 @@ func (h *Handler) handleEmbed(w http.ResponseWriter, r *http.Request) {
 
 	model := req.Model
 	if model == "" {
-		model = "text-embedding-3-small"
+		model = defaultEmbedModel
 	}
 
 	// Cache lookup.

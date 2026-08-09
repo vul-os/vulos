@@ -62,6 +62,11 @@ func FromEnv() (Config, bool) {
 	}, true
 }
 
+// defaultEmbedModel is the model used when a caller asks for an embedding
+// without naming one. Both backends resolve it the same way so a box does not
+// change embedding model when it switches between them.
+const defaultEmbedModel = "text-embedding-3-small"
+
 // Client is an HTTP client for the llmux gateway.
 type Client struct {
 	cfg        Config
@@ -112,7 +117,7 @@ func (c *Client) Embed(ctx context.Context, model, input string) ([]float32, str
 		return nil, model, fmt.Errorf("llmuxclient: LLMUX_URL not configured")
 	}
 	if model == "" {
-		model = "text-embedding-3-small"
+		model = defaultEmbedModel
 	}
 	endpoint := c.cfg.BaseURL + "/v1/embeddings"
 	reqBody := map[string]any{
