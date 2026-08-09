@@ -27,6 +27,16 @@ package main
 //     path (mail bodies, drafts, send) is 404'd here — this proxy is PIM-only.
 //   - Any client-supplied X-Vulos-Mail-* header is stripped before the broker
 //     headers are injected, so a browser cannot forge the broker credential.
+//   - BROKER MODE IS OWNER-ONLY (IDOR-PIM-01). The injected X-Vulos-Mail-*
+//     credential is the box's SINGLE, environment-configured mail account — the
+//     owner's — and the caller's OS identity is deliberately not forwarded, so in
+//     broker mode lilmail answers about the owner's mailbox whoever asks. Vulos is
+//     multi-profile, so a second account on the box could otherwise read AND write
+//     (PUT/PATCH/DELETE proxy through) the owner's calendar and address book. The
+//     handler therefore denies any non-owner while broker mode is active, and
+//     fails closed when the owner cannot be resolved. See mailbroker_owner.go.
+//     In session-cookie mode the credential is the caller's own cookie, so every
+//     authenticated profile is allowed and lilmail does the scoping.
 
 import (
 	"net/http"
@@ -38,7 +48,9 @@ import (
 // registerPIMRoutes wires the PIM proxy into mux. mailBaseURL is the lilmail
 // origin (VULOS_MAIL_URL, default http://localhost:3000); brokerHeaders are the
 // CP-brokered X-Vulos-Mail-* credential headers (nil ⇒ session-cookie mode).
-func registerPIMRoutes(mux *http.ServeMux, mailBaseURL string, brokerHeaders map[string]string) {
+// ownerID resolves the box owner live and gates broker mode to that account
+// (nil ⇒ broker mode is denied to everyone — fail closed).
+func registerPIMRoutes(mux *http.ServeMux, mailBaseURL string, brokerHeaders map[string]string, ownerID func() string) {
 	target, err := url.Parse(strings.TrimRight(mailBaseURL, "/"))
 	if err != nil || target.Host == "" {
 		// Misconfigured mail base: serve an honest 503 so the widgets show their
@@ -83,8 +95,15 @@ func registerPIMRoutes(mux *http.ServeMux, mailBaseURL string, brokerHeaders map
 	mux.HandleFunc("/api/pim/", func(w http.ResponseWriter, r *http.Request) {
 		// Defensive: the auth middleware already 401s non-public paths, but never
 		// proxy an unauthenticated request to the mailbox.
-		if r.Header.Get("X-User-ID") == "" {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		// IDOR-PIM-01: in broker mode the credential below belongs to the BOX
+		// OWNER, not to the caller — only the owner may spend it. Fail closed.
+		if !brokeredMailAllowed(brokerHeaders, ownerID, userID) {
+			writeErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		sub := strings.TrimPrefix(r.URL.Path, "/api/pim/")

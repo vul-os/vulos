@@ -82,13 +82,23 @@ type settingsProvider func(userID string) (map[string]any, bool)
 // service failed to init); in that case the files/ section is omitted and the
 // manifest records why. mailBaseURL is the LilMail base (VULOS_MAIL_URL).
 // settings may be nil; when present it supplies the secret-scrubbed profile.
-func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseURL string, brokerHeaders map[string]string, settings settingsProvider) {
+// ownerID resolves the box owner: when the box runs in brokered-mail mode, the
+// mail/calendar/contacts sections are the OWNER's data (see mailbroker_owner.go)
+// and are omitted for every other account (nil ⇒ omitted for everyone).
+func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseURL string, brokerHeaders map[string]string, settings settingsProvider, ownerID func() string) {
 	mux.HandleFunc("GET /api/export/data", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			writeErr(w, 401, "unauthorized")
 			return
 		}
+		// IDOR-EXPORT-MAIL-01: "your data" must mean the CALLER's data. In broker
+		// mode the mail credential is the box owner's single account, so a
+		// non-owner's export would otherwise ship the owner's inbox (.eml),
+		// calendar (.ics) and address book (.vcf) in a zip. Omit those sections
+		// for anyone but the owner — and say so in the manifest rather than
+		// pretending the mailbox was empty. Files and settings stay per-caller.
+		mailAllowed := brokeredMailAllowed(brokerHeaders, ownerID, userID)
 
 		auth := assistant.Auth{
 			Cookie: r.Header.Get("Cookie"),
@@ -111,6 +121,10 @@ func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseU
 		// --- mail --------------------------------------------------------------
 		if mailBaseURL == "" {
 			add("mail: SKIPPED — no mail service configured (VULOS_MAIL_URL unset)")
+		} else if !mailAllowed {
+			add("mail: SKIPPED — this box uses a single box-wide mail account belonging to")
+			add("      the owner, and you are not the owner. Exporting it here would hand")
+			add("      you another account's inbox, so it is deliberately omitted.")
 		} else {
 			src := assistant.NewLilmailSource(mailBaseURL)
 			total, reached := 0, false
@@ -167,7 +181,13 @@ func registerExportRoutes(mux *http.ServeMux, filesSvc *files.Service, mailBaseU
 		}
 
 		// --- calendar (optional, iff the mail service exposes it) --------------
-		if mailBaseURL != "" {
+		// Same owner gate as mail above: in broker mode these come back from the
+		// box-wide credential, so for a non-owner they are the OWNER's calendar
+		// and address book, not the caller's.
+		if mailBaseURL != "" && !mailAllowed {
+			add("calendar: SKIPPED — box-wide mail account belongs to the owner (see mail note)")
+			add("contacts: SKIPPED — box-wide mail account belongs to the owner (see mail note)")
+		} else if mailBaseURL != "" {
 			if ics, ok := fetchCalendarICS(r.Context(), mailBaseURL, auth); ok {
 				if err := writeZipBytes(zw, "calendar.ics", ics); err != nil {
 					return

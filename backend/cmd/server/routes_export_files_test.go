@@ -59,7 +59,7 @@ func TestExportDriveTreeRealBytesAndPathSafe(t *testing.T) {
 	putFile(t, svc, user, dir.ID, "..passwd\x01evil", "should be neutralized")
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, svc, "", nil, nil)
+	registerExportRoutes(mux, svc, "", nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/export/data", nil)
 	req.Header.Set("X-User-ID", user)
 	rr := httptest.NewRecorder()
@@ -127,7 +127,7 @@ func TestExportDriveTreeIsOwnerScoped(t *testing.T) {
 	putFile(t, svc, "bob", "", "bob-file.txt", "bob only")
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, svc, "", nil, nil)
+	registerExportRoutes(mux, svc, "", nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/export/data", nil)
 	req.Header.Set("X-User-ID", "bob")
 	rr := httptest.NewRecorder()
@@ -162,7 +162,7 @@ func TestExportCalendarContactsInjectionSafe(t *testing.T) {
 	defer mail.Close()
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, mail.URL, nil, nil)
+	registerExportRoutes(mux, nil, mail.URL, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/export/data", nil)
 	req.Header.Set("X-User-ID", "user-1")
 	rr := httptest.NewRecorder()

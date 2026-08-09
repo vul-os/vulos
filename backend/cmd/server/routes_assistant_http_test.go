@@ -334,7 +334,7 @@ func TestExportThroughMiddleware(t *testing.T) {
 	}
 	h := auth.NewHandler(store)
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, nil) // no files svc, no mail — still a valid honest zip
+	registerExportRoutes(mux, nil, "", nil, nil, nil) // no files svc, no mail — still a valid honest zip
 	srv := httptest.NewServer(h.Middleware(mux))
 	t.Cleanup(srv.Close)
 

@@ -42,6 +42,7 @@ import (
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/osroute"
 	"vulos/backend/internal/storage"
+	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/accountsecurity"
 	"vulos/backend/services/ai"
 	"vulos/backend/services/anchorinbox"
@@ -183,6 +184,18 @@ func main() {
 	// forced on while the runtime environment claims to be production.
 	if activeEnv.IsProd() && envDefaults.DebugEndpoints {
 		log.Fatal("[env] ABORT: debug endpoints are enabled but env=prod — this is a misconfiguration")
+	}
+
+	// WS-ORIGIN: the shared WebSocket upgrader rejects cross-origin handshakes
+	// by default (a CORS preflight does not protect an upgrade, so a permissive
+	// check is a straight cross-site hijack of the session cookie). Outside prod
+	// we additionally accept loopback/private-IP LITERAL origins so the Vite dev
+	// server can talk to the backend. Derived from the resolved environment, not
+	// from os.Getenv — both the documented dev and prod invocations use the
+	// --env flag and leave VULOS_ENV unset.
+	wsutil.SetAllowPrivateOrigins(!activeEnv.IsProd())
+	if wsutil.AllowPrivateOrigins() {
+		log.Printf("[ws] DEV: accepting WebSocket handshakes from loopback/private-IP origins (env=%s)", activeEnv)
 	}
 
 	cfg := config.Load(activeEnv.String())
@@ -1071,7 +1084,7 @@ func main() {
 	// widgets. Browser → /api/pim/{calendar,contacts}/* → lilmail /v1/* with the
 	// caller's cookie forwarded and the broker creds injected (never exposed to
 	// the browser). See routes_pim.go.
-	registerPIMRoutes(mux, mailBaseURLFromEnv(), assistantBrokerHeaders())
+	registerPIMRoutes(mux, mailBaseURLFromEnv(), assistantBrokerHeaders(), boxOwnerID(authStore))
 
 	// Files: OS Files metadata/control-plane API (Drive index, ACL-gated
 	// object-scoped grants, shares, share links, versions). Session-authed.
@@ -1139,7 +1152,7 @@ func main() {
 	// exposes them — calendar (.ics) / contacts (.vcf), in standard portable
 	// formats. The anti-lock-in / data-permanence half of the legible-trust
 	// surface. Session-authed; reuses the mail broker headers from the assistant.
-	registerExportRoutes(mux, filesSvc, mailBaseURLFromEnv(), assistantBrokerHeaders(), safeProfileExport(authStore))
+	registerExportRoutes(mux, filesSvc, mailBaseURLFromEnv(), assistantBrokerHeaders(), safeProfileExport(authStore), boxOwnerID(authStore))
 
 	// SSH key management (host key + authorized_keys)
 	registerSSHKeyRoutes(mux, authStore, home)

@@ -47,7 +47,7 @@ func doExport(t *testing.T, mux *http.ServeMux, userID string) *httptest.Respons
 // TestExportRequiresSession: no X-User-ID ⇒ 401, no zip.
 func TestExportRequiresSession(t *testing.T) {
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, nil)
+	registerExportRoutes(mux, nil, "", nil, nil, nil)
 	rr := doExport(t, mux, "")
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", rr.Code)
@@ -59,7 +59,7 @@ func TestExportRequiresSession(t *testing.T) {
 // never a silent lie of completeness.
 func TestExportEmptyStillHonest(t *testing.T) {
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, nil)
+	registerExportRoutes(mux, nil, "", nil, nil, nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -95,7 +95,7 @@ func TestExportMail(t *testing.T) {
 	defer mail.Close()
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, mail.URL, nil, nil)
+	registerExportRoutes(mux, nil, mail.URL, nil, nil, nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -200,7 +200,7 @@ func TestExportSettingsScrubsSecrets(t *testing.T) {
 	}}
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store), nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -238,7 +238,7 @@ func TestExportSettingsOwnerScoped(t *testing.T) {
 		"bob":   {UserID: "bob", DisplayName: "Bob"},
 	}}
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store), nil)
 
 	rr := doExport(t, mux, "bob")
 	files := readZip(t, rr.Body.Bytes())
@@ -255,7 +255,7 @@ func TestExportSettingsOwnerScoped(t *testing.T) {
 // but the export stays a valid, honest zip that records the skip.
 func TestExportSettingsSkippedWhenNoProvider(t *testing.T) {
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, nil)
+	registerExportRoutes(mux, nil, "", nil, nil, nil)
 	rr := doExport(t, mux, "user-1")
 	files := readZip(t, rr.Body.Bytes())
 	if _, ok := files["settings.json"]; ok {
@@ -330,7 +330,7 @@ func TestExportSettingsScrubsNonPatternSecrets(t *testing.T) {
 	}}
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store))
+	registerExportRoutes(mux, nil, "", nil, safeProfileExport(store), nil)
 	rr := doExport(t, mux, "user-1")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -376,7 +376,7 @@ func TestExportMiddlewareStripsForgedUserID(t *testing.T) {
 	}})
 
 	mux := http.NewServeMux()
-	registerExportRoutes(mux, nil, "", nil, prov)
+	registerExportRoutes(mux, nil, "", nil, prov, nil)
 	srv := httptest.NewServer(h.Middleware(mux))
 	defer srv.Close()
 

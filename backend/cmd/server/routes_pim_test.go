@@ -37,9 +37,18 @@ func newFakeLilmail(t *testing.T) *fakeLilmail {
 // pimTestMux registers just the PIM routes against a fresh mux (the auth
 // middleware, which stamps X-User-ID, is simulated by the tests setting the
 // header directly).
-func pimTestMux(base string, broker map[string]string) *http.ServeMux {
+//
+// owner is the box owner the broker-mode gate checks against (IDOR-PIM-01).
+// It defaults to "u1", the caller every test below uses, so the existing cases
+// keep exercising the allowed path; the owner-gate tests pass it explicitly to
+// make the caller a non-owner.
+func pimTestMux(base string, broker map[string]string, owner ...string) *http.ServeMux {
+	boxOwner := "u1"
+	if len(owner) > 0 {
+		boxOwner = owner[0]
+	}
 	mux := http.NewServeMux()
-	registerPIMRoutes(mux, base, broker)
+	registerPIMRoutes(mux, base, broker, func() string { return boxOwner })
 	return mux
 }
 
@@ -217,5 +226,97 @@ func TestPIMProxy_UnconfiguredMailBase(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503 for misconfigured mail base", rec.Code)
+	}
+}
+
+// --- IDOR-PIM-01: broker mode is owner-only --------------------------------
+//
+// In broker mode the X-Vulos-Mail-* credential is the box's single
+// environment-configured mail account — the owner's — and routes_pim.go deletes
+// X-User-ID before proxying, so lilmail answers about the OWNER's calendar and
+// address book whoever asks. Vulos is multi-profile, so without this gate a
+// second account could read and (PUT/PATCH/DELETE proxy through) WRITE the
+// owner's PIM data.
+
+func TestPIMProxy_BrokerMode_DeniesNonOwner(t *testing.T) {
+	f := newFakeLilmail(t)
+	broker := map[string]string{"X-Vulos-Mail-Secret": "s3cr3t", "X-Vulos-Mail-Email": "ada@example.com"}
+	// Box owner is u1; the caller below is u2, a second profile on the same box.
+	mux := pimTestMux(f.srv.URL, broker, "u1")
+
+	req := httptest.NewRequest("GET", "/api/pim/calendar/events?from=2026-01-01", nil)
+	req.Header.Set("X-User-ID", "u2")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-owner reached the owner's brokered mailbox: got status=%d, want 403", rec.Code)
+	}
+	// The proxy must not have been reached at all — a 403 that still spent the
+	// credential downstream would have already exposed the owner's calendar to
+	// the upstream call (and its logs).
+	if f.lastPath != "" {
+		t.Fatalf("non-owner was denied but the request still proxied upstream (%q)", f.lastPath)
+	}
+}
+
+func TestPIMProxy_BrokerMode_AllowsOwner(t *testing.T) {
+	f := newFakeLilmail(t)
+	broker := map[string]string{"X-Vulos-Mail-Secret": "s3cr3t", "X-Vulos-Mail-Email": "ada@example.com"}
+	mux := pimTestMux(f.srv.URL, broker, "u1")
+
+	req := httptest.NewRequest("GET", "/api/pim/calendar/events?from=2026-01-01", nil)
+	req.Header.Set("X-User-ID", "u1")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("box owner was blocked from their own mailbox: got status=%d, want 200", rec.Code)
+	}
+}
+
+func TestPIMProxy_BrokerMode_FailsClosedWithNoResolvableOwner(t *testing.T) {
+	f := newFakeLilmail(t)
+	broker := map[string]string{"X-Vulos-Mail-Secret": "s3cr3t"}
+
+	for _, tc := range []struct {
+		name    string
+		ownerID func() string
+	}{
+		{"nil resolver", nil},
+		{"owner unresolved (no admin user yet)", func() string { return "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			registerPIMRoutes(mux, f.srv.URL, broker, tc.ownerID)
+
+			req := httptest.NewRequest("GET", "/api/pim/calendar/events", nil)
+			req.Header.Set("X-User-ID", "u1")
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("unresolvable owner did not fail closed: got status=%d, want 403", rec.Code)
+			}
+		})
+	}
+}
+
+// Session-cookie mode (no broker headers) has no box-wide credential to
+// protect: the downstream credential is the caller's OWN forwarded cookie, so
+// every authenticated profile must still get through and lilmail does the
+// scoping. This is the case the owner gate must NOT break.
+func TestPIMProxy_SessionMode_AllowsAnyAuthenticatedProfile(t *testing.T) {
+	f := newFakeLilmail(t)
+	mux := pimTestMux(f.srv.URL, nil, "u1")
+
+	req := httptest.NewRequest("GET", "/api/pim/calendar/events", nil)
+	req.Header.Set("X-User-ID", "u2") // not the owner
+	req.Header.Set("Cookie", "vc_session=u2-cookie")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session-cookie mode wrongly gated a non-owner: got status=%d, want 200", rec.Code)
 	}
 }
