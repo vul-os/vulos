@@ -492,18 +492,18 @@ Appearance is yours to tune: four color themes (Default, Solarized, Dracula, Lig
 
 ## Using it from your phone
 
-Vulos is the same box, the same URL, the same account — open it in your phone's browser and the shell **adapts** rather than shrinking a desktop into a postage stamp. There are no tiny draggable windows on a phone: a launched app takes the full screen, and a persistent bottom dock — **Home · Switcher · All apps** — is the one thumb-reachable way to move around.
+Vulos is the same box, the same URL, the same account — open it in your phone's browser and the shell **adapts** rather than shrinking a desktop into a postage stamp. There are no tiny draggable windows on a phone: a launched app takes the full screen, and a persistent bottom dock — **Home · Apps · Library** — is the one thumb-reachable way to move around.
 
 <table>
   <tr>
-    <td width="50%"><img src="screenshots/mobile-light.png" alt="The Vulos Home surface on a phone" width="100%" /></td>
-    <td width="50%"><img src="screenshots/mobile-apps-light.png" alt="An app running fullscreen on a phone, reached from the bottom dock" width="100%" /></td>
+    <td width="50%"><img src="screenshots/mobile-light.png" alt="The File Explorer running fullscreen on a phone, with the Home / Apps / Library dock along the bottom" width="100%" /></td>
+    <td width="50%"><img src="screenshots/mobile-apps-light.png" alt="The Library overlay on a phone: a searchable app grid grouped by category" width="100%" /></td>
   </tr>
 </table>
 
 - **Home** — the same brief you get on desktop: agenda, assistant composer, quick launch.
-- **Switcher** — a full-height list of every running app as a large card; tap one to jump back in. Every open app stays mounted in the background (not unmounted) when you switch away, so its scroll position and state are exactly where you left them.
-- **All apps** — the full Launchpad grid.
+- **Apps** — the app switcher: a full-height list of every running app as a large card, badged with how many are open (disabled when none are); tap one to jump back in. Every open app stays mounted in the background (not unmounted) when you switch away, so its scroll position and state are exactly where you left them.
+- **Library** — opens the full Launchpad grid, with search.
 
 Because it's a real web app, you can **add it to your home screen** from your phone's browser share/menu (Vulos ships a standard web app manifest with a standalone display mode), so it opens full-screen like an installed app without an app-store round-trip.
 
