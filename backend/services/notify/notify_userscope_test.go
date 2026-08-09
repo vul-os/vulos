@@ -172,3 +172,80 @@ func TestStoreListForUser_ScopesPersistedHistory(t *testing.T) {
 		}
 	}
 }
+
+// TestMarkReadForUser_CannotTouchAnotherUsersPrivateNotification proves the
+// core NOTIF-USER-SCOPE-02 mutation leak is closed: alice cannot flip the
+// read state of bob's private notification by supplying its ID, even though
+// she can mark her own.
+func TestMarkReadForUser_CannotTouchAnotherUsersPrivateNotification(t *testing.T) {
+	svc := New()
+	svc.SendNotification(Notification{ID: "bob-1", Title: "b", Body: "b-secret", UserID: "bob"})
+	svc.SendNotification(Notification{ID: "alice-1", Title: "a", Body: "a-secret", UserID: "alice"})
+
+	svc.MarkReadForUser("bob-1", "alice")
+	svc.MarkReadForUser("alice-1", "alice")
+
+	bobs := svc.ListForUser("bob", 0)
+	if len(bobs) != 1 || bobs[0].Read {
+		t.Fatalf("alice must not be able to mark bob's private notification read: %+v", bobs)
+	}
+	alices := svc.ListForUser("alice", 0)
+	if len(alices) != 1 || !alices[0].Read {
+		t.Fatalf("alice should be able to mark her own notification read: %+v", alices)
+	}
+}
+
+// TestMarkAllReadForUser_LeavesOtherAccountsUnread proves the "empty id"
+// bulk-mark path only touches notifications visible to the caller.
+func TestMarkAllReadForUser_LeavesOtherAccountsUnread(t *testing.T) {
+	svc := New()
+	svc.SendNotification(Notification{ID: "sys-1", Title: "s", Body: "sys"}) // untargeted
+	svc.SendNotification(Notification{ID: "bob-1", Title: "b", Body: "b-secret", UserID: "bob"})
+	svc.SendNotification(Notification{ID: "alice-1", Title: "a", Body: "a-secret", UserID: "alice"})
+
+	svc.MarkAllReadForUser("alice")
+
+	if svc.UnreadForUser("bob") != 1 {
+		t.Fatalf("alice's MarkAllReadForUser must not silence bob's unread badge")
+	}
+	if svc.UnreadForUser("alice") != 0 {
+		t.Fatalf("alice's own + the untargeted notification should now be read")
+	}
+}
+
+// TestClearForUser_PreservesOtherAccountsHistory proves one account cannot
+// wipe another account's notification history via the scoped Clear.
+func TestClearForUser_PreservesOtherAccountsHistory(t *testing.T) {
+	svc := New()
+	svc.SendNotification(Notification{ID: "sys-1", Title: "s", Body: "sys"})
+	svc.SendNotification(Notification{ID: "bob-1", Title: "b", Body: "b-secret", UserID: "bob"})
+	svc.SendNotification(Notification{ID: "alice-1", Title: "a", Body: "a-secret", UserID: "alice"})
+
+	svc.ClearForUser("alice")
+
+	bobs := svc.ListForUser("bob", 0)
+	if len(bobs) != 1 || bobs[0].ID != "bob-1" {
+		t.Fatalf("bob's private notification must survive alice's ClearForUser: %+v", bobs)
+	}
+	if got := svc.ListForUser("alice", 0); len(got) != 0 {
+		t.Fatalf("alice should have cleared everything visible to her, got %+v", got)
+	}
+}
+
+// TestUnscopedMarkReadAndClear_StillGlobal pins the documented UNSCOPED
+// behaviour of the box-level/internal MarkRead, MarkAllRead and Clear — they
+// must remain global (for internal/system callers) and must NEVER be the
+// function an HTTP mutation route calls directly; that contract is enforced
+// at the route layer (see cmd/server/routes_notify_scope_test.go).
+func TestUnscopedMarkReadAndClear_StillGlobal(t *testing.T) {
+	svc := New()
+	svc.SendNotification(Notification{ID: "bob-1", Title: "b", Body: "b-secret", UserID: "bob"})
+	svc.MarkRead("bob-1")
+	if got := svc.ListForUser("bob", 0); len(got) != 1 || !got[0].Read {
+		t.Fatalf("unscoped MarkRead should still mark the notification: %+v", got)
+	}
+	svc.Clear()
+	if got := svc.ListForUser("bob", 0); len(got) != 0 {
+		t.Fatalf("unscoped Clear should still wipe everything: %+v", got)
+	}
+}

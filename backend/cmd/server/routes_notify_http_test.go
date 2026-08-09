@@ -223,18 +223,36 @@ func TestNotifyActionDispatches(t *testing.T) {
 
 // --- persistent store: history + prune --------------------------------------
 
-func newNotifyPersistMux(t *testing.T) *http.ServeMux {
+// newNotifyPersistMux wires the persist+prune routes over a temp auth store
+// seeded with one admin and one ordinary user — the first registered profile
+// is auto-admin (see auth.Store.Register), matching the idorRegression /
+// instances-manage test convention elsewhere in this package. Returns the
+// mux plus the two profiles' real IDs (X-User-ID must be the profile ID, not
+// the login username).
+func newNotifyPersistMux(t *testing.T) (mux *http.ServeMux, adminID, userID string) {
 	t.Helper()
 	svc := notify.New()
-	mux := http.NewServeMux()
-	registerNotifyPersistRoutes(mux, svc, t.TempDir())
-	return mux
+	mux = http.NewServeMux()
+	store, err := auth.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("auth.NewStore: %v", err)
+	}
+	admin, err := store.Register("admin", "adminpw123-secure!", "Admin")
+	if err != nil {
+		t.Fatalf("register admin: %v", err)
+	}
+	user, err := store.Register("user-1", "user1pw123-secure!", "User One")
+	if err != nil {
+		t.Fatalf("register user-1: %v", err)
+	}
+	registerNotifyPersistRoutes(mux, svc, t.TempDir(), store)
+	return mux, admin.ID, user.ID
 }
 
 // TestNotifyPersistList: GET /api/notifications/persist returns a (possibly
 // empty) list without requiring auth (read-only history badge).
 func TestNotifyPersistList(t *testing.T) {
-	mux := newNotifyPersistMux(t)
+	mux, _, _ := newNotifyPersistMux(t)
 	rec := doNotifyJSON(t, mux, "GET", "/api/notifications/persist?limit=5", "", "")
 	if rec.Code != 200 {
 		t.Fatalf("persist list = %d, want 200", rec.Code)
@@ -249,18 +267,18 @@ func TestNotifyPersistList(t *testing.T) {
 // TestNotifyPruneRequiresAuth: POST /api/notifications/prune is a mutation and
 // rejects an unauthenticated caller.
 func TestNotifyPruneRequiresAuth(t *testing.T) {
-	mux := newNotifyPersistMux(t)
+	mux, _, _ := newNotifyPersistMux(t)
 	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "", `{}`)
 	if rec.Code != 401 {
 		t.Fatalf("unauth prune = %d, want 401", rec.Code)
 	}
 }
 
-// TestNotifyPruneDefaults: an empty body on the authenticated prune path falls
-// back to defaults and returns a remaining count.
+// TestNotifyPruneDefaults: an empty body on the authenticated ADMIN prune path
+// falls back to defaults and returns a remaining count.
 func TestNotifyPruneDefaults(t *testing.T) {
-	mux := newNotifyPersistMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "user-1", ``)
+	mux, adminID, _ := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", adminID, ``)
 	if rec.Code != 200 {
 		t.Fatalf("prune defaults = %d, want 200", rec.Code)
 	}
@@ -274,13 +292,25 @@ func TestNotifyPruneDefaults(t *testing.T) {
 }
 
 // TestNotifyPruneCustom: explicit max_n / max_age_hours are accepted (exercises
-// the non-default branch).
+// the non-default branch), as an admin.
 func TestNotifyPruneCustom(t *testing.T) {
-	mux := newNotifyPersistMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", "user-1",
+	mux, adminID, _ := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", adminID,
 		`{"max_n":10,"max_age_hours":24}`)
 	if rec.Code != 200 {
 		t.Fatalf("prune custom = %d, want 200", rec.Code)
+	}
+}
+
+// TestNotifyPruneRejectsNonAdmin: NOTIF-USER-SCOPE-02 — the persisted store is
+// box-wide with no per-user Prune, so a non-admin authenticated caller must be
+// rejected (they could otherwise wipe every account's notification history,
+// including other users' private ones, e.g. a fired reminder's text).
+func TestNotifyPruneRejectsNonAdmin(t *testing.T) {
+	mux, _, userID := newNotifyPersistMux(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/prune", userID, `{}`)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("non-admin prune = %d, want 403", rec.Code)
 	}
 }
 

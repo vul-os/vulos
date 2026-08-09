@@ -1559,23 +1559,9 @@ func main() {
 	// (X-User-ID enforced by auth Middleware) and /send additionally requires
 	// admin role to prevent notification-injection attacks (phishing via injected
 	// system-level UI pop-ups).
-	mux.HandleFunc("POST /api/notifications/read", func(w http.ResponseWriter, r *http.Request) {
-		// Authenticated user may mark their own notifications read.
-		if r.Header.Get("X-User-ID") == "" {
-			writeErr(w, 401, "unauthorized")
-			return
-		}
-		var req struct {
-			ID string `json:"id"`
-		}
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.ID == "" {
-			notifySvc.MarkAllRead()
-		} else {
-			notifySvc.MarkRead(req.ID)
-		}
-		writeJSON(w, map[string]string{"status": "ok"})
-	})
+	// NOTIF-USER-SCOPE-02: read + clear live in routes_notify_readclear.go so
+	// the scope tests can drive the SAME registration this calls.
+	registerNotifyReadClearRoutes(mux, notifySvc)
 	mux.HandleFunc("POST /api/notifications/send", func(w http.ResponseWriter, r *http.Request) {
 		// M7: /send is admin-only — prevents a non-admin app or user from
 		// injecting phishing-style notifications into the OS notification feed.
@@ -1598,15 +1584,6 @@ func main() {
 		}
 		n := notifySvc.Send(req.Title, req.Body, req.Level, req.Source)
 		writeJSON(w, n)
-	})
-	mux.HandleFunc("POST /api/notifications/clear", func(w http.ResponseWriter, r *http.Request) {
-		// M7: /clear requires an authenticated user (X-User-ID checked explicitly).
-		if r.Header.Get("X-User-ID") == "" {
-			writeErr(w, 401, "unauthorized")
-			return
-		}
-		notifySvc.Clear()
-		writeJSON(w, map[string]string{"status": "cleared"})
 	})
 	notifyExtSvc := registerNotifyExtRoutes(mux, notifySvc, home, authStore) // NOTIF-05+06: DND + inline actions
 	// PUSH-CELL-01: cell-side DIRECT Web Push send-path + subscribe surface.
@@ -4179,7 +4156,7 @@ func main() {
 	// Cluster join from a NEW device — validate S3+passphrase, begin sync (INIT-08)
 	registerJoinRoutes(mux, home)
 	// Persistent notification store + prune endpoint (NOTIF-02)
-	registerNotifyPersistRoutes(mux, notifySvc, home)
+	registerNotifyPersistRoutes(mux, notifySvc, home, authStore)
 	// Account security (login/session anomaly feed + emergency lock). acctSecSvc
 	// was opened + wired to auth's sensitive-action hook earlier (see the
 	// AUTH-12 passkey section above) so it's ready in time to also be threaded

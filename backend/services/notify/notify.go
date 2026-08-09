@@ -347,7 +347,11 @@ func (s *Service) UnreadForUser(userID string) int {
 	return count
 }
 
-// MarkRead marks a notification as read.
+// MarkRead marks a notification as read. UNSCOPED — it does not check who is
+// asking, so it must NOT be wired to an HTTP handler directly (a caller could
+// mark another account's private notification, e.g. a fired reminder, as read
+// by guessing/observing its ID). HTTP surfaces use MarkReadForUser. Kept for
+// box-level/internal callers and tests.
 func (s *Service) MarkRead(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -359,12 +363,44 @@ func (s *Service) MarkRead(id string) {
 	}
 }
 
-// MarkAllRead marks all notifications as read.
+// MarkReadForUser marks notification id as read only if it is VISIBLE to
+// userID (box-level, or that user's own private notification) — the scoped
+// counterpart of MarkRead (NOTIF-USER-SCOPE). A private notification
+// belonging to a different account is left untouched, so user A cannot flip
+// the read/unread state of user B's reminder by guessing its ID.
+func (s *Service) MarkReadForUser(id, userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.history {
+		if s.history[i].ID == id {
+			if deliverableTo(s.history[i], userID) {
+				s.history[i].Read = true
+			}
+			return
+		}
+	}
+}
+
+// MarkAllRead marks all notifications as read. UNSCOPED — see MarkRead. HTTP
+// surfaces use MarkAllReadForUser.
 func (s *Service) MarkAllRead() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.history {
 		s.history[i].Read = true
+	}
+}
+
+// MarkAllReadForUser marks as read every notification VISIBLE to userID
+// (box-level plus that user's own private ones), leaving other accounts'
+// private notifications' read state untouched (NOTIF-USER-SCOPE).
+func (s *Service) MarkAllReadForUser(userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.history {
+		if deliverableTo(s.history[i], userID) {
+			s.history[i].Read = true
+		}
 	}
 }
 
@@ -381,11 +417,32 @@ func (s *Service) UnreadCount() int {
 	return count
 }
 
-// Clear removes all notifications.
+// Clear removes all notifications, including every account's private ones.
+// UNSCOPED — must NOT be wired to a non-admin HTTP handler (any authenticated
+// caller could wipe another account's notification history, e.g. a fired
+// reminder's text, off a shared box). HTTP surfaces use ClearForUser. Kept for
+// box-level/internal callers and tests.
 func (s *Service) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = nil
+}
+
+// ClearForUser removes only the notifications VISIBLE to userID (box-level
+// plus that user's own private ones); another account's private notification
+// is left in history untouched (NOTIF-USER-SCOPE). This is the scoped
+// counterpart of Clear and is what the per-user HTTP /clear endpoint must use
+// so one account cannot destroy another account's notification history.
+func (s *Service) ClearForUser(userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.history[:0]
+	for _, n := range s.history {
+		if !deliverableTo(n, userID) {
+			kept = append(kept, n)
+		}
+	}
+	s.history = kept
 }
 
 // Shutdown force-drains every live notification WebSocket. Hijacked WS conns are

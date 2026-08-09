@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"vulos/backend/services/auth"
 	"vulos/backend/services/notify"
 )
 
@@ -22,11 +23,12 @@ import (
 // ~/.vulos/db/notifications.json, attaches it to notifySvc, and serves:
 //
 //	GET  /api/notifications/persist?limit=N  → persisted history (newest first)
-//	POST /api/notifications/prune            → {max_n?, max_age_hours?}
+//	POST /api/notifications/prune            → {max_n?, max_age_hours?}, admin-only
 //
-// home is os.UserHomeDir(). A store-open failure is logged and the server
+// home is os.UserHomeDir(). authStore resolves the caller's role for the
+// admin gate on /prune. A store-open failure is logged and the server
 // continues memory-only (persistence is best-effort, never fatal).
-func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, home string) {
+func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, home string, authStore *auth.Store) {
 	storePath := filepath.Join(home, "db", "notifications.json")
 
 	store, err := notify.OpenStore(storePath)
@@ -55,10 +57,18 @@ func registerNotifyPersistRoutes(mux *http.ServeMux, notifySvc *notify.Service, 
 	// Body: {"max_n": 500, "max_age_hours": 720}. Omitted/zero fields fall
 	// back to the store defaults (cap 500, age 30d).
 	//
-	// M7: requires an authenticated user.
+	// NOTIF-USER-SCOPE-02: admin-only. The persisted store is box-wide — it
+	// has no per-user Prune, so any authenticated caller could otherwise wipe
+	// every account's notification history (including other users' private
+	// ones, e.g. a fired reminder's text) down to almost nothing with
+	// {"max_n":0}. Same "affects everyone, gate to admin" precedent as /send.
 	mux.HandleFunc("POST /api/notifications/prune", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-User-ID") == "" {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		if !secI_isAdmin(r, authStore) {
+			http.Error(w, `{"error":"forbidden: pruning notification history requires admin"}`, http.StatusForbidden)
 			return
 		}
 		var req struct {
