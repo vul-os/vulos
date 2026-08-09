@@ -33,7 +33,7 @@ Format: `location | severity | fix-applied | reasoning`
 
 | Location | Severity | Fix Applied | Reasoning |
 |---|---|---|---|
-| `backend/services/auth/devicepin.go` | low | no | PIN material never stored in plaintext. Argon2id wrap key (time=1, mem=64MiB, threads=4, key=32B). Ciphertext is AES-256-GCM. Optional TPM re-seal via `KeyStore.Seal`. Lockout at 5 wrong attempts; permanent lock after 3 lockouts. |
+| `backend/services/auth/devicepin.go` | low | no | PIN material never stored in plaintext. Argon2id wrap key (time=3, mem=64MiB, threads=4, key=32B — `pinArgon2Time`/`pinArgon2Mem`/`pinArgon2Threads`/`pinArgon2KeyLen`). Ciphertext is AES-256-GCM. Optional TPM re-seal via `KeyStore.Seal`. Lockout at 5 wrong attempts; permanent lock after 3 lockouts. |
 | `backend/services/auth/devicepin.go` (TPM-wrapped blob without KeyStore) | high | yes (test) | When `tpm_wrapped=true` in `pin.bin` but `ks==nil`, `ValidatePIN` must return an error rather than attempt software decryption. Code path confirmed fail-closed (line 438). Added `TestValidatePIN_TPMWrapped_NoKeyStore` to `devicepin_test.go` to assert this behaviour. |
 | `backend/services/auth/fingerprint.go` | low | no | `IsAvailable()` checks for `gdbus` + `fprintd` presence at runtime. `Verify()` returns `ErrFingerprintUnavailable` (not nil) when hardware is absent. Fail-closed. PAM-level delegation means no credential material handled in process. |
 | `backend/services/devicekey/tpm.go` | low | no | TPM2 wrap key derived from stable ECC P-256 public key DER. Seal/Unseal uses AES-256-GCM with the TPM-derived shared secret. Key never leaves the TPM boundary. |
@@ -44,7 +44,7 @@ Format: `location | severity | fix-applied | reasoning`
 
 | Location | Severity | Fix Applied | Reasoning |
 |---|---|---|---|
-| `backend/services/passkeys/passkeys.go` | low | no | Challenge replay prevented by `au12ConsumeSession`: sessions are single-use tokens with expiry and `userID` binding checked before delete. RP-ID sourced from `PASSKEYS_RP_ID` environment variable. Device-bound via `KeyStore.Seal`. |
+| `backend/services/passkeys/passkeys.go` | low | no | Challenge replay prevented by `au12ConsumeSession`: sessions are single-use tokens with expiry and `userID` binding checked before delete. RP-ID sourced from the `VULOS_RPID` environment variable (`passkeys.go`), which fails closed in prod: unset, or left at the `localhost` dev default, and the server refuses to start. Device-bound via `KeyStore.Seal`. |
 | `backend/cmd/server/routes_passkeys.go` (`finishRegister`) | med | yes | `AttestationResponse` decoder had no body size cap — a large POST could exhaust server memory. Added `http.MaxBytesReader(w, r.Body, 64<<10)`. |
 | `backend/cmd/server/routes_passkeys.go` (`finishAssert`) | med | yes | Same issue for `AssertionResponse`. Added `http.MaxBytesReader(w, r.Body, 64<<10)`. |
 
@@ -90,7 +90,7 @@ Format: `location | severity | fix-applied | reasoning`
 
 | Location | Severity | Fix Applied | Reasoning |
 |---|---|---|---|
-| `backend/services/osdist/slots.go` | low | no | `IncrementBootCounter` called before services are started (early in boot). `MarkHealthy` called only after the HTTP server is confirmed listening. `ShouldRollback` check gates A/B slot flip. Boot counter is monotonically increasing; epoch floor in `signing/epoch.go` enforces minimum and requires a root-signed bump to lower the floor. No rollback path found. |
+| `backend/services/osdist/slots.go` | low | no | `IncrementBootCounter` called before services are started (early in boot). `MarkHealthy` called only after the HTTP server is confirmed listening. `ShouldRollback` gates the decision to roll back. Boot counter is monotonically increasing; epoch floor in `signing/epoch.go` enforces minimum and requires a root-signed bump to lower the floor. No *downgrade* path found. **Correction (later docs audit):** this row said `ShouldRollback` "gates A/B slot flip". There is no slot flip to gate — nothing rewrites the bootloader entry, so a rollback is only recorded in `boot-state.json` and has no effect on the next boot (OSDIST-FLIP-01; `cmd/init/main.go` logs this explicitly). That is a *functional* gap, not a new vulnerability: the effect is that a bad update stays inactive rather than being rolled back to, because it never became active either. |
 
 ---
 
