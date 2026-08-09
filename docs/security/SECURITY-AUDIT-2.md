@@ -1,4 +1,4 @@
-# SECURITY-AUDIT-2 — Adversarial Re-Audit of Vula OS (SECAUDIT2)
+# SECURITY-AUDIT-2 — Adversarial Re-Audit of Vulos OS (SECAUDIT2)
 
 **Scope:** Full re-audit of the external attack surface on current `main`
 (branch `task/SECAUDIT2`), with the grown surface since decisions.md D24:
@@ -19,22 +19,29 @@ C1–C4 / H1–H6 / M3 / M4 / SEC-A/B/E/F/G/H/I fixes still hold on current main
 with **one new HIGH** regression in the registry static-install path and a
 few LOW/informational items.
 
-`cd backend && GOMAXPROCS=2 go build ./...` → **OK**.
-`go test ./...` → entire suite green **except** the deliberately-failing
-`TestStaticDownloadRequiresChecksum` (it encodes Finding H1; left red on
-purpose per the audit contract).
+`cd backend && GOMAXPROCS=2 go build ./...` → **OK** at audit time.
+At audit time `go test ./...` was green **except** the deliberately-failing
+`TestStaticDownloadRequiresChecksum`, which encoded Finding H1 and was left red
+on purpose per the audit contract.
+
+> **Status update (re-verified by a later docs audit).** That test **passes
+> now** — `go test ./services/appnet/ -run TestStaticDownloadRequiresChecksum`
+> is green — because H1 was fixed. Do not read the paragraph above as a
+> statement about the current tree. Every finding's live status is in the
+> table below; the finding write-ups themselves are preserved as the record of
+> what was found in the audit, not of what is true today.
 
 ---
 
 ## Executive Summary
 
-| Sev | ID  | Title | Status |
-|-----|-----|-------|--------|
-| HIGH | H1 | Registry static-download recipes bypass checksum enforcement **and** extract with unsafe system `tar` | OPEN (test red) |
-| MED  | M-1 | `/api/shell/native-launch` does not charset-validate `app_id` before manifest lookup | OPEN |
-| LOW  | L-1 | Passkeys `au12ConsumeSession` deletes the pending ceremony before the user-binding check (token-knower DoS) | OPEN |
-| LOW  | L-2 | `/api/setup/join` is unauthenticated post-setup (by design, but abusable as a write/SSRF primitive) | ACCEPTED-RISK / mitigated |
-| INFO | I-1 | `/api/sandbox/{id}/` proxy forwards all client headers to localhost script | NOTE |
+| Sev | ID  | Title | Status at audit | Status now (re-verified) |
+|-----|-----|-------|-----------------|--------------------------|
+| HIGH | H1 | Registry static-download recipes bypass checksum enforcement **and** extract with unsafe system `tar` | OPEN (test red) | **FIXED** — `validateRecipeSecurity` now refuses any recipe with `download_url` set and no checksum (`services/appnet/registry.go`, tagged `SECAUDIT2-H1`), and `staticInstall` runs a `tar tf` pre-extraction screen rejecting absolute and `../` members before extracting. `TestStaticDownloadRequiresChecksum` passes. |
+| MED  | M-1 | `/api/shell/native-launch` does not charset-validate `app_id` before manifest lookup | OPEN | **FIXED** — `^[a-z0-9][a-z0-9-]{0,63}$` charset gate before the manifest path join (`cmd/server/main.go`, tagged `SECAUDIT2 M-1`), parity with `/api/apps/launch`. |
+| LOW  | L-1 | Passkeys `au12ConsumeSession` deletes the pending ceremony before the user-binding check (token-knower DoS) | OPEN | **FIXED** — expiry and `sess.UserID == userID` are both checked *before* the `delete`, so a wrong-user call cannot destroy the owner's ceremony (`services/passkeys/passkeys.go`). |
+| LOW  | L-2 | `/api/setup/join` is unauthenticated post-setup (by design, but abusable as a write/SSRF primitive) | ACCEPTED-RISK / mitigated | **FIXED** — `joinsync.IsProvisioned(home)` now returns 409 before rate-limit accounting, and `joinsync.Join` re-checks (`ErrAlreadyProvisioned`) as defence in depth (`cmd/server/routes_join.go`, tagged `SECAUDIT2 L-2`). |
+| INFO | I-1 | `/api/sandbox/{id}/` proxy forwards all client headers to localhost script | NOTE | **Still true** — the proxy still copies every client header to the sandbox process. It remains admin-gated and bound to 127.0.0.1, so the original "not exploitable on its own" assessment stands. |
 
 No CRITICAL findings. The previously-fixed unauth RCE chain (D24 C1/C3/C4)
 remains closed.
