@@ -514,14 +514,25 @@ func writeLiveBootEntry(ctx context.Context, mountPath string) error {
 		return fmt.Errorf("write loader.conf: %w", err)
 	}
 
+	// ALL of "options" belongs on ONE line. systemd-boot's Boot Loader
+	// Specification does allow "options" to repeat across multiple lines,
+	// but only when EVERY line starts with the literal keyword "options"
+	// again — a bare indented continuation line (no keyword) is not part of
+	// the spec and is silently dropped. This previously split vulos.live=1,
+	// toram, and vulos.squashfs= onto exactly such continuation lines, so
+	// none of them ever reached the kernel command line: confirmed against
+	// the netboot sibling of this exact bug in
+	// backend/services/installer/netboot_install.go's writeSlotABootEntry,
+	// found by reading the real `Kernel command line:` QEMU printed after
+	// booting a disk this package's shape produced
+	// (scripts/netboot-install-smoke.sh) — no mocked unit test parses a
+	// kernel command line, so nothing before this caught it.
 	entry := strings.Join([]string{
 		"# Vulos OS — live USB boot entry (written by BMINIT-14 installer)",
 		"title   Vulos OS (live USB)",
 		"linux   /EFI/vulos/vmlinuz",
 		"initrd  /EFI/vulos/initramfs.img",
-		"options root=LABEL=vulos-root ro quiet splash",
-		"        vulos.live=1 toram",
-		"        vulos.squashfs=/EFI/vulos/os-core.squashfs",
+		"options root=LABEL=vulos-root ro quiet splash vulos.live=1 toram vulos.squashfs=/EFI/vulos/os-core.squashfs",
 	}, "\n") + "\n"
 
 	entryPath := filepath.Join(entriesDir, "vulos-live.conf")

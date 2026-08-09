@@ -218,3 +218,47 @@ func TestWriteBootableESP_EmptyTargetDisk(t *testing.T) {
 		t.Errorf("error should mention TargetDisk, got: %v", err)
 	}
 }
+
+// TestWriteLiveBootEntry_OptionsIsOneLine is a regression test for a bug
+// found by actually booting the netboot sibling of this entry writer's
+// output in QEMU (NETB-05, scripts/netboot-install-smoke.sh): "options" was
+// split across bare indented continuation lines (no repeated "options"
+// keyword), which the Boot Loader Specification does not recognise —
+// systemd-boot silently drops everything after the first "options" line.
+// The real kernel command line QEMU reported after booting a disk built this
+// way was missing vulos.live=1/toram/vulos.squashfs= entirely, even though
+// TestWriteLiveBootEntry_CreatesEntry's substring checks all still "passed"
+// against the file text — they never checked line structure. This test does.
+func TestWriteLiveBootEntry_OptionsIsOneLine(t *testing.T) {
+	tmpESP := t.TempDir()
+
+	if err := writeLiveBootEntry(context.Background(), tmpESP); err != nil {
+		t.Fatalf("writeLiveBootEntry: %v", err)
+	}
+
+	entryPath := filepath.Join(tmpESP, "loader", "entries", "vulos-live.conf")
+	data, err := os.ReadFile(entryPath)
+	if err != nil {
+		t.Fatalf("entry file not created: %v", err)
+	}
+	content := string(data)
+
+	var optionsLines []string
+	for _, ln := range strings.Split(content, "\n") {
+		if strings.HasPrefix(ln, "options") {
+			optionsLines = append(optionsLines, ln)
+		} else if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
+			t.Fatalf("entry has a bare indented continuation line — the Boot Loader "+
+				"Specification does not support this and systemd-boot silently drops it "+
+				"(it must repeat the \"options\" keyword instead, or stay on one line): %q\nfull entry:\n%s", ln, content)
+		}
+	}
+	if len(optionsLines) != 1 {
+		t.Fatalf("expected exactly 1 line starting with \"options\", got %d: %v", len(optionsLines), optionsLines)
+	}
+	for _, want := range []string{"vulos.live=1", "toram", "vulos.squashfs="} {
+		if !strings.Contains(optionsLines[0], want) {
+			t.Errorf("the single options line is missing %q — it would never reach the kernel cmdline: %s", want, optionsLines[0])
+		}
+	}
+}

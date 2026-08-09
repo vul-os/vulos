@@ -7,8 +7,13 @@
 # cryptsetup-bin (veritysetup) so VERITY-01 can produce a real dm-verity root
 # hash for the stable.json that --disk now signs (VERITY-02) — without it the
 # build refuses to fabricate a bogus root hash and fails loudly instead.
+# systemd-boot (bootctl) is here for scripts/netboot-install-smoke.sh, which —
+# unlike build.sh's own loop-free/mtools ESP assembly — runs the REAL netboot
+# installer (backend/services/installer) against a real loop-mounted disk, and
+# that installer shells out to the real bootctl.
 #
-# Built/cached automatically by scripts/baremetal-smoke.sh.
+# Built/cached automatically by scripts/baremetal-smoke.sh and
+# scripts/netboot-install-smoke.sh.
 FROM golang:trixie
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -18,7 +23,7 @@ ENV GOTOOLCHAIN=auto
 RUN apt-get update && apt-get install -y --no-install-recommends \
       debootstrap \
       e2fsprogs dosfstools mtools parted squashfs-tools \
-      cryptsetup-bin \
+      cryptsetup-bin systemd-boot util-linux \
       xz-utils zstd ca-certificates curl git \
  && rm -rf /var/lib/apt/lists/*
 

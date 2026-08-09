@@ -42,9 +42,6 @@ esac
 
 . /scripts/functions
 
-SQUASHFS_PATH="/image.squashfs"
-HASHTREE_PATH="/os-core.hashtree"
-ROOTHASH_PATH="/os-core.roothash"
 VERITY_NAME="vulos-root"
 LOWER="/run/vulos/lower"
 RW="/run/vulos/rw"          # one tmpfs holds BOTH upper and work — overlayfs
@@ -52,17 +49,101 @@ UPPER="/run/vulos/rw/upper" # requires upperdir and workdir on the same mount
 WORK="/run/vulos/rw/work"
 MERGED="/run/vulos/merged"
 
+# ── BEGIN-TESTABLE ─────────────────────────────────────────────────────────
+# scripts/test-vulos-live-cmdline.sh extracts everything between the
+# BEGIN-TESTABLE/END-TESTABLE markers and sources it standalone (no
+# /scripts/functions, no real mounts) so the cmdline-parsing + path-derivation
+# logic below is unit-tested without booting a kernel. Keep this block
+# self-contained: no reference to rootmnt, panic, log_*_msg, or anything else
+# that only exists inside a real initramfs.
+
 # The initramfs may not ship grep — a failed `grep` here (command-not-found →
 # non-zero → `! grep` true) made this hook exit 0 and skip the live overlay
 # entirely, dropping the boot to an initramfs shell. Read the cmdline with pure
 # shell instead. Matches a bare token ("vulos.live") or a key ("vulos.live=…").
+#
+# `read` returns NON-ZERO whenever the line it read has no trailing newline —
+# which is exactly how /proc/cmdline is normally presented — even though it
+# still populates the variable correctly. The previous form here
+# ("read ... || _cl=''") treated that non-zero status as "read failed" and
+# threw away the value read just moments before, on every single boot. _cl is
+# initialised to "" up front instead, and read's exit status is ignored
+# (2>/dev/null keeps a genuine open failure, e.g. no /proc, silent and safe:
+# _cl simply stays empty). Caught by TestCmdlineHas_NoTrailingNewline in
+# scripts/test-vulos-live-cmdline.sh, which reproduces this exact shape with a
+# fixture file that has no trailing newline (as would a real /proc/cmdline).
 cmdline_has() {
-    read -r _cl < /proc/cmdline 2>/dev/null || _cl=""
+    _cl=""
+    read -r _cl < "${VULOS_CMDLINE_FILE:-/proc/cmdline}" 2>/dev/null
     case " $_cl " in
         *" $1 "*|*" $1="*) return 0 ;;
     esac
     return 1
 }
+
+# read_cmdline_value KEY — prints the value of KEY=... on the kernel cmdline
+# (last match wins, matching how the kernel itself resolves repeated params),
+# or nothing + a non-zero exit when KEY is absent. Reads from
+# $VULOS_CMDLINE_FILE when set (unit tests only) so this parsing logic is
+# testable without booting a kernel; production always reads /proc/cmdline.
+# Same no-trailing-newline fix as cmdline_has above — see its comment.
+read_cmdline_value() {
+    _cl=""
+    read -r _cl < "${VULOS_CMDLINE_FILE:-/proc/cmdline}" 2>/dev/null
+    _found=1
+    for _tok in $_cl; do
+        case "$_tok" in
+            "$1="*)
+                _val="${_tok#"$1"=}"
+                _found=0
+                ;;
+        esac
+    done
+    [ "$_found" = 0 ] && printf '%s' "$_val"
+    return "$_found"
+}
+
+# ── Squashfs / verity artifact locations ──────────────────────────────────────
+#
+# Default: the plain live-USB layout (build.sh --live) — a single
+# image.squashfs + sibling os-core.hashtree/os-core.roothash directly on the
+# VULOS-LIVE-DATA data partition (root=LABEL=VULOS-LIVE-DATA).
+#
+# vulos.squashfs=<path> overrides this. Two installer code paths write it:
+#   - BMINIT-14 (backend/internal/installer/esp.go writeLiveBootEntry) for a
+#     re-flashed live-USB ESP.
+#   - NETB-03 (backend/services/installer/netboot_install.go
+#     writeSlotABootEntry) for the OSDIST-02 A/B slot squashfs on the local
+#     disk after a netboot install (e.g. /var/cache/vulos/slot-a/os-core.squashfs).
+# <path> is interpreted the same way as the default: relative to whatever
+# partition root= mounted at $rootmnt.
+#
+# Until this override existed, vulos.squashfs= was written by both installers
+# but read by nothing — the ONLY consumer of the token (this hook, gated on
+# cmdline_has vulos.live per the dfff94f5 fix) ignored it and always looked
+# for /image.squashfs, so a netboot-installed disk could set vulos.live=0
+# correctly and still fail to find its own OS at boot.
+SQUASHFS_PATH="/image.squashfs"
+HASHTREE_PATH="/os-core.hashtree"
+ROOTHASH_PATH="/os-core.roothash"
+if _sqf="$(read_cmdline_value vulos.squashfs)" && [ -n "$_sqf" ]; then
+    SQUASHFS_PATH="$_sqf"
+    # Derive sibling hashtree/roothash paths using the same "<base>.squashfs"
+    # → "<base>.hashtree"/"<base>.roothash" convention gen-verity.sh's callers
+    # already use for the os-core.* artifact family (OS-DISTRIBUTION.md). Only
+    # do this when the override actually ends in .squashfs; otherwise leave
+    # the (now almost certainly nonexistent) defaults, which correctly makes
+    # verity fall back to the unverified-loop-mount branch below rather than
+    # guess at a wrong path.
+    case "$SQUASHFS_PATH" in
+        *.squashfs)
+            _base="${SQUASHFS_PATH%.squashfs}"
+            HASHTREE_PATH="${_base}.hashtree"
+            ROOTHASH_PATH="${_base}.roothash"
+            ;;
+    esac
+fi
+# ── END-TESTABLE ───────────────────────────────────────────────────────────
 
 # Only activate when live mode is requested via kernel parameter
 if ! cmdline_has vulos.live; then

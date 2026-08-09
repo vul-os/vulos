@@ -503,3 +503,193 @@ func TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires(t *testing.T) {
 		t.Errorf("slot-a entry must not pass toram — the squashfs is mounted from the local slot:\n%s", content)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// installNetbootBootctl / installNetbootLoader — bootctl --path/--root shape
+// ---------------------------------------------------------------------------
+//
+// Regression for a bug found by actually running the install pipeline against
+// real bootctl (systemd 257) in a privileged Linux container (NETB-05): both
+// functions passed espMount/netbootInstallMount+"/boot/efi" — an ABSOLUTE
+// path that already contains the --root prefix — as --path. bootctl
+// concatenates --root and --path, so the real invocation resolved to
+// "<netbootInstallMount><netbootInstallMount>/boot/efi", which never exists,
+// and bootctl failed with "Failed to open parent directory" on every real
+// install — aborting the pipeline at the very first bootctl call, long before
+// the vulos.squashfs=/vulos.live=0 tokens (dfff94f5, and the vulos-live hook
+// fix alongside this test) ever mattered. Confirmed the fix against real
+// bootctl: "--path=/boot/efi --root=X" succeeds, "--path=X/boot/efi
+// --root=X" does not. These tests pin the exact args so a future edit can't
+// silently reintroduce the double-prefixed form without booting a real
+// system (or a container with real bootctl) to notice.
+func TestInstallNetbootBootctl_PathIsRelativeToRoot(t *testing.T) {
+	mc := newMockCmd()
+	svc := newWithCommander(mc)
+
+	espMount := netbootInstallMount + "/boot/efi"
+	if err := svc.installNetbootBootctl(context.Background(), espMount); err != nil {
+		t.Fatalf("installNetbootBootctl: %v", err)
+	}
+
+	if !mc.called("bootctl", "--path=/boot/efi", "--root="+netbootInstallMount, "install", "--no-variables") {
+		t.Errorf("bootctl was not called with the expected root-relative --path; calls: %v", mc.calls)
+	}
+	for _, c := range mc.calls {
+		if strings.Contains(c, netbootInstallMount+netbootInstallMount) {
+			t.Errorf("bootctl called with a double-prefixed path (would fail against real bootctl): %s", c)
+		}
+	}
+}
+
+func TestInstallNetbootLoader_PathIsRelativeToRoot(t *testing.T) {
+	mc := newMockCmd()
+	svc := newWithCommander(mc)
+
+	if err := svc.installNetbootLoader(context.Background()); err != nil {
+		t.Fatalf("installNetbootLoader: %v", err)
+	}
+
+	if !mc.called("bootctl", "--path=/boot/efi", "--root="+netbootInstallMount, "install") {
+		t.Errorf("bootctl was not called with the expected root-relative --path; calls: %v", mc.calls)
+	}
+	for _, c := range mc.calls {
+		if strings.Contains(c, netbootInstallMount+netbootInstallMount) {
+			t.Errorf("bootctl called with a double-prefixed path (would fail against real bootctl): %s", c)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeFileViaCommander — real newlines, not literal "\n"
+// ---------------------------------------------------------------------------
+//
+// Regression for the bug found by actually booting a netboot-installed disk
+// in QEMU (NETB-05, scripts/netboot-install-smoke.sh): the previous shape —
+// s.cmd.Output(ctx, "sh", "-c", fmt.Sprintf("printf '%%s' %q > %s", content, path))
+// — used Go's %q to interpolate content into shell script TEXT. %q renders a
+// real newline byte as the two characters '\' 'n', and `printf '%s'` never
+// re-interprets backslash escapes, so every real newline in the written
+// content became the literal two-character sequence "\n" in the file. The
+// existing entry-file tests (TestWriteSlotABootEntry_CreatesEntryFile etc.)
+// used strings.Contains on substrings like "vulos.live=0" — which still
+// matched even with every line glued onto one via literal "\n" text, so they
+// stayed green through the bug. This test asserts what those didn't: the
+// written file actually contains REAL newline bytes, and does not contain
+// the literal two-character escape sequence.
+func TestWriteFileViaCommander_RealNewlines(t *testing.T) {
+	svc := New() // real commander — this bug only exists in the real shell path.
+	dir := t.TempDir()
+	path := dir + "/multi-line.conf"
+	content := "title   Vulos OS (slot-a)\nlinux   /EFI/vulos/vmlinuz\noptions root=LABEL=vulos-root\n"
+
+	if err := svc.writeFileViaCommander(context.Background(), content, path); err != nil {
+		t.Fatalf("writeFileViaCommander: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read written file: %v", err)
+	}
+	got := string(raw)
+
+	if got != content {
+		t.Fatalf("written content does not match exactly:\n got:  %q\n want: %q", got, content)
+	}
+	if !strings.Contains(got, "\n") {
+		t.Fatalf("written file has no real newline bytes at all: %q", got)
+	}
+	if strings.Contains(got, `\n`) {
+		t.Fatalf("written file contains the LITERAL two-character sequence backslash-n "+
+			"(the exact bug this test guards against): %q", got)
+	}
+	if lines := strings.Count(got, "\n"); lines != 3 {
+		t.Fatalf("expected 3 real newlines (one per content line), got %d: %q", lines, got)
+	}
+}
+
+// TestWriteSlotABootEntry_RealNewlines pins the actual production call site
+// (not just the shared helper in isolation): the written vulos-slot-a.conf
+// must be genuinely multi-line, matching what systemd-boot's entry parser
+// requires (title/linux/initrd/options each on their own line).
+func TestWriteSlotABootEntry_RealNewlines(t *testing.T) {
+	espMount := t.TempDir()
+	svc := New()
+
+	if err := svc.writeSlotABootEntry(context.Background(), espMount); err != nil {
+		t.Logf("writeSlotABootEntry: %v (may be expected off-target)", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(espMount, "loader", "entries", "vulos-slot-a.conf"))
+	if err != nil {
+		t.Fatalf("read entry: %v", err)
+	}
+	content := string(raw)
+
+	if strings.Contains(content, `\n`) {
+		t.Fatalf("entry file contains literal backslash-n instead of real newlines — "+
+			"systemd-boot cannot parse a one-line entry:\n%s", content)
+	}
+	// A valid entry has "title", "linux", "initrd", "options" as separate
+	// lines — grep-style, one directive per real line.
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	wantPrefixes := []string{"title", "linux", "initrd", "options"}
+	for _, want := range wantPrefixes {
+		found := false
+		for _, ln := range lines {
+			if strings.HasPrefix(strings.TrimSpace(ln), want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("no line starts with %q — entry is not properly line-structured:\n%s", want, content)
+		}
+	}
+}
+
+// TestWriteSlotABootEntry_OptionsIsOneLine is a regression test for the bug
+// found by actually booting a netboot-installed disk in QEMU (NETB-05,
+// scripts/netboot-install-smoke.sh): "options" was split across a bare
+// indented continuation line (no repeated "options" keyword), which the Boot
+// Loader Specification does not recognise — systemd-boot silently drops
+// everything after the first "options" line. The real
+// `Kernel command line:` QEMU reported after booting a disk built this way
+// was "initrd=... root=LABEL=vulos-root ro" with NOTHING else: vulos.live=0,
+// vulos.slot=a, and vulos.squashfs= were all silently dropped, so the
+// initramfs hook's `cmdline_has vulos.live` gate failed and the machine
+// booted the bare (un-overlaid) vulos-root partition, which has no
+// /sbin/init — "No init found. Try passing init= bootarg." at the initramfs
+// shell. TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires'
+// substring checks all still "passed" against that broken shape — they never
+// checked line structure. This test does.
+func TestWriteSlotABootEntry_OptionsIsOneLine(t *testing.T) {
+	espMount := t.TempDir()
+	svc := New()
+
+	if err := svc.writeSlotABootEntry(context.Background(), espMount); err != nil {
+		t.Logf("writeSlotABootEntry: %v (may be expected off-target)", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(espMount, "loader", "entries", "vulos-slot-a.conf"))
+	if err != nil {
+		t.Fatalf("read entry: %v", err)
+	}
+	content := string(raw)
+
+	var optionsLines []string
+	for _, ln := range strings.Split(content, "\n") {
+		if strings.HasPrefix(ln, "options") {
+			optionsLines = append(optionsLines, ln)
+		} else if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
+			t.Fatalf("entry has a bare indented continuation line — the Boot Loader "+
+				"Specification does not support this and systemd-boot silently drops it "+
+				"(it must repeat the \"options\" keyword instead, or stay on one line): %q\nfull entry:\n%s", ln, content)
+		}
+	}
+	if len(optionsLines) != 1 {
+		t.Fatalf("expected exactly 1 line starting with \"options\", got %d: %v", len(optionsLines), optionsLines)
+	}
+	for _, want := range []string{"vulos.live=0", "vulos.slot=a", "vulos.squashfs="} {
+		if !strings.Contains(optionsLines[0], want) {
+			t.Errorf("the single options line is missing %q — it would never reach the kernel cmdline: %s", want, optionsLines[0])
+		}
+	}
+}

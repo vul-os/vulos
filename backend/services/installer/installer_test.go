@@ -763,3 +763,29 @@ func TestHandleLiveSession_MethodNotAllowed(t *testing.T) {
 		t.Errorf("status = %d, want 405", rr.Code)
 	}
 }
+
+// TestInstallBootloader_PathIsRelativeToRoot is a regression test for the
+// same bootctl --path/--root bug documented on
+// netboot_install.go's installNetbootBootctl (found by running the real
+// install pipeline against real bootctl in a privileged Linux container,
+// NETB-05): passing the ABSOLUTE targetMount+"/boot/efi" as --path together
+// with --root=targetMount makes bootctl concatenate them into a path that
+// never exists ("Failed to open parent directory"), failing this — the
+// original BMINIT-12 installer's — bootloader step on every real run.
+func TestInstallBootloader_PathIsRelativeToRoot(t *testing.T) {
+	mc := newMockCmd()
+	svc := newWithCommander(mc)
+
+	if err := svc.installBootloader(context.Background()); err != nil {
+		t.Fatalf("installBootloader: %v", err)
+	}
+
+	if !mc.called("bootctl", "--path=/boot/efi", "--root="+targetMount, "install") {
+		t.Errorf("bootctl was not called with the expected root-relative --path; calls: %v", mc.calls)
+	}
+	for _, c := range mc.calls {
+		if strings.Contains(c, targetMount+targetMount) {
+			t.Errorf("bootctl called with a double-prefixed path (would fail against real bootctl): %s", c)
+		}
+	}
+}

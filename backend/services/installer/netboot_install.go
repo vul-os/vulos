@@ -419,6 +419,40 @@ func (s *Service) writeSeedFiles(ctx context.Context) error {
 	return nil
 }
 
+// writeFileViaCommander writes content to path through s.cmd, so callers stay
+// testable with a mock Commander exactly like every other step in this
+// package (never real filesystem I/O against hardcoded absolute paths like
+// /mnt/vulos-netboot-install under test).
+//
+// It does NOT do what the previous shape at all three of this package's
+// content-writing call sites did:
+//
+//	s.cmd.Output(ctx, "sh", "-c", fmt.Sprintf("printf '%%s' %q > %s", content, path))
+//
+// Go's %q verb renders a real newline byte as the TWO CHARACTERS '\' 'n'
+// (Go-string-literal escaping) when it interpolates content into the "-c"
+// script text, and `printf '%s'` never re-interprets backslash escapes — so
+// every multi-line entry.conf/fstab this package ever wrote landed on the
+// target disk as ONE line with literal "\n" text instead of real newlines.
+// systemd-boot silently ignores a boot entry it can't parse that way: the
+// ESP came out with a seed, a kernel, an initramfs and a bootloader binary
+// that all checked out, and NOTHING to boot. Found by actually booting a
+// netboot-installed disk in QEMU (scripts/netboot-install-smoke.sh) — no
+// mocked unit test exercises real shell quoting, only the in-memory string.
+//
+// The fix passes content as a shell POSITIONAL PARAMETER ($1) rather than
+// interpolating it into the script text at all, so no Go-vs-shell escaping
+// translation ever happens: printf '%s' "$1" emits $1's bytes verbatim,
+// newlines included. "sh" as $0 is a placeholder positional parameters start
+// at $1.
+func (s *Service) writeFileViaCommander(ctx context.Context, content, path string) error {
+	_, err := s.cmd.Output(ctx, "sh", "-c", `printf '%s' "$1" > "$2"`, "sh", content, path)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
 // copySeedFile copies src to dest, creating parent directories as needed.
 // The copy uses the Commander so it is testable with a mock.
 func (s *Service) copySeedFile(ctx context.Context, src, dest string) error {
@@ -435,8 +469,20 @@ func (s *Service) copySeedFile(ctx context.Context, src, dest string) error {
 // installNetbootBootctl runs bootctl to install the systemd-boot EFI binary
 // into the target ESP and register an NVRAM boot entry.
 func (s *Service) installNetbootBootctl(ctx context.Context, espMount string) error {
+	// --path must be given RELATIVE TO --root, not as an absolute host path
+	// that already contains the --root prefix. bootctl silently concatenates
+	// the two ("<root><path>"), so passing the absolute espMount here
+	// produced "<netbootInstallMount><netbootInstallMount>/boot/efi" — a path
+	// that never exists — and bootctl failed with "Failed to open parent
+	// directory" on EVERY real invocation, aborting the install pipeline at
+	// its very first bootctl call. Confirmed against real bootctl (systemd
+	// 257): "--path=/boot/efi --root=X" succeeds, "--path=X/boot/efi
+	// --root=X" fails. Deriving the relative form from espMount (rather than
+	// hardcoding "/boot/efi") keeps this correct if writeSeedFiles' espMount
+	// construction ever changes.
+	relPath := strings.TrimPrefix(espMount, netbootInstallMount)
 	_, err := s.cmd.Output(ctx, "bootctl",
-		"--path="+espMount,
+		"--path="+relPath,
 		"--root="+netbootInstallMount,
 		"install",
 		"--no-variables", // avoid writing NVRAM from the live session
@@ -500,16 +546,30 @@ func (s *Service) writeSlotABootEntry(ctx context.Context, espMount string) erro
 		// This line previously omitted the token while the doc comment above
 		// claimed it was passed. Nothing caught it because no test tied the
 		// entry to the hook's requirement and nothing exercises a real netboot;
-		// TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires now does the
+		// TestWriteSlotABootEntry_CarriesTokenInitramfsHookRequires does the
 		// first half.
-		"options root=LABEL=vulos-root ro quiet splash",
-		"        vulos.live=0 vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs",
+		//
+		// ALL of it belongs on ONE "options" line. systemd-boot's Boot Loader
+		// Specification does allow the options value to be split across
+		// multiple lines — but only when EVERY line starts with the literal
+		// keyword "options" again; a bare continuation line (leading
+		// whitespace, no keyword) is not part of the spec and is silently
+		// dropped. This previously split vulos.live=0/vulos.slot=a/
+		// vulos.squashfs= onto exactly such a bare continuation line, so —
+		// even with the token spelled correctly, the vulos.squashfs=
+		// consumption fix in scripts/initramfs/vulos-live, and the bootctl
+		// --path fix below — the kernel actually booted with cmdline
+		// "initrd=... root=LABEL=vulos-root ro" and NOTHING after it. Found
+		// by reading the real `Kernel command line:` line QEMU printed after
+		// booting the disk this pipeline produced (scripts/netboot-install-
+		// smoke.sh) — no mocked unit test parses a kernel command line, so
+		// nothing before this caught it. TestWriteSlotABootEntry_
+		// OptionsIsOneLine pins this.
+		"options root=LABEL=vulos-root ro quiet splash vulos.live=0 vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs",
 	}, "\n") + "\n"
 
 	entryPath := filepath.Join(entriesDir, "vulos-slot-a.conf")
-	_, err := s.cmd.Output(ctx, "sh", "-c",
-		fmt.Sprintf("printf '%%s' %q > %s", entry, entryPath))
-	return err
+	return s.writeFileViaCommander(ctx, entry, entryPath)
 }
 
 // ---------------------------------------------------------------------------
@@ -668,9 +728,7 @@ func (s *Service) writeFstabNetboot(ctx context.Context, espPart, rootPart strin
 	if _, err := s.cmd.Output(ctx, "mkdir", "-p", etcDir); err != nil {
 		return fmt.Errorf("mkdir etc: %w", err)
 	}
-	_, err = s.cmd.Output(ctx, "sh", "-c",
-		fmt.Sprintf("printf '%%s' %q > %s", fstab, netbootInstallMount+"/etc/fstab"))
-	return err
+	return s.writeFileViaCommander(ctx, fstab, netbootInstallMount+"/etc/fstab")
 }
 
 // ---------------------------------------------------------------------------
@@ -680,8 +738,10 @@ func (s *Service) writeFstabNetboot(ctx context.Context, espPart, rootPart strin
 // installNetbootLoader runs bootctl to install systemd-boot into the target
 // ESP and set it as the default boot entry.
 func (s *Service) installNetbootLoader(ctx context.Context) error {
+	// See installNetbootBootctl's comment: --path must be relative to --root,
+	// not the absolute (and therefore double-prefixed) espMount.
 	_, err := s.cmd.Output(ctx, "bootctl",
-		"--path="+netbootInstallMount+"/boot/efi",
+		"--path=/boot/efi",
 		"--root="+netbootInstallMount,
 		"install",
 	)

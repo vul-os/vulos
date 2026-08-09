@@ -564,15 +564,23 @@ func (s *Service) writeFstab(ctx context.Context, espPart, rootPart string) erro
 		rootUUID, espUUID,
 	)
 
-	// Write via sh so the path handling works inside a chroot-less environment.
-	_, err = s.cmd.Output(ctx, "sh", "-c",
-		fmt.Sprintf("printf '%%s' %q > %s/etc/fstab", fstab, targetMount))
-	return err
+	// writeFileViaCommander (netboot_install.go) explains why this isn't a
+	// plain `sh -c "printf '%s' <%q-quoted content>"` call: that shape wrote
+	// a one-line /etc/fstab with literal "\n" text instead of real newlines
+	// on every real invocation, found by booting the NETB-03 sibling of this
+	// exact bug in QEMU (scripts/netboot-install-smoke.sh).
+	return s.writeFileViaCommander(ctx, fstab, targetMount+"/etc/fstab")
 }
 
 func (s *Service) installBootloader(ctx context.Context) error {
+	// --path must be relative to --root, not the absolute (and therefore
+	// double-prefixed, "<targetMount><targetMount>/boot/efi") path — bootctl
+	// concatenates the two. See netboot_install.go's installNetbootBootctl
+	// for the real-bootctl repro that found this (systemd 257: "--path=
+	// /boot/efi --root=X" succeeds, "--path=X/boot/efi --root=X" fails with
+	// "Failed to open parent directory").
 	_, err := s.cmd.Output(ctx, "bootctl",
-		"--path="+targetMount+"/boot/efi",
+		"--path=/boot/efi",
 		"--root="+targetMount,
 		"install",
 	)

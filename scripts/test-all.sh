@@ -47,6 +47,14 @@ run_step "go test -tags=e2e (firstboot/e2e)" \
 run_step "storage-mode selection gate" \
   bash "$ROOT/scripts/test-storage-mode.sh"
 
+# ── Step 3b: vulos-live initramfs hook cmdline-parsing gate ───────────────────
+# Sources the real vulos.squashfs=/vulos.live cmdline-parsing logic out of
+# scripts/initramfs/vulos-live (no kernel needed) and pins it against the
+# exact strings the two installer paths write. See scripts/netboot-install-
+# smoke.sh for the real-kernel/QEMU exercise of the rest of that hook.
+run_step "vulos-live cmdline gate" \
+  bash "$ROOT/scripts/test-vulos-live-cmdline.sh"
+
 # ── Step 4: frontend build ────────────────────────────────────────────────────
 if [[ "${SKIP_NPM:-0}" == "1" ]]; then
   echo ""
