@@ -70,7 +70,11 @@ function eventWhen(ev: CalendarEvent): string {
 // the background — no skeleton flash on every return to the desktop.
 let cachedEvents: CalendarEvent[] | null = null
 
-export default function CalendarWidget() {
+// `embedded` drops the self-pinning so the widget can be stacked inside a
+// column that does the positioning (DesktopWidgets). Left off, the widget keeps
+// pinning itself to the top-right exactly as before — every existing call site,
+// and CalendarWidget.test.tsx, renders it that way.
+export default function CalendarWidget({ embedded = false }: { embedded?: boolean } = {}) {
   const { openWindow } = useShell()
   const [events, setEvents] = useState<CalendarEvent[]>(cachedEvents || [])
   const [loading, setLoading] = useState(!cachedEvents)
@@ -127,8 +131,12 @@ export default function CalendarWidget() {
 
   return (
     <div
-      className="fixed right-3 z-30 w-60 max-w-[calc(100vw-1.5rem)] select-none"
-      style={{ top: '2.75rem' }}
+      className={
+        embedded
+          ? 'w-full select-none'
+          : 'fixed right-3 z-30 w-60 max-w-[calc(100vw-1.5rem)] select-none'
+      }
+      style={embedded ? undefined : { top: '2.75rem' }}
       data-calendar-widget
     >
       <div className="vshell-surface rounded-2xl overflow-hidden">

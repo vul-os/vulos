@@ -1,6 +1,5 @@
 import { useEffect, useRef, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
-import Portal from '../core/Portal'
 import Window from '../shell/Window'
 import Spotlight from '../shell/Spotlight'
 import MissionControl, { useMissionControlLayout } from '../shell/MissionControl'
@@ -16,7 +15,8 @@ import IncomingCall from '../builtin/peering/call/IncomingCall'
 import PublicAppBanner from '../shell/PublicAppBanner'
 import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
-import CalendarWidget from '../shell/CalendarWidget'
+import DesktopWidgets from '../shell/DesktopWidgets'
+import AssistantPanel from '../shell/AssistantPanel'
 import Dock from '../shell/Dock'
 import TopBar from '../shell/TopBar'
 import { useWindowShortcuts } from '../shell/useWindowShortcuts'
@@ -204,21 +204,20 @@ export default function DesktopCanvas() {
         })}
       </div>
 
-      {/* Ambient Calendar widget — an always-on "what's next" glance on the
-          RHS (macOS style). It fills the gap when open windows cover the Home
+      {/* Ambient widget column — clock, "what's next", and what the box is
+          trying to tell you. It fills the gap when open windows cover the Home
           backdrop: Home already surfaces the full agenda when it's the visible
-          backdrop (no windows), so the widget only mounts once a window covers
+          backdrop (no windows), so the column only mounts once a window covers
           Home — keeping the agenda visible either way without double-rendering
-          the same events. Also hidden while the chat panel or Mission Control
-          occupies the same right-side z-30 layer, so they never overlap. */}
-      {windows.filter(w => !w.minimized).length > 0 && !chatOpen && !missionControlOpen && <CalendarWidget />}
+          the same events. Also hidden while the Assistant panel or Mission
+          Control occupies the same right-side layer, so they never overlap. */}
+      {windows.filter(w => !w.minimized).length > 0 && !chatOpen && !missionControlOpen && <DesktopWidgets />}
 
-      {/* Chat panel — right side */}
-      {chatOpen && (
-        <div className="absolute top-8 right-0 bottom-0 w-[380px] z-30">
-          <Portal />
-        </div>
-      )}
+      {/* Assistant — a first-class slide-over rather than a window. This used
+          to render core/Portal, an older intent-router prompt box that is not
+          the Assistant the OS actually ships; AssistantPanel renders the real
+          one and owns only the chrome around it (pop out, close, Esc). */}
+      <AssistantPanel />
 
       {/* Dock / taskbar — restores minimized windows & fast-switches. Hidden
           while Mission Control is up (its backdrop already covers this z-layer). */}
