@@ -61,6 +61,33 @@ type newFeatureDeps struct {
 	webhooksDispatcher *webhooks.Dispatcher
 }
 
+// appnetOwnerAuthorizer builds an appnet.AppOwnerAuthorizer requiring RoleAdmin
+// OR app ownership (netMgr records OwnerID at launch) — the same ownership
+// model as publishAuthorizer in main.go, reused here for the deployment/
+// cache/custom-domain management surface (see appnet.AppOwnerAuthorizer's doc
+// comment). Fails closed (returns a never-true authorizer) when authStore is
+// nil, e.g. degraded startup — never silently open to any authenticated user.
+func appnetOwnerAuthorizer(authStore *svcauth.Store, netMgr *appnet.Manager) appnet.AppOwnerAuthorizer {
+	if authStore == nil {
+		return func(r *http.Request, appID string) bool { return false }
+	}
+	return func(r *http.Request, appID string) bool {
+		userID := r.Header.Get("X-User-ID") // stamped by auth middleware; never client-supplied
+		if userID == "" {
+			return false
+		}
+		if p, _ := authStore.GetProfile(userID); p != nil && p.Role == svcauth.RoleAdmin {
+			return true
+		}
+		if netMgr != nil {
+			if ns, ok := netMgr.GetForUser(appID, userID); ok && ns.OwnerID == userID {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 // registerNewFeatureRoutes wires the four previously-unwired handler packages
 // onto mux.  Must be called after RegisterVisibilityHandlers (appnet) because
 // RegisterSubdomainHandlers adds routes that extend the visibility surface.
@@ -215,7 +242,13 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			}
 		}
 		provisioner := appnet.NewProvisioner(deployStore, nil)
-		appnet.RegisterSubdomainHandlers(mux, deps.visStore, provisioner, deps.netMgr)
+		// Finding (HIGH, matches publishAuthorizer in main.go): deployment info/
+		// deprovision, cache purge/stats, and custom-domain attach/verify/remove
+		// all act on another user's already-published app if the caller merely
+		// supplies its app ID — gate all three surfaces on RoleAdmin OR app
+		// ownership (netMgr records OwnerID at launch), same as publishing.
+		deployOwnerAuth := appnetOwnerAuthorizer(deps.authStore, deps.netMgr)
+		appnet.RegisterSubdomainHandlers(mux, deps.visStore, provisioner, deps.netMgr, deployOwnerAuth)
 		log.Printf("[appnet/subdomain] registered GET /api/apps/{id}/deployment, POST /api/apps/{id}/deprovision")
 
 		// ── 4a. Edge-cache purge/stats (services/appnet, PUBWEB-03) ─────────────
@@ -244,7 +277,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 		}
 		if !edgeCacheMisconfigured {
 			ecm := appnet.NewEdgeCacheManager()
-			appnet.RegisterEdgeCacheHandlers(mux, ecm, provisioner)
+			appnet.RegisterEdgeCacheHandlers(mux, ecm, provisioner, deployOwnerAuth)
 			log.Printf("[appnet/edgecache] registered POST /api/apps/{id}/cache/purge, GET /api/apps/{id}/cache/stats")
 		}
 
@@ -272,7 +305,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 				}
 			}
 			if cdStore != nil {
-				appnet.RegisterCustomDomainHandlers(mux, cdStore, provisioner, deps.netMgr)
+				appnet.RegisterCustomDomainHandlers(mux, cdStore, provisioner, deps.netMgr, deployOwnerAuth)
 				log.Printf("[appnet/customdomain] registered POST/GET/DELETE /api/apps/{id}/domain, POST /api/apps/{id}/domain/verify")
 			}
 		}

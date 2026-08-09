@@ -71,11 +71,18 @@ func caddyDirFromEnv() string {
 // The deployer is used to validate that an app is already publicly deployed
 // before a custom domain is attached. netMgr may be nil (used for upstream
 // resolution).
+//
+// authorize gates all four routes (see AppOwnerAuthorizer's doc comment):
+// attaching, reading, verifying, or removing a custom domain on another
+// user's app all require RoleAdmin or app ownership, not mere authentication
+// — a caller-controlled domain attach/verify is otherwise a way to redirect
+// or hijack traffic meant for someone else's app.
 func RegisterCustomDomainHandlers(
 	mux *http.ServeMux,
 	cs *CustomDomainStore,
 	deployer *Provisioner,
 	netMgr *Manager,
+	authorize AppOwnerAuthorizer,
 ) {
 	// -----------------------------------------------------------------------
 	// POST /api/apps/{id}/domain — issue a TXT challenge for a new domain
@@ -84,6 +91,10 @@ func RegisterCustomDomainHandlers(
 		appID := r.PathValue("id")
 		if appID == "" {
 			cdWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			cdWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -133,6 +144,10 @@ func RegisterCustomDomainHandlers(
 			cdWriteErr(w, http.StatusBadRequest, "app id required")
 			return
 		}
+		if authorize == nil || !authorize(r, appID) {
+			cdWriteErr(w, http.StatusForbidden, "forbidden")
+			return
+		}
 		cd := cs.Get(appID)
 		if cd == nil {
 			cdWriteErr(w, http.StatusNotFound, "no custom domain for app")
@@ -148,6 +163,10 @@ func RegisterCustomDomainHandlers(
 		appID := r.PathValue("id")
 		if appID == "" {
 			cdWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			cdWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -202,6 +221,10 @@ func RegisterCustomDomainHandlers(
 		appID := r.PathValue("id")
 		if appID == "" {
 			cdWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			cdWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 

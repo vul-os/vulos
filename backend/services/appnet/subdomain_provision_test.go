@@ -345,7 +345,7 @@ func newProvisionTestEnv(t *testing.T) (*http.ServeMux, *VisibilityStore, *Provi
 	p := NewProvisioner(ds, nil)
 
 	mux := http.NewServeMux()
-	RegisterSubdomainHandlers(mux, vis, p, nil)
+	RegisterSubdomainHandlers(mux, vis, p, nil, allowAllAppOwners)
 	return mux, vis, p
 }
 

@@ -364,12 +364,20 @@ func parseNginxStubStatus(body string) NginxStubStatus {
 //
 // The deployer is used to look up the live Deployment (and hence the upstream
 // address) so the purge handler can write an updated config before reloading.
-func RegisterEdgeCacheHandlers(mux *http.ServeMux, ecm *EdgeCacheManager, deployer *Provisioner) {
+//
+// authorize gates both routes (see AppOwnerAuthorizer's doc comment):
+// purging/reloading another user's app cache, and reading its stub_status
+// metrics, both require RoleAdmin or app ownership, not mere authentication.
+func RegisterEdgeCacheHandlers(mux *http.ServeMux, ecm *EdgeCacheManager, deployer *Provisioner, authorize AppOwnerAuthorizer) {
 	// POST /api/apps/{id}/cache/purge
 	mux.HandleFunc("POST /api/apps/{id}/cache/purge", func(w http.ResponseWriter, r *http.Request) {
 		appID := r.PathValue("id")
 		if appID == "" {
 			cacheWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			cacheWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 
@@ -404,6 +412,10 @@ func RegisterEdgeCacheHandlers(mux *http.ServeMux, ecm *EdgeCacheManager, deploy
 		appID := r.PathValue("id")
 		if appID == "" {
 			cacheWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			cacheWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 

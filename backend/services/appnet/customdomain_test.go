@@ -230,7 +230,7 @@ func newCustomDomainTestEnv(t *testing.T) (*http.ServeMux, *CustomDomainStore, *
 	p := NewProvisioner(ds, nil)
 
 	mux := http.NewServeMux()
-	RegisterCustomDomainHandlers(mux, cs, p, nil)
+	RegisterCustomDomainHandlers(mux, cs, p, nil, allowAllAppOwners)
 	return mux, cs, p
 }
 

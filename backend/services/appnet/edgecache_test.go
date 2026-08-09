@@ -272,7 +272,7 @@ func newCacheTestEnv(t *testing.T) (*http.ServeMux, *Provisioner, *EdgeCacheMana
 	ecm := newEdgeCacheManagerForTest(filepath.Join(dir, "nginx"), filepath.Join(dir, "cache"))
 
 	mux := http.NewServeMux()
-	RegisterEdgeCacheHandlers(mux, ecm, p)
+	RegisterEdgeCacheHandlers(mux, ecm, p, allowAllAppOwners)
 	return mux, p, ecm
 }
 

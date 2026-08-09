@@ -91,12 +91,20 @@ func upstreamAddrForApp(appID string, netMgr *Manager) string {
 // RegisterVisibilityHandlers, but with a "/deploy" suffix mux.
 // To avoid double-registration: call this AFTER RegisterVisibilityHandlers;
 // the caller (server setup) must pass the same *http.ServeMux.
-func RegisterSubdomainHandlers(mux *http.ServeMux, vis *VisibilityStore, deployer *Provisioner, netMgr *Manager) {
+//
+// authorize gates BOTH routes (see AppOwnerAuthorizer's doc comment): reading
+// another user's deployment FQDN/TLS status, and tearing it down, both require
+// RoleAdmin or app ownership, not mere authentication.
+func RegisterSubdomainHandlers(mux *http.ServeMux, vis *VisibilityStore, deployer *Provisioner, netMgr *Manager, authorize AppOwnerAuthorizer) {
 	// GET /api/apps/{id}/deployment — return the stored deployment for an app.
 	mux.HandleFunc("GET /api/apps/{id}/deployment", func(w http.ResponseWriter, r *http.Request) {
 		appID := r.PathValue("id")
 		if appID == "" {
 			deployWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			deployWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		d := deployer.store.Get(appID, "default")
@@ -112,6 +120,10 @@ func RegisterSubdomainHandlers(mux *http.ServeMux, vis *VisibilityStore, deploye
 		appID := r.PathValue("id")
 		if appID == "" {
 			deployWriteErr(w, http.StatusBadRequest, "app id required")
+			return
+		}
+		if authorize == nil || !authorize(r, appID) {
+			deployWriteErr(w, http.StatusForbidden, "forbidden")
 			return
 		}
 		if err := deployer.DeprovisionSubdomain(appID, "default"); err != nil {
