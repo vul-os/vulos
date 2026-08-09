@@ -10,7 +10,7 @@ STRIDE pass. Last updated: 2026-07-07 (added Component 5: Sovereign Assistant; a
 [User at browser/terminal]
         |
         v
-[Vulos Frontend (JSX SPA)] <--- TLS ---> [Backend API (Go)]
+[Vulos Frontend (React + TS SPA)] <-- TLS --> [Backend API (Go)]
         |                                       |
         v                                       v
 [App Sandbox]                         [Vulos Identity Store]
@@ -23,7 +23,7 @@ Trust boundaries:
 - **Browser ↔ Backend API**: authenticated session (cookie/token). Untrusted input from browser.
 - **Backend API ↔ OS Shell**: privileged local IPC. Attacker who reaches this can escalate.
 - **Squashfs image**: trusted only if dm-verity hash matches baked key.
-- **App Sandbox ↔ OS**: sandbox syscall filter is the boundary; escaping it reaches OS.
+- **App Sandbox ↔ OS**: the boundary is the namespace + unprivileged-uid drop, **not** a syscall filter — no seccomp allowlist is applied today (see Component 3). Escaping it reaches the OS.
 
 ---
 
@@ -66,7 +66,7 @@ Trust boundaries:
   (`validDiskName`) before it reaches any partition/format command.
 
 ### Residual risks
-- Key rotation for the baked dm-verity trust key is an open design question (see memory/vulos-os-distribution-architecture.md).
+- Key rotation for the baked dm-verity trust key is an open design question; a re-image is the current answer. See [KEY-CEREMONY.md](KEY-CEREMONY.md) §6 for the epoch-floor revocation mechanism that exists, and note that it revokes a *release* key, not the baked anchor.
 - iPXE cannot parse JSON, so the boot-pipe manifest is `imgverify`-checked but
   the kernel/initramfs *URLs* iPXE fetches are script constants, not read from
   the verified manifest.  Safety is preserved because every artifact is
@@ -153,7 +153,9 @@ Trust boundaries:
 ### Mechanisms in code
 - **Passkeys / WebAuthn (primary login)** — `backend/services/passkeys/` (`login.go`), `frontend/src/auth/`. Registration + assertion login; the private key never leaves the authenticator, so a keylogger/extension captures nothing reusable; origin-bound → phishing-resistant. Password+2FA remains a fallback; new accounts default to passkeys.
 - **QR / phone-approval login** — `backend/services/passkeys/qrlogin.go`. Short-lived, single-use challenge approved by an already-authenticated phone, so no reusable secret is typed on a shared/streamed/kiosk client.
-- **No third-party OAuth at OS level** — Vulos auth is email/password + 2FA/passkey/QR only. A connected-services OAuth BFF was evaluated (LOGINISO-03) and descoped; there is no Google OAuth or external identity provider integration in the OS. The `credvault` package handles the OS's own credential store, not third-party OAuth tokens.
+- **No third-party OAuth as a *login* method** — Vulos sign-in is email/password + 2FA/passkey/QR only. There is no "Sign in with Google" and no external identity provider in the OS auth path, so no third party can mint a session on your box. The `credvault` package is the OS's own credential store, not an identity provider.
+
+  **This is narrower than "no OAuth anywhere", and the distinction matters.** The OS *does* ship a connected-services OAuth surface — `backend/services/integrations/selfhost` — which runs an auth-code + PKCE flow against **the owner's own OAuth apps** and stores an encrypted refresh token per user (`GET /api/integrations/{provider}/connect|callback|status`, `POST /api/integrations/{provider}/token`, `DELETE /api/integrations/{provider}`; a broker-backed sibling lives in `services/integrations`). Configured with `OAUTH_REDIRECT_BASE` and per-provider client credentials — see [CONFIGURATION.md](CONFIGURATION.md). Threat-model consequences: it is a stored long-lived third-party credential on the box, and the token-minting route is `POST` precisely so a logged-in user's browser cannot be made to mint tokens from an `<img>` tag (SEC-TOKEN-GET-01). It authorizes access *to* other services; it never authorizes access *to your box*.
 
 ### Top STRIDE threats
 
@@ -170,7 +172,7 @@ Trust boundaries:
 
 ### Mitigations / invariants
 - QR challenges are single-use with TTL; egress proxy rejects private/SSRF ranges.
-- Admin-gated endpoints (35 privileged routes) require an authenticated admin session; security-hardening pass addressed IDOR and command-injection vectors.
+- Privileged endpoints require an authenticated admin session (an `auth.RoleAdmin` profile check; a forged `X-User-ID` header alone never confers admin, because the middleware strips client-supplied identity headers before setting its own). A security-hardening pass addressed IDOR and command-injection vectors. *An earlier revision of this line quoted "35 privileged routes"; the count is not pinned by any test, so it is not restated here.*
 - Do not "add security" by streaming a login screen — strictly worse (cost, no benefit).
 
 ### Residual risks
@@ -233,7 +235,7 @@ Trust boundaries:
 | 4 | **Information Disclosure** | The rendered AI page exfiltrates OS-origin data by `fetch`-ing the OS API or embedding same-origin resources. |
 
 ### Mitigations in code
-- **Sandbox render, no same-origin** — the primary in-shell render is a sandboxed iframe in an *opaque* origin (`allow-scripts`, deliberately **no** `allow-same-origin`); AI apps are not in `firstPartyIds`, so `needsSameOrigin()` can never grant them the OS origin (`frontend/src/shell/Window.tsx`, `frontend/src/core/AppRegistry.ts`). The Settings "Open" button no longer does `window.open(.../html)` top-level — it opens the app in the same opaque-origin sandboxed iframe (`AIAppPreview` in `frontend/src/core/Settings.tsx`).
+- **Sandbox render, no same-origin** — the primary in-shell render is a sandboxed iframe in an *opaque* origin (`allow-scripts allow-forms allow-popups`, deliberately **no** `allow-same-origin`). The gate is `iframeSandboxForURL()` in `frontend/src/core/AppOrigins.ts`, and it is derived from the **frame URL's origin**: `allow-same-origin` is granted if and only if the URL resolves to an origin that is *not* the shell's. An AI app served from the shell's own origin therefore cannot get it, whatever any registry flag says. *(Earlier revisions of this document described a `firstPartyIds` / `needsSameOrigin()` allowlist. ORIGIN-01 removed that allowlist precisely because a registry flag can lie and an allowlist can drift; the residual `needsSameOrigin` field is still parsed off app manifests but is no longer a sandbox input, and `TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck` fails the build if it comes back.)* The Settings "Open" button no longer does `window.open(.../html)` top-level — it opens the app in the same opaque-origin sandboxed iframe (`AIAppPreview` in `frontend/src/core/Settings.tsx`).
 - **Defense-in-depth served headers** — `GET /api/ai-apps/{id}/html` ships a `Content-Security-Policy` with the `sandbox` directive (no `allow-same-origin`), `default-src 'none'` (blocks connect/img egress back to the OS API), `frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, and `X-Content-Type-Options: nosniff` (`aiAppsSecurityHeaders` in `routes_aiapps_security.go`). The page is therefore inert in a unique/opaque origin **even if re-opened top-level**, independent of any caller correctly choosing a sandboxed iframe.
 - **Traversal-validated id** — every mutating and read route validates `{id}` against a lowercase charset and confirms realpath containment under `~/.vulos/ai-apps/` before any FS op (`secI_safeAppDir`, `a07ValidateID`); the wave-52 fix builds the candidate from the *resolved* base so a symlinked home does not fail closed. Rollback additionally validates the `{version}` string and contains the snapshot dir.
 - **Admin gate + audit** — save/update/delete/snapshot/rollback require an admin profile (header alone never confers admin); every call is audit-logged.
