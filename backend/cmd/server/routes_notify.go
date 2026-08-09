@@ -101,17 +101,31 @@ func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home strin
 	// POST /api/notifications/{id}/action
 	// Body: { "action_id": "<id>" }
 	//
-	// M7: requires an authenticated user; action dispatch is scoped to the
-	// requesting user (the notification service verifies the notification
-	// belongs to the box, and the calling user must be authenticated).
+	// Requires an authenticated user AND that the notification is one the caller
+	// may act on.
+	//
+	// NOTIF-USER-SCOPE-03: authentication is NOT authorization. This handler
+	// previously checked only that X-User-ID was non-empty and then dispatched on
+	// the caller-supplied {id}, so any profile on a shared box could fire the
+	// inline action attached to ANOTHER account's private notification (e.g. a
+	// reminder) simply by supplying its id — ActionRegistry.Dispatch takes no user
+	// id and cannot make that judgement itself. The DeliverableToUser gate below
+	// is the missing ownership check; it fails closed on an unknown id and
+	// returns the same 404 for "no such notification" and "not yours" so the
+	// endpoint is not an existence oracle.
 	mux.HandleFunc("POST /api/notifications/{id}/action", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-User-ID") == "" {
+		userID := r.Header.Get("X-User-ID")
+		if userID == "" {
 			writeErr(w, 401, "unauthorized")
 			return
 		}
 		notifID := r.PathValue("id")
 		if notifID == "" {
 			writeErr(w, 400, "notification id required")
+			return
+		}
+		if !ext.svc.DeliverableToUser(notifID, userID) {
+			writeErr(w, 404, "notification not found")
 			return
 		}
 

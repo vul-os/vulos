@@ -445,6 +445,35 @@ func (s *Service) ClearForUser(userID string) {
 	s.history = kept
 }
 
+// DeliverableToUser reports whether the notification identified by id exists AND
+// may be acted on by userID — box-level notifications (empty UserID) plus that
+// user's own private ones (NOTIF-USER-SCOPE).
+//
+// This is the AUTHORIZATION predicate for routes that act on a caller-supplied
+// notification id (e.g. POST /api/notifications/{id}/action). Being
+// authenticated is not enough: without this check any profile on a shared box
+// could trigger the inline action attached to another account's PRIVATE
+// notification just by supplying its id.
+//
+// It fails CLOSED — an unknown id (never sent, or aged out of the bounded
+// history) and a nil receiver both return false, so a caller can never act on a
+// notification the service cannot vouch for. Returning the same false for
+// "does not exist" and "belongs to someone else" also denies an existence
+// oracle, matching the reminders-store precedent.
+func (s *Service) DeliverableToUser(id, userID string) bool {
+	if s == nil || id == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := range s.history {
+		if s.history[i].ID == id {
+			return deliverableTo(s.history[i], userID)
+		}
+	}
+	return false
+}
+
 // Shutdown force-drains every live notification WebSocket. Hijacked WS conns are
 // NOT tracked by http.Server.Shutdown (universal Go behavior: Shutdown only waits
 // on non-hijacked connections), so their blocking ReadMessage loops — and the

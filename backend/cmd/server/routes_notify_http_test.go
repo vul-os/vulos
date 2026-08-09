@@ -178,11 +178,30 @@ func TestNotifyActionRequiresAuth(t *testing.T) {
 	}
 }
 
-// TestNotifyActionMissingActionID: an authenticated call with no action_id is a
-// 400.
+// sendNotifFor pushes a notification through the REAL service and returns its
+// server-assigned id. owner == "" makes it a box-level notification (visible to
+// everyone); a non-empty owner makes it that user's PRIVATE notification.
+func sendNotifFor(t *testing.T, ext *notifyExt, owner string) string {
+	t.Helper()
+	n := ext.svc.SendNotification(notify.Notification{
+		Title:  "t",
+		Body:   "b",
+		Level:  notify.LevelInfo,
+		Source: "test",
+		UserID: owner,
+	})
+	if n.ID == "" {
+		t.Fatal("service did not assign a notification id")
+	}
+	return n.ID
+}
+
+// TestNotifyActionMissingActionID: an authenticated call on a notification the
+// caller OWNS but with no action_id is a 400.
 func TestNotifyActionMissingActionID(t *testing.T) {
-	mux, _ := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n1/action", "user-1", `{}`)
+	mux, ext := newNotifyMux(t)
+	id := sendNotifFor(t, ext, "user-1")
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/"+id+"/action", "user-1", `{}`)
 	if rec.Code != 400 {
 		t.Fatalf("missing action_id = %d, want 400", rec.Code)
 	}
@@ -191,8 +210,9 @@ func TestNotifyActionMissingActionID(t *testing.T) {
 // TestNotifyActionUnknown: dispatching an action id with no registered handler
 // is a 422 (the registry reports action-not-found).
 func TestNotifyActionUnknown(t *testing.T) {
-	mux, _ := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n1/action", "user-1",
+	mux, ext := newNotifyMux(t)
+	id := sendNotifFor(t, ext, "user-1")
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/"+id+"/action", "user-1",
 		`{"action_id":"does-not-exist"}`)
 	if rec.Code != 422 {
 		t.Fatalf("unknown action = %d, want 422", rec.Code)
@@ -203,21 +223,105 @@ func TestNotifyActionUnknown(t *testing.T) {
 // path's notification id and the body's action id, and returns 200 dispatched.
 func TestNotifyActionDispatches(t *testing.T) {
 	mux, ext := newNotifyMux(t)
+	id := sendNotifFor(t, ext, "user-1")
 	var gotNotif, gotAction string
 	ext.actions.Register("archive", func(notifID, actionID string) error {
 		gotNotif, gotAction = notifID, actionID
 		return nil
 	})
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/n42/action", "user-1",
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/"+id+"/action", "user-1",
 		`{"action_id":"archive"}`)
 	if rec.Code != 200 {
 		t.Fatalf("dispatch = %d, want 200", rec.Code)
 	}
-	if gotNotif != "n42" || gotAction != "archive" {
-		t.Fatalf("handler got (%q,%q), want (n42,archive)", gotNotif, gotAction)
+	if gotNotif != id || gotAction != "archive" {
+		t.Fatalf("handler got (%q,%q), want (%s,archive)", gotNotif, gotAction, id)
 	}
 	if !strings.Contains(rec.Body.String(), "dispatched") {
 		t.Errorf("expected dispatched status: %s", rec.Body.String())
+	}
+}
+
+// TestNotifyActionCrossUserDenied is the NOTIF-USER-SCOPE-03 regression: a
+// SECOND authenticated profile must not be able to fire the inline action on
+// another account's PRIVATE notification by supplying its id. Being signed in is
+// not authorization.
+//
+// It drives registerNotifyExtRoutes — the SAME function main() calls — so a
+// regression in the shipped route fails here (a scope test over a duplicated
+// handler would not).
+func TestNotifyActionCrossUserDenied(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	victimNotif := sendNotifFor(t, ext, "victim")
+
+	fired := false
+	ext.actions.Register("archive", func(notifID, actionID string) error {
+		fired = true
+		return nil
+	})
+
+	// The attacker is a fully authenticated profile on the same box.
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/"+victimNotif+"/action",
+		"attacker", `{"action_id":"archive"}`)
+
+	if rec.Code != 404 {
+		t.Fatalf("cross-user action = %d, want 404 (no existence oracle); body=%s",
+			rec.Code, rec.Body.String())
+	}
+	if fired {
+		t.Fatal("SECURITY: attacker fired the action handler on the victim's private notification")
+	}
+
+	// Control: the rightful owner still succeeds, so the gate denies the
+	// attacker specifically rather than breaking the endpoint for everyone.
+	rec = doNotifyJSON(t, mux, "POST", "/api/notifications/"+victimNotif+"/action",
+		"victim", `{"action_id":"archive"}`)
+	if rec.Code != 200 {
+		t.Fatalf("owner action = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !fired {
+		t.Fatal("owner's dispatch did not reach the handler")
+	}
+}
+
+// TestNotifyActionUnknownNotificationDenied: an id that was never issued is
+// rejected 404 rather than dispatched. This pins the FAIL-CLOSED direction — a
+// lookup miss must deny, not allow.
+func TestNotifyActionUnknownNotificationDenied(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	fired := false
+	ext.actions.Register("archive", func(notifID, actionID string) error {
+		fired = true
+		return nil
+	})
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/no-such-id/action",
+		"user-1", `{"action_id":"archive"}`)
+	if rec.Code != 404 {
+		t.Fatalf("unknown notification = %d, want 404", rec.Code)
+	}
+	if fired {
+		t.Fatal("SECURITY: dispatched an action for a notification that does not exist")
+	}
+}
+
+// TestNotifyActionBoxLevelAllowed: a box-level notification (empty UserID) is
+// still actionable by any authenticated profile — the gate must not over-block
+// the system notifications every account is meant to see.
+func TestNotifyActionBoxLevelAllowed(t *testing.T) {
+	mux, ext := newNotifyMux(t)
+	id := sendNotifFor(t, ext, "") // box-level
+	fired := false
+	ext.actions.Register("archive", func(notifID, actionID string) error {
+		fired = true
+		return nil
+	})
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/"+id+"/action",
+		"anyone", `{"action_id":"archive"}`)
+	if rec.Code != 200 {
+		t.Fatalf("box-level action = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !fired {
+		t.Fatal("box-level dispatch did not reach the handler")
 	}
 }
 
