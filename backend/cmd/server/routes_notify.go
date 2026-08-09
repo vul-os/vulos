@@ -55,10 +55,36 @@ func registerNotifyExtRoutes(mux *http.ServeMux, svc *notify.Service, home strin
 	// Body (all fields optional):
 	//   { "mode": "off"|"priority"|"total", "until": "<RFC3339>", "schedule": [...] }
 	//
-	// M7: requires an authenticated user.
+	// DND-SCOPE-01: admin only, because this setting is BOX-WIDE.
+	//
+	// ext.dnd is a single object backed by one file for the whole box, and the
+	// delivery path consults it without reference to who a notification is for.
+	// So "requires an authenticated user" meant any second profile could put the
+	// entire box — including the owner — into total silence, and could keep
+	// doing it. That is a denial of every other account's notifications, which
+	// on a personal server that pages you about backups, security events and
+	// mail is not a cosmetic setting.
+	//
+	// PER-USER DND IS NOT IMPLEMENTED. The honest fix is for DND to be keyed by
+	// recipient and consulted per delivery; until then this is a box-level
+	// control and is gated like every other box-level control on this server.
+	// The consequence, stated plainly rather than hidden: a non-admin profile
+	// cannot silence their own notifications at all. That is a real limitation
+	// and preferable to letting them silence everyone else's.
 	mux.HandleFunc("POST /api/notifications/dnd", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-User-ID") == "" {
 			writeErr(w, 401, "unauthorized")
+			return
+		}
+		// A nil store denies rather than panicking: GetProfile dereferences it,
+		// and a handler that crashes on a request any authenticated caller can
+		// make is a denial of service, not a gate.
+		if authStore == nil {
+			writeErr(w, 403, "admin only — Do Not Disturb is a box-wide setting")
+			return
+		}
+		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
+			writeErr(w, 403, "admin only — Do Not Disturb is a box-wide setting")
 			return
 		}
 		var req struct {

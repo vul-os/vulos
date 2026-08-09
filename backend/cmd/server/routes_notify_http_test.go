@@ -30,11 +30,40 @@ import (
 // and returns the mux plus the *notifyExt so tests can register action handlers
 // and inspect state directly.
 func newNotifyMux(t *testing.T) (*http.ServeMux, *notifyExt) {
+	mux, ext, _, _ := newNotifyMuxWithStore(t)
+	return mux, ext
+}
+
+// newNotifyMuxWithStore is newNotifyMux plus a real auth store holding an admin
+// and an ordinary second profile, so the DND routes' admin gate (DND-SCOPE-01)
+// can be exercised. It returns their user ids.
+//
+// DND is BOX-WIDE state, so the write route is admin-only; passing a nil store
+// here would both skip the gate and, before it was made nil-safe, panic inside
+// it.
+func newNotifyMuxWithStore(t *testing.T) (*http.ServeMux, *notifyExt, string, string) {
 	t.Helper()
+	t.Setenv("VULOS_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com")
+	store, err := auth.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("auth.NewStore: %v", err)
+	}
+	admin := store.FindOrCreateUser("test", "notify-admin", "admin@example.com", "Admin", "", true)
+	guest := store.FindOrCreateUser("test", "notify-guest", "guest@example.com", "Guest", "", true)
+	if admin == nil || guest == nil {
+		t.Fatal("could not create test profiles")
+	}
+	if p, _ := store.GetProfile(admin.ID); p == nil || p.Role != auth.RoleAdmin {
+		t.Fatalf("first profile is not admin — the gate cannot be distinguished")
+	}
+	if p, _ := store.GetProfile(guest.ID); p == nil || p.Role == auth.RoleAdmin {
+		t.Fatal("second profile is admin — the gate cannot be distinguished")
+	}
+
 	svc := notify.New()
 	mux := http.NewServeMux()
-	ext := registerNotifyExtRoutes(mux, svc, t.TempDir(), nil)
-	return mux, ext
+	ext := registerNotifyExtRoutes(mux, svc, t.TempDir(), store)
+	return mux, ext, admin.ID, guest.ID
 }
 
 func doNotifyJSON(t *testing.T, mux *http.ServeMux, method, path, user, body string) *httptest.ResponseRecorder {
@@ -85,9 +114,9 @@ func TestNotifyDNDSetRequiresAuth(t *testing.T) {
 // TestNotifyDNDSetAndClear: an authenticated user can turn DND to total and then
 // back off; the status reflects each change.
 func TestNotifyDNDSetAndClear(t *testing.T) {
-	mux, ext := newNotifyMux(t)
+	mux, ext, adminID, _ := newNotifyMuxWithStore(t)
 
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{"mode":"total"}`)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID, `{"mode":"total"}`)
 	if rec.Code != 200 {
 		t.Fatalf("set total = %d, want 200", rec.Code)
 	}
@@ -101,7 +130,7 @@ func TestNotifyDNDSetAndClear(t *testing.T) {
 	}
 
 	// Clearing back to off.
-	rec = doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{"mode":"off"}`)
+	rec = doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID, `{"mode":"off"}`)
 	if rec.Code != 200 {
 		t.Fatalf("set off = %d, want 200", rec.Code)
 	}
@@ -114,8 +143,8 @@ func TestNotifyDNDSetAndClear(t *testing.T) {
 // TestNotifyDNDBadUntil: a mode with a malformed `until` timestamp is a 400 and
 // leaves DND unchanged (fail-safe: never silently activate "forever").
 func TestNotifyDNDBadUntil(t *testing.T) {
-	mux, ext := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+	mux, ext, adminID, _ := newNotifyMuxWithStore(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID,
 		`{"mode":"priority","until":"not-a-timestamp"}`)
 	if rec.Code != 400 {
 		t.Fatalf("bad until = %d, want 400", rec.Code)
@@ -128,8 +157,8 @@ func TestNotifyDNDBadUntil(t *testing.T) {
 // TestNotifyDNDValidUntil: a well-formed RFC3339 `until` is accepted and the
 // status echoes a non-nil until.
 func TestNotifyDNDValidUntil(t *testing.T) {
-	mux, _ := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+	mux, _, adminID, _ := newNotifyMuxWithStore(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID,
 		`{"mode":"priority","until":"2099-01-02T03:04:05Z"}`)
 	if rec.Code != 200 {
 		t.Fatalf("valid until = %d, want 200", rec.Code)
@@ -144,8 +173,8 @@ func TestNotifyDNDValidUntil(t *testing.T) {
 // TestNotifyDNDBadJSON: a malformed body on the authenticated write path is a
 // 400 (the auth gate passes, JSON decode fails).
 func TestNotifyDNDBadJSON(t *testing.T) {
-	mux, _ := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1", `{not json`)
+	mux, _, adminID, _ := newNotifyMuxWithStore(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID, `{not json`)
 	if rec.Code != 400 {
 		t.Fatalf("bad JSON = %d, want 400", rec.Code)
 	}
@@ -154,8 +183,8 @@ func TestNotifyDNDBadJSON(t *testing.T) {
 // TestNotifyDNDSchedule: a schedule payload with no mode change is applied and
 // returns 200 (exercises the SetSchedule branch).
 func TestNotifyDNDSchedule(t *testing.T) {
-	mux, ext := newNotifyMux(t)
-	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "user-1",
+	mux, ext, adminID, _ := newNotifyMuxWithStore(t)
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", adminID,
 		`{"schedule":[{"days":[1,2,3],"start":"22:00","end":"07:00"}]}`)
 	if rec.Code != 200 {
 		t.Fatalf("schedule = %d, want 200", rec.Code)
@@ -424,6 +453,9 @@ func TestNotifyPruneRejectsNonAdmin(t *testing.T) {
 // satisfied by a validated SESSION, not a forged header: a forged X-User-ID with
 // no session is 401, a valid session token is 200.
 func TestNotifyDNDThroughMiddleware(t *testing.T) {
+	// DND writes are admin-only (DND-SCOPE-01), so this needs a real admin to
+	// prove the middleware path still reaches the handler.
+	t.Setenv("VULOS_BOOTSTRAP_ADMIN_EMAIL", "admin@ex.com")
 	store, err := auth.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -442,11 +474,56 @@ func TestNotifyDNDThroughMiddleware(t *testing.T) {
 		t.Fatalf("forged DND write = %d, want 401", resp.StatusCode)
 	}
 
-	// Valid session ⇒ 200.
-	tok := sessionToken(t, store, "google", "nuser", "nuser@ex.com")
+	// A valid session for an ADMIN ⇒ 200.
+	tok := sessionToken(t, store, "google", "nuser", "admin@ex.com")
 	resp = bearerReq(t, srv, "POST", "/api/notifications/dnd", tok, `{"mode":"priority"}`, nil)
-	defer resp.Body.Close()
+	resp.Body.Close()
 	if resp.StatusCode != 200 {
-		t.Fatalf("session DND write = %d, want 200", resp.StatusCode)
+		t.Fatalf("admin session DND write = %d, want 200", resp.StatusCode)
+	}
+
+	// DND-SCOPE-01: a valid session for a NON-admin second profile ⇒ 403. DND is
+	// box-wide state, so this would otherwise let any account silence every
+	// other account's notifications — including the owner's — on a server whose
+	// whole job is to page you about backups, security events and mail.
+	guestTok := sessionToken(t, store, "google", "guest", "guest@ex.com")
+	resp = bearerReq(t, srv, "POST", "/api/notifications/dnd", guestTok, `{"mode":"total"}`, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != 403 {
+		t.Fatalf("non-admin session DND write = %d, want 403", resp.StatusCode)
+	}
+	// And the box must still be in the admin's chosen mode, not the guest's.
+	if got := notifyDNDMode(t, srv, tok); got != "priority" {
+		t.Fatalf("a non-admin was refused but the box-wide DND mode became %q", got)
+	}
+}
+
+// notifyDNDMode reads the box's current DND mode through the public GET route.
+func notifyDNDMode(t *testing.T, srv *httptest.Server, tok string) string {
+	t.Helper()
+	// Authenticated: the status route sits behind the session middleware like
+	// every non-public path, so an anonymous read returns the 401 body and
+	// decodes to an empty mode rather than the box's real state.
+	resp := bearerReq(t, srv, "GET", "/api/notifications/dnd", tok, "", nil)
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode DND status: %v", err)
+	}
+	mode, _ := out["mode"].(string)
+	return mode
+}
+
+// A nil auth store must DENY, not panic. GetProfile dereferences the store, so
+// the first version of the DND admin gate crashed the handler on any box wired
+// without one — and a handler that panics on a request every authenticated
+// caller can make is a denial of service, not a gate.
+func TestNotifyDNDNilAuthStoreDeniesRatherThanPanics(t *testing.T) {
+	mux := http.NewServeMux()
+	registerNotifyExtRoutes(mux, notify.New(), t.TempDir(), nil)
+
+	rec := doNotifyJSON(t, mux, "POST", "/api/notifications/dnd", "anyone", `{"mode":"total"}`)
+	if rec.Code != 403 {
+		t.Fatalf("nil auth store: got %d, want 403", rec.Code)
 	}
 }
