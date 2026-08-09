@@ -475,3 +475,16 @@ func TestOpenFromEnv_DegradesRatherThanFailing(t *testing.T) {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }
+
+// emptyStreamProvider is an upstream that opens a stream and immediately ends
+// it with the sentinel, yielding no chunks at all.
+func emptyStreamProvider(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
