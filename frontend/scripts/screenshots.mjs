@@ -478,11 +478,26 @@ async function launchApp(page, name, { maximize = true } = {}) {
 // so re-pressing normalises rather than walking somewhere new.
 //
 // zone must match src/shell/windowTiling.js tileGeometry().
-function zoneOrigin(page, zone) {
+// MEASURE the chrome rather than restating its dimensions.
+//
+// This used to hardcode `top = 32` with a comment pointing at MENU_BAR_H, and
+// reserved nothing at the bottom — a third copy of the tiling arithmetic
+// alongside windowTiling.ts and (until recently) the shell reducer. The moment
+// tiling learned to reserve the dock, this copy was wrong and the tiled shots
+// failed with "wanted ~(0,516), got (0,482)".
+//
+// A number restated in a second place drifts; a measurement cannot. The menu bar
+// is .vshell-bar and the dock is the toolbar named "Dock", both of which are on
+// screen at capture time, so ask them.
+async function zoneOrigin(page, zone) {
   const vp = page.viewportSize()
-  const top = 32 // MENU_BAR_H, src/shell/windowTiling.js
+  const top = await page.locator('.vshell-bar').first().boundingBox()
+    .then(b => (b ? Math.round(b.y + b.height) : 32)).catch(() => 32)
+  const dockTop = await page.getByRole('toolbar', { name: 'Dock' }).boundingBox()
+    .then(b => (b ? Math.round(b.y) : vp.height)).catch(() => vp.height)
+  const usableH = Math.max(0, dockTop - top)
   const halfW = Math.floor(vp.width / 2)
-  const halfH = Math.floor((vp.height - top) / 2)
+  const halfH = Math.floor(usableH / 2)
   const want = {
     'left': { x: 0, y: top },
     'right': { x: halfW, y: top },
@@ -503,7 +518,7 @@ function zoneOrigin(page, zone) {
 async function assertTiled(page, pairs) {
   const bad = []
   for (const [title, zone] of pairs) {
-    const want = zoneOrigin(page, zone)
+    const want = await zoneOrigin(page, zone)
     const box = await page.locator('.vwin-titlebar', { hasText: title }).first()
       .boundingBox().catch(() => null)
     if (!box || Math.abs(box.x - want.x) > 6 || Math.abs(box.y - want.y) > 6) {
@@ -516,7 +531,7 @@ async function assertTiled(page, pairs) {
 
 async function snapWindow(page, title, dirs, zone) {
   const bar = page.locator('.vwin-titlebar', { hasText: title }).first()
-  const want = zoneOrigin(page, zone)
+  const want = await zoneOrigin(page, zone)
 
   for (let attempt = 1; attempt <= 4; attempt++) {
     // Click the title bar first: the app renders in an iframe which grabs focus
@@ -561,6 +576,56 @@ async function snapWindow(page, title, dirs, zone) {
 /** The window frame (not just its title bar) that carries `title`. */
 function winRoot(page, title) {
   return page.locator('.vwin').filter({ has: page.locator('.vwin-titlebar', { hasText: title }) }).first()
+}
+
+// ── "the window rendered its app", asserted rather than assumed ──────────────
+//
+// Every builtin is a React.lazy import behind a <Suspense fallback> that reads
+// "Loading..." (shell/builtinApps.tsx). A window can therefore be present, sized
+// and positioned exactly as asked while containing nothing but that fallback —
+// and the runner reports a clean capture, because it counts files. It happened:
+// a three-window shot shipped with two empty grey panes.
+//
+// So each multi-window shot declares what its app must actually be showing, and
+// that is checked twice: once after launch (below) and again at capture time
+// (assertStacked / assertTiled). `text` is a string only that app renders;
+// `selector` covers the Terminal, whose xterm surface exposes no useful
+// textContent (its DOM text is the character-measurement helper, not the
+// session).
+//
+// THIS IS NOT A RACE GUARD. The stall it caught did not resolve with time: it
+// was Activity Monitor's AreaGraph ResizeObserver re-rendering on every
+// observation (a fresh {w,h} object defeats React's bail-out, and the re-render
+// refires the observer), which starved the main thread so hard that other
+// windows' lazy chunks never committed. That root cause is FIXED — see
+// nextGraphSize in builtin/activity/ActivityMonitor.tsx and its regression test.
+//
+// The assertion stays regardless. It is what turned an invisible "two windows
+// shipped empty and the runner said 40 captured, 0 failed" into a loud failure,
+// and it will catch the next thing that leaves a pane on its fallback.
+async function waitForAppReady(page, title, { text, selector } = {}, timeout = 20_000) {
+  const win = winRoot(page, title)
+  const content = win.locator('.vwin-content').first()
+  const deadline = Date.now() + timeout
+  let body = ''
+  for (;;) {
+    body = await content.innerText().catch(() => '')
+    const okText = text ? body.includes(text) : true
+    const okSel = selector ? await win.locator(selector).first().isVisible().catch(() => false) : true
+    if (okText && okSel && !body.includes('Loading...')) return
+    if (Date.now() > deadline) {
+      throw new Error(
+        `"${title}" never rendered its app UI` +
+        (body.includes('Loading...')
+          ? ' — the window is still on its React.lazy Suspense fallback. The ' +
+            'known cause of this was Activity Monitor\'s ResizeObserver render ' +
+            'loop starving the main thread, fixed in nextGraphSize; if you are ' +
+            'seeing it again, something is blocking the main thread once more.'
+          : ` — wanted ${text ? JSON.stringify(text) : selector}, content was ` +
+            `${JSON.stringify(body.slice(0, 120))}`))
+    }
+    await page.waitForTimeout(250)
+  }
 }
 
 async function dragBy(page, fromX, fromY, toX, toY) {
@@ -625,6 +690,52 @@ async function placeWindow(page, title, { x, y, width, height }) {
         `${Math.round(box.width)}x${Math.round(box.height)}@(${Math.round(box.x)},${Math.round(box.y)})`)
     }
   }
+}
+
+/**
+ * Raise a window to the top of the stack by clicking a part of it that no other
+ * window is covering.
+ *
+ * Needed because the front window is not always the last one launched: launch
+ * order fixes the base stacking order (WINDOW_Z_INACTIVE is the same 10 for
+ * every unfocused window, so DOM order decides), while the focused window alone
+ * gets WINDOW_Z_ACTIVE. When the composition wants the LAST-launched app in the
+ * middle, this is what puts the right frame in front — and with it the deeper
+ * shadow and the accent rim.
+ *
+ * The point is searched for rather than guessed: a fixed offset lands on
+ * whichever window happens to cover that spot, and clicking the wrong window is
+ * silent. Candidates skip the outer 90px of the title bar (the traffic lights on
+ * one side, the [data-no-drag] chrome buttons on the other, both of which would
+ * fire an action instead of focusing).
+ */
+async function bringToFront(page, title) {
+  const target = await winRoot(page, title).boundingBox()
+  if (!target) throw new Error(`bringToFront: no window titled "${title}"`)
+
+  const all = page.locator('.vwin')
+  const others = []
+  for (let i = 0, n = await all.count(); i < n; i++) {
+    const b = await all.nth(i).boundingBox()
+    if (!b) continue
+    if (Math.abs(b.x - target.x) < 1 && Math.abs(b.y - target.y) < 1) continue
+    others.push(b)
+  }
+  const covered = (x, y) => others.some(o =>
+    x > o.x - 4 && x < o.x + o.width + 4 && y > o.y - 4 && y < o.y + o.height + 4)
+
+  const rows = [target.y + 17, target.y + target.height - 20, target.y + target.height / 2]
+  for (const y of rows) {
+    for (let x = target.x + 90; x < target.x + target.width - 90; x += 20) {
+      if (covered(x, y)) continue
+      await page.mouse.click(x, y)
+      await page.waitForTimeout(250)
+      const active = await page.locator('.vwin[data-active]').first().boundingBox().catch(() => null)
+      if (active && Math.abs(active.x - target.x) < 2 && Math.abs(active.y - target.y) < 2) return
+    }
+  }
+  throw new Error(`bringToFront: "${title}" has no uncovered spot to click — it ` +
+    `cannot be raised, so the stack would capture with the wrong window in front`)
 }
 
 /**
@@ -1107,6 +1218,16 @@ async function captureTheme(browser, theme, overrides, results) {
       // and render real CPU/mem gauges instead of the connecting spinner.
       await page.routeWebSocket(/\/api\/telemetry/, (ws) => {
         ws.send(JSON.stringify(DEMO_TELEMETRY))
+      })
+      // Accept — and then hold open, silently — the shell's two ambient event
+      // streams. installBackend mocks the REST surface but not these, so they
+      // reached the vite preview server, were refused, and reconnected in a
+      // tight loop: every capture logged HUNDREDS of "WebSocket connection
+      // failed" errors. Holding them open is also the honest state — on a real
+      // box these connect — and it takes a needless reconnect storm out of the
+      // page while the shots are being driven.
+      await page.routeWebSocket(/\/api\/(notifications|peering)\/stream/, (ws) => {
+        ws.onMessage(() => { /* nothing to answer */ })
       })
       await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' })
       // The desktop TopBar's "Applications" button doesn't exist in
