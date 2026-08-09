@@ -28,7 +28,7 @@ import { nativeBridge } from './nativeBridge'
 import { SettingsIcon } from './AppIcons'
 import {
   Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
-  StatTile, InfoList, InfoRow, EmptyState, Banner,
+  StatTile, InfoList, InfoRow, EmptyState, Banner, Actions, Narrow,
 } from './settings/ui'
 
 // isRecord narrows an `unknown` value (typically parsed JSON from a fetch
@@ -308,7 +308,11 @@ export default function Settings({ initialSection }: SettingsProps) {
     // `useViewport()` that mounts the drawer, and the two must agree.
     <div className="@container/win flex flex-col sm:flex-row h-full bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Desktop sidebar rail */}
-      <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 @4xl/win:w-[15rem] @6xl/win:w-64 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
+      {/* Solid fill, not `/60`: the sticky header below is already solid for
+          legibility, and the bottom scrim has to fade to the rail's ACTUAL
+          colour — over a translucent rail it faded to the wrong one and the
+          cut edge stayed visible. */}
+      <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 @4xl/win:w-[15rem] @6xl/win:w-64 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)] overflow-y-auto">
         {/* Solid (not translucent) — this header is `sticky`, so the section
             list scrolls underneath it. A semi-transparent fill here let the
             nav item scrolled directly beneath show through and overlap
@@ -318,16 +322,20 @@ export default function Settings({ initialSection }: SettingsProps) {
           <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Settings</h2>
           <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Configure your device</p>
         </div>
-        <div className="py-4">
+        {/* pb-10 is load-bearing, not padding taste: it is the landing strip
+            for the scrim below. */}
+        <div className="pt-4 pb-10">
           <SettingsNav active={active} onSelect={selectSection} groups={groups} />
         </div>
         {/* Scroll affordance. The rail holds 30+ items in eight groups and is
-            always taller than the window, so at every size the last visible
-            item is sliced by the window edge and reads as broken chrome rather
-            than as a list that continues. This sticky scrim fades the cut edge
-            and only ever covers content that is genuinely below the fold (it
-            sits after the list, so a short list pushes it off-screen).
-            pointer-events-none so it never eats a click on the item beneath. */}
+            taller than the window at every size, so the last visible item was
+            always sliced by the window edge and read as broken chrome rather
+            than as a list that continues. This sticky scrim fades that cut.
+            The `-mt-8` pulls it over the strip of padding above, so when the
+            rail IS scrolled to the end it covers empty space and never hides a
+            section — a scrim that always sits on the final item would be a
+            worse bug than the one it fixes. pointer-events-none so it can
+            never eat a click on the item beneath. */}
         <div
           aria-hidden="true"
           className="sticky bottom-0 z-10 h-8 -mt-8 shrink-0 pointer-events-none bg-gradient-to-t from-[var(--bg-surface)] to-transparent"
@@ -546,9 +554,20 @@ function AppearanceSettings() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   return (
-    <Section title="Appearance" desc="Theme, accent, density, and wallpaper for this device.">
-      <Field label="Theme">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" role="radiogroup" aria-label="Theme mode">
+    <Section icon="appearance" title="Appearance" desc="Theme, accent, density, and wallpaper for this device.">
+      <Card
+        icon="sun"
+        title="Theme"
+        desc={
+          theme === 'auto' ? `Follows your device (OS / browser) appearance, updating live. Currently ${isDark ? 'dark' : 'light'}.`
+            : theme === 'schedule' ? `Switches by time (${tz}). Currently ${resolved}.`
+              : theme === 'dark' ? 'Always dark.' : 'Always light.'
+        }
+      >
+        {/* Capped, not stretched: four options across the full width of a
+            maximised pane made each "Light"/"Dark" chip ~200px wide, which read
+            as four empty cards rather than as one control. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-w-[34rem]" role="radiogroup" aria-label="Theme mode">
           {[
             { value: 'light', label: 'Light', icon: 'sun' },
             { value: 'dark', label: 'Dark', icon: 'moon' },
@@ -563,7 +582,7 @@ function AppearanceSettings() {
               className={`py-3 rounded-xl text-sm transition-all border
                 ${theme === opt.value
                   ? 'accent-bg-soft accent-border accent-text font-medium'
-                  : 'bg-[var(--bg-surface)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
+                  : 'bg-[var(--bg-elevated)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
             >
               <div className="flex flex-col items-center gap-1.5">
                 <SettingsIcon name={opt.icon} size={20} />
@@ -572,112 +591,96 @@ function AppearanceSettings() {
             </button>
           ))}
         </div>
-      </Field>
-      <p className="text-xs text-[var(--text-tertiary)] mt-2">
-        {theme === 'auto' && `Follows your device (OS / browser) appearance, updating live. Currently ${isDark ? 'dark' : 'light'}.`}
-        {theme === 'schedule' && `Switches by time (${tz}). Currently ${resolved}.`}
-        {theme === 'dark' && 'Always dark.'}
-        {theme === 'light' && 'Always light.'}
-      </p>
 
-      {theme === 'schedule' && (
-        <div className="mt-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] space-y-3">
-          <div className="flex gap-4">
+        {theme === 'schedule' && (
+          <div className="mt-4 flex flex-wrap gap-4">
             <Field label="Dark mode from">
-              <input type="time" value={scheduleDark} onChange={e => setScheduleDark(e.target.value)} className="input" />
+              <Narrow size="sm"><input type="time" value={scheduleDark} onChange={e => setScheduleDark(e.target.value)} className="input" /></Narrow>
             </Field>
             <Field label="Light mode from">
-              <input type="time" value={scheduleLight} onChange={e => setScheduleLight(e.target.value)} className="input" />
+              <Narrow size="sm"><input type="time" value={scheduleLight} onChange={e => setScheduleLight(e.target.value)} className="input" /></Narrow>
             </Field>
+            <p className="w-full text-[12px] text-[var(--text-faint)]">Timezone: {tz}</p>
           </div>
-          <p className="text-[12px] text-[var(--text-faint)]">Timezone: {tz}</p>
-        </div>
-      )}
+        )}
+      </Card>
 
-      {/* Night Shift */}
-      <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
-        <h3 className="text-sm font-medium mb-3">Night Shift</h3>
-        <p className="text-xs text-[var(--text-faint)] mb-3">Warms screen colors to reduce blue light during evening hours.</p>
-        <Field label="Mode">
-          <div className="flex gap-2">
-            {[
-              { value: 'off', label: 'Off' },
-              { value: 'auto', label: 'Sunset to Sunrise' },
-              { value: 'custom', label: 'Custom' },
-            ].map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setNightShiftMode(opt.value)}
-                className={`flex-1 py-2 rounded-lg text-sm transition-all border
-                  ${nightShiftMode === opt.value
-                    ? 'bg-[var(--status-warning-soft)] border-warning-soft text-[var(--status-warning)]'
-                    : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-tertiary)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'}`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </Field>
+      <Card
+        icon="moon"
+        title="Night Shift"
+        desc="Warms screen colours to reduce blue light during evening hours."
+        aside={<Pill tone={nightShiftActive ? 'warning' : 'neutral'}>{nightShiftActive ? 'Active' : 'Off'}</Pill>}
+      >
+        <div className="flex flex-wrap gap-2 max-w-[34rem]" role="radiogroup" aria-label="Night Shift mode">
+          {[
+            { value: 'off', label: 'Off' },
+            { value: 'auto', label: 'Sunset to Sunrise' },
+            { value: 'custom', label: 'Custom' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              role="radio"
+              aria-checked={nightShiftMode === opt.value}
+              onClick={() => setNightShiftMode(opt.value)}
+              className={`flex-1 min-w-[7rem] py-2 rounded-lg text-sm transition-all border
+                ${nightShiftMode === opt.value
+                  ? 'accent-bg-soft accent-border accent-text font-medium'
+                  : 'bg-[var(--bg-elevated)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
         {nightShiftMode === 'auto' && (
-          <p className="text-xs text-[var(--text-faint)] mt-2">
+          <p className="text-xs text-[var(--text-faint)] mt-3">
             Based on approximate sunrise/sunset for your timezone ({tz}).
             {nightShiftActive ? ' Currently active.' : ' Currently off.'}
           </p>
         )}
 
         {nightShiftMode === 'custom' && (
-          <div className="mt-3 p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] space-y-3">
-            <div className="flex gap-4">
-              <Field label="From">
-                <input type="time" value={nightShiftFrom} onChange={e => setNightShiftFrom(e.target.value)} className="input" />
-              </Field>
-              <Field label="To">
-                <input type="time" value={nightShiftTo} onChange={e => setNightShiftTo(e.target.value)} className="input" />
-              </Field>
-            </div>
-            <p className="text-[12px] text-[var(--text-faint)]">
-              {nightShiftActive ? 'Currently active.' : 'Currently off.'} Timezone: {tz}
-            </p>
+          <div className="mt-4 flex flex-wrap gap-4">
+            <Field label="From">
+              <Narrow size="sm"><input type="time" value={nightShiftFrom} onChange={e => setNightShiftFrom(e.target.value)} className="input" /></Narrow>
+            </Field>
+            <Field label="To">
+              <Narrow size="sm"><input type="time" value={nightShiftTo} onChange={e => setNightShiftTo(e.target.value)} className="input" /></Narrow>
+            </Field>
+            <p className="w-full text-[12px] text-[var(--text-faint)]">Timezone: {tz}</p>
           </div>
         )}
 
         {nightShiftMode !== 'off' && (
-          <Field label={`Warmth (${nightShiftWarmth}%)`}>
-            <input
-              type="range" min="10" max="100" value={nightShiftWarmth}
-              onChange={e => setNightShiftWarmth(parseInt(e.target.value))}
-              className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--status-warning)]"
-            />
-            <div className="flex justify-between text-[12px] text-[var(--text-faint)] mt-1">
-              <span>Less warm</span>
-              <span>More warm</span>
-            </div>
-          </Field>
+          <div className="mt-4 max-w-[34rem]">
+            <Field label={`Warmth (${nightShiftWarmth}%)`}>
+              <input
+                type="range" min="10" max="100" value={nightShiftWarmth}
+                onChange={e => setNightShiftWarmth(parseInt(e.target.value))}
+                className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full
+                  [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
+                  [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--status-warning)]"
+              />
+              <div className="flex justify-between text-[12px] text-[var(--text-faint)] mt-1">
+                <span>Less warm</span>
+                <span>More warm</span>
+              </div>
+            </Field>
+          </div>
         )}
-      </div>
+      </Card>
 
-      {/* Accent Colour */}
-      <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
-        <h3 className="text-sm font-medium mb-1">Accent Colour</h3>
-        <p className="text-xs text-[var(--text-faint)] mb-3">Applied to primary buttons and focus rings across the system.</p>
+      <Card title="Accent colour" desc="Applied to primary buttons and focus rings across the system.">
         <AccentPicker accent={accent} setAccent={setAccent} />
-      </div>
+      </Card>
 
-      {/* Density (WAVE-13) */}
-      <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
-        <h3 className="text-sm font-medium mb-1">Density</h3>
-        <p className="text-xs text-[var(--text-faint)] mb-3">Compact tightens spacing across the shell.</p>
+      <Card title="Density" desc="Compact tightens spacing across the shell.">
         <DensityPicker />
-      </div>
+      </Card>
 
-      {/* Wallpaper */}
-      <div className="mt-6 pt-4 border-t border-[var(--border-default)]">
-        <h3 className="text-sm font-medium mb-3">Wallpaper</h3>
+      <Card title="Wallpaper" desc="Shown behind the desktop and on the lock screen.">
         <WallpaperPicker />
-      </div>
+      </Card>
     </Section>
   )
 }
@@ -697,15 +700,17 @@ function DensityPicker() {
   }, [density])
   const apply = (v: string) => setDensity(v)
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 max-w-[24rem]" role="radiogroup" aria-label="Interface density">
       {[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }].map(opt => (
         <button
           key={opt.value}
+          role="radio"
+          aria-checked={density === opt.value}
           onClick={() => apply(opt.value)}
           className={`flex-1 py-2 rounded-lg text-sm transition-all border
             ${density === opt.value
               ? 'accent-bg-soft accent-border accent-text font-medium'
-              : 'bg-[var(--bg-surface)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
+              : 'bg-[var(--bg-elevated)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
         >
           {opt.label}
         </button>
@@ -747,19 +752,13 @@ function WallpaperPicker() {
       <div className="rounded-lg overflow-hidden border border-[var(--border-default)] mb-3" style={{ maxWidth: 320 }}>
         <img src={previewSrc} alt="Current wallpaper" className="w-full aspect-video object-cover" />
       </div>
-      <div className="flex gap-3">
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-        >
-          Choose Image...
+      <div className="flex flex-wrap gap-2.5">
+        <button onClick={() => fileRef.current?.click()} className="btn-secondary text-sm">
+          Choose image…
         </button>
         {wallpaper && (
-          <button
-            onClick={() => setWallpaper(null)}
-            className="text-xs px-3 py-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-          >
-            Reset to Default
+          <button onClick={() => setWallpaper(null)} className="btn-ghost text-sm">
+            Reset to default
           </button>
         )}
       </div>
@@ -814,20 +813,25 @@ function AccentPicker({ accent, setAccent }: AccentPickerProps) {
           className="w-8 h-8 rounded cursor-pointer border border-[var(--border-strong)] bg-transparent p-0.5"
           title="Custom colour"
         />
-        <input
-          type="text"
-          value={accent}
-          onChange={e => {
-            const v = e.target.value.trim()
-            if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setAccent(v)
-          }}
-          onBlur={e => {
-            const v = e.target.value.trim()
-            if (!/^#[0-9a-fA-F]{6}$/.test(v)) setAccent(DEFAULT_ACCENT)
-          }}
-          placeholder="#3b82f6"
-          className="input w-32 font-mono"
-        />
+        {/* `w-32` here was inert — see Narrow's note in settings/ui.tsx — so a
+            7-character hex value rendered in a box the full width of the pane. */}
+        <Narrow size="sm">
+          <input
+            type="text"
+            value={accent}
+            onChange={e => {
+              const v = e.target.value.trim()
+              if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setAccent(v)
+            }}
+            onBlur={e => {
+              const v = e.target.value.trim()
+              if (!/^#[0-9a-fA-F]{6}$/.test(v)) setAccent(DEFAULT_ACCENT)
+            }}
+            placeholder="#3b82f6"
+            aria-label="Accent colour hex value"
+            className="input font-mono"
+          />
+        </Narrow>
         {accent !== DEFAULT_ACCENT && (
           <button
             onClick={() => setAccent(DEFAULT_ACCENT)}
@@ -1731,15 +1735,42 @@ function AccountSettings({ profile, updateProfile, logout }: AccountSettingsProp
   }
 
   return (
-    <Section title="Account">
-      <Field label="Display Name"><input value={name} onChange={e => setName(e.target.value)} className="input" /></Field>
-      <Field label="Language"><input value={locale} onChange={e => setLocale(e.target.value)} placeholder="en" className="input" /></Field>
-      <Field label="Timezone"><input value={tz} onChange={e => setTz(e.target.value)} placeholder="Africa/Johannesburg" className="input" /></Field>
-      <button onClick={save} disabled={saving} className="btn mt-3 disabled:opacity-50">
-        {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
-      </button>
-      {error && <p className="mt-2 text-xs text-[var(--status-danger)]">{error}</p>}
-      <button onClick={logout} className="btn-ghost mt-6 text-[var(--status-danger)]">Log Out</button>
+    <Section
+      icon="account"
+      title="Account"
+      desc="Your name and regional preferences on this box. These travel with your profile, not with this device."
+    >
+      <Card
+        icon="account"
+        title="Profile"
+        desc="Shown on the lock screen, in shared documents, and anywhere Vulos names you."
+        footer={
+          <Actions hint={error ? undefined : 'Changes apply everywhere you are signed in.'}>
+            <button onClick={save} disabled={saving} className="btn-primary text-sm">
+              {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+            </button>
+          </Actions>
+        }
+      >
+        <Field label="Display name" htmlFor="account-name">
+          <Narrow size="lg"><input id="account-name" value={name} onChange={e => setName(e.target.value)} className="input" /></Narrow>
+        </Field>
+        <div className="flex flex-wrap gap-4">
+          <Field label="Language" htmlFor="account-locale" hint="Two-letter language code.">
+            <Narrow size="sm"><input id="account-locale" value={locale} onChange={e => setLocale(e.target.value)} placeholder="en" className="input" /></Narrow>
+          </Field>
+          <Field label="Timezone" htmlFor="account-tz" hint="IANA zone name.">
+            <Narrow size="md"><input id="account-tz" value={tz} onChange={e => setTz(e.target.value)} placeholder="Africa/Johannesburg" className="input" /></Narrow>
+          </Field>
+        </div>
+        {error && <Banner tone="danger">{error}</Banner>}
+      </Card>
+
+      <Card title="Session" desc="Ends this browser session. Your data stays on the box.">
+        <Actions>
+          <button onClick={logout} className="btn-secondary text-sm text-[var(--status-danger)]">Log Out</button>
+        </Actions>
+      </Card>
     </Section>
   )
 }

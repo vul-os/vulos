@@ -32,26 +32,78 @@ interface SectionProps {
 export function Section({ title, desc, icon, actions, children }: SectionProps) {
   return (
     <div className="animate-[fadeIn_0.18s_ease-out]">
-      <header className="mb-6 flex items-start gap-3.5">
+      {/* The masthead sits above the hairline, the cards below it. Without the
+          rule the title floated on the same blank ground as the first card and
+          nothing marked where the page began. */}
+      <header className="mb-6 pb-5 border-b border-[var(--border-subtle)] flex items-start gap-4">
         {icon && (
           <span
             aria-hidden="true"
-            className="mt-px shrink-0 grid place-items-center w-11 h-11 rounded-2xl accent-bg-soft accent-text ring-1 ring-inset accent-border-soft"
+            className="mt-0.5 shrink-0 grid place-items-center w-11 h-11 rounded-2xl accent-bg-soft accent-text ring-1 ring-inset accent-border-soft"
           >
             <SettingsIcon name={icon} size={24} />
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-[1.35rem] leading-tight font-semibold tracking-[-0.01em] text-[var(--text-primary)]">{title}</h2>
-            {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
+          <div className="flex items-start justify-between gap-4">
+            <h2 className="text-[1.5rem] leading-[1.2] font-semibold tracking-[-0.015em] text-[var(--text-primary)]">{title}</h2>
+            {actions && <div className="shrink-0 flex items-center gap-2 pt-1">{actions}</div>}
           </div>
-          {desc && <p className="mt-1.5 text-sm text-[var(--text-tertiary)] leading-relaxed max-w-prose">{desc}</p>}
+          {/* max-w-prose, not the full measure: a description that ran the whole
+              width of a maximised window was a 100+ character line nobody can
+              track back to the start of. */}
+          {desc && <p className="mt-2 text-sm text-[var(--text-tertiary)] leading-relaxed max-w-prose">{desc}</p>}
         </div>
       </header>
       <div className="space-y-5">{children}</div>
     </div>
   )
+}
+
+interface ActionsProps {
+  hint?: ReactNode
+  children?: ReactNode
+  className?: string
+}
+
+// ── Actions — the standard action bar for a pane or card: an optional hint on
+// the left, buttons on the right. Replaces the bare `<button className="btn">`
+// that several panes dropped straight onto the page background, where a
+// neutral-grey button next to a text link read as a disabled control rather
+// than as the panel's primary action. ──────────────────────────────────────
+export function Actions({ hint, children, className = '' }: ActionsProps) {
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ${className}`}>
+      {hint ? <p className="text-xs text-[var(--text-tertiary)] leading-relaxed min-w-0 flex-1">{hint}</p> : <span className="flex-1" />}
+      <div className="flex items-center gap-2.5 shrink-0">{children}</div>
+    </div>
+  )
+}
+
+interface NarrowProps {
+  size?: 'xs' | 'sm' | 'md' | 'lg'
+  children?: ReactNode
+  className?: string
+}
+
+const NARROW_SIZES: Record<NonNullable<NarrowProps['size']>, string> = {
+  xs: 'max-w-[7rem]',
+  sm: 'max-w-[11rem]',
+  md: 'max-w-[16rem]',
+  lg: 'max-w-[24rem]',
+}
+
+// ── Narrow — caps the width of a short control (a PIN, a port, a hex colour).
+//
+// This exists because of a trap, not a preference: `.input` is a plain
+// (unlayered) rule in index.css that hard-sets `width: 100%`, and unlayered CSS
+// beats Tailwind's layered utilities. So `<input className="input w-40">` — six
+// of which shipped in Settings — silently rendered at the FULL column width,
+// and got wider still every time the measure grew. A four-digit PIN box was
+// 512px across. Wrapping constrains the input without changing `.input` for the
+// rest of the OS, where the same combination is used by other surfaces.
+export function Narrow({ size = 'md', children, className = '' }: NarrowProps) {
+  return <div className={`w-full ${NARROW_SIZES[size]} ${className}`}>{children}</div>
 }
 
 interface CardProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
@@ -325,9 +377,14 @@ export function InfoRow({ label, value, mono = false, ok }: InfoRowProps) {
   const tone = ok == null ? 'text-[var(--text-secondary)]'
     : ok ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2.5 bg-[var(--bg-surface)]">
+    // A definition grid, not a justify-between row. Pushing the value hard
+    // right worked at a 42rem measure and fell apart as the pane grew: on a
+    // maximised window "Device" and its value sat ~770px apart with nothing
+    // between them, so no row could be read across. A bounded label column
+    // keeps every pair adjacent and every value on one left edge at any width.
+    <div className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] items-baseline gap-x-5 px-4 py-2.5 bg-[var(--bg-surface)]">
       <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      <span className={`text-sm text-right truncate ${tone} ${mono ? 'mono text-[13px]' : ''}`}>{value ?? '—'}</span>
+      <span className={`text-sm min-w-0 truncate ${tone} ${mono ? 'mono text-[13px]' : ''}`}>{value ?? '—'}</span>
     </div>
   )
 }
