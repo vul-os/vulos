@@ -225,7 +225,12 @@ func validateURL(raw string, allowInsecure bool) error {
 		return fmt.Errorf("url %q has no host", raw)
 	}
 	if u.User != nil {
-		return fmt.Errorf("url %q embeds credentials — put the bearer grant in \"token\" instead", raw)
+		// Do NOT interpolate raw/u here: it embeds the operator's credentials
+		// (e.g. "https://user:pass@host/..."), and this error propagates up
+		// through Load/FromEnv into a plain log.Printf in cmd/server — logging
+		// raw would put the secret in the box's own log file. u.Redacted()
+		// keeps the host/path for diagnosis while replacing the password.
+		return fmt.Errorf("url %s embeds credentials — put the bearer grant in \"token\" instead", u.Redacted())
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("url %q must not carry a query or fragment", raw)

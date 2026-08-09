@@ -294,6 +294,28 @@ func TestValidationRejects(t *testing.T) {
 	}
 }
 
+// TestValidationRejects_CredentialsNotEchoedInError is a regression test: the
+// "embeds credentials" error used to interpolate the raw URL (including the
+// plaintext password), and that error propagates through Load/FromEnv into a
+// plain log.Printf in cmd/server/reachwire.go — so the operator's password
+// would land in the box's own log file. The error must name the offending
+// URL for diagnosis without leaking the password.
+func TestValidationRejects_CredentialsNotEchoedInError(t *testing.T) {
+	ep := Endpoint{BaseURL: "https://myuser:supersecretpw@relay.example.com", Name: "box1", Token: "t"}
+	_, err := normalise([]Endpoint{ep})
+	if err == nil {
+		t.Fatal("accepted a URL with embedded credentials")
+	}
+	if strings.Contains(err.Error(), "supersecretpw") {
+		t.Fatalf("SECURITY REGRESSION: validation error leaked the raw password: %v", err)
+	}
+	// Still useful for diagnosis: names the host so an operator can find the
+	// offending endpoint in their config.
+	if !strings.Contains(err.Error(), "relay.example.com") {
+		t.Fatalf("error dropped the host entirely, not just the password: %v", err)
+	}
+}
+
 // TestOneBadEntryRefusesTheWholeSet is the anti-false-redundancy rule: an
 // operator who typo'd relay B must not silently get a box running on relay A
 // alone while believing it has two.
