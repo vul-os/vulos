@@ -115,7 +115,7 @@ After that, the device is a full peer of your cluster: it holds a complete, merg
 
 ### The device key (TPM)
 
-Independently of joining, every box maintains a **device key** in `~/.vulos/auth/tpm/` — backed by a hardware TPM when `/dev/tpmrm0` exists, otherwise a software-encrypted store. It seals secrets to *this machine* (passkey credentials, cloud enrollment keys) and provides a stable device identity. Check what your box is using:
+Independently of joining, every box maintains a **device key** in `~/.vulos/auth/tpm/` — backed by a hardware TPM when `/dev/tpmrm0` exists, otherwise a software-encrypted store. It seals secrets to *this machine* — passkey credentials, the device-PIN wrap, pairing and fleet-identity material, and integration credentials — and provides a stable device identity. Check what your box is using:
 
 ```bash
 curl http://localhost:8080/api/auth/device/tpm/status

@@ -212,7 +212,7 @@ There is no single one-click restore; this is the honest, code-supported procedu
    Repeat with `--db ~/.vulos/db/files.db` if you snapshotted the Drive index too.
 4. **Restore user data**: sign in as admin and `POST /api/vault/sync` (pulls the latest Restic snapshot into `~/.vulos/data`), or use the plain `restic restore` shown above.
 5. **Drive documents**: if your bytes live in an object store, they are already there — once `files.db` is restored, the Drive works again, because the index records bucket + key per file. In standalone mode, restore `~/.vulos/storage` from whatever copy you made (see gaps below).
-6. **Re-enroll device-bound things**: cloud enrollment (Settings → sign in to your Vulos account; the box completes `POST /api/auth/cloud/enroll/start` and waits for your approval in the cloud console), and re-register passkeys if the old box's device key was TPM-held.
+6. **Re-enroll device-bound things**: re-register passkeys if the old box's device key was TPM-held (they were sealed to hardware that is gone), and re-pair any devices you had paired — `POST /api/pairing/issue` on the box, `POST /api/pairing/claim` from the device, `GET /api/pairing/devices` to check. Accounts are local to the box; there is **no** cloud enrollment step and no cloud console to approve anything in (the Vulos Cloud account/enrolment surface was removed from the server — `/api/auth/cloud/*` no longer exists). If you point the box at a control plane, that is configured separately (`VULOS_CP_URL` / `VULOS_CLOUD_URL`, or Settings), not re-enrolled here.
 
 ## Moving a box to new hardware
 
