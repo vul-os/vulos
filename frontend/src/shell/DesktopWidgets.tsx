@@ -14,6 +14,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import CalendarWidget from './CalendarWidget'
 import { subscribe, getItems, getUnreadCount, markAllRead } from '../core/notificationStore'
 import type { ShellNotification } from './notificationTypes'
+import { Z_DESKTOP_WIDGETS } from './zLayers'
 import './shell-chrome.css'
 
 // ── Clock ────────────────────────────────────────────────────────────────────
@@ -97,10 +98,18 @@ function NotificationsWidget() {
 
 export default function DesktopWidgets() {
   return (
+    // Z_DESKTOP_WIDGETS puts the column ON THE DESKTOP, beneath every window.
+    // This was written as a literal z-20 — the same value Window.tsx gives the
+    // ACTIVE window — and because the column renders later in the DOM it won
+    // the tie and floated OVER windows: the clock sat across Activity Monitor's
+    // title bar and a notification card covered one of its metrics. Widgets are
+    // wallpaper furniture, not an overlay; a window that reaches them should
+    // cover them, exactly as on any desktop. The ordering now lives in
+    // zLayers.ts and is asserted by zLayers.test.ts.
     <div
       data-desktop-widgets
-      className="fixed right-3 z-20 w-60 max-w-[calc(100vw-1.5rem)] flex flex-col gap-3 pointer-events-auto"
-      style={{ top: '2.75rem' }}
+      className="fixed right-3 w-60 max-w-[calc(100vw-1.5rem)] flex flex-col gap-3 pointer-events-auto"
+      style={{ top: '2.75rem', zIndex: Z_DESKTOP_WIDGETS }}
     >
       <ClockWidget />
       {/* The agenda widget owns its own data seam (/api/pim/calendar/events)

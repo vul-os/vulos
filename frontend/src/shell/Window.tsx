@@ -14,6 +14,7 @@ import { canSpawnNativeWindow, useThinWM } from '../core/useNativeMode'
 import { iframeSandboxForURL } from '../core/AppOrigins'
 import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 import { tileGeometry, snapZoneForPoint, MENU_BAR_H } from './windowTiling'
+import { WINDOW_Z_ACTIVE, WINDOW_Z_INACTIVE, WINDOW_Z_CLOSING_LIFT } from './zLayers'
 import './shell-chrome.css'
 
 // ORIGIN-01: the iframe sandbox is derived from the frame URL's ORIGIN, not from
@@ -211,7 +212,7 @@ export default function Window({ win, pointerBlock }: WindowProps) {
   // decoration, positioning, and stacking — React becomes a thin mirror.
   const thinWM = useThinWM()
   const isActive = win._active !== undefined ? win._active : activeWindow === win.id
-  const zBase = isActive ? 20 : 10
+  const zBase = isActive ? WINDOW_Z_ACTIVE : WINDOW_Z_INACTIVE
   const isBrowser = win.appId === 'browser'
 
   // ── Window lifecycle motion ──────────────────────────────────────────────
@@ -340,7 +341,7 @@ export default function Window({ win, pointerBlock }: WindowProps) {
       className="vwin win-anim absolute flex flex-col rounded-lg overflow-hidden"
       style={{
         left: win.position.x, top: win.position.y, width: win.size.width, height: win.size.height,
-        zIndex: closing ? zBase + 5 : zBase,
+        zIndex: closing ? zBase + WINDOW_Z_CLOSING_LIFT : zBase,
         transformOrigin: genieOrigin,
         pointerEvents: animating ? 'none' : undefined,
         display: hidden ? 'none' : undefined,
