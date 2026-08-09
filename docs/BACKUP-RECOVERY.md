@@ -6,7 +6,7 @@ What state your Vulos box holds and where, the four built-in backup mechanisms (
 
 ## The one-paragraph model
 
-A Vulos box keeps everything under three roots: `~/.vulos` in the service user's home (databases, keys, app data, staged files), your object-store bucket(s) (Drive documents and app storage — see [FILES.md](FILES.md)), and, for the self-host bundle, `/etc/vulos` + `/var/lib/vulos` (config and per-service data). Backup is not one switch: the **Restic vault** snapshots user data to S3, the **database snapshot** tool backs up a SQLite database to encrypted S3, **OS Snapshots** capture point-in-time, restorable copies of your object-store bucket, and the **recovery kit** is a small JSON you download once and keep offline. Each uses a *different* secret (or none). Know all four before you need them.
+A Vulos box keeps everything under two roots: `~/.vulos` in the service user's home (databases, keys, app data, staged files) and your object-store bucket(s) (Drive documents and app storage — see [FILES.md](FILES.md)). A bare-metal image additionally carries `/etc/vulos/trust-anchor.pub` and release-verification files, which are part of the OS image itself, not your data. Backup is not one switch: the **Restic vault** snapshots user data to S3, the **database snapshot** tool backs up a SQLite database to encrypted S3, **OS Snapshots** capture point-in-time, restorable copies of your object-store bucket, and the **recovery kit** is a small JSON you download once and keep offline. Each uses a *different* secret (or none). Know all four before you need them.
 
 ## What state lives where
 
@@ -37,15 +37,6 @@ Everything below is created by the Go backend (verified against the code, not as
 ### The object store
 
 With S3/MinIO/Tigris configured, your actual documents live in per-user buckets (`vulos-<userID>`, keys `<userID>/drive/...` and `<userID>/<appID>/...`) and the OS's own cluster data in `vulos-cluster`. Bucket durability is primarily your storage provider's job. Of the box-side mechanisms below only **OS Snapshots** (mechanism 3) copies bucket contents — the Restic vault and the DB snapshot tool do not.
-
-### Self-host bundle roots
-
-The bundle installer (see [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md)) additionally uses:
-
-- `/etc/vulos/` — `fabric.yaml`, `storage.yaml`, `vulos.yaml`, `mail.yaml`, `office.yaml`, `bundle.yaml`. Owned `root:vulos`, mode 640. Never overwritten by re-runs of the installer.
-- `/var/lib/vulos/` — the shared fabric X25519 keypair (`fabric_private.pem`, mode 600), per-service data dirs (`vulos/`, `mail/` with its X25519 mail keys, `office/uploads/`), and `minio/` (including `.minio_secret`) when running local MinIO.
-
-Bare-metal images also carry `/etc/vulos/trust-anchor.pub` and release-verification files; those are part of the OS image, not your data.
 
 ## Backup mechanism 1: the Restic vault (user data → S3)
 
@@ -210,8 +201,8 @@ So a complete "keys drawer" for a self-hosted box is: **recovery phrase, Restic 
 
 There is no single one-click restore; this is the honest, code-supported procedure.
 
-1. **Reinstall Vulos** on the new machine (image or bundle — [GETTING-STARTED.md](GETTING-STARTED.md)).
-2. **Reapply configuration**: environment variables / `/etc/vulos/*.yaml`, using your recovery kit for the storage endpoint, bucket, and credentials.
+1. **Reinstall Vulos** on the new machine — see [GETTING-STARTED.md](GETTING-STARTED.md).
+2. **Reapply configuration**: environment variables, using your recovery kit for the storage endpoint, bucket, and credentials.
 3. **Restore the auth database** (accounts, wrapped master keys):
    ```bash
    VULOS_S3_ENDPOINT=... VULOS_S3_BUCKET=... \
@@ -227,13 +218,10 @@ There is no single one-click restore; this is the honest, code-supported procedu
 
 There is **no automated whole-box migration tool**. The supported manual move, implied directly by the state layout:
 
-1. Stop the server on the old box (`sudo systemctl stop vulos-bundle.target` on the bundle).
+1. Stop the server on the old box (`sudo systemctl stop vulos.service` on bare metal, or `docker stop vulos` under Docker).
 2. Copy the state, preserving permissions:
    ```bash
    rsync -aHAX ~/.vulos/  newbox:~/.vulos/
-   # bundle installs additionally:
-   rsync -aHAX /etc/vulos/ newbox:/etc/vulos/
-   rsync -aHAX /var/lib/vulos/ newbox:/var/lib/vulos/
    ```
 3. Reapply the same environment variables (they are not stored in `~/.vulos`).
 4. Start the server on the new box.

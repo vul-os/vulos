@@ -28,11 +28,10 @@ Opening it with no live sessions drops you straight into a new shell. If you hav
 
 Everything below is a plain shell command run inside the Terminal app itself (or over SSH — it's the same box). `sudo` is only available if your Vulos profile has the admin role.
 
-**Check that everything is up:**
+**Check that everything is up** (bare metal — live USB, installed to disk, or `./build.sh --deploy`):
 
 ```bash
-sudo systemctl status vulos-bundle.target        # the whole stack
-sudo systemctl status vulos.service              # just the OS backend
+sudo systemctl status vulos.service              # the OS backend
 ```
 
 **Tail logs:**
@@ -40,10 +39,9 @@ sudo systemctl status vulos.service              # just the OS backend
 ```bash
 sudo journalctl -u vulos -n 200 --no-pager        # OS backend, last 200 lines
 sudo journalctl -u vulos -f                       # follow live
-sudo journalctl -u vulos -u vulos-lilmail -u vulos-diwan -n 100   # mail + office together
 ```
 
-If you're running under Docker instead of the systemd bundle:
+If you're running under Docker instead:
 
 ```bash
 docker logs vulos --tail 200
@@ -60,27 +58,25 @@ du -sh ~/.vulos/*        # what's using space inside your data dir
 The `/api/health` endpoint also degrades itself below 500 MiB free, so a quick check is:
 
 ```bash
-curl -s http://localhost:8443/api/health | jq   # 8080 in Docker/dev instead of 8443
+curl -s http://localhost:8080/api/health | jq
 ```
 
-**Restart a service after a config change:**
+**Restart the service after a config change:**
 
 ```bash
-sudo systemctl restart vulos.service         # OS backend only
-sudo systemctl restart vulos-lilmail.service    # mail only
-sudo systemctl restart vulos-bundle.target   # the whole bundle
+sudo systemctl restart vulos.service
 ```
 
 **Inspect network/reachability:**
 
 ```bash
-curl -s http://localhost:8443/api/network/status | jq   # requires a session
-curl -s http://localhost:8443/api/network/direct | jq    # direct-mode status, if enabled
+curl -s http://localhost:8080/api/network/status | jq   # requires a session
+curl -s http://localhost:8080/api/network/direct | jq    # direct-mode status, if enabled
 ```
 
 `ss -tulpn` and `ip a` work exactly as you'd expect on any Linux box, for a lower-level look at what's listening and on what address.
 
-**Applying OS updates.** This is the one thing the terminal is deliberately *not* the path for on an OS-image install: OTA update checks are verify-only and run in the background automatically, but actually staging a new image only ever happens when you click "Download & stage update" in **Settings → OS Update** — that route requires the owner role and a fresh step-up elevation, and nothing in the backend calls it on its own. Don't try to reproduce this by hand from the shell. If you're running the self-hosted bundle from Docker rather than an OS image, see the upgrade steps in [DEPLOY.md](DEPLOY.md#upgrading) instead (a `docker pull` + restart, run from your host, not necessarily from inside the Terminal app).
+**Applying OS updates.** This is the one thing the terminal is deliberately *not* the path for on an OS-image install: OTA update checks are verify-only and run in the background automatically, but actually staging a new image only ever happens when you click "Download & stage update" in **Settings → OS Update** — that route requires the owner role and a fresh step-up elevation, and nothing in the backend calls it on its own. Don't try to reproduce this by hand from the shell. If you're running under Docker rather than an OS image, see the upgrade steps in [DEPLOY.md](DEPLOY.md#upgrading) instead (a `docker pull` + restart, run from your host, not necessarily from inside the Terminal app).
 
 ## Safety notes
 
@@ -95,6 +91,6 @@ This is a real shell with real consequences — there is no sandbox between you 
 ## Where to go next
 
 - [USER-GUIDE.md](USER-GUIDE.md) — the Launchpad, dock, Cmd-K palette, and the rest of the desktop shell.
-- [CONFIGURATION.md](CONFIGURATION.md) — environment variables, the self-hosted bundle's directory layout, and `VULOS_DATA_DIR`.
+- [CONFIGURATION.md](CONFIGURATION.md) — environment variables, including `VULOS_DATA_DIR`.
 - [NETWORKING.md](NETWORKING.md) — direct mode, the relay, ports, and verifying reachability from the command line in more depth.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — where logs live, health checks, and symptom-by-symptom fixes if a service won't come up.

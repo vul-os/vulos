@@ -50,7 +50,7 @@ Your box writes three kinds of thing to object storage:
   app data for apps that hold the `storage` permission.
 - **App-storage seam data** — per-app object storage, isolated per user and (via
   short-lived STS credentials) per app. See
-  [CONFIGURATION.md → Per-app isolation](CONFIGURATION.md#per-app-isolation-sts--on-by-default-for-self-host).
+  [CONFIGURATION.md → Per-app storage isolation](CONFIGURATION.md#per-app-storage-isolation-sts).
 - **The backup vault** — periodic [Restic](BACKUP-RECOVERY.md) snapshots of the
   box's state.
 
@@ -85,7 +85,7 @@ different ones):
 
 | Role | Config prefix | What it holds |
 |---|---|---|
-| **Per-user object-store gateway** | `VULOS_STORAGE_*` (or the bundle's `storage.yaml`) | Files/Drive and app-storage data — the bucket that grows with what you keep. |
+| **Per-user object-store gateway** | `VULOS_STORAGE_*` | Files/Drive and app-storage data — the bucket that grows with what you keep. |
 | **Backup vault** | `S3_*` + `VULOS_RESTIC_PASSWORD` | Restic snapshots for disaster recovery. |
 
 They are deliberately separate — see
@@ -107,7 +107,7 @@ verify its current pricing on its own site — see the
 | **Backblaze B2** | Cheapest per-GB-month storage | Free up to a multiple of stored volume, then per-GB | None notable | A few GB of storage free | Cheapest raw storage; big archives with modest download |
 | **Wasabi** | **Flat** per-TB-month, no request fees | No egress fees (fair-use capped to your stored volume) | **90-day minimum storage duration**; **effective ~1 TB / monthly minimum charge** regardless of use | — | You store a lot (≥ ~1 TB) and delete rarely; overkill for a small box |
 | **AWS S3** | Per-GB-month storage, per-request, **metered egress** | **Metered per-GB** (this is the one that surprises people) | Storage-class minimums (e.g. IA/Glacier); complex pricing | Small storage + requests, first 12 months | You already live in AWS, or want maximum ubiquity and tooling |
-| **Tigris** | Per-GB-month storage, small per-request | **Zero egress fees** | None notable | Free tier available | You want zero-egress and edge-close reads; the bundle's default |
+| **Tigris** | Per-GB-month storage, small per-request | **Zero egress fees** | None notable | Free tier available | You want zero-egress and edge-close reads |
 | **Self-hosted MinIO / Garage** | Your disk + your bandwidth | Your own bandwidth cost | You run it, patch it, and back it up | n/a (you own it) | Full sovereignty / air-gap; no third party at all |
 
 **The one-line differentiators:**
@@ -127,9 +127,9 @@ verify its current pricing on its own site — see the
   Garage is a lightweight, replication-friendly alternative to MinIO that runs
   happily on small/edge hardware.
 
-MinIO is a first-class option in Vulos: the self-host bundle can install and
-supervise it for you on loopback — see
-[SELF-HOST-BUNDLE.md → Storage backends](SELF-HOST-BUNDLE.md#storage-backends).
+MinIO is a first-class option in Vulos: point `VULOS_STORAGE_ENDPOINT` at a
+MinIO instance you run yourself (on the same box or elsewhere on your
+network) — see [Environment variables](#environment-variables-advanced--container-deploys) below.
 
 ---
 
@@ -247,39 +247,10 @@ During first boot, the setup wizard has a **Storage** step where you connect an
 S3 bucket (Tigris recommended, or local MinIO) for encrypted backup with Restic.
 See [GETTING-STARTED.md](GETTING-STARTED.md).
 
-### Self-host bundle — `storage.yaml`
-
-If you installed with the bundle, edit `/etc/vulos/storage.yaml`:
-
-```yaml
-# This box's own filesystem — the DEFAULT a new install writes. No provider.
-backend: local
-local:
-  root: /var/lib/vulos/storage
-
-# A hosted S3-compatible provider (R2 / B2 / Wasabi / AWS / Tigris)
-backend: tigris                 # backend selector
-endpoint: https://<your-provider-endpoint>
-access_key: YOUR_ACCESS_KEY
-secret_key: YOUR_SECRET_KEY
-bucket: your-bucket-name
-region: us-east-1               # match your provider/bucket region
-
-# Or local MinIO (installed by --storage=minio)
-backend: minio
-endpoint: http://127.0.0.1:9000
-access_key: vulos
-secret_key: (read from /var/lib/vulos/minio/.minio_secret at start)
-bucket: vulos
-```
-
-Full walkthrough (including MinIO/Garage supervision and hardening):
-[SELF-HOST-BUNDLE.md → Storage backends](SELF-HOST-BUNDLE.md#storage-backends).
-
 ### Environment variables (advanced / container deploys)
 
-For containerised or hand-rolled deployments, the box reads two independent S3
-configurations directly from the environment:
+Outside the wizard, the box reads two independent S3 configurations directly
+from the environment:
 
 - **Per-user object store (Files/Drive, app storage):** `VULOS_STORAGE_ENDPOINT`,
   `VULOS_STORAGE_REGION`, `VULOS_STORAGE_ACCESS_KEY`, `VULOS_STORAGE_SECRET_KEY`,
@@ -295,6 +266,6 @@ Backup and restore procedures live in [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
 ---
 
-**See also:** [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) ·
+**See also:**
 [CONFIGURATION.md](CONFIGURATION.md) · [FILES.md](FILES.md) ·
 [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) · [GETTING-STARTED.md](GETTING-STARTED.md)

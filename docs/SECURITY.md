@@ -176,10 +176,9 @@ What is actually protected on disk, so you can judge what a stolen disk (without
 | Device PIN material | argon2id-derived wrap + AES-256-GCM, optionally TPM-re-sealed; PIN never leaves the device |
 | TOTP vault secrets | AES-256-GCM under `~/.vulos/auth/totp/` |
 | Fabric signing key | AES-256-GCM sealed under `VULOS_FABRIC_KEY_HEX` (fail-closed in prod) |
-| Bundle configs (`/etc/vulos/*.yaml`) | `root:vulos`, mode `640` — service can read, not write |
-| Bundle private keys (`fabric_private.pem`, mail X25519 key, MinIO secret) | Mode `600` |
+| Bare-metal trust anchor (`/etc/vulos/trust-anchor.pub`) | Baked into the OS image; controls which signed updates VERITY-02 accepts |
 
-The self-host bundle additionally runs every service as a dedicated non-login `vulos` user under systemd hardening (`NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `PrivateDevices`, empty capability bounding sets except mail's `CAP_NET_BIND_SERVICE`) — the full table is in [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md). Whole-disk encryption is your responsibility; Vulos protects specific secrets, not the entire filesystem.
+A bare-metal box (live USB or installed to disk) runs `vulos.service` under systemd, unsandboxed (no `NoNewPrivileges`/`ProtectSystem`/user-namespace hardening on that unit today — it's a single-user appliance image, not a multi-tenant host). Whole-disk encryption is your responsibility; Vulos protects specific secrets, not the entire filesystem.
 
 ---
 

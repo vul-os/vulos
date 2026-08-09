@@ -400,13 +400,13 @@ operators, and no single one is load-bearing.
 
 ```bash
 # Box: what does reachability look like right now?
-curl -s localhost:8443/api/network/reach | jq
+curl -s localhost:8080/api/network/reach | jq
 # → {"enabled":true,
 #    "endpoints":[{"endpoint":{"url":"…","name":"box1"},"healthy":true,…}],
 #    "links":[{"label":"…","state":"up","public_url":"https://box1.relay.example.com"}]}
 
 # Box: is the direct fast path active?
-curl -s localhost:8443/api/network/direct | jq
+curl -s localhost:8080/api/network/direct | jq
 
 # Relay: is it alive?
 curl -s https://relay.example.com/_vulos-reach/v1/health

@@ -285,7 +285,6 @@ With the LAN layer enabled (below), the box itself answers DNS for `box.<instanc
 | Direct mode | The direct listener inside the backend | ACME/Let's Encrypt (autocert) or operator-provided files (see table above) |
 | LAN layer | The LAN HTTPS listener inside the backend | An externally-issued certificate for `box.<id>.lan.vulos.org`, delivered to `/var/lib/vulos/tls/lan.crt` + `lan.key` (paths overridable via `VULOS_LAN_CERT` / `VULOS_LAN_KEY`), hot-reloaded on change; falls back to a self-signed cert until the real one arrives |
 | `own` mode / published apps | Your reverse proxy (Caddy is the supported path) | Caddy's automatic ACME, driven by the snippets Vulos writes into `VULOS_CADDY_DIR` |
-| Self-host bundle | Per-service listeners (OS on 8443, mail on 8444, office on 8445) | Configured via `/etc/vulos/fabric.yaml` (`domain`, `acme_email`) — see [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) |
 
 Fetching the trusted LAN certificate from an external issuance endpoint is itself opt-in (`VULOS_LANCERT_ENABLE=1`, endpoint at `VULOS_CLOUD_BASE_URL`, defaulting to `https://cp.vulos.org`) and hardened: the puller accepts an extra CA bundle (`VULOS_LANCERT_CA_PEM` / `VULOS_LANCERT_CA_FILE`) or SPKI pins (`VULOS_LANCERT_SPKI_PINS`), and refuses a plaintext endpoint URL unless `VULOS_LANCERT_ALLOW_INSECURE=1` is set (never do this outside a lab). Leave `VULOS_LANCERT_ENABLE` unset and the LAN layer just uses its self-signed fallback — nothing about the LAN listener depends on this being configured.
 
@@ -400,7 +399,7 @@ Drop advertises the service `_vula-drop._tcp.local` over mDNS so nearby Vulos pe
 
 ## Ports
 
-Ports actually bound by the software in this repo, plus the self-host bundle's documented ports:
+Ports actually bound by the software in this repo:
 
 | Port | Protocol | What | When it exists | Exposure guidance |
 |---|---|---|---|---|
@@ -412,9 +411,6 @@ Ports actually bound by the software in this repo, plus the self-host bundle's d
 | 5353 | UDP (multicast) | mDNS: `vulos.local`, Drop discovery, fabric sibling discovery | LAN layer / Drop / fabric | Multicast never crosses your router; nothing to forward. |
 | 3478 | UDP/TCP | TURN media relay (coturn) | Only if you run your own coturn with `TURN_SECRET` set — the backend mints HMAC credentials for it but does not run the server | On the coturn host, per coturn docs. |
 | ephemeral UDP | UDP | WebRTC media (calls, streaming, in-process SFU) | During calls | Outbound/NAT-traversed; TURN covers the hard cases. |
-| 8443 / 8444 / 8445 | TCP | Bundle: OS / mail / office HTTPS | Self-host bundle | See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md). |
-| 25, 587 | TCP | Bundle: SMTP inbound / submission | Self-host bundle with mail | Must be open for self-hosted mail; many ISPs block 25. |
-| 9000 | TCP | Bundle: MinIO | `--storage=minio` | Loopback-only by design; never expose. |
 
 AI-generated sandbox backends bind `127.0.0.1` only and are reached through the gateway — they never listen externally.
 
@@ -528,7 +524,7 @@ If step 4 times out but step 1 works, your firewall or NAT is dropping inbound 4
 
 - [SECURITY.md](SECURITY.md) — the pre-exposure checklist, auth surface, and fail-closed defaults
 - [CONFIGURATION.md](CONFIGURATION.md) — the full env var reference
-- [DEPLOY.md](DEPLOY.md) and [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) — installing and running
-- [GETTING-STARTED.md](GETTING-STARTED.md) — first boot
+- [GETTING-STARTED.md](GETTING-STARTED.md) — installing and first boot
+- [DEPLOY.md](DEPLOY.md) — deploying to a server you already run
 - [PEERING.md](PEERING.md) — box-to-box identity, contacts, and Drop
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — when a box is unreachable

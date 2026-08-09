@@ -399,7 +399,7 @@ Confirm from anywhere:
 
 ```bash
 curl -s https://box1.relay.example.com/api/health
-curl -s localhost:8443/api/network/reach | jq     # on the box
+curl -s localhost:8080/api/network/reach | jq     # on the box
 ```
 
 ---

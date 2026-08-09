@@ -2,7 +2,7 @@
 
 Common Vulos OS failures, organized as symptom, cause, and fix. Every log line, error string, endpoint, environment variable, and unit name in this chapter is quoted from the actual code and scripts, so you can grep your logs for the exact text you see. Start with the logs section, find your area, and work through the checks in order.
 
-Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](CONFIGURATION.md), [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md), [NETWORKING.md](NETWORKING.md), [ASSISTANT.md](ASSISTANT.md), [APPS.md](APPS.md), [FILES.md](FILES.md), [SECURITY.md](SECURITY.md), [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md), [PEERING.md](PEERING.md), [USER-GUIDE.md](USER-GUIDE.md).
+Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](CONFIGURATION.md), [NETWORKING.md](NETWORKING.md), [ASSISTANT.md](ASSISTANT.md), [APPS.md](APPS.md), [FILES.md](FILES.md), [SECURITY.md](SECURITY.md), [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md), [PEERING.md](PEERING.md), [USER-GUIDE.md](USER-GUIDE.md).
 
 ---
 
@@ -10,23 +10,21 @@ Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](C
 
 The Go backend writes everything to standard output/error. Where that ends up depends on how you installed Vulos.
 
-**Self-hosted bundle (systemd).** The installer (`scripts/install-vulos.sh`) creates these units:
-
-| Unit | What it is |
-|------|------------|
-| `vulos.service` | OS backend (port 8443) |
-| `vulos-lilmail.service` | Mail server (ports 25, 587, 8444) |
-| `vulos-diwan.service` | Office backend (port 8445) |
-| `vulos-fabric.service` | Shared fabric identity init (oneshot, runs first) |
-| `vulos-minio.service` | Local object store (only if you chose local MinIO) |
-| `vulos-bundle.target` | Sentinel target for the whole stack |
+**Bare metal — live USB or installed to disk (systemd).** The image runs the
+backend as a single `vulos.service` unit on port 8080. A second unit,
+`vulos-console.service`, owns the physical console (`tty1`) and shows a
+read-only status screen instead of a login prompt — see
+[GETTING-STARTED.md → What you'll see on screen](GETTING-STARTED.md#what-youll-see-on-screen).
 
 ```bash
-sudo systemctl status vulos-bundle.target        # everything up?
-sudo journalctl -u vulos -n 200 --no-pager       # OS backend log
-sudo journalctl -u vulos -u vulos-lilmail -u vulos-diwan -n 100
-sudo journalctl -u vulos -f                      # follow live
+sudo systemctl status vulos.service           # is it up?
+sudo journalctl -u vulos -n 200 --no-pager    # OS backend log
+sudo journalctl -u vulos -f                   # follow live
 ```
+
+**Deployed to a server you run (`./build.sh --deploy`).** Same `vulos.service`
+unit, installed by the deploy script over SSH — see [DEPLOY.md](DEPLOY.md).
+The same `journalctl -u vulos` commands above apply.
 
 **Docker.** The container is conventionally named `vulos`:
 
@@ -49,7 +47,7 @@ cat ~/.vulos/logs/<appId>.log        # current
 cat ~/.vulos/logs/<appId>.log.old    # previous rotation
 ```
 
-**Ports.** Docker and dev default to `8080` (the `PORT` env var, default `"8080"`). The self-host bundle runs the OS backend on `8443`. Substitute accordingly in the `curl` examples below.
+**Ports.** Every install path — Docker, live USB, installed-to-disk, and `./build.sh --deploy` — defaults to `8080` (the `PORT` env var, default `"8080"`). Substitute accordingly in the `curl` examples below if you've changed it.
 
 ### Health and metrics
 
@@ -95,12 +93,13 @@ docker run ... --device /dev/uinput ...
 **Likely cause:** port 8080 already taken on the host.
 **Fix:** map a different host port (`-p 9090:8080`) or set `PORT` for a bare-metal run.
 
-**Symptom:** bundle installer reports a checksum mismatch.
-**Fix:** re-run `curl -fsSL https://get.vulos.org | sudo bash` — the installer is idempotent and re-downloads from scratch.
+**Symptom:** `vulos-install --disk` reports a manifest verification failure.
+**Likely cause:** `stable.json`/`stable.json.sig` are missing from, or don't match, the release you downloaded — the installer refuses to write an unverifiable system rather than installing insecurely.
+**Fix:** re-download the release assets for the exact version you're installing and re-run. See [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
 
 **Symptom:** mail doesn't receive; port 25 times out from outside.
 **Likely cause:** most residential and many cloud ISPs block inbound port 25.
-**Fix:** use a VPS with port 25 open (Hetzner, OVH, etc.) or configure a mail relay. See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md).
+**Fix:** Vulos itself does not run a mail server — LilMail is a client for a mailbox you already own (Gmail/Outlook/IMAP/SMTP). If you're running your own separate mail server alongside Vulos, use a VPS with port 25 open (Hetzner, OVH, etc.) or configure a mail relay; that mail server is outside this repo.
 
 ---
 
@@ -119,7 +118,7 @@ A box behind NAT is reached through a **relay**: the box dials **out**, holds th
 If remote access fails, start here:
 
 ```bash
-curl -s localhost:8443/api/network/reach | jq   # on the box: endpoint health + per-link state
+curl -s localhost:8080/api/network/reach | jq   # on the box: endpoint health + per-link state
 curl -s https://relay.example.com/_vulos-reach/v1/health   # is the relay alive?
 ```
 

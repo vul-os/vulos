@@ -1,6 +1,6 @@
 # Vulos Configuration Reference
 
-This document consolidates all environment variables, config files, and runtime flags for the Vulos OS backend, frontend build, and self-hosted bundle.
+This document consolidates all environment variables, config files, and runtime flags for the Vulos OS backend and frontend build.
 
 ---
 
@@ -229,70 +229,20 @@ configured), not local OAuth credentials.
 
 ---
 
-## Self-hosted bundle (`/etc/vulos/`)
-
-The one-line installer (`curl -fsSL https://get.vulos.org | sudo bash`) writes these files. They are owned `root:vulos` mode 640 and never overwritten on re-run.
-
-### `/etc/vulos/fabric.yaml`
-
-Shared mesh identity, domain, TLS, and control-plane endpoint settings. **Edit this first after install.**
-
-```yaml
-domain: os.yourdomain.com
-acme_email: you@yourdomain.com
-cloud_endpoint: ""                      # optional; leave empty unless you run your own control plane. There is no default host — an unconfigured box never dials out.
-```
-
-### `/etc/vulos/storage.yaml`
-
-Storage backend selector. Choose one backend. **The default is this box's own
-filesystem** — no object store, no credentials, no third-party service.
-
-```yaml
-# This box's filesystem (DEFAULT — written by a new install)
-backend: local
-local:
-  root: /var/lib/vulos/storage
-
-# Local MinIO (--storage=minio)
-backend: minio
-endpoint: http://127.0.0.1:9000
-access_key: vulos
-secret_key: (read from /var/lib/vulos/minio/.minio_secret at start)
-bucket: vulos
-
-# Tigris — HOSTED, opt-in (--storage=tigris). A third party stores your data.
-backend: tigris
-access_key: YOUR_ACCESS_KEY
-secret_key: YOUR_SECRET_KEY
-bucket: your-bucket-name
-```
-
-**When to opt into an object store.** The local backend is enough for a
-single box: the OS writes object bytes as plain files under `local.root`,
-mirroring the bucket/key layout, and the Files data plane serves them
-directly. Pick MinIO when more than one of your own nodes must serve the same
-data (it also gives you the S3 API and STS-scoped per-app credentials). Pick a
-hosted provider when you want an off-box copy of the bytes and accept that the
-provider holds them.
-
-**Existing installs are never converted.** Re-running the installer on a box
-that already has `storage.yaml` keeps that backend, reports it, and migrates
-nothing — even if `--storage=` says otherwise. The OS side behaves the same
-way: the storage-mode selector pins a box that predates the local default to
-the backend it was already using (see `backend/internal/storagemode`).
-
-#### Per-app isolation (STS) — on by default for self-host
+## Per-app storage isolation (STS)
 
 Each user gets their own bucket (`vulos-<userID>`), so cross-**user** isolation
 always holds. Cross-**app** isolation **within a single user** is enforced by
-short-lived, prefix-scoped credentials minted via STS.
+short-lived, prefix-scoped credentials minted via STS, when an STS endpoint is
+available:
 
-**Self-host default:** when `VULOS_STORAGE_STS_ENDPOINT` is unset and an object
-store IS configured, the box automatically defaults it to its own object-store
-endpoint (MinIO serves its STS AssumeRole API on the same port as its S3 API),
-so per-app isolation is on by default with zero extra configuration. A
-storage-permitted app **never** receives a static, full-bucket credential: if
+```bash
+VULOS_STORAGE_STS_ENDPOINT=https://sts.example.com   # e.g. your own MinIO's AssumeRole API
+VULOS_STORAGE_STS_ROLE_ARN=arn:...                   # optional
+VULOS_STORAGE_STS_DURATION_SECONDS=900               # optional (default minter value)
+```
+
+A storage-permitted app **never** receives a static, full-bucket credential: if
 STS is unavailable for any reason (no object store configured at all, or
 `VULOS_STORAGE_STS_DISABLE=1`), the app simply gets no injected credential
 (fail-closed) and must call `POST /api/storage/presign` for a short-lived,
@@ -301,83 +251,11 @@ If an object store IS statically configured and at least one installed app
 declares the `storage` permission, the server **aborts at boot** rather than
 silently degrading when STS ends up unavailable in that combination.
 
-STS can also be pointed at a non-default endpoint:
-
-```bash
-VULOS_STORAGE_STS_ENDPOINT=https://sts.example.com   # overrides the self-host default
-VULOS_STORAGE_STS_ROLE_ARN=arn:...                   # optional
-VULOS_STORAGE_STS_DURATION_SECONDS=900               # optional (default minter value)
-```
-
 When STS is available, the gateway hands apps short-lived credentials scoped
 down to the app's own `<userID>/<appID>/` prefix. In cloud deployments (Tigris
 and similar stores with no STS/AssumeRole), apps use the presign endpoint
 instead of header-injected credentials — see [FILES.md](FILES.md) and
 [SECURITY.md](SECURITY.md).
-
-### `/etc/vulos/vulos.yaml`
-
-OS backend config. Inherits from `fabric.yaml` and `storage.yaml`.
-
-### `/etc/vulos/mail.yaml`
-
-Config for the self-hosted mail-server option (see [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md)). Inherits from `fabric.yaml` and `storage.yaml`.
-
-### `/etc/vulos/office.yaml`
-
-Diwan (office suite) config. Inherits from `fabric.yaml` and `storage.yaml`.
-
----
-
-## Installer flags (`get.vulos.org`)
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--dry-run` | off | Print plan without making changes |
-| `--storage=local-fs` | **on** | Store object data on this box's filesystem (no object store, no credentials, no third-party service) |
-| `--storage=minio` | off | Install and use co-located MinIO (`--storage=local` is a legacy alias for this) |
-| `--storage=tigris` | off | Opt in to hosted Tigris S3 storage |
-| `--no-enable` | off | Install units but do not enable/start (CI/containers) |
-| `--help` | — | Print usage |
-
-An existing `/etc/vulos/storage.yaml` outranks every `--storage=` flag: an
-install that is already running is never repointed and its data is never
-migrated.
-
-```bash
-# Dry run — prints the selected storage mode and why
-curl -fsSL https://get.vulos.org | sudo bash -s -- --dry-run
-
-# With local MinIO
-curl -fsSL https://get.vulos.org | sudo bash -s -- --storage=minio
-```
-
----
-
-## Shared directory layout (self-hosted)
-
-```
-/etc/vulos/
-  fabric.yaml       — mesh identity, domain, TLS, control-plane endpoint
-  storage.yaml      — storage backend selector (local by default; S3/MinIO credentials when used)
-  vulos.yaml        — OS backend config
-  mail.yaml         — self-hosted mail-server config
-  office.yaml       — Diwan (office suite) config
-  bundle.yaml       — installer metadata (arch, distro, storage mode)
-
-/var/lib/vulos/
-  fabric_public.pem   — shared fabric X25519 public key
-  fabric_private.pem  — shared fabric X25519 private key (mode 600)
-  vulos/              — OS backend data
-  mail/
-    x25519_public.pem
-    x25519_private.pem (mode 600)
-  office/
-    uploads/
-  storage/            — object bytes (default local-fs backend)
-  minio/              — only when --storage=minio
-    .minio_secret     — MinIO root password (mode 600)
-```
 
 ---
 

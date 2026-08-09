@@ -33,7 +33,6 @@ This directory contains architecture, deployment, and API documentation for the 
 | [RELAY-PROVIDERS.md](RELAY-PROVIDERS.md) | Where to host a relay (Hetzner/Fly/DO/Vultr/home box) and where the costs come from |
 | [NETWORKING.md](NETWORKING.md) | Connection modes, direct mode, DNS, TLS, ports, firewall |
 | [STORAGE-PROVIDERS.md](STORAGE-PROVIDERS.md) | Choosing an S3-compatible bucket (R2/B2/Wasabi/AWS/Tigris/self-host) and where the costs come from |
-| [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md) | Forkable self-host bundle (trust anchor, bucket) |
 | [REPRODUCIBLE-BUILDS.md](REPRODUCIBLE-BUILDS.md) | Verifying image builds from source |
 | [RELEASING.md](RELEASING.md) | Versioning and release policy |
 | [security/](security/) | Security audits and hardening-test notes |

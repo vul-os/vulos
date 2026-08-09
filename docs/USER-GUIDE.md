@@ -14,23 +14,21 @@ Before you set anything up, one decision matters more than any setting inside th
 
 This is the primary way Vulos is meant to be run. An installed box behaves like any normal computer: it writes your accounts, files, keys, and settings to its own disk, and everything is exactly where you left it after a reboot, a power cut, or pulling the plug.
 
-Today, installing a persistent box means putting Vulos on a machine's disk through one of the paths that are already disk-backed:
+There are three ways to get a persistent box, all disk-backed:
 
-- **Deploy to a server you already run** — a VPS, a home box, anything reachable over SSH:
+- **Install to a bare-metal machine's own disk** — the primary path, for a mini-PC, spare laptop, or server you're setting up from scratch. Boot the live USB (below), then from inside that live session run:
+  ```bash
+  sudo vulos-install --disk /dev/sdX
+  ```
+  This partitions the target disk, verifies a signed release manifest, and unpacks Vulos onto it — the machine then boots Vulos from its own drive from then on, no USB required. It's new: the command exists and runs today, but it has not yet been run end-to-end against real disk hardware, so treat a first run as something to watch closely and keep a way to reflash the USB if it doesn't go cleanly. Full walkthrough: [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
+- **Deploy to a server you already run** — a VPS, a home box, anything reachable over SSH, already running some Linux distro you don't want to reimage:
   ```bash
   ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
   ```
-  This installs the real OS onto that server's own disk. See [DEPLOY.md](DEPLOY.md).
-- **The self-host bundle**, for any Linux machine you already have running (bare metal or VM):
-  ```bash
-  curl -fsSL https://get.vulos.org | sudo bash
-  ```
-  See [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md).
+  This installs the real OS onto that server's own disk over SSH. See [DEPLOY.md](DEPLOY.md).
 - **Docker**, with your data on a named volume (`-v vulos-data:/root/.vulos`) — see [GETTING-STARTED.md](GETTING-STARTED.md).
 
 All three write to a disk that's already there and persist normally.
-
-**A dedicated installer that writes Vulos directly onto a fresh bare-metal machine's internal disk** — turning a mini-PC into a Vulos box the way the live-USB flash turns one into a live session — is being built and is not yet published. When it ships, this section will carry the exact steps. It is the intended primary path for bare-metal hardware; it just isn't the thing the currently-published USB image does (see below).
 
 ### Try it live from a flash drive — for testing, demos, or a disposable machine
 
@@ -48,7 +46,7 @@ This is a **live session**, not an installed system. The root filesystem is a re
 
 ### Moving from a live session to something that persists
 
-There's no in-place "make this permanent" button for a live session today — a live boot never writes to the internal disk, so there's nothing to promote. To keep what you built, treat the live session as a preview: once you know Vulos is what you want on that machine, install it with one of the persistent paths above (or wait for the bare-metal installer once it ships), and redo first-boot setup there. If you connected S3-compatible storage during the live session's setup wizard, the **Join existing** flow on the new install can sync your data back down from that storage — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
+There's no in-place "make this permanent" button for a live session — a live boot never writes to the internal disk, so there's nothing to promote. Anything you set up during the live session (accounts, files, settings) is gone once you run the installer, because it partitions and reformats the target disk. To keep what you built, treat the live session as a preview: once you know Vulos is what you want on that machine, run `sudo vulos-install --disk /dev/sdX` from inside it, and redo first-boot setup on the freshly installed system. If you connected S3-compatible storage during the live session's setup wizard, the **Join existing** flow on the new install can sync your data back down from that storage — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
 ---
 

@@ -223,13 +223,11 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 
 Vulos is built to be owned end to end, and there are two legitimate ways to put it on hardware you own — pick based on whether you want it to stick around.
 
-**Install it — the primary path, for a box you're keeping.** Point the deploy script at a server you already run (a VPS, a home box, anything reachable over SSH) and it installs the real, persistent OS there: your accounts, files, and settings live on that machine's own disk and survive a reboot.
+**Install it — the primary path, for a box you're keeping.** Boot the live image (below) on a bare-metal machine and run `sudo vulos-install --disk /dev/sdX` from inside it: a persistent ext4 root, verified at boot, A/B slots and rollback. It's real code that runs today, but it hasn't yet been run end-to-end against a physical disk outside development testing — see [docs/GETTING-STARTED.md → Installing to disk](docs/GETTING-STARTED.md#installing-to-disk-the-primary-path). Already have a server you SSH into? Point the deploy script at it instead and it installs the same persistent OS there:
 
 ```bash
 ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
 ```
-
-A from-scratch installer that writes a persistent system directly onto a bare-metal machine's *internal* disk — no separate server required — is in progress and not yet published; the self-host bundle (`curl -fsSL https://get.vulos.org | sudo bash`, see [docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)) is another persistent, disk-installed option available today for any Linux machine.
 
 **Try it live from a flash drive — for testing, demos, or a disposable machine.** The published `.img.gz` boots a full Vulos desktop straight off a USB stick:
 
@@ -237,9 +235,9 @@ A from-scratch installer that writes a persistent system directly onto a bare-me
 gunzip -c vulos-v0.1.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
-This is a live session, not an install. The root filesystem is a read-only image and the writable layer lives in RAM, so **nothing you do persists** — accounts, files, and settings are gone the moment you reboot or pull the drive. That's by design: it's the fastest way to try Vulos on real hardware, or to carry a desktop that's always clean on boot, without ever touching the machine's own disk.
+This is a live session, not an install. The root filesystem is a read-only image and the writable layer lives in RAM, so **nothing you do persists** — accounts, files, and settings are gone the moment you reboot or pull the drive. That's by design: it's the fastest way to try Vulos on real hardware, or to carry a desktop that's always clean on boot, without ever touching the machine's own disk. It's also the environment you install to disk from — see above.
 
-The image is forkable — supply your own trust-anchor key for a fully independent build. Full detail on both paths, including how to move from a live session to something that persists: **[docs/USER-GUIDE.md → Two ways to run Vulos](docs/USER-GUIDE.md#two-ways-to-run-vulos)**, **[docs/DEPLOY.md](docs/DEPLOY.md)**, and **[docs/SELF-HOST-BUNDLE.md](docs/SELF-HOST-BUNDLE.md)**.
+The image is forkable — supply your own trust-anchor key for a fully independent build. Full detail on both paths: **[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)** and **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ---
 
@@ -266,7 +264,7 @@ Vulos is free — the software charges nothing and there's no account, subscript
 A mini-PC, a spare laptop, or a cloud server all work — the same image runs on each. GPU is optional and only matters for accelerated app streaming. Requirements are in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 
 **Does flashing the USB image install Vulos, or just let me try it?**
-Just try it, today. The published `.img.gz` boots a live session — the root filesystem is read-only and the writable layer lives in RAM — so accounts, files, and settings are gone on the next reboot. Installing onto a machine's own disk so it persists is the primary path and is being built; deploying to a server you already run (`./build.sh --deploy`), the self-host bundle, and Docker all persist normally today — it's specifically the bare-metal flash image that's currently live-only. See [Two ways to run it](#two-ways-to-run-it).
+By itself, just try it. The published `.img.gz` boots a live session — the root filesystem is read-only and the writable layer lives in RAM — so accounts, files, and settings are gone on the next reboot. From inside that live session, `sudo vulos-install --disk /dev/sdX` installs Vulos onto the machine's own disk so it persists — the primary path for bare metal, though it hasn't yet been run end-to-end against real disk hardware outside development testing. Deploying to a server you already run (`./build.sh --deploy`) and Docker both persist normally today too. See [Two ways to run it](#two-ways-to-run-it).
 
 **Is the AI free?**
 "Sovereign AI" means your gateway and your keys, not a bundled frontier model. Bring your own provider key (you pay that provider directly) or run local models where your hardware allows, so nothing leaves the box. See [docs/ASSISTANT.md](docs/ASSISTANT.md).
@@ -287,7 +285,7 @@ They peer over their own Ed25519 identities and reconcile as CRDTs — no centra
 | [Networking](docs/NETWORKING.md) · [Peering](docs/PEERING.md) · [Comms](docs/COMMS.md) | Reachability, peer sync, and notifications |
 | [Development](docs/DEVELOPMENT.md) | Building, testing, and the dev workflow |
 | [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
-| [Deploy](docs/DEPLOY.md) · [Self-Host Bundle](docs/SELF-HOST-BUNDLE.md) | Ship it to your own server or bare metal |
+| [Deploy](docs/DEPLOY.md) | Ship it to your own server over SSH |
 | [Security](docs/SECURITY.md) · [Threat Model](docs/THREAT-MODEL.md) | The security posture, top to bottom |
 
 ---

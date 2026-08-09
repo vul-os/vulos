@@ -334,7 +334,7 @@ With STS available (the self-host default whenever an object store is configured
 
 **A storage-permitted app never receives a static, full-bucket credential.** If STS is unavailable — no object store configured at all (nothing to protect), `VULOS_STORAGE_STS_DISABLE=1` is set, or a mint attempt fails — the gateway injects **no** storage credential at all (fail-closed); the app must call `POST /api/storage/presign` for a short-lived, object-scoped grant instead (the same broker Files uses, generalised to any storage-permitted app). If an object store IS statically configured and at least one installed app declares the `storage` permission, the server **aborts at boot** rather than silently degrading in that combination. Cross-user isolation always holds regardless (per-user buckets); Files read grants remain single-object presigned URLs.
 
-The full variable reference, including the self-host bundle's `/etc/vulos/storage.yaml`, lives in [CONFIGURATION.md](CONFIGURATION.md); the bundle install flow is in [SELF-HOST-BUNDLE.md](SELF-HOST-BUNDLE.md).
+The full variable reference lives in [CONFIGURATION.md](CONFIGURATION.md).
 
 ### How a grant is minted (mental model)
 

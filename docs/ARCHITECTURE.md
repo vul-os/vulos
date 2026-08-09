@@ -293,12 +293,16 @@ Video calling is third-party: install Jitsi Meet / Element Call from the App Sto
 
 ## OS distribution (bare metal)
 
-> This describes the target design for an **installed, persistent** bare-metal
-> box (`build.sh --disk`), which is not yet a published release artifact. The
-> currently published `.img.gz` is a **live session** — read-only root,
-> RAM-only writable layer, nothing persists across a reboot — and has no A/B
-> slots or update path to roll back, because it never writes to the machine's
-> disk in the first place. See [USER-GUIDE.md → Two ways to run Vulos](USER-GUIDE.md#two-ways-to-run-vulos).
+> This describes the design for an **installed, persistent** bare-metal box,
+> produced today by running `vulos-install --disk /dev/sdX` from a booted live
+> session (`build.sh --disk` itself is a local build-time target only, used by
+> the boot smoke harness — it is not what ships to a real disk, and it is not a
+> release artifact). `vulos-install --disk` has landed in code but has not yet
+> been exercised end-to-end against real disk hardware. The published `.img.gz`
+> is a separate, **live session** mode — read-only root, RAM-only writable
+> layer, nothing persists across a reboot — and has no A/B slots or update path
+> to roll back, because it never writes to the machine's disk in the first
+> place. See [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
 
 ```mermaid
 flowchart TD
