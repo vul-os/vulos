@@ -4529,6 +4529,25 @@ func main() {
 			// by omission costs you nothing as long as another still answers.
 			// A single URL — the previous behaviour — is just a one-element
 			// list and works exactly as before.
+			// FABRIC-SSRF-01: everything that leaves the LAN — a rendezvous
+			// relay's /announce and /resolve, and any WAN peer address that
+			// relay hands back — goes through fabricWANClient, which is
+			// safedial-guarded and does REAL TLS certificate verification.
+			// It is deliberately NOT fabric.NewLANClient: that client skips
+			// certificate verification (fine for a LAN peer dialled by IP,
+			// reached only via the shared X-Fabric-Auth secret) and has no
+			// SSRF guard at all — reusing it here previously meant an
+			// unauthenticated relay's answer was dialled with no address
+			// validation and no real TLS, and the box's shared secret (plus,
+			// on push, the full app-registry changeset) went wherever that
+			// answer pointed. See fabric/client.go's WANClient doc.
+			// VULOS_PEER_ALLOW_LAN mirrors the same opt-in services/files
+			// already uses, for boxes that legitimately reach each other over
+			// a private mesh (Tailscale/CGNAT) rather than the open internet.
+			peerAllowLANEnv := os.Getenv("VULOS_PEER_ALLOW_LAN")
+			peerAllowLAN := peerAllowLANEnv == "1" || strings.EqualFold(peerAllowLANEnv, "true") || strings.EqualFold(peerAllowLANEnv, "yes")
+			fabricWANClient := fabric.NewWANClient(10*time.Second, peerAllowLAN)
+
 			if rdvURLs := reach.SplitList(os.Getenv("VULOS_RENDEZVOUS_URL")); len(rdvURLs) > 0 {
 				if fabricSigner == nil {
 					log.Printf("[fabric] rendezvous disabled: no per-instance signing identity — a peer could not be addressed by key")
@@ -4540,7 +4559,7 @@ func main() {
 							Key:           fabricSigner,
 							SelfEndpoints: fabricSelfEndpoints(httpsAddr),
 							PeerKeys:      fabricAppSync.PeerPublicKeys(cfg.InstanceID),
-							HTTPClient:    fabric.NewLANClient(10 * time.Second),
+							HTTPClient:    fabricWANClient,
 						}
 						discoverers = append(discoverers, rdv)
 						log.Printf("[fabric] rendezvous discovery active via %s (WAN peers; self key %s)", rdvURL, rdv.SelfKey())
@@ -4554,11 +4573,12 @@ func main() {
 			}
 
 			fs, ferr := fabric.New(fabric.Config{
-				InstanceID: cfg.InstanceID,
-				Secret:     fabricSecret,
-				AppSync:    fabricAppSync,
-				Discoverer: disc,
-				HTTPClient: fabric.NewLANClient(10 * time.Second),
+				InstanceID:    cfg.InstanceID,
+				Secret:        fabricSecret,
+				AppSync:       fabricAppSync,
+				Discoverer:    disc,
+				HTTPClient:    fabric.NewLANClient(10 * time.Second),
+				WANHTTPClient: fabricWANClient,
 			})
 			if ferr != nil {
 				log.Printf("[fabric] disabled: %v", ferr)

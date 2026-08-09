@@ -13,8 +13,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"vulos/backend/internal/multiinstance"
 )
 
 // canonicalVectorHex is the same vector Pier asserts in
@@ -71,7 +74,7 @@ func TestAnnounceIsVerifiableByRelayRules(t *testing.T) {
 		BaseURL:       srv.URL,
 		Key:           priv,
 		SelfEndpoints: []string{"https://box.example:443", "wss://relay/t/abc"},
-		HTTPClient:    srv.Client(),
+		HTTPClient:    &WANClient{srv.Client()},
 	}
 	if err := d.Announce(context.Background()); err != nil {
 		t.Fatalf("announce: %v", err)
@@ -107,7 +110,7 @@ func TestResolveOfflinePeerIsNotAnError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, PeerKeys: []string{"peer-a"}, HTTPClient: srv.Client()}
+	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, PeerKeys: []string{"peer-a"}, HTTPClient: &WANClient{srv.Client()}}
 	peers, err := d.Peers(context.Background())
 	if err != nil {
 		t.Fatalf("offline peer reported as error: %v", err)
@@ -131,13 +134,16 @@ func TestResolveOnlinePeerYieldsBaseURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, PeerKeys: []string{"peer-a"}, HTTPClient: srv.Client()}
+	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, PeerKeys: []string{"peer-a"}, HTTPClient: &WANClient{srv.Client()}}
 	peers, err := d.Peers(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(peers) != 1 || peers[0].BaseURL != "https://peer.example:443" {
 		t.Fatalf("want the first endpoint with trailing slash trimmed, got %+v", peers)
+	}
+	if !peers[0].WAN {
+		t.Fatal("FABRIC-SSRF-01 REGRESSION: a rendezvous-resolved peer must be marked WAN so Service routes it through the safedial-guarded WANClient, not the LAN client")
 	}
 }
 
@@ -157,7 +163,7 @@ func TestSelfIsNeverResolved(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, HTTPClient: srv.Client()}
+	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, HTTPClient: &WANClient{srv.Client()}}
 	d.PeerKeys = []string{d.SelfKey()}
 	if _, err := d.Peers(context.Background()); err != nil {
 		t.Fatal(err)
@@ -182,7 +188,7 @@ func TestAnnounceIsRateLimited(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, TTL: time.Hour, HTTPClient: srv.Client()}
+	d := &RendezvousDiscoverer{BaseURL: srv.URL, Key: priv, TTL: time.Hour, HTTPClient: &WANClient{srv.Client()}}
 	for i := 0; i < 5; i++ {
 		if _, err := d.Peers(context.Background()); err != nil {
 			t.Fatal(err)
@@ -236,4 +242,127 @@ type failingDiscoverer struct{}
 
 func (failingDiscoverer) Peers(context.Context) ([]Peer, error) {
 	return nil, errFabric("discovery unavailable")
+}
+
+// ── FABRIC-SSRF-01: WAN client + peer-routing tests ─────────────────────────
+//
+// The original finding: a rendezvous relay's /resolve response is unverified,
+// and the box then dialled whatever it said with NewLANClient (no SSRF guard,
+// InsecureSkipVerify) and sent it the shared X-Fabric-Auth secret plus the app
+// changeset. These tests exercise the two halves of the fix: WANClient itself
+// actually blocks unsafe targets (it is not a guard that "runs and discards
+// the verdict" — see MEMORY's ci-lint pier example of exactly that failure
+// mode), and Service routes a WAN-flagged peer through it rather than falling
+// back to the LAN client when misconfigured.
+
+// noopAppSync satisfies AppSyncMerger with no real registry — these tests
+// only exercise client selection in pull/push, never reach the merge.
+type noopAppSync struct{}
+
+func (noopAppSync) ChangesetSince(time.Time) ([]multiinstance.AppRegistryEntry, error) {
+	return nil, nil
+}
+func (noopAppSync) EmitChangeset(string, []multiinstance.AppRegistryEntry) (*multiinstance.AppChangeset, error) {
+	return &multiinstance.AppChangeset{}, nil
+}
+func (noopAppSync) ApplyChangeset(*multiinstance.AppChangeset) error { return nil }
+
+// TestWANClientBlocksLoopback proves NewWANClient's dialer actually enforces
+// the safedial guard end-to-end (a real Do(), not a unit test of safedial in
+// isolation) — the vulnerability was that NOTHING stood between the fabric
+// client and an SSRF target, so this must fail via the guard, not just fail.
+func TestWANClientBlocksLoopback(t *testing.T) {
+	c := NewWANClient(2*time.Second, false)
+	_, err := c.Get("http://127.0.0.1:1/")
+	if err == nil {
+		t.Fatal("FABRIC-SSRF-01 REGRESSION: WANClient dialled loopback with no error — the safedial guard did not fire")
+	}
+	if !strings.Contains(err.Error(), "safedial") {
+		t.Fatalf("want the safedial SSRF-guard error surfaced, got a different failure: %v", err)
+	}
+}
+
+// TestWANPeerFailsClosedWithoutWANHTTPClient is the core regression guard for
+// the finding: a WAN (rendezvous-resolved) peer with no WANHTTPClient
+// configured must be refused, never silently synced over Config.HTTPClient
+// (which in production is the deliberately-insecure LAN client).
+func TestWANPeerFailsClosedWithoutWANHTTPClient(t *testing.T) {
+	svc, err := New(Config{
+		InstanceID: "self",
+		Secret:     "s3cr3t",
+		AppSync:    noopAppSync{},
+		Discoverer: NewStaticDiscoverer(),
+		HTTPClient: http.DefaultClient, // stands in for the LAN client; must NOT be used below
+		// WANHTTPClient intentionally unset.
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.pull(context.Background(), Peer{BaseURL: "https://relay-said-so.example", WAN: true}, time.Time{}); err == nil {
+		t.Fatal("FABRIC-SSRF-01 REGRESSION: pull to a WAN peer succeeded with no WANHTTPClient configured — it must fail closed, not fall back to the LAN client")
+	} else if !strings.Contains(err.Error(), "WANHTTPClient") {
+		t.Fatalf("want an error naming the missing WANHTTPClient config, got: %v", err)
+	}
+	if err := svc.push(context.Background(), Peer{BaseURL: "https://relay-said-so.example", WAN: true}, &multiinstance.AppChangeset{}); err == nil {
+		t.Fatal("FABRIC-SSRF-01 REGRESSION: push to a WAN peer succeeded with no WANHTTPClient configured — it must fail closed, not fall back to the LAN client")
+	} else if !strings.Contains(err.Error(), "WANHTTPClient") {
+		t.Fatalf("want an error naming the missing WANHTTPClient config, got: %v", err)
+	}
+}
+
+// TestWANPeerRejectsPlainHTTP: even with a WANHTTPClient configured, a WAN
+// peer base URL that isn't https must be refused — X-Fabric-Auth (and, on
+// push, the app changeset) must never go out with no transport security,
+// regardless of which client dials it.
+func TestWANPeerRejectsPlainHTTP(t *testing.T) {
+	svc, err := New(Config{
+		InstanceID:    "self",
+		Secret:        "s3cr3t",
+		AppSync:       noopAppSync{},
+		Discoverer:    NewStaticDiscoverer(),
+		HTTPClient:    http.DefaultClient,
+		WANHTTPClient: NewWANClient(2*time.Second, false),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.pull(context.Background(), Peer{BaseURL: "http://relay-said-so.example", WAN: true}, time.Time{}); err == nil {
+		t.Fatal("FABRIC-SSRF-01 REGRESSION: pull to a plain-http WAN peer succeeded")
+	} else if !strings.Contains(err.Error(), "https") {
+		t.Fatalf("want an error about the missing https scheme, got: %v", err)
+	}
+}
+
+// TestWANPeerRoutesToWANHTTPClient is the positive case: a properly
+// configured WAN peer must actually use Config.WANHTTPClient, proving
+// httpClientFor's routing (not just its error paths) does what it claims.
+func TestWANPeerRoutesToWANHTTPClient(t *testing.T) {
+	lan := http.DefaultClient
+	wan := NewWANClient(2*time.Second, false)
+	svc, err := New(Config{
+		InstanceID:    "self",
+		Secret:        "s3cr3t",
+		AppSync:       noopAppSync{},
+		Discoverer:    NewStaticDiscoverer(),
+		HTTPClient:    lan,
+		WANHTTPClient: wan,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.httpClientFor(Peer{BaseURL: "https://relay-said-so.example", WAN: true}, "https://relay-said-so.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != HTTPDoer(wan) {
+		t.Fatal("a WAN peer did not route to Config.WANHTTPClient")
+	}
+
+	got, err = svc.httpClientFor(Peer{BaseURL: "https://lan-peer.example", WAN: false}, "https://lan-peer.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != HTTPDoer(lan) {
+		t.Fatal("a LAN (WAN:false) peer did not route to Config.HTTPClient — this must be unaffected by the fix")
+	}
 }

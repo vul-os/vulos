@@ -84,10 +84,22 @@ type Config struct {
 	// 30s. A local change can also trigger an out-of-band sync via Nudge.
 	SyncInterval time.Duration
 
-	// HTTPClient is the client used to reach peers. In production it must trust
-	// the LAN cert (or skip verification against a known-pinned LAN peer — see
-	// NewLANClient). Tests inject the httptest server's client. Required.
+	// HTTPClient is the client used to reach same-LAN peers (Peer.WAN == false,
+	// the default). In production it must trust the LAN cert (or skip
+	// verification against a known-pinned LAN peer — see NewLANClient). Tests
+	// inject the httptest server's client. Required.
 	HTTPClient HTTPDoer
+
+	// WANHTTPClient is the client used to reach peers discovered off-LAN via a
+	// rendezvous relay (Peer.WAN == true — see RendezvousDiscoverer). It MUST
+	// be built with NewWANClient: safedial-guarded dialing plus real TLS
+	// certificate verification, because a WAN peer's address came from an
+	// unauthenticated relay (FABRIC-SSRF-01 — see rendezvous.go's resolve
+	// doc). Optional when the configured Discoverer never yields a WAN peer
+	// (e.g. mDNS/StaticDiscoverer only); a WAN peer arriving with this unset
+	// fails that one peer's sync closed rather than falling back to
+	// HTTPClient — see Service.httpClientFor.
+	WANHTTPClient *WANClient
 
 	// SelfBaseURLs are this box's own LAN base URL(s); a discovered peer whose
 	// base URL matches one of these is skipped so the box never syncs with

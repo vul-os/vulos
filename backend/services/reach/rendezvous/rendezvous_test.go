@@ -117,7 +117,7 @@ func TestRealFabricClientFindsItsPeer(t *testing.T) {
 			Key:           k,
 			PeerKeys:      peers,
 			SelfEndpoints: []string{self},
-			HTTPClient:    f.http.Client(),
+			HTTPClient:    &fabric.WANClient{Client: f.http.Client()},
 		}
 	}
 	boxA := mk(keyA, "https://box-a.example.net", []string{pubB})

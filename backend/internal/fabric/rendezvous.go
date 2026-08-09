@@ -62,8 +62,13 @@ type RendezvousDiscoverer struct {
 	SelfEndpoints []string
 	// TTL is how long an announcement stays live. Zero means DefaultAnnounceTTL.
 	TTL time.Duration
-	// HTTPClient reaches the relay. Required.
-	HTTPClient *http.Client
+	// HTTPClient reaches the relay. Required. Must be built with NewWANClient
+	// (safedial-guarded dial + real TLS verification): the relay is an
+	// operator-chosen, potentially internet-hosted third party — see the
+	// package doc's "Any relay, or none" section and resolve's trust-gap doc
+	// below — so it gets the same treatment as any other WAN endpoint, never
+	// the LAN client's InsecureSkipVerify (FABRIC-SSRF-01).
+	HTTPClient *WANClient
 
 	mu            sync.Mutex
 	lastAnnounce  time.Time
@@ -210,6 +215,52 @@ func (d *RendezvousDiscoverer) Announce(ctx context.Context) error {
 	return nil
 }
 
+// resolve asks the relay where peerKey currently is.
+//
+// # Trust gap (documented, not fixed): no signature over this response
+//
+// Announce (above) signs the endpoints with this box's Ed25519 key, and the
+// relay's own handler verifies that signature before storing anything (see
+// rendezvous.Service.store in backend/services/reach/rendezvous/rendezvous.go).
+// If the wire carried it, resolve could verify the ANNOUNCER's signature over
+// the returned endpoints before trusting them — this box already holds every
+// announcing peer's public key (PeerKeys), so key distribution is not what
+// blocks this.
+//
+// It cannot be done today, and that is a real, currently open gap, not an
+// oversight: the reference relay discards the nonce, ttl, and signature the
+// moment it finishes verifying an announcement. Its stored entry and its
+// resolveResponse carry only key/endpoints/meta/online (see rendezvous.go's
+// `entry` and `resolveResponse` types in that package) — there is nothing
+// left to hand back for a client to re-verify. And because this wire format
+// is deliberately byte-identical to the one a self-hosted or third-party Pier
+// relay speaks (see this package's doc, "Any relay, or none"), a box cannot
+// assume ANY relay it might be pointed at — including ones this codebase
+// does not control — carries fields a verifier would need. Making resolve
+// require a signature today would either silently reject every relay in the
+// wild (breaking the documented "point it at any relay" contract) or, if
+// made optional, provide no real guarantee against exactly the relay that
+// chooses not to send one. Actually closing this needs a coordinated wire
+// version bump — both this client and the relay side (which we do control,
+// in backend/services/reach/rendezvous) would need to start persisting and
+// returning ts/ttl/nonce/sig on resolve, and Pier would need the same change
+// for the interop this package promises — which is out of scope here.
+//
+// What mitigates it regardless: the relay never dials an announced endpoint
+// (it is a lookup table, not an authority — see the package doc's "Trust"
+// section), so the worst a lying or MITM'd relay can do is choose where this
+// box goes next; it cannot forge what that address sends back, because the
+// changeset exchange has its own auth (X-Fabric-Auth) and CRDT-level checks.
+// The two things a lying resolve answer used to buy an attacker — an SSRF
+// pivot via whatever address it names, and this box's shared secret handed to
+// that address over a connection with no real certificate check — are closed
+// below, not here: every peer this function returns is marked WAN so
+// Service.httpClientFor routes it through the safedial-guarded, real-TLS
+// WANClient instead of the LAN client (FABRIC-SSRF-01). Operators who want
+// resolve answers to at least be checkable against each other, absent a
+// per-answer signature, should run more than one rendezvous node under
+// different operators — MultiDiscoverer already supports this (see
+// VULOS_RENDEZVOUS_URL's comma-separated list in cmd/server/main.go).
 func (d *RendezvousDiscoverer) resolve(ctx context.Context, peerKey string) (Peer, bool, error) {
 	u := strings.TrimRight(d.BaseURL, "/") + "/resolve/" + peerKey
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -241,8 +292,10 @@ func (d *RendezvousDiscoverer) resolve(ctx context.Context, peerKey string) (Pee
 	if !out.Online || len(out.Endpoints) == 0 {
 		return Peer{}, false, nil
 	}
-	// Most-specific endpoint first, matching announce order.
-	return Peer{InstanceID: "", BaseURL: strings.TrimRight(out.Endpoints[0], "/")}, true, nil
+	// Most-specific endpoint first, matching announce order. WAN: true routes
+	// this peer through the safedial-guarded, real-TLS client — see the
+	// trust-gap doc above and Service.httpClientFor in client.go.
+	return Peer{InstanceID: "", BaseURL: strings.TrimRight(out.Endpoints[0], "/"), WAN: true}, true, nil
 }
 
 // MultiDiscoverer merges several discoverers, de-duplicating by BaseURL.

@@ -23,6 +23,15 @@ type Peer struct {
 	// BaseURL is the peer's LAN HTTPS base, e.g. https://192.168.1.42:443.
 	// The fabric endpoints hang off this base (/api/fabric/changeset).
 	BaseURL string
+	// WAN marks a peer whose BaseURL came from a rendezvous relay's /resolve
+	// response rather than same-LAN discovery (mDNS/StaticDiscoverer). The
+	// relay is an unauthenticated third party (see rendezvous.go's resolve
+	// doc), so a WAN peer is dialled through the safedial-guarded, real-TLS
+	// WAN client (Config.WANHTTPClient) instead of the LAN client — see
+	// Service.httpClientFor in client.go. Defaults to false, which preserves
+	// existing LAN-client behaviour for every discoverer except
+	// RendezvousDiscoverer.
+	WAN bool
 }
 
 // Discoverer reports the current set of fabric peers on the LAN. Implementations
