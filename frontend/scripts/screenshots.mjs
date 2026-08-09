@@ -448,11 +448,15 @@ async function launchApp(page, name, { maximize = true } = {}) {
       await page.waitForTimeout(700)
     }
   }
-  // The always-on menu-bar calendar widget (z-30) legitimately floats above
-  // windows, but over a maximized app it clips the top-right content. Hide it
-  // for clean app-focused shots — it is kept on the desktop/Home hero, where
-  // it belongs. (The app UI itself is untouched and fully real.)
-  await page.addStyleTag({ content: '[data-calendar-widget]{display:none !important}' }).catch(() => {})
+  // NOTE: this used to inject `[data-calendar-widget]{display:none}` because the
+  // calendar widget was a z-30 overlay that floated above a maximized app and
+  // clipped its top-right content. That is no longer true: the widget was folded
+  // into the ambient desktop column (shell/DesktopWidgets.tsx renders
+  // <CalendarWidget embedded/>) which sits at Z_DESKTOP_WIDGETS = 5, BENEATH
+  // every window. A maximized app already covers it. The style tag survived the
+  // redesign as a no-op for the maximized shots — and as an active defect for the
+  // stacked ones, where the column is meant to be visible and it silently punched
+  // the agenda card out of the middle of it.
   await page.waitForTimeout(150)
 }
 
@@ -546,6 +550,134 @@ async function snapWindow(page, title, dirs, zone) {
     }
     await page.waitForTimeout(500)
   }
+}
+
+// ── stacked (overlapping) window layouts ─────────────────────────────────────
+// A tiled grid reads as a dashboard. Floating windows that overlap, with the
+// focused one in front casting its shadow across the ones behind, are what make
+// the shell read as a real desktop — so the multi-window shots CASCADE, and the
+// single `tiled` shot below is kept only as the "…and it tiles too" demo.
+
+/** The window frame (not just its title bar) that carries `title`. */
+function winRoot(page, title) {
+  return page.locator('.vwin').filter({ has: page.locator('.vwin-titlebar', { hasText: title }) }).first()
+}
+
+async function dragBy(page, fromX, fromY, toX, toY) {
+  await page.mouse.move(fromX, fromY)
+  await page.mouse.down()
+  // Several intermediate moves: the drag/resize handlers are pointermove
+  // listeners, so a single jump would deliver exactly one move event and the
+  // shell's snap-zone tracking would never see the path.
+  await page.mouse.move(toX, toY, { steps: 12 })
+  await page.mouse.up()
+  await page.waitForTimeout(180)
+}
+
+/**
+ * Put a floating window at an exact position and size, driving only the real
+ * pointer paths a user has: the bottom-right resize grip and the title-bar drag.
+ *
+ * The keyboard tile to 'top-left' at the start is load-bearing, not tidiness. A
+ * freshly opened window is 720x500 (ShellProvider OPEN_WINDOW), which is TALLER
+ * than a landscape-phone viewport — its resize grip sits below the fold and can
+ * never be grabbed, so the phone shot could not be composed at all. Tiling first
+ * parks the window at a guaranteed on-screen quarter. It does not leave a tiled
+ * window behind: MOVE_WINDOW and RESIZE_WINDOW both clear `_tile`, so what the
+ * capture sees is genuinely floating chrome.
+ *
+ * Call this straight after launching each window, back-most first. A newly
+ * opened window is focused, so it is the top of the stack and both its title bar
+ * and its grip are guaranteed hit-testable; placing everything at the end
+ * instead means reaching for handles that the window in front is covering.
+ */
+async function placeWindow(page, title, { x, y, width, height }) {
+  const win = winRoot(page, title)
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await snapWindow(page, title, ['Left', 'Up'], 'top-left')
+
+    // Resize: drag the bottom-right grip by the delta to the target size.
+    const grip = win.locator('.vwin-resize')
+    let box = await win.boundingBox()
+    const gb = await grip.boundingBox()
+    if (gb) {
+      const gx = gb.x + gb.width / 2
+      const gy = gb.y + gb.height / 2
+      await dragBy(page, gx, gy, gx + (width - box.width), gy + (height - box.height))
+    }
+
+    // Move: drag the title bar. Grab at 30% of the width — clear of the traffic
+    // lights on the left and of the pop-out/save chrome buttons on the right,
+    // both of which are [data-no-drag] and would swallow the gesture.
+    box = await win.boundingBox()
+    const bar = await win.locator('.vwin-titlebar').boundingBox()
+    const px = bar.x + Math.max(90, box.width * 0.3)
+    const py = bar.y + bar.height / 2
+    await dragBy(page, px, py, px + (x - box.x), py + (y - box.y))
+
+    box = await win.boundingBox()
+    if (Math.abs(box.x - x) <= 3 && Math.abs(box.y - y) <= 3 &&
+        Math.abs(box.width - width) <= 3 && Math.abs(box.height - height) <= 3) return
+    if (attempt === 3) {
+      throw new Error(
+        `placeWindow: "${title}" never reached ${width}x${height}@(${x},${y}) — got ` +
+        `${Math.round(box.width)}x${Math.round(box.height)}@(${Math.round(box.x)},${Math.round(box.y)})`)
+    }
+  }
+}
+
+/**
+ * Assert the composition at capture time. `specs` is back-to-front.
+ *
+ * Geometry alone is not enough to guard this shot. The thing being sold is
+ * DEPTH, and there are two ways to lose it while every coordinate still looks
+ * plausible: the windows drift apart into a grid, or the wrong window ends up
+ * focused so the front frame carries the inactive shadow and the accent rim
+ * lands on something behind it. Both are asserted here, because both have a
+ * perfectly successful capture as their failure mode.
+ */
+async function assertStacked(page, specs) {
+  const bad = []
+  const rects = []
+  const vp = page.viewportSize()
+
+  for (const s of specs) {
+    const box = await winRoot(page, s.title).boundingBox().catch(() => null)
+    rects.push(box)
+    if (!box) { bad.push(`${s.title}: no window`); continue }
+    if (Math.abs(box.x - s.x) > 3 || Math.abs(box.y - s.y) > 3 ||
+        Math.abs(box.width - s.width) > 3 || Math.abs(box.height - s.height) > 3) {
+      bad.push(`${s.title}: want ${s.width}x${s.height}@(${s.x},${s.y}), got ` +
+        `${Math.round(box.width)}x${Math.round(box.height)}@(${Math.round(box.x)},${Math.round(box.y)})`)
+    }
+    if (box.x < 0 || box.y < 32 || box.x + box.width > vp.width || box.y + box.height > vp.height) {
+      bad.push(`${s.title}: falls outside the ${vp.width}x${vp.height} desktop`)
+    }
+  }
+
+  // Overlap — the difference between a stack and a grid.
+  for (let i = 0; i + 1 < rects.length; i++) {
+    const a = rects[i], b = rects[i + 1]
+    if (!a || !b) continue
+    const ow = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)
+    const oh = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)
+    if (ow < 100 || oh < 60) {
+      bad.push(`${specs[i].title} / ${specs[i + 1].title} overlap by only ` +
+        `${Math.round(ow)}x${Math.round(oh)}px — that is a grid, not a stack`)
+    }
+  }
+
+  // z-order — the front window must be the focused one (.vwin[data-active],
+  // WINDOW_Z_ACTIVE=20 vs 10, plus the deeper shadow + accent rim).
+  const front = rects.at(-1)
+  const active = await page.locator('.vwin[data-active]').first().boundingBox().catch(() => null)
+  if (!active || !front || Math.abs(active.x - front.x) > 3 || Math.abs(active.y - front.y) > 3) {
+    bad.push(`the focused window is not "${specs.at(-1).title}" — the front frame ` +
+      `would carry the inactive shadow`)
+  }
+
+  if (bad.length) throw new Error(`stacked layout wrong — ${bad.join('; ')}`)
 }
 
 const SHOTS = [
@@ -694,9 +826,44 @@ const SHOTS = [
     },
   },
   {
+    name: 'stacked',
+    light: true,
+    desc: 'Desktop — three floating windows stacked, the focused one in front',
+    // THE multi-window shot. Free-floating windows that overlap, with a clear
+    // z-order and the focused frame's shadow falling across the ones behind it,
+    // are what make this read as an operating system; a neat tiled grid reads as
+    // a dashboard. `tiled` below is kept as the separate "…and it tiles too"
+    // demo, and is the only shot that tiles.
+    //
+    // The cascade runs down-and-right, so each window behind shows its title bar
+    // and its top-left corner — which is where the three apps look least alike:
+    // the Terminal's ANSI banner, File Explorer's Places sidebar, Activity
+    // Monitor's coloured stat cards. The front frame stops at x=1320, clear of
+    // the ambient widget column (fixed right-3 w-60 → x 1348..1588), so the
+    // wallpaper, the clock/agenda/notification cards and the dock all stay in
+    // frame around the stack instead of being papered over by it.
+    async drive(page) {
+      await launchApp(page, 'Terminal', { maximize: false })
+      await placeWindow(page, 'Terminal', { x: 150, y: 96, width: 720, height: 460 })
+
+      await launchApp(page, 'File Explorer', { maximize: false })
+      await placeWindow(page, 'File Explorer', { x: 300, y: 200, width: 800, height: 520 })
+
+      await launchApp(page, 'Activity Monitor', { maximize: false })
+      await placeWindow(page, 'Activity Monitor', { x: 460, y: 320, width: 860, height: 540 })
+
+      await page.waitForTimeout(500)
+      await assertStacked(page, [
+        { title: 'Terminal', x: 150, y: 96, width: 720, height: 460 },
+        { title: 'File Explorer', x: 300, y: 200, width: 800, height: 520 },
+        { title: 'Activity Monitor', x: 460, y: 320, width: 860, height: 540 },
+      ])
+    },
+  },
+  {
     name: 'tiled',
     light: true,
-    desc: 'Desktop — three apps snapped into a real tiled layout',
+    desc: 'Desktop — the same windows snapped into a tiled layout ("…and it tiles too")',
     // This shot used to just launch three windows and let ShellProvider's
     // +32px cascade stagger them, on the theory that overlap "reads as tiled".
     // It does not: the result is three windows stacked in the top-left corner
@@ -778,84 +945,87 @@ const SHOTS = [
     // alongside the others.
     light: true,
     dsf: 2,
-    desc: 'MobileStack — the phone app switcher, several running apps open as cards at once',
-    // MissionControl (F3 / the desktop TopBar's "Mission Control" button) is
-    // only ever mounted inside DesktopCanvas (see src/layouts/DesktopCanvas.jsx)
-    // — it does not exist in MobileStack, so it is unreachable at phone size.
-    // MobileStack's own analogue is the bottom dock's "Apps" button, which
-    // flips to the `switcher` view (MobileSwitcher) and lists every open
-    // window as a large card (see src/layouts/MobileStack.jsx). Reproduce that:
-    // launch a few real apps one at a time via ⌘K — same reliable launchApp()
-    // path the other shots use — returning Home between launches so the
-    // command palette's focus-the-desktop click lands on the main document
-    // rather than a fullscreen app iframe, then open the switcher so all of
-    // them appear as cards together.
-    viewport: { width: 390, height: 844 },
+    desc: 'Phone, landscape — the real desktop with two windows stacked on a handset',
+    // A PHONE HELD SIDEWAYS, running the actual desktop.
+    //
+    // This shot used to be the portrait MobileStack app switcher, and it was
+    // the weakest image in the set: MobileSwitcher lays running apps out as a
+    // single column of full-width cards (grid-cols-1 until the sm: breakpoint,
+    // which 390px never reaches), so however good the cards are it renders as a
+    // flat vertical LIST with the third card sliced off by the dock. There is no
+    // overlap and no depth to capture, because on a phone in portrait the shell
+    // deliberately has none — MOBILE-ADAPTIVE: an app takes the full screen and
+    // the switcher replaces the window stack.
+    //
+    // Sideways is a different shell, not a smaller one. src/App.jsx picks its
+    // layout purely on WIDTH (<768px → MobileStack), so a 932x430 handset in
+    // landscape is over the line and gets the full DesktopCanvas: menu bar,
+    // wallpaper, ambient widget column, dock, and real draggable overlapping
+    // windows. That is an honest capture of what the product does on that
+    // device, and it is the only place stacked windows exist at phone size.
+    //
+    // 932x430 is an iPhone 15/16 Pro Max in landscape. Everything is sized to
+    // the furniture: windows start below the 32px menu bar, the front frame ends
+    // at x=610 (the widget column begins at 932-12-240 = 680) and at y=344,
+    // ~20px above the dock (viewport height − 66). The widget column is ~294px
+    // tall, so it clears the 430px viewport without being cut off.
+    viewport: { width: 932, height: 430 },
     async drive(page) {
-      await page.waitForTimeout(700)
-      // App choice matters more than it looks, and an earlier version of this
-      // comment got it exactly backwards. It dropped the Terminal on the theory
-      // that "a full-bleed black terminal card dominates the switcher and reads
-      // as a defect", and claimed Calendar/Contacts/Files "crop gracefully".
-      // Comparing the two rendered shots side by side, both claims are false:
-      // Calendar's card lands on an EMPTY week grid that reads as a broken
-      // panel, and File Explorer ends up cut off mid-row — the precise failure
-      // that rationale said it was avoiding. The Terminal it removed was what
-      // made the shot legible as several DIFFERENT apps rather than three
-      // near-identical white cards.
-      //
-      // So: File Explorer (a complete listing plus its "12 items" footer),
-      // Terminal (visually distinct, and the only card that reads instantly as
-      // a different kind of app), Contacts (avatars and names survive the crop).
-      // Nothing here shows an empty state at this card height.
-      for (const name of ['File Explorer', 'Terminal', 'Contacts']) {
-        await launchApp(page, name, { maximize: false })
-        await page.waitForTimeout(300)
-        await page.getByRole('button', { name: 'Home' }).first().click().catch(() => {})
-        await page.waitForTimeout(300)
-      }
-      // Open the phone-style running-apps switcher — the dock's "Apps" button
-      // (badge shows the open-window count). Wait for it to be ready, then wait
-      // for the switcher overlay to actually mount before capturing.
-      const appsBtn = page.locator('button[aria-label="Apps"]:not([disabled])').first()
-      await appsBtn.waitFor({ state: 'visible', timeout: 6_000 }).catch(() => {})
-      for (let i = 0; i < 3; i++) {
-        await appsBtn.click({ force: true }).catch(() => {})
-        await page.waitForTimeout(500)
-        if (await page.locator('.vmob-switcher').isVisible().catch(() => false)) break
-      }
-      await page.waitForTimeout(700)
+      // Terminal behind, File Explorer in front. The Terminal is the one app
+      // that is unmistakably a different app from a 100px sliver of its corner,
+      // which is what sells "two windows" rather than "one window with a border".
+      await launchApp(page, 'Terminal', { maximize: false })
+      await placeWindow(page, 'Terminal', { x: 30, y: 44, width: 452, height: 240 })
+
+      await launchApp(page, 'File Explorer', { maximize: false })
+      await placeWindow(page, 'File Explorer', { x: 140, y: 100, width: 470, height: 244 })
+
+      await page.waitForTimeout(400)
+      await assertStacked(page, [
+        { title: 'Terminal', x: 30, y: 44, width: 452, height: 240 },
+        { title: 'File Explorer', x: 140, y: 100, width: 470, height: 244 },
+      ])
     },
   },
   {
     name: 'tablet-windows',
     light: true,
     dsf: 2,
-    desc: 'Tablet — two apps snapped side by side at tablet width',
+    desc: 'Tablet — two floating windows stacked, the focused one in front',
     // 1024x768 (landscape tablet). App.jsx picks its layout purely on window
     // width (<768px → MobileStack), so a tablet gets the FULL DesktopCanvas —
     // real windows, real tiling — rather than the phone stack. That is the
     // whole point of the shot: the same windowing works on a tablet, which is
     // not obvious from a phone screenshot where windows become fullscreen
-    // cards. Two halves rather than the desktop's three tiles: quarters at
-    // 1024x768 would be too small for their content to read.
+    // cards.
+    //
+    // Stacked, not side-by-side. Two half-screen tiles filled the frame edge to
+    // edge and read as a split-screen dashboard; two overlapping windows on
+    // visible wallpaper read as the desktop this actually is. Two rather than
+    // the desktop's three: a third 1024-wide cascade step would push the front
+    // window off the tablet.
+    //
+    // Both windows stay left of x=772, where the ambient widget column starts
+    // (fixed right-3 w-60). The column is ~294px tall, so at 768px of height it
+    // sits fully in frame beside the stack rather than being sliced down the
+    // middle by a window edge.
     viewport: { width: 1024, height: 768 },
     async drive(page) {
-      // Activity Monitor on the right rather than the Terminal. Half of a
-      // 1024x768 tablet is a TALL pane, and both File Explorer (12 rows) and
-      // the Terminal (a short scrollback) run out of content well before the
-      // bottom — the previous version of this shot was roughly 40% empty in
-      // both panes and read as two half-loaded windows. Activity Monitor fills
-      // its pane: four coloured stat cards across the top, then a process
-      // table. It is also what makes the desktop `tiled` shot work, for the
-      // same reason.
+      // File Explorer behind, Activity Monitor in front. Activity Monitor is the
+      // one that fills its frame at this size — four coloured stat cards, then a
+      // process table — while File Explorer's exposed top-left strip (Places
+      // sidebar + path bar) is instantly recognisable as a different app.
       await launchApp(page, 'File Explorer', { maximize: false })
+      await placeWindow(page, 'File Explorer', { x: 24, y: 58, width: 660, height: 400 })
+
       await launchApp(page, 'Activity Monitor', { maximize: false })
-      // Reverse launch order — see the `tiled` shot.
-      await snapWindow(page, 'Activity Monitor', ['Right'], 'right')
-      await snapWindow(page, 'File Explorer', ['Left'], 'left')
+      await placeWindow(page, 'Activity Monitor', { x: 92, y: 140, width: 668, height: 420 })
+
       await page.waitForTimeout(400)
-      await assertTiled(page, [['File Explorer', 'left'], ['Activity Monitor', 'right']])
+      await assertStacked(page, [
+        { title: 'File Explorer', x: 24, y: 58, width: 660, height: 400 },
+        { title: 'Activity Monitor', x: 92, y: 140, width: 668, height: 420 },
+      ])
     },
   },
 ]
