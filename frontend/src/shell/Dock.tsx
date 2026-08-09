@@ -148,20 +148,29 @@ export default function Dock() {
           const running = slot.windows.length > 0
           const focused = slot.windows.some(w => w.id === activeWindow && !w.minimized)
           const allMinimized = running && slot.windows.every(w => w.minimized)
-          // The tile's accessible name carries its state, so a screen-reader
-          // user can tell a pinned-but-idle app from a running one from a
-          // minimized one without reading the indicator dot.
-          const state = !running ? '' : focused ? ' (focused)' : allMinimized ? ' (minimized)' : ' (running)'
+          // A screen-reader user should be able to tell a pinned-but-idle app
+          // from a running one from a minimized one without reading the
+          // indicator dot — but that belongs in the tile's DESCRIPTION, not in
+          // its NAME. The name has to be stable: it is what a user (and a test)
+          // refers to the tile by, and folding state into it meant the Files
+          // tile was called "Files" or "Files (focused)" or "Files (minimized)"
+          // depending on what the window happened to be doing. Focus is already
+          // exposed properly via aria-pressed; this only has to carry the two
+          // states that attribute cannot express.
+          const state = !running ? '' : focused ? 'focused' : allMinimized ? 'minimized' : 'running'
+          const stateId = state ? `dock-state-${slot.appId}` : undefined
           return (
             <div key={slot.appId} className="relative shrink-0">
               <button
                 onClick={() => activate(slot)}
                 onContextMenu={(e) => { e.preventDefault(); setMenuFor(slot.appId) }}
                 title={slot.title}
-                aria-label={`${slot.title}${state}`}
+                aria-label={slot.title}
+                aria-describedby={stateId}
                 aria-pressed={focused}
                 className="vshell-dock-item focus-primary rounded-2xl group relative flex flex-col items-center"
               >
+                {stateId && <span id={stateId} className="sr-only">{state}</span>}
                 <span
                   data-active={focused ? 'true' : undefined}
                   className={`vshell-dock-tile flex items-center justify-center w-11 h-11 rounded-[13px] ${allMinimized ? 'opacity-55' : ''}`}

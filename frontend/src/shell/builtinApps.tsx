@@ -29,6 +29,7 @@ const Assistant = lazy(() => import('../builtin/assistant/Assistant'))
 const Calendar = lazy(() => import('../builtin/calendar/Calendar'))
 const Contacts = lazy(() => import('../builtin/contacts/Contacts'))
 const Phone = lazy(() => import('../builtin/phone/Phone'))
+const Home = lazy(() => import('./home/Home'))
 
 const loadingEl = () => createElement('div', { className: 'p-4 text-neutral-500' }, 'Loading...')
 // Cmp is always a React.lazy-wrapped component from an untyped .jsx module;
@@ -59,6 +60,7 @@ export const BUILTIN_COMPONENTS: Record<string, BuiltinFactory> = {
   vault: () => wrap(Vault),
   messages: () => wrap(Messages),
   dashboard: () => wrap(DashboardApp),
+  home: () => wrap(Home),
   assistant: () => wrap(Assistant),
   // PIM: standalone Calendar + Contacts over lilmail's /v1 (via /api/pim/*).
   // Calendar honours a deep-link query (e.g. ⌘K "New event" → ?action=new,
@@ -72,7 +74,7 @@ export const BUILTIN_COMPONENTS: Record<string, BuiltinFactory> = {
 }
 
 // Apps that should only ever have one window open at a time.
-export const BUILTIN_SINGLETONS: Set<string> = new Set(['persona', 'apphub', 'dashboard', 'assistant'])
+export const BUILTIN_SINGLETONS: Set<string> = new Set(['persona', 'apphub', 'dashboard', 'assistant', 'home'])
 
 // Per-app initial window size, opt-in — every builtin not listed here keeps
 // the shell's flat 720x500 default (see ShellProvider's OPEN_WINDOW). Settings
@@ -81,6 +83,9 @@ export const BUILTIN_SINGLETONS: Set<string> = new Set(['persona', 'apphub', 'da
 // other builtin is unaffected.
 export const BUILTIN_WINDOW_SIZE: Partial<Record<string, WindowSize>> = {
   persona: { width: 860, height: 620 },
+  // Home is a reading surface with a two-column brief/agenda layout; the flat
+  // 720x500 default put both columns into permanent horizontal compromise.
+  home: { width: 1040, height: 720 },
 }
 
 // builtinComponent returns a fresh element for a builtin id, or null if the id

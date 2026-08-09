@@ -12,7 +12,7 @@
 // the same layer, and on phones (MobileStack has its own home surface).
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import CalendarWidget from './CalendarWidget'
-import { subscribe, getItems, getUnreadCount, markAllRead } from '../core/notificationStore'
+import { subscribe, getItems, getUnreadCount } from '../core/notificationStore'
 import type { ShellNotification } from './notificationTypes'
 import { Z_DESKTOP_WIDGETS } from './zLayers'
 import './shell-chrome.css'
@@ -48,8 +48,9 @@ function ClockWidget() {
 }
 
 // ── Notifications ────────────────────────────────────────────────────────────
-// A glance, not a second notification centre: the newest few, and a way into
-// the real one (the tray bell owns the full list + per-source prefs).
+// A glance, not a second notification centre: the newest few, read-only. The
+// menu-bar bell owns the full list, the per-source preferences and every bulk
+// action — this must not grow a duplicate set of controls.
 function NotificationsWidget() {
   const items = useSyncExternalStore<ShellNotification[]>(subscribe, getItems as () => ShellNotification[])
   const unread = useSyncExternalStore<number>(subscribe, getUnreadCount as () => number)
@@ -61,14 +62,21 @@ function NotificationsWidget() {
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em]" style={{ color: 'var(--text-faint)' }}>
           Notifications
         </span>
+        {/* Deliberately NOT a "Mark all read" control. This widget is a glance,
+            and the menu-bar bell is the real notification centre that owns the
+            full list, the per-source preferences and the bulk actions. A second
+            copy of the same action is not just redundant: it made "Mark all
+            read" ambiguous on the page, which is a usability problem before it
+            is a test problem (a suite caught it as a strict-mode violation).
+            The unread count still reads as a count here. */}
         {unread > 0 && (
-          <button
-            onClick={() => markAllRead()}
-            className="text-[11px] focus-primary rounded"
+          <span
+            className="text-[11px] tabular-nums"
             style={{ color: 'var(--accent)' }}
+            aria-label={`${unread} unread`}
           >
-            Mark all read
-          </button>
+            {unread}
+          </span>
         )}
       </div>
       {recent.length === 0 ? (

@@ -6,8 +6,8 @@
  * window probe. This exercises the shell's window lifecycle end-to-end:
  *   • the Dock shows PINNED apps before anything is running (it is a launcher,
  *     not just a window list),
- *   • launch → a window opens; its Dock tile reports "(focused)",
- *   • minimize → window hides, its Dock item is labelled "(minimized)",
+ *   • launch → a window opens; its Dock tile reports focused,
+ *   • minimize → window hides, its Dock item is described as minimized,
  *   • click the Dock item → restore + focus,
  *   • maximize + tile (snap) update window geometry,
  *   • close → an UNPINNED app's tile disappears; a pinned app's tile stays but
@@ -58,6 +58,23 @@ const winInfo = () => JSON.parse(screen.getByTestId('first-win').textContent)
 
 afterEach(() => { cleanup(); try { localStorage.clear() } catch { /* noop */ } })
 
+
+// A Dock tile's NAME is just the app title and stays stable whatever its window
+// is doing; its run state is exposed as an accessible DESCRIPTION (and focus
+// additionally as aria-pressed). State used to be folded into the name, which
+// meant one tile answered to three different names — see shell/Dock.tsx.
+function expectTileState(name: string, state: 'focused' | 'running' | 'minimized' | null) {
+  const tile = screen.getByRole('button', { name })
+  const describedby = tile.getAttribute('aria-describedby')
+  if (state === null) {
+    expect(describedby).toBeNull()
+    return tile
+  }
+  expect(describedby, `${name} has no aria-describedby, so no state is announced`).toBeTruthy()
+  expect(document.getElementById(describedby as string)?.textContent).toBe(state)
+  return tile
+}
+
 describe('Window management (integration, real ShellProvider + Dock)', () => {
   it('the Dock offers its pinned apps before anything is running', async () => {
     mount()
@@ -72,7 +89,7 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     mount()
     await user.click(screen.getByText('launch-terminal'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('1')
-    expect(screen.getByRole('button', { name: 'Terminal (focused)' })).toBeInTheDocument()
+    expectTileState('Terminal', 'focused')
   })
 
   it('an UNPINNED app appears in the Dock only while it is running', async () => {
@@ -80,7 +97,7 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     mount()
     expect(screen.queryByRole('button', { name: /^Activity Monitor/ })).toBeNull()
     await user.click(screen.getByText('launch-activity'))
-    expect(screen.getByRole('button', { name: 'Activity Monitor (focused)' })).toBeInTheDocument()
+    expectTileState('Activity Monitor', 'focused')
     await user.click(screen.getByText('close-first'))
     expect(screen.queryByRole('button', { name: /^Activity Monitor/ })).toBeNull()
   })
@@ -91,8 +108,8 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     await user.click(screen.getByText('launch-terminal'))
     await user.click(screen.getByText('minimize-first'))
     expect(winInfo().minimized).toBe(true)
-    // Dock item is now labelled "(minimized)".
-    const dockItem = screen.getByRole('button', { name: 'Terminal (minimized)' })
+    // The Dock item now DESCRIBES itself as minimized (its name is unchanged).
+    const dockItem = expectTileState('Terminal', 'minimized')
     await user.click(dockItem)
     expect(winInfo().minimized).toBe(false)
   })
@@ -111,10 +128,11 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByText('launch-terminal'))
-    expect(screen.getByRole('button', { name: 'Terminal (focused)' })).toBeInTheDocument()
+    expectTileState('Terminal', 'focused')
     await user.click(screen.getByText('close-first'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('0')
-    expect(screen.queryByRole('button', { name: 'Terminal (focused)' })).toBeNull()
+    // The pinned tile survives the close, but drops its running state.
+    expectTileState('Terminal', null)
     expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
   })
 
@@ -124,8 +142,8 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     await user.click(screen.getByText('launch-terminal'))
     await user.click(screen.getByText('launch-activity'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('2')
-    expect(screen.getByRole('button', { name: 'Terminal (running)' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Activity Monitor (focused)' })).toBeInTheDocument()
+    expectTileState('Terminal', 'running')
+    expectTileState('Activity Monitor', 'focused')
   })
 
   it('adding a desktop creates a new space; its windows are tracked separately', async () => {

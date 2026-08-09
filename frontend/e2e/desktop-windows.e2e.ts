@@ -49,13 +49,21 @@ test('minimize sends the window to the Dock; clicking the Dock entry restores it
   await expect(page.getByRole('button', { name: 'Calculator' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Minimize window' }).first().click()
-  // The Dock item is now labelled minimized.
-  const minimized = page.getByRole('button', { name: 'Calculator (minimized)' })
-  await expect(minimized).toBeVisible()
+
+  // The Dock tile reports minimized as a DESCRIPTION, not as part of its name.
+  // The name has to stay stable ("Calculator") — it is what the tile is called
+  // whatever its window is doing; folding state into it meant the same tile
+  // answered to three different names. Focus lives in aria-pressed, and the two
+  // states that attribute cannot express live here.
+  const dock = page.getByRole('toolbar', { name: 'Dock' })
+  const tile = dock.getByRole('button', { name: 'Calculator', exact: true })
+  await expect(tile).toBeVisible()
+  await expect(tile).toHaveAccessibleDescription('minimized')
 
   // Restore from the Dock.
-  await minimized.click()
-  await expect(page.getByRole('button', { name: 'Calculator', exact: true })).toBeVisible()
+  await tile.click()
+  await expect(tile).toHaveAccessibleDescription('focused')
+  await expect(page.getByRole('button', { name: 'Minimize window' }).first()).toBeVisible()
 })
 
 test('closing the window removes it from the Dock', async ({ page }) => {

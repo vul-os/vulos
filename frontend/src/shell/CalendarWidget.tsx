@@ -195,7 +195,12 @@ export default function CalendarWidget({ embedded = false }: { embedded?: boolea
               onClick={openCalendar}
               className="vshell-row w-full flex items-center gap-2.5 rounded-lg text-left -mx-1 px-1 py-1 focus-primary"
             >
-              <div className="w-14 shrink-0 text-right">
+              {/* min-w rather than a fixed w-14: at 12px mono a 12-hour time
+                  ("09:00 AM") is ~58px and was wrapping inside a 56px box, so
+                  the hour and the meridiem landed on separate lines with the
+                  relative day stranded underneath. Keep the floor so a column
+                  of rows still aligns, but never wrap. */}
+              <div className="min-w-14 shrink-0 text-right whitespace-nowrap">
                 <div className="text-[12px] font-mono" style={{ color: 'var(--accent)' }}>{eventWhen(next)}</div>
                 <div className="text-[12px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(next._start, now)}</div>
               </div>
@@ -230,7 +235,8 @@ export default function CalendarWidget({ embedded = false }: { embedded?: boolea
                       onClick={openCalendar}
                       className="vshell-row w-full flex items-center gap-2.5 px-3.5 py-1.5 text-left focus-primary"
                     >
-                      <div className="w-14 shrink-0 text-right">
+                      {/* Same no-wrap rule as the next-up row above. */}
+                      <div className="min-w-14 shrink-0 text-right whitespace-nowrap">
                         <div className="text-[12px] font-mono" style={{ color: 'var(--text-secondary)' }}>{eventWhen(ev)}</div>
                         <div className="text-[12px] font-mono" style={{ color: 'var(--text-faint)' }}>{relDay(ev._start, now)}</div>
                       </div>

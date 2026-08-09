@@ -137,6 +137,20 @@ const builtinRegistry: App[] = [
     builtin: true,
   },
   {
+    // Home is the proactive brief: what needs you today, the agenda, recent
+    // activity, quick launch. It used to be the desktop BACKDROP — a full-bleed
+    // page that owned the screen whenever no window was open, which is what made
+    // the desktop read as a web page rather than an OS. It is a window now, and
+    // the wallpaper plus the ambient widget column is what you see instead.
+    id: 'home',
+    name: 'Home',
+    icon: '⌂',
+    description: 'Your day at a glance — what needs you, agenda, recent activity',
+    keywords: ['home', 'today', 'brief', 'agenda', 'overview', 'start', 'dashboard', 'summary', 'assistant'],
+    category: 'system',
+    builtin: true,
+  },
+  {
     id: 'dashboard',
     name: 'Dashboard',
     icon: '◈',

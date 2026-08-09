@@ -3,7 +3,6 @@ import { useShell } from '../providers/ShellProvider'
 import Window from '../shell/Window'
 import Spotlight from '../shell/Spotlight'
 import MissionControl, { useMissionControlLayout } from '../shell/MissionControl'
-import Home from '../shell/home/Home'
 import Toasts from '../shell/Toasts'
 import DesktopContextMenu from '../shell/DesktopContextMenu'
 import { useWallpaper, DEFAULT_WALLPAPER } from '../core/useWallpaper.jsx'
@@ -155,16 +154,13 @@ export default function DesktopCanvas() {
 
       {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS */}
       <div className="absolute inset-0 pt-8">
-        {/* WAVE-11: Home — the proactive default surface. It sits as the desktop
-            backdrop BELOW all windows, so it's what you see first (and return to
-            when you close everything), while apps stack over it. Only shown when
-            the active desktop has no open windows, so it never steals clicks from
-            a floating app. */}
-        {windows.filter(w => !w.minimized).length === 0 && (
-          <div className="absolute inset-0">
-            <Home />
-          </div>
-        )}
+        {/* The desktop is the WALLPAPER. Home used to render here as a
+            full-bleed backdrop whenever no window was open, which is what made
+            this read as a web page rather than an OS: the wallpaper was never
+            actually visible, and closing every window did not reveal a desktop,
+            it revealed a different page. Home is a window now (app id 'home',
+            in the dock and in Spotlight), and what you see behind your windows
+            is the wallpaper plus the ambient widget column below. */}
         {allWindows.map(win => {
           const mc = missionControlOpen && win._visible && !win.minimized ? mcLayout[win.id] : null
           return (
@@ -205,13 +201,11 @@ export default function DesktopCanvas() {
       </div>
 
       {/* Ambient widget column — clock, "what's next", and what the box is
-          trying to tell you. It fills the gap when open windows cover the Home
-          backdrop: Home already surfaces the full agenda when it's the visible
-          backdrop (no windows), so the column only mounts once a window covers
-          Home — keeping the agenda visible either way without double-rendering
-          the same events. Also hidden while the Assistant panel or Mission
-          Control occupies the same right-side layer, so they never overlap. */}
-      {windows.filter(w => !w.minimized).length > 0 && !chatOpen && !missionControlOpen && <DesktopWidgets />}
+          trying to tell you. It is desktop furniture: always present, sitting
+          on the wallpaper BENEATH every window (see zLayers), so a window that
+          reaches it simply covers it. Hidden only under Mission Control, whose
+          backdrop owns the whole screen. */}
+      {!missionControlOpen && <DesktopWidgets />}
 
       {/* Assistant — a first-class slide-over rather than a window. This used
           to render core/Portal, an older intent-router prompt box that is not

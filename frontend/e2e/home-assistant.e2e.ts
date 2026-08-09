@@ -38,6 +38,25 @@ async function boot(page: Page, overrides: Record<string, unknown> = {}) {
   await installBackend(page, overrides)
   await page.goto('/')
   await expect(page.getByTitle('Applications')).toBeVisible({ timeout: 15_000 })
+  // Home is a WINDOW now, not the desktop backdrop. It used to render on boot,
+  // which is what made the desktop read as a web page rather than an OS; the
+  // wallpaper and the ambient widget column live there instead. Every contract
+  // this suite pins is unchanged — it just has to open Home first, through the
+  // same ⌘K lane a user would.
+  await launch(page, 'Home')
+}
+
+// Launch a builtin by name via the ⌘K palette (the same lane the Launchpad and
+// Spotlight drive), mirroring calendar-app.e2e.ts's helper.
+async function launch(page: Page, name: string) {
+  const input = page.getByPlaceholder(/Search apps/)
+  await expect(async () => {
+    await page.keyboard.press('Meta+k')
+    await expect(input).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 10_000 })
+  await input.fill(name)
+  await expect(page.getByText(name, { exact: true }).first()).toBeVisible()
+  await page.keyboard.press('Enter')
 }
 
 // The Home composer input (distinct from the ⌘K palette input).
