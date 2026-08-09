@@ -72,6 +72,21 @@ run_step "storage-mode selection gate" \
 run_step "vulos-live cmdline gate" \
   bash "$ROOT/scripts/test-vulos-live-cmdline.sh"
 
+# ── Step 3c: netboot install → real disk → real QEMU boot ─────────────────────
+# Runs the REAL netboot-install Go pipeline against a loop-backed disk inside a
+# privileged Linux container, then boots the result in QEMU and asserts a real
+# HTTP response from the installed OS. This is the only thing that has ever
+# caught the five bugs that each independently made an installed disk
+# unbootable — none of them were reachable from a unit test.
+#
+# NOT in .github/workflows: it needs docker AND qemu-system-aarch64 AND OVMF,
+# and hardware acceleration that a hosted runner does not have, so there it
+# would only ever take the skip path slowly. --skip-if-unavailable makes that
+# skip LOUD and itemised (it names every claim the run did not verify) rather
+# than a silent green, which is what makes it safe to have in a suite at all.
+run_step "netboot install + QEMU boot" \
+  bash "$ROOT/scripts/netboot-install-smoke.sh" --skip-if-unavailable
+
 # ── Step 4: frontend build ────────────────────────────────────────────────────
 if [[ "${SKIP_NPM:-0}" == "1" ]]; then
   echo ""
