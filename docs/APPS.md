@@ -281,7 +281,16 @@ Configuration:
 | `VULOS_CP_TOKEN` | Service token the box presents when introspecting keys |
 | `VULOS_CP_ALLOW_INSECURE` | Dev-only: permit a plain-http control plane URL |
 
-Self-hosters running fully standalone simply leave this off and use platform app tokens (below) for automation instead.
+Self-hosters running fully standalone leave this off. The automation surface that *does* work with no control plane is the box's own **public REST API v1** with locally-issued developer keys (`vkl_`) — issue and revoke them in **Settings → Developer** (issuing requires step-up; the raw secret is shown once):
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /api/v1/account/me` | `Authorization: Bearer vkl_…`, 60 req/min | Box account profile |
+| `GET /api/v1/account/usage` | `Authorization: Bearer vkl_…`, 60 req/min | Storage + device usage |
+| `GET /api/v1/devices` | `Authorization: Bearer vkl_…`, 60 req/min | Paired devices |
+| `GET` / `POST` / `DELETE /api/developer/keys[/{id}]` | Session (POST also needs step-up) | List, issue, revoke keys |
+
+`vkl_` keys are issued and stored **on the box** (their own SQLite store) and are deliberately a different prefix from CP-issued `vk_` keys, which are a separate, control-plane-delegated path. Do **not** reach for the `vat_` platform app tokens described below for this — that platform is unbuilt.
 
 ---
 

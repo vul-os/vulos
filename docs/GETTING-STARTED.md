@@ -284,8 +284,11 @@ curl http://localhost:8080/api/health
 # Check GPU tier detected (0=software, 1=VA-API, 2=NVENC)
 curl http://localhost:8080/api/browser/status | jq .gpu_tier
 
-# Prometheus metrics (owner-only; needs a session or VULOS_METRICS_TOKEN)
-curl http://localhost:8080/metrics | grep vulos_
+# Prometheus metrics — owner-only: this returns 403 without credentials.
+# Either pass the scrape token...
+curl -H "Authorization: Bearer $VULOS_METRICS_TOKEN" http://localhost:8080/metrics | grep vulos_
+# ...or send an admin session cookie:
+curl -b "$COOKIE" http://localhost:8080/metrics | grep vulos_
 ```
 
 (Substitute your box's address for `localhost` if you're checking it from another device.)
