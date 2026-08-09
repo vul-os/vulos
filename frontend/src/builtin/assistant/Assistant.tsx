@@ -649,7 +649,16 @@ export default function Assistant() {
       {/* Conversation */}
       <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
         className="flex-1 overflow-y-auto overscroll-contain">
-        <div className={`${COLUMN} px-4 sm:px-6 py-5 space-y-4 ${messages.length === 0 ? 'h-full' : ''}`}>
+        {/* Short conversations anchor to the BOTTOM of the scroller rather than
+            the top. On a maximized desktop window a two-turn exchange used to
+            leave ~700px of dead canvas between the last bubble and the
+            composer; `min-h-full + justify-end` closes that gap while a long
+            transcript still grows past the viewport and scrolls normally. */}
+        <div className={`${COLUMN} px-4 sm:px-6 py-5 ${
+          messages.length === 0
+            ? 'h-full'
+            : 'min-h-full flex flex-col justify-end gap-4'
+        }`}>
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center select-none py-8">
             <div

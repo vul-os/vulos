@@ -528,7 +528,10 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
           stretches to the full window at 1600px+ and the actions stay beside
           the name they act on. */}
       <div className="mx-auto w-full max-w-[46rem] px-5 sm:px-8 py-7 sm:py-9">
-        <header className="flex items-start gap-4 sm:gap-5">
+        {/* flex-wrap + the order/width switch on the action group: on a phone the
+            buttons take their own full-width row instead of squeezing the name
+            into a two-line wrap ("Ada / Lovelace"). */}
+        <header className="flex flex-wrap items-start gap-4 sm:gap-5">
           <span className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] shrink-0 grid place-items-center rounded-full text-[22px] mono font-semibold ring-1 ring-inset ring-white/5"
             style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
           <div className="min-w-0 flex-1 pt-0.5">
@@ -539,11 +542,11 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
             <div className="mt-2.5"><SourceBadges sources={contact.sources} /></div>
           </div>
           {!contact._readonly && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 w-full order-last sm:w-auto sm:order-none sm:shrink-0">
               <button type="button" onClick={onEdit}
-                className="text-[13px] font-medium px-3.5 h-9 rounded-lg border border-neutral-800 text-neutral-200 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">Edit</button>
+                className="flex-1 sm:flex-none text-[13px] font-medium px-3.5 h-9 rounded-lg border border-neutral-800 text-neutral-200 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">Edit</button>
               <button type="button" onClick={onDelete} disabled={saving}
-                className="text-[13px] font-medium px-3.5 h-9 rounded-lg text-danger border border-transparent hover:bg-danger-soft hover:border-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
+                className="flex-1 sm:flex-none text-[13px] font-medium px-3.5 h-9 rounded-lg text-danger border border-neutral-800 sm:border-transparent hover:bg-danger-soft hover:border-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
             </div>
           )}
         </header>
@@ -608,8 +611,8 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
 // value once the pane is too narrow for two columns.
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="px-4 sm:px-5 py-4 sm:flex sm:gap-5">
-      <div className="mono text-[11px] uppercase tracking-[0.12em] text-neutral-500 mb-1.5 sm:mb-0 sm:w-20 sm:shrink-0 sm:pt-2">{label}</div>
+    <div className="px-4 sm:px-5 py-4 sm:flex sm:gap-4">
+      <div className="mono text-[11px] uppercase tracking-[0.12em] text-neutral-500 mb-1.5 sm:mb-0 sm:w-[4.25rem] sm:shrink-0 sm:pt-2">{label}</div>
       <div className="min-w-0 flex-1 flex flex-col gap-0.5">{children}</div>
     </div>
   )
