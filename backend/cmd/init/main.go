@@ -199,7 +199,25 @@ func incrementBootCounter() (*osdist.SlotManager, *osdist.BootState) {
 			log.Printf("[slots] rollback failed: %v", rbErr)
 		} else {
 			bs = rolled
-			log.Printf("[slots] rollback written: active will be %s on next boot", bs.Active)
+			// OSDIST-FLIP-01: this records the intent in boot-state.json, and
+			// NOTHING ACTS ON IT YET. Do not log "active will be X on next
+			// boot" — it is not true, and an operator reading this during an
+			// incident would believe the box had protected itself.
+			//
+			// The slot a machine actually boots is fixed on the kernel command
+			// line by the systemd-boot entry, which services/installer's
+			// writeSlotABootEntry writes ONCE at install time hardcoded to
+			// slot-a (vulos.slot=a, vulos.squashfs=.../slot-a/os-core.squashfs).
+			// scripts/initramfs/vulos-live reads only that cmdline; it never
+			// consults boot-state.json. So neither this rollback nor a staged
+			// OTA changes which slot boots.
+			//
+			// Closing it needs either an entry rewriter that runs on flip (with
+			// the ESP mounted and writable) or an initramfs that reads
+			// boot-state.json and picks the slot itself — and either way it must
+			// be proven by actually rebooting, via
+			// scripts/netboot-install-smoke.sh. Tracked, not silently pending.
+			log.Printf("[slots] rollback RECORDED to %s in boot-state.json — but the bootloader entry is pinned to the install-time slot, so THIS HAS NO EFFECT on the next boot (OSDIST-FLIP-01)", bs.Active)
 		}
 	}
 
