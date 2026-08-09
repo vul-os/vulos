@@ -284,7 +284,38 @@ func (s *Service) DeleteImportJob(ownerID, jobID string) error {
 //
 // This is intended to run in the background (the HTTP POST returns immediately
 // and the UI polls job status). Pass a background context, not the request's.
+//
+// UNSCOPED: it takes a job id and NO caller identity, so it will happily run any
+// owner's job. It must NOT be wired directly to an authenticated HTTP route —
+// use RunImportJobForOwner. Kept for internal/background and test callers.
 func (s *Service) RunImportJob(ctx context.Context, jobID string) error {
+	return s.runImportJob(ctx, jobID)
+}
+
+// RunImportJobForOwner is the caller-scoped counterpart of RunImportJob: it runs
+// jobID only if it belongs to ownerID, returning ErrNotFound otherwise (the same
+// 404-not-403 no-oracle convention as DeleteImportJob).
+//
+// Why this exists: running an import job is a WRITE — it mints a provider token
+// on the job owner's behalf and copies files into that owner's Drive. Wired to a
+// route that only checks "is signed in", a caller-supplied job id would let any
+// profile on a shared box force another profile's import to re-run. The HTTP
+// layer already re-derived the job from the caller's own list before calling the
+// unscoped variant, but that put the isolation invariant in the handler where a
+// future refactor could silently drop it; enforcing it at the service boundary
+// makes the guarantee structural.
+func (s *Service) RunImportJobForOwner(ctx context.Context, ownerID, jobID string) error {
+	job, err := s.getImportJob(jobID)
+	if err != nil {
+		return err
+	}
+	if job.OwnerID != ownerID {
+		return ErrNotFound
+	}
+	return s.runImportJob(ctx, jobID)
+}
+
+func (s *Service) runImportJob(ctx context.Context, jobID string) error {
 	job, err := s.getImportJob(jobID)
 	if err != nil {
 		return err

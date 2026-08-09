@@ -301,3 +301,61 @@ func TestOneDriveImportSource(t *testing.T) {
 }
 
 const docxMimeOD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+// TestRunImportJobForOwner_CrossOwnerDenied is the isolation regression for the
+// owner-scoped import runner. Running an import job is a WRITE: it mints a
+// provider token as the job's owner and copies files into that owner's Drive.
+// A second profile on the same box must not be able to trigger another
+// profile's job by supplying its id.
+func TestRunImportJobForOwner_CrossOwnerDenied(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	src := &fakeImportSource{
+		children: map[string][]*Node{"": {{ID: "f1", Name: "a.txt"}}},
+		content:  map[string]string{"f1": "hello"},
+	}
+	svc.WithExternal(&fakeTokenSource{token: "live"})
+	svc.WithImport(src)
+
+	job, err := svc.StartImport(ctx, "victim", "gdrive", "", "once")
+	if err != nil {
+		t.Fatalf("StartImport: %v", err)
+	}
+
+	// The attacker is a legitimate, authenticated profile on the same box.
+	before := src.listCalls
+	err = svc.RunImportJobForOwner(ctx, "attacker", job.ID)
+	if err != ErrNotFound {
+		t.Fatalf("cross-owner run = %v, want ErrNotFound (no oracle)", err)
+	}
+	if src.listCalls != before {
+		t.Fatal("SECURITY: attacker's cross-owner run reached the import source")
+	}
+
+	// Control: the real owner still runs, so the gate denies the attacker
+	// specifically rather than breaking imports for everyone.
+	if err := svc.RunImportJobForOwner(ctx, "victim", job.ID); err != nil {
+		t.Fatalf("owner run: %v", err)
+	}
+	if src.listCalls == before {
+		t.Fatal("owner's run never reached the import source")
+	}
+	findChildNode(t, svc, "victim", "", "a.txt")
+}
+
+// TestRunImportJobForOwner_UnknownJobDenied pins the FAIL-CLOSED direction: an
+// id that does not exist must deny, not fall through to a run.
+func TestRunImportJobForOwner_UnknownJobDenied(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newTestService(t)
+	src := &fakeImportSource{children: map[string][]*Node{"": {}}}
+	svc.WithExternal(&fakeTokenSource{token: "live"})
+	svc.WithImport(src)
+
+	if err := svc.RunImportJobForOwner(ctx, "u1", "no-such-job"); err == nil {
+		t.Fatal("SECURITY: unknown job id ran instead of being denied")
+	}
+	if src.listCalls != 0 {
+		t.Fatal("SECURITY: unknown job id reached the import source")
+	}
+}

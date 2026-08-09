@@ -73,7 +73,7 @@ func registerFilesImportRoutes(mux *http.ServeMux, svc *files.Service) {
 			writeFilesErr(w, err)
 			return
 		}
-		runImportInBackground(svc, job.ID)
+		runImportInBackground(svc, uid, job.ID)
 		writeJSON(w, job)
 	}))
 
@@ -110,7 +110,7 @@ func registerFilesImportRoutes(mux *http.ServeMux, svc *files.Service) {
 			writeErr(w, 404, "not found")
 			return
 		}
-		runImportInBackground(svc, job.ID)
+		runImportInBackground(svc, uid, job.ID)
 		writeJSON(w, map[string]string{"status": "syncing", "id": job.ID})
 	}))
 
@@ -125,10 +125,14 @@ func registerFilesImportRoutes(mux *http.ServeMux, svc *files.Service) {
 
 // runImportInBackground runs a job off the request goroutine with its own bounded
 // context so the copy continues after the HTTP response returns.
-func runImportInBackground(svc *files.Service, jobID string) {
+//
+// It goes through the OWNER-SCOPED RunImportJobForOwner so the "this job is
+// mine" invariant is re-checked at the service boundary, not only by the
+// caller's own pre-flight lookup.
+func runImportInBackground(svc *files.Service, ownerID, jobID string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), importRunTimeout)
 		defer cancel()
-		_ = svc.RunImportJob(ctx, jobID)
+		_ = svc.RunImportJobForOwner(ctx, ownerID, jobID)
 	}()
 }
