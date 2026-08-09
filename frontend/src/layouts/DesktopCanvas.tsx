@@ -2,7 +2,7 @@ import { useEffect, useRef, createElement, lazy, Suspense } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import Portal from '../core/Portal'
 import Window from '../shell/Window'
-import Launchpad from '../shell/Launchpad'
+import Spotlight from '../shell/Spotlight'
 import MissionControl, { useMissionControlLayout } from '../shell/MissionControl'
 import Home from '../shell/home/Home'
 import Toasts from '../shell/Toasts'
@@ -227,8 +227,10 @@ export default function DesktopCanvas() {
       {/* WAVE-12: unified ⌘K command palette (apps · mail · actions · ask) */}
       <CommandPalette />
 
-      {/* Launchpad overlay */}
-      <Launchpad />
+      {/* Spotlight — the ⌘Space app launcher (search + full library). Rides the
+          shell store's `launchpadOpen` bit, so every existing opener (the menu
+          bar, Home's "All apps", the ⌘K palette) drives it unchanged. */}
+      <Spotlight />
 
       {/* Mission Control overlay */}
       <MissionControl />

@@ -620,3 +620,92 @@
     transition: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Spotlight — the app launcher (shell/Spotlight.tsx)
+   A single floating slab of glass: search field, ranked rows, keyboard footer.
+   Token-driven throughout so it is correct in light AND dark with no branching.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.vspot {
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  backdrop-filter: blur(40px) saturate(165%);
+  -webkit-backdrop-filter: blur(40px) saturate(165%);
+  box-shadow:
+    0 44px 90px -30px rgba(0, 0, 0, 0.66),
+    0 12px 32px -16px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 10%, transparent);
+  animation: vspotIn var(--motion-slow) var(--ease-out);
+}
+@keyframes vspotIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.vspot-input {
+  color: var(--text-primary);
+}
+.vspot-input::placeholder {
+  color: var(--text-faint);
+}
+/* The field IS the dialog — a boxed accent ring around it reads as a stray
+   form control rather than Spotlight. Suppressed deliberately (the caret and
+   the highlighted first result carry the focus signal instead).
+   SPECIFICITY NOTE: index.css's global ring is `:is(input, …):focus-visible`,
+   which scores (0,3,0) because :is() inherits its most specific argument. A
+   bare `.vspot-input:focus-visible` is (0,2,0) and would LOSE silently, so the
+   selector below is deliberately element-qualified and scoped to (0,3,1). */
+.vspot input.vspot-input:focus,
+.vspot input.vspot-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* The results/grid region sits below a hairline so the field reads as its own
+   band — the Spotlight silhouette. */
+.vspot-body {
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+  overscroll-behavior: contain;
+}
+.vspot-foot {
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 45%, transparent);
+  background: color-mix(in srgb, var(--bg-hover) 30%, transparent);
+}
+
+/* Ranked row. The SELECTED row (keyboard or pointer) is accent-filled — one
+   highlight only, driven by data-sel, so arrows and the mouse never disagree. */
+.vspot-row {
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.vspot-row[data-sel='true'] {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.vspot-heading {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 0 0 0.5rem 0.25rem;
+}
+.vspot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 0.25rem;
+}
+.vspot-tile {
+  transition: background var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-out);
+}
+.vspot-tile:hover {
+  background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+}
+.vspot-tile:active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vspot { animation: none; }
+  .vspot-row, .vspot-tile { transition: none; }
+}
