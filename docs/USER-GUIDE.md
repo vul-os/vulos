@@ -92,10 +92,10 @@ Right before you enter the desktop, the wizard offers to download an on-box embe
 
 ## The desktop at a glance
 
-After signing in you land on the desktop shell: a wallpaper, a translucent **menu bar** across the top, the **Home** surface behind everything, and windows stacking above it.
+After signing in you land on the desktop: a wallpaper, a translucent **menu bar** across the top, a **dock** along the bottom, an ambient **widget column** on the right, and windows floating above all of it.
 
 <picture>
-  <img src="screenshots/hero-light.png" alt="The Vulos desktop: menu bar, Home brief with agenda and assistant composer, and quick-launch tiles" width="880" />
+  <img src="screenshots/hero-light.png" alt="The Vulos desktop: menu bar, wallpaper, the clock/agenda/notifications widget column, and the dock" width="880" />
 </picture>
 
 ### The menu bar
@@ -115,9 +115,23 @@ Left to right:
 - **Theme toggle** — dark / light.
 - **Clock** — time and date; the dropdown is a calendar.
 
-### Home — the default surface
+### The widget column
 
-When no windows are open on the current desktop, you see **Home**: not a launcher, a brief. It's assembled in one round-trip to `GET /api/assistant/home`:
+Down the right-hand side, sitting on the wallpaper: a clock, what's next on your
+calendar, and whatever the box is trying to tell you. They are desktop
+furniture, not an overlay — a window that reaches them simply covers them, and
+they show real state or an honest empty, never invented content.
+
+### Spotlight — finding and launching things
+
+Press **⌘Space** (Ctrl+Space) for the launcher: fuzzy search across every app by
+name, description and keyword. **⌘K** opens the wider command palette, which
+also reaches mail, actions and the assistant.
+
+### Home — your day at a glance
+
+**Home** is an app, opened from the dock or by searching for it. It is not a
+launcher, it is a brief, assembled in one round-trip to `GET /api/assistant/home`:
 
 - **What needs you today** — the assistant's attention items, with snooze/handled actions.
 - **Agenda** — today's and upcoming events and reminders.
@@ -127,15 +141,28 @@ When no windows are open on the current desktop, you see **Home**: not a launche
 
 Each section fails independently — if the assistant is offline, the brief says so and the rest of Home still renders. The brief is computed on your own box; it introduces no new network calls off it. Details in [ASSISTANT.md](ASSISTANT.md).
 
+Home used to be the desktop backdrop, rendered full-bleed whenever no window was
+open. That meant the wallpaper was never actually visible and closing every
+window revealed another page rather than a desktop, so it now opens in a window
+like any other app.
+
 ### The dock
 
-A bottom-center taskbar listing the windows on the active desktop. It only appears once at least one window exists, so an empty desktop keeps the clean Home backdrop.
+A bottom-center dock. It is always there — pinned apps you use constantly, plus
+any other app while it is running — with Spotlight at its left end and the
+assistant at its right.
 
 - Click a window's icon → focus and raise it.
 - Click the focused window's icon → minimize it (toggle).
 - Click a minimized window's icon → restore and focus it.
 
-A dot under each icon marks a running window; it takes your accent color when focused. Minimized windows show dimmed.
+A dot under each icon marks a running window; it takes your accent color when focused. Minimized windows show dimmed. Screen readers get the same information: each tile is named for its app and describes itself as running, focused or minimized.
+
+### The assistant panel
+
+The dock's assistant tile (and the menu bar's chat button) slides the assistant
+in from the right. It lives outside the window layer, so it survives every
+window operation, and it can be popped out into a real window at any time.
 
 ---
 
