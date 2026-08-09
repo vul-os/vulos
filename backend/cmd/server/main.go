@@ -2544,8 +2544,14 @@ func main() {
 	// GamingManager enforces the one-active-gaming-session-per-user GPU-contention
 	// policy the plain launch path lacks, and exposes GET /api/stream/gaming/
 	// capability so the UI can read the box's NVENC/VA-API hardware-encode tier.
-	// The endpoints are session-authed via X-User-ID like the base stream handlers.
-	stream.NewGamingManager(streamPool).RegisterGamingHandlers(mux)
+	// SEC: POST .../start spawns an unsandboxed host process (see the doc
+	// comment on RegisterGamingHandlers) — gate it with the SAME admin check
+	// and exec kill-switch as streamPool.RegisterHandlers above and
+	// /api/stream/launch-app below, not a looser one.
+	stream.NewGamingManager(streamPool).RegisterGamingHandlers(mux, func(r *http.Request) bool {
+		p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
+		return p != nil && p.Role == auth.RoleAdmin
+	}, execDisabled)
 
 	// GAME-07: manifest-aware stream launch — detects gaming sessions automatically.
 	// Sets LaunchOpts.Gaming=true when the manifest category=="gaming" OR the

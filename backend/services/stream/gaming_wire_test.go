@@ -15,7 +15,8 @@ import (
 // unauthenticated caller rather than 404 (proving they are mounted).
 func TestRegisterGamingHandlers_MountsRoutes(t *testing.T) {
 	mux := http.NewServeMux()
-	NewGamingManager(NewPool()).RegisterGamingHandlers(mux)
+	adminOnly := func(r *http.Request) bool { return r.Header.Get("X-User-ID") == "admin-user" }
+	NewGamingManager(NewPool()).RegisterGamingHandlers(mux, adminOnly, nil)
 
 	// capability — public read, deterministic (reads gpu.Detect(), headless-safe).
 	rec := httptest.NewRecorder()
@@ -50,6 +51,71 @@ func TestRegisterGamingHandlers_MountsRoutes(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("start without auth: status=%d want 401", rec.Code)
 	}
+}
+
+// TestRegisterGamingHandlers_StartIsAdminGated is the regression test for the
+// RCE this handler used to expose: POST /api/stream/gaming/start launches an
+// arbitrary caller-supplied host Command/Args unsandboxed as the vulos server
+// process (see the doc comment on RegisterGamingHandlers). Before the fix,
+// any authenticated non-admin profile on the box could reach it. This test
+// proves (a) a non-admin authenticated caller is rejected 403 BEFORE any
+// launch is attempted, (b) an admin caller is NOT rejected by the gate (it
+// proceeds past the 403 check — the actual launch then fails in this test
+// environment for unrelated reasons, e.g. no Xvfb binary, which is fine: we
+// are only asserting the authorization decision, not the launch mechanics),
+// and (c) a nil isAdmin fails closed rather than defaulting open.
+func TestRegisterGamingHandlers_StartIsAdminGated(t *testing.T) {
+	body := `{"command":"/bin/sh","args":["-c","id > /tmp/pwned"]}`
+
+	t.Run("non-admin authenticated caller is rejected before launch", func(t *testing.T) {
+		mux := http.NewServeMux()
+		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return false }, nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
+		req.Header.Set("X-User-ID", "non-admin-user")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("SEC REGRESSION: non-admin POST /api/stream/gaming/start got status=%d, want 403 — "+
+				"a non-admin session can launch an arbitrary host command as the server process", rec.Code)
+		}
+	})
+
+	t.Run("nil isAdmin fails closed", func(t *testing.T) {
+		mux := http.NewServeMux()
+		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, nil, nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
+		req.Header.Set("X-User-ID", "some-user")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("SEC REGRESSION: nil isAdmin gate did not fail closed — status=%d, want 403", rec.Code)
+		}
+	})
+
+	t.Run("admin caller passes the gate", func(t *testing.T) {
+		mux := http.NewServeMux()
+		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true }, nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
+		req.Header.Set("X-User-ID", "admin-user")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code == http.StatusForbidden {
+			t.Fatalf("admin caller was rejected by the admin gate: status=%d", rec.Code)
+		}
+	})
+
+	t.Run("execDisabled kill-switch blocks start regardless of role", func(t *testing.T) {
+		mux := http.NewServeMux()
+		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true },
+			func() bool { return true })
+		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
+		req.Header.Set("X-User-ID", "admin-user")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("SEC REGRESSION: execDisabled()=true did not block gaming/start — status=%d, want 503", rec.Code)
+		}
+	})
 }
 
 // TestSession_GamingExposedInJSON verifies the Session serialises the gaming

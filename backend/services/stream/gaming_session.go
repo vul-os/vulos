@@ -268,9 +268,7 @@ func (m *GamingManager) reap(id string) {
 	}
 }
 
-// RegisterGamingHandlers registers the gaming-session HTTP surface on mux. These
-// endpoints are session-authed by the surrounding stack (the userID is taken
-// from the authenticated X-User-ID header, same as the base stream handlers).
+// RegisterGamingHandlers registers the gaming-session HTTP surface on mux.
 //
 //	GET  /api/stream/gaming/capability   — detected GPU / NVENC / initial tier
 //	POST /api/stream/gaming/start        — launch a gaming session (one per user)
@@ -278,16 +276,44 @@ func (m *GamingManager) reap(id string) {
 //	GET  /api/stream/gaming/active       — the caller's active gaming session id
 //
 // The WebRTC signaling itself reuses the existing owner-gated GET /api/stream/ws.
-func (m *GamingManager) RegisterGamingHandlers(mux *http.ServeMux) {
+//
+// isAdmin and execDisabled gate POST .../start exactly like every other
+// exec-spawning stream route (streamPool.RegisterHandlers' launch/vnc
+// endpoints, POST /api/stream/launch-app — see main.go's "launch + vnc
+// endpoints require admin" comment): Start ultimately calls Pool.Launch,
+// which runs `exec.CommandContext(ctx, opts.Command, opts.Args...)` directly
+// on the host with no uid drop, no mount/network namespace, and the full
+// server os.Environ() inherited (unlike the app-sandbox launcher, which never
+// inherits the host environment). Before this gate existed, /start accepted
+// Command/Args/Env straight from any authenticated session's JSON body — ANY
+// logged-in profile on the box, not just the admin, could run an arbitrary
+// command as the vulos server process, which on a bare-metal box runs
+// unsandboxed (docs/SECURITY.md: "single-user appliance image... unsandboxed
+// on that unit today"). That is a full box compromise from a non-admin
+// profile, so isAdmin==nil fails CLOSED (403) rather than defaulting open —
+// callers must wire a real check, there is no "not recommended for
+// production" escape hatch here.
+func (m *GamingManager) RegisterGamingHandlers(mux *http.ServeMux, isAdmin func(*http.Request) bool, execDisabled func() bool) {
 	mux.HandleFunc("GET /api/stream/gaming/capability", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(DetectGamingCapability(gpu.Detect()))
 	})
 
 	mux.HandleFunc("POST /api/stream/gaming/start", func(w http.ResponseWriter, r *http.Request) {
+		if execDisabled != nil && execDisabled() {
+			http.Error(w, `{"error":"exec disabled by administrator"}`, http.StatusServiceUnavailable)
+			return
+		}
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			http.Error(w, `{"error":"authentication required"}`, http.StatusUnauthorized)
+			return
+		}
+		// SEC (RCE, see doc comment above RegisterGamingHandlers): this handler
+		// launches an arbitrary caller-supplied host Command/Args unsandboxed as
+		// the server process. Admin-only, fail-closed on a nil gate.
+		if isAdmin == nil || !isAdmin(r) {
+			http.Error(w, `{"error":"admin only"}`, http.StatusForbidden)
 			return
 		}
 		var req struct {
