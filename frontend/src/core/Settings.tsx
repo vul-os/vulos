@@ -297,9 +297,18 @@ export default function Settings({ initialSection }: SettingsProps) {
   }, [isMobile, drawerOpen])
 
   return (
-    <div className="flex flex-col sm:flex-row h-full bg-[var(--bg-base)] text-[var(--text-primary)]">
+    // `@container/win`: Settings is a WINDOW, not a page. It opens at 860x620
+    // and can be maximised to the whole screen — but Tailwind's `sm:`/`lg:`
+    // breakpoints measure the VIEWPORT, so on any desktop they resolve
+    // identically at both sizes and the layout could never adapt to the window
+    // it actually lives in. Every proportion below (rail width, content
+    // measure, gutters) is therefore a CONTAINER query against this element,
+    // which is exactly the window's content box. The viewport-keyed `sm:`
+    // rail/drawer swap is deliberately left alone: it is paired with the JS
+    // `useViewport()` that mounts the drawer, and the two must agree.
+    <div className="@container/win flex flex-col sm:flex-row h-full bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Desktop sidebar rail */}
-      <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 lg:w-60 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
+      <nav aria-label="Settings sections" className="hidden sm:flex sm:flex-col w-52 @4xl/win:w-[15rem] @6xl/win:w-64 shrink-0 border-r border-[var(--border-default)] bg-[var(--bg-surface)]/60 overflow-y-auto">
         {/* Solid (not translucent) — this header is `sticky`, so the section
             list scrolls underneath it. A semi-transparent fill here let the
             nav item scrolled directly beneath show through and overlap
@@ -312,6 +321,17 @@ export default function Settings({ initialSection }: SettingsProps) {
         <div className="py-4">
           <SettingsNav active={active} onSelect={selectSection} groups={groups} />
         </div>
+        {/* Scroll affordance. The rail holds 30+ items in eight groups and is
+            always taller than the window, so at every size the last visible
+            item is sliced by the window edge and reads as broken chrome rather
+            than as a list that continues. This sticky scrim fades the cut edge
+            and only ever covers content that is genuinely below the fold (it
+            sits after the list, so a short list pushes it off-screen).
+            pointer-events-none so it never eats a click on the item beneath. */}
+        <div
+          aria-hidden="true"
+          className="sticky bottom-0 z-10 h-8 -mt-8 shrink-0 pointer-events-none bg-gradient-to-t from-[var(--bg-surface)] to-transparent"
+        />
       </nav>
 
       {/* Mobile top bar — opens the section drawer */}
@@ -357,9 +377,18 @@ export default function Settings({ initialSection }: SettingsProps) {
         </div>
       )}
 
-      {/* Content */}
+      {/* Content.
+          The column is LEFT-ALIGNED against the rail, not centred in the space
+          left over. Centring a 42rem column inside a maximised 1360px pane put
+          a ~380px void between the rail and the content AND another ~380px on
+          the right: the eye read rail → gap → a narrow strip floating in the
+          middle. Anchoring the measure to the rail keeps the two as one
+          continuous surface and pushes all the slack to the outer edge, where
+          empty space is just margin. The measure still grows with the window
+          (42 → 48 → 56rem) so a maximised window genuinely uses more of its
+          width instead of only adding gutter. */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-       <div className="mx-auto w-full max-w-2xl p-5 sm:p-8">
+       <div className="w-full max-w-2xl @5xl/win:max-w-3xl @7xl/win:max-w-[56rem] px-5 py-6 @3xl/win:px-8 @3xl/win:py-8 @6xl/win:px-10 @6xl/win:py-9">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'models' && <ModelsPanel />}
         {active === 'aiapps' && <AIAppsSettings />}
