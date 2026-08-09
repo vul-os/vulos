@@ -181,7 +181,7 @@ func TestHandlers_SessionGatedAndTokenNeverLeaksRefresh(t *testing.T) {
 	RegisterHandlers(mux, svc, []byte("state-secret"), false)
 
 	// Unauthenticated /token → 401.
-	req := httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -189,7 +189,7 @@ func TestHandlers_SessionGatedAndTokenNeverLeaksRefresh(t *testing.T) {
 	}
 
 	// Authenticated /token → 200 with access token but NEVER the refresh token.
-	req = httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	req.Header.Set("X-User-ID", "u1")
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -313,7 +313,7 @@ func TestHandlers_CrossUserCredIsolation_HTTP(t *testing.T) {
 	}
 
 	// user-B mints a token for google → 404 not-connected (cannot borrow A's creds).
-	if rec := call(http.MethodGet, "/api/integrations/google/token", "user-B"); rec.Code != http.StatusNotFound {
+	if rec := call(http.MethodPost, "/api/integrations/google/token", "user-B"); rec.Code != http.StatusNotFound {
 		t.Fatalf("B /token: code=%d want 404 (must not access A's connection)", rec.Code)
 	}
 	// user-B lists → empty (cannot see A's connection).
@@ -330,7 +330,7 @@ func TestHandlers_CrossUserCredIsolation_HTTP(t *testing.T) {
 		t.Fatalf("SECURITY: user-B's disconnect removed user-A's connection")
 	}
 	// And A can still mint.
-	if rec := call(http.MethodGet, "/api/integrations/google/token", "user-A"); rec.Code != http.StatusOK {
+	if rec := call(http.MethodPost, "/api/integrations/google/token", "user-A"); rec.Code != http.StatusOK {
 		t.Fatalf("A /token after B's tampering: code=%d want 200", rec.Code)
 	}
 }

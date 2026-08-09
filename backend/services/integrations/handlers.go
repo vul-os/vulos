@@ -12,7 +12,7 @@ import (
 // the access token through these endpoints (Wave 4 adds gateway injection).
 //
 //	GET /api/integrations/google/status — { configured, connected }
-//	GET /api/integrations/google/token  — { access_token, expires_at, scopes }
+//	POST /api/integrations/google/token — { access_token, expires_at, scopes }
 func RegisterHandlers(mux *http.ServeMux, c *Client) {
 	mux.HandleFunc("GET /api/integrations/google/status", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
@@ -33,7 +33,13 @@ func RegisterHandlers(mux *http.ServeMux, c *Client) {
 		writeJSON(w, resp)
 	})
 
-	mux.HandleFunc("GET /api/integrations/google/token", func(w http.ResponseWriter, r *http.Request) {
+	// POST, not GET (SEC-TOKEN-GET-01): this MINTS and caches a per-user OAuth
+	// access token via a broker round-trip. As a GET it was reachable from any
+	// page a logged-in user visited (<img src=...>). The response is not
+	// cross-origin readable, so this was token churn and broker load rather than
+	// theft — but a credential-issuing endpoint should not be something a
+	// third-party page can trigger at all.
+	mux.HandleFunc("POST /api/integrations/google/token", func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")

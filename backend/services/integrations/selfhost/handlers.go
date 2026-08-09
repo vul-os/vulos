@@ -28,7 +28,13 @@ func RegisterHandlers(mux *http.ServeMux, svc *Service, stateSecret []byte, secu
 	mux.HandleFunc("GET /api/integrations/{provider}/connect", h.connect)
 	mux.HandleFunc("GET /api/integrations/{provider}/callback", h.callback)
 	mux.HandleFunc("GET /api/integrations/{provider}/status", h.status)
-	mux.HandleFunc("GET /api/integrations/{provider}/token", h.token)
+	// POST, not GET (SEC-TOKEN-GET-01): token MINTS/refreshes a per-user OAuth
+	// access token. As a GET any page a logged-in user visited could trigger it
+	// with <img src=...>. The response is not cross-origin readable, so the
+	// impact was token churn and provider load rather than theft — but a
+	// credential-issuing endpoint should not be reachable that way at all. Its
+	// sibling in services/integrations was converted for the same reason.
+	mux.HandleFunc("POST /api/integrations/{provider}/token", h.token)
 	mux.HandleFunc("DELETE /api/integrations/{provider}", h.disconnect)
 	mux.HandleFunc("GET /api/integrations", h.list)
 }

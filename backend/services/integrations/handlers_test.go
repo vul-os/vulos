@@ -40,7 +40,7 @@ func TestHandlerTokenRequiresUser(t *testing.T) {
 	mux := newTestMux(srv.URL)
 
 	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil))
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil))
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("no user: want 401, got %d", rr.Code)
 	}
@@ -52,7 +52,7 @@ func TestHandlerTokenOK(t *testing.T) {
 	mux := newTestMux(srv.URL)
 
 	rr := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	r.Header.Set("X-User-ID", "user-1")
 	mux.ServeHTTP(rr, r)
 	if rr.Code != http.StatusOK {
@@ -73,7 +73,7 @@ func TestHandlerTokenNotConnected(t *testing.T) {
 	mux := newTestMux(srv.URL)
 
 	rr := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	r.Header.Set("X-User-ID", "user-1")
 	mux.ServeHTTP(rr, r)
 	if rr.Code != http.StatusNotFound {

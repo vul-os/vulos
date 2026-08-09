@@ -392,10 +392,26 @@ func decodeJSONLimited(w http.ResponseWriter, r *http.Request, v any, max int64)
 	return true
 }
 
-// writeFilesErr maps service sentinel errors to HTTP status codes. Forbidden and
-// not-found both surface as 404 for read-ish access denials would leak existence;
-// here we keep 403 for explicit permission failures and 404 for missing nodes,
-// matching the rest of the OS API (IDOR handlers 404 on cross-user reads).
+// writeFilesErr maps service sentinel errors to HTTP status codes.
+//
+// NOTE, because the previous version of this comment claimed the opposite of
+// what the code does: ErrForbidden surfaces as 403 and ErrNotFound as 404, so
+// these two ARE distinguishable. A caller holding a node id it has no rights to
+// can therefore tell "exists, not yours" from "does not exist".
+//
+// That is a deliberate trade, not an oversight, and the reason it is acceptable
+// here is narrow: node ids are ULIDs, so the 80 random bits make the oracle
+// unreachable without already possessing a valid id. Meanwhile 403 carries real
+// meaning for the common legitimate case — someone with read access to a shared
+// node who lacks write — and collapsing it into 404 would tell that user their
+// file does not exist.
+//
+// The rest of the OS API does collapse both into 404 (see notify's
+// DeliverableToUser), and the honest way to have both properties here is for the
+// service layer to distinguish "no access at all" from "has read, lacks write"
+// and let this map the first to 404. files returns a single ErrForbidden for
+// both today, so that is a service-layer change, tracked separately rather than
+// papered over with a comment that describes behaviour the code never had.
 func writeFilesErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, files.ErrNotFound):

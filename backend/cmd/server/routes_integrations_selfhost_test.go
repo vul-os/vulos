@@ -44,7 +44,7 @@ func TestSelfHostIntegrations_RegisteredWhenNoCP(t *testing.T) {
 	registerSelfHostIntegrations(mux, "", vulenv.EnvLocal)
 
 	// /token exists and is session-gated (401 without a user, not 404).
-	req := httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -60,7 +60,7 @@ func TestSelfHostIntegrations_DisabledFailClosedInProdWithoutKEK(t *testing.T) {
 	registerSelfHostIntegrations(mux, "", vulenv.EnvProd)
 
 	// No route registered → 404 (the mux has no handler at all).
-	req := httptest.NewRequest(http.MethodGet, "/api/integrations/google/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/integrations/google/token", nil)
 	req.Header.Set("X-User-ID", "u1")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
