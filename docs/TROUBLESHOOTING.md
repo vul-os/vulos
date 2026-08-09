@@ -111,7 +111,7 @@ Vulos accounts are local to your box — email/password, passkey (WebAuthn/FIDO2
 
 ## Box not reachable remotely (relay and direct)
 
-A box behind NAT is reached through a **relay**: the box dials **out**, holds the connection open, and the relay forwards traffic back down it. Vulos ships its own — `vulos relay serve`, the same binary in a different role — and the box-side agent is **embedded in the OS process**, so there is no separate agent binary or log to check.
+A box behind NAT is reached through a **relay**: the box dials **out**, holds the connection open, and the relay forwards traffic back down it. Vulos ships its own — `vulos relay serve`, built from this repository's `backend/cmd/vulos` (a different binary from the box's `vulos-server`, and one you build yourself; no release artifact contains it). The **box-side** agent is embedded in the OS process, so on the box there is no separate agent binary or log to check.
 
 **Nobody runs a relay on your behalf**, so a box with nothing configured has no relay: it is LAN-reachable, and publicly reachable only in direct mode. Configure relays with `VULOS_RELAY_ENDPOINTS_FILE` (preferred, mode 0600) or `VULOS_RELAY_ENDPOINTS`; the legacy `VULOS_RELAY_BASE_URL` / `VULOS_RELAY_NAME` / `VULOS_RELAY_TOKEN` form still works. [Pier](https://github.com/vul-os/pier) is a supported alternative relay.
 
