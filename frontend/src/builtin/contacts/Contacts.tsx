@@ -520,76 +520,97 @@ interface ContactDetailProps {
 }
 
 function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps) {
+  const subtitle = [contact.title, contact.org].filter(Boolean).join(' · ')
+  const hasFields = contact.emails.length > 0 || contact.phones.length > 0 || !!contact.note
   return (
-    <div className="p-6 animate-[fadeIn_0.18s_ease-out]" data-contact-detail>
-      <div className="flex items-center gap-4">
-        <span className="w-16 h-16 shrink-0 grid place-items-center rounded-full text-[22px] font-mono font-semibold ring-1 ring-inset ring-white/5"
-          style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="text-[19px] font-semibold truncate tracking-tight">{contact.name || '(no name)'}</div>
-            <SourceBadges sources={contact.sources} />
+    <div className="animate-[fadeIn_0.18s_ease-out]" data-contact-detail>
+      {/* PANE_MEASURE: every detail surface shares this column so the card never
+          stretches to the full window at 1600px+ and the actions stay beside
+          the name they act on. */}
+      <div className="mx-auto w-full max-w-[46rem] px-5 sm:px-8 py-7 sm:py-9">
+        <header className="flex items-start gap-4 sm:gap-5">
+          <span className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] shrink-0 grid place-items-center rounded-full text-[22px] mono font-semibold ring-1 ring-inset ring-white/5"
+            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h2 className="text-[22px] sm:text-[25px] font-semibold tracking-[-0.02em] leading-tight break-words">
+              {contact.name || '(no name)'}
+            </h2>
+            {subtitle && <div className="text-[13.5px] text-neutral-400 mt-1 break-words">{subtitle}</div>}
+            <div className="mt-2.5"><SourceBadges sources={contact.sources} /></div>
           </div>
-          {(contact.title || contact.org) && (
-            <div className="text-[13px] text-neutral-400 truncate">
-              {[contact.title, contact.org].filter(Boolean).join(' · ')}
+          {!contact._readonly && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={onEdit}
+                className="text-[13px] font-medium px-3.5 h-9 rounded-lg border border-neutral-800 text-neutral-200 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">Edit</button>
+              <button type="button" onClick={onDelete} disabled={saving}
+                className="text-[13px] font-medium px-3.5 h-9 rounded-lg text-danger border border-transparent hover:bg-danger-soft hover:border-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
             </div>
           )}
-        </div>
-        {contact._readonly ? (
-          <div className="ml-auto text-[12px] text-neutral-500 max-w-[9rem] text-right leading-snug">
-            From your phone — edit it on the device it lives on.
+        </header>
+
+        {contact._readonly && (
+          <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/50 px-3.5 py-3 text-[12.5px] text-neutral-400 leading-relaxed">
+            <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 mt-px text-neutral-600" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.9v.1" strokeLinecap="round"/></svg>
+            <span>This card came from your phone. Edit it on the device it lives on and it will sync back here.</span>
+          </div>
+        )}
+
+        {hasFields ? (
+          <div className="mt-6 rounded-2xl border border-neutral-800/80 bg-neutral-900/40 divide-y divide-neutral-800/70 overflow-hidden">
+            {contact.emails.length > 0 && (
+              <Field label="Email">
+                {contact.emails.map((e, i) => (
+                  <a key={i} href={`mailto:${e}`}
+                    className="flex items-center gap-2.5 text-[13.5px] px-2.5 py-2 -mx-2.5 rounded-lg hover:bg-neutral-800/60 transition-colors focus-primary"
+                    style={{ color: 'var(--accent)' }}>
+                    <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 opacity-70" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2 4l6 4.5L14 4"/></svg>
+                    <span className="truncate">{e}</span>
+                  </a>
+                ))}
+              </Field>
+            )}
+            {contact.phones.length > 0 && (
+              <Field label="Phone">
+                {contact.phones.map((p, i) => (
+                  <a key={i} href={`tel:${p}`}
+                    className="flex items-center gap-2.5 text-[13.5px] text-neutral-200 px-2.5 py-2 -mx-2.5 rounded-lg hover:bg-neutral-800/60 transition-colors focus-primary">
+                    <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
+                    <span className="truncate">{p}</span>
+                  </a>
+                ))}
+              </Field>
+            )}
+            {contact.note && (
+              <Field label="Notes">
+                {/* Capped measure: notes ran the full pane width at 1600px. */}
+                <p className="text-[13.5px] text-neutral-300 whitespace-pre-wrap leading-relaxed max-w-[62ch]">{contact.note}</p>
+              </Field>
+            )}
           </div>
         ) : (
-          <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={onEdit}
-              className="text-[12px] px-3 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">Edit</button>
-            <button type="button" onClick={onDelete} disabled={saving}
-              className="text-[12px] px-3 py-2 rounded-md text-danger hover:bg-danger-soft transition-colors focus-primary disabled:opacity-50">Delete</button>
+          <div className="mt-6 rounded-2xl border border-dashed border-neutral-800 px-5 py-8 text-center">
+            <div className="text-[13px] text-neutral-500">No email, phone or notes on this card yet.</div>
+            {!contact._readonly && (
+              <button type="button" onClick={onEdit}
+                className="mt-3 text-[12.5px] font-medium px-3 h-8 rounded-lg border border-neutral-800 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">
+                Add details
+              </button>
+            )}
           </div>
-        )}
-      </div>
-
-      <div className="mt-6 flex flex-col gap-4">
-        {contact.emails.length > 0 && (
-          <Field label="Email">
-            <div className="flex flex-col gap-1">
-              {contact.emails.map((e, i) => (
-                <a key={i} href={`mailto:${e}`} className="flex items-center gap-2 text-[13px] px-2 py-1.5 -mx-2 rounded-md hover:bg-neutral-800/50 transition-colors focus-primary" style={{ color: 'var(--accent)' }}>
-                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 opacity-70" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2 4l6 4.5L14 4"/></svg>
-                  <span className="truncate">{e}</span>
-                </a>
-              ))}
-            </div>
-          </Field>
-        )}
-        {contact.phones.length > 0 && (
-          <Field label="Phone">
-            <div className="flex flex-col gap-1">
-              {contact.phones.map((p, i) => (
-                <a key={i} href={`tel:${p}`} className="flex items-center gap-2 text-[13px] text-neutral-200 px-2 py-1.5 -mx-2 rounded-md hover:bg-neutral-800/50 transition-colors focus-primary">
-                  <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
-                  <span className="truncate">{p}</span>
-                </a>
-              ))}
-            </div>
-          </Field>
-        )}
-        {contact.note && (
-          <Field label="Notes">
-            <p className="text-[13px] text-neutral-300 whitespace-pre-wrap">{contact.note}</p>
-          </Field>
         )}
       </div>
     </div>
   )
 }
 
+// A labelled block inside the detail card. The label is a narrow left column on
+// desktop (so the values line up in one readable rail) and stacks above the
+// value once the pane is too narrow for two columns.
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <div className="text-[12px] font-mono uppercase tracking-wider text-neutral-500 mb-1">{label}</div>
-      {children}
+    <div className="px-4 sm:px-5 py-4 sm:flex sm:gap-5">
+      <div className="mono text-[11px] uppercase tracking-[0.12em] text-neutral-500 mb-1.5 sm:mb-0 sm:w-20 sm:shrink-0 sm:pt-2">{label}</div>
+      <div className="min-w-0 flex-1 flex flex-col gap-0.5">{children}</div>
     </div>
   )
 }
@@ -612,37 +633,56 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }: ContactEdito
     return { ...f, [key]: cleaned }
   })
   return (
-    <div className="p-6 max-w-md animate-[fadeIn_0.18s_ease-out]" data-contact-editor>
-      <div className="flex items-center gap-2 text-[15px] font-semibold mb-4 tracking-tight">
-        <span className="w-1.5 h-5 rounded-full" style={{ background: 'var(--accent)' }} />
-        {form.id ? 'Edit contact' : 'New contact'}
-      </div>
-      <div className="flex flex-col gap-3">
-        <Input label="Name" value={form.name} onChange={(v) => set({ name: v })} autoFocus />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <Input label="Title" value={form.title} onChange={(v) => set({ title: v })} />
-          <Input label="Organization" value={form.org} onChange={(v) => set({ org: v })} />
+    <div className="animate-[fadeIn_0.18s_ease-out]" data-contact-editor>
+      {/* Same PANE_MEASURE column as ContactDetail, so switching between viewing
+          and editing does not shift the content sideways. */}
+      <div className="mx-auto w-full max-w-[46rem] px-5 sm:px-8 py-7 sm:py-9">
+        <div className="flex items-center gap-2.5 mb-6">
+          <span className="w-1.5 h-6 rounded-full shrink-0" style={{ background: 'var(--accent)' }} />
+          <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{form.id ? 'Edit contact' : 'New contact'}</h2>
         </div>
 
-        <ListField label="Email" type="email" values={form.emails} onChange={(i, v) => setList('emails', i, v)} />
-        <ListField label="Phone" type="tel" values={form.phones} onChange={(i, v) => setList('phones', i, v)} />
+        <div className="rounded-2xl border border-neutral-800/80 bg-neutral-900/40 p-5 sm:p-6 flex flex-col gap-4">
+          <Input label="Name" value={form.name} onChange={(v) => set({ name: v })} autoFocus />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Title" value={form.title} onChange={(v) => set({ title: v })} />
+            <Input label="Organization" value={form.org} onChange={(v) => set({ org: v })} />
+          </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">Notes</span>
-          <textarea value={form.note} onChange={(e) => set({ note: e.target.value })} rows={3}
-            className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 resize-none focus-primary" />
-        </label>
-      </div>
-      <div className="mt-5 flex items-center gap-2">
-        <button type="button" onClick={onCancel} disabled={saving}
-          className="ml-auto text-[12px] px-3 py-1.5 rounded-md border border-neutral-700 hover:bg-neutral-800/60 focus-primary disabled:opacity-50">Cancel</button>
-        <button type="button" onClick={onSave} disabled={saving}
-          className="text-[12px] px-3 py-1.5 rounded-md text-white font-medium transition-all hover:brightness-110 active:scale-[0.97] focus-primary disabled:opacity-50 shadow-sm"
-          style={{ background: 'var(--accent)' }}>{saving ? 'Saving…' : 'Save'}</button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ListField label="Email" type="email" values={form.emails} onChange={(i, v) => setList('emails', i, v)} />
+            <ListField label="Phone" type="tel" values={form.phones} onChange={(i, v) => setList('phones', i, v)} />
+          </div>
+
+          <label className="flex flex-col gap-1.5">
+            <span className={FIELD_LABEL}>Notes</span>
+            <textarea value={form.note} onChange={(e) => set({ note: e.target.value })} rows={4}
+              className={`${FIELD_INPUT} resize-y min-h-[5.5rem]`} />
+          </label>
+        </div>
+
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={saving}
+            className="text-[13px] font-medium px-4 h-9 rounded-lg border border-neutral-800 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={onSave} disabled={saving}
+            className="inline-flex items-center gap-2 text-[13px] px-4 h-9 rounded-lg text-white font-medium transition-all hover:brightness-110 active:scale-[0.98] focus-primary disabled:opacity-50 shadow-sm"
+            style={{ background: 'var(--accent)' }}>
+            {saving && <span className="w-3.5 h-3.5 spinner border-white/40 border-t-white" />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
+
+// One spacing/typography scale for every form control in the editor — the old
+// controls were 1.5px-padded, 12px-labelled and read as unstyled browser inputs.
+const FIELD_LABEL = 'mono text-[11px] uppercase tracking-[0.12em] text-neutral-500'
+const FIELD_INPUT =
+  'w-full min-w-0 bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-[13.5px] ' +
+  'text-neutral-100 placeholder-neutral-600 transition-colors hover:border-neutral-700 ' +
+  'focus:border-[color-mix(in_srgb,var(--accent)_55%,var(--border-emphasis))] focus-primary'
 
 interface InputProps {
   label: string
@@ -653,10 +693,9 @@ interface InputProps {
 
 function Input({ label, value, onChange, autoFocus }: InputProps) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
-      <input autoFocus={autoFocus} value={value} onChange={(e) => onChange(e.target.value)}
-        className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 focus-primary" />
+    <label className="flex flex-col gap-1.5 min-w-0">
+      <span className={FIELD_LABEL}>{label}</span>
+      <input autoFocus={autoFocus} value={value} onChange={(e) => onChange(e.target.value)} className={FIELD_INPUT} />
     </label>
   )
 }
@@ -670,14 +709,14 @@ interface ListFieldProps {
 
 function ListField({ label, type, values, onChange }: ListFieldProps) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[12px] font-mono uppercase tracking-wider text-neutral-500">{label}</span>
-      <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <span className={FIELD_LABEL}>{label}</span>
+      <div className="flex flex-col gap-2">
         {values.map((v, i) => (
           <input key={i} type={type} value={v} onChange={(e) => onChange(i, e.target.value)}
             aria-label={`${label} ${i + 1}`}
-            placeholder={type === 'email' ? 'name@example.com' : ''}
-            className="bg-neutral-800/60 border border-neutral-700/80 rounded-md px-2.5 py-1.5 text-[13px] transition-colors focus:border-neutral-600 focus-primary" />
+            placeholder={type === 'email' ? 'name@example.com' : '+1 555 000 0000'}
+            className={FIELD_INPUT} />
         ))}
       </div>
     </div>
