@@ -1,8 +1,8 @@
-# Vula OS — Decisions Log
+# Vulos — Decisions Log
 
 ## What this is
 
-A running record of every design or operational decision that shaped Vula OS. Most entries are short — three to ten lines — and dated. Read them when you want to understand *why* a piece of the codebase looks the way it does, before changing it.
+A running record of every design or operational decision that shaped Vulos. Most entries are short — three to ten lines — and dated. Read them when you want to understand *why* a piece of the codebase looks the way it does, before changing it.
 
 The log is append-only. Decisions can be **superseded** by later ones, but the original entry stays. If you want a snapshot of "what rules are currently in force", read the **Decision index** below and look at the Status column.
 
