@@ -4,11 +4,14 @@
  * Drives the REAL ShellProvider (its reducer + useShell actions) with the REAL
  * Dock, through a small harness that exposes the shell API as buttons + a live
  * window probe. This exercises the shell's window lifecycle end-to-end:
- *   • launch → a window opens and appears in the Dock,
+ *   • the Dock shows PINNED apps before anything is running (it is a launcher,
+ *     not just a window list),
+ *   • launch → a window opens; its Dock tile reports "(focused)",
  *   • minimize → window hides, its Dock item is labelled "(minimized)",
  *   • click the Dock item → restore + focus,
  *   • maximize + tile (snap) update window geometry,
- *   • close → removed from Dock,
+ *   • close → an UNPINNED app's tile disappears; a pinned app's tile stays but
+ *     drops its running state,
  *   • multi-desktop: switch spaces, windows track their space.
  *
  * Window.jsx itself (iframes, genie animation, native mode) is intentionally not
@@ -30,6 +33,9 @@ function Harness() {
     <div>
       <button onClick={() => s.openWindow({ appId: 'terminal', title: 'Terminal' })}>launch-terminal</button>
       <button onClick={() => s.openWindow({ appId: 'drive', title: 'Drive' })}>launch-drive</button>
+      {/* 'activity' is deliberately NOT in the Dock's default pins — it covers
+          the running-but-unpinned band. */}
+      <button onClick={() => s.openWindow({ appId: 'activity', title: 'Activity Monitor' })}>launch-activity</button>
       <button onClick={() => w0 && s.minimizeWindow(w0.id)}>minimize-first</button>
       <button onClick={() => w0 && s.maximizeWindow(w0.id)}>maximize-first</button>
       <button onClick={() => w0 && s.tileWindow(w0.id, 'left')}>tile-first-left</button>
@@ -53,14 +59,30 @@ const winInfo = () => JSON.parse(screen.getByTestId('first-win').textContent)
 afterEach(() => { cleanup(); try { localStorage.clear() } catch { /* noop */ } })
 
 describe('Window management (integration, real ShellProvider + Dock)', () => {
-  it('launching an app opens a window and adds it to the Dock', async () => {
-    const user = userEvent.setup()
+  it('the Dock offers its pinned apps before anything is running', async () => {
     mount()
     expect(screen.getByTestId('win-count')).toHaveTextContent('0')
+    // A dock that only lists open windows is empty on a fresh boot — useless.
+    // Terminal is a default pin, so its tile is there with NO running state.
+    expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
+  })
+
+  it('launching an app marks its Dock tile focused', async () => {
+    const user = userEvent.setup()
+    mount()
     await user.click(screen.getByText('launch-terminal'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('1')
-    // Dock now has a button for the window.
-    expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Terminal (focused)' })).toBeInTheDocument()
+  })
+
+  it('an UNPINNED app appears in the Dock only while it is running', async () => {
+    const user = userEvent.setup()
+    mount()
+    expect(screen.queryByRole('button', { name: /^Activity Monitor/ })).toBeNull()
+    await user.click(screen.getByText('launch-activity'))
+    expect(screen.getByRole('button', { name: 'Activity Monitor (focused)' })).toBeInTheDocument()
+    await user.click(screen.getByText('close-first'))
+    expect(screen.queryByRole('button', { name: /^Activity Monitor/ })).toBeNull()
   })
 
   it('minimize hides the window and labels its Dock item; clicking it restores', async () => {
@@ -85,24 +107,25 @@ describe('Window management (integration, real ShellProvider + Dock)', () => {
     expect(winInfo().tile).toBe('left')
   })
 
-  it('close removes the window from the Dock', async () => {
+  it('closing a PINNED app keeps its tile but drops the running state', async () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByText('launch-terminal'))
-    expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Terminal (focused)' })).toBeInTheDocument()
     await user.click(screen.getByText('close-first'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('0')
-    expect(screen.queryByRole('button', { name: 'Terminal' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Terminal (focused)' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
   })
 
-  it('two windows both appear in the Dock; the second is focused', async () => {
+  it('two windows: both are in the Dock and only the second reads focused', async () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByText('launch-terminal'))
-    await user.click(screen.getByText('launch-drive'))
+    await user.click(screen.getByText('launch-activity'))
     expect(screen.getByTestId('win-count')).toHaveTextContent('2')
-    expect(screen.getByRole('button', { name: 'Terminal' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Drive' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Terminal (running)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Activity Monitor (focused)' })).toBeInTheDocument()
   })
 
   it('adding a desktop creates a new space; its windows are tracked separately', async () => {

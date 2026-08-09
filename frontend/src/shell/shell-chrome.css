@@ -709,3 +709,30 @@
   .vspot { animation: none; }
   .vspot-row, .vspot-tile { transition: none; }
 }
+
+/* Dock band separator — a hairline between the launcher, the apps and the
+   shell panels, so the strip reads as three purposes rather than one soup. */
+.vshell-dock-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.375rem 0.3125rem;
+  background: color-mix(in srgb, var(--border-emphasis) 50%, transparent);
+  flex: none;
+}
+
+/* Non-app dock affordances (Spotlight, Assistant) carry a glyph rather than an
+   app plate, so they get the tile surface the plates supply for themselves. */
+.vshell-dock-glyph {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-hover) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 45%, transparent);
+}
+.vshell-dock-item:hover .vshell-dock-glyph {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 95%, transparent);
+}
+.vshell-dock-glyph[data-active='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
