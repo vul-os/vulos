@@ -8,8 +8,21 @@
  * The headline is the SOVEREIGNTY badge: it surfaces exactly which TIER the
  * model runs in — "where your AI runs" — so the posture is honest, visible, and
  * auditable. A minimal picker lets the operator choose the tier.
+ *
+ * ── LAYOUT NOTE (read before changing any width/visibility class) ────────────
+ * This component renders at TWO very different sizes from the SAME markup:
+ *
+ *   • a window (the `assistant` builtin) — up to ~1600px wide, and
+ *   • the shell slide-over (shell/AssistantPanel.tsx) — min(420px, 42vw).
+ *
+ * Tailwind's `sm:` / `lg:` breakpoints key off the VIEWPORT, so inside the
+ * 420px panel on a 1440px desktop every one of them is ON — which is exactly
+ * how the composer's footer hints ended up wrapping and truncating in the
+ * panel while looking fine in the window. Every size-dependent rule here is
+ * therefore a CONTAINER query (`@container` on the root + `@xl:` variants),
+ * which measures the surface the component actually occupies.
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { runAgentTurn, type AgentProposal, type AgentStep } from '../../core/agentStream'
 import { useAutoGrow } from '../../core/useAutoGrow'
 // The tier vocabulary + labels + dot colors are the SHARED contract with the
@@ -108,12 +121,23 @@ function toAssistantStatus(x: unknown): AssistantStatus | null {
   return out
 }
 
+// ── Measure ──────────────────────────────────────────────────────────────────
+// Every band of the app (header, tier picker, transcript, composer) renders its
+// content inside this one centred column, so a maximized 1600px window shows a
+// readable ~44rem conversation instead of 1500px-wide lines of text with the
+// send button a screen away from the words. The bands themselves still span the
+// window, so borders/backgrounds read as full-width chrome.
+const COLUMN = 'mx-auto w-full max-w-[44rem]'
+
+// ── Sovereignty badge ────────────────────────────────────────────────────────
+
 interface SovereigntyBadgeProps {
   status: AssistantStatus | null
+  open: boolean
   onClick: () => void
 }
 
-function SovereigntyBadge({ status, onClick }: SovereigntyBadgeProps) {
+function SovereigntyBadge({ status, open, onClick }: SovereigntyBadgeProps) {
   if (!status) return null
   const tier = status.tier || status.sovereignty?.tier || 'external'
   const info = tierInfo(tier)
@@ -126,13 +150,18 @@ function SovereigntyBadge({ status, onClick }: SovereigntyBadgeProps) {
     <button
       type="button"
       onClick={onClick}
+      aria-expanded={open}
       title={status.sovereignty?.reason || info.blurb}
-      className="group flex items-center gap-2 h-9 pl-2.5 pr-2 rounded-full border border-neutral-800 bg-neutral-900/60 hover:bg-neutral-800/70 hover:border-neutral-700 transition-colors focus-primary shrink-0"
+      className="group flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-full border transition-colors focus-primary shrink-0 border-[var(--border-default)] bg-[var(--bg-base)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
     >
-      <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: info.dot, boxShadow: `0 0 0 3px color-mix(in srgb, ${info.dot} 18%, transparent)` }} />
-      <span className={`text-[12.5px] font-medium ${info.tone}`}>{label}</span>
-      {model && <span className="mono text-[11.5px] text-neutral-600 hidden lg:inline truncate max-w-[14rem]">{model}</span>}
-      <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" className="text-neutral-600 group-hover:text-neutral-400 transition-colors shrink-0">
+      <span className="inline-block w-[7px] h-[7px] rounded-full shrink-0" style={{ background: info.dot, boxShadow: `0 0 0 3px color-mix(in srgb, ${info.dot} 18%, transparent)` }} />
+      <span className={`text-[12px] font-medium ${info.tone}`}>{label}</span>
+      {/* The model id is detail, not headline — only surfaced when the surface
+          is actually wide enough for it (container, not viewport: the 420px
+          slide-over is not "wide" just because the desktop behind it is). */}
+      {model && <span className="mono text-[11px] text-neutral-600 hidden @2xl:inline truncate max-w-[12rem]">{model}</span>}
+      <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true"
+        className={`text-neutral-600 group-hover:text-neutral-400 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}>
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
     </button>
@@ -161,19 +190,20 @@ function TierPicker({ status, options, current, onPick, busy, onClose }: TierPic
     { tier: 'brokered', label: TIERS.brokered.label },
   ]
   return (
-    <div className="flex-shrink-0 border-b border-neutral-800/60 bg-neutral-900/40 animate-[fadeIn_0.16s_ease-out]">
-      <div className={`${COLUMN} px-4 sm:px-6 py-4`}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <div className="text-[13.5px] font-semibold text-neutral-100 tracking-tight">Where your AI runs</div>
-            <div className="text-[12px] text-neutral-500 mt-0.5">Your box stays authoritative — the backend guard has the final say.</div>
+    <div className="flex-shrink-0 border-b border-[var(--border-default)] bg-[var(--bg-surface)] animate-[fadeIn_0.16s_ease-out]">
+      <div className={`${COLUMN} px-4 @xl:px-6 py-4`}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-neutral-100 tracking-tight">Where your AI runs</div>
+            <div className="text-[12px] text-neutral-500 mt-0.5 leading-snug">Your box stays authoritative — the backend guard has the final say.</div>
           </div>
           <button type="button" onClick={onClose}
-            className="text-[12.5px] font-medium px-3 h-8 rounded-lg border border-neutral-800 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">Done</button>
+            className="shrink-0 text-[12px] font-medium px-3 h-8 rounded-lg border border-[var(--border-default)] text-neutral-400 hover:text-neutral-100 hover:bg-[var(--bg-hover)] transition-colors focus-primary">Done</button>
         </div>
-        {/* Side-by-side at desktop width: three stacked full-width rows across a
-            1600px window were a wall of near-empty bars. */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {/* Side-by-side once the SURFACE is wide (container query): three stacked
+            full-width rows across a 1600px window were a wall of near-empty
+            bars, and three columns inside the 420px panel were unreadable. */}
+        <div className="grid grid-cols-1 @xl:grid-cols-3 gap-2">
           {opts.map(o => {
             const info = tierInfo(o.tier)
             const active = current === o.tier
@@ -186,14 +216,14 @@ function TierPicker({ status, options, current, onPick, busy, onClose }: TierPic
                 onClick={() => onPick(o.tier)}
                 className={`text-left rounded-xl px-3.5 py-3 border transition-colors disabled:opacity-50 focus-primary ${
                   active
-                    ? 'bg-neutral-800/80 border-neutral-600'
-                    : 'bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900'
+                    ? 'bg-[var(--bg-selected)] border-[var(--bg-selected-border)]'
+                    : 'bg-[var(--bg-base)] border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: info.dot }} />
+                  <span className="inline-block w-[7px] h-[7px] rounded-full shrink-0" style={{ background: info.dot }} />
                   <span className={`text-[12.5px] font-medium ${info.tone}`}>{o.label || info.label}</span>
-                  {active && <span className="ml-auto mono text-[10.5px] uppercase tracking-[0.1em] text-neutral-500">current</span>}
+                  {active && <span className="ml-auto mono text-[10px] uppercase tracking-[0.1em] text-neutral-500">current</span>}
                 </div>
                 <div className="text-[12px] text-neutral-500 mt-1.5 leading-relaxed">{info.blurb}</div>
               </button>
@@ -210,15 +240,6 @@ function TierPicker({ status, options, current, onPick, busy, onClose }: TierPic
   )
 }
 
-// ── Measure ──────────────────────────────────────────────────────────────────
-// THE fix for "ugly on desktop". Every band of the app (header, tier picker,
-// transcript, composer) renders its content inside this one centred column, so
-// a maximized 1600px window shows a readable ~48rem conversation instead of
-// 1500px-wide lines of text with the send button a screen away from the words.
-// The bands themselves still span the window, so borders/backgrounds read as
-// full-width chrome.
-const COLUMN = 'mx-auto w-full max-w-[48rem]'
-
 // ── Quick actions ────────────────────────────────────────────────────────────
 
 interface QuickAction {
@@ -226,65 +247,85 @@ interface QuickAction {
   label: string
   /** One-line "what this actually does", shown on the empty-state cards. */
   hint: string
-  prompt: null
 }
 
 const QUICK: QuickAction[] = [
-  { id: 'attention', label: 'What needs my attention', hint: 'Today’s unanswered threads, deadlines and asks', prompt: null },
-  { id: 'summarize', label: 'Summarize my inbox', hint: 'A short readout of everything currently unread', prompt: null },
+  { id: 'attention', label: 'What needs my attention', hint: 'Today’s unanswered threads, deadlines and asks' },
+  { id: 'summarize', label: 'Summarize my inbox', hint: 'A short readout of everything currently unread' },
 ]
 
-// ── Message bubble ───────────────────────────────────────────────────────────
+// ── Turns ────────────────────────────────────────────────────────────────────
+//
+// The user speaks in a bubble; the assistant answers in PROSE beside a small
+// mark. Two facing grey bubbles read as a toy chat and waste the measure — an
+// answer that may run to a paragraph, carry a tool trace and then a proposal
+// card wants to be a block of text in the reading column, not a balloon.
 
-interface BubbleProps {
-  role: 'user' | 'assistant'
+function UserTurn({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end min-w-0">
+      <div
+        style={{ background: 'var(--accent)' }}
+        className="max-w-[85%] min-w-0 rounded-2xl rounded-br-md px-3.5 py-2.5 text-[13.5px] leading-[1.6] text-white whitespace-pre-wrap break-words shadow-[0_1px_2px_rgba(0,0,0,0.18)]"
+      >
+        {content}
+      </div>
+    </div>
+  )
+}
+
+interface AssistantTurnProps {
   content?: string
   pending?: boolean
   error?: boolean
   onRetry?: () => void
+  steps?: StepTraceItem[]
+  children?: ReactNode
 }
 
-// Inside the 48rem COLUMN this is a comfortable ~38rem measure; the old
-// `max-w-[80%]` was 80% of the WINDOW, i.e. ~1280px lines at desktop width.
-const BUBBLE_MEASURE = 'max-w-[92%] sm:max-w-[80%]'
-
-function Bubble({ role, content, pending, error, onRetry }: BubbleProps) {
-  const isUser = role === 'user'
+function AssistantTurn({ content, pending, error, onRetry, steps, children }: AssistantTurnProps) {
   return (
-    <div className={`flex min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        style={isUser ? { background: 'var(--accent)' } : undefined}
-        className={`${BUBBLE_MEASURE} min-w-0 rounded-2xl px-4 py-3 text-[13.5px] leading-[1.65] whitespace-pre-wrap break-words ${
-          isUser
-            ? 'text-white rounded-br-md shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
-            : error
-              ? 'bg-danger-soft border border-danger-soft text-danger rounded-bl-md'
-              : 'bg-neutral-900/70 border border-neutral-800 text-neutral-200 rounded-bl-md'
-        }`}
+    <div className="flex gap-3 min-w-0">
+      <span
+        aria-hidden="true"
+        className="mt-[3px] w-6 h-6 rounded-lg accent-bg-soft accent-text flex items-center justify-center text-[12px] leading-none shrink-0"
       >
-        {error && <span aria-hidden="true" className="mr-1.5">⚠</span>}
-        {content || (pending && !isUser && (
-          <span className="inline-flex items-center gap-2 text-neutral-500">
+        ✦
+      </span>
+      <div className="min-w-0 flex-1 flex flex-col items-start gap-2.5">
+        {error ? (
+          <div className="w-full rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-danger">
+            <span aria-hidden="true" className="mr-1.5">⚠</span>
+            {content}
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="block mt-1.5 text-[12px] font-medium text-danger underline decoration-danger/40 underline-offset-2 hover:decoration-danger transition-colors focus-primary rounded"
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        ) : content ? (
+          <div className="w-full text-[13.5px] @xl:text-[14px] leading-[1.75] text-neutral-200 whitespace-pre-wrap break-words">
+            {content}
+            {pending && (
+              <span
+                className="va-caret inline-block w-[3px] h-[1.05em] ml-0.5 -mb-[0.12em] rounded-full align-baseline"
+                style={{ background: 'var(--accent)' }}
+                aria-hidden="true"
+              />
+            )}
+          </div>
+        ) : pending ? (
+          <span className="inline-flex items-center gap-2 text-[13px] text-neutral-500 py-0.5">
             <span className="va-dots" aria-hidden="true"><i /><i /><i /></span>
             Thinking…
           </span>
-        ))}
-        {pending && content && (
-          <span
-            className="va-caret inline-block w-[3px] h-[1.05em] ml-0.5 -mb-[0.12em] rounded-full align-baseline"
-            style={{ background: 'var(--accent)' }}
-            aria-hidden="true"
-          />
-        )}
-        {error && onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="block mt-1.5 text-[12px] font-medium text-danger underline decoration-danger/40 underline-offset-2 hover:decoration-danger transition-colors focus-primary rounded"
-          >
-            Retry
-          </button>
-        )}
+        ) : null}
+        <StepTrace steps={steps} className="w-full" />
+        {children}
       </div>
     </div>
   )
@@ -330,6 +371,9 @@ export default function Assistant() {
   const [busy, setBusy] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [tierBusy, setTierBusy] = useState(false)
+  // Quick actions already run this session. A follow-up chip offering to do the
+  // thing you just did is noise, so each one retires once used.
+  const [usedQuick, setUsedQuick] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useAutoGrow(input, { maxHeight: 128 })
   // Aborts the in-flight streaming turn when the window is closed mid-stream.
@@ -576,16 +620,31 @@ export default function Assistant() {
     if (text) setTimeout(() => sendChat(text), 0)
   }, [busy, sendChat])
 
-  const onQuick = (q: QuickAction) => {
+  const onQuick = useCallback((q: QuickAction) => {
+    setUsedQuick(u => (u.includes(q.id) ? u : [...u, q.id]))
     if (q.id === 'attention') runSkill('/api/assistant/attention', {}, 'What needs my attention today?')
     else if (q.id === 'summarize') runSkill('/api/assistant/summarize', { scope: 'inbox' }, 'Summarize my inbox')
-  }
+  }, [runSkill])
+
+  const newChat = useCallback(() => {
+    setMessages([])
+    setUsedQuick([])
+    setInput('')
+  }, [])
 
   const currentTier = status?.tier || status?.sovereignty?.tier
   const blocked = status?.sovereignty && status.sovereignty.allowed === false
+  const empty = messages.length === 0
+  const last = messages[messages.length - 1]
+  // Follow-ups live at the END of the transcript, not in a loose chip band above
+  // the composer: they are part of the conversation ("here is what I could do
+  // next"), and putting them there also lets the composer be a single object.
+  const followUps = QUICK.filter(q => !usedQuick.includes(q.id))
+  const showFollowUps = !empty && !busy && followUps.length > 0
+    && last?.role === 'assistant' && !last.error && !last.pending
 
   return (
-    <div className="flex flex-col h-full bg-neutral-950 text-neutral-200 overflow-hidden">
+    <div className="@container flex flex-col h-full bg-[var(--bg-base)] text-neutral-200 overflow-hidden">
       <style>{`
         @keyframes vaCaret { 0%,45% { opacity: 1 } 55%,100% { opacity: 0.12 } }
         .va-caret { animation: vaCaret 1s var(--ease-standard) infinite; }
@@ -596,29 +655,46 @@ export default function Assistant() {
         .va-dots i:nth-child(3) { animation-delay: .3s }
         @keyframes vaFloat { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
         .va-float { animation: vaFloat 4s var(--ease-standard) infinite; }
+        @keyframes vaRise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+        .va-rise { animation: vaRise var(--motion-base, .22s) var(--ease-out, ease-out) both; }
         @media (prefers-reduced-motion: reduce) {
-          .va-caret, .va-dots i, .va-float { animation: none !important }
+          .va-caret, .va-dots i, .va-float, .va-rise { animation: none !important }
         }
       `}</style>
+
       {/* Header — a full-width band whose CONTENT is held in the shared column,
           so the badge sits beside the title instead of 1400px away from it. */}
-      <div className="flex-shrink-0 border-b border-neutral-800/60 bg-neutral-950/70">
-        <div className={`${COLUMN} px-4 sm:px-6 py-3 flex items-center justify-between gap-3`}>
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="w-9 h-9 rounded-xl flex items-center justify-center accent-bg-soft accent-text text-[17px] leading-none flex-shrink-0 ring-1 ring-inset ring-white/5" aria-hidden="true">✦</span>
-            <div className="min-w-0">
-              <h1 className="text-[14.5px] font-semibold text-neutral-100 leading-tight tracking-tight">Assistant</h1>
-              <div className="text-[12px] text-neutral-500 leading-tight truncate">
-                {/* Only surface the mail source when it's an EXTERNAL provider the
-                    user connected (e.g. "Gmail"); the built-in mail engine's
-                    internal id is not a user-facing brand. */}
-                Private AI over your mail{status?.mail_source && status.mail_source !== 'lilmail' ? ` · ${status.mail_source}` : ''}
-              </div>
+      <header className="flex-shrink-0 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
+        <div className={`${COLUMN} px-4 @xl:px-6 py-2.5 flex items-center gap-3`}>
+          <span className="w-8 h-8 rounded-[10px] flex items-center justify-center accent-bg-soft accent-text text-[15px] leading-none flex-shrink-0" aria-hidden="true">✦</span>
+          <div className="min-w-0">
+            <h1 className="text-[14px] font-semibold text-neutral-100 leading-tight tracking-[-0.01em]">Assistant</h1>
+            <div className="text-[11.5px] text-neutral-500 leading-tight truncate">
+              {/* Only surface the mail source when it's an EXTERNAL provider the
+                  user connected (e.g. "Gmail"); the built-in mail engine's
+                  internal id is not a user-facing brand. */}
+              Private AI over your mail{status?.mail_source && status.mail_source !== 'lilmail' ? ` · ${status.mail_source}` : ''}
             </div>
           </div>
-          <SovereigntyBadge status={status} onClick={() => setPickerOpen(o => !o)} />
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            {!empty && (
+              <button
+                type="button"
+                onClick={newChat}
+                title="Start a new conversation"
+                aria-label="New conversation"
+                className="h-8 px-2.5 rounded-full border border-[var(--border-default)] text-neutral-500 hover:text-neutral-100 hover:bg-[var(--bg-hover)] hover:border-[var(--border-strong)] transition-colors focus-primary flex items-center gap-1.5 text-[12px] font-medium"
+              >
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                  <path d="M8 3.25v9.5M3.25 8h9.5" />
+                </svg>
+                <span className="hidden @xl:inline">New</span>
+              </button>
+            )}
+            <SovereigntyBadge status={status} open={pickerOpen} onClick={() => setPickerOpen(o => !o)} />
+          </div>
         </div>
-      </div>
+      </header>
 
       {pickerOpen && (
         <TierPicker
@@ -633,7 +709,7 @@ export default function Assistant() {
 
       {blocked && (
         <div className="flex-shrink-0 bg-danger-soft border-b border-danger-soft">
-          <div className={`${COLUMN} px-4 sm:px-6 py-2.5 flex items-start gap-2.5 text-[12.5px] text-danger leading-relaxed`}>
+          <div className={`${COLUMN} px-4 @xl:px-6 py-2.5 flex items-start gap-2.5 text-[12.5px] text-danger leading-relaxed`}>
             <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 mt-px" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
               <path d="M8 1.75l6.25 11.5H1.75L8 1.75z" strokeLinejoin="round" /><path d="M8 6.5v3.25M8 11.6v.1" strokeLinecap="round" />
             </svg>
@@ -646,116 +722,118 @@ export default function Assistant() {
         </div>
       )}
 
-      {/* Conversation */}
+      {/* Conversation.
+          TOP-anchored, deliberately. The previous pass bottom-anchored short
+          transcripts (`min-h-full` + `justify-end`) to close the gap above the
+          composer; on a maximized 1600x1000 window that traded ~700px of dead
+          canvas BELOW the answer for ~700px of dead canvas ABOVE it, which
+          reads as a broken page rather than an unfinished one. A conversation
+          grows downward from where it started — and the tail of it is now the
+          follow-up row, so the space under the last answer is offered back to
+          the user instead of left blank. */}
       <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
         className="flex-1 overflow-y-auto overscroll-contain">
-        {/* Short conversations anchor to the BOTTOM of the scroller rather than
-            the top. On a maximized desktop window a two-turn exchange used to
-            leave ~700px of dead canvas between the last bubble and the
-            composer; `min-h-full + justify-end` closes that gap while a long
-            transcript still grows past the viewport and scrolls normally. */}
-        <div className={`${COLUMN} px-4 sm:px-6 py-5 ${
-          messages.length === 0
-            ? 'h-full'
-            : 'min-h-full flex flex-col justify-end gap-4'
-        }`}>
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center select-none py-8">
-            <div
-              className="va-float w-16 h-16 rounded-2xl flex items-center justify-center text-[27px] leading-none accent-bg-soft accent-text ring-1 ring-[var(--border-default)]"
-              aria-hidden="true"
-            >
-              ✦
-            </div>
-            <h2 className="mt-6 text-[20px] sm:text-[23px] font-semibold tracking-[-0.02em] text-neutral-100 text-balance">
-              An assistant that knows your day
-            </h2>
-            {/* GUARDED COPY: "stays on your own server" is the app's honest
-                sovereignty claim and is asserted by
-                src/__tests__/integration/Assistant.integration.test.tsx. Keep
-                the phrase intact when rewording around it. */}
-            <p className="mt-2.5 text-neutral-400 text-[13.5px] max-w-[34rem] leading-relaxed text-balance">
-              Ask about your mail. Everything you type and every message it reads stays
-              on your own server — and it never acts without your OK.
-            </p>
-            {/* Two columns at ≥sm. The old single 20rem stack left an enormous
-                void either side of it on a maximized desktop window. */}
-            <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-[34rem] text-left">
-              {QUICK.map(q => (
-                <button
-                  key={q.id}
-                  onClick={() => onQuick(q)}
-                  disabled={busy}
-                  className="group flex flex-col gap-1 text-left px-4 py-3.5 rounded-xl bg-neutral-900/70 border border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900 transition-colors disabled:opacity-50 focus-primary"
-                >
-                  <span className="flex items-center gap-2 text-[13px] font-medium text-neutral-200 group-hover:text-neutral-50 transition-colors">
-                    <span className="accent-text opacity-60 group-hover:opacity-100 transition-opacity" aria-hidden="true">→</span>
-                    <span className="min-w-0">{q.label}</span>
-                  </span>
-                  <span className="text-[12px] text-neutral-500 leading-snug pl-[1.4rem]">{q.hint}</span>
-                </button>
-              ))}
-            </div>
-            <p className="mt-6 flex items-center gap-1.5 text-[11.5px] text-neutral-600">
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-                <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.6" /><path d="M5.5 7V5.25a2.5 2.5 0 0 1 5 0V7" />
-              </svg>
-              No mail leaves your instance
-            </p>
-          </div>
-        )}
-        {messages.map((m, i) => {
-          const isLast = i === messages.length - 1
-          const proposal = m.proposal
-          return proposal ? (
-            <div key={m.id} className="flex justify-start flex-col gap-2 items-start min-w-0 w-full">
-              {m.content && <Bubble role="assistant" content={m.content} />}
-              <StepTrace steps={m.steps} className={BUBBLE_MEASURE} />
-              <div className={`${BUBBLE_MEASURE} w-full`}>
-                <ProposalCard
-                  proposal={proposal}
-                  state={m.state}
-                  onApprove={() => approveProposal(m.id, proposal)}
-                  onReject={() => rejectProposal(m.id)}
-                />
+        <div className={`${COLUMN} px-4 @xl:px-6 ${empty ? 'h-full' : 'py-6 flex flex-col gap-5'}`}>
+          {empty ? (
+            <div className="h-full flex flex-col items-center justify-center text-center select-none py-8 pb-14">
+              <div
+                className="va-float w-14 h-14 rounded-2xl flex items-center justify-center text-[24px] leading-none accent-bg-soft accent-text"
+                aria-hidden="true"
+              >
+                ✦
               </div>
-            </div>
-          ) : m.steps ? (
-            <div key={m.id} className="flex justify-start flex-col gap-1.5 items-start min-w-0 w-full">
-              <Bubble role={m.role} content={m.content} pending={m.pending} error={m.error}
-                onRetry={m.error && isLast ? retryLast : undefined} />
-              <StepTrace steps={m.steps} className={BUBBLE_MEASURE} />
+              <h2 className="mt-5 text-[19px] @xl:text-[22px] font-semibold tracking-[-0.02em] text-neutral-100 text-balance">
+                An assistant that knows your day
+              </h2>
+              {/* GUARDED COPY: "stays on your own server" is the app's honest
+                  sovereignty claim and is asserted by
+                  src/__tests__/integration/Assistant.integration.test.tsx. Keep
+                  the phrase intact when rewording around it. */}
+              <p className="mt-2.5 text-neutral-400 text-[13px] max-w-[30rem] leading-relaxed text-balance">
+                Ask about your mail. Everything you type and every message it reads stays
+                on your own server — and it never acts without your OK.
+              </p>
+              {/* Two columns once the SURFACE is wide. A single 20rem stack left
+                  an enormous void either side on a maximized window; two columns
+                  inside the 420px slide-over would be two slivers. */}
+              <div className="mt-7 grid grid-cols-1 @xl:grid-cols-2 gap-2.5 w-full max-w-[34rem] text-left">
+                {QUICK.map(q => (
+                  <button
+                    key={q.id}
+                    onClick={() => onQuick(q)}
+                    disabled={busy}
+                    className="group flex flex-col gap-1 text-left px-4 py-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 focus-primary"
+                  >
+                    <span className="flex items-center gap-2 text-[13px] font-medium text-neutral-200 group-hover:text-neutral-50 transition-colors">
+                      <span className="accent-text opacity-60 group-hover:opacity-100 transition-opacity" aria-hidden="true">→</span>
+                      <span className="min-w-0">{q.label}</span>
+                    </span>
+                    <span className="text-[12px] text-neutral-500 leading-snug pl-[1.4rem]">{q.hint}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-6 flex items-center gap-1.5 text-[11.5px] text-neutral-600">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                  <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.6" /><path d="M5.5 7V5.25a2.5 2.5 0 0 1 5 0V7" />
+                </svg>
+                No mail leaves your instance
+              </p>
             </div>
           ) : (
-            <Bubble key={m.id} role={m.role} content={m.content} pending={m.pending} error={m.error}
-              onRetry={m.error && isLast ? retryLast : undefined} />
-          )
-        })}
+            <>
+              {messages.map((m, i) => {
+                const isLast = i === messages.length - 1
+                if (m.role === 'user') return <UserTurn key={m.id} content={m.content} />
+                const proposal = m.proposal
+                return (
+                  <AssistantTurn
+                    key={m.id}
+                    content={m.content}
+                    pending={m.pending}
+                    error={m.error}
+                    steps={m.steps}
+                    onRetry={m.error && isLast ? retryLast : undefined}
+                  >
+                    {proposal && (
+                      <div className="w-full max-w-[32rem]">
+                        <ProposalCard
+                          proposal={proposal}
+                          state={m.state}
+                          onApprove={() => approveProposal(m.id, proposal)}
+                          onReject={() => rejectProposal(m.id)}
+                        />
+                      </div>
+                    )}
+                  </AssistantTurn>
+                )
+              })}
+              {showFollowUps && (
+                <div className="va-rise flex flex-wrap items-center gap-2 pl-9 pt-0.5">
+                  <span className="mono text-[10px] uppercase tracking-[0.14em] text-neutral-600 pr-0.5">Next</span>
+                  {followUps.map(q => (
+                    <button
+                      key={q.id}
+                      type="button"
+                      onClick={() => onQuick(q)}
+                      className="text-[12px] px-3 h-7 rounded-full bg-[var(--bg-surface)] border border-[var(--border-default)] text-neutral-400 hover:text-neutral-100 hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)] transition-colors focus-primary"
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      {/* Composer */}
-      <form onSubmit={submit} className="flex-shrink-0 border-t border-neutral-800/60 bg-neutral-950/60">
-        <div className={`${COLUMN} px-4 sm:px-6 py-3.5`}>
-          {messages.length > 0 && (
-            <div className="flex gap-1.5 mb-2.5 flex-wrap">
-              {QUICK.map(q => (
-                <button
-                  key={q.id}
-                  type="button"
-                  onClick={() => onQuick(q)}
-                  disabled={busy}
-                  className="text-[12px] px-3 h-7 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-neutral-200 hover:border-neutral-700 hover:bg-neutral-800/60 transition-colors disabled:opacity-40 focus-primary"
-                >
-                  {q.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* The send button lives INSIDE the field. It used to be flush against
-              the right edge of the window — at 1600px that put it a full screen
-              away from the caret you were typing at. */}
-          <div className="flex items-end gap-2 rounded-2xl bg-neutral-900 border border-neutral-800 pr-2 py-1.5 transition-colors focus-within:border-[color-mix(in_srgb,var(--accent)_55%,var(--border-emphasis))]">
+      {/* Composer — ONE object. The field, the keyboard hint and the send button
+          used to be three separately-floating things stacked in a loose band;
+          the hint and the sovereignty caption now sit on a footer rail INSIDE
+          the field's border, so the whole thing reads as a single control. */}
+      <form onSubmit={submit} className="flex-shrink-0 border-t border-[var(--border-default)] bg-[var(--bg-surface)]">
+        <div className={`${COLUMN} px-4 @xl:px-6 py-3`}>
+          <div className="rounded-2xl bg-[var(--bg-base)] border border-[var(--border-default)] transition-colors focus-within:border-[color-mix(in_srgb,var(--accent)_55%,var(--border-emphasis))] shadow-[var(--shadow-sm)]">
             <textarea
               ref={inputRef}
               rows={1}
@@ -764,30 +842,44 @@ export default function Assistant() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submit(e) }}
               placeholder="Ask about your mail…"
               aria-label="Ask about your mail"
-              className="flex-1 min-w-0 resize-none bg-transparent px-3.5 py-2 text-[13.5px] leading-relaxed text-neutral-100 placeholder-neutral-600 focus:outline-none"
+              className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13.5px] leading-relaxed text-neutral-100 placeholder-neutral-600 focus:outline-none"
             />
-            <button
-              type="submit"
-              disabled={busy || !input.trim()}
-              style={{ background: 'var(--accent)' }}
-              className="flex-shrink-0 w-9 h-9 rounded-xl text-white flex items-center justify-center transition-[filter,opacity] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 focus-primary"
-              aria-label="Send"
-              title="Send (Enter)"
-            >
-              {busy
-                ? <span className="w-4 h-4 spinner border-white/40 border-t-white" />
-                : (
-                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                  </svg>
-                )}
-            </button>
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-[11.5px] text-neutral-600">
-            <span className="hidden sm:inline">
-              <kbd className="mono">Enter</kbd> to send · <kbd className="mono">Shift</kbd>+<kbd className="mono">Enter</kbd> for a new line
-            </span>
-            <span className="ml-auto truncate">Runs on your box · nothing is sent to a third party</span>
+            <div className="flex items-center gap-3 pl-3.5 pr-2 pb-2 pt-0.5">
+              {/* Container query, not `sm:` — inside the 420px slide-over these
+                  hints wrapped onto two lines and truncated mid-word precisely
+                  because a viewport breakpoint said the desktop was wide. */}
+              <span className="hidden @xl:flex items-center gap-1 text-[11px] text-neutral-600 min-w-0">
+                <kbd className="mono">Enter</kbd> to send · <kbd className="mono">Shift</kbd>+<kbd className="mono">Enter</kbd> for a new line
+              </span>
+              <span className="flex @xl:hidden items-center gap-1.5 text-[11px] text-neutral-600 min-w-0 truncate">
+                <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                  <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.6" /><path d="M5.5 7V5.25a2.5 2.5 0 0 1 5 0V7" />
+                </svg>
+                Stays on your box
+              </span>
+              <span className="ml-auto hidden @2xl:flex items-center gap-1.5 text-[11px] text-neutral-600 shrink-0">
+                <svg viewBox="0 0 16 16" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                  <rect x="3.25" y="7" width="9.5" height="6.25" rx="1.6" /><path d="M5.5 7V5.25a2.5 2.5 0 0 1 5 0V7" />
+                </svg>
+                Nothing is sent to a third party
+              </span>
+              <button
+                type="submit"
+                disabled={busy || !input.trim()}
+                style={{ background: 'var(--accent)' }}
+                className="ml-auto @2xl:ml-0 flex-shrink-0 w-8 h-8 rounded-lg text-white flex items-center justify-center transition-[filter,opacity] hover:brightness-110 disabled:opacity-30 disabled:hover:brightness-100 focus-primary"
+                aria-label="Send"
+                title="Send (Enter)"
+              >
+                {busy
+                  ? <span className="w-3.5 h-3.5 spinner border-white/40 border-t-white" />
+                  : (
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="15" height="15">
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                  )}
+              </button>
+            </div>
           </div>
         </div>
       </form>
