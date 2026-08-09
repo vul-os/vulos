@@ -1416,11 +1416,19 @@ func main() {
 	// models the llmux gateway exposes. The import flow is how an operator
 	// installs the tokenizer.json that upgrades RAG from the FNV fallback.
 	modelMgr := models.New(modelsDir)
-	var llmuxChatClient *llmuxclient.Client
-	if lcfg, ok := llmuxclient.FromEnv(); ok {
-		llmuxChatClient = llmuxclient.New(lcfg)
-	}
-	registerModelRoutes(mux, modelMgr, llmuxChatClient, func(userID string) bool {
+	// THE AI gateway for this process. Built ONCE here and shared with
+	// registerNewFeatureRoutes below: in embedded mode it owns a whole llmux
+	// gateway, so building a second one would mean two provider registries, two
+	// key stores and two sets of metering on one box.
+	//
+	// VULOS_AI_MODE picks embedded (in-process llmux, no sidecar), remote
+	// (LLMUX_URL) or off; unset infers remote from LLMUX_URL, so an existing
+	// deployment is unaffected. See internal/llmuxclient/mode.go for the full
+	// config surface. It never returns nil — a failure degrades to 503s on
+	// /api/ai/* rather than stopping the box booting.
+	aiBackend := llmuxclient.OpenFromEnv(ctx, log.Printf)
+	defer aiBackend.Close() //nolint:errcheck
+	registerModelRoutes(mux, modelMgr, aiBackend, func(userID string) bool {
 		p, _ := authStore.GetProfile(userID)
 		return p != nil && p.Role == auth.RoleAdmin
 	})
@@ -3128,6 +3136,7 @@ func main() {
 		integrationsClient: integrationsClient,
 		activeEnv:          activeEnv,
 		webhooksDispatcher: webhooksDispatcher,
+		aiBackend:          aiBackend,
 	}, ctx)
 	if lmNoteStore != nil {
 		defer lmNoteStore.Close()

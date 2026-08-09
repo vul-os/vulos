@@ -59,6 +59,11 @@ type newFeatureDeps struct {
 	// instance provisioning, section 8) and "device.removed"
 	// (registerInstanceManageRoutes, section 6). nil-safe via emitWebhookEvent.
 	webhooksDispatcher *webhooks.Dispatcher
+	// aiBackend is the process-wide AI gateway (embedded llmux, a remote llmux,
+	// or unconfigured), built once in main.go and shared with the model routes.
+	// nil resolves from the environment here, which is what tests that do not
+	// care about AI get: an unconfigured backend answering 503.
+	aiBackend llmuxclient.Backend
 }
 
 // appnetOwnerAuthorizer builds an appnet.AppOwnerAuthorizer requiring RoleAdmin
@@ -139,22 +144,25 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	//   POST /api/ai/notes/search  — semantic search over notes
 	//   DELETE /api/ai/notes/{note_id}/embed — remove note embedding
 	//
-	// LLM/AI requests are forwarded to the llmux gateway (LLMUX_URL).
-	// Billing and metering are handled by llmux → CP; the OS is transparent.
+	// LLM/AI requests go to whichever gateway this box runs: an llmux embedded
+	// in this process, a remote llmux at LLMUX_URL, or none (503s). The backend
+	// is built once in main.go and passed in, because in embedded mode it OWNS a
+	// gateway and a second one would double the provider registry, key store and
+	// metering. Billing and metering are handled by llmux → CP on both paths;
+	// the OS is transparent.
 	{
-		lmCfg, lmOk := llmuxclient.FromEnv()
-		if !lmOk {
-			log.Printf("[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL, or its alias VULOS_LLMUX_URL, to enable)")
+		aiBackend := deps.aiBackend
+		if aiBackend == nil {
+			aiBackend = llmuxclient.OpenFromEnv(bgCtx, log.Printf)
 		}
-		lmClient := llmuxclient.New(lmCfg)
 		var lmErr error
 		lmStore, lmErr = llmuxclient.NewStoreFromEnv(deps.dbDir)
 		if lmErr != nil {
 			log.Printf("[llmuxclient] store init warning: %v — note embeddings disabled", lmErr)
 			lmStore = nil
 		}
-		llmuxclient.RegisterHandlers(mux, llmuxclient.RemoteBackend(lmClient), lmStore)
-		log.Printf("[llmuxclient] registered /api/ai/* routes (gateway=%s configured=%v)", lmCfg.BaseURL, lmOk)
+		llmuxclient.RegisterHandlers(mux, aiBackend, lmStore)
+		log.Printf("[llmuxclient] registered /api/ai/* routes (mode=%s)", aiBackend.Mode())
 	}
 
 	// ── 3. Multi-instance app router (internal/multiinstance) ────────────────

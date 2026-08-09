@@ -52,9 +52,10 @@ func llmuxModelsTimeout() time.Duration { return 5 * time.Second }
 type isOwner func(userID string) bool
 
 // registerModelRoutes wires the model-management endpoints. mgr manages the
-// on-box embedding-model dir; llmux (may be nil) is used to list chat models;
-// owner gates every route to the box owner/admin.
-func registerModelRoutes(mux *http.ServeMux, mgr *models.Manager, llmux *llmuxclient.Client, owner isOwner) {
+// on-box embedding-model dir; llmux (may be nil) is the AI gateway backend used
+// to list chat models — embedded, remote or unconfigured, this route does not
+// care which; owner gates every route to the box owner/admin.
+func registerModelRoutes(mux *http.ServeMux, mgr *models.Manager, llmux llmuxclient.Backend, owner isOwner) {
 	gate := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if !owner(r.Header.Get("X-User-ID")) {
@@ -78,12 +79,16 @@ func registerModelRoutes(mux *http.ServeMux, mgr *models.Manager, llmux *llmuxcl
 		resp := map[string]any{
 			"embeddings": listing,
 			// chat_models is best-effort: llmux owns chat model routing/provider
-			// management, so we proxy its /v1/models list. A nil/unconfigured
+			// management, so we surface its model list. A nil/unconfigured
 			// gateway yields chat_models=null + a chat_models_error note, never a
 			// hard failure — the embedding manager still renders.
 			"chat_models": nil,
 		}
-		if llmux != nil {
+		switch {
+		case llmux == nil || llmux.Mode() == llmuxclient.ModeUnconfigured:
+			resp["chat_models_error"] = "no llmux gateway configured " +
+				"(set LLMUX_URL for a remote llmux, or VULOS_AI_MODE=embedded to run it in-process)"
+		default:
 			ctx, cancel := context.WithTimeout(r.Context(), llmuxModelsTimeout())
 			defer cancel()
 			if raw, mErr := llmux.Models(ctx); mErr != nil {
@@ -91,8 +96,6 @@ func registerModelRoutes(mux *http.ServeMux, mgr *models.Manager, llmux *llmuxcl
 			} else {
 				resp["chat_models"] = json.RawMessage(raw)
 			}
-		} else {
-			resp["chat_models_error"] = "no llmux gateway configured (LLMUX_URL unset)"
 		}
 		writeJSON(w, resp)
 	}))
