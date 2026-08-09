@@ -161,19 +161,23 @@ curl -s -H "X-Vulos-Direct-Probe: hello" https://box1.example.net/_vulos-direct/
 
 ## Assistant / LLM gateway unavailable
 
-All OS chat/LLM traffic goes through the llmux gateway. The canonical variable is `LLMUX_URL` (alias `VULOS_LLMUX_URL`; key `LLMUX_KEY` / `VULOS_LLMUX_KEY`). Without it the AI routes exist but refuse to work.
+All OS chat/LLM traffic goes through llmux, which runs one of two ways —
+`VULOS_AI_MODE=embedded` (in-process, no separate binary) or `VULOS_AI_MODE=remote`
+(talking to an llmux gateway at `LLMUX_URL`). See [ASSISTANT.md → Choosing where
+your AI runs](ASSISTANT.md#choosing-where-your-ai-runs). Neither is on by
+default: without one configured the AI routes exist but refuse to work.
 
-**Symptom:** the assistant returns errors; `/api/ai/*` calls fail with `503` and the body `{"error":"gateway_unconfigured: set LLMUX_URL"}`. The boot log shows:
+**Symptom:** the assistant returns errors; `/api/ai/*` calls fail with `503` and the body `{"error":"gateway_unconfigured: set LLMUX_URL to use a remote llmux, or VULOS_AI_MODE=embedded to run it in-process"}`. The boot log shows:
 
 ```
-[llmuxclient] LLMUX_URL unset — /api/ai/* routes will return 503 (set LLMUX_URL, or its alias VULOS_LLMUX_URL, to enable)
+[llmuxclient] no AI gateway configured — /api/ai/* will return 503. Set LLMUX_URL for a remote llmux, or VULOS_AI_MODE=embedded to run it in this process
 ```
 
-**Fix:** set `LLMUX_URL` to your gateway (a trailing `/v1` is tolerated and stripped) and restart. Model listing surfaces the same condition as `"chat_models_error": "no llmux gateway configured (LLMUX_URL unset)"`.
+**Fix:** either set `VULOS_AI_MODE=embedded` and restart (no other variable required — llmux starts in-process using its own defaults, or `VULOS_LLMUX_CONFIG` if you've named a config file), or set `LLMUX_URL` to a gateway running as its own process (a trailing `/v1` is tolerated and stripped). Model listing surfaces the same condition as `"chat_models_error": "no llmux gateway configured (set LLMUX_URL for a remote llmux, or VULOS_AI_MODE=embedded to run it in-process)"`.
 
 **Symptom:** `502` with `gateway_error: llmuxclient: chat request failed: ...` or `gateway_error: llmuxclient: gateway returned 500: ...`.
-**Likely cause:** `LLMUX_URL` is set but the gateway is down, unreachable, or itself failing (e.g. its ollama backend is not running).
-**Fix:** verify the gateway directly:
+**Likely cause:** in remote mode, `LLMUX_URL` is set but the gateway is down, unreachable, or itself failing (e.g. its ollama backend is not running); in embedded mode, the provider llmux is configured to use (Ollama, an API key) is unreachable or misconfigured.
+**Fix (remote mode):** verify the gateway directly:
 
 ```bash
 curl -s "$LLMUX_URL/v1/models" -H "Authorization: Bearer $LLMUX_KEY" | jq

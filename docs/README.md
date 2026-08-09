@@ -1,55 +1,91 @@
-# Vulos OS – Documentation Index
+# Vulos Documentation
 
-This directory contains architecture, deployment, and API documentation for the Vulos OS backend.
+These chapters are ordered the way a person actually needs them, not the way a
+maintainer organizes source code: what Vulos is and how to get it running, how
+to live in it day to day, how to keep a box healthy — and only after all of
+that, how it's put together internally and where the APIs are. If you're
+looking for the pitch (what Vulos is, why it exists), start at the
+[project README](../README.md).
 
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture overview (shell, assistant, auth, files, sync) |
-| [GETTING-STARTED.md](GETTING-STARTED.md) | Install and first boot |
-| **Using Vulos** | |
-| [USER-GUIDE.md](USER-GUIDE.md) | Day-to-day desktop: shell, dock, Mission Control, Launchpad, settings |
-| [APPS.md](APPS.md) | The app model — bundled apps, manifests, streamed native apps, the app gateway |
-| [FILES.md](FILES.md) | Files: unified bucket, ACLs, sealed sharing, cross-box grants |
-| [ASSISTANT.md](ASSISTANT.md) | The sovereign assistant — agent, ledger, egress Guard, LLM gateway seam |
-| [TERMINAL.md](TERMINAL.md) | The built-in terminal |
-| [SETTINGS.md](SETTINGS.md) | Settings surfaces (WiFi, display, audio, security, developer/API, webhooks) |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common problems and fixes across the stack |
-| **Your account & devices** | |
-| [IDENTITY-KEYS.md](IDENTITY-KEYS.md) | Identity is not e-mail: your local account, Ed25519 identity, and the Recovery Kit (24-word phrase vs. kit file) |
-| [ADD-DEVICE.md](ADD-DEVICE.md) | Adding another device — the "Join existing" flow, join codes and passphrases |
-| [REMOVE-DEVICE.md](REMOVE-DEVICE.md) | Removing/revoking a compromised device — owner + step-up, break-glass, propagation |
-| [ACCOUNTS-ACCESS.md](ACCOUNTS-ACCESS.md) | Roles (admin/user/guest), what non-admins can't do, and step-up re-auth |
-| [MAIL-CALENDAR-CONTACTS.md](MAIL-CALENDAR-CONTACTS.md) | Bring-your-own mail/calendar/contacts: the lilmail engine and the credential-brokering proxy |
-| [MAIL-LILMAIL.md](MAIL-LILMAIL.md) | lilmail service wiring — ports, `VULOS_MAIL_URL`, `frame_ancestors` |
-| [PEERING.md](PEERING.md) | Peer identity, contact requests, Drop file transfer, and the delivery ladder |
-| [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) | Encrypted backup, restore, and the recovery kit |
-| [CUSTOM-DOMAIN.md](CUSTOM-DOMAIN.md) | Point your own domain at the box or a published app (owner-gated) |
-| [COMMS.md](COMMS.md) | Chat/video: why third-party (Element/Cinny, Jitsi Meet/Element Call), install + self-host |
-| [CONFIGURATION.md](CONFIGURATION.md) | Environment variables and config files |
-| [DEPLOY.md](DEPLOY.md) | Self-hosting guide |
-| [MIGRATIONS.md](MIGRATIONS.md) | Database schema migrations — the forward-only, fail-closed runner |
-| [REACH.md](REACH.md) | **Reachability**: Vulos's own reverse tunnel, multi-relay, discovery, security model |
-| [RELAY-SELF-HOST.md](RELAY-SELF-HOST.md) | Running your own relay — step-by-step on Hetzner and Fly.io |
-| [RELAY-PROVIDERS.md](RELAY-PROVIDERS.md) | Where to host a relay (Hetzner/Fly/DO/Vultr/home box) and where the costs come from |
-| [NETWORKING.md](NETWORKING.md) | Connection modes, direct mode, DNS, TLS, ports, firewall |
-| [STORAGE-PROVIDERS.md](STORAGE-PROVIDERS.md) | Choosing an S3-compatible bucket (R2/B2/Wasabi/AWS/Tigris/self-host) and where the costs come from |
-| [REPRODUCIBLE-BUILDS.md](REPRODUCIBLE-BUILDS.md) | Verifying image builds from source |
-| [RELEASING.md](RELEASING.md) | Versioning and release policy |
+---
+
+## Start here
+
+| Guide | What's inside |
+|---|---|
+| [Getting Started](GETTING-STARTED.md) | The install guide: USB live session vs. installing to disk, Docker, deploying to a server you already run, requirements, first boot, upgrading |
+| [User Guide](USER-GUIDE.md) | The daily-driver manual: windows and the dock, Files, the App Hub, the assistant, Calendar/Contacts/Notes, notifications, using it from your phone |
+
+## Using Vulos day to day
+
+| Guide | What's inside |
+|---|---|
+| [Settings](SETTINGS.md) | Every pane in the Settings app, in the order it groups them: appearance, devices, storage, network, accounts, updates |
+| [Terminal](TERMINAL.md) | The built-in terminal — a real shell on the machine you're running |
+| [Apps](APPS.md) | Installing from the App Hub, permissions and network isolation, publishing an app to a subdomain, API keys |
+| [Files](FILES.md) | The Files app: uploads, the viewer/editor/owner sharing model, external drives, where your bytes live |
+| [Assistant](ASSISTANT.md) | The sovereign AI assistant: what it can do, the proposal system, on-instance search, choosing where the model runs |
+| [Mail, Calendar & Contacts](MAIL-CALENDAR-CONTACTS.md) | Bring your own mailbox — connecting existing mail/calendar/contacts accounts |
+| [Comms](COMMS.md) | Chat and video calling — why third-party (Element/Cinny, Jitsi Meet), installing and self-hosting |
+| [Peering](PEERING.md) | Your Vula ID, contact requests, LAN Drop file transfer, and reaching other people's boxes |
+
+## Your account & devices
+
+| Guide | What's inside |
+|---|---|
+| [Identity & Keys](IDENTITY-KEYS.md) | Your local account, your Ed25519 identity, and the recovery kit (24-word phrase vs. kit file) |
+| [Adding Another Device](ADD-DEVICE.md) | The "Join existing" flow — join codes, passphrases, syncing a second box or laptop in |
+| [Removing a Device](REMOVE-DEVICE.md) | Revoking a lost or compromised device — owner + step-up, break-glass, propagation |
+| [Accounts & Access](ACCOUNTS-ACCESS.md) | Roles (admin/user/guest), what non-admins can't do, step-up re-authentication |
+
+## Reaching your box from anywhere
+
+| Guide | What's inside |
+|---|---|
+| [Networking](NETWORKING.md) | Connection modes, direct mode, DNS, TLS, ports, firewall |
+| [Running Your Own Relay](RELAY-SELF-HOST.md) | Step-by-step: standing up `vulos relay serve` on Hetzner and Fly.io |
+| [Relay-Hosting Providers](RELAY-PROVIDERS.md) | Where to host a relay and what it costs — plus using a tunnel service (Cloudflare Tunnel, ngrok) instead |
+| [Custom Domain](CUSTOM-DOMAIN.md) | Pointing a domain you own at your box or a published app |
+| [Storage Providers](STORAGE-PROVIDERS.md) | Choosing an S3-compatible bucket for backup (R2/B2/Wasabi/AWS/Tigris/self-host) |
+| [Deploy](DEPLOY.md) | Self-hosting reference: Docker, building from source, TLS termination, upgrading |
+
+## Keeping it healthy
+
+| Guide | What's inside |
+|---|---|
+| [Troubleshooting](TROUBLESHOOTING.md) | Symptom → cause → fix, with the exact log lines and endpoints to grep for |
+| [Backup & Recovery](BACKUP-RECOVERY.md) | The backup mechanisms, restoring, what the recovery phrase can and can't save you from, moving to new hardware |
+| [Security](SECURITY.md) | Running a box securely: the auth surface, fail-closed defaults, verified boot, what to check before exposing it to the internet |
+| [Threat Model](THREAT-MODEL.md) | The formal analysis — STRIDE, trust boundaries, honest residual risks |
+| [Vulnerability Reporting](../SECURITY.md) | The project's security policy and safe-harbor terms |
+| [Service Level Objectives](SLOs.md) | Targets, measurement, and rollback triggers per surface |
+
+---
+
+## Under the hood — architecture, APIs & developer docs
+
+| Guide | What's inside |
+|---|---|
+| [Architecture](ARCHITECTURE.md) | Component map, deployment modes, and the design decisions behind them |
+| [Reach](REACH.md) | The reachability stack in depth: the tunnel protocol, discovery, the security model, what a relay can and cannot do |
+| [Configuration Reference](CONFIGURATION.md) | Every environment variable, config file, and runtime flag |
+| [Development](DEVELOPMENT.md) | Local dev workflow — running frontend/backend, tests, tooling |
+| [Mail (LilMail wiring)](MAIL-LILMAIL.md) | Config/wiring reference for the embedded Mail app — ports, `VULOS_MAIL_URL`, `frame_ancestors` |
+| [Migrations](MIGRATIONS.md) | The database schema runner — forward-only, fail-closed |
+| [Key Ceremony](KEY-CEREMONY.md) | How release/signing keys are generated, custodied, rotated, and revoked |
+| [Reproducible Builds](REPRODUCIBLE-BUILDS.md) | Verifying image builds from source |
+| [Releasing](RELEASING.md) | Versioning scheme and release policy |
+| [Service-Worker Cache Versions](SW-CACHE-VERSIONS.md) | The cache-bearing surfaces and their version registry |
 | [security/](security/) | Security audits and hardening-test notes |
-| [SLOs.md](SLOs.md) | Service level objectives |
+| [decisions.md](decisions.md) | Running log of design/operational decisions, dated |
 | [../ROADMAP.md](../ROADMAP.md) | Feature roadmap |
-| [SECURITY.md](SECURITY.md) | The box's overall security posture and hardening |
-| [../SECURITY.md](../SECURITY.md) | Security policy (vulnerability reporting) |
-| [THREAT-MODEL.md](THREAT-MODEL.md) | Threat model (incl. the sovereign assistant) |
-| [KEY-CEREMONY.md](KEY-CEREMONY.md) | Release/signing key ceremony |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Local development workflow |
 
-## Quick links
+### API & developer quick links
 
 - API: served from `GET /api/...` routes in `backend/cmd/server/`
 - Sovereign assistant: `backend/services/assistant/` — agent, ledger, egress Guard
 - Auth: `backend/services/auth/`, `backend/services/passkeys/`
 - Files (ACL + sealed shares): `backend/services/files/`
-- LLM gateway seam: `backend/internal/llmuxclient/` (`LLMUX_URL`)
+- AI gateway seam: `backend/internal/llmuxclient/` (`VULOS_AI_MODE`, `LLMUX_URL`) — see [Assistant → Choosing where your AI runs](ASSISTANT.md#choosing-where-your-ai-runs)
 - Reachability: `backend/services/reach/` — endpoint set, reverse tunnel, discovery role; `backend/cmd/vulos/relay.go` (the `vulos relay` command)
 - Observability: `backend/internal/obs/` — `/metrics` endpoint, OTel traces

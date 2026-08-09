@@ -46,8 +46,10 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `AI_ENDPOINT` | `http://localhost:11434` | AI API endpoint (Ollama's default local port; point elsewhere for `openai`/`custom`) |
 | `AI_SYSTEM_PROMPT` | built-in default prompt | Overrides the assistant's default system prompt entirely |
 | `VULOS_AI_TIER` | _(empty, derived from endpoint locality)_ | Operator's sovereignty-tier declaration for the AI endpoint: `local`, `sovereign`, `brokered`, or `external`. Empty ⇒ derived from whether `AI_ENDPOINT` is loopback — nothing silently upgrades. |
-| `LLMUX_URL` (canonical) / `VULOS_LLMUX_URL` (alias) | _(empty)_ | When set, routes assistant completions through the on-box llmux sovereign gateway (OpenAI-compatible) instead of talking to `AI_ENDPOINT` directly; forces `AI_PROVIDER=custom` internally |
-| `LLMUX_KEY` (canonical) / `VULOS_LLMUX_KEY` (alias) | _(empty)_ | API key for the llmux gateway, when set |
+| `VULOS_AI_MODE` | _(unset = auto)_ | Which llmux backend this box runs: `embedded` (in-process, no sidecar — the recommended default, needs no Postgres/Redis), `remote` (talk to an llmux gateway at `LLMUX_URL`), or `off`. Unset infers `remote` when `LLMUX_URL` is set, else `embedded` when `VULOS_LLMUX_CONFIG`/`LLMUX_CONFIG` names a config file, else unconfigured. See [ASSISTANT.md → Choosing where your AI runs](ASSISTANT.md#choosing-where-your-ai-runs). |
+| `LLMUX_URL` (canonical) / `VULOS_LLMUX_URL` (alias) | _(empty)_ | **Remote mode only.** Base URL of an llmux gateway running as its own process; forces `AI_PROVIDER=custom` internally |
+| `LLMUX_KEY` (canonical) / `VULOS_LLMUX_KEY` (alias) | _(empty)_ | API key/bearer token presented to the gateway — same meaning in embedded or remote mode |
+| `VULOS_LLMUX_CONFIG` (canonical) / `LLMUX_CONFIG` (alias) | _(empty)_ | **Embedded mode only.** llmux's own JSON config file; optional, llmux's own environment (`OLLAMA_HOST`, `OPENAI_API_KEY`, …) fills in what it doesn't set |
 | `DISPLAY` | `:99` | X11 display for app streaming (Xvfb) |
 | `VULOS_MAIL_URL` | `http://localhost:3000` | URL of the LilMail service (proxied at `/api/mail/url`) |
 | `VULOS_OS_BUCKET_URL` | `https://os.vulos.org` | OS update bucket URL (baked into seed at build time; override for forks) |

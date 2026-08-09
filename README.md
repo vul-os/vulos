@@ -12,7 +12,7 @@ Your server. Your AI. Your rules.
 [![CI](https://img.shields.io/github/actions/workflow/status/vul-os/vulos/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/vul-os/vulos/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-3DA639?style=flat-square)](LICENSE-MIT)
 [![Go](https://img.shields.io/github/go-mod/go-version/vul-os/vulos?filename=backend%2Fgo.mod&style=flat-square&label=go&color=00ADD8&logo=go&logoColor=white)](backend/go.mod)
-[![Frontend](https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=white)](package.json)
+[![Frontend](https://img.shields.io/badge/frontend-React%2019%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=white)](frontend/package.json)
 [![Stars](https://img.shields.io/github/stars/vul-os/vulos?style=flat-square&color=F5A623&logo=github)](https://github.com/vul-os/vulos/stargazers)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-7C5CFF?style=flat-square)](CONTRIBUTING.md)
 
@@ -276,17 +276,21 @@ They peer over their own Ed25519 identities and reconcile as CRDTs — no centra
 
 ## Documentation
 
+Chapters run in the order you'd actually reach for them — install and use it
+first, internals and APIs last. Full index: **[docs/README.md](docs/README.md)**.
+
 | Guide | What's inside |
 |---|---|
 | [Getting Started](docs/GETTING-STARTED.md) | Install, first boot, requirements, upgrading |
 | [User Guide](docs/USER-GUIDE.md) | Living in the desktop day to day |
-| [Architecture](docs/ARCHITECTURE.md) | Component map and design decisions |
 | [Apps](docs/APPS.md) · [Assistant](docs/ASSISTANT.md) · [Files](docs/FILES.md) | Bundled apps, the AI assistant, and storage |
 | [Networking](docs/NETWORKING.md) · [Peering](docs/PEERING.md) · [Comms](docs/COMMS.md) | Reachability, peer sync, and notifications |
-| [Development](docs/DEVELOPMENT.md) | Building, testing, and the dev workflow |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
 | [Deploy](docs/DEPLOY.md) | Ship it to your own server over SSH |
 | [Security](docs/SECURITY.md) · [Threat Model](docs/THREAT-MODEL.md) | The security posture, top to bottom |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptom, cause, fix |
+| [Architecture](docs/ARCHITECTURE.md) | Component map and design decisions |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables, config files, flags |
+| [Development](docs/DEVELOPMENT.md) | Building, testing, and the dev workflow |
 
 ---
 

@@ -46,7 +46,7 @@ flowchart TD
         Obs["Observability: /metrics + OTel<br/>backend/internal/obs/"]
     end
 
-    Assistant -->|"loopback by default"| LLMux["llmux gateway (on-box)<br/>internal/llmuxclient/"]
+    Assistant -->|"in-process by default"| LLMux["llmux (embedded, or remote via LLMUX_URL)<br/>internal/llmuxclient/"]
     Assistant -->|"/v1 mail · calendar · contacts"| Lilmail["lilmail server (separate repo)"]
     Assistant --> Vec["on-instance embeddings<br/>internal/vecdb/"]
     Backend --> DB["SQLite DB<br/>~/.vulos/db/"]
@@ -65,7 +65,7 @@ flowchart TD
 
 **App sandboxing.** Each user app runs in its own Linux network namespace with a unique port. Traffic is proxied through the app gateway at `{app}--{profile}.{ulid}.vulos.org`. Web apps get no streaming overhead — just proxied HTTP.
 
-**Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through the on-box `llmux` gateway by default. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
+**Sovereign assistant.** An on-box AI agent (`backend/services/assistant/`) with a curated toolset. Read-only tools (mail search, calendar/agenda, contacts, files, reminders) run inside the turn; anything with side effects becomes a *proposal* recorded in a single-use server-side ledger. Approval posts only the opaque proposal id to `/api/assistant/execute` — never client args. A tier-aware egress `Guard` fences model egress (local / sovereign / brokered / external), and tool results are framed as untrusted data to blunt prompt injection. The LLM runs through `llmux` — embedded in the same process by default (one binary, no sidecar; `VULOS_AI_MODE=embedded`), or as a separate gateway process if `LLMUX_URL` points elsewhere. See [THREAT-MODEL.md](THREAT-MODEL.md) Component 5.
 
 **Compute stance.** All AI/GPU compute (the assistant, AI apps, streaming encode) runs on the **user's own box**, mediated by `llmux` (local model or BYOK to an external provider). Nothing in this codebase hosts, provisions, or meters AI/GPU compute on your behalf.
 
@@ -110,7 +110,7 @@ flowchart TD
 | `backend/services/credvault/` | Server-side encrypted credential store (the OS's own, not third-party OAuth) |
 | `backend/services/sync/` | CRDT rehydration and compaction |
 | `backend/services/telemetry/` | GPU usage metering |
-| `backend/internal/llmuxclient/` | Client for the on-box `llmux` LLM gateway (`LLMUX_URL`) |
+| `backend/internal/llmuxclient/` | The `llmux` AI gateway seam — runs it embedded in-process by default, or talks to a remote one (`VULOS_AI_MODE`, `LLMUX_URL`) |
 | `backend/internal/multiinstance/` | Multi-instance quorum, signed change propagation |
 | `backend/internal/safedial/` | SSRF-safe dialer (pre-dial validation + connect-time IP check) |
 | `backend/internal/gpuhost/` | GPU host capability detection |

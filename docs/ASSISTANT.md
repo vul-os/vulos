@@ -213,11 +213,13 @@ This is the one decision that matters most for privacy. The assistant reaches it
 | `AI_MODEL` | `llama3` | Model name passed to the provider |
 | `AI_API_KEY` | _(empty)_ | Provider API key, if needed |
 | `VULOS_AI_TIER` | _(empty)_ | Your *declaration* of the endpoint's tier (`local`/`sovereign`/`brokered`/`external`); empty derives from locality |
-| `LLMUX_URL` (alias `VULOS_LLMUX_URL`) | _(empty)_ | Route completions through your on-box **llmux** gateway instead of talking to the provider directly |
+| `VULOS_AI_MODE` | _(unset = auto)_ | Which of the three llmux backends this box runs: `embedded` (llmux runs **in the same process**, no separate binary), `remote` (talk to an llmux gateway at `LLMUX_URL`), or `off`. Unset infers `remote` when `LLMUX_URL` is set, otherwise `embedded` when an llmux config file is named, otherwise unconfigured — so an existing `LLMUX_URL` deployment keeps working unchanged. |
+| `LLMUX_URL` (alias `VULOS_LLMUX_URL`) | _(empty)_ | **Remote mode only.** Base URL of an llmux gateway running as its own process — same box, another box, or elsewhere on your network |
 | `LLMUX_KEY` (alias `VULOS_LLMUX_KEY`) | _(empty)_ | Bearer key for the gateway (may be empty for an unauthenticated local gateway) |
+| `VULOS_LLMUX_CONFIG` (alias `LLMUX_CONFIG`) | _(empty)_ | **Embedded mode only.** llmux's own JSON config file. Optional — without it, llmux's defaults plus its own environment (`OLLAMA_HOST`, `OPENAI_API_KEY`, …) configure the providers. |
 | `VULOS_ASSISTANT_ALLOW_EXTERNAL` | unset | Set to `1` to authorize the `brokered`/`external` tiers |
 
-When `LLMUX_URL` is set (e.g. `http://localhost:4000/v1`), the assistant treats llmux as an OpenAI-compatible provider. llmux is the on-box gateway that owns provider management, BYO-key routing, and metering; because it sits on loopback, the assistant still classifies the setup as on-instance. Additional AI features (`/api/ai/chat`, embeddings for notes, model listing) are only available when llmux is configured.
+**llmux is embedded by default — one binary, no sidecar process to run or keep alive.** Earlier versions of Vulos ran llmux as a separate service you pointed `LLMUX_URL` at; that mode still works (`VULOS_AI_MODE=remote`, e.g. if you're fronting several boxes with one shared gateway), but the recommended path today is `VULOS_AI_MODE=embedded`, which runs llmux in-process inside the Vulos server. Embedded mode needs no Postgres and no Redis — it keeps its own state as local files, the same local-first posture as the rest of the box. Either way, the assistant talks to llmux as an OpenAI-compatible provider that owns provider management, BYO-key routing, and metering; because it never leaves the box (in-process or on loopback), the assistant classifies the setup as on-instance. Additional AI features (`/api/ai/chat`, embeddings for notes, model listing) are only available once one of the two modes is configured — an unconfigured box returns `503` from every `/api/ai/*` route, by design, rather than silently falling back to nothing.
 
 ### The four tiers
 
@@ -243,8 +245,11 @@ The **Guard** enforces this before every model call. If the tier is not permitte
 # 1. Fully local (default): Ollama on the box
 AI_PROVIDER=ollama AI_ENDPOINT=http://localhost:11434 AI_MODEL=llama3
 
-# 2. On-box llmux gateway fronting your chosen providers
-LLMUX_URL=http://localhost:4000/v1
+# 2. Embedded llmux, in-process — no sidecar, fronts whichever providers you give it
+VULOS_AI_MODE=embedded
+
+# 2b. Remote llmux — a gateway running as its own process (shared across boxes, e.g.)
+VULOS_AI_MODE=remote LLMUX_URL=http://localhost:4000/v1
 
 # 3. Your own GPU server elsewhere on your network (your declaration, your responsibility)
 AI_PROVIDER=custom AI_ENDPOINT=http://10.0.0.42:8000 VULOS_AI_TIER=sovereign

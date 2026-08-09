@@ -20,7 +20,8 @@ built this way*, see [REACH.md](REACH.md).
 4. [A worked example](#a-worked-example)
 5. [The honest third-party caveat](#the-honest-third-party-caveat)
 6. [Pier — the supported alternative](#pier--the-supported-alternative)
-7. [See also](#see-also)
+7. [Using a tunnel service instead (Cloudflare Tunnel, ngrok)](#using-a-tunnel-service-instead-cloudflare-tunnel-ngrok)
+8. [See also](#see-also)
 
 ---
 
@@ -235,6 +236,49 @@ recommended path: it is the binary you already run, it needs no second project t
 track, and it gives you all three reachability facets (media ICE, HTTP ingress, and
 rendezvous) from one process. Reach for Pier as the longer-term or
 already-invested-in option, not the starting point.
+
+---
+
+## Using a tunnel service instead (Cloudflare Tunnel, ngrok)
+
+Yes, you can point Cloudflare Tunnel or ngrok at your box instead of running
+`vulos relay serve` — **but only in the mode that forwards raw TCP/TLS without
+terminating it.** Both products' *default* mode does the opposite of that, so
+this needs to be set up deliberately, not assumed:
+
+- **ngrok.** `ngrok http` (the default, and the one every quick-start example
+  uses) terminates TLS at ngrok's edge and hands your box decrypted plaintext
+  — ngrok's infrastructure sees every request, same as any corporate proxy.
+  `ngrok tls` is the mode that qualifies: it forwards the raw TLS byte stream
+  straight through, unterminated, to a TLS listener on your box (Caddy, or
+  Vulos's own cert). ngrok never holds the plaintext or the private key.
+- **Cloudflare Tunnel.** A normal `cloudflared` HTTP/HTTPS ingress rule has
+  the same shape as ngrok's default — Cloudflare's edge terminates TLS. A raw
+  TCP ingress rule (`cloudflared tunnel run` with a TCP service, or Cloudflare
+  Spectrum) forwards the byte stream untouched instead, which is the mode
+  that qualifies. Cloudflare's ordinary HTTPS proxy path does not.
+
+The general requirement, so it applies to whatever tunnel provider you're
+actually evaluating: **it has to forward TCP/TLS without terminating it.**
+That's the one property separating a relay from a man-in-the-middle — a
+passthrough tunnel never holds the plaintext or the key, so it cannot read
+your traffic even under compulsion or compromise. A provider whose only mode
+decrypts at its own edge is the man-in-the-middle the sovereignty design
+exists to avoid, regardless of how reputable the company is — see
+[SECURITY.md](SECURITY.md) and, for what the built-in relay itself sees and
+why, [REACH.md → What a relay can and cannot do](REACH.md#what-a-relay-can-and-cannot-do).
+
+If you go this route, point the passthrough tunnel at your box's own TLS
+listener, not at plain HTTP — terminating TLS anywhere before the tunnel
+defeats the point of using passthrough mode in the first place.
+
+Weigh it against `vulos relay serve`: a third-party tunnel needs no VPS of
+your own, but its uptime, its terms, and whether it *stays* in
+passthrough mode are entirely the provider's call, not yours. Running your
+own relay keeps the same "someone terminates TLS" property the built-in
+relay has (see [The honest third-party caveat](#the-honest-third-party-caveat)
+above), but puts that someone under your control, or a deliberately chosen
+ally's — not a tunnel company's product decision.
 
 ---
 
