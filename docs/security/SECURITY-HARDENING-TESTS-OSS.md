@@ -113,24 +113,36 @@ test in `auth/devicepin_test.go` were deleted, this test would catch the regress
 
 **Guards:** SECURITY-OSS.md §4 (WebAuthn, MED), §7 (HTTP Handlers, all MED/HIGH fixes)
 
-Verifies that the `http.MaxBytesReader` pattern rejects a body 1 byte over the
-documented limit with HTTP 413.  Covers all 13 POST handlers hardened in the audit:
+**Read this test's limits honestly.**  It builds its *own* handler around
+`http.MaxBytesReader` and asserts that a body 1 byte over each limit returns
+HTTP 413.  It does **not** call the real routes — it pins the *limit values* the
+audit chose and proves the pattern behaves as expected, so it would not notice
+if a `MaxBytesReader` call were deleted from one of the handlers below.  Treat
+the table as the reviewed inventory of limits, not as route coverage.
 
-| Handler route | Limit |
-|---|---|
-| `POST /api/exec` | 64 KiB |
-| `POST /api/network/configure` | 64 KiB |
-| `POST /api/stream/launch-app` | 64 KiB |
-| `POST /api/apps/launch` | 64 KiB |
-| `PUT /api/device-profile` | 4 KiB |
-| `POST /api/ai/chat` | 1 MiB |
-| `POST /api/ai-apps/{id}/update` | 10 MiB |
-| `POST /api/conflicts/*` | 64 KiB |
-| `POST /api/ssh-key/add` | 16 KiB |
-| `POST /api/open` | 8 KiB |
-| `POST /api/setup/join-code` | 4 KiB |
-| `POST /api/passkeys/finish-register` | 64 KiB |
-| `POST /api/passkeys/finish-assert` | 64 KiB |
+The 13 POST/PUT handlers hardened in the audit, with the limit each was given
+(paths verified against the current route registrations):
+
+| Handler route | Limit | Registered in |
+|---|---|---|
+| `POST /api/exec` | 64 KiB | `cmd/server/main.go` |
+| `POST /api/network/configure` | 64 KiB | `cmd/server/main.go` |
+| `POST /api/stream/launch-app` | 64 KiB | `cmd/server/main.go` |
+| `POST /api/apps/launch` | 64 KiB | `cmd/server/main.go` |
+| `PUT /api/device-profile` | 4 KiB | `cmd/server/main.go` |
+| `POST /api/ai/chat` | 1 MiB | `internal/llmuxclient/handler.go` |
+| `POST /api/ai-apps/{id}/update` | 10 MiB | `cmd/server/routes_aiapps.go` |
+| `POST /api/sync/conflicts/resolve` | 64 KiB | `cmd/server/routes_conflicts.go` |
+| `POST /api/ssh/authorized` | 16 KiB | `cmd/server/routes_sshkey.go` |
+| `POST /api/open` | 8 KiB | `cmd/server/routes_open.go` |
+| `POST /api/setup/join-code` | 4 KiB | `cmd/server/routes_joincode.go` |
+| `POST /api/passkeys/register/finish` | 64 KiB | `cmd/server/routes_passkeys.go` |
+| `POST /api/passkeys/assert/finish` | 64 KiB | `cmd/server/routes_passkeys.go` |
+
+> Earlier revisions of this table named `POST /api/conflicts/*`,
+> `POST /api/ssh-key/add`, `POST /api/passkeys/finish-register` and
+> `POST /api/passkeys/finish-assert`.  None of those paths has ever been
+> registered by the server; the rows above are the routes that actually exist.
 
 ---
 
@@ -141,13 +153,25 @@ documented limit with HTTP 413.  Covers all 13 POST handlers hardened in the aud
 **Guards:** SECURITY-OSS.md §7 — any new route added to the server must be
 consciously reviewed before being added to `publicPaths`.
 
-Documents the 20 currently-public paths with their security rationale and verifies
-via an in-process server that:
-- A sentinel protected route returns 401 without a session.
-- `/api/auth/status` (representative public path) returns non-401.
+Pins the unauthenticated surface **exactly**, in both directions.  The test holds
+a reviewed copy of the allow-list — currently **37 paths** and **4 prefixes**
+(`/assets/`, `/__pubweb__/`, `/api/peering/inbound/`, `/api/v1/`) — each with the
+reason it is safe, and compares it against `auth.PublicPaths()` /
+`auth.PublicPrefixes()`:
 
-Any engineer adding a new public route must update this list or the test description
-will be incorrect — forcing a conscious review.
+- A path in `publicPaths` but not in the reviewed list → **REGRESSION** (auth was
+  removed from a route without review).
+- A path in the reviewed list but not in `publicPaths` → **STALE** (the list no
+  longer describes the middleware).
+- The prefix count must match exactly, because a prefix exempts a whole subtree.
+
+It then stands up an in-process server and confirms a sentinel protected route
+returns 401 without a session while `/api/auth/status` does not.
+
+Adding a public route therefore *fails the build* until it is listed here with a
+rationale.  Note that `/metrics` appears in the allow-list but is not public: the
+handler runs its own owner-or-`VULOS_METRICS_TOKEN` gate and answers 403 without
+one, so the session middleware has to defer to it.
 
 ---
 
@@ -188,6 +212,40 @@ Vulos server process.
 Replicates the `secHeadersMiddleware` closure from `main.go` and verifies that
 `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` are present
 on every response, including static-file responses.
+
+---
+
+### SEC-HARD-12 — Shell CSP keeps its structural directives
+
+**Tests:** `TestShellCSP_ContentSecurityPolicyPresent`
+
+**Guards:** the `shellCSP` const in `cmd/server/main.go`
+
+Reconstructs the shell CSP string and asserts the structural directives survive
+(`object-src 'none'`, `base-uri 'self'`, `form-action 'self'`,
+`frame-ancestors 'self'`).  Like SEC-HARD-07 this test holds a *copy* of the
+value rather than reading the const, so it pins the reviewed policy — it does not
+detect a change made only in `main.go`.
+
+---
+
+### ORIGIN-01 — `allow-same-origin` only ever granted by an origin comparison
+
+**Tests:** `TestSandbox_AllowSameOriginIsOnlyEverGrantedByOriginCheck`
+
+**Guards:** `frontend/src/core/AppOrigins.*` — `iframeSandboxForURL()`
+
+Walks `frontend/src` (`.js/.jsx/.ts/.tsx`) and fails if `allow-same-origin`
+appears anywhere except inside the sanctioned origin gate, because an app frame
+on the shell's own origin with that flag can read the shell's storage and script
+`window.top`.  It also asserts the gate is still a comparison
+(`isDistinctOrigin(url) ? … : BASE_SANDBOX`) rather than an unconditional grant,
+and that the removed `needsSameOrigin()` allow-list has not come back.
+
+The walk carries a **coverage floor of 150 files**: an extension filter that once
+scanned only JavaScript covered 4 files instead of 227 after the TypeScript
+migration, and passed while examining almost nothing.  The floor turns that
+failure mode into a hard error.
 
 ---
 
