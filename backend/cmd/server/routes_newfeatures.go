@@ -153,7 +153,7 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 			log.Printf("[llmuxclient] store init warning: %v — note embeddings disabled", lmErr)
 			lmStore = nil
 		}
-		llmuxclient.RegisterHandlers(mux, lmClient, lmStore)
+		llmuxclient.RegisterHandlers(mux, llmuxclient.RemoteBackend(lmClient), lmStore)
 		log.Printf("[llmuxclient] registered /api/ai/* routes (gateway=%s configured=%v)", lmCfg.BaseURL, lmOk)
 	}
 

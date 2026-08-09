@@ -14,20 +14,23 @@ package llmuxclient
 //   DELETE /api/ai/notes/{note_id}/embed — remove note embedding
 //
 // Billing and metering are handled by llmux → CP; the OS is transparent.
+// That holds on both backends: the embedded gateway runs the same metering and
+// the same cp seam the sidecar did (see embedded.go).
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-// Handler wraps a Client and Store and exposes HTTP endpoints for the llmux
+// Handler wraps a Backend and Store and exposes HTTP endpoints for the AI
 // gateway. Wire it into a ServeMux by calling RegisterHandlers.
 type Handler struct {
-	client *Client
-	store  *Store
+	backend Backend
+	store   *Store
 
 	// semaphore limits concurrent in-flight /api/ai/chat requests to 10.
 	sem chan struct{}
@@ -39,22 +42,27 @@ type Handler struct {
 	embedStats embedStats
 }
 
-// NewHandler creates a Handler backed by the given Client and Store.
+// NewHandler creates a Handler backed by the given Backend and Store.
+// backend may be nil — it collapses to the unconfigured backend, so every
+// /api/ai/* route answers 503 rather than panicking.
 // store may be nil — in that case notes routes return 503 and embeddings
 // are called without caching.
-func NewHandler(client *Client, store *Store) *Handler {
+func NewHandler(backend Backend, store *Store) *Handler {
+	if backend == nil {
+		backend = Unconfigured()
+	}
 	return &Handler{
-		client: client,
-		store:  store,
-		sem:    make(chan struct{}, 10),
-		rl:     newAIRateLimiterWithCtx(context.Background()),
+		backend: backend,
+		store:   store,
+		sem:     make(chan struct{}, 10),
+		rl:      newAIRateLimiterWithCtx(context.Background()),
 	}
 }
 
 // RegisterHandlers mounts the AI gateway HTTP routes onto mux.
 // Shortcut: creates a Handler internally; use NewHandler for more control.
-func RegisterHandlers(mux *http.ServeMux, client *Client, store *Store) {
-	h := NewHandler(client, store)
+func RegisterHandlers(mux *http.ServeMux, backend Backend, store *Store) {
+	h := NewHandler(backend, store)
 	mux.HandleFunc("POST /api/ai/chat", h.handleChat)
 	mux.HandleFunc("POST /api/ai/models", h.handleModels)
 	mux.HandleFunc("GET /api/ai/status", h.handleStatus)
@@ -81,9 +89,9 @@ func (h *Handler) checkRateLimit(w http.ResponseWriter, r *http.Request) bool {
 // POST /api/ai/chat
 // ---------------------------------------------------------------------------
 
-// handleChat rate-limits, forwards the raw JSON body to the llmux gateway,
-// and streams the SSE response back. No billing or metering at the OS level —
-// llmux handles that.
+// handleChat rate-limits, hands the raw JSON body to the backend, and lets the
+// backend write the streamed response. No billing or metering at the OS level —
+// llmux handles that, in-process or over the wire.
 func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	if !h.checkRateLimit(w, r) {
 		return
@@ -116,43 +124,13 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { <-h.sem }()
 
-	stream, err := h.client.Chat(r.Context(), body)
-	if err != nil {
-		if h.client.cfg.BaseURL == "" {
-			jsonError(w, "gateway_unconfigured: set LLMUX_URL", http.StatusServiceUnavailable)
-			return
-		}
-		jsonError(w, "gateway_error: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer stream.Close()
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-
-	flusher, canFlush := w.(http.Flusher)
-	buf := make([]byte, 4096)
-	for {
-		n, readErr := stream.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				return
-			}
-			if canFlush {
-				flusher.Flush()
-			}
-		}
-		if readErr != nil {
-			if readErr != io.EOF {
-				fmt.Fprintf(w, "data: {\"error\":%q}\n\n", readErr.Error())
-				if canFlush {
-					flusher.Flush()
-				}
-			}
-			break
-		}
+	// The backend writes the response itself: the remote one copies the
+	// sidecar's bytes, the embedded one frames the SSE events. committed tells
+	// us whether the response is already on the wire — only then is a JSON
+	// error impossible.
+	committed, err := h.backend.Chat(r.Context(), w, body)
+	if err != nil && !committed {
+		writeGatewayError(w, err, http.StatusBadGateway)
 	}
 }
 
@@ -161,9 +139,9 @@ func (h *Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
-	raw, err := h.client.Models(r.Context())
+	raw, err := h.backend.Models(r.Context())
 	if err != nil {
-		jsonError(w, "gateway_error: "+err.Error(), http.StatusServiceUnavailable)
+		writeGatewayError(w, err, http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -176,14 +154,7 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if h.client.cfg.BaseURL == "" {
-		jsonOK(w, map[string]any{"status": "unconfigured"})
-		return
-	}
-	jsonOK(w, map[string]any{
-		"status":  "ok",
-		"gateway": h.client.cfg.BaseURL,
-	})
+	jsonOK(w, h.backend.Status())
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +204,7 @@ func (h *Handler) handleEmbed(w http.ResponseWriter, r *http.Request) {
 		h.embedStats.misses.Add(1)
 	}
 
-	vec, resolvedModel, err := h.client.Embed(r.Context(), model, req.Input)
+	vec, resolvedModel, err := h.backend.Embed(r.Context(), model, req.Input)
 	if err != nil {
 		jsonError(w, "embed_error: "+err.Error(), http.StatusBadGateway)
 		return
@@ -299,10 +270,10 @@ func (h *Handler) handleNotesIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vec, model, err := h.client.Embed(r.Context(), req.Model, req.Content)
+	vec, model, err := h.backend.Embed(r.Context(), req.Model, req.Content)
 	if err != nil {
 		code := http.StatusBadGateway
-		if h.client.cfg.BaseURL == "" {
+		if errors.Is(err, ErrUnconfigured) {
 			code = http.StatusServiceUnavailable
 		}
 		jsonError(w, "embed_error: "+err.Error(), code)
@@ -361,9 +332,9 @@ func (h *Handler) handleNotesSearch(w http.ResponseWriter, r *http.Request) {
 		req.TopK = 5
 	}
 
-	qVec, _, err := h.client.Embed(r.Context(), req.Model, req.Query)
+	qVec, _, err := h.backend.Embed(r.Context(), req.Model, req.Query)
 	if err != nil {
-		if h.client.cfg.BaseURL == "" {
+		if errors.Is(err, ErrUnconfigured) {
 			jsonOK(w, map[string]any{"hits": []noteSearchHit{}, "degraded": true})
 			return
 		}
@@ -424,6 +395,19 @@ func jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
+}
+
+// writeGatewayError maps a backend failure onto the OS's error contract. An
+// unconfigured gateway is never a 502 — nothing is broken, the box just has no
+// gateway — so it keeps the stable "gateway_unconfigured:" code and 503.
+func writeGatewayError(w http.ResponseWriter, err error, code int) {
+	if errors.Is(err, ErrUnconfigured) {
+		jsonError(w,
+			"gateway_unconfigured: set LLMUX_URL to use a remote llmux, or VULOS_AI_MODE=embedded to run it in-process",
+			http.StatusServiceUnavailable)
+		return
+	}
+	jsonError(w, "gateway_error: "+err.Error(), code)
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {
