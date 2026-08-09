@@ -132,6 +132,25 @@ export const APP_LOGOS: Record<string, string> = {
   wine: '/icons/wine.svg',
 }
 
+// Logos that are NOT their own plate — a bare mark on transparency (the Chrome
+// disc, the Firefox fox, the LibreOffice mark). Those get inset on the neutral
+// tile so they have somewhere to sit.
+//
+// The other 62 of the 71 entries above already draw a full-bleed rounded square
+// of their own, so painting a second tile behind them produced a plate inside a
+// plate: the mark rendered at 70% with a visible neutral border around it,
+// noticeably smaller and duller than the art plates beside it in the same
+// launcher row. Those render edge-to-edge instead.
+//
+// The set is easy to get wrong by hand, so it is not trusted by hand:
+// AppIcons.test.ts re-derives it by parsing every referenced SVG and fails if
+// this list drifts from what the files actually are.
+// eslint-disable-next-line react-refresh/only-export-components
+export const INSET_LOGOS = new Set([
+  'blender', 'browser-stream', 'chrome', 'envoir', 'firefox', 'gimp',
+  'inkscape', 'libreoffice', 'llmux',
+])
+
 // Per-app hue. The shell tints each first-party glyph tile with a RESTRAINED
 // wash of its app colour (the glyph carries the hue; the tile stays near-neutral)
 // so the launcher reads as "considered colour", not a rainbow icon pack. The
@@ -820,9 +839,21 @@ function ArtPlate({ id, size, style }: ArtPlateProps) {
   )
 }
 
-// Plate corner radius as a fraction of the tile — matches AppIconTile's own
-// squircle so a plate inside a tile lines up exactly.
-const ART_RADIUS = 0.28
+// Corner radius as a fraction of the tile — ONE number for every surface: the
+// art plates, the brand-logo tiles and the letter fallback.
+//
+// The value is anchored to the reference tile rather than chosen by taste:
+// public/icons/terminal.svg — the one icon the founder called good, and the bar
+// the rest of the set is being brought up to — is rx 113/512 = .2207. The art
+// plates were introduced at .28, which made the new set visibly rounder than
+// the tile it was supposed to match.
+//
+// The bundled logos are not uniform (they range .1875–.2625, clustering near
+// .22), so this cannot match all of them at once; matching Terminal is the
+// deliberate choice. AppIcons.test.ts pins it to what terminal.svg actually
+// contains, so editing that file without editing this constant fails.
+// eslint-disable-next-line react-refresh/only-export-components
+export const ART_RADIUS = 0.222
 
 // Below this pixel size the art turns to mush, so small chrome (window
 // titlebars at 12px, Mission Control thumbnails) keeps the hairline glyph,
