@@ -320,7 +320,7 @@ docker stop vulos && docker rm vulos
 
 **Deployed with `./build.sh --deploy`:** re-run the same deploy command; see [DEPLOY.md → Upgrading](DEPLOY.md#upgrading).
 
-**Database schema.** Every upgrade path is safe for the local databases: the OS applies schema migrations automatically on boot, **forward-only** and **fail-closed** (a bad migration aborts boot rather than running on a half-migrated database). You never run migrations by hand — but `vulos migrate up` / `vulos migrate status` are available for out-of-band provisioning. See [MIGRATIONS.md](MIGRATIONS.md).
+**Database schema.** Every upgrade path is safe for the local databases: the OS applies schema migrations automatically on boot, **forward-only** and **fail-closed** (a bad migration aborts boot rather than running on a half-migrated database). You never run migrations by hand — but `vulos-server migrate up` / `vulos-server migrate status` (subcommands of the server binary itself) are available for out-of-band provisioning. See [MIGRATIONS.md](MIGRATIONS.md).
 
 ---
 

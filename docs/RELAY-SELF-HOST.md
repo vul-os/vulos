@@ -28,9 +28,11 @@ IP. The Hetzner recipe is a generic Linux recipe; only step 1 is provider-specif
 - A **domain** you control, and the ability to add DNS records.
 - A few minutes.
 
-**What you are about to run:** the same `vulos` binary your boxes run, in its relay
-role. It accepts outbound tunnel connections from your boxes and reverse-proxies
-public traffic down them.
+**What you are about to run:** the `vulos` CLI from this same repository
+(`backend/cmd/vulos`), in its relay role. It accepts outbound tunnel connections
+from your boxes and reverse-proxies public traffic down them. Note this is **not**
+the binary a box runs — a box runs `vulos-server` (`backend/cmd/server`) — and no
+release artifact ships it, so you build it yourself in step 3 below.
 
 **Decide your relay domain now.** This document uses `relay.example.com`. Each box
 gets `https://<name>.relay.example.com`.

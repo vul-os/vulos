@@ -84,17 +84,17 @@ restic restore latest --target /restore/here
 
 Separate from the vault, the OS can snapshot a SQLite database (a consistent `VACUUM INTO` image), encrypt it with a passphrase-derived key, and upload it to the cluster S3 bucket.
 
-**CLI** (the `vulos` server binary doubles as the tool):
+**CLI** — these are subcommands of the **server binary itself**, which is installed as `vulos-server` (`/usr/local/bin/vulos-server` in the OS image and the Docker image). There is no separate `vulos` command on a box; `cmd/server` intercepts `backup`, `restore` and `migrate` before it would otherwise boot the server.
 
 ```bash
 # snapshot the DB and upload
-vulos backup
+vulos-server backup
 
 # download the latest snapshot and REPLACE the local DB (destructive; flag required)
-vulos restore --confirm
+vulos-server restore --confirm
 
 # a different database
-vulos backup --db ~/.vulos/db/files.db
+vulos-server backup --db ~/.vulos/db/files.db
 ```
 
 **Configuration** (shared with the cluster subsystem):
@@ -207,7 +207,7 @@ There is no single one-click restore; this is the honest, code-supported procedu
    ```bash
    VULOS_S3_ENDPOINT=... VULOS_S3_BUCKET=... \
    VULOS_S3_ACCESS_KEY=... VULOS_S3_SECRET_KEY=... \
-   VULOS_CLUSTER_PASSPHRASE=... vulos restore --confirm
+   VULOS_CLUSTER_PASSPHRASE=... vulos-server restore --confirm
    ```
    Repeat with `--db ~/.vulos/db/files.db` if you snapshotted the Drive index too.
 4. **Restore user data**: sign in as admin and `POST /api/vault/sync` (pulls the latest Restic snapshot into `~/.vulos/data`), or use the plain `restic restore` shown above.
@@ -271,14 +271,14 @@ Then, once:
 
 1. Download the recovery kit (`GET /api/recovery/kit`) and store it offline.
 2. Record your recovery phrase (shown once at account creation) and both passphrases in the same offline place.
-3. Snapshot the Drive index alongside the default job — e.g. a cron entry running `vulos backup --db ~/.vulos/db/files.db`.
+3. Snapshot the Drive index alongside the default job — e.g. a cron entry running `vulos-server backup --db ~/.vulos/db/files.db`.
 
 ### Restore drill (do this once per quarter)
 
 - `GET /api/vault/status` shows `initialized: true` and a recent `last_backup`.
 - `GET /api/vault/snapshots` lists snapshots; `restic restore latest --target /tmp/drill` on another machine succeeds with your recorded passphrase.
 - `GET /api/admin/backup/status` reports `has_snapshot: true` with a recent `created_at`.
-- On a scratch machine or VM: `vulos restore --confirm --db /tmp/drill-auth.db` succeeds with your recorded cluster passphrase.
+- On a scratch machine or VM: `vulos-server restore --confirm --db /tmp/drill-auth.db` succeeds with your recorded cluster passphrase.
 - You can still find the recovery kit and read the phrase.
 
 ## Honest gaps (read before you rely on any of this)

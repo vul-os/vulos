@@ -6,7 +6,7 @@ How the outside world reaches your Vulos box: direct connections, the relay tunn
 
 ## The reachability model in one paragraph
 
-Vulos is the OS. You run it on your own hardware or on any cloud VPS you rent, from any provider — it's the same binary either way. A box behind NAT or CGNAT is reached through a **relay**: the box dials **out** and holds the connection open, and the relay forwards traffic back down it, so there is never a port to open and nothing exposed on your side. Vulos ships its own relay — `vulos relay serve`, the same binary in a different role — so this needs no third-party tunnel service and no separate project. A relay is *hired, not depended on*: it is named by configuration rather than compiled in, and a box holds tunnels to **every** relay you list at once, so no single one is load-bearing. If your box instead has a public IP or a domain of its own, you can skip relays entirely and serve **direct** over TLS; clients try direct first and fall back to the tunnel. Direct is a faster transport, not a different security posture: the direct listener serves the exact same authenticated handler as the relay-fronted path, so an unauthenticated request gets the same 401 either way. On top of both, an opt-in **LAN layer** keeps the box reachable on your local network even with the internet down.
+Vulos is the OS. You run it on your own hardware or on any cloud VPS you rent, from any provider — it's the same binary either way. A box behind NAT or CGNAT is reached through a **relay**: the box dials **out** and holds the connection open, and the relay forwards traffic back down it, so there is never a port to open and nothing exposed on your side. Vulos ships its own relay — `vulos relay serve`, built from this same repository (`backend/cmd/vulos`) — so this needs no third-party tunnel service and no separate project. A relay is *hired, not depended on*: it is named by configuration rather than compiled in, and a box holds tunnels to **every** relay you list at once, so no single one is load-bearing. If your box instead has a public IP or a domain of its own, you can skip relays entirely and serve **direct** over TLS; clients try direct first and fall back to the tunnel. Direct is a faster transport, not a different security posture: the direct listener serves the exact same authenticated handler as the relay-fronted path, so an unauthenticated request gets the same 401 either way. On top of both, an opt-in **LAN layer** keeps the box reachable on your local network even with the internet down.
 
 **Nobody runs a relay on your behalf.** A box with nothing configured has no relay and no hostname to dial — it is LAN-reachable, and publicly reachable only in direct mode. Making it reachable from the internet means either running a relay (yours or someone else's) or giving the box a public IP. That is a property of the network, not a gap in the design; see [REACH.md](REACH.md).
 
@@ -60,9 +60,12 @@ a relay and holds that connection open; a client that wants to reach the box
 connects to the relay, which forwards traffic back down the tunnel the box already
 opened. Nothing on the box ever accepts an inbound connection.
 
-Vulos ships **its own** relay — `vulos relay serve`, the same binary in a different
-role. There is no separate product to install and no third-party tunnel service in
-the path. **[REACH.md](REACH.md)** is the full reference;
+Vulos ships **its own** relay — `vulos relay serve`, from the same repository as
+the box. There is no separate product to install and no third-party tunnel service
+in the path. One practical note: the relay is a *different* binary from the one a
+box runs (`backend/cmd/vulos` vs `backend/cmd/server`), and neither `build.sh` nor
+the Docker image ships it — you build it for the relay host yourself
+(`cd backend && go build -o vulos ./cmd/vulos`). **[REACH.md](REACH.md)** is the full reference;
 **[RELAY-SELF-HOST.md](RELAY-SELF-HOST.md)** has step-by-step recipes for Hetzner
 and Fly.io.
 

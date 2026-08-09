@@ -72,16 +72,19 @@ baseline and assert an identical schema fingerprint — see
 
 ## Operator commands
 
+These are subcommands of the **server binary**, installed as `vulos-server`
+(`/usr/local/bin/vulos-server`) — not a separate `vulos` command:
+
 ```sh
 # Apply pending migrations to auth.db + files.db out-of-band (idempotent):
-vulos migrate up
+vulos-server migrate up
 
 # Show which expected tables are present:
-vulos migrate status
+vulos-server migrate status
 ```
 
 `vulos.db`, the registry, cgroups and llmuxclient databases migrate
-automatically when the server opens them at boot; `vulos migrate up` covers the
+automatically when the server opens them at boot; `vulos-server migrate up` covers the
 two standalone databases an operator may want to pre-provision.
 
 ## Recovering from a failed migration
