@@ -283,8 +283,8 @@ func (s *Service) IssueCapability(actorID, nodeID string, access Role, recipient
 	if err != nil {
 		return nil, "", err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, "", ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, "", derr
 	}
 	if ownerAddr == "" {
 		return nil, "", fmt.Errorf("%w: owner address required", ErrInvalid)
@@ -346,12 +346,14 @@ func (s *Service) RevokePeerShare(actorID, capID string) error {
 	}
 	n, err := s.getNode(ps.NodeID)
 	if err == nil {
-		if !s.authorize(actorID, n, RoleOwner) {
-			return ErrForbidden
+		if derr := s.require(actorID, n, RoleOwner); derr != nil {
+			return derr
 		}
 	} else if ps.OwnerID != actorID {
-		// Node gone but the issuer can still revoke their own capability.
-		return ErrForbidden
+		// Node gone but the issuer can still revoke their own capability. A
+		// non-issuer has no relationship to this capability at all, so it is
+		// ErrNoAccess (404) — a 403 would confirm the cap id is real.
+		return ErrNoAccess
 	}
 	if err := s.revokePeerShare(capID); err != nil {
 		return err
@@ -368,8 +370,8 @@ func (s *Service) ListPeerShares(actorID, nodeID string) ([]PeerShare, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	return s.listPeerShares(nodeID)
 }
@@ -462,8 +464,8 @@ func (s *Service) FolderTar(ctx context.Context, actorID, nodeID string) (io.Rea
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleViewer) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleViewer); derr != nil {
+		return nil, derr
 	}
 	if !n.IsDir {
 		return nil, fmt.Errorf("%w: node is not a folder", ErrInvalid)
@@ -628,8 +630,10 @@ func (s *Service) GetReceived(recipientUserID, recvID string) (io.ReadCloser, *R
 	if err != nil {
 		return nil, nil, err
 	}
+	// Not the recipient ⇒ no relationship to this item whatsoever, so hide its
+	// existence (404) rather than confirming the recvID with a 403.
 	if item.RecipientID != recipientUserID {
-		return nil, nil, ErrForbidden
+		return nil, nil, ErrNoAccess
 	}
 	f, err := os.Open(item.stagingPath)
 	if err != nil {
@@ -651,8 +655,9 @@ func (s *Service) SaveReceivedToDrive(ctx context.Context, recipientUserID, recv
 	if err != nil {
 		return nil, err
 	}
+	// Same as GetReceived: a non-recipient must not learn the item exists.
 	if item.RecipientID != recipientUserID {
-		return nil, ErrForbidden
+		return nil, ErrNoAccess
 	}
 	if name == "" {
 		name = item.Name

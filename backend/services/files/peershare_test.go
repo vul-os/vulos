@@ -410,8 +410,8 @@ func TestEndToEndFolderTransfer(t *testing.T) {
 func TestIssueRequiresOwner(t *testing.T) {
 	owner, _, _, _ := peerServices(t)
 	n := seedFile(t, owner, "userOwner", "doc.txt", "x")
-	if _, _, err := owner.IssueCapability("userOther", n.ID, RoleViewer, "", "https://o", time.Hour); err != ErrForbidden {
-		t.Fatalf("non-owner issue err = %v, want ErrForbidden", err)
+	if _, _, err := owner.IssueCapability("userOther", n.ID, RoleViewer, "", "https://o", time.Hour); err != ErrNoAccess {
+		t.Fatalf("non-owner issue err = %v, want ErrNoAccess", err)
 	}
 }
 

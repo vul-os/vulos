@@ -27,6 +27,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,10 +159,17 @@ func TestFiles_CrossUserRead404(t *testing.T) {
 
 	folder := mkFolder(t, mux, "alice", "private")
 
-	// Bob tries to list into Alice's folder → 403 forbidden.
+	// Bob has NO access to Alice's folder, so it must look like it does not
+	// exist. 403 would confirm the node is real to someone holding only its id —
+	// an existence oracle. A caller who DOES have some access but too little
+	// (viewer trying to write) still gets 403 further down; that user already
+	// knows the node exists, and telling them "not found" would be a lie.
 	w := filesReq(t, mux, http.MethodGet, "/api/files/list?parent="+folder, "bob", nil)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("cross-user list: expected 403, got %d (%s)", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("cross-user list: expected 404, got %d (%s)", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "private") {
+		t.Fatalf("the refusal leaked the folder name: %s", w.Body.String())
 	}
 
 	// Alice CAN list her own folder → 200.
@@ -343,8 +351,8 @@ func TestFiles_UploadDownloadGrant_Owner(t *testing.T) {
 	// broker's read minter must NOT be reached.
 	wdBob := filesReq(t, mux, http.MethodPost, "/api/files/download-grant", "bob",
 		map[string]string{"node_id": up.Node.ID})
-	if wdBob.Code != http.StatusForbidden {
-		t.Fatalf("cross-user download-grant: expected 403, got %d", wdBob.Code)
+	if wdBob.Code != http.StatusNotFound {
+		t.Fatalf("cross-user download-grant: expected 404, got %d", wdBob.Code)
 	}
 	if broker.reads != 0 {
 		t.Fatalf("unauthorized download minted %d read grants — ACL bypassed the mint chokepoint (bug)", broker.reads)
@@ -391,8 +399,8 @@ func TestFiles_CrossUserMoveDeleteBlocked(t *testing.T) {
 	forbid := func(target string, body any) {
 		t.Helper()
 		w := filesReq(t, mux, http.MethodPost, target, "bob", body)
-		if w.Code != http.StatusForbidden {
-			t.Fatalf("cross-user %s: expected 403, got %d (%s)", target, w.Code, w.Body.String())
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("cross-user %s: expected 404, got %d (%s)", target, w.Code, w.Body.String())
 		}
 	}
 	forbid("/api/files/delete", map[string]string{"node_id": child.ID})
@@ -403,8 +411,8 @@ func TestFiles_CrossUserMoveDeleteBlocked(t *testing.T) {
 
 	// Version history of Alice's node is not readable by Bob → 403.
 	wv := filesReq(t, mux, http.MethodGet, "/api/files/versions?node="+child.ID, "bob", nil)
-	if wv.Code != http.StatusForbidden {
-		t.Fatalf("cross-user versions: expected 403, got %d (%s)", wv.Code, wv.Body.String())
+	if wv.Code != http.StatusNotFound {
+		t.Fatalf("cross-user versions: expected 404, got %d (%s)", wv.Code, wv.Body.String())
 	}
 
 	// The node is untouched: Alice can still list her folder and see the child.

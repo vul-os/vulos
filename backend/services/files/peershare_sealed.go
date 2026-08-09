@@ -73,8 +73,8 @@ func (s *Service) ShareSealedByEmail(ctx context.Context, actorID, nodeID, email
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	rec, err := s.shareResolver.ResolveRecipient(ctx, email)
 	if err != nil {
@@ -217,8 +217,8 @@ func (s *Service) IssueSealedCapability(actorID, nodeID string, access Role, rec
 	if err != nil {
 		return nil, "", err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, "", ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, "", derr
 	}
 	if ownerAddr == "" {
 		return nil, "", fmt.Errorf("%w: owner address required", ErrInvalid)

@@ -16,11 +16,30 @@ import (
 )
 
 // Sentinel errors returned by the service. Callers (HTTP routes) map these to
-// status codes; ErrForbidden is deliberately distinct from ErrNotFound so the
-// route layer can choose to 404 unauthorized reads (anti-enumeration) while
-// 403-ing authorized-but-insufficient writes.
+// status codes.
+//
+// AUTHORIZATION FAILURES COME IN TWO KINDS and the distinction is a security
+// property, not cosmetics:
+//
+//   - ErrNoAccess — the caller has NO access whatsoever to the node. The node's
+//     very existence is not the caller's to learn, so this must surface as 404.
+//     Returning 403 here would make the API an existence oracle: hold an id you
+//     have no rights to and the status code tells you whether it is real.
+//   - ErrForbidden — the caller has LEGITIMATE VISIBILITY (typically viewer on a
+//     shared node) but not the right required for this operation (typically
+//     write or owner). 403 is the honest answer and 404 would be a worse bug:
+//     it would tell a collaborator their file does not exist.
+//
+// ErrNoAccess WRAPS ErrNotFound deliberately, so it is fail-closed: any caller
+// that only knows about ErrNotFound — including a future switch that forgets
+// ErrNoAccess entirely — hides the node rather than revealing it. Never invert
+// that by wrapping ErrForbidden instead.
+//
+// Use Service.require rather than hand-picking between them; it is the single
+// place that decides, and it denies on any error resolving the role.
 var (
 	ErrForbidden    = errors.New("files: forbidden")
+	ErrNoAccess     = fmt.Errorf("%w: no access to node", ErrNotFound)
 	ErrInvalid      = errors.New("files: invalid request")
 	ErrLinkInactive = errors.New("files: share link expired or revoked")
 )
@@ -158,9 +177,29 @@ func (s *Service) effectiveRoleNode(userID string, n *Node) Role {
 	}
 }
 
-// authorize reports whether userID holds at least required on node.
-func (s *Service) authorize(userID string, n *Node, required Role) bool {
-	return roleRank(s.effectiveRoleNode(userID, n)) >= roleRank(required)
+// require is the single authorization chokepoint. It returns nil when userID
+// holds at least required on n, and otherwise the CORRECT denial error:
+//
+//	no role at all on n → ErrNoAccess (route: 404 — no existence oracle)
+//	some role, too low  → ErrForbidden (route: 403 — honest to a collaborator)
+//
+// Fail-closed: a nil node, or anything that leaves the role unresolved, denies
+// with ErrNoAccess. Prefer this over authorize + a hand-written ErrForbidden;
+// picking the sentinel by hand is how the oracle got in. There is deliberately
+// no boolean `authorize` variant: a bool cannot carry which denial applies, and
+// every call site that had one used to hard-code ErrForbidden.
+func (s *Service) require(userID string, n *Node, required Role) error {
+	if n == nil {
+		return ErrNoAccess
+	}
+	have := s.effectiveRoleNode(userID, n)
+	if roleRank(have) >= roleRank(required) {
+		return nil
+	}
+	if roleRank(have) <= 0 {
+		return ErrNoAccess
+	}
+	return ErrForbidden
 }
 
 // --- listing / folders ----------------------------------------------------
@@ -176,8 +215,8 @@ func (s *Service) List(userID, parentID string) ([]*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(userID, parent, RoleViewer) {
-		return nil, ErrForbidden
+	if derr := s.require(userID, parent, RoleViewer); derr != nil {
+		return nil, derr
 	}
 	return s.listChildren(parentID)
 }
@@ -210,8 +249,8 @@ func (s *Service) resolveParent(userID, parentID string) (ownerID, parentPath st
 	if !parent.IsDir {
 		return "", "", ErrInvalid
 	}
-	if !s.authorize(userID, parent, RoleEditor) {
-		return "", "", ErrForbidden
+	if derr := s.require(userID, parent, RoleEditor); derr != nil {
+		return "", "", derr
 	}
 	return parent.OwnerID, parent.Path, nil
 }
@@ -341,8 +380,8 @@ func (s *Service) DownloadGrant(ctx context.Context, userID, nodeID string, ttl 
 	if n.IsDir {
 		return nil, storage.ObjectGrant{}, fmt.Errorf("%w: folders have no bytes", ErrInvalid)
 	}
-	if !s.authorize(userID, n, RoleViewer) {
-		return nil, storage.ObjectGrant{}, ErrForbidden
+	if derr := s.require(userID, n, RoleViewer); derr != nil {
+		return nil, storage.ObjectGrant{}, derr
 	}
 	grant, err := s.mint(ctx, AccessRead, n, ttl)
 	if err != nil {
@@ -376,8 +415,8 @@ func (s *Service) Commit(userID, nodeID string, size int64, contentType, etag st
 	if n.IsDir {
 		return nil, ErrInvalid
 	}
-	if !s.authorize(userID, n, RoleEditor) {
-		return nil, ErrForbidden
+	if derr := s.require(userID, n, RoleEditor); derr != nil {
+		return nil, derr
 	}
 	v := Version{
 		ID:          ulid.NewULID(),
@@ -417,8 +456,8 @@ func (s *Service) PutContent(ctx context.Context, userID, nodeID string, r io.Re
 	if n.IsDir {
 		return "", fmt.Errorf("%w: folders have no bytes", ErrInvalid)
 	}
-	if !s.authorize(userID, n, RoleEditor) {
-		return "", ErrForbidden
+	if derr := s.require(userID, n, RoleEditor); derr != nil {
+		return "", derr
 	}
 	if s.broker == nil {
 		return "", fmt.Errorf("files: storage broker unavailable")
@@ -497,8 +536,8 @@ func (s *Service) GetContent(ctx context.Context, userID, nodeID string) (io.Rea
 	if n.IsDir {
 		return nil, nil, 0, fmt.Errorf("%w: folders have no bytes", ErrInvalid)
 	}
-	if !s.authorize(userID, n, RoleViewer) {
-		return nil, nil, 0, ErrForbidden
+	if derr := s.require(userID, n, RoleViewer); derr != nil {
+		return nil, nil, 0, derr
 	}
 	if s.broker == nil {
 		return nil, nil, 0, fmt.Errorf("files: storage broker unavailable")
@@ -581,8 +620,8 @@ func (s *Service) Versions(userID, nodeID string) ([]Version, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(userID, n, RoleViewer) {
-		return nil, ErrForbidden
+	if derr := s.require(userID, n, RoleViewer); derr != nil {
+		return nil, derr
 	}
 	return s.listVersions(nodeID)
 }
@@ -605,8 +644,8 @@ func (s *Service) Move(ctx context.Context, userID, nodeID, newParentID, newName
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(userID, n, RoleEditor) {
-		return nil, ErrForbidden
+	if derr := s.require(userID, n, RoleEditor); derr != nil {
+		return nil, derr
 	}
 	parentID := n.ParentID
 	parentPath := ""
@@ -621,8 +660,8 @@ func (s *Service) Move(ctx context.Context, userID, nodeID, newParentID, newName
 		if parent.OwnerID != n.OwnerID {
 			return nil, fmt.Errorf("%w: cross-owner move not supported", ErrInvalid)
 		}
-		if !s.authorize(userID, parent, RoleEditor) {
-			return nil, ErrForbidden
+		if derr := s.require(userID, parent, RoleEditor); derr != nil {
+			return nil, derr
 		}
 		if isAncestor(s, n.ID, parent) {
 			return nil, fmt.Errorf("%w: cannot move a folder into itself", ErrInvalid)
@@ -780,8 +819,8 @@ func (s *Service) Delete(userID, nodeID string) error {
 	if err != nil {
 		return err
 	}
-	if !s.authorize(userID, n, RoleEditor) {
-		return ErrForbidden
+	if derr := s.require(userID, n, RoleEditor); derr != nil {
+		return derr
 	}
 	if err := s.softDelete(nodeID); err != nil {
 		return err
@@ -908,8 +947,8 @@ func (s *Service) Share(actorID, nodeID, principalID string, role Role) (*ACLEnt
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	if principalID == n.OwnerID {
 		return nil, fmt.Errorf("%w: cannot share with the owner", ErrInvalid)
@@ -935,8 +974,8 @@ func (s *Service) Unshare(actorID, nodeID, principalID string) error {
 	if err != nil {
 		return err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return derr
 	}
 	if err := s.deleteACL(nodeID, principalID); err != nil {
 		return err
@@ -951,8 +990,8 @@ func (s *Service) ListShares(actorID, nodeID string) ([]ACLEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	return s.listACLs(nodeID)
 }
@@ -990,8 +1029,8 @@ func (s *Service) CreateLink(actorID, nodeID string, role Role, ttl time.Duratio
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	if ttl <= 0 {
 		ttl = defaultLinkTTL
@@ -1025,8 +1064,8 @@ func (s *Service) RevokeLink(actorID, token string) error {
 	if err != nil {
 		return err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return derr
 	}
 	if err := s.revokeLink(token); err != nil {
 		return err
@@ -1041,8 +1080,8 @@ func (s *Service) ListLinks(actorID, nodeID string) ([]ShareLink, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 	return s.listLinks(nodeID)
 }

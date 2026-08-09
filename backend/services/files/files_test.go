@@ -168,8 +168,8 @@ func TestUnauthorizedGetsNoGrant(t *testing.T) {
 	n := uploadFile(t, svc, owner, "", "secret.txt")
 	fb.reads, fb.writes = 0, 0 // ignore the owner's own upload
 
-	if _, _, err := svc.DownloadGrant(context.Background(), other, n.ID, ttl); err != ErrForbidden {
-		t.Fatalf("DownloadGrant by stranger: err=%v, want ErrForbidden", err)
+	if _, _, err := svc.DownloadGrant(context.Background(), other, n.ID, ttl); err != ErrNoAccess {
+		t.Fatalf("DownloadGrant by stranger: err=%v, want ErrNoAccess", err)
 	}
 	if fb.reads != 0 {
 		t.Fatalf("broker.MintRead called %d times for unauthorized user — must be 0", fb.reads)
@@ -177,8 +177,8 @@ func TestUnauthorizedGetsNoGrant(t *testing.T) {
 
 	// Stranger also cannot obtain a write grant (upload into someone else's root
 	// is creating in their OWN root, so test a shared subtree instead below).
-	if _, _, err := svc.DownloadGrant(context.Background(), "thirdUser", n.ID, ttl); err != ErrForbidden {
-		t.Fatalf("DownloadGrant by third user: err=%v, want ErrForbidden", err)
+	if _, _, err := svc.DownloadGrant(context.Background(), "thirdUser", n.ID, ttl); err != ErrNoAccess {
+		t.Fatalf("DownloadGrant by third user: err=%v, want ErrNoAccess", err)
 	}
 }
 
@@ -228,8 +228,8 @@ func TestACLInheritance(t *testing.T) {
 	child := uploadFile(t, svc, owner, dir.ID, "inside.txt")
 
 	// No access yet.
-	if _, _, err := svc.DownloadGrant(context.Background(), other, child.ID, ttl); err != ErrForbidden {
-		t.Fatalf("pre-share child read: err=%v, want ErrForbidden", err)
+	if _, _, err := svc.DownloadGrant(context.Background(), other, child.ID, ttl); err != ErrNoAccess {
+		t.Fatalf("pre-share child read: err=%v, want ErrNoAccess", err)
 	}
 	// Share the folder editor → child inherits editor.
 	if _, err := svc.Share(owner, dir.ID, other, RoleEditor); err != nil {
@@ -331,8 +331,8 @@ func TestShareLinkExpiryAndRevoke(t *testing.T) {
 	}
 
 	// Only the owner may create/revoke links.
-	if _, err := svc.CreateLink(other, n.ID, RoleViewer, time.Minute); err != ErrForbidden {
-		t.Fatalf("non-owner CreateLink: err=%v, want ErrForbidden", err)
+	if _, err := svc.CreateLink(other, n.ID, RoleViewer, time.Minute); err != ErrNoAccess {
+		t.Fatalf("non-owner CreateLink: err=%v, want ErrNoAccess", err)
 	}
 }
 
@@ -444,8 +444,8 @@ func TestVersionsListed(t *testing.T) {
 		t.Fatalf("newest version size=%d want 2", vs[0].Size)
 	}
 	// A stranger cannot list versions.
-	if _, err := svc.Versions(other, n.ID); err != ErrForbidden {
-		t.Fatalf("stranger Versions: err=%v, want ErrForbidden", err)
+	if _, err := svc.Versions(other, n.ID); err != ErrNoAccess {
+		t.Fatalf("stranger Versions: err=%v, want ErrNoAccess", err)
 	}
 }
 
@@ -574,11 +574,11 @@ func TestContentDataPlaneLocalFS(t *testing.T) {
 		t.Fatalf("read back=%q size=%d want %q/11", got, size, "hello world")
 	}
 	// A stranger can neither write nor read.
-	if _, err := svc.PutContent(context.Background(), other, n.ID, strings.NewReader("x"), 1, ""); err != ErrForbidden {
-		t.Fatalf("stranger PutContent: err=%v want ErrForbidden", err)
+	if _, err := svc.PutContent(context.Background(), other, n.ID, strings.NewReader("x"), 1, ""); err != ErrNoAccess {
+		t.Fatalf("stranger PutContent: err=%v want ErrNoAccess", err)
 	}
-	if _, _, _, err := svc.GetContent(context.Background(), other, n.ID); err != ErrForbidden {
-		t.Fatalf("stranger GetContent: err=%v want ErrForbidden", err)
+	if _, _, _, err := svc.GetContent(context.Background(), other, n.ID); err != ErrNoAccess {
+		t.Fatalf("stranger GetContent: err=%v want ErrNoAccess", err)
 	}
 }
 

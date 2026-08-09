@@ -5,8 +5,11 @@ package main
 // Session-authed OS Files API. Identity ALWAYS comes from the session-derived
 // X-User-ID header injected by auth.Handler.Middleware — never from the request
 // body. Each handler delegates to services/files, which enforces the ACL and
-// (for grants) calls the storage broker ONLY after authorization. Unauthorized
-// callers receive 403/404 and NO grant.
+// (for grants) calls the storage broker ONLY after authorization, so an
+// unauthorized caller never receives a grant. A caller with NO access to a node
+// receives 404 — the API does not confirm that someone else's node exists; a
+// caller who can see the node but lacks the required role receives 403. See
+// writeFilesErr at the bottom of this file.
 //
 // Endpoints (all under /api/files/):
 //   GET    /api/files/list?parent=<id>          list folder (root if parent empty)
@@ -394,29 +397,34 @@ func decodeJSONLimited(w http.ResponseWriter, r *http.Request, v any, max int64)
 
 // writeFilesErr maps service sentinel errors to HTTP status codes.
 //
-// NOTE, because the previous version of this comment claimed the opposite of
-// what the code does: ErrForbidden surfaces as 403 and ErrNotFound as 404, so
-// these two ARE distinguishable. A caller holding a node id it has no rights to
-// can therefore tell "exists, not yours" from "does not exist".
+// THE FILES API IS NOT AN EXISTENCE ORACLE. A caller with no rights at all to a
+// node gets exactly what it gets for an id that was never issued: 404, body
+// {"error":"not found"}, no node id, name, owner or path echoed back. That
+// matches the rest of the OS API, which collapses unauthorized into not-found
+// for the same reason (see notify's DeliverableToUser).
 //
-// That is a deliberate trade, not an oversight, and the reason it is acceptable
-// here is narrow: node ids are ULIDs, so the 80 random bits make the oracle
-// unreachable without already possessing a valid id. Meanwhile 403 carries real
-// meaning for the common legitimate case — someone with read access to a shared
-// node who lacks write — and collapsing it into 404 would tell that user their
-// file does not exist.
+// 403 is NOT dead here, and that is the point of the split. It is reserved for
+// a caller with LEGITIMATE VISIBILITY who lacks the specific right — the common
+// real case being someone with read access to a shared node attempting a write,
+// or a non-owner attempting to manage the ACL. Answering that user 404 would be
+// the worse bug: it would tell a collaborator, looking at a file they can see,
+// that it does not exist.
 //
-// The rest of the OS API does collapse both into 404 (see notify's
-// DeliverableToUser), and the honest way to have both properties here is for the
-// service layer to distinguish "no access at all" from "has read, lacks write"
-// and let this map the first to 404. files returns a single ErrForbidden for
-// both today, so that is a service-layer change, tracked separately rather than
-// papered over with a comment that describes behaviour the code never had.
+// services/files draws the line, not this function: Service.require returns
+// ErrNoAccess for the first case and ErrForbidden for the second. ErrNoAccess
+// WRAPS files.ErrNotFound, so the ordering below is fail-closed twice over —
+// the explicit case matches first, and deleting it would still leave the
+// ErrNotFound case to hide the node. Any new denial error added to the service
+// must wrap ErrNotFound unless the caller demonstrably already sees the node.
 func writeFilesErr(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, files.ErrNoAccess):
+		// No access whatsoever: indistinguishable from a nonexistent node.
+		writeErr(w, 404, "not found")
 	case errors.Is(err, files.ErrNotFound):
 		writeErr(w, 404, "not found")
 	case errors.Is(err, files.ErrForbidden):
+		// Visible to this caller, but the required role is higher.
 		writeErr(w, 403, "forbidden")
 	case errors.Is(err, files.ErrLinkInactive):
 		writeErr(w, 410, "share link expired or revoked")

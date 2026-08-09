@@ -120,7 +120,7 @@ func TestShareByEmail_NonOwnerForbidden(t *testing.T) {
 		"bob@vulos.org": {PrincipalID: "userBob"},
 	}}, nil)
 	_, err := svc.ShareByEmail(context.Background(), "userMallory", n.ID, "bob@vulos.org", RoleViewer, "", 0)
-	if err != ErrForbidden {
-		t.Fatalf("err = %v, want ErrForbidden", err)
+	if err != ErrNoAccess {
+		t.Fatalf("err = %v, want ErrNoAccess", err)
 	}
 }

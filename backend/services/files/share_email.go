@@ -142,8 +142,8 @@ func (s *Service) ShareByEmail(ctx context.Context, actorID, nodeID, email strin
 	if err != nil {
 		return nil, err
 	}
-	if !s.authorize(actorID, n, RoleOwner) {
-		return nil, ErrForbidden
+	if derr := s.require(actorID, n, RoleOwner); derr != nil {
+		return nil, derr
 	}
 
 	rec, err := s.shareResolver.ResolveRecipient(ctx, email)

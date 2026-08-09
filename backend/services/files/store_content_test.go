@@ -41,7 +41,7 @@ func TestStoreContentEnforcesACL(t *testing.T) {
 	}
 	fb.writes = 0
 	_, err = svc.StoreContent(context.Background(), other, dir.ID, "sneak.bin", "", strings.NewReader("x"), 1)
-	if err != ErrForbidden {
-		t.Fatalf("cross-owner StoreContent: err=%v, want ErrForbidden", err)
+	if err != ErrNoAccess {
+		t.Fatalf("cross-owner StoreContent: err=%v, want ErrNoAccess", err)
 	}
 }

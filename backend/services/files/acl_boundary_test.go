@@ -2,6 +2,7 @@ package files
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,8 +68,8 @@ func TestACLRoleBoundaries(t *testing.T) {
 			}
 			rc.Close()
 		}
-		if _, _, _, err := svc.GetContent(ctx, nobody, id); err != ErrForbidden {
-			t.Fatalf("stranger GetContent: want ErrForbidden, got %v", err)
+		if _, _, _, err := svc.GetContent(ctx, nobody, id); err != ErrNoAccess {
+			t.Fatalf("stranger GetContent: want ErrNoAccess (404, not an existence oracle), got %v", err)
 		}
 	})
 
@@ -175,5 +176,34 @@ func TestACLInheritanceDoesNotElevate(t *testing.T) {
 	}
 	if _, err := svc.PutContent(context.Background(), collab, child.ID, strings.NewReader("x"), 1, ""); err != ErrForbidden {
 		t.Fatalf("inherited viewer PutContent: want ErrForbidden, got %v", err)
+	}
+}
+
+// TestErrNoAccessIsFailClosedByWrapping pins the sentinel's WRAPPING, not just
+// the status code the handler happens to produce today.
+//
+// writeFilesErr checks errors.Is(err, ErrNoAccess) explicitly and first, so the
+// handler would behave identically no matter what ErrNoAccess wrapped — which
+// means inverting the wrap is invisible to every route test. It was: flipping it
+// to wrap ErrForbidden left the whole suite green.
+//
+// The wrap is what makes this fail CLOSED everywhere else. Any code that asks
+// the generic question "is this a not-found?" — other services, a future
+// handler, a caller that has not learned about ErrNoAccess — must treat "you
+// have no access" as "there is nothing here", and must never fall through to a
+// branch that reveals the node exists.
+func TestErrNoAccessIsFailClosedByWrapping(t *testing.T) {
+	if !errors.Is(ErrNoAccess, ErrNotFound) {
+		t.Error("ErrNoAccess must wrap ErrNotFound: a generic not-found check has to hide the node, " +
+			"otherwise any code path that does not know about ErrNoAccess leaks its existence")
+	}
+	if errors.Is(ErrNoAccess, ErrForbidden) {
+		t.Error("ErrNoAccess must NOT wrap ErrForbidden: that turns every generic forbidden check " +
+			"back into an existence oracle — the exact bug this sentinel was introduced to remove")
+	}
+	// And the two must stay distinguishable, or the handler cannot keep giving
+	// a genuine viewer-lacking-write an honest 403.
+	if errors.Is(ErrForbidden, ErrNoAccess) {
+		t.Error("ErrForbidden must not satisfy ErrNoAccess, or insufficient-role would 404 too")
 	}
 }
