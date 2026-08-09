@@ -36,7 +36,7 @@ Management and sensitive settings are **admin/owner-only**. Among them:
 - **Fleet management** — rename, mark store-only, or remove instances
   (`/api/instances/{ulid}/…`, admin-gated; `401` if unauthenticated, `403` if not
   admin).
-- **Issue join codes** to add new devices (`GET /api/cluster/join-code`,
+- **Issue join codes** to add new devices (`POST /api/cluster/join-code`,
   admin-only) — see [ADD-DEVICE.md](ADD-DEVICE.md).
 - **Download the Recovery Kit** file (`GET /api/recovery/kit`, admin-only).
 - **Device-key rotation and revocation** (`/api/auth/device/rotate`,

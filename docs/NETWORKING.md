@@ -479,7 +479,7 @@ On a bare-metal install, Settings manages the box's own network connection throu
 | Endpoint | What it does |
 |---|---|
 | `GET /api/wifi/status` | Current connection (SSID, IP, signal, band, TX rate) |
-| `GET /api/wifi/scan` | Visible networks with signal and security (WPA2/WPA3/open) |
+| `GET /api/wifi/scan` | Visible networks with signal and security (WPA2/WPA3/open). **Admin-only and audited**: a scan drives the radio as root and holds a lock, so it is a host mutation despite being a read-shaped GET |
 | `POST /api/wifi/connect` | Join a network (audited) |
 | `POST /api/wifi/disconnect` | Drop the current connection |
 | `GET /api/wifi/saved` / `POST /api/wifi/forget` | Manage remembered networks |

@@ -94,7 +94,7 @@ Peering connects *different people's* boxes. Pairing connects *your own* devices
 An admin on an existing box can mint a short-lived join code:
 
 ```bash
-curl -H "X-User-ID: <admin>" http://localhost:8080/api/cluster/join-code
+curl -X POST -H "X-User-ID: <admin>" http://localhost:8080/api/cluster/join-code
 # → {"short_code":"VULOS-7XK2-M4PQ-9RTV","qr_payload":"vulos://join/v1?...","expires_at":"..."}
 ```
 
@@ -294,7 +294,7 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 | Drop | `GET /api/peering/drop/nearby` · `POST /api/peering/drop/send` · `POST /api/peering/drop/decide` · `GET`/`PUT /api/peering/drop/settings` · `POST /api/peering/drop/code/generate` · `POST /api/peering/drop/code/redeem` |
 | Calls | `POST /api/peering/call/initiate` (and `answer`/`reject`/`signal`/`hangup`) · `GET /api/peering/call/history` |
 | Shared docs | `POST /api/peering/collab/share` · `GET /api/peering/collab/documents` · `GET`/`DELETE /api/peering/collab/{doc_id}` · `PUT /api/peering/collab/{doc_id}/perms` |
-| Cluster join | `GET /api/cluster/join-code` (admin) · `POST /api/setup/join-code` · `POST /api/setup/join` · `GET /api/setup/join/status` |
+| Cluster join | `POST /api/cluster/join-code` (admin) · `POST /api/setup/join-code` · `POST /api/setup/join` · `GET /api/setup/join/status` |
 | Device key | `GET /api/auth/device/identity` · `GET /api/auth/device/tpm/status` |
 | Public profile | `GET /.well-known/vula-id` (Vula ID, lifecycle chain, revocations, signed prekey — public fields only) |
 

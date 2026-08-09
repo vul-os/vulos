@@ -43,8 +43,10 @@ already trust, then finish it on the new device.
 
 1. Open the **Dashboard → Instances** panel (or Settings, depending on your
    build).
-2. Generate a **join code**. This calls `GET /api/cluster/join-code`, which is
-   **admin/owner-only** — a regular user cannot mint one.
+2. Generate a **join code**. This calls `POST /api/cluster/join-code`, which is
+   **admin/owner-only** — a regular user cannot mint one. (It is a POST because
+   it mints and stores a live credential; as a GET, any page an admin visited
+   could have triggered it.)
 3. You get a short code in the form `VULOS-XXXX-XXXX-XXXX` and a matching **QR
    code**. The code is **single-use** and **expires after one hour**.
 
