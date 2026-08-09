@@ -50,6 +50,16 @@ function BackChevron() {
   )
 }
 
+// The single person mark used by every empty / unavailable state, so they all
+// speak with one voice instead of three hand-rolled inline SVGs at three sizes.
+function PersonGlyph({ className, stroke = 'currentColor' }: { className?: string; stroke?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="3.5" /><path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+    </svg>
+  )
+}
+
 function initials(name: string): string {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return '?'
@@ -104,7 +114,7 @@ function SourceBadges({ sources }: { sources: string[] | undefined }) {
         const style: RingStyle = { color: SOURCE_META[s].color, background: `color-mix(in srgb, ${SOURCE_META[s].color} 14%, transparent)`, '--tw-ring-color': `color-mix(in srgb, ${SOURCE_META[s].color} 35%, transparent)` }
         return (
         <span key={s}
-          className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px] font-medium leading-none ring-1 ring-inset"
+          className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11.5px] font-medium leading-none ring-1 ring-inset"
           style={style}>
           <span className="w-1 h-1 rounded-full" style={{ background: SOURCE_META[s].color }} />
           {SOURCE_META[s].label}
@@ -113,6 +123,33 @@ function SourceBadges({ sources }: { sources: string[] | undefined }) {
       })}
     </span>
   )
+}
+
+// List-row source indicator. The labelled pills (above) are right for the detail
+// header, but inline in a 17rem rail they wrapped onto two or three extra lines
+// and shoved the contact's own NAME into an ellipsis ("Priya Men…"), giving the
+// list a ragged, uneven row rhythm. In the rail we show the same information as
+// a compact dot cluster with the labels in the accessible name, so every row is
+// exactly one height and the name always wins the space.
+function SourceDots({ sources }: { sources: string[] | undefined }) {
+  const list = SOURCE_ORDER.filter((s) => (sources || []).includes(s) && SOURCE_META[s])
+  if (list.length === 0) return null
+  const labels = list.map((s) => SOURCE_META[s].label).join(', ')
+  return (
+    <span className="inline-flex items-center gap-[3px] shrink-0" title={`On ${labels}`}>
+      {list.map((s) => (
+        <span key={s} aria-hidden="true" className="w-1.5 h-1.5 rounded-full"
+          style={{ background: SOURCE_META[s].color }} />
+      ))}
+      <span className="sr-only">{`On ${labels}`}</span>
+    </span>
+  )
+}
+
+// Alphabetical section key for the rail's sticky group headers.
+function groupKey(name: string): string {
+  const ch = (name || '').trim().charAt(0).toUpperCase()
+  return /[A-Z]/.test(ch) ? ch : '#'
 }
 
 // keyOf — a match key set (by email + normalized name) shared by both the
@@ -179,12 +216,27 @@ export default function Contacts() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return contacts
-    return contacts.filter((c) =>
+    const matched = !q ? contacts : contacts.filter((c) =>
       c.name.toLowerCase().includes(q) ||
       c.org.toLowerCase().includes(q) ||
       c.emails.some((e) => e.toLowerCase().includes(q)))
+    // An address book is read alphabetically. The wire order is the merge order
+    // (CardDAV first, then device/SIM-only extras appended), which read as
+    // random — "Mum" landed after "Thabo" purely because it came from the SIM.
+    return [...matched].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
   }, [contacts, query])
+
+  // Sticky A–Z section headers, derived from the (already sorted) list.
+  const grouped = useMemo(() => {
+    const out: { letter: string; items: MergedContact[] }[] = []
+    for (const c of filtered) {
+      const k = groupKey(c.name)
+      const tail = out[out.length - 1]
+      if (tail && tail.letter === k) tail.items.push(c)
+      else out.push({ letter: k, items: [c] })
+    }
+    return out
+  }, [filtered])
 
   const selected = useMemo(
     () => contacts.find((c) => c.id === selectedId) || null,
@@ -280,18 +332,19 @@ export default function Contacts() {
 
   if (unavailable) {
     return (
-      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6 animate-[fadeIn_0.2s_ease-out]" data-contacts-app>
-        <div className="max-w-xs">
-          <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800"
+      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6 py-10 overflow-y-auto animate-[fadeIn_0.2s_ease-out]" data-contacts-app>
+        <div className="w-full max-w-sm">
+          <div className="w-16 h-16 mx-auto mb-5 grid place-items-center rounded-2xl border border-neutral-800"
             style={{ background: 'var(--accent-soft)' }}>
-            <svg viewBox="0 0 24 24" className="w-7 h-7" fill="none" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            <PersonGlyph className="w-8 h-8" stroke="var(--accent)" />
           </div>
-          <div className="text-neutral-200 text-sm font-medium">Contacts unavailable.</div>
-          <div className="text-neutral-500 text-[12px] mt-1.5 leading-relaxed">
+          <div className="text-neutral-100 text-[16px] font-semibold tracking-tight">Contacts unavailable.</div>
+          <p className="text-neutral-500 text-[13px] mt-2 leading-relaxed text-balance">
             Connect a mail account (Gmail, Outlook, or IMAP/CardDAV) to see and manage your contacts.
-          </div>
+          </p>
           <button type="button" onClick={connectMail}
-            className="mt-4 text-[12px] font-mono px-4 py-2 rounded-md border border-neutral-700 hover:bg-neutral-800/60 hover:border-neutral-600 transition-colors focus-primary">
+            className="mt-5 inline-flex items-center gap-2 text-[13px] font-medium px-4 h-10 rounded-lg text-white transition-all hover:brightness-110 active:scale-[0.98] focus-primary shadow-sm"
+            style={{ background: 'var(--accent)' }}>
             Connect Mail →
           </button>
         </div>
@@ -301,79 +354,138 @@ export default function Contacts() {
 
   return (
     <div className="h-full flex bg-neutral-950 text-neutral-100 select-none" data-contacts-app>
-      {/* List pane — full width on mobile, fixed rail on desktop */}
+      {/* List rail — full width on mobile, a sized rail on desktop. The rail
+          grows a step at ≥1280px so long names/addresses stop truncating on the
+          wide desktop the founder actually runs it on. */}
       {showList && (
-      <div className={`${narrow ? 'w-full' : 'w-64 shrink-0 border-r border-neutral-800/70'} flex flex-col min-h-0`}>
-        <div className="p-2.5 border-b border-neutral-800/70 flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
+      <div className={`${narrow ? 'w-full' : 'w-[17.5rem] xl:w-[20rem] shrink-0 border-r border-neutral-800/70 bg-neutral-900/25'} flex flex-col min-h-0`}>
+        <div className="shrink-0 px-3 pt-3 pb-2.5 border-b border-neutral-800/70">
+          <div className="flex items-center gap-2 mb-2.5">
+            <h1 className="text-[15px] font-semibold tracking-tight text-neutral-100">Contacts</h1>
+            {!loading && (
+              <span className="mono text-[11.5px] px-1.5 py-0.5 rounded-md bg-neutral-800/70 text-neutral-500 leading-none">
+                {contacts.length}
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-1.5">
+              {canSyncPhone && (
+                <button type="button" onClick={syncPhone} disabled={syncingPhone} aria-label="Sync phone contacts"
+                  title="Sync your phone's device + SIM contacts into this box"
+                  className="w-9 h-9 shrink-0 grid place-items-center rounded-lg border border-neutral-800 text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-100 hover:border-neutral-700 active:scale-95 focus-primary transition-colors disabled:opacity-50">
+                  {syncingPhone
+                    ? <span className="w-4 h-4 spinner" />
+                    : <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg>}
+                </button>
+              )}
+              <button type="button" onClick={startCreate} aria-label="New contact" title="New contact"
+                className="w-9 h-9 shrink-0 grid place-items-center rounded-lg text-white transition-all hover:brightness-110 active:scale-95 focus-primary shadow-sm"
+                style={{ background: 'var(--accent)' }}>
+                <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M8 3.5v9M3.5 8h9" /></svg>
+              </button>
+            </div>
+          </div>
+          <div className="relative">
             <svg viewBox="0 0 16 16" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" strokeLinecap="round"/></svg>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search contacts"
               aria-label="Search contacts"
-              className="w-full min-w-0 bg-neutral-800/60 border border-neutral-700/80 rounded-md pl-8 pr-2.5 py-2 text-[12px] focus-primary transition-colors focus:border-neutral-600"
+              className="w-full min-w-0 h-9 bg-neutral-800/50 border border-neutral-800 rounded-lg pl-8 pr-8 text-[13px] text-neutral-100 placeholder-neutral-600 focus-primary transition-colors focus:border-neutral-700"
             />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-md text-neutral-600 hover:text-neutral-200 transition-colors focus-primary">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+              </button>
+            )}
           </div>
-          {canSyncPhone && (
-            <button type="button" onClick={syncPhone} disabled={syncingPhone} aria-label="Sync phone contacts"
-              title="Sync your phone's device + SIM contacts into this box"
-              className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md border border-neutral-700 text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100 active:scale-95 focus-primary transition-colors disabled:opacity-50">
-              {syncingPhone
-                ? <span className="w-4 h-4 spinner" />
-                : <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg>}
-            </button>
-          )}
-          <button type="button" onClick={startCreate} aria-label="New contact"
-            className="touch-target w-11 h-11 shrink-0 grid place-items-center rounded-md text-white text-lg transition-all hover:brightness-110 active:scale-95 focus-primary shadow-sm"
-            style={{ background: 'var(--accent)' }}>+</button>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
           {loading && contacts.length === 0 ? (
-            <div className="p-4 flex items-center gap-2 text-neutral-500 text-[12px]"><span className="w-3.5 h-3.5 spinner" /> Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-neutral-500 text-[12px] animate-[fadeIn_0.2s_ease-out]">
-              <div className="w-10 h-10 mx-auto mb-2.5 grid place-items-center rounded-xl border border-neutral-800 text-neutral-600">
-                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
-              </div>
-              {query ? 'No matches.' : 'No contacts yet.'}
-            </div>
-          ) : (
-            <ul className="py-1">
-              {filtered.map((c) => (
-                <li key={c.id || c.name}>
-                  <button type="button" onClick={() => { setSelectedId(c.id); setEditing(null) }}
-                    className={`group w-full flex items-center gap-2.5 px-2.5 py-2 text-left transition-colors focus-primary border-l-2 ${selectedId === c.id ? 'bg-neutral-800/70 border-[var(--accent)]' : 'border-transparent hover:bg-neutral-800/40'}`}>
-                    <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-[12px] font-mono font-semibold ring-1 ring-inset ring-white/5"
-                      style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(c.name)}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="block text-[12.5px] text-neutral-100 truncate">{c.name || '(no name)'}</span>
-                        {(c.sources.length > 1 || c.sources.some((s) => s !== 'vulos')) && (
-                          <SourceBadges sources={c.sources} />
-                        )}
-                      </span>
-                      {c.emails[0] && <span className="block text-[12px] text-neutral-500 truncate">{c.emails[0]}</span>}
-                    </span>
-                  </button>
+            // Skeleton rows rather than a lone "Loading…" line, so the rail keeps
+            // its shape and the list doesn't jump when the real rows land.
+            <ul className="py-2 px-2 flex flex-col gap-1.5" aria-hidden="true">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <li key={i} className="flex items-center gap-2.5 px-1.5 py-1.5 animate-pulse" style={{ opacity: 1 - i * 0.13 }}>
+                  <span className="w-9 h-9 shrink-0 rounded-full bg-neutral-800/80" />
+                  <span className="flex-1 min-w-0 flex flex-col gap-1.5">
+                    <span className="block h-2.5 rounded-full bg-neutral-800/80" style={{ width: `${58 + ((i * 13) % 30)}%` }} />
+                    <span className="block h-2 rounded-full bg-neutral-800/50" style={{ width: `${38 + ((i * 17) % 34)}%` }} />
+                  </span>
                 </li>
               ))}
+              <li className="sr-only" aria-hidden="false">Loading…</li>
             </ul>
+          ) : filtered.length === 0 ? (
+            <div className="px-6 py-10 text-center animate-[fadeIn_0.2s_ease-out]">
+              <div className="w-11 h-11 mx-auto mb-3 grid place-items-center rounded-xl border border-neutral-800 text-neutral-700">
+                <PersonGlyph className="w-5 h-5" />
+              </div>
+              <div className="text-[13px] text-neutral-400 font-medium">{query ? 'No matches.' : 'No contacts yet.'}</div>
+              <div className="text-[12px] text-neutral-600 mt-1 leading-relaxed">
+                {query ? 'Try a different name, address or company.' : 'Add someone, or connect a mail account to sync an address book.'}
+              </div>
+              {!query && (
+                <button type="button" onClick={startCreate}
+                  className="mt-3.5 text-[12.5px] font-medium px-3 h-8 rounded-lg border border-neutral-800 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">
+                  New contact
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="pb-3">
+              {grouped.map((g) => (
+                <section key={g.letter}>
+                  <h2 className="sticky top-0 z-10 mono px-3.5 py-1 text-[11px] font-semibold tracking-[0.12em] text-neutral-600 bg-neutral-950/85 backdrop-blur-sm border-b border-neutral-900">
+                    {g.letter}
+                  </h2>
+                  <ul>
+                    {g.items.map((c) => {
+                      const active = selectedId === c.id
+                      return (
+                      <li key={c.id || c.name}>
+                        <button type="button" onClick={() => { setSelectedId(c.id); setEditing(null) }}
+                          aria-current={active ? 'true' : undefined}
+                          className={`group w-full flex items-center gap-2.5 pl-3 pr-2.5 py-2 text-left transition-colors focus-primary border-l-2 ${active ? 'bg-neutral-800/70 border-[var(--accent)]' : 'border-transparent hover:bg-neutral-800/40'}`}>
+                          <span className="w-9 h-9 shrink-0 grid place-items-center rounded-full text-[12px] mono font-semibold ring-1 ring-inset ring-white/5"
+                            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(c.name)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className={`block text-[13px] truncate ${active ? 'text-neutral-50 font-medium' : 'text-neutral-100'}`}>{c.name || '(no name)'}</span>
+                              {(c.sources.length > 1 || c.sources.some((s) => s !== 'vulos')) && (
+                                <SourceDots sources={c.sources} />
+                              )}
+                            </span>
+                            <span className="block text-[12px] text-neutral-500 truncate leading-snug">
+                              {c.emails[0] || c.phones[0] || c.org || '—'}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
         </div>
       </div>
       )}
 
-      {/* Detail / editor pane */}
+      {/* Detail / editor pane. Its content is width-capped and centred: at 1600px
+          the old `flex-1` pane left a 16px avatar and one line of text stranded
+          in ~1300px of empty canvas, with Edit/Delete flung to the far edge. */}
       {showDetail && (
-      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col bg-neutral-950">
         {narrow && hasDetail && (
           <button type="button" onClick={backToList}
             className="shrink-0 flex items-center gap-1.5 px-3 h-11 text-[13px] text-neutral-400 border-b border-neutral-800/70 focus-primary">
             <BackChevron /> Contacts
           </button>
         )}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {editing ? (
             <ContactEditor form={editing} setForm={(fn) => setEditing((f) => (f ? fn(f) : f))} onSave={save}
               onCancel={() => { if (narrow) backToList(); else setEditing(null) }} saving={saving} />
@@ -381,12 +493,15 @@ export default function Contacts() {
             <ContactDetail contact={selected} onEdit={() => startEdit(selected)}
               onDelete={() => remove(selected)} saving={saving} />
           ) : (
-            <div className="h-full grid place-items-center text-center px-6 text-neutral-600 animate-[fadeIn_0.2s_ease-out]">
-              <div>
-                <div className="w-12 h-12 mx-auto mb-3 grid place-items-center rounded-2xl border border-neutral-800">
-                  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            <div className="h-full grid place-items-center text-center px-6 py-10 animate-[fadeIn_0.2s_ease-out]">
+              <div className="max-w-xs">
+                <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800/80 text-neutral-700 bg-neutral-900/40">
+                  <PersonGlyph className="w-7 h-7" />
                 </div>
-                <div className="text-[13px] text-neutral-500">Select a contact, or add a new one.</div>
+                <div className="text-[14px] text-neutral-400 font-medium">No contact selected</div>
+                <div className="text-[12.5px] text-neutral-600 mt-1.5 leading-relaxed">
+                  Pick someone from the list to see their card, or add a new one.
+                </div>
               </div>
             </div>
           )}
