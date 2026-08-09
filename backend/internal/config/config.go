@@ -91,11 +91,25 @@ func Load(env string) *Config {
 		}
 	}
 
+	// PRECEDENCE: the real process environment wins over the .env file.
+	//
+	// This used to be the other way round, which is backwards from every
+	// dotenv convention and had a sharp edge specific to this program:
+	// repoRoot above is derived from runtime.Caller(0), i.e. the path of THIS
+	// SOURCE FILE ON THE MACHINE THAT COMPILED THE BINARY. So the tracked
+	// .env sitting in a developer's checkout was consulted by that binary
+	// wherever it later ran, and silently outranked anything the operator
+	// actually exported. `PORT=9000 vulos-server` kept binding 8080 because a
+	// file the operator had never seen said so, with no diagnostic.
+	//
+	// A file of defaults should lose to an explicit instruction. It still
+	// beats the compiled-in fallback, so a checkout's .env keeps working for
+	// the developer who wrote it.
 	get := func(key, fallback string) string {
-		if v, ok := vars[key]; ok {
+		if v := os.Getenv(key); v != "" {
 			return v
 		}
-		if v := os.Getenv(key); v != "" {
+		if v, ok := vars[key]; ok {
 			return v
 		}
 		return fallback
