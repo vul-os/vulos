@@ -19,9 +19,12 @@ package main
 // middleware does not block them.
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
+	"time"
 
 	"vulos/backend/services/auth"
 	"vulos/backend/services/passkeys"
@@ -197,14 +200,54 @@ func (h *loginISOHandler) finishLogin(w http.ResponseWriter, r *http.Request) {
 
 // ─── LOGINISO-02: QR kiosk login ─────────────────────────────────────────────
 
+// qrBindCookie binds a QR challenge to the ONE browser that began it
+// (QRSEC-02). See qrPoll for why this exists.
+const qrBindCookie = "vulos_qr_bind"
+
+// setQRBindCookie marks this browser as the originator of challengeID.
+//
+// SameSite=Strict and a path scoped to the QR endpoints: a cross-site request
+// — including the <img> load that makes the login-CSRF below work — never
+// carries it, which is precisely the property qrPoll relies on. HttpOnly keeps
+// it out of reach of script on any origin. It is not a credential: it grants
+// nothing on its own, it only says "this browser is the one that asked".
+// It outlives the challenge by a small margin rather than tracking the
+// package's unexported TTL: the authority on expiry is the challenge record
+// itself, which Poll re-checks server-side, so a slightly longer-lived cookie
+// grants nothing.
+func setQRBindCookie(w http.ResponseWriter, r *http.Request, challengeID string, expiresAt time.Time) {
+	remoteHost, _, _ := net.SplitHostPort(r.RemoteAddr)
+	fromTrustedProxy := remoteHost == "127.0.0.1" || remoteHost == "::1"
+	secure := r.TLS != nil || (fromTrustedProxy && r.Header.Get("X-Forwarded-Proto") == "https")
+	maxAge := int(time.Until(expiresAt)/time.Second) + 60
+	if maxAge < 60 {
+		maxAge = 60
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     qrBindCookie,
+		Value:    challengeID,
+		Path:     "/api/auth/qr/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   secure,
+	})
+}
+
 // POST /api/auth/qr/begin
 // PUBLIC — called by the kiosk before the user is authenticated.
 // Response: { "challenge_id": "...", "qr_data": "vulos://qr-login/...", "expires_at": "..." }
+//
+// Also binds the new challenge to this browser (QRSEC-02) so that only it can
+// collect the resulting session — see qrPoll.
 func (h *loginISOHandler) qrBegin(w http.ResponseWriter, r *http.Request) {
 	result, err := h.qr.Begin()
 	if err != nil {
 		writeErr(w, 500, "could not create QR challenge")
 		return
+	}
+	if result != nil && result.ChallengeID != "" {
+		setQRBindCookie(w, r, result.ChallengeID, result.ExpiresAt)
 	}
 	writeJSON(w, result)
 }
@@ -272,6 +315,29 @@ func (h *loginISOHandler) qrPoll(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
 		writeErr(w, 400, "id query parameter required")
+		return
+	}
+
+	// QRSEC-02: only the browser that BEGAN this challenge may collect its
+	// session. Without this, the endpoint was a login-CSRF / session-fixation
+	// hole: it is public, it is a GET, and on success it sets a 90-day
+	// vulos_session cookie that (on HTTPS) is SameSite=None, so a browser
+	// honours it even on a subresource response. An attacker could begin their
+	// OWN challenge, approve it from their own phone, then put
+	//
+	//	<img src="https://victim-box/api/auth/qr/poll?id=ATTACKER_CHALLENGE">
+	//
+	// on any page the victim visits. The victim's browser would silently adopt
+	// the ATTACKER's session for 90 days, and everything the victim then wrote
+	// — files, mail, notes — would land in the attacker's account for them to
+	// read.
+	//
+	// The bind cookie closes it because the attacker cannot plant one for this
+	// box in the victim's browser, and SameSite=Strict means their cross-site
+	// <img> sends no cookie at all. Checked BEFORE Poll so a cross-site probe
+	// cannot consume the challenge either (Poll deletes it once approved).
+	if bind, err := r.Cookie(qrBindCookie); err != nil || subtle.ConstantTimeCompare([]byte(bind.Value), []byte(id)) != 1 {
+		writeErr(w, 403, "this challenge was not started in this browser")
 		return
 	}
 

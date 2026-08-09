@@ -250,6 +250,7 @@ func TestQRLoginFlow(t *testing.T) {
 	if begin.ChallengeID == "" || begin.QRData == "" {
 		t.Fatalf("qr/begin: empty result %+v", begin)
 	}
+	bindCookies := rec.Result().Cookies()
 	nonce := decodeQRNonce(t, begin.QRData)
 
 	// --- phone approve (authed) with the WRONG nonce → 403 ---
@@ -269,7 +270,9 @@ func TestQRLoginFlow(t *testing.T) {
 	}
 
 	// --- kiosk poll (PUBLIC) → approved + session cookie, no token in body ---
-	rec = pkDoJSON(t, mux, "GET", "/api/auth/qr/poll?id="+begin.ChallengeID, "", nil)
+	// The kiosk is the browser that called begin, so it carries the bind cookie
+	// begin handed it (QRSEC-02); qrPollAs replays it the way a browser would.
+	rec = qrPollAs(t, mux, begin.ChallengeID, bindCookies)
 	if rec.Code != 200 {
 		t.Fatalf("qr/poll: got %d body=%s", rec.Code, rec.Body)
 	}
@@ -331,4 +334,142 @@ func decodeQRNonce(t *testing.T, qrData string) string {
 		t.Fatal("no nonce in qr payload")
 	}
 	return m["nonce"]
+}
+
+// ─── QRSEC-02: the poll endpoint is bound to the browser that began ──────────
+//
+// GET /api/auth/qr/poll is public and, on an approved challenge, sets a 90-day
+// vulos_session cookie that is SameSite=None on HTTPS — which a browser honours
+// even on a subresource response. Before the bind cookie, an attacker could
+// begin their OWN challenge, approve it from their own phone, and then put
+//
+//	<img src="https://victim-box/api/auth/qr/poll?id=ATTACKER_CHALLENGE">
+//
+// on any page the victim loads. The victim's browser would silently adopt the
+// ATTACKER's session for 90 days and everything the victim wrote afterwards
+// would land in the attacker's account.
+
+// qrPollAs polls a challenge carrying the given cookies, the way a browser
+// would. Passing nil is the cross-site case: SameSite=Strict means the
+// attacker's <img> request arrives with no bind cookie at all.
+func qrPollAs(t *testing.T, mux *http.ServeMux, challengeID string, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/api/auth/qr/poll?id="+challengeID, nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	return rec
+}
+
+// qrApprovedChallenge drives begin+approve and returns the challenge id along
+// with the cookies begin set on the originating browser.
+func qrApprovedChallenge(t *testing.T, mux *http.ServeMux, approverID string) (string, []*http.Cookie) {
+	t.Helper()
+	rec := pkDoJSON(t, mux, "POST", "/api/auth/qr/begin", "", nil)
+	if rec.Code != 200 {
+		t.Fatalf("qr/begin: got %d body=%s", rec.Code, rec.Body)
+	}
+	var begin struct {
+		ChallengeID string `json:"challenge_id"`
+		QRData      string `json:"qr_data"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &begin)
+	cookies := rec.Result().Cookies()
+
+	ap := pkDoJSON(t, mux, "POST", "/api/auth/qr/approve", approverID, map[string]string{
+		"challenge_id": begin.ChallengeID, "nonce": decodeQRNonce(t, begin.QRData),
+	})
+	if ap.Code != 200 {
+		t.Fatalf("qr/approve: got %d body=%s", ap.Code, ap.Body)
+	}
+	return begin.ChallengeID, cookies
+}
+
+// The attack itself: a victim browser with no bind cookie must not be handed a
+// session for someone else's approved challenge.
+func TestQRPoll_CrossSiteCannotHarvestSession(t *testing.T) {
+	mux, _, store := newLoginTestMux(t)
+	attacker := store.FindOrCreateUser("test", "attacker-1", "mallory@example.com", "Mallory", "", true)
+
+	// The attacker begins and approves a challenge in THEIR OWN browser.
+	challengeID, _ := qrApprovedChallenge(t, mux, attacker.ID)
+
+	// The victim's browser is made to load it cross-site: no bind cookie.
+	rec := qrPollAs(t, mux, challengeID, nil)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("cross-site poll: got %d, want 403", rec.Code)
+	}
+	if hasSessionCookie(rec) {
+		t.Fatal("SESSION FIXATION: a cross-site poll was handed the attacker's session cookie")
+	}
+}
+
+// A bind cookie for a DIFFERENT challenge must not unlock this one — otherwise
+// an attacker who can get any bind cookie into the victim's browser (e.g. by
+// causing a same-site begin) could still redeem their own approved challenge.
+func TestQRPoll_BindCookieForAnotherChallengeRejected(t *testing.T) {
+	mux, _, store := newLoginTestMux(t)
+	attacker := store.FindOrCreateUser("test", "attacker-2", "mallory2@example.com", "Mallory", "", true)
+
+	attackerChallenge, _ := qrApprovedChallenge(t, mux, attacker.ID)
+
+	// The victim's browser holds a bind cookie from its own, unrelated begin.
+	victimBegin := pkDoJSON(t, mux, "POST", "/api/auth/qr/begin", "", nil)
+	victimCookies := victimBegin.Result().Cookies()
+
+	rec := qrPollAs(t, mux, attackerChallenge, victimCookies)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("mismatched bind cookie: got %d, want 403", rec.Code)
+	}
+	if hasSessionCookie(rec) {
+		t.Fatal("SESSION FIXATION: a mismatched bind cookie still yielded a session cookie")
+	}
+}
+
+// A rejected cross-site poll must not consume the challenge either: Poll
+// deletes an approved challenge once it hands back the token, so checking the
+// bind AFTER polling would let a drive-by <img> destroy a legitimate login.
+func TestQRPoll_RejectedPollDoesNotConsumeChallenge(t *testing.T) {
+	mux, _, store := newLoginTestMux(t)
+	user := store.FindOrCreateUser("test", "kiosk-1", "kiosk@example.com", "Kiosk", "", true)
+
+	challengeID, cookies := qrApprovedChallenge(t, mux, user.ID)
+
+	if rec := qrPollAs(t, mux, challengeID, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-site poll: got %d, want 403", rec.Code)
+	}
+	// The real kiosk, polling a moment later, must still get its session.
+	rec := qrPollAs(t, mux, challengeID, cookies)
+	if rec.Code != 200 {
+		t.Fatalf("legitimate poll after a rejected one: got %d body=%s", rec.Code, rec.Body)
+	}
+	if !hasSessionCookie(rec) {
+		t.Fatal("the rejected cross-site poll consumed the challenge — the real kiosk got no session")
+	}
+}
+
+// The bind cookie must be unusable as a cross-site vehicle in its own right.
+func TestQRBegin_BindCookieIsStrictAndHTTPOnly(t *testing.T) {
+	mux, _, _ := newLoginTestMux(t)
+	rec := pkDoJSON(t, mux, "POST", "/api/auth/qr/begin", "", nil)
+
+	var bind *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == qrBindCookie {
+			bind = c
+		}
+	}
+	if bind == nil {
+		t.Fatal("qr/begin set no bind cookie — the poll gate can never pass")
+	}
+	if bind.SameSite != http.SameSiteStrictMode {
+		t.Errorf("bind cookie SameSite = %v, want Strict (Lax/None would ride along on the cross-site poll)", bind.SameSite)
+	}
+	if !bind.HttpOnly {
+		t.Error("bind cookie is readable by script")
+	}
 }
