@@ -42,6 +42,40 @@ func TestCookieDomain(t *testing.T) {
 			want:        ".lvh.me",
 		},
 
+		// ── fabric/direct-mode bare instance root, NO VULOS_DOMAIN set ────────
+		// (CROSS-TENANT-COOKIE regression: this is the real Host a fabric/direct
+		// box's OS API sees, since VULOS_DOMAIN is never populated for that mode
+		// — see cookieDomain's comment. It must NOT collapse to ".vulos.org".)
+		{
+			name: "bare fabric instance root — must not collapse to shared apex",
+			host: "01h5t3e8k2qj7r9xmvn4p.vulos.org",
+			want: ".01h5t3e8k2qj7r9xmvn4p.vulos.org",
+		},
+		{
+			name: "bare fabric instance root with port",
+			host: "01h5t3e8k2qj7r9xmvn4p.vulos.org:443",
+			want: ".01h5t3e8k2qj7r9xmvn4p.vulos.org",
+		},
+		{
+			name: "a DIFFERENT instance's bare root must not match either",
+			host: "zzzzzzzzzzzzzzzzzzzzzzzzzz.vulos.org",
+			want: ".zzzzzzzzzzzzzzzzzzzzzzzzzz.vulos.org",
+		},
+
+		// A two-label host has no label to spare: stripping one leaves a bare
+		// public suffix, which browsers reject outright (so the session cookie
+		// is dropped and login never persists). Scope to the exact host.
+		{
+			name: "bare apex host must not strip to a public suffix",
+			host: "mybox.com",
+			want: ".mybox.com",
+		},
+		{
+			name: "dev base domain reached directly",
+			host: "lvh.me:3000",
+			want: ".lvh.me",
+		},
+
 		// ── {app}--{profile}.{ulid}.{tld} subdomains (the NET-05 case) ────────
 		{
 			name: "browser--work under ulid subdomain",

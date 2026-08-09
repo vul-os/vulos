@@ -806,13 +806,31 @@ func sessionCookie(r *http.Request, token string) *http.Cookie {
 	}
 }
 
+// hostedApexDomain is the fixed public apex under which every fabric/direct
+// -mode instance is provisioned as "{instanceID}.hostedApexDomain" (mirrors
+// the SAME hardcoded suffix in services/network's Service.Domain():
+// fmt.Sprintf("%s.vulos.org", instanceID)). It exists so cookieDomain can
+// recognise — from the Host alone, with no access to the resolved instance
+// config — the one case where "strip the leftmost label" is NOT safe: see the
+// comment inside cookieDomain below.
+const hostedApexDomain = "vulos.org"
+
 // cookieDomain returns the domain for session cookies.
 //
 // When VULOS_DOMAIN is set it contains the per-instance base domain
-// (e.g. "01h5t3e8k2qj7r9xmvn4p.vulos.org" in production or "lvh.me" in
-// dev). The returned value is prefixed with "." so the cookie is shared
-// across all {app}--{profile} subdomains of that instance but not across
-// different instances.
+// (e.g. "01h5t3e8k2qj7r9xmvn4p.vulos.org" in "own"-domain production or
+// "lvh.me" in dev). The returned value is prefixed with "." so the cookie is
+// shared across all {app}--{profile} subdomains of that instance but not
+// across different instances.
+//
+// CRITICAL: fabric/direct-mode instances (VULOS_DOMAIN_MODE unset or "fabric"
+// or "direct" — the DEFAULT for every Vulos-Cloud-hosted box) never set
+// VULOS_DOMAIN at all. Their public domain "{instanceID}.vulos.org" is
+// derived programmatically inside services/network's Service.Domain(), never
+// exported back into the process environment (grep confirms no os.Setenv
+// call anywhere writes VULOS_DOMAIN or VULOS_INSTANCE_ID). So for the
+// majority-case production deployment, the code below — NOT the env branch
+// above — is what actually decides the cookie's scope.
 //
 // When VULOS_DOMAIN is not set the function derives the cookie scope from the
 // request Host. Subdomains that follow the {app}--{profile}.{base} pattern
@@ -821,6 +839,28 @@ func sessionCookie(r *http.Request, token string) *http.Cookie {
 // Hosts with fewer than two DNS labels (e.g. "localhost") and bare IP
 // addresses receive an empty domain so the cookie is scoped to that exact
 // origin only.
+//
+// The remaining case — a host with no "--" label at all — used to be treated
+// uniformly as "a plain {sub}.{base} setup, strip one label" (e.g. dev's
+// cockpit.lvh.me → .lvh.me). But main.go's subdomain router sends EVERY
+// request whose Host is a subdomain of the resolved base domain straight to
+// the app gateway, never to this auth mux — so the ONLY Host that ever
+// reaches cookieDomain on a fabric/direct box IS its own bare instance root,
+// "{instanceID}.vulos.org", with no app label present at all. Stripping one
+// label from that (the old behaviour) collapsed the cookie's Domain down to
+// the bare, shared, multi-tenant apex ".vulos.org" — scoping every
+// customer's session cookie to EVERY OTHER box hosted under vulos.org (and
+// any other vulos.org-hosted service). Any other box's operator, or an app
+// running on it, would then receive the victim's raw session-cookie value on
+// requests the victim's browser makes to it and could replay that token
+// directly against the victim's own real box for a full account takeover —
+// a cross-tenant session hijack across the entire fleet, not just "every app
+// on the SAME box" (which was already the documented, accepted risk).
+//
+// Fix: when stripping the leftmost label would collapse the scope down to
+// the bare hostedApexDomain itself, refuse — scope the cookie to the full
+// host instead (matching the fabric/direct instance root exactly, which is
+// what VULOS_DOMAIN would have contained had it been set).
 func cookieDomain(r *http.Request) string {
 	if d := os.Getenv("VULOS_DOMAIN"); d != "" {
 		// Ensure the returned value is a parent-domain cookie scope.
@@ -862,10 +902,27 @@ func cookieDomain(r *http.Request) string {
 		return "." + base
 	}
 
-	// Plain subdomain (no "--"): scope cookie to the parent domain so that
-	// simple {sub}.{domain} setups still work.
-	// e.g. cockpit.lvh.me → .lvh.me
-	return "." + strings.Join(parts[1:], ".")
+	// No "--" label. Stripping one is only safe when what remains is still a
+	// domain THIS box exclusively controls. Two ways it is not:
+	//
+	//  1. It collapses to the shared multi-tenant apex — see the long comment
+	//     above. "{ulid}.vulos.org" → ".vulos.org" hands the session cookie to
+	//     every other customer's box in the fleet.
+	//  2. It collapses to a bare public suffix — a two-label host like
+	//     "mybox.com" strips to ".com". Browsers reject a public-suffix cookie
+	//     domain outright, so this fails closed rather than leaking, but the
+	//     visible symptom is that logging in silently never persists. (Reached
+	//     when a box is served from a bare apex with VULOS_DOMAIN unset, e.g.
+	//     DOMAIN_MODE=own configured without its companion variable.)
+	//
+	// In both cases the correct scope is the full host: it still covers the
+	// {app}--{profile} subdomains that the branch above strips down to it,
+	// and it matches exactly what VULOS_DOMAIN would have held.
+	rest := strings.Join(parts[1:], ".")
+	if strings.EqualFold(rest, hostedApexDomain) || strings.Count(rest, ".") < 1 {
+		return "." + host
+	}
+	return "." + rest
 }
 
 // --- Profile management handlers ---
