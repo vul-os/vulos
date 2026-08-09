@@ -299,14 +299,21 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         }
         // Preserve floating geometry only if the window isn't already tiled.
         const alreadyTiled = !!w._tile
-        // Position below menu bar (32px), fullscreen to bottom
+        // Ask tileGeometry rather than recomputing the insets here. This used to
+        // be its own `{ x: 0, y: 32 }` / `innerHeight - 32`, a second copy of
+        // the same arithmetic — so when tiling learned to reserve the dock at
+        // the bottom, maximize did not, and a maximized window kept running
+        // underneath it. TILE_WINDOW already goes through tileGeometry; this is
+        // the same geometry and now comes from the same place.
+        const geom = tileGeometry('maximize', window.innerWidth, window.innerHeight)
+        if (!geom) return w
         return {
           ...w,
           _prevPosition: alreadyTiled ? w._prevPosition : w.position,
           _prevSize: alreadyTiled ? w._prevSize : w.size,
           _maximized: true, _tile: 'maximize',
-          position: { x: 0, y: 32 },
-          size: { width: window.innerWidth, height: window.innerHeight - 32 },
+          position: geom.position,
+          size: geom.size,
         }
       })
       desktops[state.activeDesktop] = desk

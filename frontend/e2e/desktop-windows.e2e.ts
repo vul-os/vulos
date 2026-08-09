@@ -84,3 +84,34 @@ test('Mission Control opens with F3 and closes with Escape', async ({ page }) =>
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Add desktop' })).toBeHidden()
 })
+
+// A maximized window must not run underneath the dock.
+//
+// tileGeometry reserves DOCK_H at the bottom, but a unit test that derives its
+// expectation from that same constant is a tautology — setting DOCK_H to 0
+// passes it while reintroducing the bug. This measures the REAL rendered dock
+// against the REAL maximized window, so the only way to satisfy it is for the
+// window to actually clear the dock.
+//
+// The bug it pins: the dock is always present now, and a maximized window ran
+// full-height beneath it. In the Assistant that put the dock across the
+// composer — and the dock's tiles take pointer events, so it was covering a
+// control the user needed to click, not just overlapping decoration.
+test('a maximized window clears the dock instead of running under it', async ({ page }) => {
+  await boot(page)
+  await launch(page, 'Calculator')
+
+  await page.getByRole('button', { name: 'Maximize window' }).first().click()
+
+  const dock = await page.getByRole('toolbar', { name: 'Dock' }).boundingBox()
+  if (!dock) throw new Error('the Dock did not render, so this proves nothing')
+
+  // Window.tsx stamps data-window-id on the window root.
+  const win = await page.locator('[data-window-id]').first().boundingBox()
+  if (!win) throw new Error('could not measure the maximized window')
+
+  expect(
+    win.y + win.height,
+    `the maximized window's bottom edge (${win.y + win.height}) overlaps the dock, which starts at ${dock.y}`,
+  ).toBeLessThanOrEqual(dock.y)
+})

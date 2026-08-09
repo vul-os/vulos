@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  MENU_BAR_H, TILE_ZONES,
+  MENU_BAR_H, DOCK_H, TILE_ZONES,
   tileGeometry, snapZoneForPoint, nextTile, nextWindowId,
 } from '../shell/windowTiling.js'
 
@@ -11,6 +11,13 @@ import {
 const VW = 1000
 const VH = 800
 
+// The usable area is the viewport minus the menu bar at the top AND the dock at
+// the bottom. The dock inset is the point of these expectations: without it a
+// maximized window ran under the dock, which floats over its last 68px — and
+// the dock's tiles take pointer events, so it was covering controls (the
+// Assistant's composer, most visibly) rather than merely overlapping chrome.
+const USABLE_H = VH - MENU_BAR_H - DOCK_H
+
 describe('tileGeometry', () => {
   it('left + right halves tile the usable width with no seam or overlap', () => {
     const l = tileGeometry('left', VW, VH)
@@ -20,17 +27,20 @@ describe('tileGeometry', () => {
     expect(l.position).toEqual({ x: 0, y: MENU_BAR_H })
     expect(r.position.x).toBe(l.size.width)
     expect(l.size.width + r.size.width).toBe(VW)
-    // Both span the full usable height (below the menu bar).
-    expect(l.size.height).toBe(VH - MENU_BAR_H)
-    expect(r.size.height).toBe(VH - MENU_BAR_H)
+    // Both span the full usable height (below the menu bar, above the dock).
+    expect(l.size.height).toBe(USABLE_H)
+    expect(r.size.height).toBe(USABLE_H)
   })
 
-  it('maximize / top fill the whole usable area below the menu bar', () => {
+  it('maximize / top fill the usable area between the menu bar and the dock', () => {
     for (const zone of ['maximize', 'top']) {
       const g = tileGeometry(zone, VW, VH)
       if (!g) throw new Error(`expected tileGeometry to resolve a geometry for "${zone}"`)
       expect(g.position).toEqual({ x: 0, y: MENU_BAR_H })
-      expect(g.size).toEqual({ width: VW, height: VH - MENU_BAR_H })
+      expect(g.size).toEqual({ width: VW, height: USABLE_H })
+      // The property that matters, stated directly: the window's bottom edge
+      // must clear the dock rather than run beneath it.
+      expect(g.position.y + g.size.height).toBeLessThanOrEqual(VH - DOCK_H)
     }
   })
 
@@ -47,17 +57,26 @@ describe('tileGeometry', () => {
     expect(tl.size.width + tr.size.width).toBe(VW)
     expect(bl.size.width + br.size.width).toBe(VW)
     // Rows stack to the full usable height.
-    expect(tl.size.height + bl.size.height).toBe(VH - MENU_BAR_H)
-    expect(tr.size.height + br.size.height).toBe(VH - MENU_BAR_H)
+    expect(tl.size.height + bl.size.height).toBe(USABLE_H)
+    expect(tr.size.height + br.size.height).toBe(USABLE_H)
     // Bottom row starts where the top row ends.
     expect(bl.position.y).toBe(MENU_BAR_H + tl.size.height)
+    // And the bottom row clears the dock.
+    expect(bl.position.y + bl.size.height).toBeLessThanOrEqual(VH - DOCK_H)
+    expect(br.position.y + br.size.height).toBeLessThanOrEqual(VH - DOCK_H)
   })
 
-  it('respects a custom menu-bar inset', () => {
-    const g = tileGeometry('left', VW, VH, 0)
+  it('respects custom menu-bar and dock insets', () => {
+    // Both insets zeroed — the surface a caller with no chrome would want.
+    const g = tileGeometry('left', VW, VH, 0, 0)
     if (!g) throw new Error('expected tileGeometry to resolve a geometry for "left"')
     expect(g.position.y).toBe(0)
     expect(g.size.height).toBe(VH)
+
+    // A custom dock inset is honoured independently of the menu bar.
+    const d = tileGeometry('left', VW, VH, 0, 120)
+    if (!d) throw new Error('expected tileGeometry to resolve a geometry for "left"')
+    expect(d.size.height).toBe(VH - 120)
   })
 
   it('returns null for an unknown zone', () => {

@@ -9,6 +9,19 @@
 
 export const MENU_BAR_H = 32
 
+// Bottom inset reserved for the dock: its 58px toolbar plus the 10px
+// (0.625rem) it floats above the viewport edge — measured from the rendered
+// element, not guessed. See Dock.tsx's wrapper.
+//
+// Without this, tiling and maximize sized every window to the full viewport
+// height and the dock — which is now ALWAYS present, not just when a window
+// exists — floated over the bottom 68px of it. In a maximized Assistant that
+// put the dock across the composer: the input and the "sent to a third party"
+// notice underneath it were both partly hidden, and the tiles sit on
+// pointer-events:auto, so it was covering a control the user needed to click,
+// not merely overlapping decoration. Every maximized app had it.
+export const DOCK_H = 68
+
 // The set of concrete tile positions a window can occupy. 'maximize' behaves
 // like 'top' geometrically but is tracked separately so it round-trips through
 // the traffic-light maximize button and restore.
@@ -33,10 +46,11 @@ export interface TileGeometryResult {
  * @param vw     viewport width
  * @param vh     viewport height
  * @param menuBar top inset reserved for the menu bar
+ * @param dock    bottom inset reserved for the dock
  */
-export function tileGeometry(zone: string, vw: number, vh: number, menuBar: number = MENU_BAR_H): TileGeometryResult | null {
+export function tileGeometry(zone: string, vw: number, vh: number, menuBar: number = MENU_BAR_H, dock: number = DOCK_H): TileGeometryResult | null {
   const top = menuBar
-  const usableH = vh - top
+  const usableH = vh - top - dock
   const halfW = Math.floor(vw / 2)
   const rightW = vw - halfW
   const halfH = Math.floor(usableH / 2)
