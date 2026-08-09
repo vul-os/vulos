@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"sync"
 	"time"
 	"vulos/backend/internal/datadir"
+	"vulos/backend/internal/safedial"
 	"vulos/backend/services/packages"
 )
 
@@ -83,7 +86,32 @@ func NewAppStore(appsDir string) *AppStore {
 		catalogURL:   os.Getenv("VULOS_APP_CATALOG"),
 		registry:     reg,
 		registryPath: registryPath,
-		client:       &http.Client{Timeout: 30 * time.Second},
+		client:       newSSRFGuardedStoreClient(),
+	}
+}
+
+// newSSRFGuardedStoreClient builds the *http.Client used for both the
+// catalog fetch (s.catalogURL, operator-configured via VULOS_APP_CATALOG)
+// and, more importantly, Install's download of entry.DownloadURL — a field
+// decoded directly from an admin's POST /api/store/install request body
+// (cmd/server/main.go), with no registry signature and no mandatory
+// checksum. Unlike InstallFromRegistry (registry.go), which only ever
+// downloads a URL from an Ed25519-signed, vetted registry entry, this path
+// previously had NO SSRF guard at all: an admin session (or a CSRF'd one)
+// could point Install at http://169.254.169.254/..., a loopback admin API,
+// or any LAN host, and the box would fetch, tar-extract, and install
+// whatever came back. The dial-time Control hook re-validates the resolved
+// IP at every connect(2) (including across a redirect), closing the
+// DNS-rebind gap a registration-time-only check would leave open.
+func newSSRFGuardedStoreClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: 30 * time.Second,
+				Control: safedial.ControlFunc(false),
+			}).DialContext,
+		},
 	}
 }
 
@@ -176,6 +204,14 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	if entry.DownloadURL == "" {
 		return fmt.Errorf("no download URL for %s", entry.ID)
 	}
+	// SSRF guard (registration-time half; newSSRFGuardedStoreClient's dial-time
+	// Control hook is the second, DNS-rebind-safe half). entry.DownloadURL is
+	// attacker-shaped input (an admin-supplied request body, not a vetted
+	// registry entry — see newSSRFGuardedStoreClient's doc comment), so it is
+	// screened exactly like any other user-supplied outbound URL in this OS.
+	if err := validateStoreDownloadURL(entry.DownloadURL); err != nil {
+		return fmt.Errorf("refusing download URL for %s: %w", entry.ID, err)
+	}
 
 	appDir := filepath.Join(s.appsDir, entry.ID)
 	if err := os.MkdirAll(appDir, 0755); err != nil {
@@ -227,6 +263,29 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	}
 
 	log.Printf("[appstore] installed %s", entry.ID)
+	return nil
+}
+
+// validateStoreDownloadURL rejects a download URL whose scheme is not
+// http(s) or whose host is (or resolves to) a loopback/private/link-local/
+// metadata address, before Install ever dials it. This is the pre-dial half
+// of the SSRF guard; newSSRFGuardedStoreClient's Control hook re-validates
+// the actually-resolved IP at connect(2) time (DNS-rebind + redirect safe).
+func validateStoreDownloadURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme must be http or https, got %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL has no host")
+	}
+	if _, err := safedial.ValidateHost(host, false); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -289,21 +289,22 @@ func RegisterAnchorHandlers(mux *http.ServeMux, s *AnchorStore) {
 }
 
 // handleAnchorProvision handles POST /api/anchor-inbox/provision.
-// Expects JSON body: {"account_id": "..."}.
+//
+// SECURITY (IDOR-ANCHORINBOX-01): the account_id used to be read straight out
+// of the request body, so any authenticated profile could provision or
+// re-provision the anchor-inbox entitlement record for an arbitrary
+// account_id it guessed or enumerated. The only identity this handler can
+// trust is the caller's own session, so account_id is now always the
+// caller's X-User-ID — a client can never act on another account's record. A
+// client-supplied account_id in the body, if present, is ignored.
 func handleAnchorProvision(w http.ResponseWriter, r *http.Request, s *AnchorStore) {
-	var req struct {
-		AccountID string `json:"account_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		anchorWriteError(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if req.AccountID == "" {
-		anchorWriteError(w, "account_id is required", http.StatusBadRequest)
+	accountID := r.Header.Get("X-User-ID")
+	if accountID == "" {
+		anchorWriteError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	st, err := s.Provision(r.Context(), req.AccountID)
+	st, err := s.Provision(r.Context(), accountID)
 	if err != nil {
 		anchorWriteError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -311,11 +312,15 @@ func handleAnchorProvision(w http.ResponseWriter, r *http.Request, s *AnchorStor
 	anchorWriteJSON(w, st, http.StatusOK)
 }
 
-// handleAnchorStatus handles GET /api/anchor-inbox/status?account_id=...
+// handleAnchorStatus handles GET /api/anchor-inbox/status.
+//
+// SECURITY (IDOR-ANCHORINBOX-01): see handleAnchorProvision — account_id is
+// always the caller's own X-User-ID, never a client-supplied query param, so
+// one account can never read another account's entitlement/usage record.
 func handleAnchorStatus(w http.ResponseWriter, r *http.Request, s *AnchorStore) {
-	accountID := r.URL.Query().Get("account_id")
+	accountID := r.Header.Get("X-User-ID")
 	if accountID == "" {
-		anchorWriteError(w, "account_id query param required", http.StatusBadRequest)
+		anchorWriteError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
