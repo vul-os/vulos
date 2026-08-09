@@ -470,24 +470,28 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 	// say what actually authorizes it — "public" is not a reason, "the handler
 	// does its own owner-or-token gate" is.
 	expectedPublicPaths := map[string]string{
-		"/health":                         "liveness probe — no sensitive data",
-		"/healthz":                        "trivial liveness probe (status page) — no auth",
-		"/api/auth/me":                    "returns empty without a valid session",
-		"/api/auth/logout":                "logout is harmless without a session",
-		"/api/auth/register":              "first-user registration — protected at handler level",
-		"/api/auth/login":                 "credential submission — auth not yet established",
-		"/api/auth/status":                "setup status check — no sensitive data",
-		"/api/setup/status":               "setup completion flag — no sensitive data",
-		"/api/setup/mode":                 "INIT-09: unauthenticated sync-mode poll (setup wizard)",
-		"/api/setup/apps":                 "BUNDLE-01: suite selection at onboarding (pre-account)",
-		"/api/setup/join-code":            "INIT-10: unauthenticated join-code decode",
-		"/api/setup/join":                 "INIT-08: cluster join at setup time",
-		"/api/setup/join/status":          "INIT-08: join progress poll at setup time",
-		"/api/browser/status":             "browser availability — no sensitive data",
-		"/manifest.json":                  "PWA manifest — no sensitive data",
-		"/api/identity/check":             "IDENTITY-01: username availability at setup time (rate-limited on the CP). NOT /api/identity/claim, which stays session-gated",
-		"/api/gateway":                    "GATEWAY-01: GET is a public read; POST/DELETE do their OWN owner-or-first-boot gate in the handler",
-		"/api/gateway/check":              "GATEWAY-01: dry-run validate + SSRF-scoped probe (setup-time; no persistence)",
+		"/health":                "liveness probe — no sensitive data",
+		"/healthz":               "trivial liveness probe (status page) — no auth",
+		"/api/auth/me":           "returns empty without a valid session",
+		"/api/auth/logout":       "logout is harmless without a session",
+		"/api/auth/register":     "first-user registration — protected at handler level",
+		"/api/auth/login":        "credential submission — auth not yet established",
+		"/api/auth/status":       "setup status check — no sensitive data",
+		"/api/setup/status":      "setup completion flag — no sensitive data",
+		"/api/setup/mode":        "INIT-09: unauthenticated sync-mode poll (setup wizard)",
+		"/api/setup/apps":        "BUNDLE-01: suite selection at onboarding (pre-account)",
+		"/api/setup/join-code":   "INIT-10: unauthenticated join-code decode",
+		"/api/setup/join":        "INIT-08: cluster join at setup time",
+		"/api/setup/join/status": "INIT-08: join progress poll at setup time",
+		"/api/browser/status":    "browser availability — no sensitive data",
+		"/manifest.json":         "PWA manifest — no sensitive data",
+		"/api/identity/check":    "IDENTITY-01: username availability at setup time (rate-limited on the CP). NOT /api/identity/claim, which stays session-gated",
+		// "/api/gateway" and "/api/gateway/check" (GATEWAY-01) are deliberately
+		// ABSENT: their handler (cmd/server/routes_gateway.go) was deleted in
+		// f9cbc368 but the publicPaths entries survived as dead auth-bypass
+		// landmines until this audit removed them from handlers.go too. Do not
+		// re-add either path here without pairing it with a real, reviewed
+		// handler.
 		"/api/auth/masterkey/recover":     "WAVE2-RECOVERY: phrase-based password reset (user is locked out by definition)",
 		"/api/auth/pin/unlock":            "CLOGIN-06: PIN unlock — rate-limited, lock screen only",
 		"/api/auth/pin/status":            "CLOGIN-06: lockout status — displayed on lock screen",

@@ -98,24 +98,31 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 // publicPaths are endpoints that don't require authentication.
 var publicPaths = map[string]bool{
-	"/health":                         true,
-	"/healthz":                        true, // trivial liveness probe (status page) — no auth
-	"/api/auth/me":                    true,
-	"/api/auth/logout":                true,
-	"/api/auth/register":              true,
-	"/api/auth/login":                 true,
-	"/api/auth/status":                true,
-	"/api/setup/status":               true,
-	"/api/setup/mode":                 true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
-	"/api/setup/apps":                 true, // BUNDLE-01: suite selection GET/POST at onboarding (pre-account)
-	"/api/setup/join-code":            true, // INIT-10: unauthenticated join-code decode
-	"/api/setup/join":                 true, // INIT-08: unauthenticated cluster join (setup-time)
-	"/api/setup/join/status":          true, // INIT-08: unauthenticated join progress poll
-	"/api/browser/status":             true,
-	"/manifest.json":                  true,
-	"/api/identity/check":             true, // IDENTITY-01: account-username availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
-	"/api/gateway":                    true, // GATEWAY-01: control-plane URL. GET is a public read; POST/DELETE do their OWN owner-or-first-boot gate in the handler (like /metrics), so the session middleware must defer rather than 401 the setup wizard.
-	"/api/gateway/check":              true, // GATEWAY-01: dry-run validate + SSRF-scoped reachability probe (setup-time; no persistence).
+	"/health":                true,
+	"/healthz":               true, // trivial liveness probe (status page) — no auth
+	"/api/auth/me":           true,
+	"/api/auth/logout":       true,
+	"/api/auth/register":     true,
+	"/api/auth/login":        true,
+	"/api/auth/status":       true,
+	"/api/setup/status":      true,
+	"/api/setup/mode":        true, // INIT-09: unauthenticated sync-mode poll (setup wizard)
+	"/api/setup/apps":        true, // BUNDLE-01: suite selection GET/POST at onboarding (pre-account)
+	"/api/setup/join-code":   true, // INIT-10: unauthenticated join-code decode
+	"/api/setup/join":        true, // INIT-08: unauthenticated cluster join (setup-time)
+	"/api/setup/join/status": true, // INIT-08: unauthenticated join progress poll
+	"/api/browser/status":    true,
+	"/manifest.json":         true,
+	"/api/identity/check":    true, // IDENTITY-01: account-username availability check (setup-time; public + rate-limited on the CP). NOT /api/identity/claim — that stays session-gated.
+	// NOTE: "/api/gateway" and "/api/gateway/check" (GATEWAY-01) were REMOVED
+	// from this allow-list. Commit f9cbc368 ("remove the Vulos Cloud
+	// account/enrolment surface") deleted cmd/server/routes_gateway.go — the
+	// file that registered both routes — but left these two publicPaths
+	// entries behind. With no handler mounted at either path they were dead
+	// (ServeMux 404s regardless of auth), not exploitable today, but a stale
+	// auth-bypass entry is a landmine: if either path is ever reused for a new
+	// handler, it would silently inherit an unauthenticated exemption nobody
+	// reviewed for the new purpose. Removed rather than left as a trap.
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)
