@@ -612,15 +612,46 @@ function GraphCard({ label, value, details, data, color, colorFill, borderColor,
 }
 
 /* ── Area Graph ── */
+/**
+ * nextGraphSize reconciles an observed size against the current one, returning
+ * the PREVIOUS OBJECT UNCHANGED when nothing moved.
+ *
+ * The identity matters, not just the values: React bails out of a state update
+ * only when the next value is Object.is-equal to the current one. Returning a
+ * fresh `{ w, h }` each time — which this did — guarantees a re-render on every
+ * ResizeObserver callback, and since the re-render resizes the observed SVG,
+ * the observer fires again. Four graphs, four self-sustaining loops.
+ *
+ * Exported so the regression is testable: a test can assert the same reference
+ * comes back, which is the exact property that stops the loop.
+ */
+export function nextGraphSize(prev: { w: number, h: number }, width: number, height: number): { w: number, h: number } {
+  return prev.w === width && prev.h === height ? prev : { w: width, h: height }
+}
+
 function AreaGraph({ data, color, fill, autoScale }: { data: number[], color: string, fill: string, autoScale?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 200, h: 80 })
 
+  // Only set state when the size ACTUALLY changed.
+  //
+  // This used to call setSize({ w, h }) on every observation. A fresh object is
+  // never Object.is-equal to the previous one, so React could not bail out and
+  // re-rendered on every callback; the re-render resized the SVG, which fed the
+  // observer again — a self-sustaining render loop, one per graph, four graphs.
+  //
+  // It did not merely burn CPU. It starved the main thread badly enough that
+  // OTHER windows' React.lazy chunks never finished committing, so they sat on
+  // their "Loading..." Suspense fallback indefinitely. That is the long-standing
+  // blank-window bug: it looked like a race, but it never resolved with time,
+  // and it followed whichever window was opened alongside Activity Monitor. Two
+  // windows shipped empty in a screenshot because of it.
   useEffect(() => {
     if (!ref.current) return
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect
-      if (width > 0 && height > 0) setSize({ w: width, h: height })
+      if (width <= 0 || height <= 0) return
+      setSize(prev => nextGraphSize(prev, width, height))
     })
     ro.observe(ref.current)
     return () => ro.disconnect()
