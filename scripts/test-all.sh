@@ -41,6 +41,23 @@ run_step "go test -race ./..." \
 run_step "go test -tags=e2e (firstboot/e2e)" \
   bash -c "cd '$BACKEND' && go test -tags=e2e -timeout 2m -v ./firstboot/e2e/..."
 
+# ── Step 2b: the real server binary, over real HTTP ───────────────────────────
+# Compiles cmd/server, runs it on a temp data dir and an ephemeral port, and
+# drives first-boot → login → restart → logout against it. Unlike Step 2 (which
+# is in-process against mocks) nothing here is stubbed: real middleware order,
+# real on-disk stores, real session cookies.
+run_step "go test -tags=e2e (real server binary)" \
+  bash -c "cd '$BACKEND' && go test -tags=e2e -timeout 5m ./e2e/..."
+
+# ── Step 2c: the relay, as real separate processes ────────────────────────────
+# Two real `vulos relay serve` processes and real box agents on loopback: two
+# boxes through one relay, four simultaneous tunnels through two, failover when
+# a relay is killed mid-flight, a bad token refused, and a world-readable
+# config refused. LOCAL ONLY — nothing here touches the cloud relay, which is
+# deliberately a separate, human-run exercise.
+run_step "relay smoke (real processes, loopback)" \
+  bash "$ROOT/scripts/smoke-relay.sh"
+
 # ── Step 3: installer storage-mode gate ───────────────────────────────────────
 # Runs install-vulos.sh's dry-run mode-selection path for real (scratch config
 # dir, nothing installed). Fails closed with a coverage assertion.

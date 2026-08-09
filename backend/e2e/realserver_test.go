@@ -2,13 +2,21 @@
 
 // Package e2e drives the REAL Vulos server binary over real HTTP.
 //
-// Everything else that calls itself an end-to-end test in this repo mocks the
-// backend: the Playwright suite fulfils every route in the browser
-// (frontend/e2e/mock-backend.js), and the Go tests build an httptest mux out of
-// hand-picked handlers. Both are useful and neither has ever proved that
-// `cmd/server` — the actual shipped binary, with its real wiring, real
-// middleware order, real on-disk stores and real session cookies — can take a
-// user from first boot to a logged-in session and back.
+// Everything else that calls itself an end-to-end test in this repo stops
+// short of the real process:
+//
+//   - frontend/e2e (Playwright) fulfils every backend route in the browser,
+//     so no Go code runs at all.
+//   - The Go route tests build an httptest mux out of hand-picked handlers.
+//   - backend/firstboot/e2e seeds and drives the first-boot lifecycle
+//     IN-PROCESS against mocks (no real S3, no real network). It is the
+//     complement of this file, not a duplicate: it goes wide over the
+//     lifecycle in one process; this goes narrow over auth through a real one.
+//
+// None of them has ever proved that `cmd/server` — the actual shipped binary,
+// with its real wiring, real middleware order, real on-disk stores and real
+// session cookies — can take a user from first boot to a logged-in session
+// and back.
 //
 // That gap is why this exists. It compiles cmd/server, runs it on a temp data
 // directory and an ephemeral port, and talks to it with a plain HTTP client.
