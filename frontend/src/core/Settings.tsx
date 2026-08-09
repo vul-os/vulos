@@ -3245,132 +3245,103 @@ function AboutSettings() {
   const battery = sys?.battery
 
   return (
-    <div>
-      {/* Branding header */}
-      <div className="flex flex-col items-center text-center mb-8 pt-2">
-        <img src="/vulos.png" alt="Vulos OS" className="w-20 h-20 mb-4 opacity-90" />
-        <h1 className="text-2xl font-semibold tracking-tight">Vulos OS</h1>
-        <p className="text-sm text-[var(--text-muted)] mt-1">Open OS</p>
-        <p className="text-xs text-[var(--text-faint)] mt-0.5">"vula" — Zulu for "open"</p>
-      </div>
-
-      {/* System info */}
-      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-6">
-        <InfoRow label="Device" value={sys?.device_model || sys?.hostname || '—'} />
-        <InfoRow label="Hostname" value={sys?.hostname} />
-        <InfoRow label="OS" value={sys?.os_version ? `Debian ${sys.os_version}` : 'Debian Linux'} />
-        <InfoRow label="Kernel" value={sys?.kernel} />
-        <InfoRow label="Architecture" value={sys?.arch} />
-      </div>
-
-      {/* Hardware */}
-      <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Hardware</h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-6">
-        <InfoRow label="Processor" value={sys?.cpu_model || `${sys?.cpu_cores || '—'} cores`} />
-        <InfoRow label="CPU Cores" value={sys?.cpu_cores} />
-        <InfoRow label="Memory" value={sys ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : '—'} />
-        {memPercent !== undefined && memPercent > 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-            <span className="text-xs text-[var(--text-muted)]">RAM Usage</span>
-            <div className="flex items-center gap-2">
-              <div className="w-32 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${memPercent > 80 ? 'bg-[var(--status-danger)]' : memPercent > 60 ? 'bg-[var(--status-warning)]' : 'bg-[var(--accent)]'}`}
-                  style={{ width: `${Math.min(memPercent, 100)}%` }}
-                />
-              </div>
-              <span className="text-xs text-[var(--text-tertiary)] w-10 text-right">{Math.round(memPercent)}%</span>
-            </div>
-          </div>
-        )}
-        <InfoRow label="Storage" value={sys?.storage_total_mb ? `${fmtMB(sys.storage_used_mb)} used of ${fmtMB(sys.storage_total_mb)}` : '—'} />
-        {battery !== undefined && battery >= 0 && (
-          <InfoRow label="Battery" value={`${battery}%${sys?.charging ? ' (Charging)' : ''}`} />
-        )}
-      </div>
-
-      {/* GPU */}
-      {sys && (
-        <>
-          <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Graphics</h3>
-          <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-6">
-            <InfoRow label="GPU" value={sys.gpu_device || '—'} />
-            <InfoRow label="Vendor" value={sys.gpu_vendor !== 'none' ? sys.gpu_vendor : 'None'} />
-            <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-              <span className="text-xs text-[var(--text-muted)]">Tier</span>
-              <span className={`text-sm font-medium ${
-                sys.gpu_tier === 'nvenc' ? 'text-[var(--status-success)]' :
-                sys.gpu_tier === 'vaapi' ? 'text-[var(--accent)]' :
-                'text-[var(--text-tertiary)]'
-              }`}>
-                {sys.gpu_tier === 'nvenc' ? 'Tier 2 — NVENC' :
-                 sys.gpu_tier === 'vaapi' ? 'Tier 1 — VA-API' :
-                 'Tier 0 — Software'}
-              </span>
-            </div>
-            <InfoRow label="Encoder" value={sys.gpu_encoder} />
-            <InfoRow label="Codec" value={sys.gpu_codec || '—'} />
-            {sys.gpu_av1 && (
-              <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
-                <span className="text-xs text-[var(--text-muted)]">AV1 Encode</span>
-                <span className="text-sm text-[var(--status-success)] font-medium">Supported</span>
-              </div>
-            )}
-            <InfoRow label="Capture" value={sys.gpu_pipewire ? 'PipeWire DMA-BUF' : 'X11 SHM'} />
-          </div>
-        </>
-      )}
-
-      {/* Runtime */}
-      <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Runtime</h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-6">
-        <InfoRow label="Uptime" value={sys?.uptime} />
-        <InfoRow label="Server" value={health?.status === 'ok' ? 'Running' : 'Unreachable'} ok={health?.status === 'ok'} />
-        <InfoRow label="Shell" value="React 19 + Tailwind 4 + Vite" />
-        <InfoRow label="Backend" value="Go + Debian Linux" />
-      </div>
-
-      {/* Legal / open source */}
-      <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Legal</h3>
-      <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-2">
-        <button
-          onClick={() => openLegal('Open source licences', '/api/system/licenses')}
-          className="w-full flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-colors text-left"
-        >
-          <span className="text-xs text-[var(--text-muted)]">Open source licences</span>
-          <span className="text-sm text-[var(--accent)]">View →</span>
-        </button>
-        <button
-          onClick={() => openLegal('Written offer for source code', '/api/system/written-offer')}
-          className="w-full flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-colors text-left"
-        >
-          <span className="text-xs text-[var(--text-muted)]">Source code for GPL/LGPL components</span>
-          <span className="text-sm text-[var(--accent)]">View offer →</span>
-        </button>
-      </div>
-      <p className="text-[12px] text-[var(--text-faint)] mb-6">
-        Vulos includes open-source software. The notices reproduce each component's licence;
-        the written offer covers how to obtain the corresponding source of the GPL/LGPL parts.
-      </p>
-      {legalErr && (
-        <div className="mb-6 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">{legalErr}</div>
-      )}
-      {legal && (
-        <div className="mb-6 rounded-xl border border-[var(--border-default)] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)] border-b border-[var(--border-default)]">
-            <span className="text-xs text-[var(--text-tertiary)] font-medium">{legal.title}</span>
-            <button onClick={() => setLegal(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Close ✕</button>
-          </div>
-          <pre className="max-h-96 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-[var(--text-tertiary)] whitespace-pre-wrap break-words">
-            {legalLoading ? 'Loading…' : legal.text}
-          </pre>
+    // About is the one pane with no <Section> masthead — deliberately, because
+    // its own branding block IS the masthead. It still adopts the card language
+    // of every other pane below it, where before it was bare bordered lists
+    // under uppercase micro-headings that appeared nowhere else in Settings.
+    <div className="animate-[fadeIn_0.18s_ease-out]">
+      {/* Branding header. Left-aligned like every other pane's masthead: a
+          centred logo block sat in the middle of a maximised window with the
+          card stack starting hard left underneath it, so the page had two
+          different centre lines. */}
+      <div className="mb-6 pb-6 border-b border-[var(--border-subtle)] flex items-center gap-5">
+        <img src="/vulos.png" alt="" aria-hidden="true" className="w-16 h-16 shrink-0 opacity-90" />
+        <div className="min-w-0">
+          <h2 className="text-[1.5rem] leading-[1.2] font-semibold tracking-[-0.015em]">Vulos OS</h2>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">Open OS — “vula” is Zulu for “open”.</p>
         </div>
-      )}
+      </div>
 
-      {/* Powered by */}
-      <div className="flex items-center justify-center gap-3 mt-6 pt-4 border-t border-[var(--border-default)]">
-        <span className="text-[12px] text-[var(--text-faint)]">Powered by</span>
-        <span className="text-xs text-[var(--text-tertiary)] font-medium">Debian Linux</span>
+      <div className="space-y-5">
+        <Card icon="about" title="System">
+          <InfoList>
+            <InfoRow label="Device" value={sys?.device_model || sys?.hostname || '—'} />
+            <InfoRow label="Hostname" value={sys?.hostname} />
+            <InfoRow label="OS" value={sys?.os_version ? `Debian ${sys.os_version}` : 'Debian Linux'} />
+            <InfoRow label="Kernel" value={sys?.kernel} />
+            <InfoRow label="Architecture" value={sys?.arch} />
+          </InfoList>
+        </Card>
+
+        <Card title="Hardware">
+          <InfoList>
+            <InfoRow label="Processor" value={sys?.cpu_model || `${sys?.cpu_cores || '—'} cores`} />
+            <InfoRow label="CPU cores" value={sys?.cpu_cores} />
+            <InfoRow label="Memory" value={sys ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : '—'} />
+            <InfoRow label="Storage" value={sys?.storage_total_mb ? `${fmtMB(sys.storage_used_mb)} used of ${fmtMB(sys.storage_total_mb)}` : '—'} />
+            {battery !== undefined && battery >= 0 && (
+              <InfoRow label="Battery" value={`${battery}%${sys?.charging ? ' (charging)' : ''}`} />
+            )}
+          </InfoList>
+          {memPercent !== undefined && memPercent > 0 && (
+            <Meter className="mt-4 max-w-[26rem]" label="RAM in use" pct={memPercent} />
+          )}
+        </Card>
+
+        {sys && (
+          <Card title="Graphics">
+            <InfoList>
+              <InfoRow label="GPU" value={sys.gpu_device || '—'} />
+              <InfoRow label="Vendor" value={sys.gpu_vendor !== 'none' ? sys.gpu_vendor : 'None'} />
+              <InfoRow
+                label="Tier"
+                value={sys.gpu_tier === 'nvenc' ? 'Tier 2 — NVENC' : sys.gpu_tier === 'vaapi' ? 'Tier 1 — VA-API' : 'Tier 0 — Software'}
+                ok={sys.gpu_tier === 'nvenc' ? true : undefined}
+              />
+              <InfoRow label="Encoder" value={sys.gpu_encoder} />
+              <InfoRow label="Codec" value={sys.gpu_codec || '—'} />
+              {sys.gpu_av1 && <InfoRow label="AV1 encode" value="Supported" ok />}
+              <InfoRow label="Capture" value={sys.gpu_pipewire ? 'PipeWire DMA-BUF' : 'X11 SHM'} />
+            </InfoList>
+          </Card>
+        )}
+
+        <Card title="Runtime">
+          <InfoList>
+            <InfoRow label="Uptime" value={sys?.uptime} />
+            <InfoRow label="Server" value={health?.status === 'ok' ? 'Running' : 'Unreachable'} ok={health?.status === 'ok'} />
+            <InfoRow label="Shell" value="React 19 + Tailwind 4 + Vite" />
+            <InfoRow label="Backend" value="Go + Debian Linux" />
+          </InfoList>
+        </Card>
+
+        <Card
+          title="Open source"
+          desc="Vulos includes open-source software. The notices reproduce each component's licence; the written offer covers how to obtain the corresponding source of the GPL/LGPL parts."
+        >
+          <Actions>
+            <button onClick={() => openLegal('Open source licences', '/api/system/licenses')} className="btn-secondary text-sm">
+              View licences
+            </button>
+            <button onClick={() => openLegal('Written offer for source code', '/api/system/written-offer')} className="btn-secondary text-sm">
+              View written offer
+            </button>
+          </Actions>
+          {legalErr && <div className="mt-4"><Banner tone="danger">{legalErr}</Banner></div>}
+          {legal && (
+            <div className="mt-4 rounded-xl border border-[var(--border-default)] overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[var(--bg-elevated)]/40 border-b border-[var(--border-subtle)]">
+                <span className="text-xs text-[var(--text-tertiary)] font-medium">{legal.title}</span>
+                <button onClick={() => setLegal(null)} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Close ✕</button>
+              </div>
+              <pre className="max-h-96 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-[var(--text-tertiary)] whitespace-pre-wrap break-words">
+                {legalLoading ? 'Loading…' : legal.text}
+              </pre>
+            </div>
+          )}
+        </Card>
+
+        <p className="text-[12px] text-[var(--text-faint)] pt-1">Powered by Debian Linux.</p>
       </div>
     </div>
   )
@@ -3391,28 +3362,29 @@ function NotificationsSettings() {
   const sources = [...new Set(['mail', 'assistant', 'system', ...getSources()])]
 
   return (
-    <Section title="Notifications">
-      <p className="text-xs text-[var(--text-muted)] mb-4">
-        Notifications are computed on your box by the on-instance assistant — no new egress.
-        Do Not Disturb silences pop-ups (they still collect quietly in the bell).
-      </p>
-      <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] px-4 divide-y divide-[var(--border-default)]">
+    <Section
+      icon="notifications"
+      title="Notifications"
+      desc="Notifications are computed on your box by the on-instance assistant — no new egress. Do Not Disturb silences pop-ups (they still collect quietly in the bell)."
+      actions={prefs.muted ? <Pill tone="warning">Do Not Disturb on</Pill> : undefined}
+    >
+      <Card title="Delivery" bodyClassName="divide-y divide-[var(--border-subtle)]">
         <Toggle label="Do Not Disturb" checked={prefs.muted} onChange={setMuted} />
         <Toggle label="Notification sounds" checked={prefs.sound} onChange={setSound} />
-      </div>
+      </Card>
 
-      <h3 className="text-sm font-medium mt-6 mb-2">This device</h3>
-      <p className="text-xs text-[var(--text-faint)] mb-3">
-        Web Push lets your box notify this device even when Vulos is closed. Your box sends it
-        directly and end-to-end encrypted — the push vendor routes it but can’t read it.
-      </p>
-      <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] px-4 divide-y divide-[var(--border-default)]">
+      <Card
+        title="This device"
+        desc="Web Push lets your box notify this device even when Vulos is closed. Your box sends it directly and end-to-end encrypted — the push vendor routes it but can’t read it."
+      >
         <WebPushToggle />
-      </div>
+      </Card>
 
-      <h3 className="text-sm font-medium mt-6 mb-2">Sources</h3>
-      <p className="text-xs text-[var(--text-faint)] mb-3">Turn a source off to stop collecting its notifications entirely.</p>
-      <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-default)] px-4 divide-y divide-[var(--border-default)]">
+      <Card
+        title="Sources"
+        desc="Turn a source off to stop collecting its notifications entirely."
+        bodyClassName="divide-y divide-[var(--border-subtle)]"
+      >
         {sources.map(src => (
           <Toggle
             key={src}
@@ -3421,7 +3393,7 @@ function NotificationsSettings() {
             onChange={(v) => setSourceEnabled(src, v)}
           />
         ))}
-      </div>
+      </Card>
     </Section>
   )
 }
