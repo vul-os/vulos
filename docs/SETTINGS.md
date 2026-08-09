@@ -27,7 +27,7 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 | Pane | What you do there |
 |---|---|
 | **Appearance** | Theme (Light / Dark / System / Schedule, with a dark-from/light-from time picker under Schedule), Night Shift (off / sunset-to-sunrise / a custom time window, plus a warmth slider), an accent colour (ten presets or a custom hex value, live-previewed on a sample button), density (Comfortable / Compact spacing across the whole shell), and wallpaper (upload an image or reset to default). |
-| **Notifications** | Do Not Disturb and notification-sound toggles, the per-device Web Push toggle for this browser, and per-source toggles (Mail, Assistant, System, …) that stop a source being collected at all, not just silenced. See [Notifications](USER-GUIDE.md#notifications) in the User Guide. |
+| **Notifications** | Do Not Disturb (**box-wide and admin-only** — one state for the whole box, so a non-admin cannot silence their own notifications; per-user DND is not implemented) and notification-sound toggles, the per-device Web Push toggle for this browser, and per-source toggles (Mail, Assistant, System, …) that stop a source being collected at all, not just silenced. See [Notifications](USER-GUIDE.md#notifications) in the User Guide. |
 
 <picture>
   <img src="screenshots/settings-appearance-light.png" alt="The Appearance settings panel with theme picker, accent colors, and density options" width="880" />

@@ -375,9 +375,18 @@ New notifications also appear briefly as **toasts**. Notifications come from two
 
 The toggle at the bottom of the notification panel (also in **Settings → Notifications**). DND silences pop-ups; notifications still collect quietly in the bell. The box also honours DND before sending Web Push, so a muted box doesn't buzz your phone.
 
+> **DND is box-wide, and only an admin can change it.** There is one DND state
+> for the whole box (`~/.vulos/db/dnd.json`), and the delivery path consults it
+> without reference to who a notification is for. Turning it on silences *every*
+> account, so `POST /api/notifications/dnd` is admin-only (DND-SCOPE-01);
+> reading the current state (`GET /api/notifications/dnd`) is open to any
+> signed-in user. The consequence, stated plainly: **a non-admin profile cannot
+> silence their own notifications at all.** Per-user DND is not implemented —
+> it would need DND keyed by recipient and consulted per delivery.
+
 ### Settings → Notifications
 
-- **Do Not Disturb** and **Notification sounds** toggles.
+- **Do Not Disturb** (box-wide, admin-only — see above) and **Notification sounds** toggles.
 - **This device — Push notifications**: an opt-in, per-device Web Push toggle. When on, your box notifies this browser even while the Vulos tab is closed. The payload is end-to-end encrypted (RFC 8291) — whatever relays it can't read it. The toggle is honest about why it can't be enabled when it can't: unsupported browser, no send-path configured on the box, or permission blocked in the browser.
 - **Sources**: turn a source (Mail, Assistant, System, …) off entirely — it stops being collected at all, not just silenced.
 

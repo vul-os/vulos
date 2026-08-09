@@ -265,14 +265,19 @@ instead of header-injected credentials — see [FILES.md](FILES.md) and
 
 The Vite dev server runs on `:5173` and proxies `/api` and `/app` to the backend on `:8080`.
 
+All of these run **from `frontend/`** — there is no `package.json` at the repo root.
+
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | Vite dev server with HMR |
-| `npm run build` | Production build into `dist/` |
+| `npm run build` | Production build into `frontend/dist/` |
 | `npm run preview` | Preview the production build locally |
 | `npm run test` | Vitest unit tests |
+| `npm run typecheck` | `tsc --noEmit` — a separate gate; `npm run build` strips types without checking them |
 | `npm run lint` | ESLint |
+| `npm run test:e2e` | Playwright (`test:e2e:ui` for the UI runner) |
 | `npm run screenshots` | Playwright screenshotter → `docs/screenshots/` |
+| `npm run gen:wire-types` | Regenerate wire types (`:check` variant verifies they are current) |
 
 ---
 
