@@ -1,10 +1,11 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
+import { ART, hasArt, APP_ART_CSS, type ArtStyle } from './appArt'
 
-// Extends CSSProperties with the one CSS custom property this file sets
-// programmatically (the tinted-tile hue). csstype's `Properties` has no
-// index signature for `--*` custom properties, so a plain `CSSProperties`
-// object literal can't carry it without this addition.
-type TileStyle = CSSProperties & { '--tile-accent'?: string }
+// Extends CSSProperties with the CSS custom properties this file sets
+// programmatically (the tinted-tile hue, and the plate gradient stops).
+// csstype's `Properties` has no index signature for `--*` custom properties,
+// so a plain `CSSProperties` object literal can't carry them without this.
+type TileStyle = CSSProperties & { '--tile-accent'?: string } & ArtStyle
 
 // ─────────────────────────────────────────────────────────────────────────
 // VULOS ICONOGRAPHY — one coherent system, not a rainbow icon pack.
@@ -251,7 +252,19 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
     .vula-tile-in{ animation: vula-tile-rise .42s var(--ease-out, cubic-bezier(.16,1,.3,1)) both;
                    animation-delay: calc(var(--tile-i, 0) * 22ms); }
     @media (prefers-reduced-motion: reduce){ .vula-tile-in{ animation: none; } }
-  `
+
+    /* ── Art variant — an app with its own colourful plate (see appArt.tsx)
+          brings its whole surface, so the neutral tile chrome steps out of the
+          way; only the hover lift and the glow stay, tinted by the plate. */
+    .vula-itile[data-art]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
+    .vula-itile[data-art]:hover, .vula-itile[data-art].is-hover{
+      border-color:transparent;
+      box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--art-a, var(--accent)) 75%, transparent);
+    }
+    [data-theme="light"] .vula-itile[data-art]:hover, [data-theme="light"] .vula-itile[data-art].is-hover{
+      box-shadow: 0 12px 30px -14px color-mix(in srgb, var(--art-b, var(--accent)) 55%, transparent);
+    }
+  ` + APP_ART_CSS
   document.head.appendChild(style)
 }
 
@@ -777,16 +790,63 @@ function GlyphSvg({ node, size, className, style }: GlyphSvgProps) {
   )
 }
 
+// ── The colourful plate ──────────────────────────────────────────────────
+// A full-bleed rounded plate carrying one app's art (appArt.tsx). Used by the
+// dock (via AppIcon) and by the launcher/home tile below, so a given app looks
+// identical everywhere. `--art-a`/`--art-b` drive the gradient in CSS rather
+// than an SVG <defs>, which keeps the markup free of document-unique ids.
+interface ArtPlateProps {
+  id: string
+  size: number
+  style?: CSSProperties
+}
+
+function ArtPlate({ id, size, style }: ArtPlateProps) {
+  const spec = ART[id]
+  const plateStyle: TileStyle = {
+    width: size,
+    height: size,
+    borderRadius: Math.round(size * ART_RADIUS),
+    '--art-a': spec.a,
+    '--art-b': spec.b,
+    ...style,
+  }
+  return (
+    <span className="vi-plate" data-light={spec.light ? '' : undefined} style={plateStyle}>
+      <svg className="vi-art" viewBox="0 0 48 48" width={size} height={size} aria-hidden="true" focusable="false">
+        {spec.glyph}
+      </svg>
+    </span>
+  )
+}
+
+// Plate corner radius as a fraction of the tile — matches AppIconTile's own
+// squircle so a plate inside a tile lines up exactly.
+const ART_RADIUS = 0.28
+
+// Below this pixel size the art turns to mush, so small chrome (window
+// titlebars at 12px, Mission Control thumbnails) keeps the hairline glyph,
+// which is what those surfaces want anyway — a monochrome mark that inherits
+// the surrounding text colour. The dock (26px) and up get the art.
+const ART_MIN_SIZE = 22
+
 interface AppIconProps {
   id?: string
   size?: number
   color?: string
   style?: CSSProperties
+  /** Force one rendering: 'art' the colour plate, 'glyph' the hairline mark. */
+  variant?: 'auto' | 'art' | 'glyph'
 }
 
 // Inline glyph — used in titlebars, mission control, the dock, mobile chrome.
-// Inherits `currentColor`; `color` can force a specific token/hue.
-export default function AppIcon({ id, size = 16, color, style }: AppIconProps) {
+// At dock size and above this renders the app's colour plate; small chrome
+// falls back to the hairline glyph, which inherits `currentColor` (`color`
+// can force a specific token/hue).
+export default function AppIcon({ id, size = 16, color, style, variant = 'auto' }: AppIconProps) {
+  const wantsArt = variant === 'art' || (variant === 'auto' && size >= ART_MIN_SIZE)
+  if (id && wantsArt && hasArt(id)) return <ArtPlate id={id} size={size} style={style} />
+
   const node = id ? icons[id] : undefined
   if (!node) {
     return (
@@ -822,7 +882,7 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
   const tint = APP_COLORS[id]
   const [logoFailed, setLogoFailed] = useState(false)
   const [hover, setHover] = useState(false)
-  const radius = Math.round(size * 0.28)
+  const radius = Math.round(size * ART_RADIUS)
   const glyphSize = Math.round(size * 0.5)
 
   const tileProps: { className: string; onMouseEnter: () => void; onMouseLeave: () => void; style: TileStyle } = {
@@ -830,6 +890,19 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
     onMouseEnter: () => setHover(true),
     onMouseLeave: () => setHover(false),
     style: { width: size, height: size, borderRadius: radius },
+  }
+
+  // 0. The app's own colour plate (appArt.tsx) WINS over everything: it is a
+  //    complete, self-coloured mark, so the neutral tile chrome gets out of the
+  //    way (data-art) and only contributes the hover lift + a tinted glow.
+  if (hasArt(id)) {
+    const art = ART[id]
+    const artTileStyle: TileStyle = { ...tileProps.style, '--art-a': art.a, '--art-b': art.b }
+    return (
+      <div {...tileProps} data-art="" style={artTileStyle}>
+        <ArtPlate id={id} size={size} />
+      </div>
+    )
   }
 
   // 1. A first-party (or bundled) brand mark WINS — the app should read as
