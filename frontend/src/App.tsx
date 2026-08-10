@@ -13,6 +13,7 @@ import OfflineLockScreen from './auth/OfflineLockScreen'
 import LockScreen from './auth/LockScreen'
 import Setup from './auth/Setup'
 import DesktopCanvas from './layouts/DesktopCanvas'
+import SharedDesktopNotice from './shell/SharedDesktopNotice'
 import MobileStack from './layouts/MobileStack'
 import TVHome from './layouts/TVHome'
 import Popout from './shell/Popout'
@@ -180,6 +181,9 @@ function Shell() {
     <>
       <DesktopShortcuts />
       {useDesktop ? <DesktopCanvas /> : <MobileStack />}
+      {/* Renders only when a second window is genuinely on this desktop; see
+          SharedDesktopNotice for why it informs rather than blocks. */}
+      <SharedDesktopNotice />
       {/* Press "?" anywhere to surface the keyboard-shortcut legend. */}
       <ShortcutsLegend />
     </>

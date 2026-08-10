@@ -3,7 +3,7 @@ import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
-import { useShellSession } from './useShellSession'
+import { useShellSession, type ShellSession } from './useShellSession'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // The window shape + reducer actions are the heart of the window manager
@@ -586,6 +586,9 @@ export interface ShellContextValue {
   tileWindow: (id: number, zone: string) => void
   switchDesktop: (id: string) => void
   addDesktop: (label?: string) => void
+  /** Cross-tab session: who is on this desktop and whether we drive it.
+   *  Null where BroadcastChannel is unavailable (single-tab behaviour). */
+  session: ShellSession | null
   removeDesktop: (id: string) => void
   moveWindowToDesktop: (windowId: number, desktopId: string) => void
   openNativeWindow: (win: OpenNativeWindowInput) => Promise<void>
@@ -824,7 +827,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       launchpadOpen: state.launchpadOpen, chatOpen: state.chatOpen, missionControlOpen: state.missionControlOpen,
       layout,
       openWindow, closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, tileWindow,
-      switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop,
+      switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop, session,
       openNativeWindow, closeNativeWindow,
       popoutApp, closePopout,
       toggleLaunchpad, setLaunchpad, toggleChat, setChat,
