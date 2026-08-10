@@ -326,7 +326,7 @@ Two practical notes:
 
 ### Native client pairing (pinning this box's LAN certificate)
 
-A native client (`clients/core/`) is meant to trust this box's LAN TLS certificate by **pinning its public key (SPKI SHA-256)** at first connection, rather than relying on a public certificate authority — the same trust-on-first-use model SSH and Syncthing use. `GET /api/lan/pairing` (session-gated like any other authenticated OS route) and `vulos -print-pairing` (a one-shot console print, for an operator at the console or over SSH) both expose the same payload: the box's name, LAN address, SPKI fingerprint, and a `vulos://pair?...` URI. In the OS shell this is surfaced as **Settings → Native Pairing** (rendered as a QR code plus the fingerprint in text, for reading aloud over a trusted channel).
+A native client (`clients/core/`) is meant to trust this box's LAN TLS certificate by **pinning its public key (SPKI SHA-256)** at first connection, rather than relying on a public certificate authority — the same trust-on-first-use model SSH and Syncthing use. `GET /api/lan/pairing` (session-gated like any other authenticated OS route) and `vulos-server -print-pairing` (a one-shot console print, for an operator at the console or over SSH) both expose the same payload: the box's name, LAN address, SPKI fingerprint, and a `vulos://pair?...` URI. In the OS shell this is surfaced as **Settings → Native Pairing** (rendered as a QR code plus the fingerprint in text, for reading aloud over a trusted channel).
 
 **This is the box side of the mechanism only.** `clients/core/` implements the pin/verify/store logic, but as of this writing no shell — desktop, Android, or iOS — calls it, and there is no camera-scanning UI anywhere to consume the QR code. Nothing connects end to end for a real user today; this exists so the payload is ready once a client scans it.
 
@@ -418,7 +418,7 @@ Ports actually bound by the software in this repo:
 | 443 | TCP | LAN HTTPS listener (pinned to LAN IP) | `VULOS_LAN_ENABLE=1` | LAN only by construction; do not forward. |
 | 53 | UDP | LAN DNS responder | `VULOS_LAN_ENABLE=1` | LAN only; do not forward. |
 | 5353 | UDP (multicast) | mDNS: `vulos.local`, Drop discovery, fabric sibling discovery | LAN layer / Drop / fabric | Multicast never crosses your router; nothing to forward. |
-| 3478 | UDP/TCP | TURN media relay (coturn) | Only if you run your own coturn with `TURN_SECRET` set — the backend mints HMAC credentials for it but does not run the server | On the coturn host, per coturn docs. |
+| 3478 | UDP/TCP | TURN media relay (coturn) | Only if `TURN_SECRET` is set. The backend mints HMAC credentials **and execs `turnserver` itself** (`main.go:511`) when the binary is on `PATH` | On the coturn host, per coturn docs. |
 | ephemeral UDP | UDP | WebRTC media (calls, streaming, in-process SFU) | During calls | Outbound/NAT-traversed; TURN covers the hard cases. |
 
 AI-generated sandbox backends bind `127.0.0.1` only and are reached through the gateway — they never listen externally.
@@ -463,7 +463,7 @@ A BYO opt-in still exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GP
 
 ## TURN: media relay for hard NATs
 
-WebRTC media (calls, streaming) normally flows peer-to-peer over ephemeral UDP. When both sides sit behind symmetric NATs, a TURN relay is the escape hatch. Vulos does not ship a TURN server; it integrates with a coturn instance you run yourself:
+WebRTC media (calls, streaming) normally flows peer-to-peer over ephemeral UDP. When both sides sit behind symmetric NATs, a TURN relay is the escape hatch. Vulos does not *bundle* a TURN server, but it will **launch one for you**: when `TURN_SECRET` is set, `main.go:511` calls `StartCoturn`, which writes a `turnserver.conf` and execs `turnserver` (`services/network/turn.go:113`). You supply the coturn binary on `PATH`; the box supplies the config and the process:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -473,7 +473,7 @@ WebRTC media (calls, streaming) normally flows peer-to-peer over ephemeral UDP. 
 | `TURN_REALM` | `vulos` | The coturn realm |
 | `VULOS_STUN_DISABLE_PUBLIC` | unset (public STUN included) | Drops the public Google STUN fallback from `GET /api/peering/ice` — for a fully-sovereign deployment with no third-party network dependency for call setup |
 
-The backend mints short-lived credentials (24-hour TTL) using the standard `use-auth-secret` HMAC scheme: username is `<expiry>:<userID>`, credential is `base64(HMAC-SHA256(secret, username))`. Note the HMAC here is **SHA-256**, so your `turnserver.conf` must include the `sha256` option alongside `use-auth-secret` — coturn's default is SHA-1 and the credentials will not verify without it.
+The backend mints short-lived credentials (**1-hour TTL** — `services/network/turn.go:66`, reduced from 24 h deliberately) using the standard `use-auth-secret` HMAC scheme: username is `<expiry>:<userID>`, credential is `base64(HMAC-SHA256(secret, username))`. Note the HMAC here is **SHA-256**, so your `turnserver.conf` must include the `sha256` option alongside `use-auth-secret` — coturn's default is SHA-1 and the credentials will not verify without it.
 
 **Self-hosted STUN, for free.** Whenever `TURN_SECRET` is set, `GET /api/peering/ice` also includes a `stun:<TURN_HOST>:<TURN_PORT>` entry — coturn answers plain STUN binding requests on the same port it serves TURN, so a self-hosted TURN deployment already gives you a fully self-hosted STUN option with zero extra infrastructure. Combined with `VULOS_STUN_DISABLE_PUBLIC=1`, a box needs no third-party STUN/TURN server at all.
 
