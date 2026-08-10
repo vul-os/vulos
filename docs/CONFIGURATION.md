@@ -53,6 +53,7 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `DISPLAY` | `:99` | X11 display for app streaming (Xvfb) |
 | `VULOS_MAIL_URL` | `http://localhost:3000` | URL of the LilMail service (proxied at `/api/mail/url`) |
 | `VULOS_OS_BUCKET_URL` | `https://os.vulos.org` | OS update bucket URL (baked into seed at build time; override for forks) |
+| `VULOS_OS_AUTOUPDATE` | **on** (unset) | The background OS auto-update loop — **the only outbound connection a fresh, unconfigured box makes**. Set to `0`/`off`/`false`/`no`/`disable`/`disabled`/`none` (case-insensitive) for zero default egress; you then pull updates manually from Settings → OS Update. Any other value, including a typo, leaves it **on** — the fail-safe direction is updates flowing (`backend/services/osdist/update.go:132-142`) |
 
 ---
 

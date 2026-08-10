@@ -7,7 +7,7 @@ This chapter is operational. For the formal analysis (STRIDE, trust boundaries, 
 Vulos is the OS. There is no Vulos-operated cloud, managed hosting, billing, or control plane standing behind your box — you run the same binary on your own hardware or on any VPS you rent, and it protects itself the same way either way. The two positions that fall out of that, stated plainly:
 
 - **Nobody but you holds your keys.** Not Vulos, not a hosted service, not the reachability broker your box talks to. See [Key custody](#key-custody-yours-only) below and [KEY-CEREMONY.md](KEY-CEREMONY.md) for the full key model.
-- **We do not collect your data.** There is no telemetry or analytics SDK anywhere in this codebase; the only outbound connection an unconfigured box makes by default is a read-only, signed check for OS updates (see [Verified boot and the netboot signature chain](#verified-boot-and-the-netboot-signature-chain)) — no usage data rides along.
+- **We do not collect your data.** There is no telemetry or analytics SDK anywhere in this codebase; the only outbound connection an unconfigured box makes by default is a read-only, signed check for OS updates (see [Verified boot and the netboot signature chain](#verified-boot-and-the-netboot-signature-chain)) — no usage data rides along. **That check is opt-out:** set `VULOS_OS_AUTOUPDATE=0` for a box with zero default egress, and pull updates by hand from Settings → OS Update instead. Note the fail-safe direction — an unrecognised value leaves updates enabled, so verify rather than assume.
 
 ---
 
