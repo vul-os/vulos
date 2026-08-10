@@ -20,8 +20,12 @@ There are three roles (`backend/services/auth/profiles.go`):
 | **guest** | Reserved for limited/guest access. |
 
 The first user is always the administrator — the same credentials you use for
-`sudo` in the Terminal. There is always at least one admin (the box tracks the
-admin count so you can't accidentally strip the last one).
+`sudo` in the Terminal. **There is no last-admin protection.** This paragraph used to say the box tracks
+the admin count so you cannot accidentally strip the last one. It does not:
+`AdminCount()` exists (`backend/services/auth/profiles.go:117`) but has **no
+callers** — neither `handleSetRole` (`handlers.go:1093`) nor `Store.SetRole`
+consults it. An admin can demote themselves, or the last remaining admin, and
+leave the box with no administrator at all. Keep a second admin account.
 
 Only an admin can change another account's role
 (`Store.SetRole`), and a role change is audit-logged with the real client IP and
