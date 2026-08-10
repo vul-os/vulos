@@ -52,7 +52,7 @@ The design principle behind this lineup (from the threat model): *isolate the cr
 
 Passkeys (FIDO2/WebAuthn) are the primary login: the private key never leaves your authenticator, so nothing phishable or keyloggable is ever typed. Credentials are stored per-user and sealed with the device keystore (TPM-backed where the hardware has one).
 
-Two env vars bind passkeys to your domain, and they **fail closed in prod**: if `VULOS_RPID` or `VULOS_ORIGIN` is unset or still a localhost value while `VULOS_ENV=prod`, the server refuses to start rather than run WebAuthn against the wrong relying party.
+Two env vars bind passkeys to your domain, and they **fail closed in prod — by disabling the feature, not by halting the box**: if `VULOS_RPID` or `VULOS_ORIGIN` is unset or still a localhost value while `VULOS_ENV=prod`, the passkey routes are never registered and the server logs `##### PASSKEYS DISABLED #####` (`backend/cmd/server/main.go:1292-1301`). It keeps booting, deliberately — a freshly flashed box has no production domain yet, and bricking it would be worse. **The consequence to plan around: until you set these, password login is your only front door, not your fallback.**
 
 ```bash
 VULOS_RPID=os.example.com
@@ -119,11 +119,11 @@ The software-signing keys covered in [KEY-CEREMONY.md](KEY-CEREMONY.md) (the roo
 
 ## Fail-closed by default
 
-A recurring pattern in this codebase: when a security prerequisite is missing, the feature turns *off* (or the server refuses to start) instead of running open. Real, verified examples:
+A recurring pattern in this codebase: when a security prerequisite is missing, the feature turns *off* instead of running open. Usually that means the routes are never registered, so the surface 404s rather than 403s; only a few checks abort startup. Real, verified examples:
 
 | Surface | Missing prerequisite | Behaviour |
 |---|---|---|
-| Passkeys in prod | `VULOS_RPID` / `VULOS_ORIGIN` unset or localhost | Server exits at startup with a clear error |
+| Passkeys in prod | `VULOS_RPID` / `VULOS_ORIGIN` unset or localhost | Passkey routes are **not registered** (404) and startup logs `##### PASSKEYS DISABLED #####`. The server still boots — password login is then the only front door |
 | Assistant egress | Endpoint classified `brokered`/`external`, `VULOS_ASSISTANT_ALLOW_EXTERNAL` not `1` | Request blocked before any mail content leaves the box; anything unclassifiable lands in the blocked `external` bucket |
 | AI code execution | `VULOS_SANDBOX_ENABLED` unset | `Run()` errors immediately — no arbitrary Python execution |
 | Netboot (`vulos.netboot=1`) | Verity/signature inputs absent in the initramfs | Boot **halts** rather than falling into an unverified loop mount |
@@ -145,7 +145,7 @@ Every variable below is read by code in this repo. "Omitting" means leaving it u
 | Variable | Setting it means | Omitting it means |
 |---|---|---|
 | `VULOS_ENV` | Chooses the posture table above | `prod` (strict) |
-| `VULOS_RPID`, `VULOS_ORIGIN` | WebAuthn relying-party domain + origin | Prod refuses to start; dev uses localhost defaults |
+| `VULOS_RPID`, `VULOS_ORIGIN` | WebAuthn relying-party domain + origin | Prod disables passkeys entirely if unset/localhost (boot continues); dev uses localhost defaults |
 | `VULOS_ASSISTANT_ALLOW_EXTERNAL=1` | Authorizes brokered/external LLM endpoints — mail content may genuinely leave the box | Assistant egress limited to local/sovereign tiers |
 | `VULOS_SANDBOX_ENABLED=1` | Allows AI-generated Python to execute (see sandbox section) | Execution disabled |
 | `VULOS_DISABLE_EXEC` (any value) | Kill-switch: disables routes that shell out (Wi-Fi control, network mode, etc.) | Exec-backed routes available (audited) |
@@ -317,7 +317,7 @@ Work through this before forwarding a port or pointing public DNS at the box:
 
 1. **Confirm the environment.** `VULOS_ENV` unset or `prod` — never `local`. Verify debug endpoints are dead: `curl -s https://yourbox/debug/env` should 404.
 2. **Terminate TLS.** Either the direct listener with ACME (`VULOS_DIRECT_ENABLE=1` + `VULOS_DIRECT_HOSTNAME`), certs at `/etc/vulos/tls/cert.pem|key.pem`, or your own reverse proxy. Session cookies are only `Secure` when the request actually arrives over HTTPS.
-3. **Bind passkeys to your domain.** Set `VULOS_RPID` and `VULOS_ORIGIN` (prod refuses to start otherwise) and **enroll a passkey for the admin account** before exposure, so password login is your fallback rather than your front door.
+3. **Bind passkeys to your domain.** Set `VULOS_RPID` and `VULOS_ORIGIN` — without them prod silently disables passkeys rather than refusing to boot, so check the startup log for `PASSKEYS DISABLED` — and **enroll a passkey for the admin account** before exposure, so password login is your fallback rather than your front door.
 4. **Set a device PIN policy consciously.** PIN unlock is device-local and lockout-protected, but only enroll it on physically-controlled devices.
 5. **Check the fail-closed table above** for anything you actually use: `VULOS_FABRIC_SECRET` (+ `VULOS_FABRIC_KEY_HEX`) for multi-box LANs. `VULOS_STORAGE_STS_ENDPOINT` self-configures automatically against your own object store when one is configured — a storage-permitted app never gets a static credential either way; watch for the startup `[storage] ABORT` if you've explicitly disabled STS (`VULOS_STORAGE_STS_DISABLE=1`) while running a storage-permitted app against a configured object store.
 6. **Audit the opt-ins.** `VULOS_ASSISTANT_ALLOW_EXTERNAL`, `VULOS_SANDBOX_ENABLED`, `VULOS_PEER_ALLOW_LAN`, and every `*_ALLOW_INSECURE` variable should be unset unless you can say why not.
