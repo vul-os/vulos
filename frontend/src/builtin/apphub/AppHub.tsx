@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { refreshInstalled } from '../../core/AppRegistry'
-import { APP_LOGOS, APP_COLORS, APP_LETTERS } from '../../core/AppIcons'
+import { AppIconTile } from '../../core/AppIcons'
 import { useTheme } from '../../core/ThemeProvider'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -158,48 +158,6 @@ function getSourceType(app: StoreApp): 'flatpak' | 'web' | 'apt' {
   if (app.flatpak_id) return 'flatpak'
   if (app.type === 'web') return 'web'
   return 'apt'
-}
-
-function AppIcon({ appId, letter, size = 44 }: { appId: string; letter?: string; size?: number }) {
-  const [failed, setFailed] = useState(false)
-  // Resolve the bundled brand mark / hue by the real app id. `letter` (the
-  // registry `icon` field — often a label or emoji) is only a fallback glyph;
-  // it must NOT shadow the id, or ids whose icon field differs (jellyfin,
-  // navidrome, vaultwarden, …) would never find their coloured tile.
-  const logo = APP_LOGOS[appId]
-  const color = APP_COLORS[appId] || '#555'
-  const radius = Math.round(size * 0.22)
-
-  if (logo && !failed) {
-    return (
-      <div
-        className="flex-shrink-0 flex items-center justify-center bg-[var(--bg-elevated)] overflow-hidden"
-        style={{ width: size, height: size, borderRadius: radius }}
-      >
-        <img
-          src={logo}
-          alt=""
-          className="w-3/4 h-3/4 object-contain"
-          onError={() => setFailed(true)}
-          loading="lazy"
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="flex-shrink-0 flex items-center justify-center font-semibold text-[var(--text-secondary)]"
-      style={{
-        width: size, height: size, borderRadius: radius,
-        background: `linear-gradient(135deg, ${color}35, ${color}15)`,
-        border: `1px solid ${color}25`,
-        fontSize: size * 0.36,
-      }}
-    >
-      {APP_LETTERS[appId] || (letter || appId || '?')[0]?.toUpperCase() || '?'}
-    </div>
-  )
 }
 
 function SourceBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
@@ -581,7 +539,7 @@ export default function AppHub() {
                     }`}
                     onClick={() => selectApp(app)}
                   >
-                    <AppIcon appId={app.id} letter={app.icon} size={42} />
+                    <AppIconTile id={app.id} size={42} unicode={app.icon} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">{app.name}</span>
@@ -642,7 +600,7 @@ export default function AppHub() {
           <div className="flex-1 overflow-y-auto">
             {/* Hero section */}
             <div className="px-6 pb-5 flex flex-col items-center text-center">
-              <AppIcon appId={selectedApp.id} letter={selectedApp.icon} size={80} />
+              <AppIconTile id={selectedApp.id} size={80} unicode={selectedApp.icon} />
               <h2 className="text-[18px] font-bold text-[var(--text-primary)] mt-4 flex items-center gap-2">
                 {selectedApp.name}
                 {selectedApp.vetted && (
