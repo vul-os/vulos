@@ -35,7 +35,12 @@ async function openAbout(page: Page) {
   const nav = settingsNav.getByRole('button', { name: 'About' })
   await expect(nav).toBeVisible({ timeout: 10_000 })
   await nav.click()
-  await expect(page.getByRole('heading', { name: 'Legal' })).toBeVisible({ timeout: 10_000 })
+  // Anchor on the "Open source" CARD. This used to look for an <h3>Legal</h3>
+  // micro-heading, which 1d3cb9f6 removed when it brought About into the card
+  // language — the licence buttons and their handlers survived that refactor
+  // untouched, so the compliance surface never regressed, but this test had
+  // been red ever since on a selector that no longer matches anything.
+  await expect(page.getByRole('heading', { name: 'Open source' })).toBeVisible({ timeout: 10_000 })
 }
 
 test('About surfaces the open-source licences and the written offer', async ({ page }) => {
@@ -49,11 +54,11 @@ test('About surfaces the open-source licences and the written offer', async ({ p
   await openAbout(page)
 
   // Open the licences panel and confirm the fetched notices render.
-  await page.getByRole('button', { name: /Open source licences/i }).click()
+  await page.getByRole('button', { name: /View licences/i }).click()
   await expect(page.getByText(/Licence: BSD-2-Clause/)).toBeVisible({ timeout: 10_000 })
 
   // Open the written offer and confirm the DRAFT text renders.
-  await page.getByRole('button', { name: /Source code for GPL\/LGPL components/i }).click()
+  await page.getByRole('button', { name: /View written offer/i }).click()
   await expect(page.getByText(/REQUIRES FOUNDER AND LAWYER REVIEW/)).toBeVisible({ timeout: 10_000 })
 
   expect(pageErrors, `page errors: ${pageErrors.join(' | ')}`).toHaveLength(0)
@@ -65,6 +70,6 @@ test('About shows an honest message when notices are unavailable', async ({ page
   })
   await openAbout(page)
 
-  await page.getByRole('button', { name: /Open source licences/i }).click()
+  await page.getByRole('button', { name: /View licences/i }).click()
   await expect(page.getByText(/not available on this system/i)).toBeVisible({ timeout: 10_000 })
 })
