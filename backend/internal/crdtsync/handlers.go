@@ -2,6 +2,7 @@ package crdtsync
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -80,6 +81,14 @@ func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
 		}
 		d, err := s.Delta(req.Domain, req.VV, req.Limit)
 		if err != nil {
+			// A domain this box does not replicate is a policy refusal, not a
+			// fault: answer 403 rather than 500, and do not log it as an
+			// internal error (a peer asking for one is routine, not a bug).
+			var notAllowed *ErrDomainNotAllowed
+			if errors.As(err, &notAllowed) {
+				http.Error(w, `{"error":"domain not replicated"}`, http.StatusForbidden)
+				return
+			}
 			log.Printf("[crdtsync] delta for %s: %v", req.Domain, err)
 			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
@@ -102,6 +111,11 @@ func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
 		}
 		n, err := s.Merge(&d)
 		if err != nil {
+			var notAllowed *ErrDomainNotAllowed
+			if errors.As(err, &notAllowed) {
+				http.Error(w, `{"error":"domain not replicated"}`, http.StatusForbidden)
+				return
+			}
 			log.Printf("[crdtsync] merge pushed delta for %s: %v", d.Domain, err)
 			http.Error(w, `{"error":"merge failed"}`, http.StatusBadRequest)
 			return
