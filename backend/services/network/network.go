@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"vulos/backend/internal/config"
+	"vulos/backend/internal/datadir"
 )
 
 // Status is the network's current state.
@@ -221,15 +222,26 @@ type net9ModeFile struct {
 	Mode ConnectionMode `json:"mode"`
 }
 
-// LoadMode resolves ~/.vulos/db/network-mode.json under `home` and loads any
+// LoadMode resolves db/network-mode.json under the box DATA DIRECTORY
+// (internal/datadir — VULOS_DATA_DIR, defaulting to ~/.vulos) and loads any
 // persisted mode. If the file is missing or invalid, the mode defaults to
 // ModeFabric and is persisted. Safe to call once at server start-up; subsequent
 // SetMode calls re-use the path resolved here.
-func (s *Service) LoadMode(home string) {
+//
+// legacyHome is the PRE-datadir location this file used to live under: the
+// mode file was written to $HOME/db/network-mode.json directly, bypassing
+// datadir entirely, so an operator who pointed VULOS_DATA_DIR at a mounted
+// volume had this one file left behind in $HOME. It is read ONCE, only when
+// the datadir copy does not exist yet, and the value is then persisted to the
+// datadir path. That migration is not cosmetic: ModeLocal is the posture that
+// blocks external listeners, so silently falling back to the ModeFabric
+// default on an existing box would put a deliberately LAN-only box back on the
+// network. Pass "" to skip the legacy lookup.
+func (s *Service) LoadMode(legacyHome string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	dbDir := filepath.Join(home, "db")
+	dbDir := datadir.Join("db")
 	s.modePath = filepath.Join(dbDir, "network-mode.json")
 
 	// Default before reading — guarantees a valid mode even on I/O failure.
@@ -237,6 +249,10 @@ func (s *Service) LoadMode(home string) {
 	s.stopExternal = false
 
 	raw, err := os.ReadFile(s.modePath)
+	if err != nil && legacyHome != "" {
+		// Migration read only — never written back to the legacy path.
+		raw, err = os.ReadFile(filepath.Join(legacyHome, "db", "network-mode.json"))
+	}
 	if err == nil {
 		var f net9ModeFile
 		if jerr := json.Unmarshal(raw, &f); jerr == nil && IsValidConnectionMode(f.Mode) {
