@@ -17,6 +17,20 @@
 #             and assert it reaches a fully running Vulos OS, exactly the
 #             same gold-standard HTTP check scripts/smoke-liveusb.sh and
 #             scripts/baremetal-smoke.sh use.
+#   Phase 4 — flip boot-state.json to slot-b and boot the same disk again
+#             (OSDIST-FLIP-01).
+#   Phase 4b— boot a COPY with the dm-verity artifacts deleted: the shape of
+#             every disk installed before VERITY-03, which must keep booting.
+#   Phase 5 — is dm-verity actually ACTIVE on the installed disk (VERITY-03).
+#
+# Exit codes:
+#   0  everything asserted above held.
+#   1  a hard failure — the install, a boot, the slot flip, the pre-existing-disk
+#      fallback, or the staged hash tree not describing the staged image.
+#   2  INCONCLUSIVE — the machine booted but left no marker to judge it by.
+#   3  Phase 5 only: the verity artifacts are staged and correct, but the
+#      initramfs cannot use them, so dm-verity is not running. A real, currently
+#      open defect (see the phase's own output) rather than a harness fault.
 #
 # What this does NOT exercise (see the task report for the full breakdown):
 #   - The iPXE/UEFI-HTTP-Boot chainload itself (scripts/netboot/boot.ipxe,
@@ -602,6 +616,146 @@ exit 1
 
 fi   # end: Phase 4 did not pass
 
+# ── Phase 4b: the fallback every ALREADY-INSTALLED disk depends on ───────────
+#
+# Turning dm-verity on is the boot-critical direction of this whole area, and the
+# way it goes wrong is not "verity fails to start" — it is "a machine that used
+# to boot stops booting". A slot laid down by an older installer holds a squashfs
+# and NO verity siblings. The hook is supposed to notice the missing
+# prerequisites and take its documented unverified loop-mount path. If it ever
+# instead reaches `veritysetup open`, that is a panic (deliberately — a hash
+# mismatch is indistinguishable from tampering) and every pre-existing disk in
+# the fleet bricks on the update that "enabled verity".
+#
+# Nothing checked that. Phase 5 below checks the opposite case (artifacts
+# present, are they used), and every disk this harness builds has them. So this
+# phase manufactures the pre-existing shape on a COPY of the installed disk —
+# delete the verity siblings from both slots — and requires the machine to come
+# all the way up anyway.
+#
+# What keeps this from being a gate that can only ever say yes: it asserts the
+# SERIAL, not just that the box booted. The loader entry on the copy has `quiet
+# splash` stripped (plymouth swallows every initramfs line otherwise — the reason
+# Phase 3/4 have to read a disk marker instead), so the hook's own itemisation of
+# the missing prerequisites is readable, and the phase requires it to name the
+# hashtree and roothash as MISSING. A run where the deletion silently did nothing
+# reads "found" on those lines and fails here rather than passing on a boot that
+# proved nothing.
+echo ""
+say "Phase 4b — a disk with NO verity siblings must still boot (pre-existing disks)…"
+
+FB_IMG="$OUTDIR/_netboot-fallback-vda.img"
+FB_SERIAL="$OUTDIR/_netboot-serial-fallback.log"
+rm -f "$FB_IMG"
+cp "$DISK_IMG" "$FB_IMG"
+
+docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+    set -euo pipefail
+    IMG=/out/'"$(basename "$FB_IMG")"'
+    LOOP="$(losetup --find --show --partscan "$IMG")"
+    trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+    for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+    for pnum in 1 2; do
+      devnum="$(cat "/sys/class/block/${LOOP#/dev/}p${pnum}/dev")"
+      [ -e "${LOOP}p${pnum}" ] || mknod "${LOOP}p${pnum}" b "${devnum%%:*}" "${devnum##*:}"
+    done
+
+    MNT=/mnt/vulos-fb; mkdir -p "$MNT"; mount "${LOOP}p2" "$MNT"
+    C="$MNT/var/cache/vulos"
+    for s in a b; do
+      rm -f "$C/slot-$s/os-core.hashtree" "$C/slot-$s/os-core.roothash" "$C/slot-$s/os-core.roothash.sig"
+      echo "  slot-$s now: $(ls -1 "$C/slot-$s" 2>/dev/null | tr "\n" " ")"
+    done
+    # Drop the marker so what is read back can only have come from THIS boot.
+    rm -f "$C/booted-slot"
+    sync; umount "$MNT"
+
+    # Make the initramfs audible: plymouth eats every log_*_msg under
+    # `quiet splash`, and the whole point here is to read the hooks reasoning.
+    ESP=/mnt/vulos-fb-esp; mkdir -p "$ESP"; mount "${LOOP}p1" "$ESP"
+    for E in "$ESP"/loader/entries/*.conf; do
+      sed -i "s/ quiet splash / /; s/^options /options console=ttyAMA0,115200 /" "$E"
+    done
+    echo "  entry: $(grep -h "^options" "$ESP"/loader/entries/*.conf | head -1)"
+    sync; umount "$ESP"
+  ' || { printf "${c_r}✗ Phase 4b setup failed${c_n}\n" >&2; exit 1; }
+
+VARS3="$OUTDIR/_netboot-uefi-vars-fallback.fd"
+cp "$EDK2_VARS_SRC" "$VARS3"
+: > "$FB_SERIAL"
+HOSTPORT3=$(( HOSTPORT + 2 ))
+
+say "Booting the copy with its verity artifacts removed…"
+qemu-system-aarch64 \
+  -machine virt,gic-version=3 -accel hvf -cpu host -smp 4 -m "${VM_MEM_MB:-4096}" \
+  -drive if=pflash,format=raw,readonly=on,file="$EDK2_CODE" \
+  -drive if=pflash,format=raw,file="$VARS3" \
+  -drive if=virtio,format=raw,file="$FB_IMG" \
+  -device virtio-net-pci,netdev=n1 \
+  -netdev user,id=n1,hostfwd=tcp:127.0.0.1:${HOSTPORT3}-:8080 \
+  -serial "file:$FB_SERIAL" \
+  -display none -vga none -no-reboot &
+QEMU3_PID=$!
+cleanup_qemu3() { [ -n "${QEMU3_PID:-}" ] && kill "$QEMU3_PID" 2>/dev/null || true; }
+trap 'cleanup_qemu; cleanup_qemu2; cleanup_qemu3' EXIT INT TERM
+
+deadline=$(( $(date +%s) + TIMEOUT ))
+HTTP3_OK=0
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  kill -0 "$QEMU3_PID" 2>/dev/null || { printf "${c_r}  QEMU (fallback boot) exited early${c_n}\n" >&2; break; }
+  if curl -fsS --max-time 3 "http://127.0.0.1:${HOSTPORT3}/api/setup/status" >/dev/null 2>&1; then HTTP3_OK=1; break; fi
+  sleep 3
+done
+kill "$QEMU3_PID" 2>/dev/null || true
+wait "$QEMU3_PID" 2>/dev/null || true
+sleep 2
+
+FB_BOOTED="$(docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+  set -euo pipefail
+  LOOP="$(losetup --find --show --partscan "/out/'"$(basename "$FB_IMG")"'")"
+  trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+  for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+  devnum="$(cat "/sys/class/block/${LOOP#/dev/}p2/dev")"
+  [ -e "${LOOP}p2" ] || mknod "${LOOP}p2" b "${devnum%%:*}" "${devnum##*:}"
+  MNT=/mnt/vulos-fb-read; mkdir -p "$MNT"; mount -o ro "${LOOP}p2" "$MNT"
+  cat "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "MISSING"
+  umount "$MNT" 2>/dev/null || true
+' 2>/dev/null)"
+
+echo "$FB_BOOTED" | sed 's/^/      marker: /'
+# The hook itemises all four prerequisites; echo them so a reader sees WHY it
+# fell back and, from the veritysetup line, how close this run is to the
+# post-build.sh world where the fallback is the branch that prevents a brick.
+grep -h "vulos-live:  " "$FB_SERIAL" 2>/dev/null | sed 's/^.*vulos-live:/      hook:/' | head -5 || true
+
+FB_MISSING=0
+grep -q "hashtree:.*MISSING" "$FB_SERIAL" 2>/dev/null && grep -q "roothash:.*MISSING" "$FB_SERIAL" 2>/dev/null && FB_MISSING=1
+FB_INACTIVE=0
+case "$FB_BOOTED" in *"verity=inactive"*) FB_INACTIVE=1 ;; esac
+
+if [ "$HTTP3_OK" = "1" ] && [ "$FB_MISSING" = "1" ] && [ "$FB_INACTIVE" = "1" ]; then
+  ok "PASS — a slot with no verity artifacts still boots: the hook itemised the"
+  ok "       missing hashtree/roothash, fell back to the loop mount, recorded"
+  ok "       verity=inactive, and the machine came up serving HTTP."
+  rm -f "$FB_IMG" "$VARS3"
+else
+  printf "${c_r}✗ FAIL — a disk with no dm-verity artifacts did not boot cleanly${c_n}\n" >&2
+  echo "" >&2
+  echo "  HTTP served:                 $([ "$HTTP3_OK" = 1 ] && echo yes || echo NO)" >&2
+  echo "  hook named both files MISSING: $([ "$FB_MISSING" = 1 ] && echo yes || echo NO)" >&2
+  echo "  marker says verity=inactive:  $([ "$FB_INACTIVE" = 1 ] && echo yes || echo NO)" >&2
+  echo "" >&2
+  echo "This is the brick case. Every machine installed before the verity siblings" >&2
+  echo "were staged has exactly this layout, and scripts/initramfs/vulos-live must" >&2
+  echo "take its unverified loop-mount path on it rather than reaching veritysetup" >&2
+  echo "(which panics on failure, by design). If the hook now treats absent inputs" >&2
+  echo "as fatal on a local disk, that fleet stops booting." >&2
+  echo "" >&2
+  echo "---- last 60 lines of fallback serial ($FB_SERIAL) ----" >&2
+  tail -n 60 "$FB_SERIAL" >&2 || true
+  exit 1
+fi
+
 # ── Phase 5: VERITY-03 — is dm-verity actually ACTIVE on the installed disk? ──
 #
 # ARCHITECTURE.md says dm-verity enforces block-level integrity at runtime via
@@ -710,9 +864,13 @@ grep -q "STAGED=yes" "$VERITY_REPORT" || {
 grep -q "VERIFIES=yes" "$VERITY_REPORT" || {
   printf "${c_r}✗ FAIL — the STAGED hash tree does not verify against the STAGED squashfs${c_n}\n" >&2
   echo "" >&2
-  echo "This is the dangerous state: the hook panics when veritysetup open fails, so a" >&2
-  echo "disk in this condition does not boot at all. The installer verified the SOURCE" >&2
-  echo "artifacts before copying, so a failure here means the copy did not survive." >&2
+  echo "This is the dangerous state: a disk in this condition does not boot at all." >&2
+  echo "Measured, on a disk whose roothash was deliberately replaced with a wrong" >&2
+  echo "64-hex value: 'veritysetup open' SUCCEEDS (dm-verity checks nothing until a" >&2
+  echo "block is read), and the machine then halts at the squashfs mount with" >&2
+  echo "'device-mapper: verity: metadata block 1 is corrupted' and drops to" >&2
+  echo "(initramfs) — no HTTP, no login. The installer verified the SOURCE artifacts" >&2
+  echo "before copying, so a failure here means the copy did not survive." >&2
   exit 1
 }
 ok "slot-a carries os-core.hashtree + os-core.roothash, and they verify against the staged image"
