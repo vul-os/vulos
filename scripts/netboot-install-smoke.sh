@@ -553,8 +553,10 @@ case "$BOOTED" in *"slot=b"*) SLOT_SEEN=1 ;; esac
 if [ "$SLOT_SEEN" = "1" ] && [ "$HTTP2_OK" = "1" ]; then
   ok "PASS — the flip is REAL: boot-state.json said slot b, the initramfs honoured it,"
   ok "       the machine came up serving HTTP, and the disk records slot=b."
-  exit 0
+  PHASE4_OK=1
 fi
+
+if [ "${PHASE4_OK:-0}" != "1" ]; then
 
 # "I could not tell" is not "it is broken". If the marker is absent the boot
 # left no evidence either way — asserting failure there would be as dishonest as
@@ -597,4 +599,147 @@ echo "---- last 60 lines of slot-b serial ($SERIAL2) ----" >&2
 tail -n 60 "$SERIAL2" >&2 || true
 kill "$QEMU2_PID" 2>/dev/null || true
 exit 1
+
+fi   # end: Phase 4 did not pass
+
+# ── Phase 5: VERITY-03 — is dm-verity actually ACTIVE on the installed disk? ──
+#
+# ARCHITECTURE.md says dm-verity enforces block-level integrity at runtime via
+# the initramfs. On a netboot-installed disk that was simply untrue, and nothing
+# noticed for months, because every layer reported success: the install passed,
+# the machine booted, HTTP answered. The protection was not running.
+#
+# It failed for two independent reasons, and fixing either alone changes
+# nothing, so this phase checks the whole chain rather than any one link:
+#
+#   1. the installer never staged os-core.hashtree/os-core.roothash beside the
+#      squashfs it copied into the slot (fixed — backend/services/installer/
+#      netboot_verity.go),
+#   2. veritysetup and the dm-verity kernel driver are not IN the initramfs
+#      (a rootfs/build change; NOT fixed here).
+#
+# Assertions, in order of what they can prove:
+#
+#   A. the verity siblings are in slot-a at the names the hook derives from
+#      vulos.squashfs= — a rename here silently disables verity,
+#   B. `veritysetup verify` passes against the STAGED trio, on the disk, after
+#      the copy — the installer verified the SOURCE, this verifies what actually
+#      landed,
+#   C. the boot recorded verity=active in /var/cache/vulos/booted-slot.
+#
+# C is read from the disk, not the serial, for the same reason Phase 4 is: the
+# installed entry carries `quiet splash`, so plymouth swallows every initramfs
+# line and BOTH boots log none of them.
+echo ""
+say "Phase 5 — dm-verity on the installed disk (staged artifacts, then whether the boot used them)…"
+
+VERITY_REPORT="$OUTDIR/_netboot-verity-report.txt"
+docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+    set -euo pipefail
+    IMG=/out/'"$(basename "$DISK_IMG")"'
+    LOOP="$(losetup --find --show --partscan "$IMG")"
+    trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+    for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+    for pnum in 1 2; do
+      devnum="$(cat "/sys/class/block/${LOOP#/dev/}p${pnum}/dev")"
+      [ -e "${LOOP}p${pnum}" ] || mknod "${LOOP}p${pnum}" b "${devnum%%:*}" "${devnum##*:}"
+    done
+    MNT=/mnt/vulos-verity; mkdir -p "$MNT"
+    mount -o ro "${LOOP}p2" "$MNT"
+    ESP=/mnt/vulos-esp; mkdir -p "$ESP"
+    mount -o ro "${LOOP}p1" "$ESP"
+    trap "umount $ESP 2>/dev/null || true; umount $MNT 2>/dev/null || true; losetup -d $LOOP 2>/dev/null || true" EXIT
+
+    SA="$MNT/var/cache/vulos/slot-a"
+
+    # A — the artifacts, at the names the initramfs derives from the boot entry.
+    for f in os-core.squashfs os-core.hashtree os-core.roothash; do
+      if [ ! -f "$SA/$f" ]; then
+        echo "STAGED=no MISSING=$f"
+        exit 0
+      fi
+    done
+
+    # B — the staged tree really describes the staged image. The installer
+    # verified the source files; this verifies the bytes that survived the copy.
+    # Failing here is not a warning: those three files together are what the
+    # initramfs will hand to the kernel, and a mismatch is a panic at boot.
+    RH="$(tr -d " \t\r\n" < "$SA/os-core.roothash")"
+    if veritysetup verify "$SA/os-core.squashfs" "$SA/os-core.hashtree" "$RH" >/tmp/vs.log 2>&1; then
+      echo "STAGED=yes VERIFIES=yes ROOTHASH=$RH"
+    else
+      echo "STAGED=yes VERIFIES=no ROOTHASH=$RH"
+      sed "s/^/    veritysetup: /" /tmp/vs.log
+    fi
+
+    # Capability of the initramfs that will actually run at boot — reason #2.
+    # A gzip cpio (possibly preceded by an uncompressed early archive); listing
+    # names is enough to tell whether veritysetup and dm-verity are in there.
+    IR="$ESP/EFI/vulos/initramfs.img"
+    NAMES=/tmp/ir-names
+    : > "$NAMES"
+    { cpio -t --quiet < "$IR" 2>/dev/null || true; } >> "$NAMES"
+    { gzip -dc "$IR" 2>/dev/null | cpio -t --quiet 2>/dev/null || true; } >> "$NAMES"
+    grep -q "sbin/veritysetup" "$NAMES" && echo "IR_VERITYSETUP=yes" || echo "IR_VERITYSETUP=no"
+    grep -q "dm-verity" "$NAMES" && echo "IR_DMVERITY=yes" || echo "IR_DMVERITY=no"
+
+    # C — what the boot itself recorded.
+    grep "^verity=" "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "verity=UNRECORDED"
+  ' > "$VERITY_REPORT" 2>&1 || { cat "$VERITY_REPORT" >&2; die "Phase 5 inspection failed"; }
+
+sed 's/^/      /' "$VERITY_REPORT"
+
+grep -q "STAGED=yes" "$VERITY_REPORT" || {
+  printf "${c_r}✗ FAIL — the installer did not stage the dm-verity artifacts into slot-a${c_n}\n" >&2
+  echo "" >&2
+  echo "Without os-core.hashtree + os-core.roothash beside the staged squashfs, the" >&2
+  echo "initramfs hook has nothing to open and every installed machine mounts its OS" >&2
+  echo "through a plain loop device — which is the exact defect VERITY-03 closed." >&2
+  echo "See stageVerityArtifacts in backend/services/installer/netboot_verity.go." >&2
+  exit 1
+}
+grep -q "VERIFIES=yes" "$VERITY_REPORT" || {
+  printf "${c_r}✗ FAIL — the STAGED hash tree does not verify against the STAGED squashfs${c_n}\n" >&2
+  echo "" >&2
+  echo "This is the dangerous state: the hook panics when veritysetup open fails, so a" >&2
+  echo "disk in this condition does not boot at all. The installer verified the SOURCE" >&2
+  echo "artifacts before copying, so a failure here means the copy did not survive." >&2
+  exit 1
+}
+ok "slot-a carries os-core.hashtree + os-core.roothash, and they verify against the staged image"
+
+if grep -q "^verity=active" "$VERITY_REPORT"; then
+  ok "PASS — dm-verity is ACTIVE on the installed disk: the boot opened the verity"
+  ok "       device and recorded it, and the machine came up serving HTTP."
+  exit 0
+fi
+
+if grep -q "verity=UNRECORDED" "$VERITY_REPORT"; then
+  printf "${c_r}⚠ INCONCLUSIVE — this boot left no verity= record${c_n}\n" >&2
+  echo "The hook writes it beside slot=/via=/image= in /var/cache/vulos/booted-slot." >&2
+  echo "An initramfs built before that field existed would look exactly like this." >&2
+  exit 2
+fi
+
+# verity=inactive with correct artifacts staged: the remaining cause. Say
+# precisely which prerequisite the initramfs is missing rather than "verity is
+# off", because those are different bugs with different owners.
+printf "${c_r}✗ dm-verity is NOT ACTIVE — the artifacts are staged and correct, the initramfs cannot use them${c_n}\n" >&2
+echo "" >&2
+grep -E "^IR_" "$VERITY_REPORT" | sed 's/^/  /' >&2
+echo "" >&2
+echo "The installer side is done: slot-a holds a hash tree and root hash that verify" >&2
+echo "against the staged image. What is missing is in the OS IMAGE BUILD:" >&2
+echo "" >&2
+echo "  1. cryptsetup-bin installed into the rootfs (provides /sbin/veritysetup)" >&2
+echo "  2. an initramfs-tools hook that runs copy_exec /sbin/veritysetup" >&2
+echo "  3. dm-mod, dm-bufio, dm-verity and reed_solomon in the initramfs modules" >&2
+echo "     list — MODULES=most does NOT include drivers/md, and dm-verity.ko" >&2
+echo "     without dm-bufio/reed_solomon loads with 'Unknown symbol' errors" >&2
+echo "" >&2
+echo "All three live in build.sh. Until they land, scripts/initramfs/vulos-live takes" >&2
+echo "its documented unverified loop-mount fallback and the machine boots normally —" >&2
+echo "verified by this very run — but block-level integrity is not enforced, and" >&2
+echo "docs/ARCHITECTURE.md's claim that it is remains false for installed disks." >&2
+exit 3
 
