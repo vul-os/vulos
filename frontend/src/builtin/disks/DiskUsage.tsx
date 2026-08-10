@@ -255,32 +255,44 @@ export default function DiskUsage() {
             </div>
           ) : (
             <>
-              {/* Top section: donut + mount info */}
-              <div className="shrink-0 p-4 pb-3 border-b border-neutral-800/40">
-                <div className="flex items-center gap-5">
+              {/* Top section: donut + mount info.
+                  @container: on a narrow window (a phone-fullscreen app, or a
+                  desktop window snapped to a quarter-tile) the donut and the
+                  Used/Free/Total row used to stay side-by-side down to zero
+                  width, so the 3-column grid ran out of room, its uppercase
+                  labels overflowed their cells edge-to-edge ("USEDFREETOTAL")
+                  and the values overlapped the same way. Below `@xs` (20rem)
+                  the donut stacks above the info column instead, which gives
+                  Used/Free/Total the full content width to lay out in. This
+                  reads by CONTAINER width, not viewport width, because the
+                  cramped case above was a narrow desktop window just as much
+                  as a phone — see Assistant.tsx for the same @container
+                  pattern in this codebase. */}
+              <div className="shrink-0 p-4 pb-3 border-b border-neutral-800/40 @container">
+                <div className="flex flex-col @xs:flex-row items-center gap-3 @xs:gap-5">
                   <DonutChart
                     segments={mountSegments}
                     size={110}
                     label={`${Math.round(selectedMount.percent)}%`}
                     sublabel="used"
                   />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 w-full @xs:flex-1 text-center @xs:text-left">
                     <h1 className="text-sm font-semibold truncate">{selectedMount.mount_point}</h1>
                     <div className="text-[12px] text-neutral-500 mt-0.5 font-mono truncate">
                       {selectedMount.device} &middot; {selectedMount.fs_type}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-3">
-                      <div>
-                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Used</div>
-                        <div className="text-xs font-medium accent-text tabular-nums mt-0.5">{fmtSize(selectedMount.used_mb)}</div>
+                    <div className="mt-3 grid grid-cols-3 gap-1.5 @xs:gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold truncate">Used</div>
+                        <div className="text-xs font-medium accent-text tabular-nums mt-0.5 truncate">{fmtSize(selectedMount.used_mb)}</div>
                       </div>
-                      <div>
-                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Free</div>
-                        <div className="text-xs font-medium text-neutral-400 tabular-nums mt-0.5">{fmtSize(selectedMount.free_mb)}</div>
+                      <div className="min-w-0">
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold truncate">Free</div>
+                        <div className="text-xs font-medium text-neutral-400 tabular-nums mt-0.5 truncate">{fmtSize(selectedMount.free_mb)}</div>
                       </div>
-                      <div>
-                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold">Total</div>
-                        <div className="text-xs font-medium text-neutral-300 tabular-nums mt-0.5">{fmtSize(selectedMount.total_mb)}</div>
+                      <div className="min-w-0">
+                        <div className="text-[12px] uppercase tracking-wider text-neutral-600 font-semibold truncate">Total</div>
+                        <div className="text-xs font-medium text-neutral-300 tabular-nums mt-0.5 truncate">{fmtSize(selectedMount.total_mb)}</div>
                       </div>
                     </div>
                     <UsageBar percent={selectedMount.percent} className="mt-2.5" />
