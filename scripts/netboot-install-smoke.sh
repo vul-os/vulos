@@ -21,12 +21,30 @@
 #             (OSDIST-FLIP-01).
 #   Phase 4b— boot a COPY with the dm-verity artifacts deleted: the shape of
 #             every disk installed before VERITY-03, which must keep booting.
-#   Phase 5 — is dm-verity actually ACTIVE on the installed disk (VERITY-03).
+#   Phase 5 — is dm-verity actually ACTIVE on the installed disk, and is its
+#             root hash AUTHENTIC (VERITY-03 + VERITY-04)? dm-verity binds the
+#             image to a root hash; only the signature binds that root hash to
+#             the release key, and without it an attacker who substitutes the
+#             squashfs AND the roothash together defeats verity while producing
+#             a completely green boot.
+#   Phase 6a— the same disk with the .sig DELETED must STILL BOOT: that is the
+#             shape of every machine installed between VERITY-03 and VERITY-04.
+#   Phase 6b— MUTATION: the same disk with the .sig CORRUPTED must NOT boot.
+#             Phase 5's pass means nothing without this — a gate that always
+#             says yes produces identical evidence.
+#
+# A note on Phase 0: the build must SIGN the root hash for any of Phase 5/6 to
+# mean anything, and build.sh signs only with a key the shipped release cert
+# authorises. The repo's tracked cert is production ceremony output whose private
+# half is deliberately absent, so this harness generates its own throwaway
+# root+release pair — same as scripts/baremetal-smoke.sh.
 #
 # Exit codes:
 #   0  everything asserted above held.
 #   1  a hard failure — the install, a boot, the slot flip, the pre-existing-disk
-#      fallback, or the staged hash tree not describing the staged image.
+#      fallback, the staged hash tree not describing the staged image, an
+#      unauthenticated root hash, an unsigned disk failing to boot, or a
+#      corrupted signature being accepted.
 #   2  INCONCLUSIVE — the machine booted but left no marker to judge it by.
 #   3  Phase 5 only: the verity artifacts are staged and correct, but the
 #      initramfs cannot use them, so dm-verity is not running. A real, currently
@@ -130,6 +148,45 @@ QMP="$OUTDIR/_nb-qmp.sock"
 SERIAL="$OUTDIR/_netboot-serial.log"
 DISK_IMG="$OUTDIR/_netboot-installed-vda.img"
 
+# ── Phase 0: throwaway signing keys, so the build can sign the root hash ─────
+#
+# VERITY-04 binds the dm-verity root hash to the release key, and build.sh signs
+# it only when a release key the SHIPPED CERT ACTUALLY AUTHORISES is on the
+# machine. It never is by default: keys/*.priv.json is gitignored while
+# keys/trust-anchor.pub and keys/release-cert.json are TRACKED and hold
+# PRODUCTION ceremony output (1d9b8cb9), whose private halves are deliberately
+# absent. Without this the build would emit an unsigned roothash and Phase 5's
+# sig=verified assertion could never pass — a gate that can only say no.
+#
+# So generate a self-consistent root+release pair and cert with backend/cmd/sign
+# — the same tool a real fork build uses — and point build.sh at it through the
+# existing SEED-01 overrides. Identical to scripts/baremetal-smoke.sh's Phase 0;
+# nothing here is secret or committed. Cached across runs, regenerated on
+# --rebuild, exactly like the rootfs.
+SMOKE_KEYS="$OUTDIR/_smoke-keys"
+if [ ! -f "$SMOKE_KEYS/release-cert.json" ] || [ "$REBUILD" = "1" ]; then
+  say "Generating throwaway smoke-test signing keys…"
+  rm -rf "$SMOKE_KEYS"
+  mkdir -p "$SMOKE_KEYS"
+  (
+    cd "$REPO/backend" &&
+    go run ./cmd/sign gen-key \
+      -out-priv "$SMOKE_KEYS/root.priv.json" -out-pub "$SMOKE_KEYS/root.pub.json" >/dev/null &&
+    go run ./cmd/sign gen-key \
+      -out-priv "$SMOKE_KEYS/release.priv.json" -out-pub "$SMOKE_KEYS/release.pub.json" >/dev/null &&
+    go run ./cmd/sign export-anchor \
+      -pub "$SMOKE_KEYS/root.pub.json" -out "$SMOKE_KEYS/trust-anchor.pub" >/dev/null &&
+    go run ./cmd/sign issue-release-cert \
+      -root-priv "$SMOKE_KEYS/root.priv.json" \
+      -release-pub "$SMOKE_KEYS/release.pub.json" \
+      -key-id "netboot-install-smoke" \
+      -not-after "2099-01-01T00:00:00Z" \
+      -min-epoch 0 \
+      -out "$SMOKE_KEYS/release-cert.json" >/dev/null
+  ) || die "failed to generate smoke-test signing keys"
+  ok "smoke-test signing keys: $SMOKE_KEYS"
+fi
+
 # ── Phase 1: build the --live artifact with the fixed vulos-live hook ────────
 if [ "$NO_BUILD" = "0" ]; then
   say "Building builder image (cached after first run; now also carries systemd-boot for Phase 2)…"
@@ -141,14 +198,30 @@ if [ "$NO_BUILD" = "0" ]; then
   say "  scripts/initramfs/vulos-live is copied into the rootfs and baked into the"
   say "  initramfs via update-initramfs during this step — the SAME fixed hook that"
   say "  Phase 3 boots, not a stand-in."
+  say "  It also signs os-core.roothash with the throwaway release key (VERITY-04)."
+  # /src is the bind-mounted repo, so $SMOKE_KEYS (= $REPO/output/_smoke-keys)
+  # is visible in-container at /src/output/_smoke-keys — independent of
+  # build.sh's own /work/output.
   docker run --rm --privileged \
     -v "$REPO":/src -w /src \
     -v vulos-bm-work:/work \
     -v vulos-bm-gocache:/root/.cache/go-build \
     -v vulos-bm-gomod:/go/pkg/mod \
     -v vulos-bm-npm:/root/.npm \
+    -e VULOS_TRUST_ANCHOR_PUBKEY=/src/output/_smoke-keys/trust-anchor.pub \
+    -e VULOS_RELEASE_CERT=/src/output/_smoke-keys/release-cert.json \
+    -e VULOS_RELEASE_PRIV_KEY=/src/output/_smoke-keys/release.priv.json \
+    -e VULOS_OS_BUCKET_URL=https://os.vulos.org \
     "$BUILDER_IMG" \
     bash -c "mkdir -p /work/output && ./build.sh --arm64 --live $REUSE /work/output"
+
+  # The build MUST have produced the signature. Asserting it here rather than
+  # only at Phase 5 separates "the build did not sign" from "the boot did not
+  # verify" — two different bugs whose symptom at Phase 5 is identical.
+  docker run --rm -v vulos-bm-work:/work "$BUILDER_IMG" \
+    test -s /work/output/os-core.roothash.sig \
+    || die "build.sh produced no os-core.roothash.sig — VERITY-04 did not sign (check the build log for 'no release private key on this machine')"
+  ok "build signed the root hash → os-core.roothash.sig"
 fi
 ok "Phase 1 done — image.squashfs + kernel + initramfs are in the vulos-bm-work volume"
 
@@ -732,11 +805,18 @@ FB_MISSING=0
 grep -q "hashtree:.*MISSING" "$FB_SERIAL" 2>/dev/null && grep -q "roothash:.*MISSING" "$FB_SERIAL" 2>/dev/null && FB_MISSING=1
 FB_INACTIVE=0
 case "$FB_BOOTED" in *"verity=inactive"*) FB_INACTIVE=1 ;; esac
+# VERITY-04: a slot with no roothash has nothing to authenticate, so the honest
+# record is sig=none — NOT sig=unsigned (which means "a roothash arrived with no
+# usable signature") and certainly not sig=verified. Pinning the spelling here
+# stops the pre-existing-disk path from drifting into a state Phase 5 would read
+# as a pass.
+FB_SIGNONE=0
+case "$FB_BOOTED" in *"sig=none"*) FB_SIGNONE=1 ;; esac
 
-if [ "$HTTP3_OK" = "1" ] && [ "$FB_MISSING" = "1" ] && [ "$FB_INACTIVE" = "1" ]; then
+if [ "$HTTP3_OK" = "1" ] && [ "$FB_MISSING" = "1" ] && [ "$FB_INACTIVE" = "1" ] && [ "$FB_SIGNONE" = "1" ]; then
   ok "PASS — a slot with no verity artifacts still boots: the hook itemised the"
   ok "       missing hashtree/roothash, fell back to the loop mount, recorded"
-  ok "       verity=inactive, and the machine came up serving HTTP."
+  ok "       verity=inactive sig=none, and the machine came up serving HTTP."
   rm -f "$FB_IMG" "$VARS3"
 else
   printf "${c_r}✗ FAIL — a disk with no dm-verity artifacts did not boot cleanly${c_n}\n" >&2
@@ -744,6 +824,7 @@ else
   echo "  HTTP served:                 $([ "$HTTP3_OK" = 1 ] && echo yes || echo NO)" >&2
   echo "  hook named both files MISSING: $([ "$FB_MISSING" = 1 ] && echo yes || echo NO)" >&2
   echo "  marker says verity=inactive:  $([ "$FB_INACTIVE" = 1 ] && echo yes || echo NO)" >&2
+  echo "  marker says sig=none:        $([ "$FB_SIGNONE" = 1 ] && echo yes || echo NO)" >&2
   echo "" >&2
   echo "This is the brick case. Every machine installed before the verity siblings" >&2
   echo "were staged has exactly this layout, and scripts/initramfs/vulos-live must" >&2
@@ -807,7 +888,11 @@ docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
     SA="$MNT/var/cache/vulos/slot-a"
 
     # A — the artifacts, at the names the initramfs derives from the boot entry.
-    for f in os-core.squashfs os-core.hashtree os-core.roothash; do
+    # os-core.roothash.sig is in this list as of VERITY-04: without it dm-verity
+    # is pinned to an UNAUTHENTICATED number, which is a boot that looks
+    # identical to a good one — verity=active, HTTP served, everything green,
+    # while an attacker who substituted image+roothash together owns the box.
+    for f in os-core.squashfs os-core.hashtree os-core.roothash os-core.roothash.sig; do
       if [ ! -f "$SA/$f" ]; then
         echo "STAGED=no MISSING=$f"
         exit 0
@@ -842,12 +927,28 @@ docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
     if unmkinitramfs "$IR" /tmp/ir >/dev/null 2>&1 && find /tmp/ir > "$NAMES" && [ "$(wc -l < "$NAMES")" -gt 100 ]; then
       grep -q "sbin/veritysetup" "$NAMES" && echo "IR_VERITYSETUP=yes" || echo "IR_VERITYSETUP=no"
       grep -q "dm-verity"       "$NAMES" && echo "IR_DMVERITY=yes"    || echo "IR_DMVERITY=no"
+      # VERITY-04. The verifier binary had existed as SOURCE ONLY: build.sh
+      # compiled vulos-server and vulos-init and nothing else, so the roothash
+      # gate could never run on a shipped box. Compiling it, or copying it into
+      # the rootfs, is NOT the same as it being in the initrd — that exact
+      # distinction is why cryptsetup-bin sat in the BUILDER image for months
+      # while every produced initramfs reported IR_VERITYSETUP=no. Read it out
+      # of the archive the machine actually booted.
+      grep -q "sbin/vulos-verify-sig" "$NAMES" && echo "IR_VERIFYSIG=yes" || echo "IR_VERIFYSIG=no"
+      # ...and the trust material it needs. An anchor without a cert cannot say
+      # WHICH release key it authorises, and the gate refuses rather than guess.
+      grep -q "etc/vulos/trust-anchor.pub"  "$NAMES" && echo "IR_ANCHOR=yes" || echo "IR_ANCHOR=no"
+      grep -q "etc/vulos/release-cert.json" "$NAMES" && echo "IR_CERT=yes"   || echo "IR_CERT=no"
     else
-      echo "IR_VERITYSETUP=unknown IR_DMVERITY=unknown (could not unpack $IR)"
+      echo "IR_VERITYSETUP=unknown IR_DMVERITY=unknown IR_VERIFYSIG=unknown (could not unpack $IR)"
     fi
 
-    # C — what the boot itself recorded.
+    # C — what the boot itself recorded. Both fields: verity= says the kernel
+    # checked every block against a root hash, sig= says that root hash came
+    # from the release key. Reading the first without the second is how this
+    # area looked solved while dm-verity was pinned to an arbitrary number.
     grep "^verity=" "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "verity=UNRECORDED"
+    grep "^sig="    "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "sig=UNRECORDED"
   ' > "$VERITY_REPORT" 2>&1 || { cat "$VERITY_REPORT" >&2; die "Phase 5 inspection failed"; }
 
 sed 's/^/      /' "$VERITY_REPORT"
@@ -875,10 +976,61 @@ grep -q "VERIFIES=yes" "$VERITY_REPORT" || {
 }
 ok "slot-a carries os-core.hashtree + os-core.roothash, and they verify against the staged image"
 
-if grep -q "^verity=active" "$VERITY_REPORT"; then
-  ok "PASS — dm-verity is ACTIVE on the installed disk: the boot opened the verity"
-  ok "       device and recorded it, and the machine came up serving HTTP."
-  exit 0
+# VERITY-04 — the verifier must be IN the initrd that booted. This is checked
+# BEFORE the marker, because a missing binary and a failed verification produce
+# the same sig=unsigned and are entirely different bugs.
+if ! grep -q "^IR_VERIFYSIG=yes" "$VERITY_REPORT"; then
+  printf "${c_r}✗ FAIL — vulos-verify-sig is NOT in the initramfs that booted${c_n}\n" >&2
+  echo "" >&2
+  grep -E "^IR_" "$VERITY_REPORT" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "Without it scripts/initramfs/vulos-live cannot authenticate the dm-verity" >&2
+  echo "root hash and takes its 'signature not verified' branch — the state every" >&2
+  echo "shipped build was in, because build.sh compiled only vulos-server and" >&2
+  echo "vulos-init. Compiling the binary is not the same as it being in the initrd:" >&2
+  echo "build.sh must copy it into the rootfs AND scripts/initramfs/vulos-verity" >&2
+  echo "must copy_exec it into the cpio." >&2
+  exit 1
+fi
+ok "the initramfs that booted contains vulos-verify-sig, the trust anchor and the release cert"
+
+if grep -q "^verity=active" "$VERITY_REPORT" && grep -q "^sig=verified" "$VERITY_REPORT"; then
+  ok "PASS — dm-verity is ACTIVE on the installed disk AND its root hash is"
+  ok "       AUTHENTIC: the boot verified os-core.roothash against the pinned"
+  ok "       anchor through the release cert before opening the verity device,"
+  ok "       recorded both, and the machine came up serving HTTP."
+  VERITY_SIG_OK=1
+else
+  VERITY_SIG_OK=0
+fi
+
+# Everything below diagnoses a FAILED Phase 5 and every branch exits, so it is
+# skipped wholesale on success and the run continues into Phase 6.
+if [ "$VERITY_SIG_OK" != "1" ]; then
+
+# verity=active with an unauthenticated root hash. The machine boots and every
+# other signal is green — which is precisely why this needs its own loud verdict
+# rather than being folded into the verity check above.
+if grep -q "^verity=active" "$VERITY_REPORT" && grep -q "^sig=unsigned" "$VERITY_REPORT"; then
+  printf "${c_r}✗ FAIL — dm-verity is active, but its ROOT HASH IS UNAUTHENTICATED${c_n}\n" >&2
+  echo "" >&2
+  echo "The machine booted, HTTP answered, and the kernel is verifying every block" >&2
+  echo "against a root hash that NOTHING binds to the release key. An attacker who" >&2
+  echo "substitutes the squashfs AND os-core.roothash together defeats dm-verity" >&2
+  echo "completely and produces exactly this marker: verity=active, box up, green." >&2
+  echo "" >&2
+  echo "The .sig is staged (asserted above) and the verifier is in the initrd" >&2
+  echo "(asserted above), so the gate ran and declined. Read the boot's own" >&2
+  echo "itemisation — vulos-live logs which of sig/anchor/cert/verifier it could" >&2
+  echo "not use — or check that build.sh signed with the key the SHIPPED cert" >&2
+  echo "authorises (VULOS_RELEASE_PRIV_KEY vs \$ROOTFS/etc/vulos/release-cert.json)." >&2
+  exit 1
+fi
+
+if grep -q "sig=UNRECORDED" "$VERITY_REPORT" && ! grep -q "verity=UNRECORDED" "$VERITY_REPORT"; then
+  printf "${c_r}⚠ INCONCLUSIVE — this boot recorded verity= but no sig= field${c_n}\n" >&2
+  echo "An initramfs built before VERITY-04 added that field looks exactly like this." >&2
+  exit 2
 fi
 
 if grep -q "verity=UNRECORDED" "$VERITY_REPORT"; then
@@ -910,3 +1062,231 @@ echo "verified by this very run — but block-level integrity is not enforced, a
 echo "docs/ARCHITECTURE.md's claim that it is remains false for installed disks." >&2
 exit 3
 
+fi   # end: Phase 5 did not pass
+
+
+# ── Phase 6: VERITY-04 — is the SIGNATURE CHECK real? ────────────────────────
+#
+# Phase 5 proves the gate reports success on a good disk. That is exactly the
+# evidence a gate which checks nothing also produces, and this project has
+# shipped several of those. So Phase 5's pass is only meaningful next to a
+# demonstration that the gate can FAIL — and next to a demonstration that the
+# case it is documented to TOLERATE is genuinely tolerated, because a check that
+# is fail-closed in a way nobody measured is how a fleet stops booting.
+#
+# Two boots, on two copies of the installed disk:
+#
+#   6a  os-core.roothash.sig DELETED, hashtree + roothash left in place.
+#       This is the shape of EVERY disk installed between VERITY-03 and today:
+#       the installer staged the verity pair, nothing produced a signature.
+#       Policy says such a disk MUST STILL BOOT, with dm-verity active and the
+#       marker honestly reading sig=unsigned. It is a distinct shape from Phase
+#       4b's (which deletes all three), and it is the one the current fleet is
+#       actually in, so it gets its own boot rather than being assumed.
+#
+#   6b  os-core.roothash.sig CORRUPTED — the signature bytes replaced with 64
+#       zero bytes, leaving a structurally valid vulos-sig-v1 file whose
+#       signature cannot verify. Policy says a present-but-invalid signature is
+#       FATAL EVERYWHERE, so this boot must NOT reach HTTP and must NOT record a
+#       marker: vulos-live panics before record_booted_slot runs.
+#
+# A run where 6b still boots means the signature check is decorative, which is
+# strictly worse than having none — it would put a "verified" claim on an image
+# nobody authenticated.
+#
+# Both copies get `quiet splash` stripped from the ESP entry, for the same
+# reason Phase 4b does: plymouth swallows every initramfs line otherwise, and
+# the hook's own reasoning is the evidence.
+
+# mutate_disk_copy <dest-img> <shell-snippet-run-against-$C-and-$MNT>
+# Prepares a copy of the installed disk: applies the mutation to the slot
+# directories, drops the booted-slot marker so anything read back can only have
+# come from the boot under test, and makes the initramfs audible.
+mutate_disk_copy() {
+  local dest="$1" snippet="$2"
+  rm -f "$dest"
+  cp "$DISK_IMG" "$dest"
+  docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+      set -euo pipefail
+      IMG=/out/'"$(basename "$dest")"'
+      LOOP="$(losetup --find --show --partscan "$IMG")"
+      trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+      for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+      for pnum in 1 2; do
+        devnum="$(cat "/sys/class/block/${LOOP#/dev/}p${pnum}/dev")"
+        [ -e "${LOOP}p${pnum}" ] || mknod "${LOOP}p${pnum}" b "${devnum%%:*}" "${devnum##*:}"
+      done
+      MNT=/mnt/vulos-mut; mkdir -p "$MNT"; mount "${LOOP}p2" "$MNT"
+      C="$MNT/var/cache/vulos"
+      '"$snippet"'
+      rm -f "$C/booted-slot"
+      sync; umount "$MNT"
+      ESP=/mnt/vulos-mut-esp; mkdir -p "$ESP"; mount "${LOOP}p1" "$ESP"
+      for E in "$ESP"/loader/entries/*.conf; do
+        sed -i "s/ quiet splash / /; s/^options /options console=ttyAMA0,115200 /" "$E"
+      done
+      sync; umount "$ESP"
+    ' || return 1
+}
+
+# boot_and_probe <img> <serial-log> <hostport> → sets BP_HTTP (0/1)
+# Bounded polling loop, never a bare blocking wait (there is no `timeout` here).
+boot_and_probe() {
+  local img="$1" serial="$2" port="$3"
+  local vars="$OUTDIR/_netboot-uefi-vars-$(basename "$img" .img).fd"
+  cp "$EDK2_VARS_SRC" "$vars"
+  : > "$serial"
+  qemu-system-aarch64 \
+    -machine virt,gic-version=3 -accel hvf -cpu host -smp 4 -m "${VM_MEM_MB:-4096}" \
+    -drive if=pflash,format=raw,readonly=on,file="$EDK2_CODE" \
+    -drive if=pflash,format=raw,file="$vars" \
+    -drive if=virtio,format=raw,file="$img" \
+    -device virtio-net-pci,netdev=n1 \
+    -netdev user,id=n1,hostfwd=tcp:127.0.0.1:${port}-:8080 \
+    -serial "file:$serial" \
+    -display none -vga none -no-reboot &
+  local pid=$!
+  BP_HTTP=0
+  local deadline=$(( $(date +%s) + TIMEOUT ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    kill -0 "$pid" 2>/dev/null || break
+    if curl -fsS --max-time 3 "http://127.0.0.1:${port}/api/setup/status" >/dev/null 2>&1; then BP_HTTP=1; break; fi
+    sleep 3
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  sleep 2
+  rm -f "$vars"
+}
+
+# read_marker <img> → prints /var/cache/vulos/booted-slot or MISSING
+read_marker() {
+  docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+    set -euo pipefail
+    LOOP="$(losetup --find --show --partscan "/out/'"$(basename "$1")"'")"
+    trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+    for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+    devnum="$(cat "/sys/class/block/${LOOP#/dev/}p2/dev")"
+    [ -e "${LOOP}p2" ] || mknod "${LOOP}p2" b "${devnum%%:*}" "${devnum##*:}"
+    MNT=/mnt/vulos-read; mkdir -p "$MNT"; mount -o ro "${LOOP}p2" "$MNT"
+    cat "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "MISSING"
+    umount "$MNT" 2>/dev/null || true
+  ' 2>/dev/null
+}
+
+# ── Phase 6a: a roothash with NO signature must still boot ───────────────────
+echo ""
+say "Phase 6a — the pre-existing-disk shape: roothash present, .sig DELETED…"
+
+NOSIG_IMG="$OUTDIR/_netboot-nosig-vda.img"
+NOSIG_SERIAL="$OUTDIR/_netboot-serial-nosig.log"
+mutate_disk_copy "$NOSIG_IMG" '
+    for s in a b; do
+      rm -f "$C/slot-$s/os-core.roothash.sig"
+      echo "  slot-$s now: $(ls -1 "$C/slot-$s" 2>/dev/null | tr "\n" " ")"
+    done
+  ' || die "Phase 6a setup failed"
+
+say "Booting the copy with its roothash signature removed…"
+boot_and_probe "$NOSIG_IMG" "$NOSIG_SERIAL" "$(( HOSTPORT + 3 ))"
+NOSIG_MARKER="$(read_marker "$NOSIG_IMG")"
+echo "$NOSIG_MARKER" | sed 's/^/      marker: /'
+grep -h "vulos-live:" "$NOSIG_SERIAL" 2>/dev/null | sed 's/^.*vulos-live:/      hook:/' | head -6 || true
+
+NOSIG_OK=0
+case "$NOSIG_MARKER" in *"sig=unsigned"*) NOSIG_OK=1 ;; esac
+NOSIG_VERITY=0
+case "$NOSIG_MARKER" in *"verity=active"*) NOSIG_VERITY=1 ;; esac
+
+if [ "$BP_HTTP" = "1" ] && [ "$NOSIG_OK" = "1" ] && [ "$NOSIG_VERITY" = "1" ]; then
+  ok "PASS — a disk whose roothash has no signature STILL BOOTS: dm-verity is"
+  ok "       active, the marker honestly says sig=unsigned, and HTTP answered."
+  ok "       This is every disk installed between VERITY-03 and VERITY-04; a"
+  ok "       fail-closed policy here would have bricked all of them."
+  rm -f "$NOSIG_IMG"
+else
+  printf "${c_r}✗ FAIL — a disk with an UNSIGNED roothash did not boot cleanly${c_n}\n" >&2
+  echo "" >&2
+  echo "  HTTP served:                $([ "$BP_HTTP" = 1 ] && echo yes || echo NO)" >&2
+  echo "  marker says verity=active:  $([ "$NOSIG_VERITY" = 1 ] && echo yes || echo NO)" >&2
+  echo "  marker says sig=unsigned:   $([ "$NOSIG_OK" = 1 ] && echo yes || echo NO)" >&2
+  echo "" >&2
+  echo "This is the brick case for VERITY-04. Every machine installed since" >&2
+  echo "VERITY-03 has a staged hashtree and roothash and NO signature, because" >&2
+  echo "nothing produced one until today. scripts/initramfs/vulos-live must warn" >&2
+  echo "and continue on a LOCAL disk — only a netboot (vulos.netboot=1) may treat" >&2
+  echo "an absent signature as fatal. If the hook now refuses here, that fleet" >&2
+  echo "stops booting on the update that 'enabled signature verification'." >&2
+  echo "" >&2
+  echo "---- last 60 lines of serial ($NOSIG_SERIAL) ----" >&2
+  tail -n 60 "$NOSIG_SERIAL" >&2 || true
+  exit 1
+fi
+
+# ── Phase 6b: a CORRUPTED signature must halt the boot ───────────────────────
+echo ""
+say "Phase 6b — MUTATION: corrupt the signature; the boot must NOT proceed…"
+
+BADSIG_IMG="$OUTDIR/_netboot-badsig-vda.img"
+BADSIG_SERIAL="$OUTDIR/_netboot-serial-badsig.log"
+# Replace the signature bytes with 64 zero bytes. The file stays a structurally
+# valid vulos-sig-v1 document — same header, same key-id, same payload line, a
+# correctly base64-encoded 64-byte signature — so nothing but the CRYPTOGRAPHY
+# can reject it. Blanking the file or truncating it would be caught by the
+# parser and would prove nothing about the signature check.
+mutate_disk_copy "$BADSIG_IMG" '
+    ZEROSIG="$(head -c 64 /dev/zero | base64 -w0)"
+    for s in a b; do
+      if [ -f "$C/slot-$s/os-core.roothash.sig" ]; then
+        sed -i "s|^sig: .*|sig: $ZEROSIG|" "$C/slot-$s/os-core.roothash.sig"
+        echo "  slot-$s sig line now: $(grep "^sig: " "$C/slot-$s/os-core.roothash.sig" | cut -c1-40)…"
+        grep -q "^payload: " "$C/slot-$s/os-core.roothash.sig" \
+          || { echo "FATAL: slot-$s bundle has no payload line — the mutation is not testing what it claims" >&2; exit 1; }
+      fi
+    done
+  ' || die "Phase 6b setup failed"
+
+say "Booting the copy with a corrupted roothash signature…"
+boot_and_probe "$BADSIG_IMG" "$BADSIG_SERIAL" "$(( HOSTPORT + 4 ))"
+BADSIG_MARKER="$(read_marker "$BADSIG_IMG")"
+echo "$BADSIG_MARKER" | sed 's/^/      marker: /'
+grep -h "vulos-live:" "$BADSIG_SERIAL" 2>/dev/null | sed 's/^.*vulos-live:/      hook:/' | head -6 || true
+
+# Three independent signals, because any one alone is weak: HTTP could fail for
+# an unrelated reason, and a marker could be stale (it is deleted before the
+# boot, so it cannot be).
+BADSIG_NOHTTP=0; [ "$BP_HTTP" = "0" ] && BADSIG_NOHTTP=1
+BADSIG_NOMARKER=0
+case "$BADSIG_MARKER" in *MISSING*) BADSIG_NOMARKER=1 ;; esac
+BADSIG_PANIC=0
+grep -qi "signature verification FAILED" "$BADSIG_SERIAL" 2>/dev/null && BADSIG_PANIC=1
+
+if [ "$BADSIG_NOHTTP" = "1" ] && [ "$BADSIG_NOMARKER" = "1" ] && [ "$BADSIG_PANIC" = "1" ]; then
+  ok "PASS — a corrupted roothash signature HALTS THE BOOT: the machine never"
+  ok "       served HTTP, wrote no marker (vulos-live panics before"
+  ok "       record_booted_slot), and the serial carries the gate's own refusal."
+  ok "       Phase 5's pass is therefore evidence, not a gate that always says yes."
+  rm -f "$BADSIG_IMG"
+else
+  printf "${c_r}✗ FAIL — the signature check did not reject a CORRUPTED signature${c_n}\n" >&2
+  echo "" >&2
+  echo "  refused to serve HTTP:       $([ "$BADSIG_NOHTTP" = 1 ] && echo yes || echo NO)" >&2
+  echo "  wrote no booted-slot marker: $([ "$BADSIG_NOMARKER" = 1 ] && echo yes || echo NO)" >&2
+  echo "  serial shows the refusal:    $([ "$BADSIG_PANIC" = 1 ] && echo yes || echo NO)" >&2
+  echo "" >&2
+  echo "A signature check that passes on a corrupted signature is WORSE THAN NONE:" >&2
+  echo "it puts a 'verified' claim on an image nobody authenticated, and Phase 5's" >&2
+  echo "sig=verified becomes a gate that can only say yes. Either vulos-verify-sig" >&2
+  echo "is not being reached (check IR_VERIFYSIG and the hook's itemisation above)," >&2
+  echo "or its non-zero exit is not being treated as fatal in vulos-live." >&2
+  echo "" >&2
+  echo "---- last 60 lines of serial ($BADSIG_SERIAL) ----" >&2
+  tail -n 60 "$BADSIG_SERIAL" >&2 || true
+  exit 1
+fi
+
+echo ""
+ok "ALL PHASES PASSED — dm-verity is active on the installed disk, its root hash"
+ok "is bound to the release key through the pinned anchor, an unsigned disk still"
+ok "boots, and a corrupted signature stops the boot."
+exit 0
