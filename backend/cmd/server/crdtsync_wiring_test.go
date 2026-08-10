@@ -172,6 +172,27 @@ func TestMainWiresCRDTSync(t *testing.T) {
 	}
 }
 
+// TestStartCRDTSyncIsNotDeadCode guards the other half of the precedent: a
+// wiring function that exists but is never reached. The call site above is
+// asserted textually; this asserts the function itself still does the three
+// things that make it worth calling.
+func TestStartCRDTSyncIsNotDeadCode(t *testing.T) {
+	src, err := os.ReadFile("crdtsync_wiring.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	for _, want := range []string{
+		"RegisterHandlers(",   // a route is mounted
+		"crdtsync.NewSyncer(", // a transport loop exists
+		"sqlcrdt.New(",        // a real table is bridged
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("crdtsync_wiring.go no longer contains %q", want)
+		}
+	}
+}
+
 // TestReplicatedTablesArePolicyApproved re-asserts at the wiring layer what
 // sqlcrdt asserts internally: nothing gets bridged that policy did not approve.
 func TestReplicatedTablesArePolicyApproved(t *testing.T) {
@@ -184,11 +205,4 @@ func TestReplicatedTablesArePolicyApproved(t *testing.T) {
 			t.Errorf("%s is bridged by the wiring but not approved by policy", rt.Domain)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
