@@ -61,18 +61,34 @@ We follow **Conventional Commits**:
 - ...
 ```
 
-## Signed Tags & Artifacts
+## Signed Artifacts
 
-Tags are signed with the maintainer's GPG key:
-```sh
-git tag -s v0.3.1 -m "Release v0.3.1"
-```
+> This section previously described `cosign sign-blob` over a `manifest.json`
+> and a maintainer GPG key. Neither exists: `cosign` appears nowhere in this
+> repository, nothing emits a `manifest.json`, and `SECURITY.md` states that no
+> PGP key has been published. Corrected 2026-08-10.
 
-Release artifacts (SquashFS image + manifest) are signed with cosign:
-```sh
-cosign sign-blob --key release.key build/manifest.json > build/manifest.json.sig
-```
+Release signing is **Ed25519**, done with `backend/cmd/sign`, and it is
+deliberately **not** automated in CI — `release.yml` holds no private key,
+because signing is a human operation on an offline machine (see
+[decisions.md D99](decisions.md)).
 
-See `docs/REPRODUCIBLE-BUILDS.md` for full signing + verification workflow.
+The shape of a release is therefore two phases:
 
-Note: signing infrastructure (GPG key, cosign key) is documented; automated signing in CI is a v1.0 milestone.
+1. **CI builds, unsigned.** It publishes the live images for both architectures
+   plus the content-identity root hash
+   (`vulos-<version>-<arch>.roothash`, computed by `build.sh`'s VERITY-01 over
+   the same squashfs).
+2. **The maintainer signs offline.** `sign sign-manifest` signs `stable.json`
+   against that root hash with the release key; the signed `stable.json` and its
+   `.sig` ship as release assets. This works because the root hash is computed
+   over a rootfs with the manifest removed, so signing afterwards does not
+   invalidate it.
+
+`sign issue-release-cert` (offline root key → release cert) and the rotation and
+revocation procedure are in [KEY-CEREMONY.md](KEY-CEREMONY.md), which is
+authoritative. `docs/REPRODUCIBLE-BUILDS.md` §4–§5 covers the verity artefacts
+and the signer's subcommands.
+
+**Git tags are not currently signed.** `git tag -s` needs a GPG key this project
+has not published; use a plain annotated tag (`git tag -a`) until one exists.
