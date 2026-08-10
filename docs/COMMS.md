@@ -66,7 +66,7 @@ curl https://os.example.com/api/store/registry/element
 # Install the latest version
 curl -X POST https://os.example.com/api/store/registry/install \
   -H "Content-Type: application/json" \
-  -d '{"appId":"element","version":"latest"}'
+  -d '{"app_id":"element","version":"latest"}'
 ```
 
 Install is admin-gated, same as any other registry install.
@@ -118,7 +118,7 @@ checksum is mandatory, and this one is real.
 #### Running your own homeserver
 
 Install `conduit` from the App Hub (or `POST /api/store/registry/install`
-with `{"appId":"conduit","version":"0.5.9"}`) like any other registry app.
+with `{"app_id":"conduit","version":"0.5.9"}`) like any other registry app.
 Its `post_install` step writes a minimal `conduit.toml` (server name
 `localhost` by default, RocksDB storage under the app's `data/` directory,
 registration disabled) and it listens on `127.0.0.1:6167`. Then point
