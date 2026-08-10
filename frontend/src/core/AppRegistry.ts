@@ -144,7 +144,7 @@ const builtinRegistry: App[] = [
     // the wallpaper plus the ambient widget column is what you see instead.
     id: 'home',
     name: 'Home',
-    icon: '⌂',
+    icon: 'home',
     description: 'Your day at a glance — what needs you, agenda, recent activity',
     keywords: ['home', 'today', 'brief', 'agenda', 'overview', 'start', 'dashboard', 'summary', 'assistant'],
     category: 'system',

@@ -59,6 +59,26 @@ const WHITE = '#FFFFFF'
 
 const ART: Record<string, ArtSpec> = {
   // Activity Monitor — a live trace with a bright pulse at the leading edge.
+  // Home — the day's brief. A house would be literal and would collide with the
+  // Files/Drive family; this is a sun cresting a horizon with the day's rhythm
+  // marked beneath it, which is what the app actually shows you.
+  home: {
+    a: '#FBBF24', b: '#F97316',
+    glyph: (
+      <>
+        <circle cx="24" cy="21" r="7.5" fill={WHITE} data-idle="beat" />
+        <path
+          d="M24 6.5v3M24 32.5v3M9.5 21h3M35.5 21h3M13.8 10.8l2.1 2.1M32.1 29.1l2.1 2.1M34.2 10.8l-2.1 2.1M15.9 29.1l-2.1 2.1"
+          fill="none" stroke={WHITE} strokeWidth="2.6" strokeLinecap="round" opacity="0.85"
+          strokeDasharray="44" data-a="draw"
+        />
+        <path
+          d="M7 39.5h34"
+          fill="none" stroke={WHITE} strokeWidth="3.2" strokeLinecap="round" opacity="0.55"
+        />
+      </>
+    ),
+  },
   activity: {
     a: '#22D3EE', b: '#0E7490',
     glyph: (
