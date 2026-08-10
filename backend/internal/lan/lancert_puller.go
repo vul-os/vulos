@@ -42,8 +42,12 @@ import (
 // PullerConfig configures a LANCertPuller. Sensible zero-value defaults are
 // filled in by [NewLANCertPuller]; the only strictly required field is BoxID.
 type PullerConfig struct {
-	// CloudBaseURL is the HTTPS base URL of the cloud control-plane that hosts
-	// the lancert endpoints. Defaults to https://cp.vulos.org.
+	// CloudBaseURL is the HTTPS base URL of the control plane that serves the
+	// lancert endpoints. REQUIRED — there is NO default and no hosted fallback:
+	// Vulos the org operates no LAN-cert control plane, so an empty value makes
+	// [NewLANCertPuller] fail and the (opt-in) puller stay disabled rather than
+	// dial anything at vulos.org. Set it to a control plane the operator runs,
+	// via VULOS_CLOUD_BASE_URL.
 	CloudBaseURL string
 
 	// SharedSecret is the value sent in the `X-Device-Auth` header on every

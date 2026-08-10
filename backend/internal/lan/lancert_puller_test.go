@@ -126,6 +126,23 @@ func TestNewLANCertPuller_RequiresBoxID(t *testing.T) {
 	}
 }
 
+// TestNewLANCertPuller_NoHostedDefault pins the fact the doc comment on
+// PullerConfig.CloudBaseURL used to contradict: there is NO default control
+// plane. Vulos the org hosts nothing, so an empty CloudBaseURL must fail
+// construction (leaving the opt-in puller disabled) rather than silently
+// falling back to a vulos.org host.
+func TestNewLANCertPuller_NoHostedDefault(t *testing.T) {
+	t.Setenv("VULOS_LANCERT_ALLOW_INSECURE", "")
+	t.Setenv("CP_SHARED_SECRET", "")
+	p, err := NewLANCertPuller(PullerConfig{BoxID: "box-1"})
+	if err == nil {
+		t.Fatalf("empty CloudBaseURL was accepted — puller would dial a default host (got %#v)", p)
+	}
+	if strings.Contains(err.Error(), "vulos.org") {
+		t.Errorf("error names a hosted default; the org operates none: %v", err)
+	}
+}
+
 // TestNewLANCertPuller_RefusesPlaintext is the audit P0-2 guard: a plaintext
 // (http://) CloudBaseURL must be rejected because the shared secret travels on
 // that transport. The insecure escape hatch must be required to override it.
