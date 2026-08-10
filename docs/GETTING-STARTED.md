@@ -279,7 +279,9 @@ If the machine you're installing on has no monitor attached, you can still do th
 ## Verifying the install
 
 ```bash
-# Check the backend is responding
+# Check the backend is responding — no session needed.
+# Returns {"status":"ok","timestamp":…} with 200, or "degraded" with 503.
+# The per-check breakdown is session-gated; add -b "$COOKIE" to see it.
 curl http://localhost:8080/api/health
 
 # Check GPU tier detected — a NAME, not a number: software | vaapi | nvenc
