@@ -347,9 +347,10 @@ flowchart TD
 ```
 
 - OS ships as a signed, immutable squashfs pulled from `os.vulos.org`
-- dm-verity is **not enforcing runtime integrity on any path a user can boot
-  today** — the design is real and the build produces the hash tree, but the
-  initramfs has no `veritysetup`. See the note below
+- dm-verity **is** enforcing runtime integrity on a newly installed disk, proven
+  by a real boot (VERITY-03). See the note below for the three bounds: the
+  roothash is unsigned on this path, pre-existing disks stay unverified, and the
+  iPXE chainload is unexercised
 - A/B slots: a new image is staged into the inactive slot, and `init` counts
   boots and decides when a rollback is warranted
 - Trust anchor: Ed25519 public key baked into the seed at flash time; forks supply their own key + bucket URL
@@ -382,58 +383,56 @@ flowchart TD
 > image boots. And the update path above the flip — download, verify, stage into
 > the inactive slot — is exercised by its own tests, not by this reboot.
 
-> **dm-verity is not running on any shipped boot path.** An earlier revision of
-> this note said the protection held on the live-USB path and failed only on a
-> netboot-installed disk. That was too generous: it fails on both, and the live
-> path fails for its own separate reason. What a real boot prints:
+> **dm-verity is ACTIVE on a newly installed disk, and proven by a real boot
+> (VERITY-03).** `scripts/netboot-install-smoke.sh` exits 0 through a real build
+> → real installer → real QEMU boot, and its Phase 5 requires three things
+> together: the slot carries `os-core.hashtree` + `os-core.roothash`, those
+> verify against the staged image, and the boot itself recorded `verity=active`
+> in `/var/cache/vulos/booted-slot`. Passing on the artifacts alone would not
+> have been enough — the marker is what proves the boot *opened the device*
+> rather than merely finding files next to the image.
 >
-> ```
-> vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity
->   veritysetup: not found
->   hashtree:    /root/var/cache/vulos/slot-a/os-core.hashtree MISSING
->   roothash:    /root/var/cache/vulos/slot-a/os-core.roothash MISSING
-> ```
+> **Why it was broken is the instructive part.** `cryptsetup-bin` was installed
+> in `scripts/baremetal-builder.Dockerfile` — the machine *running* the build.
+> `veritysetup` was therefore present to generate the hash tree and absent from
+> the image the build *produces*, so the initramfs hook took its documented
+> unverified loop-mount fallback on every boot. Measured with `unmkinitramfs` on
+> the real ESP image across four smoke runs, every one reported
+> `IR_VERITYSETUP=no`. Every layer reported success while block-level integrity
+> was not running. Commit `8a7d43c9` closes it with the two halves that were
+> missing: `cryptsetup-bin` in the **rootfs** package list, a custom
+> initramfs-tools hook (`scripts/initramfs/vulos-verity`) that `copy_exec`s
+> `veritysetup` with its library closure, and `dm-mod`, `dm-bufio`, `dm-verity`
+> and `reed_solomon` in `/etc/initramfs-tools/modules` (`MODULES=most` excludes
+> `drivers/md` entirely, and `dm-verity.ko` without `dm-bufio` and
+> `reed_solomon` loads with "Unknown symbol"). Debian ships no verity initramfs
+> hook — `cryptsetup-initramfs` is LUKS-only, with zero occurrences of "verity"
+> — so nothing in the archive would ever have copied it in.
 >
-> Four independent gaps, each verified in the source rather than inferred:
+> **Three bounds, so this is not read as more than it is:**
 >
-> 1. **`veritysetup` is not in the initramfs, and neither is the dm-verity
->    kernel module.** `build.sh:1145-1148` forces exactly `loop squashfs overlay`
->    into `/etc/initramfs-tools/modules` — no `dm-mod`, no `dm-verity`. And
->    `cryptsetup-bin` appears in `scripts/baremetal-builder.Dockerfile` (the
->    *build host*) but in neither `scripts/build-sh-packages.txt` nor
->    `scripts/image-packages.txt`, so the tool is absent from the shipped rootfs
->    too. **This one gap alone is sufficient to disable dm-verity everywhere**,
->    which is why the other three cannot be fixed independently of it.
-> 2. **The live-USB medium carries no hash files.** `build.sh:1263` copies only
->    `$SQUASHFS` to `image.squashfs` on the data partition. The `os-core.hashtree`
->    and `os-core.roothash` that VERITY-01 produces at `build.sh:1170` stay in
->    the output directory and are never staged beside the image the hook reads.
-> 3. **`os-core.roothash.sig` is never produced.** Nothing in `build.sh` or
->    `scripts/` writes it; the only references are the initramfs hook that
->    consumes it and `scripts/netboot-install-smoke.sh`, which fabricates one.
->    So the signature gate over the roothash has nothing to check.
-> 4. **`vulos-verify-sig` is never built or installed.** `build.sh:182-183`
->    compiles only `vulos-server` and `vulos-init`;
->    `backend/cmd/vulos-verify-sig/` exists as source only. The verifier the hook
->    invokes, and that SECURITY.md invites an admin to run by hand, is not on a
->    shipped box.
->
-> A fifth cause used to sit at the top of this list and **is now fixed**:
-> `stageFirstSquashfs` copied only the squashfs into the slot. VERITY-03
-> (`backend/services/installer/netboot_verity.go`, commit `92760d7`) resolves the
-> siblings, runs a real `veritysetup verify` against the image *before* the
-> partition step, and stages them — refusing to stage anything it could not
-> check. That is the right shape, and it currently has nothing to stage, because
-> of gap 2.
->
-> Where verity inputs are absent the hook takes its documented fallback: an
-> unverified loop mount, with a warning. It does not fail closed on an installed
-> disk because that cmdline carries no `vulos.netboot=1`, and that gate is
-> deliberately reserved for payloads fetched over the network. So nothing is
-> silently downgraded past a check meant to stop it — but the protection is not
-> running. Note the corollary: a real **netboot** with today's artifacts would
-> **halt**, correctly, because the fail-closed gate fires and the inputs are
-> missing. That is the gate working, not a regression.
+> 1. **The roothash is not signed on this path — `sig=false`.** dm-verity binds
+>    the image to a roothash; nothing yet binds that roothash to the release key
+>    here. `build.sh` produces `os-core.roothash` but no `.sig`, and builds only
+>    `vulos-server` and `vulos-init` — `backend/cmd/vulos-verify-sig/` is source
+>    only and is not on a shipped box. So the hook's roothash-authenticity gate
+>    is unreachable, and a local boot takes its documented branch: *"roothash
+>    signature not verified (local live-USB; no .sig/anchor/verifier). dm-verity
+>    still binds the image to this roothash."* Tamper detection against the
+>    staged roothash is real; provenance of that roothash is not established.
+> 2. **This is true of NEW installs, not of existing disks.** A pre-existing disk
+>    with no verity siblings still boots **unverified** — Phase 4b proves it: the
+>    hook itemises the missing hashtree/roothash, falls back to the loop mount,
+>    records `verity=inactive`, and serves HTTP. That is deliberate (an installed
+>    cmdline carries no `vulos.netboot=1`, and the fail-closed gate is reserved
+>    for network-fetched payloads), so nothing is silently downgraded past a
+>    check meant to stop it — but an already-installed box does not gain verity
+>    by upgrading in place.
+> 3. **What is proven is the local-disk boot path.** The iPXE / UEFI-HTTP-Boot
+>    chainload (`scripts/netboot/boot.ipxe`, `imgverify`, TLS pinning) is still
+>    unexercised; the harness starts from "already fetched into RAM". A real
+>    **netboot** does fail closed if the signed roothash is missing, which is the
+>    gate working rather than a regression.
 
 ---
 
