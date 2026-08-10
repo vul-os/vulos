@@ -51,7 +51,7 @@ cat ~/.vulos/logs/<appId>.log.old    # previous rotation
 
 ### Health and metrics
 
-`GET /api/health` is public and needs no auth. It returns `200` with `"status":"ok"`, or `503` with `"status":"degraded"` and a per-check breakdown:
+`GET /api/health` **requires a session** — unauthenticated it returns `401`, because `publicPaths` (`backend/services/auth/handlers.go:99-141`) lists `/health` and `/healthz` but not `/api/health`. The repo's own smoke script records the same trap at `scripts/baremetal-smoke.sh:201`. For an unauthenticated liveness probe use `GET /health`. Authenticated, it returns `200` with `"status":"ok"`, or `503` with `"status":"degraded"` and a per-check breakdown:
 
 ```bash
 curl -s http://localhost:8080/api/health | jq
