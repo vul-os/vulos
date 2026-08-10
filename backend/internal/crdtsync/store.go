@@ -426,6 +426,17 @@ func (s *Store) Merge(d *Delta) (int, error) {
 		if op.Actor == "" || op.Seq == 0 || op.Key == "" || op.Field == "" {
 			return 0, fmt.Errorf("crdtsync: Merge: malformed op from actor %q seq %d", op.Actor, op.Seq)
 		}
+		// The stamp's actor MUST be the op's origin actor. crdt_op does not store
+		// the stamp actor separately — opsAfter reconstructs it from the origin —
+		// so an op with a mismatched stamp actor would be merged HERE with one
+		// tie-break and RELAYED to a third box with a different one. That is a
+		// genuine divergence, reachable by any buggy or hostile peer, and it is
+		// cheap to close: an honest actor never produces such an op, because it
+		// stamps every op it originates with its own id.
+		if op.Stamp.Actor != op.Actor {
+			return 0, fmt.Errorf("crdtsync: Merge: op from actor %s seq %d carries stamp actor %q: stamp actor must equal the origin actor",
+				op.Actor, op.Seq, op.Stamp.Actor)
+		}
 	}
 
 	s.mu.Lock()
