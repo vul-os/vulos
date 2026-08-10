@@ -51,11 +51,20 @@ cat ~/.vulos/logs/<appId>.log.old    # previous rotation
 
 ### Health and metrics
 
-`GET /api/health` **requires a session** — unauthenticated it returns `401`, because `publicPaths` (`backend/services/auth/handlers.go:99-141`) lists `/health` and `/healthz` but not `/api/health`. The repo's own smoke script records the same trap at `scripts/baremetal-smoke.sh:201`. For an unauthenticated liveness probe use `GET /health`. Authenticated, it returns `200` with `"status":"ok"`, or `503` with `"status":"degraded"` and a per-check breakdown:
+`GET /api/health` gives the **verdict to anyone and the detail only to a session.** Unauthenticated you get `200`+`{"status":"ok","timestamp":…}` or `503`+`"status":"degraded"` — enough to answer "is it up, is it healthy" — with no `checks` map. With a session you get the same status plus the per-check breakdown.
+
+The checks still *run* for an anonymous caller; only the output is withheld, so the status is never a guess. The detail is gated because every field in it leaks something on a box that is already misbehaving: `data_dir_writable` reports the absolute data-dir path and the raw OS error, `disk_space` reports exact free capacity (which fingerprints the deployment and tells an attacker how much to write to force a `503`), and `sync_lag` reveals whether S3 cluster sync exists at all.
 
 ```bash
-curl -s http://localhost:8080/api/health | jq
+# verdict only — no session needed
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/api/health
+curl -s http://localhost:8080/api/health | jq          # {"status":"ok","timestamp":"…"}
+
+# full breakdown — needs a session cookie
+curl -s -b "$COOKIE" http://localhost:8080/api/health | jq
 ```
+
+> **Not a readiness probe.** `/api/health` answers `503` for a merely *degraded* box — low disk in a scratch VM will do it — which is a different question from "has it finished starting". For readiness, poll `GET /api/setup/status`, which is what `scripts/baremetal-smoke.sh` deliberately does.
 
 Checks and their thresholds:
 
@@ -364,7 +373,7 @@ Large uploads use resumable, chunked (tus-style) endpoints under `/api/files/upl
 
 ## Still stuck?
 
-- Run `curl -s http://localhost:8080/api/health | jq` and read the failing check — a full disk or read-only data dir explains a surprising amount of misbehavior.
+- Run `curl -s -b "$COOKIE" http://localhost:8080/api/health | jq` and read the failing check — a full disk or read-only data dir explains a surprising amount of misbehavior. Without the cookie you still get the `ok`/`degraded` verdict, just not which check failed.
 - Grep the backend log for the bracketed subsystem tags used throughout this chapter: `[direct]`, `[lan]`, `[llmuxclient]`, `[ai]`, `[assistant]`, `[appnet]`, `[storage]`, `[gpuhost]`, `[integrations]`.
 - `curl -s http://localhost:8080/api/version` tells you exactly which build you are running before you file a report.
 - For backup and restore paths, see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md); for peering/federation problems, see [PEERING.md](PEERING.md).
