@@ -245,26 +245,38 @@ The A/B state is a single JSON file per box:
 
 Updates stage into the slot that is *not* active (staging into the active slot is refused outright), every mutation of this file is an atomic write-then-rename, and `last_known_good` records the slot a failed boot *should* fall back to. The writable data partition is entirely separate from both slots — a rollback would never touch your files.
 
-> **Known gap — the slot flip has no effect (OSDIST-FLIP-01).** Writing
-> `boot-state.json` is not the same as switching slots, and today nothing
-> rewrites the bootloader entry. The installer's `writeSlotABootEntry` writes
-> the systemd-boot entry **once, at install time, hardcoded to slot-a**
-> (`vulos.slot=a vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs`), and
-> the initramfs (`scripts/initramfs/vulos-live`) reads only that kernel
-> cmdline — it never opens `boot-state.json`. Consequences to plan around:
+> **The slot flip works (OSDIST-FLIP-01).** This page previously recorded it as
+> a known gap. It was closed by the second of the two options named here: the
+> initramfs (`scripts/initramfs/vulos-live`) reads `boot-state.json` at
+> init-bottom and boots the slot it names, treating the kernel cmdline as a
+> default rather than the answer. `writeSlotABootEntry` still writes the
+> systemd-boot entry once at install time and it still says slot-a — that entry
+> is simply no longer what decides. It was proven the way this page demanded, by
+> an actual reboot: `scripts/netboot-install-smoke.sh` Phase 4 stages slot-b,
+> flips `active`, reboots the same disk, and requires both a serving HTTP
+> endpoint *and* a `/var/cache/vulos/booted-slot` marker reading
+> `slot=b via=boot-state` — HTTP alone would have passed had it quietly booted
+> slot-a.
 >
-> - A staged OS update **does not become active** when you reboot; the box
->   keeps running slot-a.
-> - When the boot counter passes `VULOS_BOOT_THRESHOLD`, `init` *records* a
->   rollback and logs, in as many words, that it **has no effect on the next
->   boot**. Do not read that log line as "the box protected itself".
+> So: a staged OS update **does** become active on the next reboot, and a boot
+> counter that passes `VULOS_BOOT_THRESHOLD` **does** roll the box back.
 >
-> Everything below the flip — signature verification, the epoch floor,
-> staging into the inactive slot, the boot counter — is real and does what
-> this page says. Closing the gap needs an entry rewriter that runs on flip
-> (ESP mounted writable) or an initramfs that selects the slot from
-> `boot-state.json`, and it must be proven by an actual reboot
-> (`scripts/netboot-install-smoke.sh`), not by a unit test.
+> Two caveats, one of them operational:
+>
+> - The reboot proof hardlinks slot-b to slot-a's image, so what is proven is
+>   *which slot the firmware and initramfs choose*, not that a genuinely
+>   different image boots. See
+>   [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal).
+> - **`init`'s rollback log line is stale and now says the opposite of the
+>   truth.** `backend/cmd/init/main.go:220` still logs that the rollback
+>   "HAS NO EFFECT on the next boot (OSDIST-FLIP-01)". It does have an effect.
+>   Until that line is fixed, an operator reading it during an incident will
+>   conclude the box did not protect itself when it did. Tracked as a code fix,
+>   not a documentation one.
+>
+> Everything below the flip — signature verification, the epoch floor, staging
+> into the inactive slot, the boot counter — is real and does what this page
+> says.
 
 If you build your own images: the netboot fail-closed gate needs `os-core.roothash.sig` and the `vulos-verify-sig` binary present in the initramfs — a build that omits them produces netboots that halt (correctly) rather than boot unverified.
 
