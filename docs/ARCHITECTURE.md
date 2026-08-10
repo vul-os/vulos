@@ -158,22 +158,39 @@ Isolated/Disposable Browsing (RBI) is not implemented; the stub and its flag (`V
 
 ## Auth flow
 
+Password and passkey login are **alternatives**, not steps of one sequence: the
+passkey login routes are public and issue a session on their own
+(`registerPasskeyLoginRoutes`, `cmd/server/routes_passkey_login.go:41-50`).
+Passkey *registration* is the flow that needs a session first.
+
 ```mermaid
 sequenceDiagram
     participant Client
     participant Backend
+    Note over Client,Backend: (a) password login
     Client->>Backend: POST /api/auth/login
     Note right of Backend: validate credentials
-    Backend-->>Client: Set-Cookie: session (issue session)
-    Client->>Backend: POST /api/auth/passkey/begin
+    Backend-->>Client: Set-Cookie: session
+    Note over Client,Backend: (b) passkey login — public, no prior session
+    Client->>Backend: POST /api/auth/passkey/login/begin
     Note right of Backend: generate WebAuthn challenge
     Backend-->>Client: PublicKeyCredentialRequestOptions
-    Client->>Backend: POST /api/auth/passkey/finish
+    Client->>Backend: POST /api/auth/passkey/login/finish
     Note right of Backend: verify assertion
-    Backend-->>Client: Set-Cookie: session (issue session)
+    Backend-->>Client: Set-Cookie: session
+    Note over Client,Backend: (c) passkey registration — requires a session
+    Client->>Backend: POST /api/auth/passkey/register/begin
+    Backend-->>Client: PublicKeyCredentialCreationOptions
+    Client->>Backend: POST /api/auth/passkey/register/finish
 ```
 
-Session cookies are `HttpOnly`, `Secure`, `SameSite=Strict` in `prod` mode. In `local` mode cookie flags are relaxed for development without TLS.
+The session cookie is always `HttpOnly`. Its other flags key off whether the
+request arrived over TLS, **not** off the env mode: over HTTPS it is `Secure` +
+`SameSite=None` (needed for app subdomain iframes, which is why state-changing
+requests carry a separate CSRF check); over plain-HTTP localhost dev it falls
+back to `SameSite=Lax` (`services/auth/handlers.go:788-808`). `SameSite=Strict`
+is not used for the session cookie — only for the short-lived `vulos_qr_bind`
+browser-binding cookie. See [SECURITY.md](SECURITY.md#sessions).
 
 ---
 
