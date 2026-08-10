@@ -33,7 +33,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT}/scripts/initramfs/vulos-live"
 SH_BIN="$(command -v dash || command -v sh)"
 
-EXPECTED_ASSERTIONS=33
+EXPECTED_ASSERTIONS=34
 ASSERTIONS_RUN=0
 FAILURES=0
 
@@ -295,11 +295,23 @@ EOF
 : > "${MOUNTLOG}"
 rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
 MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
-  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' b boot-state /var/cache/vulos/slot-b/os-core.squashfs"
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' b boot-state /var/cache/vulos/slot-b/os-core.squashfs active"
 
 GOT="$(cat "${SLOTROOT}/var/cache/vulos/booted-slot" 2>/dev/null || echo NOFILE)"
-assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slot-b/os-core.squashfs')" \
-  "record_booted_slot writes the slot, how it was chosen, and the image"
+assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slot-b/os-core.squashfs\nverity=active')" \
+  "record_booted_slot writes the slot, how it was chosen, the image, and whether dm-verity is running"
+
+# The verity field is the ONLY durable answer to "is dm-verity actually active
+# on this machine": the installed boot entry carries `quiet splash`, so the
+# hook's console lines never reach the serial. A marker that always said
+# "active" would be worse than none, so pin the inactive spelling too — this is
+# what scripts/netboot-install-smoke.sh Phase 5 reads.
+: > "${MOUNTLOG}"
+rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
+MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' a cmdline /var/cache/vulos/slot-a/os-core.squashfs inactive"
+assert_eq "$(grep -c '^verity=inactive$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
+  "and records verity=inactive when the boot fell back to an unverified loop mount"
 
 # The device argument is the whole point: assert it is THERE, and that it is the
 # device /proc/mounts names — not a guess and not the mountpoint twice.
@@ -335,7 +347,7 @@ NOCACHE="${TMPROOT}/nocache"
 mkdir -p "${NOCACHE}"
 : > "${MOUNTLOG}"
 if MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
-     "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${NOCACHE}' '?' cmdline /image.squashfs"; then
+     "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${NOCACHE}' '?' cmdline /image.squashfs inactive"; then
   assert_eq "wrote" "skipped" "record_booted_slot skips a root with no /var/cache/vulos"
 else
   assert_eq "skipped" "skipped" "record_booted_slot skips a root with no /var/cache/vulos"

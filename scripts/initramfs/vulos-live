@@ -317,8 +317,15 @@ rootmnt_device() {
 # rather than only by a QEMU boot. The bug it encodes cost more to find than
 # every other part of this hook combined, precisely because nothing but a real
 # boot could observe it.
+#
+# VERITY is recorded here for the same reason the slot is. "Is dm-verity
+# actually running on this machine?" was answerable only by reading a serial
+# console that `quiet splash` blanks, which is exactly how the fleet ran for
+# months with verity inactive while the architecture doc said otherwise. A line
+# in this file survives the boot, so an operator — and the QEMU harness's
+# Phase 5 — can read the answer instead of inferring it.
 record_booted_slot() {
-    _rb_root="$1"; _rb_slot="$2"; _rb_via="$3"; _rb_image="$4"
+    _rb_root="$1"; _rb_slot="$2"; _rb_via="$3"; _rb_image="$4"; _rb_verity="$5"
     [ -d "${_rb_root}/var/cache/vulos" ] || return 1
 
     _rb_remounted=0
@@ -327,7 +334,8 @@ record_booted_slot() {
         _rb_remounted=1
     fi
     {
-        printf 'slot=%s\nvia=%s\nimage=%s\n' "$_rb_slot" "$_rb_via" "$_rb_image" \
+        printf 'slot=%s\nvia=%s\nimage=%s\nverity=%s\n' \
+            "$_rb_slot" "$_rb_via" "$_rb_image" "$_rb_verity" \
             > "${_rb_root}/var/cache/vulos/booted-slot"
         sync
     } 2>/dev/null || true
@@ -381,10 +389,6 @@ else
     esac
     _booted_via="cmdline"
 fi
-
-# Record which slot this boot used (see record_booted_slot above for why this
-# marker exists and why the remount must name the device).
-record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" || true
 
 SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"
 HASHTREE_ABS="${rootmnt}${HASHTREE_PATH}"
@@ -501,6 +505,18 @@ else
     log_warning_msg "vulos-live:   roothash:    ${ROOTHASH_ABS} $([ -f "$ROOTHASH_ABS" ] && echo 'found' || echo 'MISSING')"
     log_warning_msg "vulos-live:   device-mapper: $(dm_available && echo '/dev/mapper/control present' || echo 'MISSING (dm-mod/dm-verity not in this initramfs)')"
 fi
+
+# Record which slot this boot used AND whether dm-verity is actually running
+# (see record_booted_slot above for why this marker exists and why the remount
+# must name the device).
+#
+# Written HERE, after the verity decision and before the lower layer is mounted:
+# any earlier and it could not report verity at all, any later and a failed
+# overlay would lose the record of a boot that did happen. If verity was
+# supposed to open and could not, the hook has already panicked and nothing is
+# written — which is correct, because that machine did not boot.
+record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
+    "$([ -n "$LOWER_DEV" ] && echo active || echo inactive)" || true
 
 # ── Mount lower layer (dm-verity device or plain loop) ───────────────────────
 if [ -n "$LOWER_DEV" ]; then
