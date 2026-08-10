@@ -613,10 +613,19 @@ func (s *Service) writeSlotABootEntry(ctx context.Context, espMount string) erro
 // stages the validated dm-verity siblings beside it (VERITY-03).
 // Progress is streamed to hub as the copy advances (pct range: 35–85).
 //
+// To be unambiguous, because this comment has been misread as saying the
+// opposite: os-core.hashtree, os-core.roothash and (when the medium ships one)
+// os-core.roothash.sig ARE staged into the slot, by stageVerityArtifacts at the
+// bottom of stageFirstSquashfsInto.  A netboot-installed disk carries them, and
+// scripts/netboot-install-smoke.sh Phase 5 re-runs `veritysetup verify` against
+// the staged trio on the disk to prove the copy survived.
+//
+// The paragraph below is about the ONE case where nothing is staged:
+//
 // verity may be nil — no verity artifacts on this medium, or none that could be
-// validated here.  The disk then boots exactly as it did before VERITY-03: the
-// initramfs finds no hashtree/roothash and takes its documented unverified
-// loop-mount fallback.
+// validated here.  Only then does the disk boot exactly as it did before
+// VERITY-03: the initramfs finds no hashtree/roothash and takes its documented
+// unverified loop-mount fallback.
 func (s *Service) stageFirstSquashfs(ctx context.Context, squashfsPath string, verity *verityArtifacts, hub *progressHub) error {
 	return s.stageFirstSquashfsInto(ctx, netbootInstallMount, squashfsPath, verity, hub)
 }
