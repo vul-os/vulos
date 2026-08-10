@@ -120,7 +120,16 @@ func (s *Store) persistProfile(p *Profile) {
 	if s.db == nil || p == nil {
 		return
 	}
-	data, err := json.Marshal(p)
+	// The credential fields and any secret-looking Settings keys are written to
+	// profile_secrets instead, so the bytes stored here — the row that
+	// replicates to a user's other boxes — never contain them. See
+	// profile_secrets.go for why each field is treated the way it is.
+	cfg, sec := splitProfile(p)
+	replicable, local := splitSettings(p.Settings)
+	cfg.Settings = replicable
+	s.persistProfileSecrets(p.UserID, sec, local)
+
+	data, err := json.Marshal(&cfg)
 	if err != nil {
 		log.Printf("[auth] sqlite: marshal profile %s: %v", p.UserID, err)
 		return
@@ -213,6 +222,15 @@ func (s *Store) loadFromDB() error {
 		}
 	}
 	rows.Close()
+
+	// Stitch the per-device half back on, then move any profile still holding
+	// credentials in the old single-blob shape into the new one. Order matters:
+	// the migration reads what load has already put in memory, so a value found
+	// only in the old location is preserved rather than dropped.
+	if err := s.loadProfileSecrets(); err != nil {
+		return err
+	}
+	s.migrateProfileSecrets()
 
 	return nil
 }
