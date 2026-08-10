@@ -50,6 +50,24 @@ const DefaultVouchPath = "/api/fleetid/vouch/request"
 // pending request into a grant.
 const DefaultApprovePath = "/api/fleetid/vouch/approve"
 
+// DefaultPendingPath is the path VoucherService.RegisterHandlers mounts the
+// OPERATOR-facing pending-queue endpoint at. It is the READ half of the manual
+// approval gate: DefaultApprovePath takes the exact (action, subject, payload
+// hash, request id) tuple, and every one of those values is chosen by the
+// REQUESTING box, so without a way to read the queue there is nothing a human
+// could put in the approve call. Gated by the same ApproveGate as approve —
+// this list names peers and the actions they want, and is nobody's business but
+// this box's operator.
+const DefaultPendingPath = "/api/fleetid/vouch/pending"
+
+// DefaultDismissPath is the path VoucherService.RegisterHandlers mounts the
+// OPERATOR-facing dismiss endpoint at. Dismissing drops a pending RECORD; it
+// authorizes nothing, denies nothing (the gate is already deny-by-default) and
+// does not block the peer — a re-ask reappears in the queue. It exists so an
+// operator can clear requests they have judged and refused, because a queue
+// padded with junk is how the one real request gets missed.
+const DefaultDismissPath = "/api/fleetid/vouch/dismiss"
+
 // maxVouchBodyBytes bounds request bodies read by this package's handlers,
 // mirroring the 64<<10 ceiling used by cmd/server's other small JSON POST
 // handlers (e.g. routes_devicekey_lifecycle.go).
@@ -195,6 +213,46 @@ type Approver interface {
 	Approve(action, subjectID string, payloadHash []byte, requestID string, ttl time.Duration)
 }
 
+// PendingLister is the OPTIONAL capability an ApprovalPolicy implements to
+// support the operator-facing pending-queue endpoint. ManualApprovalPolicy
+// implements it; DenyAllPolicy has no queue (nothing it lists could ever be
+// approved) and does not.
+type PendingLister interface {
+	Pending() []PendingVouch
+	PendingEvicted() uint64
+}
+
+// Forgetter is the OPTIONAL capability backing DefaultDismissPath.
+type Forgetter interface {
+	Forget(action, subjectID string, payloadHash []byte, requestID string)
+}
+
+// PeerAnnotation is what THIS box knows about a peer identity, supplied by the
+// deployment (see VoucherService.SetPeerAnnotator) so the operator's approval
+// prompt can answer the first question a human will ask: "is this one of my
+// boxes?"
+//
+// This is the single most decision-relevant fact in the whole prompt and this
+// package cannot compute it — fleetid deliberately holds no roster; the roster
+// belongs to the box (cmd/server's registryRoster over multiinstance.Registry).
+// VerifyVouchRequest already proved the request came from the holder of the key
+// SubjectID names; whether that key is a box the operator actually owns is a
+// completely separate question, and one an operator has no way to answer from a
+// base64 Vula ID by eye.
+type PeerAnnotation struct {
+	// Known reports that SubjectID is a member of this box's own fleet roster.
+	Known bool `json:"known"`
+	// DisplayName is the roster's name for it, when known.
+	DisplayName string `json:"display_name,omitempty"`
+	// Revoked reports that the roster has this identity marked revoked — a
+	// vouch request from a revoked peer is a red flag, not a routine ask, and
+	// VerifyQuorum would refuse to count a cert signed by one anyway.
+	Revoked bool `json:"revoked,omitempty"`
+}
+
+// PeerAnnotator resolves a Vula ID against this box's own roster.
+type PeerAnnotator func(vulaID string) PeerAnnotation
+
 // ApproveGate authorizes a call to the operator-facing approve endpoint. It
 // receives the raw *http.Request so the caller composes whatever this
 // deployment requires — mirroring dkRequireOwnerAndStepup in
@@ -222,6 +280,7 @@ type VoucherService struct {
 	selfVulaID string
 	policy     ApprovalPolicy
 	now        func() time.Time
+	annotate   PeerAnnotator
 }
 
 // NewVoucherService builds a VoucherService that signs with signerPriv — this
@@ -277,7 +336,21 @@ func (s *VoucherService) RegisterHandlers(mux *http.ServeMux, approveGate Approv
 	mux.HandleFunc("POST "+DefaultApprovePath, func(w http.ResponseWriter, r *http.Request) {
 		s.handleApprove(w, r, approveGate)
 	})
+	mux.HandleFunc("GET "+DefaultPendingPath, func(w http.ResponseWriter, r *http.Request) {
+		s.handlePending(w, r, approveGate)
+	})
+	mux.HandleFunc("POST "+DefaultDismissPath, func(w http.ResponseWriter, r *http.Request) {
+		s.handleDismiss(w, r, approveGate)
+	})
 }
+
+// SetPeerAnnotator supplies the roster lookup used to annotate the pending
+// queue (see PeerAnnotation). Optional: with no annotator the queue is served
+// UNANNOTATED and says so (annotated:false), rather than reporting every
+// subject as unknown — a UI must be able to tell "this box checked its roster
+// and does not recognise this peer" from "nothing checked", because those two
+// call for opposite operator reactions.
+func (s *VoucherService) SetPeerAnnotator(fn PeerAnnotator) { s.annotate = fn }
 
 // handleVouchRequest is the peer-facing endpoint. It NEVER signs without a
 // prior ApprovalGranted decision from s.policy, and it NEVER vouches for
@@ -395,6 +468,111 @@ func (s *VoucherService) handleApprove(w http.ResponseWriter, r *http.Request, a
 	ttl := time.Duration(req.TTLSeconds) * time.Second
 	approver.Approve(req.Action, req.SubjectID, payloadHash, req.RequestID, ttl)
 	writeVoucherJSON(w, http.StatusOK, vouchWireResponse{Status: "granted"})
+}
+
+// pendingVouchWire is one queued request as the operator's UI sees it. Every
+// field is either part of the tuple that must be echoed back to approve, or
+// evidence the operator needs to judge it.
+type pendingVouchWire struct {
+	Action      string `json:"action"`
+	SubjectID   string `json:"subject_id"`
+	PayloadHash string `json:"payload_hash"` // base64url raw — the string compared out of band
+	RequestID   string `json:"request_id"`
+
+	// RequesterEndpoint is transport-reported and UNTRUSTED; the wire name says
+	// so, so no UI can present it as an identity.
+	RequesterEndpoint string `json:"requester_endpoint_untrusted,omitempty"`
+
+	FirstSeenAt string `json:"first_seen_at"`
+	LastSeenAt  string `json:"last_seen_at"`
+	Attempts    int    `json:"attempts"`
+
+	// Subject is this box's own roster's view of SubjectID, present only when
+	// an annotator is wired (see the response's Annotated field).
+	Subject *PeerAnnotation `json:"subject,omitempty"`
+}
+
+// pendingListResponse is the operator-facing queue.
+type pendingListResponse struct {
+	Status     string             `json:"status"`
+	SelfVulaID string             `json:"self_vula_id"`
+	Now        string             `json:"now"`
+	Pending    []pendingVouchWire `json:"pending"`
+
+	// Evicted is how many records were dropped at the cap. Non-zero means this
+	// list is INCOMPLETE and the box is being flooded — a UI must show it.
+	Evicted uint64 `json:"evicted"`
+
+	// Annotated reports whether the Subject annotations were computed at all.
+	// False means no roster lookup was available — absent annotations then mean
+	// "not checked", NOT "not recognised".
+	Annotated bool `json:"annotated"`
+}
+
+// handlePending serves the operator's view of the queue. Same gate as approve:
+// what this box has been asked to vouch for is operator-only.
+func (s *VoucherService) handlePending(w http.ResponseWriter, r *http.Request, approveGate ApproveGate) {
+	if approveGate == nil || !approveGate(r) {
+		writeVoucherJSON(w, http.StatusForbidden, vouchWireResponse{Status: "error", Reason: "operator approval gate refused this caller"})
+		return
+	}
+	lister, ok := s.policy.(PendingLister)
+	if !ok {
+		writeVoucherJSON(w, http.StatusNotImplemented, vouchWireResponse{Status: "error", Reason: "this box's approval policy keeps no pending queue"})
+		return
+	}
+	now := s.clock()
+	resp := pendingListResponse{
+		Status:     "ok",
+		SelfVulaID: s.selfVulaID,
+		Now:        now.UTC().Format(time.RFC3339),
+		Pending:    []pendingVouchWire{},
+		Evicted:    lister.PendingEvicted(),
+		Annotated:  s.annotate != nil,
+	}
+	for _, p := range lister.Pending() {
+		item := pendingVouchWire{
+			Action:            p.Action,
+			SubjectID:         p.SubjectID,
+			PayloadHash:       base64.RawURLEncoding.EncodeToString(p.PayloadHash),
+			RequestID:         p.RequestID,
+			RequesterEndpoint: p.RequesterEndpoint,
+			FirstSeenAt:       p.FirstSeenAt.UTC().Format(time.RFC3339),
+			LastSeenAt:        p.LastSeenAt.UTC().Format(time.RFC3339),
+			Attempts:          p.Attempts,
+		}
+		if s.annotate != nil {
+			ann := s.annotate(p.SubjectID)
+			item.Subject = &ann
+		}
+		resp.Pending = append(resp.Pending, item)
+	}
+	writeVoucherJSON(w, http.StatusOK, resp)
+}
+
+// handleDismiss drops one pending RECORD. It grants nothing and blocks nothing.
+func (s *VoucherService) handleDismiss(w http.ResponseWriter, r *http.Request, approveGate ApproveGate) {
+	if approveGate == nil || !approveGate(r) {
+		writeVoucherJSON(w, http.StatusForbidden, vouchWireResponse{Status: "error", Reason: "operator approval gate refused this caller"})
+		return
+	}
+	forgetter, ok := s.policy.(Forgetter)
+	if !ok {
+		writeVoucherJSON(w, http.StatusNotImplemented, vouchWireResponse{Status: "error", Reason: "this box's approval policy keeps no pending queue"})
+		return
+	}
+	var req approveRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxVouchBodyBytes)).Decode(&req); err != nil {
+		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "invalid JSON body"})
+		return
+	}
+	payloadHash, err := base64.RawURLEncoding.DecodeString(req.PayloadHash)
+	if err != nil || len(payloadHash) == 0 {
+		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "malformed payload_hash"})
+		return
+	}
+	forgetter.Forget(req.Action, req.SubjectID, payloadHash, req.RequestID)
+	writeVoucherJSON(w, http.StatusOK, vouchWireResponse{Status: "dismissed"})
 }
 
 func (s *VoucherService) clock() time.Time {
