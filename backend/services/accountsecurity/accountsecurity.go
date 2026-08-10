@@ -98,7 +98,11 @@ const feedLimit = 100
 
 // SensitiveActionRecord is one row from the raw sensitive-action log.
 type SensitiveActionRecord struct {
-	ID        int64     `json:"id"`
+	// EventID is the row's globally-unique identity, and the table's primary
+	// key. It replaced an auto-incrementing integer that was allocated per box:
+	// once this log replicates, two machines assigning the same id to different
+	// events makes a merge drop one of them. See migrations 0002/0003.
+	EventID   string    `json:"event_id"`
 	Ts        time.Time `json:"ts"`
 	Action    string    `json:"action"`
 	ClientIP  string    `json:"client_ip"`

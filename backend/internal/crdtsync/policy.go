@@ -138,22 +138,17 @@ var Decisions = []DomainDecision{
 	},
 	{
 		Domain:   "sql:acctsec_sensitive_actions",
-		Sync:     false,
+		Sync:     true,
 		GrowOnly: true,
-		Reason: "A security audit trail. It SHOULD replicate — under close-to-identical instances, an attacker who compromises one box and erases " +
-			"its local log no longer erases the evidence, because the other boxes hold it and grow-only means they cannot be told to forget. " +
-			"The algebra for that is built and tested here (GrowOnly: tombstones refused locally, from a peer op, and from a peer snapshot; " +
-			"merge keeps the FIRST writer, so an entry is immutable once written). " +
-			"IT IS STILL REFUSED FOR ONE REMAINING REASON, which is a schema problem rather than a merge one: the table's primary key is " +
-			"`id INTEGER PRIMARY KEY AUTOINCREMENT`, allocated INDEPENDENTLY ON EVERY BOX, and the session extension keys captured changes on the " +
-			"PRIMARY KEY. So two machines assign the same key to two DIFFERENT events, the merge sees one key with two conflicting values, and one " +
-			"box's real audit entry is silently discarded. An audit log that looks complete and is missing entries is worse than one that never " +
-			"claimed to replicate. It also makes grow-only's residual maximally exploitable: first-writer-wins lets a hostile peer suppress an entry " +
-			"it can PREDICT, and 1, 2, 3 is as predictable as a key gets. " +
-			"Migration 0002 adds a random `event_id` and services/accountsecurity mints one per entry, so the identity now exists — but SQLite " +
-			"cannot ALTER a PRIMARY KEY, and making event_id the key means rebuilding the table and moving the read path's `ORDER BY id DESC` onto " +
-			"`ts`. That changes an audit surface's ordering semantics from insertion order to timestamp order, which is worth doing deliberately. " +
-			"Flip Sync to true once event_id IS the primary key — not before.",
+		Reason: "A security audit trail, replicated as a GROW-ONLY set. Under close-to-identical instances it SHOULD be on every box: an attacker " +
+			"who compromises one machine and erases its local log no longer erases the evidence, because the others hold it and grow-only means " +
+			"they cannot be told to forget. It was refused while the only algebra was last-writer-wins, which hands every rostered peer an EDIT " +
+			"primitive — a compromised box could overwrite or tombstone the entry recording its own compromise, everywhere. GrowOnly removes that: " +
+			"tombstones refused locally, from a peer op, and from a peer snapshot; merge keeps the FIRST writer, so an entry is immutable once " +
+			"written. It was refused a second time for a schema reason now fixed: the primary key was a per-box AUTOINCREMENT integer, and the " +
+			"session extension keys on the primary key, so two machines gave the same key to different events and a merge dropped one. Migrations " +
+			"0002/0003 make a random event_id the primary key. That also closes grow-only's residual — first-writer-wins lets a peer suppress an " +
+			"entry whose key it can PREDICT, and a random id leaves nothing to predict.",
 	},
 	{
 		Domain: "sql:cgroup_slices",

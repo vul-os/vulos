@@ -45,6 +45,21 @@ func ReplicatedTables() []ReplicatedTable {
 			Why: "A reminder is only useful if it fires wherever you are. Column granularity matters here: marking one done on " +
 				"one box while editing its text on another must keep both edits.",
 		},
+		{
+			Domain: "sql:acctsec_sensitive_actions",
+			DBFile: "accountsecurity.db",
+			Spec: TableSpec{
+				Name: "acctsec_sensitive_actions",
+				// event_id is the PRIMARY KEY (migration 0003) and so the key the
+				// session extension captures on. It is deliberately NOT listed as a
+				// replicated column: it identifies the row rather than describing it,
+				// and a column that also carried the key would let a peer propose a
+				// change to it.
+				Columns: []string{"ts", "user_id", "action", "client_ip", "user_agent"},
+			},
+			Why: "The audit trail is worth most on the box an attacker did NOT compromise. Replicated grow-only (crdtsync policy), so an entry " +
+				"can be added everywhere and edited or deleted nowhere — an attacker who erases the local log no longer erases the evidence.",
+		},
 	}
 }
 

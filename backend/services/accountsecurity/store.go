@@ -89,8 +89,12 @@ func (s *store) countFromIPSince(ctx context.Context, userID, clientIP, cutoff s
 // userID, newest first.
 func (s *store) recentSensitiveActions(ctx context.Context, userID string, limit int) ([]SensitiveActionRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,ts,action,client_ip,user_agent FROM acctsec_sensitive_actions
-		 WHERE user_id=? ORDER BY id DESC LIMIT ?`,
+		// Ordered by ts, not by an integer id: the id is gone (migration 0003),
+		// and ts is what "newest first" always meant. event_id breaks ties
+		// within a timestamp so two boxes holding the same rows list them in
+		// the same order rather than in local insertion sequence.
+		`SELECT event_id,ts,action,client_ip,user_agent FROM acctsec_sensitive_actions
+		 WHERE user_id=? ORDER BY ts DESC, event_id DESC LIMIT ?`,
 		userID, limit,
 	)
 	if err != nil {
@@ -101,7 +105,7 @@ func (s *store) recentSensitiveActions(ctx context.Context, userID string, limit
 	for rows.Next() {
 		var rec SensitiveActionRecord
 		var ts string
-		if err := rows.Scan(&rec.ID, &ts, &rec.Action, &rec.ClientIP, &rec.UserAgent); err != nil {
+		if err := rows.Scan(&rec.EventID, &ts, &rec.Action, &rec.ClientIP, &rec.UserAgent); err != nil {
 			return nil, err
 		}
 		rec.Ts, _ = time.Parse(rfc, ts)
