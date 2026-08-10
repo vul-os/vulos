@@ -28,8 +28,11 @@ built this way*, see [REACH.md](REACH.md).
 ## The default: run your own Vulos relay
 
 **The primary, recommended path is to run your own relay.** A relay is not a separate
-product, a separate download, or a separate vendor. It is the **same `vulos` binary
-your boxes already run**, started in a different role:
+product and not a separate vendor — it is built from this same repository. It is,
+however, a **different binary** from the one your boxes run: the relay is
+`backend/cmd/vulos`, a box is `backend/cmd/server` (`vulos-server`), and no
+release artefact ships the relay, so build it for the relay host yourself
+(`cd backend && go build -o vulos ./cmd/vulos`). Then start it in the relay role:
 
 ```bash
 vulos relay serve -domain relay.example.com -grants-file /etc/vulos/grants.json -rendezvous
@@ -38,7 +41,8 @@ vulos relay serve -domain relay.example.com -grants-file /etc/vulos/grants.json 
 Put that binary on any machine with a public IP and **it is your relay**. It accepts
 the outbound tunnel your NAT'd box holds open and reverse-proxies public traffic down
 it. No third-party tunnel service sits in the path, and no account with anyone is
-required — the machine is yours, the software is the one you already trust.
+required — the machine is yours, and the software is built from the same tree as
+the OS on it.
 
 Two facts from [REACH.md](REACH.md) shape every decision below:
 
@@ -232,9 +236,9 @@ rendezvous nodes in one list. Prefer it when you *already* run Pier for its othe
 coordinator kinds, or as a deliberately different operator for your second relay.
 
 For a first, plain reachability relay, the built-in `vulos relay serve` is the
-recommended path: it is the binary you already run, it needs no second project to
-track, and it gives you all three reachability facets (media ICE, HTTP ingress, and
-rendezvous) from one process. Reach for Pier as the longer-term or
+recommended path: it comes from the repository you already have, it needs no second
+project to track, and it gives you all three reachability facets (media ICE, HTTP
+ingress, and rendezvous) from one process. Reach for Pier as the longer-term or
 already-invested-in option, not the starting point.
 
 ---
