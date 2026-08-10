@@ -40,7 +40,12 @@ Each subsystem's `openDB` (or `store.Open`) calls
   what makes a *non-idempotent* future migration (a real `ALTER`) safe to ship.
 - **Transactional & fail-closed** — each migration runs in its own transaction
   together with the bookkeeping insert. On any error the whole migration rolls
-  back and boot **aborts** — the box never runs on a half-migrated database.
+  back. **Boot does not abort, though**: `cmd/server/main.go:549` and `:856`
+  log `init warning: …` and carry on, leaving that subsystem degraded — auth
+  falls back, and the Files API answers 503. So the box *can* run with a failed
+  migration; what it will not do is run on a *half-applied* one, because the
+  transaction rolled back. If you see either warning in the startup log, treat
+  the box as broken and fix the migration before using it.
 - **Tamper-evident** — if a file that was already applied no longer matches its
   recorded checksum, the runner refuses to start. Editing shipped history is a
   foot-gun (self-host and managed boxes would silently diverge); the runner
