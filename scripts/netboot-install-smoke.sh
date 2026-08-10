@@ -673,15 +673,24 @@ docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
     fi
 
     # Capability of the initramfs that will actually run at boot — reason #2.
-    # A gzip cpio (possibly preceded by an uncompressed early archive); listing
-    # names is enough to tell whether veritysetup and dm-verity are in there.
+    #
+    # unmkinitramfs, not cpio: a real initramfs here is an uncompressed early
+    # archive with a gzip one concatenated after it, so `cpio -t` sees only the
+    # first and `gzip -dc` sees neither. Either would report "absent" for
+    # everything in the main archive on every run — a diagnostic that cannot
+    # change is worse than none, because it reads as evidence.
+    # (this unmkinitramfs takes no -l, so extract and list; ~50 MiB, a few
+    # seconds. Checked against a deliberately verity-capable initramfs, where it
+    # reports yes/yes — a probe that can only ever say "no" proves nothing.)
     IR="$ESP/EFI/vulos/initramfs.img"
     NAMES=/tmp/ir-names
-    : > "$NAMES"
-    { cpio -t --quiet < "$IR" 2>/dev/null || true; } >> "$NAMES"
-    { gzip -dc "$IR" 2>/dev/null | cpio -t --quiet 2>/dev/null || true; } >> "$NAMES"
-    grep -q "sbin/veritysetup" "$NAMES" && echo "IR_VERITYSETUP=yes" || echo "IR_VERITYSETUP=no"
-    grep -q "dm-verity" "$NAMES" && echo "IR_DMVERITY=yes" || echo "IR_DMVERITY=no"
+    mkdir -p /tmp/ir
+    if unmkinitramfs "$IR" /tmp/ir >/dev/null 2>&1 && find /tmp/ir > "$NAMES" && [ "$(wc -l < "$NAMES")" -gt 100 ]; then
+      grep -q "sbin/veritysetup" "$NAMES" && echo "IR_VERITYSETUP=yes" || echo "IR_VERITYSETUP=no"
+      grep -q "dm-verity"       "$NAMES" && echo "IR_DMVERITY=yes"    || echo "IR_DMVERITY=no"
+    else
+      echo "IR_VERITYSETUP=unknown IR_DMVERITY=unknown (could not unpack $IR)"
+    fi
 
     # C — what the boot itself recorded.
     grep "^verity=" "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "verity=UNRECORDED"

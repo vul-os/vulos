@@ -7,6 +7,14 @@
 # cryptsetup-bin (veritysetup) so VERITY-01 can produce a real dm-verity root
 # hash for the stable.json that --disk now signs (VERITY-02) — without it the
 # build refuses to fabricate a bogus root hash and fails loudly instead.
+# initramfs-tools-core is here for that harness's Phase 5, which has to answer
+# "can the initramfs on the ESP actually activate dm-verity?" — i.e. does it
+# carry veritysetup and the dm-verity module. A real initramfs is TWO
+# concatenated archives (an uncompressed early one, then a gzip one), so a plain
+# `cpio -t` reads only the first and a plain `gzip -dc` reads neither; both
+# report "absent" for everything in the main archive, which would be a
+# diagnostic that always says the same thing. unmkinitramfs understands the
+# concatenation, so the answer is measured rather than assumed.
 # systemd-boot (bootctl) is here for scripts/netboot-install-smoke.sh, which —
 # unlike build.sh's own loop-free/mtools ESP assembly — runs the REAL netboot
 # installer (backend/services/installer) against a real loop-mounted disk, and
@@ -24,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       debootstrap \
       e2fsprogs dosfstools mtools parted squashfs-tools \
       cryptsetup-bin systemd-boot util-linux \
+      initramfs-tools-core cpio \
       xz-utils zstd ca-certificates curl git \
  && rm -rf /var/lib/apt/lists/*
 
