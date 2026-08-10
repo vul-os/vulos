@@ -14,8 +14,10 @@ Vulos OS ships two built-in apps that deal with files. They do different jobs:
 
 | App | Launchpad id | What it is |
 |---|---|---|
-| **Drive** | `drive` | Your personal cloud drive. Folders, uploads, versions, sharing, external mounts. Backed by the OS Files service (`/api/files/*`) and your per-user storage bucket. This chapter is about this app. |
-| **Files** | `files` | A system file manager for browsing the box's local filesystem (the machine itself, not your Drive). Useful for admins poking at the OS. |
+| **Files** | `drive` | Your personal cloud drive. Folders, uploads, versions, sharing, external mounts. Backed by the OS Files service (`/api/files/*`) and your per-user storage bucket. This chapter is about this app. |
+| **File Explorer** | `files` | A system file manager for browsing the box's local filesystem (the machine itself, not your Drive). Useful for admins poking at the OS. |
+
+The display names and the ids are deliberately crossed over, which is confusing and worth stating once: the app **shown as "Files"** has the id `drive`, and the app **shown as "File Explorer"** has the id `files` (`frontend/src/core/AppRegistry.ts:63-83`). There is no app labelled "Drive" in the launcher.
 
 Everything below refers to **Drive** — the Files service — unless it says otherwise.
 
@@ -151,7 +153,7 @@ You share with an **email address**, not an internal account id. The OS resolves
 `Share → Create link` mints an expiring, revocable token:
 
 - Default lifetime **7 days**, maximum **30 days** — no permanent public links.
-- Anyone signed in to the instance who has the link can redeem it for **read** access to the file (`POST /api/files/redeem-link`). Editor-role links exist in the data model, but redemption currently grants read only.
+- Anyone signed in to the instance who has the link can redeem it (`POST /api/files/redeem-link`). **The link's role decides the access it mints:** a viewer link redeems to a read grant, an **editor link redeems to a *write* grant** (`services/files/service.go:1108-1112`). An editor link is therefore a write capability held by whoever has the token — treat it accordingly. (A stale comment at `cmd/server/routes_files.go:30` still says redemption always yields read; the code above is what runs.)
 - The owner can list and revoke links at any time; a revoked or expired link answers `410`.
 
 ### Peer-share: box-to-box, no bucket required
