@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,10 +155,220 @@ func TestStartCRDTSyncFailsClosed(t *testing.T) {
 	})
 }
 
-// TestMainWiresCRDTSync is the anti-dead-code guard. startCRDTSync could be
-// perfect and still be worth nothing if main.go never calls it — which is
-// exactly what happened to services/sync/hotpath.go. This asserts the call
-// exists at the LAN mux site.
+// ── reachability of the call site ────────────────────────────────────────────
+//
+// TestMainWiresCRDTSync below is a source-text grep. It catches DELETION of the
+// call, which is half of what happened to services/sync/hotpath.go, and it is
+// cheap — so it stays. But a grep cannot tell a call that RUNS from a call that
+// merely EXISTS: `if false { startCRDTSync(...) }` satisfies it, and so does a
+// call behind a config flag that is never true.
+//
+// TestCRDTSyncCallSiteIsReachable closes that by reading the syntax tree rather
+// than the bytes. It finds the actual call node, walks its enclosing statements,
+// and PINS the chain of conditions that gate it. Wrapping the call in anything
+// new — `if false`, `if someFlagThatIsNeverTrue`, a loop that never runs —
+// changes that chain and fails the test, which forces the change to be a
+// deliberate one rather than a silent regression.
+
+// gateChain returns the source text of every condition that gates the call to
+// fnName in file, in outermost-to-innermost order.
+//
+// A condition in an if-statement's INIT does not gate the call — the init runs
+// before the condition is evaluated — so the `if store, err := f(); err != nil`
+// idiom at the call site is correctly not counted as a gate on f itself.
+func gateChain(t *testing.T, filename, fnName string) (gates []string, found bool) {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", filename, err)
+	}
+	text := func(n ast.Node) string {
+		var b strings.Builder
+		if err := printer.Fprint(&b, fset, n); err != nil {
+			return "<unprintable>"
+		}
+		return strings.Join(strings.Fields(b.String()), " ")
+	}
+
+	var stack []ast.Node
+	ast.Inspect(f, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		stack = append(stack, n)
+
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || id.Name != fnName {
+			return true
+		}
+		found = true
+		for i, encl := range stack {
+			switch st := encl.(type) {
+			case *ast.IfStmt:
+				// The call sits somewhere below this if. Which branch decides
+				// the POLARITY: reporting `fabricSecret == ""` for a call that
+				// actually lives in the else branch would invert the meaning of
+				// the pin and make it worse than useless.
+				if i+1 >= len(stack) {
+					continue
+				}
+				child := stack[i+1]
+				switch {
+				case st.Init != nil && containsNode(st.Init, child):
+					// The init runs before the condition is evaluated, so the
+					// `if x, err := f(); err != nil` idiom is not f gating itself.
+					continue
+				case containsNode(st.Body, child):
+					gates = append(gates, text(st.Cond))
+				case st.Else != nil && containsNode(st.Else, child):
+					gates = append(gates, "!("+text(st.Cond)+")")
+				}
+			case *ast.ForStmt:
+				if st.Cond != nil {
+					gates = append(gates, "for "+text(st.Cond))
+				}
+			case *ast.CaseClause:
+				gates = append(gates, "case "+text(st))
+			}
+		}
+		return true
+	})
+	return gates, found
+}
+
+// containsNode reports whether outer encloses inner by position.
+func containsNode(outer, inner ast.Node) bool {
+	return inner.Pos() >= outer.Pos() && inner.End() <= outer.End()
+}
+
+func TestCRDTSyncCallSiteIsReachable(t *testing.T) {
+	gates, found := gateChain(t, "main.go", "startCRDTSync")
+	if !found {
+		t.Fatal("main.go contains no call to startCRDTSync — the engine would have no callers")
+	}
+
+	// No gate may be a constant false: that is dead code that still greps.
+	for _, g := range gates {
+		if g == "false" || strings.HasPrefix(g, "false &&") {
+			t.Fatalf("the call to startCRDTSync is unreachable — gated by %q", g)
+		}
+	}
+
+	// The gate chain is PINNED. Every condition here is one that has been
+	// reviewed and is legitimate. If this fails because the wiring moved,
+	// update the list ON PURPOSE and say why in the commit — that deliberation
+	// is the entire value of the test.
+	//
+	// All four gates are correct preconditions, not accidents: the engine
+	// shares fabric's LAN-only mux and its shared secret, so it cannot be
+	// mounted anywhere fabric itself is not.
+	//
+	// NOTE the first one. The engine runs only where the LAN layer runs. That
+	// is off for a bare `vulos-server` process and ON in the shipped systemd
+	// unit (build.sh sets Environment=VULOS_LAN_ENABLE=1), so it is live on a
+	// real box and dormant in a bare dev run. This test is where that fact is
+	// recorded, because it is the difference between "wired" and "running".
+	allowed := map[string]bool{
+		`os.Getenv("VULOS_LAN_ENABLE") == "1"`: true, // the LAN layer is enabled at all
+		`!(fabricSecret == "")`:                true, // a shared fabric secret exists to authenticate with
+		`!(fabricAppSync == nil)`:              true, // the app-registry sync constructed (fabric's own precondition)
+		`!(ferr != nil)`:                       true, // the fabric service itself constructed
+	}
+	for _, g := range gates {
+		if !allowed[g] {
+			t.Errorf("startCRDTSync gained an unreviewed gate: %q\n"+
+				"If this gate is intended, add it to the allowed set with a reason. "+
+				"A gate that is never true at runtime is exactly the dead-code failure this test exists to catch.", g)
+		}
+	}
+	t.Logf("startCRDTSync call site gated by: %v", gates)
+}
+
+// TestGateChainDetectsDeadCode is the meta-test: it proves gateChain actually
+// reports a gate rather than silently returning an empty chain (which would
+// make TestCRDTSyncCallSiteIsReachable pass no matter what main.go said).
+//
+// It runs the analyser against a fixture whose call IS dead, and requires the
+// dead gate to be reported.
+func TestGateChainDetectsDeadCode(t *testing.T) {
+	dir := t.TempDir()
+	fixture := filepath.Join(dir, "fixture.go")
+	const src = `package main
+
+func startCRDTSync() {}
+func neverTrue() bool { return false }
+
+func main() {
+	if false {
+		startCRDTSync()
+	}
+	if neverTrue() {
+		startCRDTSync()
+	}
+}
+`
+	if err := os.WriteFile(fixture, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gates, found := gateChain(t, fixture, "startCRDTSync")
+	if !found {
+		t.Fatal("gateChain failed to find the call at all")
+	}
+	var sawFalse, sawFlag bool
+	for _, g := range gates {
+		if g == "false" {
+			sawFalse = true
+		}
+		if g == "neverTrue()" {
+			sawFlag = true
+		}
+	}
+	if !sawFalse {
+		t.Errorf("gateChain did not report an `if false` gate: %v", gates)
+	}
+	if !sawFlag {
+		t.Errorf("gateChain did not report a runtime-flag gate: %v", gates)
+	}
+}
+
+// TestGateChainIgnoresInitOfItsOwnIf pins the one subtlety in the analyser: the
+// `if x, err := f(); err != nil` idiom must NOT be reported as f gating itself,
+// or the real call site would look permanently gated and the pin would be
+// meaningless.
+func TestGateChainIgnoresInitOfItsOwnIf(t *testing.T) {
+	dir := t.TempDir()
+	fixture := filepath.Join(dir, "fixture.go")
+	const src = `package main
+
+func startCRDTSync() error { return nil }
+
+func main() {
+	if err := startCRDTSync(); err != nil {
+		_ = err
+	}
+}
+`
+	if err := os.WriteFile(fixture, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gates, found := gateChain(t, fixture, "startCRDTSync")
+	if !found {
+		t.Fatal("gateChain failed to find the call")
+	}
+	if len(gates) != 0 {
+		t.Fatalf("the init of an if-statement was miscounted as a gate: %v", gates)
+	}
+}
+
+// TestMainWiresCRDTSync is the cheap textual half of the anti-dead-code guard.
+// It catches outright deletion of the call; TestCRDTSyncCallSiteIsReachable
+// catches a call that survives but never runs.
 func TestMainWiresCRDTSync(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
