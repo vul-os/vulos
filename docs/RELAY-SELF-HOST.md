@@ -365,8 +365,10 @@ fly logs
 
 ## Configuring your boxes
 
-On each box, write the endpoint file (mode **0600** — the box refuses to start
-otherwise):
+On each box, write the endpoint file (mode **0600** — it holds bearer tokens; a
+world-accessible file is refused, though note the check tests world bits only, so
+`0640` passes). A rejected file does **not** stop the box booting: it logs loudly
+and the box comes up with **no relay tunnels**, still reachable on the LAN.
 
 `/etc/vulos/relays.json`
 
@@ -473,9 +475,15 @@ No flag day, no simultaneous edits.
 { "tokens": ["<the leaked token>"], "names": ["box2"] }
 ```
 
-Restart the relay. **Live tunnels are torn down within 20 seconds** — the relay
-re-checks established sessions against the grant store on a timer, because a
-working tunnel never reconnects and so would never re-present its credential.
+Restart the relay. The restart is what does the work: every tunnel drops with the
+process, and the revoked box is refused when it tries to reconnect.
+
+The relay does also re-check live sessions against the grant store on a 20-second
+timer — a working tunnel never reconnects, so it would otherwise never re-present
+its credential. But that sweep is **not** what applies this file edit:
+`GrantStore.Reload` has no caller in the running relay, so a file edit reaches the
+store only through a restart. On an already-running relay the sweep fires for
+`expires_at` expiry.
 
 Revocation is a separate file from the grants on purpose: it is the urgent
 operation, often done under pressure, and it should not require editing the list of
