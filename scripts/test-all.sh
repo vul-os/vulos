@@ -88,12 +88,21 @@ run_step "netboot install + QEMU boot" \
   bash "$ROOT/scripts/netboot-install-smoke.sh" --skip-if-unavailable
 
 # ── Step 4: frontend build ────────────────────────────────────────────────────
+# The build runs in frontend/, which is where package.json lives — same as
+# `make build` (Makefile: `cd frontend && npm run build`). This step used to run
+# `cd "$ROOT" && npm run build`; the repo root has no package.json by design, so
+# npm exited ENOENT and the step could never pass. A permanently-red step in the
+# top-level runner is worse than no step: it is a gate everyone learns to skip.
+#
+# Do NOT "fix" a failure here by skipping when something is missing. A missing
+# frontend/package.json is a broken checkout, not a reason to pass.
+FRONTEND="$ROOT/frontend"
 if [[ "${SKIP_NPM:-0}" == "1" ]]; then
   echo ""
   echo "  SKIP: npm run build (SKIP_NPM=1)"
 else
-  run_step "npm run build" \
-    bash -c "cd '$ROOT' && npm run build"
+  run_step "npm run build (frontend)" \
+    bash -c "cd '$FRONTEND' && test -f package.json && npm run build"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
