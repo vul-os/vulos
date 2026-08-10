@@ -2,7 +2,9 @@
 //
 // Detection order:
 //  1. NVIDIA (nvenc) — check for nvidia-smi + GStreamer nvh264enc
-//  2. Intel/AMD VA-API — check for /dev/dri + vainfo + GStreamer vaapih264enc
+//  2. Intel/AMD VA-API — check for /dev/dri + vainfo + a GStreamer VA H.264
+//     encoder (vah264enc from the modern va plugin, or the deprecated
+//     vaapih264enc)
 //  3. Software fallback — VP8 via libvpx (always available)
 package gpu
 
@@ -100,7 +102,14 @@ func (g *Info) ConvertArgs() []string {
 		}
 		return []string{"videoconvert"}
 	case TierVAAPI:
-		// VA-API postproc — uploads to VA surface for zero-copy encode
+		// VA-API postproc — uploads to VA surface for zero-copy encode.
+		// vapostproc is the modern `va` plugin (gstreamer1.0-plugins-bad),
+		// vaapipostproc the deprecated gstreamer1.0-vaapi one. Check both, in
+		// that order: upstream removed the latter in GStreamer 1.28 and Debian
+		// will drop the package with it.
+		if gstHasElement("vapostproc") {
+			return []string{"vapostproc"}
+		}
 		if gstHasElement("vaapipostproc") {
 			return []string{"vaapipostproc"}
 		}
@@ -108,6 +117,122 @@ func (g *Info) ConvertArgs() []string {
 	default:
 		return []string{"videoconvert"}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// VA-API element families
+// ---------------------------------------------------------------------------
+//
+// There are TWO GStreamer VA-API plugins and their element properties do not
+// overlap:
+//
+//	gstreamer1.0-vaapi      (deprecated, removed upstream in 1.28)
+//	  vaapih264enc, vaapipostproc — keyframe-period, tune, max-bframes
+//	gstreamer1.0-plugins-bad (the modern `va` plugin, already installed)
+//	  vah264enc, vaav1enc, vapostproc — key-int-max, b-frames, target-usage
+//
+// That split is not a guess. Reading the two shipped shared objects out of the
+// built image (arm64, 2026-08-10) and checking each property name for an exact
+// match gives a clean positive/negative control:
+//
+//	property              libgstva.so   libgstvaapi.so
+//	keyframe-period       no            yes
+//	tune                  no            yes
+//	max-bframes           no            yes
+//	key-int-max           yes           no
+//	b-frames              yes           no
+//	target-usage          yes           no
+//	rate-control          yes           yes
+//
+// gst-launch-1.0 fails hard on an unknown property, so sending a legacy
+// property to a modern element does not degrade — the pipeline does not start.
+// This is why the AV1 path was broken: it emitted `vaav1enc ... keyframe-period=30
+// tune=low-power`, and vaav1enc comes from the plugin that has neither.
+//
+// NOT VERIFIED HERE: this machine has no /dev/dri, so no VA element can
+// register and no pipeline built from these arguments has been run. The
+// property NAMES are evidence-backed as above; that the resulting pipeline
+// encodes is ASSUMED. To verify, on a box with /dev/dri/renderD128:
+//
+//	gst-inspect-1.0 vah264enc
+//	gst-launch-1.0 videotestsrc num-buffers=60 ! vapostproc ! vah264enc ! fakesink -v
+
+// isLegacyVAElement reports whether element comes from the deprecated
+// gstreamer1.0-vaapi plugin (vaapi* prefix) rather than the modern va* one.
+func isLegacyVAElement(element string) bool {
+	return strings.HasPrefix(element, "vaapi")
+}
+
+// vaEncoderArgs builds the property list for a VA-API encoder element using the
+// property names its own plugin actually defines. gopSize is the keyframe
+// interval in frames; gaming disables B-frames for latency.
+func vaEncoderArgs(element string, bitrateKbps, gopSize int, gaming bool) []string {
+	args := []string{element}
+	args = append(args, fmt.Sprintf("bitrate=%d", bitrateKbps), "rate-control=cbr")
+	if isLegacyVAElement(element) {
+		args = append(args, fmt.Sprintf("keyframe-period=%d", gopSize))
+		if gaming {
+			args = append(args, "tune=low-power", "max-bframes=0")
+		} else {
+			args = append(args, "tune=low-power")
+		}
+		return args
+	}
+	args = append(args, fmt.Sprintf("key-int-max=%d", gopSize))
+	if gaming {
+		args = append(args, "b-frames=0")
+	}
+	return args
+}
+
+// VAEncoderArgs is the exported form of vaEncoderArgs for callers that rebuild
+// the encoder arguments with a session-specific bitrate (stream's adaptive
+// bitrate). Passing Info.Encoder through here is what keeps the property names
+// matched to the element's plugin.
+func (g *Info) VAEncoderArgs(bitrateKbps, gopSize int, gaming bool) []string {
+	return vaEncoderArgs(g.encoderElement("vaapih264enc"), bitrateKbps, gopSize, gaming)
+}
+
+// vaH264Element returns the H.264 VA-API encoder element available on this
+// system, preferring the modern plugin, or "" if neither is present.
+func vaH264Element() string {
+	if gstHasElement("vah264enc") {
+		return "vah264enc"
+	}
+	if gstHasElement("vaapih264enc") {
+		return "vaapih264enc"
+	}
+	return ""
+}
+
+// vaAV1Element returns the AV1 VA-API encoder element, or "" if absent.
+// Only the modern plugin has one; gstreamer1.0-vaapi never shipped an AV1
+// encoder, so there is no legacy fallback to check.
+func vaAV1Element() string {
+	if gstHasElement("vaav1enc") {
+		return "vaav1enc"
+	}
+	return ""
+}
+
+// encoderElement returns the VA-API element this Info was probed with, falling
+// back to fallback when Info was constructed by hand (as several tests do).
+func (g *Info) encoderElement(fallback string) string {
+	if strings.HasPrefix(g.Encoder, "va") {
+		return g.Encoder
+	}
+	return fallback
+}
+
+// insertName puts name=venc immediately after the element, which is where the
+// pipeline expects a stable element name (EncoderElementName).
+func insertName(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	out := make([]string, 0, len(args)+1)
+	out = append(out, args[0], "name=venc")
+	return append(out, args[1:]...)
 }
 
 // EncoderArgs returns the GStreamer encoder element + properties as args.
@@ -125,12 +250,7 @@ func (g *Info) EncoderArgs() []string {
 				"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 			}
 		case TierVAAPI:
-			return []string{
-				"vaav1enc", "name=venc",
-				"bitrate=1500", "rate-control=cbr",
-				"keyframe-period=30",
-				"tune=low-power",
-			}
+			return insertName(vaEncoderArgs(g.encoderElement("vaav1enc"), 1500, 30, false))
 		}
 	}
 	switch g.Tier {
@@ -142,12 +262,7 @@ func (g *Info) EncoderArgs() []string {
 			"zerolatency=true", "b-adapt=false", "rc-lookahead=0", "aud=true",
 		}
 	case TierVAAPI:
-		return []string{
-			"vaapih264enc", "name=venc",
-			"bitrate=2000", "rate-control=cbr",
-			"keyframe-period=30",
-			"tune=low-power", "cabac-entropy-coding=true",
-		}
+		return insertName(vaEncoderArgs(g.encoderElement("vaapih264enc"), 2000, 30, false))
 	default:
 		return []string{
 			"vp8enc", "name=venc",
@@ -193,14 +308,7 @@ func (g *Info) GamingEncoderArgs(fps, bitrate int) []string {
 			"bframes=0",
 		}
 	case TierVAAPI:
-		return []string{
-			"vaapih264enc",
-			fmt.Sprintf("bitrate=%d", bitrate),
-			"rate-control=cbr",
-			fmt.Sprintf("keyframe-period=%d", gopSize),
-			"tune=low-power",
-			"max-bframes=0",
-		}
+		return vaEncoderArgs(g.encoderElement("vaapih264enc"), bitrate, gopSize, true)
 	default:
 		// Software VP8: cpu-used=16 for minimum encode latency
 		return []string{
@@ -298,16 +406,17 @@ func detect() Info {
 		info.Vendor = va.vendor
 		info.Device = va.device
 		// Prefer AV1 (Intel Arc, AMD RX 7000+) over H.264
-		if gstHasElement("vaav1enc") {
+		if av1 := vaAV1Element(); av1 != "" {
 			info.HasAV1 = true
-			info.Encoder = "vaav1enc"
+			info.Encoder = av1
 			info.Payloader = "rtpav1pay"
 			info.Codec = "video/AV1"
-			log.Printf("[gpu] VA-API AV1 hardware encode available")
+			log.Printf("[gpu] VA-API AV1 hardware encode available (%s)", av1)
 		} else {
-			info.Encoder = "vaapih264enc"
+			info.Encoder = va.h264Element
 			info.Payloader = "rtph264pay"
 			info.Codec = "video/H264"
+			log.Printf("[gpu] VA-API H.264 hardware encode available (%s)", va.h264Element)
 		}
 		return info
 	}
@@ -318,6 +427,10 @@ func detect() Info {
 type probeResult struct {
 	vendor Vendor
 	device string
+	// h264Element is the VA-API H.264 encoder element this box actually has —
+	// "vah264enc" or "vaapih264enc". They take different property names, so the
+	// pipeline builder needs to know which one it got, not just that it got one.
+	h264Element string
 }
 
 func probeNVIDIA() *probeResult {
@@ -358,9 +471,28 @@ func probeVAAPI() *probeResult {
 		return nil
 	}
 
-	// Verify GStreamer has the vaapi plugin
-	if !gstHasElement("vaapih264enc") {
-		log.Printf("[gpu] VA-API available but vaapih264enc GStreamer plugin missing")
+	// Verify GStreamer can actually encode with it. Either plugin family will
+	// do; prefer the modern one.
+	//
+	// This used to test gstHasElement("vaapih264enc") alone — the DEPRECATED
+	// element, removed upstream in GStreamer 1.28. The modern `va` plugin has
+	// shipped in the already-installed gstreamer1.0-plugins-bad the whole time.
+	// So the day Debian retires gstreamer1.0-vaapi, this probe would have
+	// returned nil on a perfectly capable GPU and every session would have
+	// dropped to software VP8 — with one log line, on a box that had just been
+	// bought for its hardware encoder.
+	encoder := vaH264Element()
+	if encoder == "" {
+		// LOUD, because the cost is invisible otherwise: the stream still
+		// works, it is just software-encoded, and nobody looks at the tier.
+		log.Printf("[gpu] ################################################################")
+		log.Printf("[gpu] HARDWARE ENCODE DISABLED: VA-API is present and reports an")
+		log.Printf("[gpu] encode entrypoint, but GStreamer has NEITHER vah264enc")
+		log.Printf("[gpu] (gstreamer1.0-plugins-bad) NOR vaapih264enc (gstreamer1.0-vaapi).")
+		log.Printf("[gpu] Every stream on this box will fall back to SOFTWARE VP8.")
+		log.Printf("[gpu] Fix: install gstreamer1.0-plugins-bad, then check")
+		log.Printf("[gpu]   gst-inspect-1.0 vah264enc")
+		log.Printf("[gpu] ################################################################")
 		return nil
 	}
 
@@ -383,7 +515,7 @@ func probeVAAPI() *probeResult {
 		}
 	}
 
-	return &probeResult{vendor: vendor, device: device}
+	return &probeResult{vendor: vendor, device: device, h264Element: encoder}
 }
 
 func hasDRI() bool {
@@ -407,7 +539,11 @@ func hasPipeWire() bool {
 	return gstHasElement("pipewiresrc")
 }
 
-func gstHasElement(element string) bool {
+// gstHasElement reports whether GStreamer can find an element. It is a var so
+// tests can decide which elements "exist" — without that seam the element
+// SELECTION logic (which VA-API plugin do we pick?) is unreachable from a test,
+// and selecting the wrong one is the defect this indirection exists to catch.
+var gstHasElement = func(element string) bool {
 	err := exec.Command("gst-inspect-1.0", element).Run()
 	return err == nil
 }

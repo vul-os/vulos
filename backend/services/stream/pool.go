@@ -1027,11 +1027,11 @@ func encoderArgsWithBitrate(g gpu.Info, kbps int) []string {
 				"gop-size=30",
 			}
 		case gpu.TierVAAPI:
-			return []string{
-				"vaav1enc",
-				fmt.Sprintf("bitrate=%d", kbps), "rate-control=cbr",
-				"keyframe-period=30",
-			}
+			// Property names must match the element's plugin — see
+			// gpu.vaEncoderArgs. vaav1enc comes from the modern `va` plugin,
+			// which has key-int-max and no keyframe-period; sending the latter
+			// stops the pipeline from starting at all.
+			return g.VAEncoderArgs(kbps, 30, false)
 		}
 	}
 	switch g.Tier {
@@ -1042,11 +1042,7 @@ func encoderArgsWithBitrate(g gpu.Info, kbps int) []string {
 			"gop-size=30",
 		}
 	case gpu.TierVAAPI:
-		return []string{
-			"vaapih264enc",
-			fmt.Sprintf("bitrate=%d", kbps), "rate-control=cbr",
-			"keyframe-period=30",
-		}
+		return g.VAEncoderArgs(kbps, 30, false)
 	default:
 		// vp8enc: target-bitrate is in bps
 		return []string{
