@@ -30,10 +30,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"vulos/backend/services/peering"
+	"vulos/backend/services/signing"
 )
 
 // DefaultVouchPath is the path VoucherService.RegisterHandlers mounts the
@@ -53,14 +55,126 @@ const DefaultApprovePath = "/api/fleetid/vouch/approve"
 // handlers (e.g. routes_devicekey_lifecycle.go).
 const maxVouchBodyBytes = 64 << 10
 
+// VouchRequestType tags every signed vouch request, so a signature made here
+// can never be replayed into another context that the subject's key also signs
+// for (VouchCert carries VouchCertType for the same reason).
+const VouchRequestType = "fleet-vouch-request"
+
 // VouchRequest is the wire shape POSTed to DefaultVouchPath by the initiator
 // side (transport.go's HTTPTransport) and decoded here. PayloadHash is
 // base64url (raw, no padding) — the SAME encoding VouchCert.PayloadHash uses.
+//
+// The request is SELF-AUTHENTICATING: Sig is an Ed25519 signature by the
+// SUBJECT's own fleet key over the canonical bytes of the request with Sig
+// cleared. SubjectID is a Vula ID, which *is* that public key
+// (peering.PublicKeyForVulaID), so a peer can verify the request with no prior
+// state, no session, and no shared secret — the same trick
+// /.well-known/vula-id and the prekey endpoints use to be reachable by strangers
+// without being open to them. See VerifyVouchRequest for what that does and
+// does not buy.
 type VouchRequest struct {
+	// Type must be VouchRequestType.
+	Type string `json:"type"`
+
 	Action      string `json:"action"`
 	SubjectID   string `json:"subject_id"`
 	PayloadHash string `json:"payload_hash"`
 	RequestID   string `json:"request_id"`
+
+	// IssuedAt is the RFC3339 UTC issue time, checked against the same
+	// freshness window as a VouchCert so a captured request cannot be replayed
+	// at a peer indefinitely.
+	IssuedAt string `json:"issued_at"`
+
+	// Sig is base64url (raw) Ed25519 over canonical(request with Sig == "")
+	// by the key SubjectID encodes.
+	Sig string `json:"sig"`
+}
+
+// SignVouchRequest fills in Type/IssuedAt and signs req with subjectPriv, which
+// MUST be the private half of the key req.SubjectID encodes — a box asks peers
+// to vouch for ITSELF (devicekey's QuorumSubjectID is this box's own fleet
+// identity), so it always holds that key. Signing for someone else's SubjectID
+// is refused rather than silently produced.
+func SignVouchRequest(subjectPriv ed25519.PrivateKey, req *VouchRequest, now time.Time) error {
+	if req == nil {
+		return errors.New("fleetid: SignVouchRequest: nil request")
+	}
+	if len(subjectPriv) != ed25519.PrivateKeySize {
+		return errors.New("fleetid: SignVouchRequest: subject private key wrong size")
+	}
+	self := peering.EncodeVulaID(subjectPriv.Public().(ed25519.PublicKey))
+	if req.SubjectID == "" {
+		req.SubjectID = self
+	}
+	if req.SubjectID != self {
+		return errors.New("fleetid: SignVouchRequest: key does not match subject_id (a box may only request vouches for itself)")
+	}
+
+	req.Type = VouchRequestType
+	req.IssuedAt = now.UTC().Format(time.RFC3339)
+	req.Sig = ""
+
+	payload, err := signing.Canonical(*req)
+	if err != nil {
+		return err
+	}
+	req.Sig = base64.RawURLEncoding.EncodeToString(ed25519.Sign(subjectPriv, payload))
+	return nil
+}
+
+// VerifyVouchRequest is the endpoint's OWN authentication, and the reason it
+// can sit in auth.publicPaths without "public" meaning "unauthenticated and
+// trusted". It fails closed on anything it cannot prove.
+//
+// What it proves: this request was produced by the holder of the fleet key
+// SubjectID names, recently, for exactly this (action, subject, payload,
+// request id) — not by an anonymous caller who merely reached the port, and not
+// replayed from a capture older than the freshness window.
+//
+// What it does NOT prove, and must not be mistaken for: that the subject is
+// entitled to a vouch. Nothing about a signature makes a box trustworthy — a
+// fully compromised box holds its own key and can sign perfectly. Authorization
+// remains, exactly as before, the deny-by-default approval gate (policy.go):
+// no VouchCert is ever signed without an operator explicitly approving that one
+// tuple. This check exists so that gate is only ever reached by requests whose
+// origin is attributable, and so an operator's approval prompt names a peer
+// that provably sent it.
+func VerifyVouchRequest(req VouchRequest, now time.Time) error {
+	if req.Type != VouchRequestType {
+		return fmt.Errorf("fleetid: vouch request: wrong type %q (want %q)", req.Type, VouchRequestType)
+	}
+	pub, err := peering.PublicKeyForVulaID(req.SubjectID)
+	if err != nil {
+		return fmt.Errorf("fleetid: vouch request: subject id: %w", err)
+	}
+	issuedAt, err := time.Parse(time.RFC3339, req.IssuedAt)
+	if err != nil {
+		return fmt.Errorf("fleetid: vouch request: bad issued_at %q", req.IssuedAt)
+	}
+	// Same window a VouchCert itself is counted in: a request that could sit
+	// around longer than the cert it would produce buys an attacker nothing.
+	if issuedAt.Before(now.Add(-VouchMaxAge)) {
+		return errors.New("fleetid: vouch request: stale (outside the freshness window)")
+	}
+	if issuedAt.After(now.Add(ClockSkew)) {
+		return errors.New("fleetid: vouch request: issued in the future")
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(req.Sig)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return errors.New("fleetid: vouch request: malformed signature")
+	}
+	unsigned := req
+	unsigned.Sig = ""
+	payload, err := signing.Canonical(unsigned)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(pub, payload, sig) {
+		return errors.New("fleetid: vouch request: signature does not verify against subject_id's key")
+	}
+	return nil
 }
 
 // vouchWireResponse is the shape returned from DefaultVouchPath. Status is
@@ -189,6 +303,21 @@ func (s *VoucherService) handleVouchRequest(w http.ResponseWriter, r *http.Reque
 	payloadHash, err := base64.RawURLEncoding.DecodeString(req.PayloadHash)
 	if err != nil || len(payloadHash) == 0 {
 		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "malformed payload_hash"})
+		return
+	}
+
+	// ── The endpoint's OWN authentication ──────────────────────────────────
+	// This route is peer-facing and therefore exempt from the OS session
+	// middleware (auth.publicPaths). Exempt must not mean unauthenticated: the
+	// request has to carry a fresh Ed25519 signature by the very key its
+	// subject_id encodes, or it never reaches the approval policy at all.
+	// 401, not 403 — the caller did not authenticate, rather than being
+	// refused something it asked for.
+	if verr := VerifyVouchRequest(req, s.clock()); verr != nil {
+		writeVoucherJSON(w, http.StatusUnauthorized, vouchWireResponse{
+			Status: "error",
+			Reason: "unauthenticated vouch request: " + verr.Error(),
+		})
 		return
 	}
 

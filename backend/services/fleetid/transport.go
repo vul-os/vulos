@@ -27,6 +27,7 @@ package fleetid
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"vulos/backend/services/peering"
 )
 
 // ErrGatherInsufficient is returned by GatherQuorum when every peer has been
@@ -153,6 +156,12 @@ type GatherRequest struct {
 	SubjectID   string // this box's OWN fleet identity — never a peer's
 	PayloadHash []byte
 	RequestID   string
+	// SubjectKey is the private half of SubjectID's fleet key. REQUIRED: the
+	// peer endpoint authenticates every request by verifying a signature made
+	// with it (VerifyVouchRequest), so a GatherQuorum with no key would be
+	// 401'd by every peer. Since SubjectID is always this box's OWN identity,
+	// the initiator always holds it.
+	SubjectKey ed25519.PrivateKey
 	// Peers is the candidate list of OTHER boxes to ask, in the order they
 	// will be tried. Transport-defined format (see Transport's doc comment).
 	Peers []string
@@ -242,6 +251,12 @@ func GatherQuorum(ctx context.Context, transport Transport, greq GatherRequest, 
 	if greq.RequestID == "" {
 		return GatherResult{}, errors.New("fleetid: GatherQuorum: empty request id")
 	}
+	if len(greq.SubjectKey) != ed25519.PrivateKeySize {
+		return GatherResult{}, errors.New("fleetid: GatherQuorum: SubjectKey is required (peers authenticate the request by its signature)")
+	}
+	if peering.EncodeVulaID(greq.SubjectKey.Public().(ed25519.PublicKey)) != greq.SubjectID {
+		return GatherResult{}, errors.New("fleetid: GatherQuorum: SubjectKey does not match SubjectID")
+	}
 
 	effThreshold := greq.Threshold
 	if effThreshold < MinThreshold {
@@ -263,7 +278,7 @@ func GatherQuorum(ctx context.Context, transport Transport, greq GatherRequest, 
 			break
 		}
 
-		cert, err := attemptPeer(ctx, transport, endpoint, wireReq, opts)
+		cert, err := attemptPeer(ctx, transport, endpoint, wireReq, greq.SubjectKey, opts)
 		if err != nil {
 			res.Outcomes = append(res.Outcomes, PeerOutcome{Endpoint: endpoint, Counted: false, Reason: err.Error()})
 			continue
@@ -297,11 +312,17 @@ func GatherQuorum(ctx context.Context, transport Transport, greq GatherRequest, 
 // attemptPeer asks one peer, retrying while it reports ErrVouchPending within
 // opts.PollDeadline (if PollInterval > 0). Any other error (denied, transport
 // failure, or ctx cancellation) returns immediately.
-func attemptPeer(ctx context.Context, transport Transport, endpoint string, wireReq VouchRequest, opts GatherOptions) (*VouchCert, error) {
+func attemptPeer(ctx context.Context, transport Transport, endpoint string, wireReq VouchRequest, subjectKey ed25519.PrivateKey, opts GatherOptions) (*VouchCert, error) {
 	deadline := time.Now().Add(opts.PollDeadline)
 	for {
+		// Sign per attempt, not once per gather: the peer enforces a freshness
+		// window, and polling a pending peer can outlast it.
+		signed := wireReq
+		if err := SignVouchRequest(subjectKey, &signed, time.Now()); err != nil {
+			return nil, fmt.Errorf("%w: sign request: %v", ErrVouchTransport, err)
+		}
 		attemptCtx, cancel := context.WithTimeout(ctx, opts.perAttemptTimeout())
-		cert, err := transport.RequestVouch(attemptCtx, endpoint, wireReq)
+		cert, err := transport.RequestVouch(attemptCtx, endpoint, signed)
 		cancel()
 		if err == nil {
 			return cert, nil

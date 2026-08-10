@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -68,6 +69,7 @@ func TestGatherQuorum_ApprovedBundle_PassesVerifyQuorum(t *testing.T) {
 		Action:      action,
 		SubjectID:   subject.vulaID,
 		PayloadHash: pl,
+		SubjectKey:  subject.priv,
 		RequestID:   requestID,
 		Peers:       []string{p1.srv.URL, p2.srv.URL},
 		Threshold:   2,
@@ -106,18 +108,33 @@ func TestVoucherService_RefusesSelfVouch_EvenIfPreApproved(t *testing.T) {
 	// ever consulting the policy.
 	peer.policy.Approve(action, self.vulaID, pl, requestID, time.Minute)
 
-	cert, err := HTTPTransport{}.RequestVouch(context.Background(), peer.srv.URL, VouchRequest{
+	// Signed with the subject's OWN key, so the request authenticates and the
+	// self-vouch refusal — not the auth check — is what is being exercised.
+	cert, err := HTTPTransport{}.RequestVouch(context.Background(), peer.srv.URL, signedRequest(t, self, VouchRequest{
 		Action:      action,
 		SubjectID:   self.vulaID, // the peer vouching for itself
 		PayloadHash: b64(pl),
 		RequestID:   requestID,
-	})
+	}))
 	if cert != nil {
 		t.Fatalf("self-vouch must never produce a cert, got %+v", cert)
 	}
 	if err == nil {
 		t.Fatalf("expected an error for a self-vouch request")
 	}
+	if !errors.Is(err, ErrVouchDenied) {
+		t.Fatalf("self-vouch must be DENIED (not merely unauthenticated): %v", err)
+	}
+}
+
+// signedRequest returns req signed by b's fleet key, as a real initiator would
+// send it.
+func signedRequest(t *testing.T, b box, req VouchRequest) VouchRequest {
+	t.Helper()
+	if err := SignVouchRequest(b.priv, &req, time.Now()); err != nil {
+		t.Fatalf("SignVouchRequest: %v", err)
+	}
+	return req
 }
 
 // ─── 3. An unapproved request yields no cert ──────────────────────────────────
@@ -130,12 +147,12 @@ func TestVoucherService_UnapprovedRequest_YieldsNoCert(t *testing.T) {
 	action := ActionDeviceEnroll
 	pl := hash("unapproved-payload")
 
-	cert, err := HTTPTransport{}.RequestVouch(context.Background(), p1.srv.URL, VouchRequest{
+	cert, err := HTTPTransport{}.RequestVouch(context.Background(), p1.srv.URL, signedRequest(t, subject, VouchRequest{
 		Action:      action,
 		SubjectID:   subject.vulaID,
 		PayloadHash: b64(pl),
 		RequestID:   "req-unapproved",
-	})
+	}))
 	if cert != nil {
 		t.Fatalf("unapproved request must not yield a cert, got %+v", cert)
 	}
@@ -158,6 +175,7 @@ func TestGatherQuorum_NoPeerApproves_InsufficientAndEmpty(t *testing.T) {
 		Action:      ActionIdentityRecovery,
 		SubjectID:   subject.vulaID,
 		PayloadHash: hash("p"),
+		SubjectKey:  subject.priv,
 		RequestID:   "req-none-approved",
 		Peers:       []string{p1.srv.URL, p2.srv.URL},
 		Threshold:   2,
@@ -190,6 +208,7 @@ func TestGatherQuorum_BelowThreshold_RejectedByVerifyQuorum(t *testing.T) {
 		Action:      action,
 		SubjectID:   subject.vulaID,
 		PayloadHash: pl,
+		SubjectKey:  subject.priv,
 		RequestID:   requestID,
 		Peers:       []string{p1.srv.URL, p2.srv.URL},
 		Threshold:   2,
