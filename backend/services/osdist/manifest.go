@@ -333,8 +333,13 @@ func ParseAndVerify(data []byte, sig []byte, signerPub ed25519.PublicKey, epochF
 	//     unrenderable note, and this is the gate that says so regardless of who
 	//     signed it.  A compromised release key must not be able to put a link
 	//     in front of the box owner just because it can sign.
+	//
+	//     Both sentinels stay in the chain (%w twice): callers switch on
+	//     ErrMalformed, and a caller that wants to know it was specifically an
+	//     unrenderable severity surface — rather than a truncated document — can
+	//     match ErrSecuritySurface without string-matching the message.
 	if err := ValidateSecuritySurface(m.IsSecurity, m.Severity, m.Notes); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformed, err)
 	}
 
 	// 3. Compute canonical bytes for verification.

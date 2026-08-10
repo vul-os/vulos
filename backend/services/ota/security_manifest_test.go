@@ -298,6 +298,11 @@ func TestCheck_RefusesSignedButUnrenderableSurface(t *testing.T) {
 				t.Fatalf("the fixture produced a bad signature — this test is not exercising "+
 					"the severity-surface gate at all: %v", err)
 			}
+			// Named, not string-matched: this must be osdist's shared rule set
+			// refusing it, the same one cmd/sign and osdist.ParseAndVerify apply.
+			if !errors.Is(err, osdist.ErrSecuritySurface) {
+				t.Errorf("expected osdist.ErrSecuritySurface underneath, got: %v", err)
+			}
 			if !strings.Contains(err.Error(), tc.wantInErr) {
 				t.Errorf("the refusal should name the problem (%q), got: %v", tc.wantInErr, err)
 			}

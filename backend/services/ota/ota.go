@@ -397,8 +397,11 @@ func parseManifest(data []byte) (*Manifest, error) {
 	// which is the point — the release key is the very thing that would be
 	// compromised in the case it defends against. osdist owns the rule so the
 	// signer and both verifiers cannot drift apart on it.
+	// Both sentinels stay in the chain (%w twice) so a caller can tell an
+	// unrenderable severity surface from a truncated document without matching
+	// on the message text.
 	if err := osdist.ValidateSecuritySurface(m.IsSecurity, m.Severity, m.Notes); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
+		return nil, fmt.Errorf("%w: %w", ErrManifestMalformed, err)
 	}
 	return &m, nil
 }
