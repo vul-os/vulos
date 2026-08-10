@@ -14,6 +14,12 @@
 >
 > Treat the sections below as the specification to build against, not as a
 > description of what happens today. Each section carries its own status note.
+>
+> **Two exceptions, which are real and implemented:** §4 (the dm-verity hash
+> tree and root hash, produced by `build.sh`) and §5 (release signing, done by
+> `backend/cmd/sign` with Ed25519 keys). Both sections were rewritten on
+> 2026-08-10 because they had described tooling — `cosign`, an OpenSSL P-256
+> `signer.crt`, a published GPG fingerprint — that this project has never used.
 
 This document describes how a verity-signed Vulos OS rootfs *would* be built so
 that it is reproducible and verifiable against the published source.
@@ -105,57 +111,75 @@ The manifest file `build/manifest.json` records:
 
 ## 4. dm-verity Signing
 
-The SquashFS image is integrity-protected using `dm-verity`:
+> **Status:** unlike §2, §3 and §6, this step **is implemented** — by `build.sh`,
+> not by the hand-run commands this section used to show. The names below are
+> the real ones; earlier revisions of this document invented
+> `vulos-rootfs.sqfs` / `vulos-rootfs.verity`, which no build produces.
 
-```sh
-# Create a verity hash tree alongside the image
-veritysetup format build/vulos-rootfs.sqfs build/vulos-rootfs.verity \
-  > build/vulos-rootfs.verity-params.txt
+`build.sh`'s VERITY-01 block (`build.sh:1170`) runs `veritysetup format` over the
+image and emits three files beside it in the output directory:
 
-# Extract the root hash (embed in the bootloader / kernel cmdline)
-ROOT_HASH=$(grep "Root hash:" build/vulos-rootfs.verity-params.txt | awk '{print $3}')
-echo "${ROOT_HASH}" > build/vulos-rootfs.roothash
-```
+| File | What it is |
+|------|------------|
+| `os-core.squashfs` | the image |
+| `os-core.hashtree` | the dm-verity Merkle tree |
+| `os-core.roothash` | one line of hex — the verity root hash |
 
-The root hash is embedded in the signed bootloader. At boot, the initramfs uses `veritysetup open` to map the image; any corruption causes an I/O error and aborts boot.
+A detached `os-core.roothash.sig` binds that root hash to the trust anchor; it is
+produced by the offline signing step (§5), not by the build.
+
+**The root hash is not embedded in the bootloader.** The installer's boot entry
+(`writeSlotABootEntry`, `backend/services/installer/netboot_install.go:520`)
+carries a kernel path and `vulos.live=0` — no `roothash=` and no verity
+parameter. The initramfs instead reads `os-core.roothash` as a *file* found
+beside the image (`scripts/initramfs/vulos-live:127-142`), verifies its signature
+against the pinned anchor when a `.sig` and verifier are present, and then runs
+`veritysetup open`.
+
+For which boot paths actually reach that `veritysetup open` today — it is not all
+of them — see
+[ARCHITECTURE.md → OS distribution (bare metal)](ARCHITECTURE.md#os-distribution-bare-metal).
 
 ---
 
-## 5. Third-Party Signer Key Handling
+## 5. Signing
 
-Vulos OS supports an optional third-party (partner) signing key for enterprise deployments.
+> **This section was wrong in every particular and has been replaced.** It
+> described an ECDSA `prime256v1` key made with `openssl`, signatures made with
+> `cosign`, a `signer.crt`, and out-of-band verification "against the GPG
+> fingerprint published in `SECURITY.md`". None of that exists: `cosign` appears
+> nowhere in this repository, no OpenSSL key is used for release signing, and
+> `SECURITY.md:73` states plainly that no PGP key has been published. It also
+> claimed "Vulos OS supports an optional third-party (partner) signing key for
+> enterprise deployments" — there is no partner-key concept in the code.
 
-**Key generation** (offline, by the signing authority):
-```sh
-openssl ecparam -name prime256v1 -genkey -noout -out signer.key
-openssl req -new -x509 -key signer.key -out signer.crt -days 3650 \
-  -subj "/CN=Vulos OS Release Signing Key/O=Vulos"
-```
+The real signer is `backend/cmd/sign`, and the keys are **Ed25519**. Its
+subcommands:
 
-**Signing the manifest**:
-```sh
-cosign sign-blob --key signer.key build/manifest.json \
-  > build/manifest.json.sig
-```
+| Subcommand | What it does |
+|------------|--------------|
+| `gen-key` | Generate an Ed25519 keypair (used for both the offline root key and the online release key) |
+| `issue-release-cert` | Offline root operation: the root key signs a release cert |
+| `sign-image` | Sign an OS image payload with the release key |
+| `sign-manifest` | Sign a `stable.json` manifest with the release key |
+| `export-anchor` | Write a **root** public key out as `trust-anchor.pub` |
+| `sign-registry` / `verify-registry` | Sign / verify `registry.json` against the anchor + release cert (CI runs the verify) |
+| `publish-feed` / `verify-feed` | Append to and verify `registry-feed.json`'s hash chain |
 
-**Verification** (by end users):
-```sh
-# 1. Download the release bundle: vulos-rootfs.sqfs, manifest.json, manifest.json.sig, signer.crt
-# 2. Verify the manifest signature
-cosign verify-blob --key signer.crt --signature manifest.json.sig manifest.json
+The trust model is root-signs-intermediate: an offline root key issues a release
+cert, the release key signs images and manifests, and revocation is a monotonic
+`min_epoch` floor rather than a CRL. The full custody, rotation and revocation
+procedure is [KEY-CEREMONY.md](KEY-CEREMONY.md) — that is the authoritative
+document, not this one.
 
-# 3. Verify the SquashFS digest matches the manifest
-EXPECTED=$(jq -r .sqfs_sha256 manifest.json)
-ACTUAL=$(sha256sum vulos-rootfs.sqfs | awk '{print $1}')
-[ "$EXPECTED" = "$ACTUAL" ] && echo "OK" || echo "MISMATCH"
+Note what is *signed*: `stable.json` and the image payload, not the
+`manifest.json` of §3, which nothing emits.
 
-# 4. Verify dm-verity root hash
-ROOT_HASH=$(cat vulos-rootfs.roothash)
-veritysetup verify vulos-rootfs.sqfs vulos-rootfs.verity "${ROOT_HASH}" \
-  && echo "verity OK" || echo "verity FAILED"
-```
-
-**Key rotation**: the signing key is held by the Vulos maintainers; verify it out-of-band against the GPG fingerprint published in `SECURITY.md`.
+The forks-and-derivatives path is `VULOS_REGISTRY_PUBKEY` (a direct Ed25519
+verification key that bypasses the cert chain), documented in
+[APPS.md](APPS.md#environment-quick-reference). That is the closest thing to a
+"third-party signer" that exists, and it is for forks running their own bucket,
+not for co-signing a Vulos release.
 
 ---
 
