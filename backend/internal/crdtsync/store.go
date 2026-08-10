@@ -42,6 +42,9 @@ type Store struct {
 	// allowed is the replication allow-list (see policy.go). It is fixed at
 	// Open and never mutated, so no lock guards it.
 	allowed map[string]bool
+	// growOnly marks domains whose registers are add-only and immutable. See
+	// DomainDecision.GrowOnly.
+	growOnly map[string]bool
 
 	// mu serialises writers. modernc.org/sqlite is opened with
 	// SetMaxOpenConns(1); the mutex additionally makes read-modify-write
@@ -86,7 +89,16 @@ func Open(dbPath, actor string, allowedDomains []string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("crdtsync: migrate: %w", err)
 	}
-	s := &Store{db: db, actor: actor, clock: newClock(), allowed: allowed}
+	// Grow-only is derived from the SAME policy table that decides what
+	// replicates, so a domain cannot be approved in one place and given the
+	// wrong algebra in another.
+	growOnly := map[string]bool{}
+	for d := range allowed {
+		if IsGrowOnly(d) {
+			growOnly[d] = true
+		}
+	}
+	s := &Store{db: db, actor: actor, clock: newClock(), allowed: allowed, growOnly: growOnly}
 	// Re-seed the hybrid logical clock from persisted state so a restart cannot
 	// emit a stamp that loses to something this box already wrote before the
 	// restart (a wall clock that jumped backwards would otherwise do exactly
@@ -183,6 +195,12 @@ func (s *Store) local(domain, key, field string, kind OpKind, value []byte) erro
 	}
 	if err := s.checkDomain(domain); err != nil {
 		return err
+	}
+	// A grow-only domain has no delete in its algebra — refused HERE as well
+	// as at the merge boundary, so a local caller cannot produce an op that
+	// every peer would then have to refuse.
+	if kind == OpDel && s.growOnly[domain] {
+		return &ErrGrowOnlyViolation{Domain: domain, Op: "delete"}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -467,6 +485,14 @@ func (s *Store) Merge(d *Delta) (int, error) {
 			return 0, fmt.Errorf("crdtsync: Merge: op from actor %s seq %d carries stamp actor %q: stamp actor must equal the origin actor",
 				op.Actor, op.Seq, op.Stamp.Actor)
 		}
+		// A grow-only domain accepts no tombstones FROM A PEER either. This is
+		// the half that matters: the local refusal above is a correctness
+		// guard, this one is the security boundary — it is what stops a
+		// compromised-but-rostered box editing the audit trail on every other
+		// box in the fleet.
+		if op.Kind == OpDel && s.growOnly[d.Domain] {
+			return 0, &ErrGrowOnlyViolation{Domain: d.Domain, Op: fmt.Sprintf("delete from actor %s seq %d", op.Actor, op.Seq)}
+		}
 		// An op may name its own domain; it must be allowed too, or a delta for
 		// an approved domain could smuggle ops into a refused one.
 		if op.Domain != "" && op.Domain != d.Domain {
@@ -584,6 +610,18 @@ func (s *Store) ApplySnapshot(snap *Snapshot) error {
 	}
 	if snap.SchemaVers > SnapshotSchemaVersion {
 		return fmt.Errorf("%w: got %d, this build understands %d", ErrSnapshotSchema, snap.SchemaVers, SnapshotSchemaVersion)
+	}
+	// A snapshot is the third way state can enter this replica, so the
+	// grow-only refusal has to be here too. Without it, a peer that cannot
+	// tombstone an audit entry with an op could simply hand over a snapshot
+	// carrying the same tombstone and get the identical effect.
+	if s.growOnly[snap.Domain] {
+		for _, r := range snap.Registers {
+			if r.Deleted {
+				return &ErrGrowOnlyViolation{Domain: snap.Domain,
+					Op: fmt.Sprintf("tombstone for %s/%s inside a snapshot", r.Key, r.Field)}
+			}
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -887,7 +925,7 @@ func (s *Store) mergeRegister(tx *sql.Tx, domain, key, field string, value []byt
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	if err == nil && !registerWins(stamp, deleted, value, curStamp, curDeleted == 1, curVal) {
+	if err == nil && !s.registerWinsIn(domain, stamp, deleted, value, curStamp, curDeleted == 1, curVal) {
 		return nil
 	}
 	d := 0
@@ -903,6 +941,26 @@ func (s *Store) mergeRegister(tx *sql.Tx, domain, key, field string, value []byt
 			wall=excluded.wall, logical=excluded.logical, actor=excluded.actor`,
 		domain, key, field, value, d, stamp.Wall, int64(stamp.Logical), stamp.Actor)
 	return e
+}
+
+// registerWinsIn applies the domain's algebra: last-writer-wins everywhere
+// except a grow-only domain, where a register is immutable once written and the
+// FIRST writer keeps it.
+//
+// Inverting the comparison is all it takes, and that is the point: min over a
+// total order is exactly as commutative, associative and idempotent as max, so
+// grow-only costs the convergence guarantee nothing.
+func (s *Store) registerWinsIn(domain string, inStamp Stamp, inDeleted bool, inVal []byte, curStamp Stamp, curDeleted bool, curVal []byte) bool {
+	if s.growOnly[domain] {
+		if c := inStamp.Compare(curStamp); c != 0 {
+			return c < 0
+		}
+		// An exact stamp collision still needs a deterministic answer, and it
+		// must be the same one on every box. Smaller value bytes win, mirroring
+		// the inverted stamp rule.
+		return bytes.Compare(inVal, curVal) < 0
+	}
+	return registerWins(inStamp, inDeleted, inVal, curStamp, curDeleted, curVal)
 }
 
 // registerWins reports whether the incoming register state strictly beats the

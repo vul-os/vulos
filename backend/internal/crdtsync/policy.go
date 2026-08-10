@@ -41,6 +41,30 @@ type DomainDecision struct {
 	Sync bool
 	// Reason is why. For a refusal, what would go wrong if it did sync.
 	Reason string
+	// GrowOnly makes this domain a grow-only set: entries may be ADDED, never
+	// removed and never modified.
+	//
+	// It exists for the security audit trail, and it is what makes replicating
+	// one safe. A plain LWW domain gives every peer an EDIT primitive: a
+	// rostered box that is later compromised could overwrite or tombstone an
+	// entry recording its own compromise, on every other box, and the merge
+	// would faithfully converge on the attacker's version. Grow-only removes
+	// that primitive from the algebra rather than trying to police it:
+	//
+	//	- a tombstone in this domain is REFUSED, locally and from a peer;
+	//	- a register is immutable once written — merge keeps the FIRST writer
+	//	  (lowest stamp), not the last.
+	//
+	// First-writer-wins is still a max/min over a total order, so it keeps
+	// every property convergence relies on: commutative, associative,
+	// idempotent, and independent of arrival order.
+	//
+	// The residual, stated plainly: a rostered peer can still PRE-EMPT a key it
+	// predicts, by writing that key first with a lower stamp. For an audit log
+	// whose keys carry a random event id that is not reachable, and it is a
+	// strictly smaller power than "edit any existing entry". It is not a
+	// general-purpose defence for a domain with guessable keys.
+	GrowOnly bool
 }
 
 // Decisions is the per-domain policy for this box.
@@ -113,10 +137,23 @@ var Decisions = []DomainDecision{
 		Reason: "Per-device push endpoints and their keys. Meaningless on another box and credential-bearing.",
 	},
 	{
-		Domain: "sql:acctsec_sensitive_actions",
-		Sync:   false,
-		Reason: "A security audit trail. Its value depends on being an append-only local record of what happened ON THIS BOX; a mergeable audit log " +
-			"is one an attacker can edit from a second box.",
+		Domain:   "sql:acctsec_sensitive_actions",
+		Sync:     false,
+		GrowOnly: true,
+		Reason: "A security audit trail. It SHOULD replicate — under close-to-identical instances, an attacker who compromises one box and erases " +
+			"its local log no longer erases the evidence, because the other boxes hold it and grow-only means they cannot be told to forget. " +
+			"The algebra for that is built and tested here (GrowOnly: tombstones refused locally, from a peer op, and from a peer snapshot; " +
+			"merge keeps the FIRST writer, so an entry is immutable once written). " +
+			"IT IS STILL REFUSED FOR ONE REMAINING REASON, which is a schema problem rather than a merge one: the table's primary key is " +
+			"`id INTEGER PRIMARY KEY AUTOINCREMENT`, allocated INDEPENDENTLY ON EVERY BOX, and the session extension keys captured changes on the " +
+			"PRIMARY KEY. So two machines assign the same key to two DIFFERENT events, the merge sees one key with two conflicting values, and one " +
+			"box's real audit entry is silently discarded. An audit log that looks complete and is missing entries is worse than one that never " +
+			"claimed to replicate. It also makes grow-only's residual maximally exploitable: first-writer-wins lets a hostile peer suppress an entry " +
+			"it can PREDICT, and 1, 2, 3 is as predictable as a key gets. " +
+			"Migration 0002 adds a random `event_id` and services/accountsecurity mints one per entry, so the identity now exists — but SQLite " +
+			"cannot ALTER a PRIMARY KEY, and making event_id the key means rebuilding the table and moving the read path's `ORDER BY id DESC` onto " +
+			"`ts`. That changes an audit surface's ordering semantics from insertion order to timestamp order, which is worth doing deliberately. " +
+			"Flip Sync to true once event_id IS the primary key — not before.",
 	},
 	{
 		Domain: "sql:cgroup_slices",
@@ -136,6 +173,24 @@ func SyncableDomains() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// GrowOnlyDomains returns the approved domains that are grow-only sets.
+func GrowOnlyDomains() []string {
+	var out []string
+	for _, d := range Decisions {
+		if d.Sync && d.GrowOnly {
+			out = append(out, d.Domain)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// IsGrowOnly reports whether a domain is a grow-only set.
+func IsGrowOnly(domain string) bool {
+	d, ok := DecisionFor(domain)
+	return ok && d.GrowOnly
 }
 
 // DecisionFor returns the recorded decision for a domain, if there is one.
@@ -186,4 +241,17 @@ func (s *Store) checkDomain(domain string) error {
 		return &ErrDomainNotAllowed{Domain: domain, Reason: d.Reason}
 	}
 	return &ErrDomainNotAllowed{Domain: domain}
+}
+
+// ErrGrowOnlyViolation is returned when an operation would remove or modify an
+// entry in a grow-only domain. It is a refusal, not a fault: an honest peer
+// never produces one, so it is worth naming loudly rather than folding into a
+// generic merge error.
+type ErrGrowOnlyViolation struct {
+	Domain string
+	Op     string
+}
+
+func (e *ErrGrowOnlyViolation) Error() string {
+	return fmt.Sprintf("crdtsync: domain %q is grow-only: %s is not permitted (entries may be added, never removed or modified)", e.Domain, e.Op)
 }

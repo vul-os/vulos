@@ -7,8 +7,10 @@ package accountsecurity
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"time"
 
 	dbmigrate "vulos/backend/internal/migrate"
@@ -53,8 +55,8 @@ func (s *store) Close() error { return s.db.Close() }
 // anomaly-detection window.
 func (s *store) recordSensitiveAction(ctx context.Context, userID string, action Action, clientIP, userAgent string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO acctsec_sensitive_actions(ts,user_id,action,client_ip,user_agent) VALUES(?,?,?,?,?)`,
-		time.Now().UTC().Format(rfc), userID, string(action), clientIP, userAgent,
+		`INSERT INTO acctsec_sensitive_actions(event_id,ts,user_id,action,client_ip,user_agent) VALUES(?,?,?,?,?,?)`,
+		newEventID(), time.Now().UTC().Format(rfc), userID, string(action), clientIP, userAgent,
 	)
 	return err
 }
@@ -176,4 +178,29 @@ func (s *store) recentAlerts(ctx context.Context, userID string, limit int) ([]A
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// newEventID returns a globally-unique identity for one audit entry.
+//
+// The table's INTEGER PRIMARY KEY AUTOINCREMENT is allocated per box, so two
+// machines assign the same id to two different events. That is fine for a local
+// log and wrong for a replicated one: a CRDT keyed on it would see one key with
+// two conflicting values and drop one box's real event. See migration 0002.
+//
+// Random rather than derived from the content, because two genuinely identical
+// actions (same user, same action, same second, same IP) are two separate
+// events and must both survive — a content hash would silently merge them into
+// one. crypto/rand rather than math/rand: this key is what a hostile peer would
+// have to PREDICT to pre-empt an entry under grow-only merge, so guessability
+// is a security property here, not just a collision concern.
+func newEventID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failing is not survivable for a value whose
+		// unpredictability is load-bearing, and this runs on the audit path —
+		// the one place that must not quietly degrade. A timestamp fallback
+		// would be predictable by construction, so refuse instead.
+		panic("accountsecurity: crypto/rand unavailable while minting an audit event id: " + err.Error())
+	}
+	return hex.EncodeToString(b[:])
 }
