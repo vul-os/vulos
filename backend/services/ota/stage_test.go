@@ -99,6 +99,18 @@ type release struct {
 	certEpoch     int64
 	manifestEpoch int64
 
+	// isSecurity / severity / notes are the release-severity surface, SIGNED
+	// along with everything else. Defaults are the zero values, which omitempty
+	// drops entirely — so newRelease publishes the byte-identical seven-key
+	// document releases signed before this surface existed.
+	//
+	// They are set here rather than tampered onto the served document because
+	// the fixture must be able to produce a GENUINELY signed security release;
+	// a test that can only forge one proves nothing about the feature working.
+	isSecurity bool
+	severity   string
+	notes      string
+
 	// certRoot signs the release cert. Defaults to the channel's root key —
 	// the one the box has pinned.
 	certRoot ed25519.PrivateKey
@@ -116,9 +128,19 @@ type release struct {
 	// omitHashtree drops os/<v>/os-core.hashtree from the channel.
 	omitHashtree bool
 
-	// extraManifestFields are appended to the served stable.json AFTER it is
-	// signed — the shape an attacker appending unsigned metadata produces.
+	// extraManifestFields are written into the served stable.json AFTER it is
+	// signed — the shape an attacker modifying a legitimately signed document in
+	// transit produces. A key already present is OVERWRITTEN, so this also
+	// expresses "flip a signed field on the wire".
 	extraManifestFields map[string]any
+
+	// dropManifestFields are deleted from the served stable.json AFTER it is
+	// signed. Needed alongside extraManifestFields to express a transit edit
+	// that leaves the document STRUCTURALLY VALID — clearing a signed
+	// is_security means also removing the severity that must accompany it,
+	// otherwise the severity-surface gate refuses the document first and masks
+	// the signature gate under test.
+	dropManifestFields []string
 }
 
 func newRelease(version string, image []byte) *release {
@@ -182,6 +204,9 @@ func (ch *fakeChannel) publishRelease(t *testing.T, r *release) {
 		ReleasedAt: r.releasedAt,
 		RootHash:   r.rootHash,
 		Size:       r.size,
+		IsSecurity: r.isSecurity,
+		Severity:   r.severity,
+		Notes:      r.notes,
 	}
 	manifestJSON, err := signing.Canonical(payload)
 	if err != nil {
@@ -190,16 +215,19 @@ func (ch *fakeChannel) publishRelease(t *testing.T, r *release) {
 	manifestSig := ch.sigFile(t, ch.relPriv, manifestJSON)
 
 	servedManifest := manifestJSON
-	if len(r.extraManifestFields) > 0 {
-		// Append fields the signature does not cover, leaving the seven signed
-		// keys byte-identical — what an attacker able to modify a legitimately
-		// signed stable.json in transit can do.
+	if len(r.extraManifestFields) > 0 || len(r.dropManifestFields) > 0 {
+		// Rewrite the served document AFTER signing, leaving the .sig untouched
+		// — what an attacker able to modify a legitimately signed stable.json in
+		// transit can do.
 		var doc map[string]any
 		if err := json.Unmarshal(manifestJSON, &doc); err != nil {
 			t.Fatal(err)
 		}
 		for k, v := range r.extraManifestFields {
 			doc[k] = v
+		}
+		for _, k := range r.dropManifestFields {
+			delete(doc, k)
 		}
 		servedManifest, err = json.Marshal(doc)
 		if err != nil {
@@ -640,26 +668,34 @@ func TestCheck_FallsBackToBakedCert(t *testing.T) {
 
 // ─── The signed manifest surface ──────────────────────────────────────────────
 
-// TestCheck_RefusesFieldsNoSignatureCovers is the is_security decision, pinned.
+// TestCheck_RefusesFieldsNoSignatureCovers pins the rule that made the
+// is_security decision necessary: a key the signature does not cover is
+// unauthenticated data, appendable in transit to a legitimately signed document,
+// and this client refuses the whole document rather than read it.
 //
-// `cmd/sign sign-manifest` signs seven fields and has no flag for is_security,
-// severity or notes. A manifest carrying them therefore carries data no
-// signature covers — appendable in transit to a legitimately signed document,
-// and `notes` is rendered to the box owner. Refuse the document rather than
-// read the field.
+// is_security/severity/notes are INSIDE the signed surface now (they were the
+// original offenders), so the extra key here is one that is not — and the
+// assertion insists it was the SIGNED-SURFACE gate that refused it, not the
+// severity-surface gate that lives beside it. Without that check this test would
+// keep passing after the key filter was deleted.
 func TestCheck_RefusesFieldsNoSignatureCovers(t *testing.T) {
 	ch := newFakeChannel(t)
 	r := newRelease("v09", []byte("image bytes"))
 	r.extraManifestFields = map[string]any{
-		"is_security": true,
-		"notes":       "Critical: call +1-555-0100 to complete this update",
+		"action_url": "https://vulos-security.example/urgent",
 	}
 	ch.publishRelease(t, r)
 	box := newStageBox(t, ch)
 
 	status, err := box.client.Check(context.Background())
 	if !errors.Is(err, ErrManifestMalformed) {
-		t.Fatalf("a manifest carrying unsigned is_security/notes was accepted (err = %v)", err)
+		t.Fatalf("a manifest carrying an unsigned action_url was accepted (err = %v)", err)
+	}
+	if !strings.Contains(err.Error(), "outside the signed manifest surface") {
+		t.Errorf("the refusal must come from the signed-key filter, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "action_url") {
+		t.Errorf("the refusal should name the offending key, got: %v", err)
 	}
 	if status.IsSecurity || status.Notes != "" {
 		t.Errorf("unsigned metadata reached the owner-facing status: %+v", status)
