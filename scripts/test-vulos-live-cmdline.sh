@@ -33,7 +33,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT}/scripts/initramfs/vulos-live"
 SH_BIN="$(command -v dash || command -v sh)"
 
-EXPECTED_ASSERTIONS=34
+EXPECTED_ASSERTIONS=38
 ASSERTIONS_RUN=0
 FAILURES=0
 
@@ -295,11 +295,11 @@ EOF
 : > "${MOUNTLOG}"
 rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
 MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
-  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' b boot-state /var/cache/vulos/slot-b/os-core.squashfs active"
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' b boot-state /var/cache/vulos/slot-b/os-core.squashfs active verified"
 
 GOT="$(cat "${SLOTROOT}/var/cache/vulos/booted-slot" 2>/dev/null || echo NOFILE)"
-assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slot-b/os-core.squashfs\nverity=active')" \
-  "record_booted_slot writes the slot, how it was chosen, the image, and whether dm-verity is running"
+assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slot-b/os-core.squashfs\nverity=active\nsig=verified')" \
+  "record_booted_slot writes the slot, how it was chosen, the image, whether dm-verity is running, and whether the roothash signature verified"
 
 # The verity field is the ONLY durable answer to "is dm-verity actually active
 # on this machine": the installed boot entry carries `quiet splash`, so the
@@ -309,9 +309,35 @@ assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slo
 : > "${MOUNTLOG}"
 rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
 MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
-  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' a cmdline /var/cache/vulos/slot-a/os-core.squashfs inactive"
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' a cmdline /var/cache/vulos/slot-a/os-core.squashfs inactive unsigned"
 assert_eq "$(grep -c '^verity=inactive$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
   "and records verity=inactive when the boot fell back to an unverified loop mount"
+assert_eq "$(grep -c '^sig=unsigned$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
+  "and records sig=unsigned for a roothash with no verifiable signature beside it"
+
+# sig= is a SEPARATE question from verity=, and conflating them is the defect
+# VERITY-04 closes. `verity=active` means the kernel checks every block against
+# a root hash; it says nothing about where that hash came from, and a
+# substituted image+roothash pair yields verity=active on a machine running an
+# attacker's OS. Pin that the two fields can disagree, so a reader (and Phase 5)
+# cannot mistake one for the other.
+: > "${MOUNTLOG}"
+rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
+MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' a cmdline /var/cache/vulos/slot-a/os-core.squashfs active unsigned"
+assert_eq "$(grep -c '^verity=active$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
+  "verity=active and sig=unsigned coexist — dm-verity running against an UNAUTHENTICATED root hash is exactly the state VERITY-04 closes"
+assert_eq "$(grep -c '^sig=unsigned$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
+  "...and the marker says so rather than letting verity=active imply authenticity"
+
+# A caller that passes no sig argument at all must not silently write an empty
+# field that a `grep sig=verified` would never match and a human would misread.
+: > "${MOUNTLOG}"
+rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
+MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' a cmdline /var/cache/vulos/slot-a/os-core.squashfs inactive"
+assert_eq "$(grep -c '^sig=none$' "${SLOTROOT}/var/cache/vulos/booted-slot")" "1" \
+  "an omitted sig argument defaults to sig=none, never to an empty value"
 
 # The device argument is the whole point: assert it is THERE, and that it is the
 # device /proc/mounts names — not a guess and not the mountpoint twice.

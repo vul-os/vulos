@@ -324,8 +324,27 @@ rootmnt_device() {
 # months with verity inactive while the architecture doc said otherwise. A line
 # in this file survives the boot, so an operator — and the QEMU harness's
 # Phase 5 — can read the answer instead of inferring it.
+#
+# SIG is recorded for a reason distinct from VERITY's, and the distinction is
+# the whole point of VERITY-04: `verity=active` says the kernel is checking every
+# block against a root hash. It says NOTHING about where that root hash came
+# from, and a substituted image+roothash pair produces `verity=active` on a
+# machine running an attacker's OS. `sig=verified` is the field that separates
+# "checking against a number" from "checking against a number the release key
+# signed". Reading the first without the second is how this looked solved while
+# it was not.
+#
+#   sig=verified — the release key signed this exact root hash and image size
+#   sig=unsigned — a roothash with no verifiable signature beside it (the shape
+#                  of every disk installed before VERITY-04; tolerated on a
+#                  local disk, refused on netboot)
+#   sig=none     — no roothash at all, so there was nothing to authenticate
+#
+# There is deliberately no "sig=failed": that path panics and the machine does
+# not boot, so nothing is left to write it.
 record_booted_slot() {
     _rb_root="$1"; _rb_slot="$2"; _rb_via="$3"; _rb_image="$4"; _rb_verity="$5"
+    _rb_sig="${6:-none}"
     [ -d "${_rb_root}/var/cache/vulos" ] || return 1
 
     _rb_remounted=0
@@ -334,8 +353,8 @@ record_booted_slot() {
         _rb_remounted=1
     fi
     {
-        printf 'slot=%s\nvia=%s\nimage=%s\nverity=%s\n' \
-            "$_rb_slot" "$_rb_via" "$_rb_image" "$_rb_verity" \
+        printf 'slot=%s\nvia=%s\nimage=%s\nverity=%s\nsig=%s\n' \
+            "$_rb_slot" "$_rb_via" "$_rb_image" "$_rb_verity" "$_rb_sig" \
             > "${_rb_root}/var/cache/vulos/booted-slot"
         sync
     } 2>/dev/null || true
@@ -400,6 +419,11 @@ ROOTHASH_SIG_ABS="${ROOTHASH_ABS}.sig"
 # (possibly plain-HTTP) network, so the roothash MUST be bound to this pinned
 # key or an attacker can substitute image+roothash together and defeat verity.
 TRUST_ANCHOR_ABS="/etc/vulos/trust-anchor.pub"
+# The root-signed certificate that names WHICH release key the anchor authorises.
+# Both files are copied into the cpio by the vulos-trust-anchor hook
+# (scripts/seed/embed-anchor.sh): "the pre-pivot verifier needs both: the anchor
+# to trust, the cert to know which release key that trust extends to".
+RELEASE_CERT_ABS="/etc/vulos/release-cert.json"
 LOWER_DEV=""
 
 # Netboot marker: when the machine booted over the network the payload is
@@ -414,24 +438,80 @@ if cmdline_has vulos.netboot=1; then
     NETBOOT=1
 fi
 
-# ── Roothash authenticity gate (signature over os-core.roothash) ──────────────
-# If a detached signature ships beside the roothash AND the pinned anchor is
-# present, the roothash MUST verify against the anchor before it is trusted.
-# Fail closed: a present-but-invalid signature always halts the boot.  A missing
-# signature is tolerated ONLY for a local live-USB; on netboot it is fatal.
+# ── Roothash authenticity gate (VERITY-04) ────────────────────────────────────
+#
+# dm-verity binds the IMAGE to the root hash.  Nothing in that binds the ROOT
+# HASH to anyone.  An attacker who substitutes the squashfs AND os-core.roothash
+# together defeats dm-verity completely: the kernel verifies the attacker's
+# image against the attacker's hash tree and reports success, and the machine
+# comes up clean with `verity=active` recorded.  This gate is what makes the
+# root hash a statement by the release key rather than a number found on a disk.
+#
+# vulos-verify-sig walks the chain the rest of this project agrees on:
+#   pinned anchor -> release cert (root sig, expiry, epoch floor) -> release key
+#   -> canonical(ImagePayload) -> bound to THESE artifacts by the root hash in
+#   the file veritysetup is about to be handed, and the size of the squashfs.
+#
+# ── POLICY, and why ──────────────────────────────────────────────────────────
+#
+# A PRESENT-BUT-INVALID signature is FATAL EVERYWHERE.  Forging one is
+# infeasible, so this state means substitution or corruption, and both must stop
+# the boot.  This is the branch that has never once been reachable: no build
+# emitted a .sig and no image carried the verifier, so every boot in this
+# project's history took the "not verified" path below.
+#
+# A MISSING signature is FATAL ON NETBOOT and TOLERATED ON A LOCAL DISK.  That
+# asymmetry is deliberate and it is the crux of this change:
+#
+#   - On netboot the payload is attacker-reachable in transit over (possibly
+#     plain) HTTP.  Omitting the .sig would be a free fail-open downgrade for an
+#     attacker who controls the wire, so absence must be refused.
+#
+#   - On an installed disk, refusing would BRICK THE EXISTING FLEET.  Every disk
+#     installed before this build has os-core.hashtree and os-core.roothash and
+#     NO .sig, because nothing ever produced one.  Phase 4b of
+#     scripts/netboot-install-smoke.sh pins the rule that such a disk must still
+#     boot, and that rule is not negotiable for a signature that only became
+#     producible today.
+#
+#     The security argument for tolerating it is not merely compatibility.  An
+#     attacker who can DELETE the .sig from an installed disk already has write
+#     access to that disk — and can equally delete os-core.roothash and
+#     os-core.hashtree, which this hook has always tolerated by falling back to a
+#     loop mount.  Refusing here would close none of that while breaking every
+#     pre-existing machine.  What the signature buys on a local disk is that
+#     substituting the image now requires DELETING a signature — a loud,
+#     detectable, offline-auditable act — instead of silently swapping two files.
+#
+# Either way the outcome is RECORDED (sig=verified / sig=unsigned) so an
+# operator, and Phase 5, can read which one happened instead of assuming.
+ROOTHASH_SIG_STATE="none"
 if [ -f "$ROOTHASH_ABS" ]; then
+    ROOTHASH_SIG_STATE="unsigned"
     if [ -f "$ROOTHASH_SIG_ABS" ] && [ -f "$TRUST_ANCHOR_ABS" ] \
+            && [ -f "$RELEASE_CERT_ABS" ] \
             && command -v vulos-verify-sig >/dev/null 2>&1; then
         log_begin_msg "vulos-live: verifying os-core.roothash signature against pinned anchor..."
-        if vulos-verify-sig "$TRUST_ANCHOR_ABS" "$ROOTHASH_ABS" "$ROOTHASH_SIG_ABS"; then
-            log_end_msg "vulos-live: roothash signature OK (pinned anchor)"
+        if vulos-verify-sig -anchor "$TRUST_ANCHOR_ABS" -cert "$RELEASE_CERT_ABS" \
+                -roothash "$ROOTHASH_ABS" -bundle "$ROOTHASH_SIG_ABS" \
+                -image "$SQUASHFS_ABS"; then
+            ROOTHASH_SIG_STATE="verified"
+            log_end_msg "vulos-live: roothash signature OK (release key, pinned anchor)"
         else
-            panic "vulos-live: os-core.roothash signature verification FAILED against pinned trust anchor — boot halted (fail closed)."
+            panic "vulos-live: os-core.roothash signature verification FAILED — the dm-verity root hash is NOT the one the release key signed. The image has been substituted or the artifacts are corrupt. Boot halted (fail closed)."
         fi
     elif [ "$NETBOOT" = "1" ]; then
-        panic "vulos-live: netboot requires a signed os-core.roothash (os-core.roothash.sig + trust anchor + vulos-verify-sig). One is missing — refusing to boot an unauthenticated image (fail closed)."
+        panic "vulos-live: netboot requires a signed os-core.roothash. Missing one of: sig=$([ -f "$ROOTHASH_SIG_ABS" ] && echo ok || echo MISSING) anchor=$([ -f "$TRUST_ANCHOR_ABS" ] && echo ok || echo MISSING) cert=$([ -f "$RELEASE_CERT_ABS" ] && echo ok || echo MISSING) verifier=$(command -v vulos-verify-sig >/dev/null 2>&1 && echo ok || echo MISSING). Refusing to boot an unauthenticated image over the network (fail closed)."
     else
-        log_warning_msg "vulos-live: roothash signature not verified (local live-USB; no .sig/anchor/verifier). dm-verity still binds the image to this roothash."
+        # Itemised, because this is the branch a pre-existing disk takes and an
+        # operator needs to see WHICH piece is absent — a missing .sig is the
+        # expected legacy shape, while a missing verifier or anchor on a machine
+        # that HAS a .sig means the image build regressed.
+        log_warning_msg "vulos-live: roothash signature NOT verified — dm-verity still binds the image to this roothash, but nothing binds the roothash to the release key"
+        log_warning_msg "vulos-live:   roothash.sig: ${ROOTHASH_SIG_ABS} $([ -f "$ROOTHASH_SIG_ABS" ] && echo 'found' || echo 'MISSING')"
+        log_warning_msg "vulos-live:   trust anchor: ${TRUST_ANCHOR_ABS} $([ -f "$TRUST_ANCHOR_ABS" ] && echo 'found' || echo 'MISSING')"
+        log_warning_msg "vulos-live:   release cert: ${RELEASE_CERT_ABS} $([ -f "$RELEASE_CERT_ABS" ] && echo 'found' || echo 'MISSING')"
+        log_warning_msg "vulos-live:   verifier:     $(command -v vulos-verify-sig 2>/dev/null || echo 'not found')"
     fi
 fi
 
@@ -599,7 +679,8 @@ fi
 # is why Phase 5 requires the HTTP boot of Phase 3/4 to have passed first, and
 # does not treat this line as sufficient on its own.
 record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
-    "$([ -n "$LOWER_DEV" ] && echo active || echo inactive)" || true
+    "$([ -n "$LOWER_DEV" ] && echo active || echo inactive)" \
+    "$ROOTHASH_SIG_STATE" || true
 
 # ── Mount lower layer (dm-verity device or plain loop) ───────────────────────
 if [ -n "$LOWER_DEV" ]; then
