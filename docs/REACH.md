@@ -36,9 +36,13 @@ There is no way around that. It is a property of the network, not of any design.
 What *is* a design choice is **who runs that machine and what they can do**. Vulos's
 answer:
 
-- The public-IP machine runs **`vulos relay serve`** — the same binary you already
-  run, in a different role. Not a separate product, not a separate download, not a
-  separate vendor.
+- The public-IP machine runs **`vulos relay serve`** — built from this same
+  repository, but a **different binary** from the one a box runs: the relay is
+  `backend/cmd/vulos`, a box is `backend/cmd/server` (`vulos-server`). No release
+  artefact ships it — neither `build.sh` nor the Dockerfile builds `cmd/vulos` —
+  so you build it for the relay host yourself:
+  `cd backend && go build -o vulos ./cmd/vulos`. Still not a separate product,
+  not a separate vendor, and no third-party tunnel service in the path.
 - It is **swappable**: a relay is named by config, never compiled in. Point at your
   own, a friend's, or an [Pier](https://github.com/vul-os/pier) instance.
 - It is **plural**: your box holds tunnels to *every* configured relay at once, so
@@ -172,8 +176,12 @@ exactly one answer to "where did this come from".
 
 #### 1. `VULOS_RELAY_ENDPOINTS_FILE` (preferred)
 
-A JSON file at **mode 0600** — the box refuses to start if it is world-accessible,
-because it holds bearer tokens.
+A JSON file at **mode 0600** — it holds bearer tokens, and a world-accessible
+file is refused. The box does **not** refuse to start: a config error here is
+logged loudly and leaves the box with **no tunnels at all**, still reachable on
+the LAN (and publicly if the direct listener is on). That is deliberate — a
+mistyped relay URL should not brick a box. Note the check rejects world bits
+only, so `0640` passes.
 
 ```json
 [
@@ -401,13 +409,14 @@ operators, and no single one is load-bearing.
 
 ```bash
 # Box: what does reachability look like right now?
-curl -s localhost:8080/api/network/reach | jq
+# /api/network/* needs a session in EVERY env — these are not public routes.
+curl -s -b "$COOKIE" localhost:8080/api/network/reach | jq
 # → {"enabled":true,
 #    "endpoints":[{"endpoint":{"url":"…","name":"box1"},"healthy":true,…}],
 #    "links":[{"label":"…","state":"up","public_url":"https://box1.relay.example.com"}]}
 
 # Box: is the direct fast path active?
-curl -s localhost:8080/api/network/direct | jq
+curl -s -b "$COOKIE" localhost:8080/api/network/direct | jq
 
 # Relay: is it alive?
 curl -s https://relay.example.com/_vulos-reach/v1/health
