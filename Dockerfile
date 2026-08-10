@@ -97,6 +97,31 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources
 
 # Core + remote browser stack (Xvfb + Chromium + GStreamer)
+#
+# TWO DISPLAY STACKS AND TWO AUDIO SERVERS ARE INSTALLED HERE ON PURPOSE — for
+# now. Both are genuinely wired in the Go backend, so this is an undecided
+# architecture rather than dead weight, and deleting either half breaks a real
+# path. Before anyone "cleans this up", the traps:
+#
+#   pulseaudio is NOT redundant with pipewire-pulse. pipewire-pulse provides
+#   the client socket, not the daemon binary; services/webbrowser/chrome.go
+#   does findBin("pulseaudio") and launches it directly to build the virtual
+#   sink/source the streamed browser records from. Removing the package breaks
+#   browser audio, and the failure is a runtime "pulseaudio not found", not a
+#   build error.
+#
+#   wireplumber has ZERO references in Go, and that is expected: it is
+#   PipeWire's session manager, started by systemd, not by us. A grep-based
+#   "unused package" sweep will flag it and be wrong.
+#
+#   X11 (xvfb, xdotool, matchbox) and Wayland (labwc, cage, wlopm) are both
+#   live. Picking one is the single biggest size and CVE win available here,
+#   but it is a real decision with real work behind it — VA-API under Wayland
+#   and a replacement for xdotool input injection — so it is tracked in
+#   docs/decisions.md rather than made by whoever edits this file next.
+#
+# The package set is pinned by scripts/check-image-packages.sh: adding anything
+# here must be a deliberate diff, not a side effect.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \
@@ -111,7 +136,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     matchbox-window-manager x11-xserver-utils \
     labwc cage \
     flatpak \
-    cage labwc \
     pipewire pipewire-pulse wireplumber \
     gstreamer1.0-pipewire \
     xdg-desktop-portal-wlr \
