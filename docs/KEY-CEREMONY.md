@@ -353,23 +353,53 @@ is not optional maintenance. Repeat §4.2 → §4.5 with a new release key and a
 ### Release key compromised
 
 1. Generate a new release key (§4.2).
-2. Issue a new cert with a **bumped `-min-epoch`** (§4.3). The epoch floor is
-   what makes the old key's artifacts unacceptable rather than merely stale — a
-   box that has seen epoch *N* refuses any cert below *N*, so an attacker cannot
-   replay the old, still-unexpired cert.
+2. Issue a new cert with a **bumped `-min-epoch`** (§4.3).
 3. Re-sign `registry.json` and any in-flight images with the new key (§4.5).
-4. Ship an OS update carrying the new cert. Boxes pick it up and stop trusting
-   the old key.
+4. Ship an OS update carrying the new cert. The cert is baked into the image by
+   `scripts/seed/embed-anchor.sh`, so a box that boots the new slot reads the new
+   `/etc/vulos/release-cert.json` and stops trusting the old key.
 
 No reflash. This is the entire reason the root key exists.
 
+**The epoch floor does not yet help here.** The mechanism is built and enforced
+— `signing.EpochStore.AcceptEpoch` is called on the OTA path
+(`services/ota/ota.go`), `cmd/verify` compares `cert.MinEpoch` against the
+device floor, and the netboot verifier passes the floor into
+`osdist.ParseAndVerify` — but **nothing ever raises the floor on a real box**.
+`AcceptEpoch` deliberately only checks; the floor moves only via `RaiseTo` or
+the root-signed `BumpFloor`, and neither has a caller outside
+`services/signing/epoch_test.go` (`ota.go` says so in its own package doc). A
+new device is initialised at floor 0 and stays there for life, so every
+`min_epoch >= 0` is accepted.
+
+The practical consequence: bumping `-min-epoch` records intent and will start
+working the day a floor-raising surface exists, but today it does **not** make a
+revoked key's artifacts unacceptable. Until then, what actually retires the old
+key is its cert expiring (§ routine rotation) and boxes booting an image
+carrying the new cert. Assume a compromised release key stays usable against a
+box that has not taken the update, for as long as its old cert has left to run
+— which is why the 12-month `-not-after` in §4.3 is a security parameter, not
+paperwork.
+
 ### Root key compromised
 
-There is no recovery path in software. The anchor is baked into the image and
-the initramfs precisely so that nothing on the box can change it. Every fielded
-device must be reflashed with an image carrying a new anchor. Treat the root key
-accordingly: air-gapped, two copies, two locations, and out of reach of anything
-that runs code you did not write.
+There is no recovery path in software. Every fielded device must be reflashed
+with an image carrying a new anchor. Treat the root key accordingly: air-gapped,
+two copies, two locations, and out of reach of anything that runs code you did
+not write.
+
+Note one detail, because it looks like a loophole and is not. `VULOS_TRUST_ANCHOR`
+(§7) does let the anchor *path* be overridden — but it is read in exactly one
+place, `services/appnet`'s registry trust resolution, so it moves only what the
+**App Hub** trusts. The OS trust paths ignore it entirely and use the compiled-in
+`/etc/vulos/trust-anchor.pub`: the OTA client (`services/ota`), the pre-pivot
+gate (`cmd/init`, `cmd/verify`), the disk installer (`internal/installer`) and
+the netboot verifier (`services/installer`). So the override is not a way back
+from a compromised root key — an attacker holding that key can still mint a
+release cert the baked anchor validates on every OS-update and install path,
+and no environment variable reaches those. It exists so a container or test can
+point at a staged `/etc/vulos`; setting it on a real box requires editing the
+service unit, which already implies root.
 
 ---
 
