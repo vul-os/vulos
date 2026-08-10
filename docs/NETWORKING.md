@@ -38,14 +38,14 @@ All three paths land on the **same** authenticated HTTP handler. There is no "tr
 
 ## Connection modes
 
-The operator picks a high-level networking posture in Settings (persisted to `~/.vulos/db/network-mode.json`, surfaced over `GET`/`POST /api/network/mode`):
+The operator picks a high-level networking posture in Settings (persisted to `$HOME/db/network-mode.json`, surfaced over `GET`/`POST /api/network/mode`):
 
 | Mode | What it means |
 |---|---|
 | `fabric` | Default. Traffic rides a relay tunnel — option (a)/(b) below. No inbound ports needed. |
-| `direct` | Direct WAN exposure with periodic re-enrollment (public IP + DNS kept up to date) — option (c) below. |
+| `direct` | Direct WAN exposure — option (c) below. DNS is **manual**: the automatic re-enrolment library exists but is not wired in (see [Direct-mode DNS enrollment](#direct-mode-dns-enrollment)). |
 | `own` | You bring your own domain and reverse proxy; Vulos sits behind it — option (c) below. |
-| `local` | LAN-only. External listeners are blocked entirely. |
+| `local` | LAN-only. Blocks the **direct public listener** specifically — it does not change the main listener's bind host, which follows `VULOS_ENV`. |
 
 `local` mode is enforced in code, not just cosmetic: when it is selected, the server refuses to start the direct public listener even if `VULOS_DIRECT_ENABLE=1` is set.
 
@@ -92,12 +92,13 @@ Three concrete ways this plays out, matching the summary table above:
 Out of the box, with nothing configured, a box runs with **no relay**. It is
 reachable on its LAN, and publicly only if direct mode (option (c)) is enabled.
 Nobody operates a relay on your behalf and no hostname is compiled in, so an
-unconfigured box has nothing to dial — and says so:
+unconfigured box has nothing to dial.
 
-```
-[reach] relay endpoints NOT configured — reachable on the LAN, and publicly
-        only if the DIRECT-IP listener is enabled
-```
+It does **not** announce that: a box with no relay configuration takes a silent
+path (`reachwire.go`, the `set.Len()==0` branch) and logs nothing about reach.
+The `relay endpoints NOT configured` pair of lines you may have seen quoted here
+fires only when relay config was present and **failed to load**. To check the
+state deliberately, read `GET /api/network/reach`.
 
 This is the correct posture for a box on a VPS with a public IP, and for a box that
 only ever needs to be reached from the house it lives in.
@@ -154,8 +155,10 @@ Under the hood, the box-side contract is:
   serves an unauthenticated well-known path, `/_vulos-direct/probe`; the relay GETs
   it with a one-time nonce and the box echoes it back. Only a box that actually
   controls the advertised endpoint can answer, so a box cannot advertise an endpoint
-  it does not serve. This is the *only* unauthenticated route on the direct listener
-  and it carries no user data.
+  it does not serve. It is the only route that bypasses the auth
+  handler entirely; the direct listener serves the same OS handler as every other
+  path, so the usual unauthenticated allow-list (login, register, the setup
+  wizard, box-to-box peering) is reachable there exactly as over the relay.
 - **The header-trust boundary.** The relay strips every `X-Vulos-Reach-*` header from
   inbound client requests before forwarding, then sets the ones it vouches for; the
   agent translates those into `r.RemoteAddr` and `r.TLS` and strips them again. See
@@ -245,8 +248,12 @@ The main request handler routes by `Host` header: a request for `{appId}.<your-d
 When you publish an app (visibility "public"), the box provisions a subdomain of the form:
 
 ```
-{app}--{profile}.{instance-ulid}.vulos.org
+{app}--{profile}.{instance-ulid}.{VULOS_BASE_DOMAIN}
 ```
+
+`VULOS_BASE_DOMAIN` has **no default** (`subdomain_provision.go`'s
+`defaultBaseDomain` is `""`) — the `vulos.org` you may have seen in this example
+is not a fallback the code supplies.
 
 The DNS record is created by calling whatever DNS provisioning API you point the box at — there is no default host. The relevant env vars:
 
@@ -271,7 +278,9 @@ You can attach your own domain to a published app instead of the generated subdo
 
 ### Direct-mode DNS enrollment
 
-In direct mode the box keeps its public DNS record pointing at its current IP: it detects its public IP via an echo service, enrolls with the Vulos control API (`https://control.vulos.org` by default) which returns acme-dns credentials (persisted in-process as `VULOS_ACME_DNS_UUID` / `VULOS_ACME_DNS_KEY`), and watches for IP changes, updating the record when your ISP hands you a new address.
+**Not wired in — direct-mode DNS is manual today.** `backend/services/network/enroll.go` implements the whole loop (`DetectPublicIP`, `EnrollDirect`, `UpdateDNS`, `WatchIPChanges`, returning acme-dns credentials as `VULOS_ACME_DNS_UUID` / `VULOS_ACME_DNS_KEY`), but **nothing outside that package and its tests ever constructs or calls any of it**, so no box updates its own record. Point your `A`/`AAAA` record at the box yourself and update it if your ISP changes your address.
+
+There is also no hosted control API to enrol with: `defaultControlURL` is `""` (`enroll.go:36`) — you supply one with `VULOS_CONTROL_URL`. Vulos the org operates no control plane.
 
 ### LAN DNS (works with the internet down)
 
@@ -289,7 +298,7 @@ With the LAN layer enabled (below), the box itself answers DNS for `box.<instanc
 | LAN layer | The LAN HTTPS listener inside the backend | An externally-issued certificate for `box.<id>.lan.vulos.org`, delivered to `/var/lib/vulos/tls/lan.crt` + `lan.key` (paths overridable via `VULOS_LAN_CERT` / `VULOS_LAN_KEY`), hot-reloaded on change; falls back to a self-signed cert until the real one arrives |
 | `own` mode / published apps | Your reverse proxy (Caddy is the supported path) | Caddy's automatic ACME, driven by the snippets Vulos writes into `VULOS_CADDY_DIR` |
 
-Fetching the trusted LAN certificate from an external issuance endpoint is itself opt-in (`VULOS_LANCERT_ENABLE=1`, endpoint at `VULOS_CLOUD_BASE_URL`, defaulting to `https://cp.vulos.org`) and hardened: the puller accepts an extra CA bundle (`VULOS_LANCERT_CA_PEM` / `VULOS_LANCERT_CA_FILE`) or SPKI pins (`VULOS_LANCERT_SPKI_PINS`), and refuses a plaintext endpoint URL unless `VULOS_LANCERT_ALLOW_INSECURE=1` is set (never do this outside a lab). Leave `VULOS_LANCERT_ENABLE` unset and the LAN layer just uses its self-signed fallback — nothing about the LAN listener depends on this being configured.
+Fetching the trusted LAN certificate from an external issuance endpoint is itself opt-in (`VULOS_LANCERT_ENABLE=1`, endpoint at `VULOS_CLOUD_BASE_URL` — **required, with no default**: unset means the puller refuses to construct and stays disabled, because Vulos operates no hosted control plane) and hardened: the puller accepts an extra CA bundle (`VULOS_LANCERT_CA_PEM` / `VULOS_LANCERT_CA_FILE`) or SPKI pins (`VULOS_LANCERT_SPKI_PINS`), and refuses a plaintext endpoint URL unless `VULOS_LANCERT_ALLOW_INSECURE=1` is set (never do this outside a lab). Leave `VULOS_LANCERT_ENABLE` unset and the LAN layer just uses its self-signed fallback — nothing about the LAN listener depends on this being configured.
 
 For local development with real HTTPS, generate the certs once with [mkcert](https://github.com/FiloSottile/mkcert):
 
@@ -315,6 +324,7 @@ The LAN layer (`VULOS_LAN_ENABLE=1`, off by default — not every install wants 
 | `VULOS_LAN_ENABLE` | unset (off) | `1` enables the whole LAN layer. |
 | `VULOS_LAN_HTTPS_ADDR` | `:443` | LAN HTTPS listen address (override for non-root runs). |
 | `VULOS_LAN_DNS_ADDR` | `:53` | LAN DNS listen address. |
+| `VULOS_LAN_DNS_DISABLE` | unset (responder on) | `1` turns off **only** the DNS responder, leaving the HTTPS listener and mDNS (`vulos.local`) intact. For a network that already has a resolver on `:53` (a router or Pi-hole) and would otherwise get a port conflict or a surprise UDP:53 responder on a LAN scan. |
 | `VULOS_LAN_CERT` / `VULOS_LAN_KEY` | `/var/lib/vulos/tls/lan.crt` / `.key` | LAN TLS material paths. |
 
 mDNS and DNS bind failures are logged but non-fatal — a box that can still be reached by IP is better than no box.
@@ -430,7 +440,7 @@ AI-generated sandbox backends bind `127.0.0.1` only and are reached through the 
 **LAN-only (`local` mode, or just never forwarding anything)**
 - Inbound from WAN: nothing. Leave the router alone.
 - On the box's host firewall, allow from your LAN: TCP 8080 (or 443 + UDP 53/5353 if `VULOS_LAN_ENABLE=1`).
-- External listeners are blocked in software too; this mode is belt-and-braces.
+- In software, `local` mode blocks the direct public listener only. The main `:8080` listener still binds per `VULOS_ENV` (loopback in `local`/`dev`, all interfaces in `prod`), so do not rely on the mode alone to keep it off your WAN.
 
 **Relay tunnel (`fabric` mode — the default)**
 - Inbound from WAN: nothing. The embedded agent dials out.
@@ -494,7 +504,7 @@ On a bare-metal install, Settings manages the box's own network connection throu
 | `GET /api/wifi/saved` / `POST /api/wifi/forget` | Manage remembered networks |
 | `GET /api/network/status` | Box identity: URL, domain, instance ID, hostname, mode |
 
-These endpoints shell out to system tools, so they are part of the exec surface disabled by the `VULOS_DISABLE_EXEC` kill-switch, and each mutation is written to the exec audit log. In Docker they are mostly moot — the container uses the host's networking.
+These endpoints shell out to system tools and each mutation is written to the exec audit log. Note they are **not** covered by the `VULOS_DISABLE_EXEC` kill-switch — `routes_wifi.go` contains no such check. Today that switch gates `/api/apps/launch`, `/api/sandbox/run`, `/api/exec`, `/api/stream/launch-app` and `POST /api/network/mode`, and nothing else. In Docker they are mostly moot — the container uses the host's networking.
 
 ---
 
@@ -508,11 +518,13 @@ curl -s http://localhost:8080/healthz
 # {"status":"ok","version":"..."}
 
 # 2. What does the box think its identity and mode are?
-curl -s http://localhost:8080/api/network/status | jq
-curl -s http://localhost:8080/api/network/mode | jq        # needs a session in prod
+#    All /api/network/* routes need a session — in EVERY env, not just prod.
+#    They are not in the public allow-list and there is no dev bypass.
+curl -s -b "$COOKIE" http://localhost:8080/api/network/status | jq
+curl -s -b "$COOKIE" http://localhost:8080/api/network/mode | jq
 
 # 3. Is the direct fast path active?
-curl -s http://localhost:8080/api/network/direct | jq
+curl -s -b "$COOKIE" http://localhost:8080/api/network/direct | jq
 # {"enabled":false}  → relay-only, as designed
 # {"enabled":true,"endpoint":"https://box1.example.net", ...}
 
