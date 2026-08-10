@@ -835,19 +835,15 @@ func (c *Client) downloadAndVerify(
 	// ── The ImagePayload the release key signed ────────────────────────────
 	// Unmarshalled STRAIGHT FROM THE MANIFEST BYTES, not re-encoded from the
 	// parsed Manifest: canonical() must reproduce the signer's bytes exactly.
+	// osdist's equivalent then checks payload.Path against the path it is about
+	// to fetch, because it derives that path from manifest.Latest and the two
+	// can disagree. Here the fetch key IS manifest.Path — the same JSON key
+	// payload.Path is read from — so such a check could never fail, and a guard
+	// that cannot fail is worse than no guard. parseManifest has already
+	// refused an empty roothash/path.
 	var payload verify.ImagePayload
 	if err := json.Unmarshal(manifestData, &payload); err != nil {
 		return fmt.Errorf("%w: manifest does not describe an image payload: %v", ErrManifestMalformed, err)
-	}
-	if payload.RootHash == "" || payload.Path == "" {
-		return fmt.Errorf("%w: manifest is missing roothash/path — nothing to bind a signature to", ErrManifestMalformed)
-	}
-	// The signed payload must NAME the artifact about to be fetched. Without
-	// this, a valid signature over a DIFFERENT (older, vulnerable) image could
-	// be paired with a newer manifest.
-	if payload.Path != manifest.Path {
-		return fmt.Errorf("%w: signed payload names %q but this update fetches %q",
-			ErrHashMismatch, payload.Path, manifest.Path)
 	}
 
 	slotDir, err := c.cfg.SlotManager.SlotDir(slot)

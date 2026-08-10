@@ -17,15 +17,12 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"vulos/backend/services/signing"
 )
@@ -79,47 +76,17 @@ func (ch *fakeChannel) anchorPath(t *testing.T, dir string) string {
 
 // publish installs a root-signed release cert at certEpoch and a release-signed
 // manifest at manifestEpoch advertising version.
+//
+// It delegates to publishRelease (stage_test.go) so that this file and the
+// staging tests share ONE definition of what a published release looks like.
+// They did not, and a fixture that defines its own signature shape is how a
+// verifier demanding an impossible one survives review.
 func (ch *fakeChannel) publish(t *testing.T, certEpoch, manifestEpoch int64, version string) {
 	t.Helper()
-
-	cert, err := signing.IssueReleaseCert(ch.rootPriv, ch.relPub, "release-test",
-		time.Now().Add(365*24*time.Hour), certEpoch)
-	if err != nil {
-		t.Fatalf("IssueReleaseCert: %v", err)
-	}
-	certJSON, err := json.Marshal(cert)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ch.files["/release-cert.json"] = certJSON
-
-	manifest := Manifest{
-		Channel:    "stable",
-		Latest:     version,
-		MinEpoch:   manifestEpoch,
-		RootHash:   hex.EncodeToString(make([]byte, 32)),
-		Size:       1024,
-		ReleasedAt: time.Now().UTC().Truncate(time.Second),
-		Path:       "os/" + version + "/os-core.squashfs",
-	}
-	manifestJSON, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	canonical, err := signing.Canonical(&manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sigFile, err := signing.MarshalSig(signing.Signature{
-		Algorithm: signing.AlgorithmID,
-		KeyID:     "release-test",
-		SigBytes:  signing.Sign(ch.relPriv, canonical),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ch.files["/stable.json"] = manifestJSON
-	ch.files["/stable.json.sig"] = sigFile
+	r := newRelease(version, []byte("os-core squashfs image bytes for "+version))
+	r.certEpoch = certEpoch
+	r.manifestEpoch = manifestEpoch
+	ch.publishRelease(t, r)
 }
 
 // newBox builds a Client whose epoch floor persists at epochPath — the same
