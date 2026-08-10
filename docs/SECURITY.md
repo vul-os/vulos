@@ -316,7 +316,8 @@ Docker and plain-binary installs skip this machinery entirely; verified boot is 
 
 ## Observability endpoints
 
-- `GET /healthz`, `GET /api/version`, `GET /api/health` — public liveness/version probes; no secrets.
+- `GET /healthz`, `GET /api/version` — public liveness/version probes; no secrets.
+- `GET /api/health` — **verdict public, detail gated.** Anonymous callers get `{"status","timestamp"}` and the real `200`/`503`; the `checks` map is withheld unless the request carries a session. The checks still run either way, so the verdict is never a guess — only the output is redacted. The detail is gated because each field discloses something on a box that is already failing: the absolute data-dir path and raw OS error (`data_dir_writable`), exact free capacity, which fingerprints the deployment and tells an attacker how much to write to force a `503` (`disk_space`), and whether S3 cluster sync exists at all (`sync_lag`).
 - `GET /metrics` — **owner-only**: requires an admin session or the `VULOS_METRICS_TOKEN` bearer token. Metric names and labels never contain secret values, but the counters that are actually populated — Guard allow/block, proposal backlog, RAG mode — are operational intelligence you should not hand to strangers. (The generic request/error/queue counters are registered but never written; see [ARCHITECTURE.md → Observability](ARCHITECTURE.md#observability).)
 - `local` mode only: `/debug/env` and pprof are enabled. They exist for developers; never run `--env=local` on a reachable box.
 
