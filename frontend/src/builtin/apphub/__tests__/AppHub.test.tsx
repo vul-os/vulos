@@ -128,3 +128,41 @@ it('is case-insensitive and tolerant of apps with no keywords at all', async () 
   fireEvent.change(search, { target: { value: 'zzznomatch' } })
   expect(screen.queryByText('Darktable')).not.toBeInTheDocument()
 })
+
+// A web app used to render TWO badges reading the same word — "WEB WEB" — one
+// from SourceBadge (where it comes from) and one from AppTypeBadge (how it
+// runs). Both axes resolve to "Web" for a web app, so the card repeated the
+// same fact twice; on the 63-app catalogue grid it was the most repeated text
+// on screen. Caught by opening docs/screenshots/apphub.png, not by any test.
+it('shows the WEB badge once, not twice, for a web app', async () => {
+  mockRegistry([
+    { ...APPS[0], id: 'gitea', name: 'Gitea', type: 'web', description: 'Self-hosted Git forge' },
+  ])
+  render(<AppHub />)
+  await screen.findByText('Gitea')
+
+  // Scope to the card: the sidebar has its own "Web" app-type FILTER row, which
+  // is a different control and must keep its label.
+  const card = screen.getByText('Gitea').closest('div')?.parentElement as HTMLElement
+  const webBadges = Array.from(card.querySelectorAll('span'))
+    .filter(el => el.textContent?.trim().toLowerCase() === 'web')
+  expect(webBadges).toHaveLength(1)
+})
+
+// The suppression must be narrow: when the two badges carry DIFFERENT facts
+// they both still render, because "Apt · Streamed" genuinely says two things.
+it('still shows both badges when they say different things', async () => {
+  mockRegistry([APPS[1]])  // darktable: type 'desktop' → Apt + Streamed
+  render(<AppHub />)
+  await screen.findByText('Darktable')
+
+  // MUST be scoped to the CARD. The sidebar carries its own "Web"/"Streamed"/
+  // "Service" app-type FILTER rows with the same words, so an unscoped
+  // getAllByText matches the sidebar and passes no matter what the card
+  // renders — the first version of this test did exactly that and survived a
+  // mutation that removed the type badge from every card.
+  const card = screen.getByText('Darktable').closest('div')?.parentElement as HTMLElement
+  const labels = Array.from(card.querySelectorAll('span')).map(el => el.textContent?.trim().toLowerCase())
+  expect(labels).toContain('apt')
+  expect(labels).toContain('streamed')
+})

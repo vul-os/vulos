@@ -142,11 +142,23 @@ function appTypeKey(app: StoreApp): 'web' | 'desktop' | 'service' | null {
   return null
 }
 
-// APPSTORE-08: small per-card badge derived from the `type` field
+// APPSTORE-08: small per-card badge derived from the `type` field.
+//
+// The two badges answer different questions — SourceBadge is where the app
+// comes FROM (Apt / Flatpak / Web), AppTypeBadge is how it RUNS (Web /
+// Streamed / Service) — and for most apps that reads well: "APT · STREAMED"
+// tells you both things at once.
+//
+// For a web app the two axes collapse onto the same word, and every web card in
+// the catalogue rendered "WEB WEB" side by side. That is not a second fact, it
+// is the same fact twice, and on a 63-app grid it was the most repeated text on
+// the screen. When the labels coincide the type badge is suppressed and the
+// source badge carries it alone.
 function AppTypeBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
   const key = appTypeKey(app)
   if (!key) return null
   const s = APPTYPE_BADGE[key]
+  if (s.label.toLowerCase() === SOURCE_BADGE[getSourceType(app)].label.toLowerCase()) return null
   return (
     <span className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
       {s.label}
