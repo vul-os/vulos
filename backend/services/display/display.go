@@ -140,95 +140,29 @@ func (s *Service) listOutputs(ctx context.Context) []Output {
 	return nil
 }
 
+// listWlr shells out to wlr-randr and parses its output.
+//
+// The parsing lives in parseWlrOutput, which is what the tests exercise. This
+// function used to carry its own copy of that logic — so the tested parser and
+// the shipped parser were two different functions that could, and did, drift.
 func (s *Service) listWlr(ctx context.Context) []Output {
 	out, err := output(ctx, "wlr-randr")
 	if err != nil {
+		log.Printf("[display] wlr-randr failed (%v) — no outputs reported", err)
 		return nil
 	}
-
-	var outputs []Output
-	var cur *Output
-
-	for _, line := range strings.Split(string(out), "\n") {
-		if !strings.HasPrefix(line, " ") && strings.Contains(line, "(") {
-			if cur != nil {
-				outputs = append(outputs, *cur)
-			}
-			name := strings.Fields(line)[0]
-			cur = &Output{Name: name, Connected: true}
-		}
-		if cur == nil {
-			continue
-		}
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "Enabled:") {
-			cur.Enabled = strings.Contains(trimmed, "yes")
-		}
-		if strings.Contains(trimmed, "px,") && strings.Contains(trimmed, "Hz") {
-			// Mode line: "1920x1080 px, 60.000000 Hz (preferred, current)"
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 1 {
-				cur.Modes = append(cur.Modes, fields[0])
-				if strings.Contains(trimmed, "current") {
-					cur.Resolution = fields[0]
-					if len(fields) >= 3 {
-						cur.Refresh = strings.TrimSuffix(fields[2], ",")
-					}
-				}
-			}
-		}
-	}
-	if cur != nil {
-		outputs = append(outputs, *cur)
-	}
-	return outputs
+	return parseWlrOutput(string(out))
 }
 
+// listXrandr shells out to xrandr and parses its output. As with listWlr, the
+// parsing is parseXrandrOutput so that the tested code is the shipped code.
 func (s *Service) listXrandr(ctx context.Context) []Output {
 	out, err := output(ctx, "xrandr", "--query")
 	if err != nil {
+		log.Printf("[display] xrandr --query failed (%v) — no outputs reported", err)
 		return nil
 	}
-
-	var outputs []Output
-	var cur *Output
-
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, " connected") || strings.Contains(line, " disconnected") {
-			if cur != nil {
-				outputs = append(outputs, *cur)
-			}
-			fields := strings.Fields(line)
-			cur = &Output{
-				Name:      fields[0],
-				Connected: strings.Contains(line, " connected"),
-				Primary:   strings.Contains(line, "primary"),
-			}
-		}
-		if cur == nil {
-			continue
-		}
-		trimmed := strings.TrimSpace(line)
-		if len(trimmed) > 0 && (trimmed[0] >= '0' && trimmed[0] <= '9') {
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 1 {
-				cur.Modes = append(cur.Modes, fields[0])
-				if strings.Contains(trimmed, "*") {
-					cur.Resolution = fields[0]
-					cur.Enabled = true
-					for _, f := range fields[1:] {
-						if strings.Contains(f, "*") {
-							cur.Refresh = strings.TrimRight(f, "*+ ")
-						}
-					}
-				}
-			}
-		}
-	}
-	if cur != nil {
-		outputs = append(outputs, *cur)
-	}
-	return outputs
+	return parseXrandrOutput(string(out))
 }
 
 func (s *Service) getBrightness() Brightness {
@@ -262,12 +196,21 @@ func parseWlrOutput(out string) []Output {
 	var cur *Output
 
 	for _, line := range strings.Split(out, "\n") {
-		if !strings.HasPrefix(line, " ") && strings.Contains(line, "(") {
+		// wlr-randr puts every output header at column 0 and indents all of
+		// its detail lines. Detecting the header by "contains a parenthesis"
+		// instead only worked because a real monitor's description happens to
+		// end in "(CONNECTOR)"; measured output for an output without one
+		//
+		//	HEADLESS-1 "Headless output 1"
+		//
+		// was skipped entirely, and every output under it vanished with it.
+		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 			if cur != nil {
 				outputs = append(outputs, *cur)
 			}
 			name := strings.Fields(line)[0]
 			cur = &Output{Name: name, Connected: true}
+			continue
 		}
 		if cur == nil {
 			continue
@@ -276,13 +219,19 @@ func parseWlrOutput(out string) []Output {
 		if strings.HasPrefix(trimmed, "Enabled:") {
 			cur.Enabled = strings.Contains(trimmed, "yes")
 		}
-		if strings.Contains(trimmed, "px,") && strings.Contains(trimmed, "Hz") {
+		// A mode line is "<WxH> px, <rate> Hz (flags)" on hardware that
+		// reports a refresh rate, and "<WxH> px (flags)" on hardware that does
+		// not — measured on a headless output, where requiring "px," AND "Hz"
+		// dropped every mode and left Resolution empty.
+		if strings.Contains(trimmed, "px") && strings.Contains(trimmed, "x") {
 			fields := strings.Fields(trimmed)
-			if len(fields) >= 1 {
+			if len(fields) >= 2 && (fields[1] == "px," || fields[1] == "px") {
 				cur.Modes = append(cur.Modes, fields[0])
 				if strings.Contains(trimmed, "current") {
 					cur.Resolution = fields[0]
-					if len(fields) >= 3 {
+					// "1920x1080 px, 60.000000 Hz (preferred, current)"
+					//   fields[2] is the rate only when a rate is present.
+					if len(fields) >= 4 && fields[3] == "Hz" {
 						cur.Refresh = strings.TrimSuffix(fields[2], ",")
 					}
 				}

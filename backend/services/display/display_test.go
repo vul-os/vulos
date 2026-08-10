@@ -22,6 +22,25 @@ eDP-1 (eDP-1) 2560x1600 (0x1)
     1920x1200 px, 59.950199 Hz
 `
 
+// fixtureWlrHeadless is VERBATIM output from wlr-randr 0.4.1 against a live
+// headless labwc session (arm64, 2026-08-10). The other fixtures in this file
+// were written to match the parser; this one was captured from the tool, and
+// the parser did not handle it: the header carries no parenthesised connector
+// and the mode line carries no refresh rate, so the old checks
+// (`strings.Contains(line, "(")` and `"px," && "Hz"`) skipped the output and
+// all of its modes.
+const fixtureWlrHeadless = `HEADLESS-1 "Headless output 1"
+  Make: (null)
+  Model: (null)
+  Serial: (null)
+  Enabled: yes
+  Modes:
+    1280x720 px (current)
+  Position: 0,0
+  Transform: normal
+  Scale: 1.000000
+`
+
 const fixtureWlrDisabled = `HDMI-A-2 (HDMI-A-2) 0x0 (0x0)
   Enabled: no
   Modes:
@@ -108,6 +127,41 @@ func TestParseWlrOutput_Disabled(t *testing.T) {
 	}
 	if outputs[0].Enabled {
 		t.Error("output should be disabled")
+	}
+}
+
+// The measured headless form must parse: one output, enabled, with its mode.
+func TestParseWlrOutput_HeadlessNoParensNoRefresh(t *testing.T) {
+	outputs := parseWlrOutput(fixtureWlrHeadless)
+	if len(outputs) != 1 {
+		t.Fatalf("expected 1 output from real wlr-randr output, got %d", len(outputs))
+	}
+	o := outputs[0]
+	if o.Name != "HEADLESS-1" {
+		t.Errorf("Name = %q, want %q", o.Name, "HEADLESS-1")
+	}
+	if !o.Enabled {
+		t.Error("Enabled = false, want true")
+	}
+	if o.Resolution != "1280x720" {
+		t.Errorf("Resolution = %q, want %q", o.Resolution, "1280x720")
+	}
+	if len(o.Modes) != 1 || o.Modes[0] != "1280x720" {
+		t.Errorf("Modes = %v, want [1280x720]", o.Modes)
+	}
+	// No refresh rate is reported for this output; the parser must leave the
+	// field empty rather than picking up "(current)" as a rate.
+	if o.Refresh != "" {
+		t.Errorf("Refresh = %q, want empty (the tool reported none)", o.Refresh)
+	}
+}
+
+// The Make/Model/Serial detail lines must not be mistaken for outputs.
+func TestParseWlrOutput_DetailLinesAreNotOutputs(t *testing.T) {
+	for _, o := range parseWlrOutput(fixtureWlrHeadless) {
+		if o.Name == "Make:" || o.Name == "Model:" || o.Name == "Serial:" {
+			t.Fatalf("detail line parsed as an output: %q", o.Name)
+		}
 	}
 }
 
