@@ -400,6 +400,8 @@ Restart the box and watch for:
 Confirm from anywhere:
 
 ```bash
+# Verdict only over the tunnel — {"status":"ok","timestamp":…}, no session needed.
+# That is exactly what you want here: it proves the relay reached the box.
 curl -s https://box1.relay.example.com/api/health
 curl -s localhost:8080/api/network/reach | jq     # on the box
 ```
