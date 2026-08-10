@@ -3,9 +3,11 @@ package verify
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -319,7 +321,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_ValidChain(t *testing.T) {
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochFloor:         0,
 	}
@@ -367,7 +369,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_BrokenImageSig(t *testing.T) {
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochFloor:         0,
 	}
@@ -402,7 +404,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_HashMismatch(t *testing.T) {
 		SquashfsPath: squashfsPath,
 		SigPath:      sigPath,
 		// Manifest pins a DIFFERENT hash than what the sig covers.
-		ExpectedRootHash:   "bbbb0000000000000000000000000000bbbb0000000000000000000000000000ab",
+		BindRootHash:       bindingTo("bbbb0000000000000000000000000000bbbb0000000000000000000000000000ab"),
 		ImagePayloadForSig: payload,
 		EpochFloor:         0,
 	}
@@ -437,7 +439,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_EpochBelowFloor(t *testing.T) {
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochFloor:         5, // device floor > cert.MinEpoch
 	}
@@ -473,7 +475,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_BrokenCertSig(t *testing.T) {
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochFloor:         0,
 	}
@@ -506,7 +508,7 @@ func VERITY02_TestVerifySquashfsBeforePivot_MissingAnchor(t *testing.T) {
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochFloor:         0,
 	}
@@ -616,7 +618,7 @@ func (f *epochFixture) cfgAt(t *testing.T, certEpoch int64) SquashfsVerifyConfig
 		CertPath:           certPath,
 		SquashfsPath:       squashfsPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
+		BindRootHash:       bindingTo(payload.RootHash),
 		ImagePayloadForSig: payload,
 		EpochStore:         es,
 	}
@@ -700,5 +702,198 @@ func TestVerifySquashfsBeforePivot_StaticFloorWithoutStore(t *testing.T) {
 
 	if err := VerifySquashfsBeforePivot(cfg); err == nil {
 		t.Fatal("a cert at epoch 1 must be refused against a static floor of 5")
+	}
+}
+
+// ─── Root-hash binding ───────────────────────────────────────────────────────
+//
+// SquashfsVerifyConfig used to carry an ExpectedRootHash string, and BOTH
+// production callers filled it from the same manifest they filled
+// ImagePayloadForSig from.  Step 6 therefore compared a value with itself: it
+// could not fail, it never touched an image, and it reported a verified root
+// hash on every boot.  Only this file ever passed two different values, which is
+// exactly why the check looked alive.
+//
+// The binding is now a function the caller must supply, and these tests use
+// doubles that MEASURE something rather than doubles that agree.
+
+// bindingTo simulates a machine whose running root is verified against
+// activeHash — the stand-in for `veritysetup status`, which is what cmd/init
+// asks the kernel.  It compares; it does not assent.
+func bindingTo(activeHash string) RootHashBinder {
+	return func(signedRootHash string) error {
+		if signedRootHash != activeHash {
+			return fmt.Errorf("signed root hash %s, running root is verified against %s",
+				signedRootHash, activeHash)
+		}
+		return nil
+	}
+}
+
+// bindingToBytesOf is the stronger double: it derives the running system's root
+// hash FROM THE BYTES ON DISK, the way dm-verity's Merkle tree does, so a
+// substituted image really does produce a different answer.  A double that
+// returned nil would reproduce the exact defect under test.
+func bindingToBytesOf(imagePath string) RootHashBinder {
+	return func(signedRootHash string) error {
+		data, err := os.ReadFile(imagePath)
+		if err != nil {
+			return fmt.Errorf("cannot measure %s: %w", imagePath, err)
+		}
+		sum := sha256.Sum256(data)
+		measured := hex.EncodeToString(sum[:])
+		if measured != signedRootHash {
+			return fmt.Errorf("signed root hash %s, measured %s", signedRootHash, measured)
+		}
+		return nil
+	}
+}
+
+// signedFor builds a valid chain whose payload names the root hash the image
+// bytes actually produce, so the binding can be exercised for real.
+func signedFor(t *testing.T, content []byte) (cfg SquashfsVerifyConfig, imagePath string) {
+	t.Helper()
+	rootPub, rootPriv := genKeyPair(t)
+	releasePub, releasePriv := genKeyPair(t)
+	anchorPath := writeTempAnchor(t, rootPub)
+	certPath := writeTempCert(t, issueTestCert(t, rootPriv, releasePub, 1, time.Now().Add(24*time.Hour)))
+
+	sum := sha256.Sum256(content)
+	payload := ImagePayload{
+		Path:       "os/v08/os-core.squashfs",
+		RootHash:   hex.EncodeToString(sum[:]),
+		Size:       int64(len(content)),
+		MinEpoch:   1,
+		ReleasedAt: "2026-05-20T09:00:00Z",
+	}
+	squashfsPath, sigPath := makeImageSig(t, releasePriv, payload)
+	// makeImageSig writes its own stub bytes; overwrite with the content the
+	// payload actually describes.
+	if err := os.WriteFile(squashfsPath, content, 0644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+
+	return SquashfsVerifyConfig{
+		AnchorPath:         anchorPath,
+		CertPath:           certPath,
+		SquashfsPath:       squashfsPath,
+		SigPath:            sigPath,
+		ImagePayloadForSig: payload,
+		BindRootHash:       bindingToBytesOf(squashfsPath),
+	}, squashfsPath
+}
+
+// The image the signed payload describes verifies.
+func TestVerifySquashfsBeforePivot_BoundToTheRealBytes(t *testing.T) {
+	cfg, _ := signedFor(t, []byte("the-image-that-was-signed"))
+	if err := VerifySquashfsBeforePivot(cfg); err != nil {
+		t.Fatalf("the signed image should verify: %v", err)
+	}
+}
+
+// THE test: a different image, with the SAME valid signature over the SAME
+// payload, must be refused.  Nothing about the signature chain changes here —
+// cert, release key, canonical payload and epoch are all untouched and all
+// valid — so the only thing that can catch it is the binding.  Under the old
+// ExpectedRootHash comparison this passed, because both sides came from the
+// manifest and neither came from the image.
+func TestVerifySquashfsBeforePivot_SubstitutedImage_FailsClosed(t *testing.T) {
+	cfg, imagePath := signedFor(t, []byte("the-image-that-was-signed"))
+	if err := VerifySquashfsBeforePivot(cfg); err != nil {
+		t.Fatalf("precondition: the signed image must verify first: %v", err)
+	}
+
+	if err := os.WriteFile(imagePath, []byte("a-different-image-entirely"), 0644); err != nil {
+		t.Fatalf("substitute image: %v", err)
+	}
+	err := VerifySquashfsBeforePivot(cfg)
+	if err == nil {
+		t.Fatal("a substituted image must be refused — the signature covers a description, not the bytes")
+	}
+	if !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("the refusal should name the binding, got: %v", err)
+	}
+}
+
+// A caller with no binder is REFUSED, never waved through.  This is what stops
+// the tautology coming back as an omission: there is no default that agrees.
+func TestVerifySquashfsBeforePivot_NilBinder_FailsClosed(t *testing.T) {
+	cfg, _ := signedFor(t, []byte("the-image-that-was-signed"))
+	cfg.BindRootHash = nil
+
+	err := VerifySquashfsBeforePivot(cfg)
+	if err == nil {
+		t.Fatal("a gate with nothing to bind against must refuse, not report a verified image")
+	}
+	if !strings.Contains(err.Error(), "no root-hash binder") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// A payload naming no root hash cannot be bound to anything either.
+func TestVerifySquashfsBeforePivot_PayloadWithoutRootHash_FailsClosed(t *testing.T) {
+	rootPub, rootPriv := genKeyPair(t)
+	releasePub, releasePriv := genKeyPair(t)
+	anchorPath := writeTempAnchor(t, rootPub)
+	certPath := writeTempCert(t, issueTestCert(t, rootPriv, releasePub, 1, time.Now().Add(24*time.Hour)))
+
+	payload := ImagePayload{Path: "os/v08/os-core.squashfs", Size: 1, MinEpoch: 1, ReleasedAt: "2026-05-20T09:00:00Z"}
+	squashfsPath, sigPath := makeImageSig(t, releasePriv, payload)
+
+	cfg := SquashfsVerifyConfig{
+		AnchorPath:         anchorPath,
+		CertPath:           certPath,
+		SquashfsPath:       squashfsPath,
+		SigPath:            sigPath,
+		ImagePayloadForSig: payload,
+		BindRootHash:       bindingTo(""),
+	}
+	if err := VerifySquashfsBeforePivot(cfg); err == nil {
+		t.Fatal("a payload with no root hash must be refused")
+	}
+}
+
+// VerifyManifestSignature is the honest half for callers with nothing to bind:
+// it verifies the chain and does NOT require (or silently invent) a binding.
+func TestVerifyManifestSignature_NoBindingRequired(t *testing.T) {
+	cfg, imagePath := signedFor(t, []byte("the-image-that-was-signed"))
+	cfg.BindRootHash = nil
+
+	if err := VerifyManifestSignature(cfg); err != nil {
+		t.Fatalf("a signed manifest should verify without a binder: %v", err)
+	}
+	// ...and it must be honest about its limit: substituting the image changes
+	// nothing here, which is precisely why the pre-pivot gate needs more.
+	if err := os.WriteFile(imagePath, []byte("a-different-image-entirely"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyManifestSignature(cfg); err != nil {
+		t.Fatalf("VerifyManifestSignature examines no image, so this must still pass: %v", err)
+	}
+	if err := VerifySquashfsBeforePivot(cfg); err == nil {
+		t.Fatal("...and the pre-pivot gate must catch what it cannot")
+	}
+}
+
+// A broken signature is still caught before the binding is even attempted, so a
+// permissive binder cannot rescue an unsigned image.
+func TestVerifySquashfsBeforePivot_BindingDoesNotReplaceTheSignature(t *testing.T) {
+	cfg, _ := signedFor(t, []byte("the-image-that-was-signed"))
+	cfg.BindRootHash = func(string) error { return nil } // agrees with anything
+
+	// Re-sign the payload with a key the cert does not authorise.
+	_, wrongPriv := genKeyPair(t)
+	canonical, _ := signing.Canonical(cfg.ImagePayloadForSig)
+	sigData, _ := signing.MarshalSig(signing.Signature{
+		Algorithm: signing.AlgorithmID,
+		KeyID:     "wrong-key",
+		SigBytes:  signing.Sign(wrongPriv, canonical),
+	})
+	if err := os.WriteFile(cfg.SigPath, sigData, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := VerifySquashfsBeforePivot(cfg); err == nil {
+		t.Fatal("an image signed by an uncertified key must be refused whatever the binder says")
 	}
 }

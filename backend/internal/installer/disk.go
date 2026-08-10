@@ -367,16 +367,22 @@ func loadVerifiedStableManifest(manifestPath string, vp diskManifestVerifyPaths)
 		AnchorPath:         vp.AnchorPath,
 		CertPath:           vp.CertPath,
 		SigPath:            sigPath,
-		ExpectedRootHash:   payload.RootHash,
 		ImagePayloadForSig: payload,
 		EpochFloor:         readEpochFloorBestEffort(vp.EpochPath),
 	}
-	if verr := verify.VerifySquashfsBeforePivot(vcfg); verr != nil {
+	// VerifyManifestSignature, not VerifySquashfsBeforePivot: this call verifies
+	// a manifest DESCRIBING an image that is not the one this process is running,
+	// and --disk unpacks it onto an ext4 root, so there is no dm-verity root hash
+	// here to bind the signature to. Saying so explicitly is the point — the two
+	// used to be one function, whose root-hash "check" compared payload.RootHash
+	// against payload.RootHash and reported a verified image having measured
+	// nothing.
+	if verr := verify.VerifyManifestSignature(vcfg); verr != nil {
 		err = fmt.Errorf("stable.json manifest %q failed signature verification — refusing to install an image VERITY-02 would reject at boot: %w", manifestPath, verr)
 		return
 	}
 
-	log.Printf("[disk] stable.json manifest verified OK (roothash=%s)", payload.RootHash)
+	log.Printf("[disk] stable.json manifest SIGNATURE verified (roothash=%s — not bound to any image here; --disk installs an ext4 root with no dm-verity device)", payload.RootHash)
 	return payload, manifestBytes, sigBytes, nil
 }
 

@@ -300,9 +300,15 @@ func openVerityEpochStore() (*signing.EpochStore, error) {
 // Verification steps:
 //  1. Load the baked trust anchor (/etc/vulos/trust-anchor.pub).
 //  2. Validate the release cert (/etc/vulos/release-cert.json) against the anchor.
-//  3. Enforce cert.MinEpoch >= device epoch floor.
+//  3. Enforce cert.MinEpoch >= device epoch floor, and RAISE the floor to the
+//     root-signed cert's min_epoch.
 //  4. Verify the stable.json.sig over the ImagePayload (release key).
-//  5. Check that ImagePayload.RootHash == manifest's roothash field.
+//  5. BIND that signed root hash to the OS this machine is running, by asking
+//     device mapper which root hash the kernel is enforcing (verity_bind.go).
+//
+// Step 5 used to read "check that ImagePayload.RootHash == the manifest's
+// roothash field" — both sides came out of the same file, so it compared a value
+// with itself and reported a verified image having measured nothing.
 //
 // Any mismatch is fatal: the OS refuses to start with an unverified image.
 // This implements the fail-closed guarantee from roadmap/SIGNING.md.
@@ -340,18 +346,34 @@ func verifyOSBeforeBoot() {
 	cfg := verify.SquashfsVerifyConfig{
 		// AnchorPath defaults to signing.DefaultAnchorPath (/etc/vulos/trust-anchor.pub)
 		CertPath:           verityReleaseCertPath,
-		SquashfsPath:       "", // not used for ImagePayload-sig verification
+		SquashfsPath:       "", // the image is not reachable by path after pivot
 		SigPath:            verityManifestSigPath,
-		ExpectedRootHash:   payload.RootHash,
 		ImagePayloadForSig: payload,
 		EpochStore:         epochStore,
+		BindRootHash:       activeVerityBinder(),
 	}
 
 	if err := verify.VerifySquashfsBeforePivot(cfg); err != nil {
-		log.Fatalf("[verity] HALT: OS image verification failed (fail-closed): %v", err)
+		// The one case that is NOT a failure of this machine: the ext4 --disk
+		// layout has no dm-verity device, so there is nothing here that could
+		// bind the signed root hash to the running root. Halting would make a
+		// documented, intentional install layout unbootable. Say exactly what
+		// was and was not established instead of claiming a verified image —
+		// the old log line claimed one on every boot, of either layout.
+		if !errors.Is(err, errNoVerityDevice) {
+			log.Fatalf("[verity] HALT: OS image verification failed (fail-closed): %v", err)
+		}
+		if sigErr := verify.VerifyManifestSignature(cfg); sigErr != nil {
+			log.Fatalf("[verity] HALT: OS image verification failed (fail-closed): %v", sigErr)
+		}
+		log.Printf("[verity] manifest SIGNATURE verified (roothash=%s, epoch_floor=%d→%d) — but this root is "+
+			"NOT backed by a dm-verity device (%s absent), so the signed root hash is bound to NOTHING on this "+
+			"machine. That is the ext4 --disk layout; a squashfs install would have halted here.",
+			payload.RootHash, epochFloor, epochStore.Current(), verityDevicePath)
+		return
 	}
 
-	log.Printf("[verity] OS image verified OK (roothash=%s, epoch_floor=%d→%d)",
+	log.Printf("[verity] OS image verified OK — signed roothash %s is the one dm-verity is enforcing (epoch_floor=%d→%d)",
 		payload.RootHash, epochFloor, epochStore.Current())
 }
 

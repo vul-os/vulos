@@ -147,17 +147,27 @@ type SquashfsVerifyConfig struct {
 	// If empty, SquashfsPath+".sig" is used.
 	SigPath string
 
-	// ExpectedRootHash is the hex dm-verity root hash the device must see before
-	// pivot.  This comes from stable.json (osdist.StableManifest.RootHash).
-	// The verifier checks that the squashfs image's actual verity hash matches
-	// this value AND that the release sig covers an ImagePayload whose RootHash
-	// field also matches.
-	ExpectedRootHash string
-
 	// ImagePayloadForSig is the ImagePayload that the release key signed.
 	// The verifier re-derives canonical(payload) and checks the sig against it.
-	// Its RootHash field must equal ExpectedRootHash.
 	ImagePayloadForSig ImagePayload
+
+	// BindRootHash proves that the OS this machine is actually running is the
+	// image ImagePayloadForSig names.  REQUIRED by VerifySquashfsBeforePivot: a
+	// nil binder is refused, not skipped.
+	//
+	// This field replaced an ExpectedRootHash string, and the replacement is the
+	// whole point.  Both callers filled ExpectedRootHash from the SAME manifest
+	// they filled ImagePayloadForSig from, so step 6 compared a value with
+	// itself: a comparison that could not fail, that never touched the image,
+	// and that then reported "root hash verified".  Only this package's own unit
+	// tests ever passed two different values, which is why it looked alive.
+	//
+	// A signature over an ImagePayload covers a NAME, a SIZE and a ROOT HASH.  It
+	// does not cover the image.  Something outside the manifest has to measure
+	// the running system and say whether it is the one described — that is this
+	// function, and there is deliberately no default: a caller with nothing to
+	// measure must say so by calling VerifyManifestSignature instead.
+	BindRootHash RootHashBinder
 
 	// EpochFloor is a STATIC minimum trusted epoch, used only when EpochStore
 	// is nil.  The release cert's MinEpoch must be >= the floor in force.
@@ -181,24 +191,76 @@ type SquashfsVerifyConfig struct {
 	EpochStore *signing.EpochStore
 }
 
-// VerifySquashfsBeforePivot performs the full pre-pivot verification gate:
+// RootHashBinder proves that the OS this machine is actually running is the
+// image whose dm-verity root hash the release key signed.  It is given the
+// SIGNED root hash and must obtain the running system's own, independently of
+// the manifest, and report whether they are the same.
+//
+// Fail-closed: a non-nil error means the signed payload has NOT been bound to
+// anything, and the caller must halt.  Returning nil without having measured
+// anything reintroduces the exact defect this type exists to remove.
+type RootHashBinder func(signedRootHash string) error
+
+// VerifyManifestSignature verifies everything that can be established from the
+// signed artifacts alone:
 //
 //  1. Load the baked trust anchor from cfg.AnchorPath.
 //  2. Load and validate the release cert (cfg.CertPath) against the anchor.
 //  3. Enforce cert.MinEpoch >= the epoch floor in force, then RAISE that floor
 //     to the cert's min_epoch when cfg.EpochStore is set.
 //  4. Decode the release public key from the cert.
-//  5. Verify the squashfs image signature (ImagePayload signed by release key).
-//  6. Check that ImagePayload.RootHash == cfg.ExpectedRootHash.
+//  5. Verify the image signature — the release key over canonical(ImagePayload).
 //
-// dm-verity step (step 6): the root hash in the signed ImagePayload must match
-// the hash the manifest pins.  The kernel then verifies every block at runtime
-// via the dm-verity device.  This function is the pre-pivot gate; it does not
-// invoke the kernel's dm-verity setup itself (that is done by the caller in the
-// mount sequence).
+// It deliberately stops there.  What it establishes is that SOMEONE HOLDING THE
+// CERTIFIED RELEASE KEY described an artifact: a path, a size and a dm-verity
+// root hash.  It does not establish anything about the bytes in front of the
+// caller, because nothing here has looked at them.
+//
+// Use this only where there is genuinely nothing to bind to — e.g. verifying a
+// manifest before copying it onto a target disk, where the image it describes is
+// not the image this process is running.  Where the running or about-to-run
+// system IS the subject, call VerifySquashfsBeforePivot, which requires the
+// binding.
+//
+// Fail-closed: returns a non-nil error on any failure.
+func VerifyManifestSignature(cfg SquashfsVerifyConfig) error {
+	return verifyManifestSignature(cfg)
+}
+
+// VerifySquashfsBeforePivot is VerifyManifestSignature plus the step that makes
+// the signature mean something about an OS rather than about a description of
+// one: cfg.BindRootHash must prove that the system this gate is protecting has
+// the dm-verity root hash the release key signed.
+//
+// That step used to be a comparison between cfg.ExpectedRootHash and
+// cfg.ImagePayloadForSig.RootHash.  Every production caller filled both from the
+// same manifest file, so it compared a value with itself — it could not fail, it
+// never touched an image, and it reported a verified root hash regardless.  The
+// binding is now supplied by the caller and is MANDATORY: a nil BindRootHash is
+// an error, never a skip, because a gate that cannot bind must refuse rather
+// than quietly degrade to "the signature covers a name and a size".
 //
 // Fail-closed: returns a non-nil error on any failure.  Callers MUST halt boot.
 func VerifySquashfsBeforePivot(cfg SquashfsVerifyConfig) error {
+	if err := verifyManifestSignature(cfg); err != nil {
+		return err
+	}
+
+	// 6. Bind the signed description to the running system.
+	if cfg.ImagePayloadForSig.RootHash == "" {
+		return errors.New("verify: signed payload names no root hash — nothing can bind it to an image")
+	}
+	if cfg.BindRootHash == nil {
+		return errors.New("verify: no root-hash binder supplied — refusing to report an image verified when nothing measured it")
+	}
+	if err := cfg.BindRootHash(cfg.ImagePayloadForSig.RootHash); err != nil {
+		return fmt.Errorf("verify: root hash not bound to the running image: %w", err)
+	}
+
+	return nil
+}
+
+func verifyManifestSignature(cfg SquashfsVerifyConfig) error {
 	if cfg.AnchorPath == "" {
 		cfg.AnchorPath = DefaultAnchorPath
 	}
@@ -280,15 +342,6 @@ func VerifySquashfsBeforePivot(cfg SquashfsVerifyConfig) error {
 
 	if !signing.Verify(releasePub, canonical, parsedSig.SigBytes) {
 		return errors.New("verify: squashfs image signature invalid")
-	}
-
-	// 6. dm-verity root hash check.
-	if cfg.ExpectedRootHash == "" {
-		return errors.New("verify: expected root hash must not be empty")
-	}
-	if cfg.ImagePayloadForSig.RootHash != cfg.ExpectedRootHash {
-		return fmt.Errorf("verify: root hash mismatch: manifest pins %q but image payload has %q",
-			cfg.ExpectedRootHash, cfg.ImagePayloadForSig.RootHash)
 	}
 
 	return nil
