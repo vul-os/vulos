@@ -253,6 +253,14 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 		fn   func() error
 	}
 
+	// VERITY-03: resolved by the verify-verity step below and consumed by
+	// stage-squashfs.  A closure variable rather than a Service field so the
+	// ordering guarantee is visible right here: the steps run sequentially and
+	// staging cannot run before the set that feeds it has been validated.  nil
+	// (no verity for this medium) is a legitimate value — see
+	// netboot_verity.go.
+	var verity *verityArtifacts
+
 	steps := []step{
 		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
 		// against the PINNED trust anchor BEFORE anything destructive happens.
@@ -265,6 +273,20 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 		// no longer cost the operator their existing disk contents.
 		{name: "verify-squashfs", pct: 3, fn: func() error {
 			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig())
+		}},
+		// VERITY-03: resolve + VALIDATE the dm-verity siblings here, still
+		// before the disk is partitioned.  A hash tree that does not describe
+		// the image would panic the machine on every subsequent boot (the
+		// initramfs hook panics when `veritysetup open` fails, by design), so
+		// an inconsistent medium must cost the operator nothing but a failed
+		// install — not their existing disk and not a bricked boot.
+		{name: "verify-verity", pct: 4, fn: func() error {
+			v, err := s.resolveVerityArtifacts(ctx, req.SquashfsPath)
+			if err != nil {
+				return err
+			}
+			verity = v
+			return nil
 		}},
 		{name: "partition", pct: 5, fn: func() error {
 			return s.partition(ctx, dev)
@@ -282,7 +304,7 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 			return s.writeSeedFiles(ctx)
 		}},
 		{name: "stage-squashfs", pct: 85, fn: func() error {
-			return s.stageFirstSquashfs(ctx, req.SquashfsPath, hub)
+			return s.stageFirstSquashfs(ctx, req.SquashfsPath, verity, hub)
 		}},
 		{name: "write-boot-state", pct: 88, fn: func() error {
 			return s.writeInitialBootState(ctx)
@@ -577,10 +599,24 @@ func (s *Service) writeSlotABootEntry(ctx context.Context, espMount string) erro
 // ---------------------------------------------------------------------------
 
 // stageFirstSquashfs copies squashfsPath into the OSDIST-02 slot-a directory
-// on the target root partition, creating the /var/cache/vulos/slot-a tree.
+// on the target root partition, creating the /var/cache/vulos/slot-a tree, and
+// stages the validated dm-verity siblings beside it (VERITY-03).
 // Progress is streamed to hub as the copy advances (pct range: 35–85).
-func (s *Service) stageFirstSquashfs(ctx context.Context, squashfsPath string, hub *progressHub) error {
-	cacheDir := filepath.Join(netbootInstallMount, vulosCacheRelPath)
+//
+// verity may be nil — no verity artifacts on this medium, or none that could be
+// validated here.  The disk then boots exactly as it did before VERITY-03: the
+// initramfs finds no hashtree/roothash and takes its documented unverified
+// loop-mount fallback.
+func (s *Service) stageFirstSquashfs(ctx context.Context, squashfsPath string, verity *verityArtifacts, hub *progressHub) error {
+	return s.stageFirstSquashfsInto(ctx, netbootInstallMount, squashfsPath, verity, hub)
+}
+
+// stageFirstSquashfsInto is stageFirstSquashfs against an explicit root mount
+// point.  Split out so the staging layout — which files land in a slot under
+// which names — is testable without a real disk; netbootInstallMount is a
+// package const and nothing could otherwise observe what this writes.
+func (s *Service) stageFirstSquashfsInto(ctx context.Context, root, squashfsPath string, verity *verityArtifacts, hub *progressHub) error {
+	cacheDir := filepath.Join(root, vulosCacheRelPath)
 
 	// NewSlotManager creates slot-a / slot-b directories.
 	sm, err := osdist.NewSlotManager(cacheDir)
@@ -600,6 +636,12 @@ func (s *Service) stageFirstSquashfs(ctx context.Context, squashfsPath string, h
 		return fmt.Errorf("copy squashfs: %w", err)
 	}
 	log.Printf("[netboot-install] squashfs staged to %s", destPath)
+
+	// The image is on disk; now its verity siblings, under the os-core.* names
+	// the initramfs derives from the boot entry's vulos.squashfs= path.
+	if err := stageVerityArtifacts(verity, slotADir); err != nil {
+		return err
+	}
 	return nil
 }
 

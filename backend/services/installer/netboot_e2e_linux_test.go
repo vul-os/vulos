@@ -131,6 +131,30 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 	step("verify-squashfs", func() error {
 		return svc.verifyNetbootSquashfs(squashfsPath, svc.netbootVerifyConfig())
 	})
+
+	// VERITY-03: resolve + validate the dm-verity siblings before the disk is
+	// touched, exactly as runNetbootInstall does.  This is not a formality here:
+	// the smoke harness's builder container HAS veritysetup (cryptsetup-bin), so
+	// this really runs `veritysetup verify` over the ~600 MiB image the build
+	// just produced and its os-core.hashtree, and the result decides whether the
+	// disk this test hands to QEMU carries verity inputs at all.
+	var verity *verityArtifacts
+	step("verify-verity", func() error {
+		v, err := svc.resolveVerityArtifacts(ctx, squashfsPath)
+		if err != nil {
+			return err
+		}
+		verity = v
+		if v == nil {
+			t.Logf("no validated dm-verity artifacts beside %s — the installed disk will "+
+				"mount its squashfs WITHOUT dm-verity (see netboot_verity.go for the "+
+				"two ways this happens)", squashfsPath)
+		} else {
+			t.Logf("dm-verity artifacts verified: hashtree=%s roothash=%s (%s) sig=%v",
+				v.hashtree, v.roothash, v.rootHashHex, v.sig != "")
+		}
+		return nil
+	})
 	step("partition", func() error {
 		return svc.partition(ctx, dev)
 	})
@@ -157,7 +181,7 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 		return svc.writeSeedFiles(ctx)
 	})
 	step("stage-squashfs", func() error {
-		return svc.stageFirstSquashfs(ctx, squashfsPath, newProgressHub())
+		return svc.stageFirstSquashfs(ctx, squashfsPath, verity, newProgressHub())
 	})
 	step("write-boot-state", func() error {
 		return svc.writeInitialBootState(ctx)
