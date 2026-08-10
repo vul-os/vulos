@@ -79,46 +79,69 @@ And by `.gitignore`: `keys/*.priv.json`, `keys/*.key`, `keys/*.pem`.
 
 ---
 
-## 3. The dev keypair
+## 3. What the repo ships — and the dev keypair it no longer ships
 
-A fresh clone must be able to run `make dev` and `make test-local` (the Go
-module root is `backend/`, so the raw form is `cd backend && go test ./...`)
-and have real
-signature verification pass — with no flags, no key material to fetch, and no
-insecure mode. So the repo ships a **development** anchor and cert:
+### The ceremony has been run
 
-```
-keys/trust-anchor.pub    dev ROOT public key      (committed, shipped by default)
-keys/release-cert.json   dev release cert         (committed, shipped by default)
-keys/root.pub.json       dev ROOT public key      (committed)
-keys/release.pub.json    dev RELEASE public key   (committed)
-keys/*.priv.json         dev private keys         (GITIGNORED, regenerated on demand)
-```
-
-The dev private keys are **not committed** — but they are also **not secret**.
-They are derived deterministically from two published seed strings:
+The four public trust files in `keys/` are **production ceremony material**, not
+dev keys. They were installed by commits `423f532b` and `1d9b8cb9`:
 
 ```
-root:    vulos-dev-signing-root-v1
-release: vulos-dev-signing-release-v1
+keys/trust-anchor.pub    ceremony ROOT public key   (committed, shipped in the image)
+keys/release-cert.json   ceremony release cert      (committed, shipped in the image)
+keys/root.pub.json       ceremony ROOT public key   (committed)
+keys/release.pub.json    ceremony RELEASE public key (committed)
 ```
 
-Anyone can reproduce them in one command. That is the point: it makes the dev
-keys reproducible for every contributor without anyone shipping a secret.
+`registry.json` is signed by the release key that cert authorises — key-id
+`release-2026-08`, expiring `2027-08-03`. `make verify-registry-prod`, the gate
+that refuses a dev-signed registry, **passes today**.
 
-**This is only safe because a dev key cannot be trusted in production.**
-`backend/services/signing/devanchor.go` pins both dev public keys as constants
-and `RefuseDevKeyInProd` rejects them whenever `VULOS_ENV=prod` — through *any*
-door: the baked anchor file, the release cert, or `VULOS_REGISTRY_PUBKEY`. A
-production box holding the dev anchor refuses to install anything and says why.
-`TestDevKeys_PinnedConstantsMatchSeeds` fails if the seeds and the pinned
-constants ever drift apart.
+A fresh clone still runs `make dev` and `make test-local` (the Go module root is
+`backend/`, so the raw form is `cd backend && go test ./...`) with real signature
+verification and no flags — not because the shipped keys are dev keys, but
+because all four files are *public* halves and are committed.
+`TestAcceptance_ShippedAnchorIsProductionAndAcceptedInProd` pins this from the
+other side: it fails if a dev key is ever committed as the shipped anchor again.
 
-Regenerate them (reproducible, byte-identical every time):
+### The dev keypair still exists — as a thing to refuse
+
+`backend/services/signing/devanchor.go` still pins two development public keys,
+derived deterministically from two published seed strings:
+
+```
+root:    vulos-dev-signing-root-v1     → 98ZXaIIl75yJ/2TKAJqPGSbfRP0YGJWKOOP3z1OTLSI=
+release: vulos-dev-signing-release-v1  → uosei+A8s83COsu0CBIjmCf4H4PpxXaTQJar7rUafwE=
+```
+
+Anyone can reproduce their *private* halves in one command, so they are not
+secret and must never be trusted. `RefuseDevKeyInProd` rejects them whenever
+`VULOS_ENV=prod` — through *any* door: the baked anchor file, the release cert,
+or `VULOS_REGISTRY_PUBKEY`. `TestDevKeys_PinnedConstantsMatchSeeds` fails if the
+seeds and the pinned constants ever drift apart. They are kept pinned so the
+refusal keeps working, not because anything ships them.
+
+### ⚠️ `make dev-keys` overwrites the ceremony material
+
+`scripts/signing/dev-keys.sh` writes **all six** key files unconditionally,
+including `keys/trust-anchor.pub` and `keys/release-cert.json`. Running it in
+this repo replaces the production anchor and cert with dev ones, after which
+`make verify-registry` fails — `registry.json` is signed by `release-2026-08`,
+which a dev anchor does not certify.
+
+`make sign-registry` runs it for you: with no `RELEASE_PRIV=` argument it
+defaults to `keys/release.priv.json`, and if that file is absent (it is
+gitignored, so it is absent on every fresh clone) the target regenerates the dev
+keys before signing. On a clean clone, a bare `make sign-registry` therefore
+clobbers the shipped production anchor and re-signs all 55 entries with the dev
+key. **Always pass the real key:**
 
 ```bash
-make dev-keys
+make sign-registry RELEASE_PRIV=/path/to/release.priv.json
 ```
+
+If you have already run one of these by accident, `git checkout -- keys/` and
+`git checkout -- registry.json` restore the committed ceremony material.
 
 ---
 
