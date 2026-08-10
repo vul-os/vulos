@@ -8,25 +8,36 @@
 // control.  The layout is:
 //
 //	os/
-//	├── stable.json          – signed manifest (this package)
+//	├── release-cert.json    – root-signed cert authorising the release key
+//	├── stable.json          – release-key-signed manifest (this package)
 //	├── stable.json.sig      – detached signature over stable.json
 //	├── v07/
 //	│   ├── os-core.squashfs
-//	│   └── os-core.squashfs.sig
+//	│   ├── os-core.squashfs.sig
+//	│   └── os-core.hashtree
 //	├── v08/
 //	│   ├── os-core.squashfs
-//	│   └── os-core.squashfs.sig
+//	│   ├── os-core.squashfs.sig
+//	│   └── os-core.hashtree
 //	└── ...
 //
-// Use [VersionPath] to obtain the canonical path for a given version string.
+// Use [VersionPath], [VersionSigPath] and [VersionHashtreePath] to obtain the
+// canonical paths for a given version string.
 //
 // # Verification
 //
 // [ParseAndVerify] is the single entry point: unmarshal, verify the Ed25519
-// signature via the supplied anchor public key, and enforce the epoch floor.
-// Neither the anchor key nor the epoch floor are read from disk here — callers
-// supply them (SIGN-02 will wire the baked anchor; SIGN-04 will wire the
-// persistent floor).
+// signature via the supplied signer public key, and enforce the epoch floor.
+// Neither the key nor the epoch floor are read from disk here — callers supply
+// them.
+//
+// The key to supply is the RELEASE key, obtained by validating
+// os/release-cert.json against the baked ROOT anchor
+// (signing.ReleaseKeyFromCert).  The root anchor signs the certificate and
+// nothing else: `cmd/sign sign-manifest` requires -release-priv, and no command
+// in this repository signs a manifest with the root key.  Passing the anchor
+// here therefore cannot verify any manifest this project can produce — that
+// mistake is what update.go's header documents.
 package osdist
 
 import (
@@ -123,20 +134,23 @@ func (m *StableManifest) Canonical() ([]byte, error) {
 // ─── Parse + verify ──────────────────────────────────────────────────────────
 
 // ParseAndVerify unmarshals data as a StableManifest, verifies sig against
-// anchorPub using Ed25519 over the manifest's canonical bytes, and enforces
+// signerPub using Ed25519 over the manifest's canonical bytes, and enforces
 // that the manifest's MinEpoch is not below epochFloor.
 //
 // Parameters:
 //   - data       raw bytes of stable.json (any valid JSON encoding)
 //   - sig        raw 64-byte Ed25519 signature over the canonical bytes
-//   - anchorPub  the trust anchor public key (supplied by the caller;
-//     SIGN-02 will wire the baked anchor key)
+//   - signerPub  the public key that signed the manifest.  This is the RELEASE
+//     key, obtained by validating the root-signed release certificate against
+//     the baked anchor (signing.ReleaseKeyFromCert) — NOT the anchor itself.
+//     The parameter was called anchorPub, and both callers duly passed the
+//     anchor, which no signer in this repository matches.
 //   - epochFloor the highest min_epoch the device has previously accepted
-//     (supplied by the caller; SIGN-04 will wire the persistent floor)
+//     (supplied by the caller; signing.EpochStore holds the persistent floor)
 //
 // The function is fail-closed: any verification failure returns nil and a
 // typed sentinel error ([ErrMalformed], [ErrBadSignature], [ErrEpochTooLow]).
-func ParseAndVerify(data []byte, sig []byte, anchorPub ed25519.PublicKey, epochFloor int64) (*StableManifest, error) {
+func ParseAndVerify(data []byte, sig []byte, signerPub ed25519.PublicKey, epochFloor int64) (*StableManifest, error) {
 	// 1. Unmarshal.
 	var m StableManifest
 	if err := json.Unmarshal(data, &m); err != nil {
@@ -155,7 +169,7 @@ func ParseAndVerify(data []byte, sig []byte, anchorPub ed25519.PublicKey, epochF
 	}
 
 	// 4. Signature verification.  Fail closed: any problem is ErrBadSignature.
-	if !signing.Verify(anchorPub, canonical, sig) {
+	if !signing.Verify(signerPub, canonical, sig) {
 		return nil, ErrBadSignature
 	}
 
@@ -169,12 +183,40 @@ func ParseAndVerify(data []byte, sig []byte, anchorPub ed25519.PublicKey, epochF
 
 // ─── Path helpers ─────────────────────────────────────────────────────────────
 
+// Bucket-relative paths for the channel-level artifacts.
+const (
+	// ReleaseCertBucketPath is the root-signed certificate authorising the
+	// release key.  Serving it beside the manifest is what lets a release key
+	// be rotated without re-flashing every box's seed; it is inert until it
+	// validates against the pinned anchor.
+	ReleaseCertBucketPath = "os/release-cert.json"
+
+	// ManifestBucketPath is the signed channel manifest.
+	ManifestBucketPath = "os/stable.json"
+
+	// ManifestSigBucketPath is its detached signature.
+	ManifestSigBucketPath = ManifestBucketPath + ".sig"
+)
+
 // VersionPath returns the bucket-relative path for the squashfs image of the
 // given version (e.g. "v08" → "os/v08/os-core.squashfs").
 //
-// The companion detached-signature file is at [VersionPath] + ".sig".
+// The companion detached-signature file is at [VersionPath] + ".sig", and the
+// dm-verity hash tree at [VersionHashtreePath].
 func VersionPath(version string) string {
 	return "os/" + version + "/os-core.squashfs"
+}
+
+// VersionHashtreePath returns the bucket-relative path for the dm-verity Merkle
+// hash tree of the given version's image
+// (e.g. "v08" → "os/v08/os-core.hashtree").
+//
+// This is the file scripts/verity/gen-verity.sh writes beside the image
+// (build.sh VERITY-01).  Without it a downloaded image's root hash cannot be
+// computed, and the signed ImagePayload cannot be bound to the bytes that
+// arrived — which is why the updater refuses to stage when it is absent.
+func VersionHashtreePath(version string) string {
+	return "os/" + version + "/os-core.hashtree"
 }
 
 // VersionSigPath returns the bucket-relative path for the detached signature
