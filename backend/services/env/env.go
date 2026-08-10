@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 // Env is the runtime environment tag.
@@ -85,6 +86,72 @@ func Parse(s string) (Env, error) {
 		return "", fmt.Errorf("unrecognised --env value %q: must be local, dev, or prod", s)
 	}
 }
+
+// active holds the environment resolved at startup (see SetActive).  It is an
+// atomic so a late reader in a goroutine cannot race the single startup write.
+var active atomic.Value // Env
+
+// SetActive records the environment that main() resolved from --env / VULOS_ENV
+// via Parse.  Call it once, immediately after Parse and before any goroutine or
+// gate runs.
+//
+// WHY THIS EXISTS: the production fail-closed gates (Restic dev-passphrase,
+// DNS/Caddy/nginx provisioning, fabric key sealing) used to read
+// os.Getenv("VULOS_ENV") directly.  But `--env=prod` — which is the documented
+// way to start the box, and the way cmd/init actually launches vulos-server
+// (`-env <resolved>`, see cmd/init/main.go) — never sets VULOS_ENV.  So every
+// one of those gates silently took its DEV branch on a real production box:
+// backups encrypted with the well-known dev key, subdomain provisioning
+// noop'ing while telling customers their domain was live.  That is exactly the
+// fail-open those gates were written to prevent.  Reading the resolved value
+// means the flag and the variable cannot disagree.
+//
+// Passing the empty Env clears the resolution again (used by tests).
+//
+// Prefer Resolve at a program's entry point: it parses and publishes in one
+// call, so the publish step cannot be forgotten.
+func SetActive(e Env) { active.Store(e) }
+
+// Resolve parses the --env flag value (falling back to VULOS_ENV, then prod,
+// exactly like Parse) AND publishes the result as the process-wide active
+// environment.
+//
+// This is the entry point every main() should use.  Parse alone is a pure
+// query; if a main() called it and forgot to publish, every fail-closed gate
+// would go back to reading a VULOS_ENV that `--env=prod` never sets — the
+// original bug.  Resolve makes forgetting impossible.
+func Resolve(flagValue string) (Env, error) {
+	e, err := Parse(flagValue)
+	if err != nil {
+		return "", err
+	}
+	SetActive(e)
+	return e, nil
+}
+
+// Active returns the environment resolved at startup by SetActive.
+//
+// Before SetActive has run — package unit tests, helper binaries, any process
+// that never parsed the flag — it falls back to the raw VULOS_ENV value.  It
+// deliberately does NOT apply Parse's default-to-prod rule: that default belongs
+// to main(), and applying it here would arm every production gate inside every
+// package's test binary.  An unset/unrecognised value therefore yields "", which
+// is not prod.
+func Active() Env {
+	if e, ok := active.Load().(Env); ok && e != "" {
+		return e
+	}
+	switch e := Env(os.Getenv("VULOS_ENV")); e {
+	case EnvLocal, EnvDev, EnvProd:
+		return e
+	}
+	return ""
+}
+
+// IsProdActive reports whether the active runtime environment is production.
+// This is the check every fail-closed production gate must use — never
+// os.Getenv("VULOS_ENV") == "prod", which misses the --env=prod flag.
+func IsProdActive() bool { return Active().IsProd() }
 
 // DefaultsFor returns the Defaults struct for env.
 func DefaultsFor(e Env) Defaults {

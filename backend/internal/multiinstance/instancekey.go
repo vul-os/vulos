@@ -45,6 +45,8 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	vulenv "vulos/backend/services/env"
 )
 
 // FabricKeyEnv is the environment variable holding the 32-byte (64 hex char)
@@ -79,10 +81,18 @@ func NewKeyringSealer(rootKey []byte) (*KeyringSealer, error) {
 }
 
 // SealedKeyFromEnv builds a KeyringSealer from FabricKeyEnv. The env value must
-// be 64 hex chars (32 bytes). Fail-closed in production: when VULOS_ENV=prod and
-// the var is unset, it returns an error rather than silently using a dev key.
-// In dev (VULOS_ENV != prod) it derives a deterministic dev key and logs loudly,
-// matching internal/airouter.NewStoreFromEnv so local builds/tests still work.
+// be 64 hex chars (32 bytes). Fail-closed in production: when the resolved
+// environment is prod and the var is unset, it returns an error rather than
+// silently using a dev key. In dev it derives a deterministic dev key and logs
+// loudly, matching internal/airouter.NewStoreFromEnv so local builds/tests work.
+//
+// The production check reads the RESOLVED environment, not
+// os.Getenv("VULOS_ENV"). cmd/init starts the server with `--env prod` and
+// leaves VULOS_ENV unset, so the raw getenv read this used to do took the DEV
+// branch on a real production box — sealing the fabric key with a deterministic
+// key derived from a hardcoded string, which is exactly what the error below
+// exists to prevent. Same fail-open as the vault and DNS gates; see
+// services/env.Resolve.
 func SealedKeyFromEnv() (*KeyringSealer, error) {
 	keyHex := strings.TrimSpace(os.Getenv(FabricKeyEnv))
 	if keyHex != "" {
@@ -92,8 +102,8 @@ func SealedKeyFromEnv() (*KeyringSealer, error) {
 		}
 		return NewKeyringSealer(raw)
 	}
-	if os.Getenv("VULOS_ENV") == "prod" {
-		return nil, fmt.Errorf("multiinstance: %s unset in VULOS_ENV=prod — refusing to seal the fabric key with the dev key", FabricKeyEnv)
+	if vulenv.IsProdActive() {
+		return nil, fmt.Errorf("multiinstance: %s unset in prod — refusing to seal the fabric key with the dev key", FabricKeyEnv)
 	}
 	log.Printf("[fabric] WARNING: %s unset — sealing fabric key with deterministic dev key (NEVER use in production; set VULOS_ENV=prod to enforce)", FabricKeyEnv)
 	h := sha256.Sum256([]byte("vulos-fabric-keyring-dev-root-do-not-use-in-prod"))

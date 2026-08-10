@@ -217,7 +217,17 @@ func registerNewFeatureRoutes(mux *http.ServeMux, deps newFeatureDeps, serverCtx
 	// checkout boots.  In VULOS_ENV=prod a noop default would silently lie to
 	// customers (their domain is "provisioned" but no DNS/Caddy work happens),
 	// so we refuse to register the subdomain routes when either is unset.
-	prodMode := os.Getenv("VULOS_ENV") == "prod"
+	// Resolved env, not os.Getenv("VULOS_ENV"): `--env=prod` (how cmd/init
+	// launches this binary — see cmd/init/main.go's superviseServer call)
+	// leaves VULOS_ENV unset, so the raw getenv read that used to be here
+	// silently noop'd DNS/Caddy/nginx provisioning on every production box —
+	// the exact fail-open the block below exists to prevent.
+	prodMode := deps.activeEnv.IsProd()
+	if deps.activeEnv == "" {
+		// Not injected by this call-site: fall back to the process-wide value
+		// main() resolved, so a forgotten field cannot silently mean "dev".
+		prodMode = vulenv.IsProdActive()
+	}
 	provisioningMisconfigured := false
 	if os.Getenv("VULOS_DNS_API") == "" {
 		if prodMode {

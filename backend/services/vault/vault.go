@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 	"vulos/backend/internal/datadir"
+	vulenv "vulos/backend/services/env"
 
 	"vulos/backend/internal/storage"
 )
@@ -78,9 +79,10 @@ func (v *Vault) usingDefaultPassword() bool {
 	return v.password == defaultResticPassword
 }
 
-// errDefaultPasswordInProd is returned by Init/Backup when VULOS_ENV=prod and
+// errDefaultPasswordInProd is returned by Init/Backup when the box is running
+// in production (--env=prod or VULOS_ENV=prod, whichever main() resolved) and
 // the vault would otherwise encrypt backups with the dev fallback key.
-var errDefaultPasswordInProd = fmt.Errorf("vault: RESTIC_PASSWORD is unset in VULOS_ENV=prod — refusing to encrypt backups with the default dev key")
+var errDefaultPasswordInProd = fmt.Errorf("vault: RESTIC_PASSWORD is unset in a production environment — refusing to encrypt backups with the default dev key")
 
 // Init initializes the Restic repository if not already done.
 func (v *Vault) Init(ctx context.Context) error {
@@ -92,10 +94,10 @@ func (v *Vault) Init(ctx context.Context) error {
 	}
 
 	if v.usingDefaultPassword() {
-		if os.Getenv("VULOS_ENV") == "prod" {
+		if vulenv.IsProdActive() {
 			return errDefaultPasswordInProd
 		}
-		log.Printf("[vault] WARNING: RESTIC_PASSWORD unset — encrypting backups with the deterministic dev key (NEVER use in production; set VULOS_ENV=prod to enforce)")
+		log.Printf("[vault] WARNING: RESTIC_PASSWORD unset — encrypting backups with the deterministic dev key (NEVER use in production; start with --env=prod to enforce)")
 	}
 
 	// Check if repo exists
@@ -131,7 +133,7 @@ func (v *Vault) Backup(ctx context.Context) error {
 	// later switch to VULOS_ENV=prod (or a process restart in prod that never
 	// hits Init because the repo already exists) must not silently encrypt new
 	// snapshots with the dev key.
-	if v.usingDefaultPassword() && os.Getenv("VULOS_ENV") == "prod" {
+	if v.usingDefaultPassword() && vulenv.IsProdActive() {
 		return errDefaultPasswordInProd
 	}
 

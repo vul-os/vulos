@@ -177,6 +177,14 @@ func main() {
 	}
 	envDefaults := vulenv.DefaultsFor(activeEnv)
 
+	// Publish the RESOLVED environment before anything else runs.  The
+	// fail-closed production gates (vault Restic passphrase, appnet DNS/Caddy/
+	// nginx provisioning, multiinstance fabric-key sealing) read this, not
+	// os.Getenv("VULOS_ENV") — cmd/init starts us with `-env prod` and leaves
+	// VULOS_ENV unset, so a raw getenv read left every one of them on its dev
+	// branch on a real production box.
+	vulenv.SetActive(activeEnv)
+
 	log.Printf("[env] starting in %q mode (bind=%q skip_hw=%v debug_endpoints=%v)",
 		activeEnv, envDefaults.BindHost, envDefaults.SkipHardwareChecks, envDefaults.DebugEndpoints)
 
