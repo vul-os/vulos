@@ -51,6 +51,7 @@ Read it like this:
 | Gaming | [`GAMING.md`](GAMING.md) | Per-session gaming mode: FPS, encoder profiles, pointer-lock, gamepad rumble, process priority, MangoHud | shipped |
 | Client type safety | [`TYPE-SAFETY.md`](TYPE-SAFETY.md) | Gradual JSDoc type-checking of the JSX shell (`tsc --noEmit`), security-critical `src/lib/` first, generated types for the Go→JS API boundary. No `.ts`/`.tsx` — frozen stack unchanged | design only |
 | Other | [`OTHER.md`](OTHER.md) | Catch-all: theming, i18n, accessibility — small items that don't deserve their own file yet | shipped |
+| Display stack (X11 vs Wayland) | [`DISPLAY-STACK.md`](DISPLAY-STACK.md) | Investigation into consolidating the container image's Xvfb/X11 stack and the bare-metal OS's cage/labwc Wayland stack; measured image-size and CVE evidence, no code changed | investigation complete, decision not yet executed |
 
 ### Image-based OS distribution & multi-instance data (planned)
 
