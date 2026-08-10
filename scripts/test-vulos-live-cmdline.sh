@@ -33,7 +33,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT}/scripts/initramfs/vulos-live"
 SH_BIN="$(command -v dash || command -v sh)"
 
-EXPECTED_ASSERTIONS=26
+EXPECTED_ASSERTIONS=33
 ASSERTIONS_RUN=0
 FAILURES=0
 
@@ -238,6 +238,109 @@ OUT="$(run_slot "${STATE}")"
 assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "a slot with no image on disk keeps the cmdline image"
 assert_eq "${OUT##*|}" "" "and reports no selection, so the caller logs the fallback"
 : > "${SLOTROOT}/var/cache/vulos/slot-b/os-core.squashfs"
+
+# ── The booted-slot marker, against a KLIBC-FAITHFUL fake `mount` ────────────
+#
+# The initramfs `mount` is klibc's — not util-linux's, not busybox's — and it
+# requires BOTH a device and a directory:
+#
+#   Usage: mount [-r] [-w] [-o options] [-t type] [-f] [-i] [-n] device directory
+#
+# `mount -o remount,rw /root`, the util-linux spelling where libmount resolves
+# the device itself, is a USAGE ERROR there. It exits 1 having remounted
+# nothing, and the marker write that followed then failed against a still
+# read-only root. Because every step was best-effort with stderr discarded, the
+# ONLY symptom was a file that never appeared — which is what made this cost a
+# QEMU boot with an instrumented initramfs to find.
+#
+# So the fake `mount` below enforces klibc's arity rather than accepting
+# anything: exactly two positional arguments after the option flags, or usage
+# error + exit 1. Run the device-less spelling against it and these cases fail,
+# which is the property that makes them worth having. `sync` is faked too — the
+# initramfs has one, but it is not this test's subject and a real one would
+# flush the whole host.
+echo ""
+echo "-- booted-slot marker (klibc mount arity)"
+
+FAKEBIN="${TMPROOT}/fakebin"
+mkdir -p "${FAKEBIN}"
+MOUNTLOG="${TMPROOT}/mount.log"
+cat > "${FAKEBIN}/mount" <<'FAKE'
+#!/bin/sh
+# klibc mount: options are flags; exactly two positionals (device directory).
+printf '%s\n' "$*" >> "${MOUNTLOG}"
+_pos=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o|-t) shift 2 ;;
+    -r|-w|-f|-i|-n) shift ;;
+    *) _pos=$((_pos + 1)); shift ;;
+  esac
+done
+if [ "$_pos" -ne 2 ]; then
+  echo "Usage: mount [-r] [-w] [-o options] [-t type] [-f] [-i] [-n] device directory" >&2
+  exit 1
+fi
+exit 0
+FAKE
+printf '#!/bin/sh\nexit 0\n' > "${FAKEBIN}/sync"
+chmod +x "${FAKEBIN}/mount" "${FAKEBIN}/sync"
+
+MOUNTSFILE="${TMPROOT}/mounts"
+cat > "${MOUNTSFILE}" <<EOF
+proc /proc proc rw,relatime 0 0
+/dev/vda2 ${SLOTROOT} ext4 ro,relatime 0 0
+EOF
+
+: > "${MOUNTLOG}"
+rm -f "${SLOTROOT}/var/cache/vulos/booted-slot"
+MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
+  "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${SLOTROOT}' b boot-state /var/cache/vulos/slot-b/os-core.squashfs"
+
+GOT="$(cat "${SLOTROOT}/var/cache/vulos/booted-slot" 2>/dev/null || echo NOFILE)"
+assert_eq "${GOT}" "$(printf 'slot=b\nvia=boot-state\nimage=/var/cache/vulos/slot-b/os-core.squashfs')" \
+  "record_booted_slot writes the slot, how it was chosen, and the image"
+
+# The device argument is the whole point: assert it is THERE, and that it is the
+# device /proc/mounts names — not a guess and not the mountpoint twice.
+assert_eq "$(grep -c -- '-o remount,rw /dev/vda2 '"${SLOTROOT}" "${MOUNTLOG}")" "1" \
+  "the rw remount names the device klibc requires, resolved from /proc/mounts"
+assert_eq "$(grep -c -- '-o remount,ro /dev/vda2 '"${SLOTROOT}" "${MOUNTLOG}")" "1" \
+  "and the root is put back read-only afterwards, also with the device"
+
+# rootmnt_device itself: last match wins, because a later mount at the same
+# point shadows an earlier one.
+cat > "${MOUNTSFILE}" <<EOF
+/dev/vda1 ${SLOTROOT} ext4 ro,relatime 0 0
+/dev/vda2 ${SLOTROOT} ext4 ro,relatime 0 0
+EOF
+GOT="$(VULOS_MOUNTS_FILE="${MOUNTSFILE}" "${SH_BIN}" -c ". '${EXTRACT}'; rootmnt_device '${SLOTROOT}'")"
+assert_eq "${GOT}" "/dev/vda2" "rootmnt_device takes the LAST mount at the path, which is the one in effect"
+
+# Not mounted at all → non-zero, so the caller skips the remount rather than
+# invoking mount with an empty device (which klibc would read as one positional
+# and reject anyway).
+cat > "${MOUNTSFILE}" <<EOF
+proc /proc proc rw,relatime 0 0
+EOF
+if VULOS_MOUNTS_FILE="${MOUNTSFILE}" "${SH_BIN}" -c ". '${EXTRACT}'; rootmnt_device '${SLOTROOT}'" >/dev/null; then
+  assert_eq "found" "not-found" "rootmnt_device reports failure when the path is not mounted"
+else
+  assert_eq "not-found" "not-found" "rootmnt_device reports failure when the path is not mounted"
+fi
+
+# A root with no /var/cache/vulos (a live-USB or netboot medium) is not an
+# error: there is no slot layout to record against, and the boot must carry on.
+NOCACHE="${TMPROOT}/nocache"
+mkdir -p "${NOCACHE}"
+: > "${MOUNTLOG}"
+if MOUNTLOG="${MOUNTLOG}" VULOS_MOUNTS_FILE="${MOUNTSFILE}" PATH="${FAKEBIN}:${PATH}" \
+     "${SH_BIN}" -c ". '${EXTRACT}'; record_booted_slot '${NOCACHE}' '?' cmdline /image.squashfs"; then
+  assert_eq "wrote" "skipped" "record_booted_slot skips a root with no /var/cache/vulos"
+else
+  assert_eq "skipped" "skipped" "record_booted_slot skips a root with no /var/cache/vulos"
+fi
+assert_eq "$(wc -l < "${MOUNTLOG}" | tr -d ' ')" "0" "and remounts nothing when there is nothing to record"
 
 # ── Coverage assertion + verdict ──────────────────────────────────────────────
 echo ""

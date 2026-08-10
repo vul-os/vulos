@@ -257,6 +257,84 @@ apply_active_slot() {
     return 0
 }
 
+# rootmnt_device MOUNTPOINT — prints the device currently mounted at
+# MOUNTPOINT, or nothing + non-zero when it is not mounted. Reads
+# $VULOS_MOUNTS_FILE when set (unit tests only); production reads /proc/mounts.
+#
+# This exists because of what the initramfs `mount` actually IS. It is not
+# util-linux's and not busybox's — it is KLIBC's, and klibc mount requires BOTH
+# a device and a directory, always:
+#
+#   Usage: mount [-r] [-w] [-o options] [-t type] [-f] [-i] [-n] device directory
+#
+# `mount -o remount,rw /root` — the util-linux spelling, where libmount looks
+# the device up itself — is therefore a USAGE ERROR here, not a remount. It
+# exits 1 having done nothing, and the write that followed it then failed
+# against a still-read-only filesystem. Every step was best-effort with stderr
+# discarded, so the only symptom was a marker that never appeared. Confirmed by
+# instrumenting the hook and booting it: rc=1 with klibc's usage string, then
+# "cannot create /root/var/cache/vulos/booted-slot: Read-only file system".
+#
+# LAST match wins: a later mount at the same point shadows an earlier one, which
+# is what a reader of the path would actually get.
+#
+# Note the mountpoint field in /proc/mounts is octal-escaped (a space is \040).
+# Nothing in this boot path mounts under a path needing it, and inventing an
+# unescaper for a case that cannot arise would be more risk than it removes — so
+# the comparison is literal, and a mountpoint containing a space simply reports
+# "not found" and the caller falls back. Documented rather than silently assumed.
+rootmnt_device() {
+    _rd_dev=""
+    while read -r _rd_d _rd_m _rd_rest || [ -n "$_rd_d" ]; do
+        [ "$_rd_m" = "$1" ] && _rd_dev="$_rd_d"
+    done < "${VULOS_MOUNTS_FILE:-/proc/mounts}"
+    [ -n "$_rd_dev" ] || return 1
+    printf '%s' "$_rd_dev"
+}
+
+# record_booted_slot ROOTMNT SLOT VIA IMAGE — record WHICH SLOT THIS BOOT
+# ACTUALLY USED, on disk, where it outlives the boot.
+#
+# Not a test affordance. An operator asking "did my update actually take?" had
+# no way to answer it: the decision was visible only on the console, and the
+# installed boot entry carries `quiet splash`, so plymouth swallows it — every
+# real boot logs zero vulos-live lines to the serial. A durable marker is the
+# only honest answer, and it is what lets the QEMU harness assert the flip
+# instead of guessing.
+#
+# Best-effort by design: a read-only or full root must never stop the machine
+# booting over a diagnostic file. Called after the slot is chosen and before the
+# switch-root, so it always describes the boot in progress.
+#
+# The kernel cmdline says `ro`, so $rootmnt is mounted read-only here and a
+# plain write fails. The remount MUST name the DEVICE as well as the directory —
+# the initramfs `mount` is klibc's and requires both (see rootmnt_device above).
+# The device-less util-linux spelling this used before was a usage error that
+# remounted nothing, and that is the entire reason the marker never appeared.
+#
+# This lives inside the testable block so the arity requirement is pinned by
+# scripts/test-vulos-live-cmdline.sh against a klibc-faithful fake `mount`,
+# rather than only by a QEMU boot. The bug it encodes cost more to find than
+# every other part of this hook combined, precisely because nothing but a real
+# boot could observe it.
+record_booted_slot() {
+    _rb_root="$1"; _rb_slot="$2"; _rb_via="$3"; _rb_image="$4"
+    [ -d "${_rb_root}/var/cache/vulos" ] || return 1
+
+    _rb_remounted=0
+    _rb_dev="$(rootmnt_device "$_rb_root")" || _rb_dev=""
+    if [ -n "$_rb_dev" ] && mount -o remount,rw "$_rb_dev" "$_rb_root" 2>/dev/null; then
+        _rb_remounted=1
+    fi
+    {
+        printf 'slot=%s\nvia=%s\nimage=%s\n' "$_rb_slot" "$_rb_via" "$_rb_image" \
+            > "${_rb_root}/var/cache/vulos/booted-slot"
+        sync
+    } 2>/dev/null || true
+    [ "$_rb_remounted" = "1" ] && mount -o remount,ro "$_rb_dev" "$_rb_root" 2>/dev/null || true
+    return 0
+}
+
 # ── END-TESTABLE ───────────────────────────────────────────────────────────
 
 # Only activate when live mode is requested via kernel parameter
@@ -304,36 +382,9 @@ else
     _booted_via="cmdline"
 fi
 
-# Record WHICH SLOT THIS BOOT ACTUALLY USED, on disk, where it outlives the
-# boot.
-#
-# Not a test affordance — an operator asking "did my update actually take?" has
-# no way to answer it today, and neither did this project: the console is the
-# only place the decision was visible, and the installed boot entry carries
-# `quiet splash`, so plymouth swallows it. Every boot logs zero vulos-live
-# lines to the serial. A durable marker is the only honest answer, and it is
-# what lets the QEMU harness assert the flip instead of guessing.
-#
-# Best-effort by design: a read-only or full root must never stop the machine
-# booting over a diagnostic. Written after the slot is chosen and before the
-# switch-root, so it always describes the boot in progress.
-# The kernel cmdline says `ro`, so initramfs-tools has $rootmnt mounted
-# read-only at this point and a plain write silently fails — which it did: the
-# marker never appeared and the only symptom was its absence. Remount rw for
-# the write and put it straight back, every step best-effort. A machine must
-# never fail to boot over a diagnostic file.
-if [ -d "${rootmnt}/var/cache/vulos" ]; then
-    _remounted=0
-    if mount -o remount,rw "$rootmnt" 2>/dev/null; then
-        _remounted=1
-    fi
-    {
-        printf 'slot=%s\nvia=%s\nimage=%s\n' "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
-            > "${rootmnt}/var/cache/vulos/booted-slot"
-        sync
-    } 2>/dev/null || true
-    [ "$_remounted" = "1" ] && mount -o remount,ro "$rootmnt" 2>/dev/null || true
-fi
+# Record which slot this boot used (see record_booted_slot above for why this
+# marker exists and why the remount must name the device).
+record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" || true
 
 SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"
 HASHTREE_ABS="${rootmnt}${HASHTREE_PATH}"
