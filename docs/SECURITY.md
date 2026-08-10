@@ -42,7 +42,7 @@ All of this lives in `backend/services/auth` and `backend/services/passkeys`. At
 | Passkey (WebAuthn) | Primary | Yes — origin-bound, key never leaves the authenticator | Requires `VULOS_RPID`/`VULOS_ORIGIN` in prod |
 | Password | Fallback | No | Rate-limited with IP bans; pairs with the recovery phrase |
 | Recovery phrase | Account recovery | n/a | Offline mnemonic; uniform failure responses |
-| Device PIN | Unlock only | Device-local | Requires prior full auth on that device; hard lockout |
+| Device PIN | Unlock only | Device-local | **The hardened implementation is not wired up** — the live PIN is salted SHA-256 in the profile row with no lockout ladder. See below |
 | QR / phone approval | Kiosk login | Yes — nothing typed on the untrusted device | Single-use, short-TTL challenge |
 | Fingerprint | Hardware-dependent | Local biometric | Part of the prod hardware checks |
 
@@ -70,7 +70,31 @@ Failed logins are rate-limited with escalating IP bans; admins can inspect and l
 
 ### Device PIN
 
-A short PIN (4–8 digits) can unlock the box on a device where you've already fully authenticated. It is device-local by construction: the PIN wraps a session credential via argon2id (64 MiB, per-device salt) + AES-256-GCM under `~/.vulos/auth/`, re-sealed by the TPM where one exists. Lockout is built in — 5 wrong PINs triggers a 15-minute lock; 3 locks total is permanent until you fully re-authenticate. Setting or changing the PIN requires a full-auth session, not a PIN session, so a stolen PIN can never mint a new PIN.
+> **Read this before relying on the PIN.** Two PIN implementations exist in the
+> tree and **the strong one is not wired up**. `DevicePINService`
+> (`backend/services/auth/devicepin.go`) does everything described in the next
+> paragraph, but `Handler.DevicePIN` is never assigned outside tests — so
+> `/api/auth/pin/device/set`, `/api/auth/pin/unlock` and `/api/auth/pin/status`
+> all return **503** on a shipped box.
+>
+> What actually runs is the per-user profile PIN (`POST /api/auth/pin/set`,
+> `/validate` → `Store.SetPIN`/`ValidatePIN`, `backend/services/auth/profiles.go:131-176`).
+> That is a **single-round salted SHA-256** stored in the profile row: no
+> argon2id, no AES-GCM, no TPM, and **no PIN lockout ladder** — the only backoff
+> is the generic per-IP limiter (5 failures per 10 minutes). It also does no
+> server-side length or digit validation, and `ValidatePIN` returns **true when
+> no PIN is set**. Treat the PIN as a convenience lock on a device you already
+> trust, not as a second factor.
+
+The design below is what `DevicePINService` implements, and is accurate about
+that code — it is simply not the code path a request reaches today. A short PIN
+(4–8 digits) unlocks the box on a device where you have already fully
+authenticated. It is device-local by construction: the PIN wraps a session
+credential via argon2id (64 MiB, per-device salt) + AES-256-GCM under
+`~/.vulos/auth/`, re-sealed by the TPM where one exists. Lockout is built in — 5
+wrong PINs triggers a 15-minute lock; 3 locks total is permanent until you fully
+re-authenticate. Setting or changing the PIN requires a full-auth session, not a
+PIN session, so a stolen PIN can never mint a new PIN.
 
 ### QR / phone approval, fingerprint
 
@@ -173,7 +197,7 @@ What is actually protected on disk, so you can judge what a stolen disk (without
 | Identity/auth SQLite stores | File mode `0600`, owned by the backend process user; pure-Go SQLite (no CGO C library in the attack surface) |
 | Account master key | Never stored — only password/phrase-wrapped slots; the server cannot decrypt your content-blind data even under subpoena of the disk |
 | Passkey credentials | Sealed with the device keystore (TPM-backed where present) before hitting disk |
-| Device PIN material | argon2id-derived wrap + AES-256-GCM, optionally TPM-re-sealed; PIN never leaves the device |
+| Device PIN material | *(design, not wired)* argon2id-derived wrap + AES-256-GCM, optionally TPM-re-sealed. **What is stored today** is a salted SHA-256 PIN hash inside the user's profile record |
 | TOTP vault secrets | AES-256-GCM under `~/.vulos/auth/totp/` |
 | Fabric signing key | AES-256-GCM sealed under `VULOS_FABRIC_KEY_HEX` (fail-closed in prod) |
 | Bare-metal trust anchor (`/etc/vulos/trust-anchor.pub`) | Baked into the OS image; controls which signed updates VERITY-02 accepts |
@@ -217,7 +241,7 @@ On bare metal, Vulos boots only what your trust anchor signed. The chain, end to
 
 1. **A trust anchor is baked at build time.** `build.sh` embeds an Ed25519 public key at `/etc/vulos/trust-anchor.pub` (and into the initramfs). Trust is *signature-first, transport-second*: TLS success never authorizes a payload — only a signature chaining to this pinned key does. Forks supply their own key and update bucket at build time; see [CONFIGURATION.md](CONFIGURATION.md) and [REPRODUCIBLE-BUILDS.md](REPRODUCIBLE-BUILDS.md).
 2. **The root filesystem is a dm-verity squashfs — on the boot paths where the hash files are present.** The build produces `os-core.squashfs`, its verity root hash (`os-core.roothash`), and a detached signature binding that hash to the anchor (`os-core.roothash.sig`). Where the initramfs finds `veritysetup` and those files beside the image, it maps the image through dm-verity and the kernel refuses to read tampered blocks. Where it does not, it takes a documented unverified loop-mount fallback with a console warning — and on a netboot (step 4) that fallback is refused outright instead. **This is not uniform across install methods**, and which paths currently satisfy the three preconditions is stated, from the code, in [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal). Read that before treating runtime block integrity as a property of every Vulos box.
-3. **A tiny fail-closed verifier checks the binding.** `vulos-verify-sig <anchor.pub> <file> <file.sig>` exits 0 only on a valid signature; *any* doubt — missing anchor, missing signature, mismatch — is a non-zero exit that callers treat as a hard halt. There is no CA-bundle fallback.
+3. **A tiny fail-closed verifier checks the binding — where it is present.** `vulos-verify-sig <anchor.pub> <file> <file.sig>` exits 0 only on a valid signature; *any* doubt — missing anchor, missing signature, mismatch — is a non-zero exit that callers treat as a hard halt. There is no CA-bundle fallback. **It is not on a shipped box today:** `build.sh:182-183` compiles only `vulos-server` and `vulos-init`, and `backend/cmd/vulos-verify-sig/` exists as source only. The command below is therefore something you can run from a source checkout, not from an installed system.
 4. **Netboot halts without it.** In a netboot (`vulos.netboot=1`), the initramfs (`scripts/initramfs/vulos-live`) requires the verity/signature inputs to be present and valid; if they are absent the boot **fails closed** instead of degrading to an unverified mount. The iPXE stick likewise `imgverify`s the kernel and initramfs against the baked anchor before executing anything (`scripts/netboot/`).
 5. **Install verifies before writing.** The netboot-to-install path verifies the squashfs signature against the pinned anchor *before a single byte* reaches the permanent slot, and the destructive endpoint is admin-gated.
 6. **Rollback protection.** A signed `stable.json` manifest carries a `min_epoch`; the device persists a monotonically increasing epoch floor (`/var/lib/vulos/epoch-floor.json`) that can rise but never fall. An older *signed-but-vulnerable* image below the floor is refused.
