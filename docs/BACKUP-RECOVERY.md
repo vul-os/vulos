@@ -60,7 +60,7 @@ Two things to internalize:
 1. **The Restic passphrase is a real secret.** Snapshots are encrypted with it; without it they are unreadable, including by Vulos. In production (`VULOS_ENV=prod`) the server refuses to back up with the built-in dev default — set your own and store it with your recovery phrase.
 2. **Scope is `~/.vulos/data` only.** Databases (`~/.vulos/db`), keys (`~/.vulos/auth`, `~/.vulos/peering`), and standalone Drive bytes (`~/.vulos/storage`) are *not* in the vault. See "Honest gaps" below.
 
-**HTTP surface** (session-authenticated; backup and sync are admin-only):
+**HTTP surface** — **every vault endpoint is admin-only**, including the read-only ones (`cmd/server/main.go:1630-1686`; a non-admin gets 403 from `status` and `snapshots` too, not just from `backup` and `sync`):
 
 | Endpoint | Purpose |
 |---|---|
