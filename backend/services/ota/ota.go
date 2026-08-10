@@ -71,6 +71,52 @@
 // floor is RAISED to the ROOT-SIGNED cert's min_epoch once that cert verifies
 // (signing.EpochStore.RaiseFromReleaseCert).
 //
+// # What Stage verifies, and what it used to
+//
+// Until this was corrected, Stage compared sha256(image) to manifest.RootHash
+// and verified the image's detached .sig as a signature over the RAW IMAGE
+// BYTES. Neither shape exists in this repository:
+//
+//	RootHash is a dm-verity root hash — `veritysetup format` over a SALTED
+//	Merkle tree (build.sh VERITY-01, scripts/verity/gen-verity.sh) — and can
+//	never equal the SHA-256 of the image it describes.
+//
+//	`cmd/sign sign-image` emits a RELEASE-key signature over
+//	canonical(ImagePayload) = {path, roothash, size, min_epoch, released_at}.
+//	No command anywhere signs raw image bytes with any key.
+//
+// So POST /api/os/update/stage — the only wired staging path in the product —
+// was a WALL, not a hole: every staging attempt against a real signed release
+// failed at the hash comparison, and would have failed at the signature check
+// behind it. Nothing noticed because no test ever called Stage. The failure
+// direction was safe; the feature simply did not exist.
+//
+// Stage now verifies what cmd/sign emits, in the order cmd/init and
+// services/installer use at boot and at install:
+//
+//  1. Re-run Check (cert → release key → manifest), so nothing is staged from
+//     a cache that may be hours old.
+//  2. Reconstruct the ImagePayload STRAIGHT FROM THE MANIFEST BYTES the release
+//     key signed — never re-encoded from the parsed manifest, because
+//     round-tripping released_at through time.Time does not reproduce the
+//     signer's bytes.
+//  3. Verify manifest.Path + ".sig" as a RELEASE-key signature over
+//     canonical(ImagePayload), and require the signed payload to NAME the
+//     artifact being fetched (otherwise a valid signature over an older,
+//     vulnerable image could be paired with a newer manifest).
+//  4. BIND that signed description to the bytes that actually arrived: the
+//     downloaded length must equal ImagePayload.Size, and `veritysetup verify`
+//     must accept ImagePayload.RootHash for the downloaded image against the
+//     hash tree published beside it.
+//
+// Step 4 is mandatory, not best-effort. An ImagePayload signature covers a
+// NAME, a SIZE and a ROOT HASH; it does not cover the image. Verifying it
+// alone proves someone with the release key once described an artifact — it
+// says nothing about the bytes on the wire. The root hash is the only thing
+// tying the two together, so a missing hash tree or an absent veritysetup
+// returns ErrVerityUnavailable rather than degrading to the size check. A file
+// of the right length is not authentication.
+//
 // That raise is what makes revocation real. This package used to be check-only
 // — "never calls RaiseTo/BumpFloor" — and so was every other caller: nothing in
 // the tree raised the floor, so a device sat at floor 0 for life, every
@@ -81,21 +127,26 @@
 package ota
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	// cmd/verify is a library that happens to live under cmd/ ("Package verify
+	// implements per-boot-stage signature verification"); cmd/init,
+	// services/installer and services/osdist import it the same way. Importing
+	// the ImagePayload definition rather than copying it is deliberate: an
+	// independently maintained copy of the signing surface is how the two ends
+	// came to disagree in the first place.
+	"vulos/backend/cmd/verify"
 	"vulos/backend/services/osdist"
 	"vulos/backend/services/signing"
 )
@@ -182,29 +233,63 @@ var (
 	// SlotManager, so Stage has nothing to write into.
 	ErrStagingNotConfigured = errors.New("ota: staging not configured (no slot manager)")
 
-	// ErrHashMismatch means the downloaded image's SHA-256 does not match the
-	// verified manifest's roothash field — a poisoned/corrupted download.
-	ErrHashMismatch = errors.New("ota: image hash mismatch")
+	// ErrHashMismatch means the signed ImagePayload does not describe the bytes
+	// that were downloaded — either the byte length differs from
+	// ImagePayload.Size, or `veritysetup verify` rejects ImagePayload.RootHash
+	// for the downloaded image, or the signed payload names a different
+	// artifact than the one being fetched. The partial download is removed.
+	ErrHashMismatch = errors.New("ota: signed image payload does not describe the downloaded image")
 
-	// ErrImageBadSignature means the downloaded image's detached .sig did not
-	// verify against the release key.
+	// ErrImageBadSignature means the image's detached .sig did not verify as a
+	// RELEASE-key signature over canonical(ImagePayload) — the shape
+	// `cmd/sign sign-image` emits.
 	ErrImageBadSignature = errors.New("ota: image signature invalid")
+
+	// ErrVerityUnavailable means the downloaded image's dm-verity root hash
+	// could not be checked at all — no hash tree published beside the image, or
+	// no veritysetup on this box. Fail-closed: nothing is staged, because that
+	// root hash is the only thing binding the release-key signature to the
+	// bytes that arrived.
+	ErrVerityUnavailable = errors.New("ota: cannot verify the image's dm-verity root hash — refusing to stage an unbound image")
 )
 
 // ─── Manifest schema ──────────────────────────────────────────────────────────
 
 // Manifest is the in-memory form of the channel's stable.json.
 //
-// The first seven fields mirror osdist.StableManifest's on-disk schema
-// exactly (same JSON field names) so a single stable.json can serve both
-// verification models during any transition period. The last three fields are
-// new and additive/omitempty: a manifest that omits them canonicalizes to
-// byte-identical output to before, so existing signatures produced against
-// the plain 7-field schema keep verifying unchanged. Once the publish side
-// starts setting is_security/severity/notes and re-signing, this client
-// authenticates them the same way as every other field — they are part of
-// the same canonical(Manifest) that the release key signs, not
-// out-of-band/unauthenticated metadata.
+// These seven fields ARE the signed surface, and they mirror
+// osdist.StableManifest's on-disk schema exactly (same JSON field names), so a
+// single stable.json serves both verification models.
+//
+// # Why there are no is_security / severity / notes fields here
+//
+// There were, with `omitempty`, on the reasoning that a manifest omitting them
+// canonicalizes byte-identically so old signatures keep verifying — and that
+// once the publish side started setting them they would be "part of the same
+// canonical(Manifest) that the release key signs". That second half was not
+// true and could not become true: `cmd/sign sign-manifest` signs a SEVEN-field
+// ManifestPayload {channel, latest, min_epoch, path, released_at, roothash,
+// size} and takes no flag for anything else. The moment a publisher set
+// is_security, canonical(Manifest) would have grown a key the signature did
+// not cover and NO signature could ever have matched again — a guaranteed
+// mismatch, latent until the day the feature was first used.
+//
+// Removing them, rather than teaching this client to ignore them, is the fix
+// because the alternative is worse than a mismatch: fields outside the signed
+// surface are attacker-appendable. Anyone able to modify a legitimately signed
+// stable.json in transit could add `"notes": "..."` without disturbing the
+// seven-field signature, and that string is rendered to the box owner in
+// Settings → OS Update. Reading unauthenticated fields as though they were
+// signed is exactly the mistake the rest of this package exists to avoid, so
+// signedManifestKeys below REFUSES a manifest that carries any key outside the
+// signed set instead.
+//
+// Making is_security real therefore means extending the SIGNING surface first,
+// in three places that must move together: cmd/sign's ManifestPayload (plus its
+// flags), osdist.StableManifest, and this struct. Until then UpdateStatus's
+// IsSecurity/Severity/Notes stay zero — the honest report of a manifest that
+// says nothing about severity, rather than a report of what an unsigned field
+// claimed.
 type Manifest struct {
 	Channel    string    `json:"channel"`
 	Latest     string    `json:"latest"`
@@ -213,24 +298,44 @@ type Manifest struct {
 	Size       int64     `json:"size"`
 	ReleasedAt time.Time `json:"released_at"`
 	Path       string    `json:"path"`
-
-	// IsSecurity flags a release as a security fix. Drives the priority
-	// notification in cmd/server/routes_ota.go.
-	IsSecurity bool `json:"is_security,omitempty"`
-
-	// Severity is an optional human/operator-facing label ("critical",
-	// "high", "medium", "low"). Informational only; IsSecurity is what gates
-	// the notification.
-	Severity string `json:"severity,omitempty"`
-
-	// Notes is the release-notes text shown in the update UI.
-	Notes string `json:"notes,omitempty"`
 }
 
-// canonical returns the deterministic signed byte range for m (see
-// signing.Canonical / FORMAT.md).
-func (m *Manifest) canonical() ([]byte, error) {
-	b, err := signing.Canonical(m)
+// manifestSigPayload is the EXACT surface `cmd/sign sign-manifest` signs
+// (cmd/sign/pki.go:ManifestPayload). It is unmarshalled straight from the
+// served stable.json bytes and never re-encoded from a parsed Manifest:
+// released_at is a STRING here because round-tripping it through time.Time does
+// not reproduce the signer's bytes (2026-05-20T09:00:00.000Z re-marshals
+// without its milliseconds), and a signature is over bytes, not over meaning.
+//
+// It is declared here rather than imported because cmd/sign is package main.
+// TestManifestSignedSurfaceMatchesSigner pins it against the field set.
+type manifestSigPayload struct {
+	Channel    string `json:"channel"`
+	Latest     string `json:"latest"`
+	MinEpoch   int64  `json:"min_epoch"`
+	Path       string `json:"path"`
+	ReleasedAt string `json:"released_at"`
+	RootHash   string `json:"roothash"`
+	Size       int64  `json:"size"`
+}
+
+// signedManifestKeys is the complete set of stable.json keys covered by the
+// release key's signature. Any other key in the document is unauthenticated —
+// see the Manifest doc comment — so parseManifest refuses it.
+var signedManifestKeys = map[string]struct{}{
+	"channel": {}, "latest": {}, "min_epoch": {}, "path": {},
+	"released_at": {}, "roothash": {}, "size": {},
+}
+
+// canonicalSigned returns the deterministic signed byte range for the manifest
+// document in data: canonical(ManifestPayload), reconstructed from the served
+// bytes (see signing.Canonical / FORMAT.md).
+func canonicalSigned(data []byte) ([]byte, error) {
+	var p manifestSigPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
+	}
+	b, err := signing.Canonical(p)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
 	}
@@ -238,8 +343,20 @@ func (m *Manifest) canonical() ([]byte, error) {
 }
 
 // parseManifest unmarshals and structurally validates a Manifest. Required
-// fields absent ⇒ ErrManifestMalformed, fail-closed.
+// fields absent, or any key present that the signature does not cover ⇒
+// ErrManifestMalformed, fail-closed.
 func parseManifest(data []byte) (*Manifest, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
+	}
+	for k := range raw {
+		if _, ok := signedManifestKeys[k]; !ok {
+			return nil, fmt.Errorf("%w: field %q is outside the signed manifest surface "+
+				"(cmd/sign sign-manifest covers channel/latest/min_epoch/path/released_at/roothash/size) — "+
+				"refusing to read a field no signature covers", ErrManifestMalformed, k)
+		}
+	}
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
@@ -266,7 +383,17 @@ type UpdateStatus struct {
 	// Available.
 	LatestVersion string `json:"latest_version,omitempty"`
 
-	// IsSecurity / Severity / Notes mirror the verified manifest's fields.
+	// IsSecurity / Severity / Notes are the release-severity surface the
+	// Settings → OS Update screen and the priority notification in
+	// cmd/server/routes_ota.go consume.
+	//
+	// They are currently ALWAYS ZERO, and that is deliberate rather than
+	// unfinished: no signer in this repository covers them (see Manifest's doc
+	// comment), so the only way to populate them would be to read fields the
+	// release key never signed. They stay in the wire shape because the
+	// frontend already parses them and because they are what the signing
+	// surface must grow to carry; they do not get filled from unauthenticated
+	// data in the meantime.
 	IsSecurity bool   `json:"is_security,omitempty"`
 	Severity   string `json:"severity,omitempty"`
 	Notes      string `json:"notes,omitempty"`
@@ -299,6 +426,26 @@ type ClientConfig struct {
 	// signing.DefaultAnchorPath.
 	AnchorPath string
 
+	// ReleaseCertPath is the local, baked copy of the release certificate, used
+	// only when the CHANNEL serves none at release-cert.json. Empty ⇒
+	// signing.DefaultReleaseCertPath (/etc/vulos/release-cert.json), the same
+	// file cmd/init reads, so a box and its updater trust one file rather than
+	// two policies that can drift apart.
+	//
+	// Preferring the channel's copy is safe — a cert is inert until it
+	// validates against the pinned anchor — and it is what lets a release key
+	// be rotated without re-flashing every box.
+	ReleaseCertPath string
+
+	// VerityVerify proves that rootHash is the dm-verity root hash of the image
+	// at imagePath, given the Merkle hash tree at hashtreePath. Nil ⇒
+	// verityVerifyWithTool, which shells out to `veritysetup verify` — the same
+	// primitive services/installer uses before a netboot install and the same
+	// one the initramfs hook uses at boot. Injectable so the suite can exercise
+	// the surrounding chain on hosts without cryptsetup (macOS has none);
+	// production callers must leave it nil.
+	VerityVerify func(ctx context.Context, imagePath, hashtreePath, rootHash string) error
+
 	// EpochStore enforces the persistent rollback floor. Required — a Client
 	// with no epoch store cannot verify-only, since there would be no
 	// rollback defence at all.
@@ -330,10 +477,14 @@ type Client struct {
 	anchorPath string
 	http       *http.Client
 
-	mu                 sync.RWMutex
-	status             UpdateStatus
-	verifiedManifest   *Manifest
-	verifiedReleaseKey ed25519.PublicKey
+	mu               sync.RWMutex
+	status           UpdateStatus
+	verifiedManifest *Manifest
+	// verifiedManifestData is the RAW stable.json the release key signed. Stage
+	// reconstructs the signed ImagePayload from these exact bytes rather than
+	// re-encoding verifiedManifest — see the package doc, step 2.
+	verifiedManifestData []byte
+	verifiedReleaseKey   ed25519.PublicKey
 
 	pollMu   sync.Mutex
 	pollStop chan struct{}
@@ -348,6 +499,12 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	anchorPath := cfg.AnchorPath
 	if anchorPath == "" {
 		anchorPath = signing.DefaultAnchorPath
+	}
+	if cfg.ReleaseCertPath == "" {
+		cfg.ReleaseCertPath = signing.DefaultReleaseCertPath
+	}
+	if cfg.VerityVerify == nil {
+		cfg.VerityVerify = verityVerifyWithTool
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
@@ -377,7 +534,10 @@ func (c *Client) Enabled() bool { return c.channelURL != "" }
 
 // ─── fetch ────────────────────────────────────────────────────────────────────
 
-func (c *Client) fetch(ctx context.Context, relPath string) ([]byte, error) {
+// fetchStream opens one channel file for reading. The caller must Close the
+// returned reader. Used for the OS image, which is hundreds of MiB and must
+// never be held in memory.
+func (c *Client) fetchStream(ctx context.Context, relPath string) (io.ReadCloser, error) {
 	url := c.channelURL + "/" + strings.TrimLeft(relPath, "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -387,13 +547,25 @@ func (c *Client) fetch(ctx context.Context, relPath string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ota: GET %q: %w", url, err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("ota: GET %q: HTTP %d", url, resp.StatusCode)
 	}
-	data, err := io.ReadAll(resp.Body)
+	return resp.Body, nil
+}
+
+// fetch reads one whole channel file into memory. Every artifact this client
+// consumes is small enough for that except the image itself, which
+// fetchStream + Stage write straight to disk.
+func (c *Client) fetch(ctx context.Context, relPath string) ([]byte, error) {
+	rc, err := c.fetchStream(ctx, relPath)
 	if err != nil {
-		return nil, fmt.Errorf("ota: read %q: %w", url, err)
+		return nil, err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("ota: read %q: %w", relPath, err)
 	}
 	return data, nil
 }
@@ -426,7 +598,17 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 
 	certData, err := c.fetch(ctx, releaseCertName)
 	if err != nil {
-		return c.recordFailure(fmt.Errorf("ota: fetch release cert: %w", err))
+		// Fall back to the baked seed copy — a channel that publishes no cert is
+		// still verifiable by a box whose image shipped one. The cert is inert
+		// until it validates against the pinned anchor below, so which copy it
+		// came from decides nothing. With neither, there is no release key and
+		// NOTHING on the channel can be verified: fail closed.
+		local, lerr := os.ReadFile(c.cfg.ReleaseCertPath)
+		if lerr != nil {
+			return c.recordFailure(fmt.Errorf("%w: channel: %v; seed %s: %v",
+				ErrCertInvalid, err, c.cfg.ReleaseCertPath, lerr))
+		}
+		certData = local
 	}
 	cert, err := signing.ParseReleaseCert(certData)
 	if err != nil {
@@ -486,7 +668,9 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 	if err != nil {
 		return c.recordFailure(err)
 	}
-	canonical, err := manifest.canonical()
+	// canonical(ManifestPayload) rebuilt from the SERVED BYTES, which is what
+	// `cmd/sign sign-manifest` signed — not a re-encoding of the parsed struct.
+	canonical, err := canonicalSigned(manifestData)
 	if err != nil {
 		return c.recordFailure(err)
 	}
@@ -507,9 +691,8 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 	}
 	if status.Available {
 		status.LatestVersion = manifest.Latest
-		status.IsSecurity = manifest.IsSecurity
-		status.Severity = manifest.Severity
-		status.Notes = manifest.Notes
+		// IsSecurity/Severity/Notes are intentionally NOT set: no signature in
+		// this repository covers them (see Manifest / UpdateStatus docs).
 		if !manifest.ReleasedAt.IsZero() {
 			t := manifest.ReleasedAt
 			status.PublishedAt = &t
@@ -519,6 +702,7 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 	c.mu.Lock()
 	c.status = status
 	c.verifiedManifest = manifest
+	c.verifiedManifestData = manifestData
 	c.verifiedReleaseKey = releasePub
 	c.mu.Unlock()
 
@@ -590,9 +774,10 @@ func (c *Client) Stage(ctx context.Context) (StageResult, error) {
 
 	c.mu.RLock()
 	manifest := c.verifiedManifest
+	manifestData := c.verifiedManifestData
 	releasePub := c.verifiedReleaseKey
 	c.mu.RUnlock()
-	if manifest == nil || releasePub == nil {
+	if manifest == nil || releasePub == nil || len(manifestData) == 0 {
 		return StageResult{}, ErrNoVerifiedManifest
 	}
 
@@ -611,33 +796,12 @@ func (c *Client) Stage(ctx context.Context) (StageResult, error) {
 	}
 
 	// ── Download + verify the image ────────────────────────────────────────
-	imageData, err := c.fetch(ctx, manifest.Path)
-	if err != nil {
-		return StageResult{}, fmt.Errorf("ota: fetch image: %w", err)
-	}
-
-	sum := sha256.Sum256(imageData)
-	gotHash := hex.EncodeToString(sum[:])
-	wantHash := strings.ToLower(strings.TrimSpace(manifest.RootHash))
-	if !strings.EqualFold(gotHash, wantHash) {
-		return StageResult{}, fmt.Errorf("%w: got %s want %s", ErrHashMismatch, gotHash, wantHash)
-	}
-
-	imgSigData, err := c.fetch(ctx, manifest.Path+".sig")
-	if err != nil {
-		return StageResult{}, fmt.Errorf("ota: fetch image signature: %w", err)
-	}
-	imgSig, err := signing.ParseSig(imgSigData)
-	if err != nil {
-		return StageResult{}, fmt.Errorf("ota: parse image signature: %w", err)
-	}
-	if !signing.Verify(releasePub, imageData, imgSig.SigBytes) {
-		return StageResult{}, ErrImageBadSignature
-	}
-
-	// ── Stage atomically into the inactive slot only ───────────────────────
-	if err := c.cfg.SlotManager.StageInto(bs, inactive, "os-core.squashfs", bytes.NewReader(imageData)); err != nil {
-		return StageResult{}, fmt.Errorf("ota: stage into slot %s: %w", inactive, err)
+	// The image is written to a temp file inside the inactive slot's directory,
+	// verified there, and only then handed to StageInto. Nothing reaches the
+	// slot's real filename until every check below has passed, and the temp
+	// file is removed on every failure path.
+	if err := c.downloadAndVerify(ctx, manifest, manifestData, releasePub, bs, inactive); err != nil {
+		return StageResult{}, err
 	}
 	if _, err := c.cfg.SlotManager.SetPending(bs, inactive); err != nil {
 		return StageResult{}, fmt.Errorf("ota: set pending slot %s: %w", inactive, err)
@@ -649,6 +813,183 @@ func (c *Client) Stage(ctx context.Context) (StageResult, error) {
 		Version: manifest.Latest,
 		Message: fmt.Sprintf("staged %s to slot %s — reboot to activate", manifest.Latest, inactive),
 	}, nil
+}
+
+// ─── download + verify + stage ────────────────────────────────────────────────
+
+// downloadAndVerify downloads the image the manifest describes into the
+// inactive slot's directory, verifies the release-key signature over the
+// ImagePayload the manifest describes, BINDS that payload to the bytes that
+// arrived (size + dm-verity root hash), and only then stages the file
+// atomically under its real name.
+//
+// Any failure removes the partial download and stages nothing.
+func (c *Client) downloadAndVerify(
+	ctx context.Context,
+	manifest *Manifest,
+	manifestData []byte,
+	releasePub ed25519.PublicKey,
+	bs *osdist.BootState,
+	slot osdist.Slot,
+) error {
+	// ── The ImagePayload the release key signed ────────────────────────────
+	// Unmarshalled STRAIGHT FROM THE MANIFEST BYTES, not re-encoded from the
+	// parsed Manifest: canonical() must reproduce the signer's bytes exactly.
+	var payload verify.ImagePayload
+	if err := json.Unmarshal(manifestData, &payload); err != nil {
+		return fmt.Errorf("%w: manifest does not describe an image payload: %v", ErrManifestMalformed, err)
+	}
+	if payload.RootHash == "" || payload.Path == "" {
+		return fmt.Errorf("%w: manifest is missing roothash/path — nothing to bind a signature to", ErrManifestMalformed)
+	}
+	// The signed payload must NAME the artifact about to be fetched. Without
+	// this, a valid signature over a DIFFERENT (older, vulnerable) image could
+	// be paired with a newer manifest.
+	if payload.Path != manifest.Path {
+		return fmt.Errorf("%w: signed payload names %q but this update fetches %q",
+			ErrHashMismatch, payload.Path, manifest.Path)
+	}
+
+	slotDir, err := c.cfg.SlotManager.SlotDir(slot)
+	if err != nil {
+		return fmt.Errorf("ota: slot dir for %s: %w", slot, err)
+	}
+
+	// ── Download to a temp file beside the slot's final path ───────────────
+	imageRC, err := c.fetchStream(ctx, manifest.Path)
+	if err != nil {
+		return fmt.Errorf("ota: fetch image: %w", err)
+	}
+	defer imageRC.Close()
+
+	tmpFile, err := os.CreateTemp(slotDir, "os-core.squashfs.*.download")
+	if err != nil {
+		return fmt.Errorf("ota: create temp for image: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	written, err := io.Copy(tmpFile, imageRC)
+	if err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("ota: download image: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("ota: sync downloaded image: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("ota: close downloaded image: %w", err)
+	}
+	defer os.Remove(tmpPath)
+
+	// ── The detached image signature ───────────────────────────────────────
+	// A RELEASE-key signature over canonical(ImagePayload) — the shape
+	// `cmd/sign sign-image` emits. It is NOT over the raw image bytes; no
+	// command in this repository produces that.
+	imgSigData, err := c.fetch(ctx, manifest.Path+".sig")
+	if err != nil {
+		return fmt.Errorf("ota: fetch image signature: %w", err)
+	}
+	imgSig, err := signing.ParseSig(imgSigData)
+	if err != nil {
+		return fmt.Errorf("ota: parse image signature: %w", err)
+	}
+	canonicalPayload, err := signing.Canonical(payload)
+	if err != nil {
+		return fmt.Errorf("ota: canonical image payload: %w", err)
+	}
+	if !signing.Verify(releasePub, canonicalPayload, imgSig.SigBytes) {
+		return ErrImageBadSignature
+	}
+
+	// ── Bind the signed description to the downloaded bytes ────────────────
+	// Size first: weak on its own but free, and it catches a truncated download
+	// before the Merkle-tree walk would.
+	if written != payload.Size {
+		return fmt.Errorf("%w: signed size %d, downloaded %d bytes", ErrHashMismatch, payload.Size, written)
+	}
+	if err := c.bindByVerity(ctx, tmpPath, hashtreePathFor(manifest.Path), payload.RootHash, slotDir); err != nil {
+		return err
+	}
+
+	// ── Stage atomically into the inactive slot only ───────────────────────
+	// StageInto streams a reader into the slot directory using temp-then-rename,
+	// so the verified temp file is reopened as the source. Streaming from the
+	// file rather than a []byte keeps a ~600 MiB image off the heap.
+	verified, err := os.Open(tmpPath)
+	if err != nil {
+		return fmt.Errorf("ota: reopen verified image: %w", err)
+	}
+	stageErr := c.cfg.SlotManager.StageInto(bs, slot, "os-core.squashfs", verified)
+	verified.Close()
+	if stageErr != nil {
+		return fmt.Errorf("ota: stage into slot %s: %w", slot, stageErr)
+	}
+	return nil
+}
+
+// hashtreePathFor returns the channel-relative path of the dm-verity Merkle
+// hash tree published beside an image, matching the bucket layout
+// osdist.VersionHashtreePath defines
+// ("os/v08/os-core.squashfs" → "os/v08/os-core.hashtree").
+func hashtreePathFor(imagePath string) string {
+	return strings.TrimSuffix(imagePath, ".squashfs") + ".hashtree"
+}
+
+// bindByVerity is the step that makes the release-key signature mean something
+// about the IMAGE rather than about a description of one.
+//
+// It fetches the Merkle hash tree published beside the image and asks
+// veritysetup whether rootHash — the value the release key signed — is the root
+// of that tree over these exact bytes.
+//
+// Fail-closed by construction: a missing hash tree or an absent veritysetup
+// returns ErrVerityUnavailable rather than falling back to the size check that
+// already ran. Size proves a file is the right length, not that it is the right
+// file.
+func (c *Client) bindByVerity(ctx context.Context, imagePath, hashtreeRelPath, rootHash, workDir string) error {
+	hashtreeData, err := c.fetch(ctx, hashtreeRelPath)
+	if err != nil {
+		return fmt.Errorf("%w: no hash tree at %s: %v", ErrVerityUnavailable, hashtreeRelPath, err)
+	}
+	htFile, err := os.CreateTemp(workDir, "os-core.hashtree.*.download")
+	if err != nil {
+		return fmt.Errorf("ota: create temp for hash tree: %w", err)
+	}
+	htPath := htFile.Name()
+	defer os.Remove(htPath)
+	if _, err := htFile.Write(hashtreeData); err != nil {
+		htFile.Close()
+		return fmt.Errorf("ota: write hash tree: %w", err)
+	}
+	if err := htFile.Close(); err != nil {
+		return fmt.Errorf("ota: close hash tree: %w", err)
+	}
+
+	// Whitespace matters: a garbled root hash handed to veritysetup is exactly
+	// the failure mode that once panicked a kernel at boot (see build.sh
+	// VERITY-01's note on reading the file, not stdout).
+	return c.cfg.VerityVerify(ctx, imagePath, htPath, strings.ToLower(strings.TrimSpace(rootHash)))
+}
+
+// verityVerifyWithTool is the production VerityVerify: `veritysetup verify`
+// re-reads every data block, rebuilds the Merkle tree, and asserts the stored
+// root matches rootHash. This is the same primitive services/installer uses
+// before a netboot install and the same one the initramfs hook uses at boot —
+// not a stand-in for it.
+func verityVerifyWithTool(ctx context.Context, imagePath, hashtreePath, rootHash string) error {
+	bin, err := exec.LookPath("veritysetup")
+	if err != nil {
+		return fmt.Errorf("%w: veritysetup not available: %v", ErrVerityUnavailable, err)
+	}
+	out, err := exec.CommandContext(ctx, bin, "verify", imagePath, hashtreePath, rootHash).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: veritysetup verify rejected roothash %s: %v: %s",
+			ErrHashMismatch, rootHash, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // ─── Background poll loop ─────────────────────────────────────────────────────
