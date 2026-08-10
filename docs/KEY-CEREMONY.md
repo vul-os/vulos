@@ -462,19 +462,24 @@ exactly that reason.
 `backend/services/appnet/registry_acceptance_test.go` stages a temp directory as
 the box's `/etc/vulos` and asserts, with **no insecure flag anywhere**:
 
-- a box holding only the **shipped anchor** verifies all 55 committed entries;
+- a box holding only the **shipped anchor** verifies every committed entry (55
+  today);
 - a box holding a **ceremony anchor** installs a signed app end-to-end **under
   `VULOS_ENV=prod`**;
 - a **tampered** entry, an **unsigned** entry, an entry signed by a **foreign
   key**, an **expired** cert, and a cert signed by a **different root** are each
   refused — and leave nothing on disk;
-- the **dev anchor is refused in prod**.
+- the **shipped anchor is a production anchor and is accepted in prod** — the
+  test fails if a dev key is ever committed as the shipped anchor again — while
+  an entry signed by the **dev release key is still refused in prod**.
 
 `registry_prodgate_test.go` pins the `VULOS_REGISTRY_INSECURE` prod refusal,
-including the unset-`VULOS_ENV` and typo'd-`VULOS_ENV` cases.
+including the unset-`VULOS_ENV` and typo'd-`VULOS_ENV` cases, and the dev-key
+refusal (`TestProdGate_DevKeyRefusedInProd`).
 `registry_preflight_test.go` pins the boot-time gate: insecure-in-prod is a
 refusal to **start**, a missing anchor degrades to "installs refused" without
-bricking the box, and the dev anchor is refused in prod.
+bricking the box, and a dev anchor in prod degrades the same way
+(`TestPreflight_DevAnchorInProdIsDegraded`).
 
 ```bash
 make verify-registry                       # public-key check, no secrets
@@ -482,10 +487,15 @@ make verify-registry-prod                  # the release gate — fails on the d
 cd backend && go test ./services/appnet/   # the acceptance suite
 ```
 
-### The release build halts until the ceremony is run
+### The release gate — green
 
-`make verify-registry-prod` (run by `.github/workflows/release.yml` on every tag)
-**refuses to build a release** whose registry is signed by the dev key. Today, on
-an un-ceremonied repo, tagging a release fails with `REFUSING TO RELEASE`. That is
-deliberate and it is the same contract as netboot's `os-core.roothash.sig`: no
-founder signature, no image. Completing §4 is what turns it green.
+`make verify-registry-prod` (run by `.github/workflows/release.yml` on every
+`v*` tag) **refuses to build a release** whose registry is signed by the dev
+key — the same contract as netboot's `os-core.roothash.sig`: no founder
+signature, no image.
+
+It passes today. The ceremony in §4 has been run, and the gate reports all 55
+entries signed by `release-2026-08` under a cert valid to `2027-08-03`. It goes
+red again if the cert expires, if an entry is added without re-signing, or if
+anything restores the dev keys over `keys/` — see the warning in §3 about
+`make dev-keys` and a bare `make sign-registry`.
