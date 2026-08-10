@@ -47,11 +47,26 @@ func (f *fakeTime) advance(ms int64) {
 	f.mu.Unlock()
 }
 
+// testDomains is the allow-list every test replica is opened with. Production
+// wiring passes SyncableDomains() instead; see policy.go.
+var testDomains = []string{dom, "alpha", "beta"}
+
 // newTestStore opens a Store on a temp file with a fixed actor id.
 func newTestStore(t *testing.T, actor string) *Store {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := Open(filepath.Join(dir, "crdt.db"), actor)
+	s, err := Open(filepath.Join(dir, "crdt.db"), actor, testDomains)
+	if err != nil {
+		t.Fatalf("Open(%s): %v", actor, err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+// newTestStoreWithDomains opens a Store with an explicit allow-list.
+func newTestStoreWithDomains(t *testing.T, actor string, domains []string) *Store {
+	t.Helper()
+	s, err := Open(filepath.Join(t.TempDir(), "crdt.db"), actor, domains)
 	if err != nil {
 		t.Fatalf("Open(%s): %v", actor, err)
 	}
@@ -62,7 +77,7 @@ func newTestStore(t *testing.T, actor string) *Store {
 // newTestStoreAt opens a Store at an explicit path (for reopen tests).
 func newTestStoreAt(t *testing.T, path, actor string) *Store {
 	t.Helper()
-	s, err := Open(path, actor)
+	s, err := Open(path, actor, testDomains)
 	if err != nil {
 		t.Fatalf("Open(%s, %s): %v", path, actor, err)
 	}

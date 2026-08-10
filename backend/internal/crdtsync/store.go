@@ -39,6 +39,10 @@ type Store struct {
 	actor string
 	clock *clock
 
+	// allowed is the replication allow-list (see policy.go). It is fixed at
+	// Open and never mutated, so no lock guards it.
+	allowed map[string]bool
+
 	// mu serialises writers. modernc.org/sqlite is opened with
 	// SetMaxOpenConns(1); the mutex additionally makes read-modify-write
 	// sequences (local seq allocation, counter accumulation) atomic.
@@ -49,12 +53,24 @@ type Store struct {
 }
 
 // Open opens (creating if needed) the CRDT database at dbPath and applies
-// migrations. actor is this box's stable instance ULID — the identity every op
-// this box originates is stamped with, and the tie-break that makes two peers
-// pick the same LWW winner. It must be stable across restarts.
-func Open(dbPath, actor string) (*Store, error) {
+// migrations.
+//
+// actor is this box's stable instance ULID — the identity every op this box
+// originates is stamped with, and the tie-break that makes two peers pick the
+// same LWW winner. It must be stable across restarts.
+//
+// allowedDomains is the replication allow-list and must not be empty. Passing
+// it is deliberately unavoidable: this engine replicates whatever it is given,
+// so "which data syncs" is a decision the caller has to make out loud rather
+// than inherit from a permissive default. Production wiring passes
+// SyncableDomains(); see policy.go for the per-domain reasoning.
+func Open(dbPath, actor string, allowedDomains []string) (*Store, error) {
 	if actor == "" {
 		return nil, errors.New("crdtsync: Open: actor (instance ULID) must not be empty")
+	}
+	allowed := allowSet(allowedDomains)
+	if len(allowed) == 0 {
+		return nil, errors.New("crdtsync: Open: allowedDomains is empty — replication is opt-in per domain, never implicit (see policy.go)")
 	}
 	dsn := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
@@ -70,7 +86,7 @@ func Open(dbPath, actor string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("crdtsync: migrate: %w", err)
 	}
-	s := &Store{db: db, actor: actor, clock: newClock()}
+	s := &Store{db: db, actor: actor, clock: newClock(), allowed: allowed}
 	// Re-seed the hybrid logical clock from persisted state so a restart cannot
 	// emit a stamp that loses to something this box already wrote before the
 	// restart (a wall clock that jumped backwards would otherwise do exactly
@@ -134,6 +150,9 @@ func (s *Store) Add(domain, key, field string, delta int64) error {
 	if domain == "" || key == "" || field == "" {
 		return errors.New("crdtsync: Add: domain, key and field are required")
 	}
+	if err := s.checkDomain(domain); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.inTx(func(tx *sql.Tx) error {
@@ -161,6 +180,9 @@ func (s *Store) Add(domain, key, field string, delta int64) error {
 func (s *Store) local(domain, key, field string, kind OpKind, value []byte) error {
 	if domain == "" || key == "" || field == "" {
 		return errors.New("crdtsync: domain, key and field are required")
+	}
+	if err := s.checkDomain(domain); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -340,6 +362,9 @@ func (s *Store) VersionVector(domain string) (VersionVector, error) {
 // Snapshot (SnapshotRequired=true) — the bounded bootstrap path that keeps a
 // joining node from replaying unbounded history.
 func (s *Store) Delta(domain string, peerVV VersionVector, limit int) (*Delta, error) {
+	if err := s.checkDomain(domain); err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		limit = DefaultDeltaLimit
 	}
@@ -407,6 +432,11 @@ func (s *Store) Merge(d *Delta) (int, error) {
 	if d == nil {
 		return 0, errors.New("crdtsync: Merge: nil delta")
 	}
+	// Enforced BEFORE anything is written: a peer must not be able to introduce
+	// a domain this box never opted into merely by naming it in a push.
+	if err := s.checkDomain(d.Domain); err != nil {
+		return 0, err
+	}
 	if d.SnapshotRequired {
 		if d.Snapshot == nil {
 			return 0, errors.New("crdtsync: Merge: snapshot required but none supplied")
@@ -436,6 +466,12 @@ func (s *Store) Merge(d *Delta) (int, error) {
 		if op.Stamp.Actor != op.Actor {
 			return 0, fmt.Errorf("crdtsync: Merge: op from actor %s seq %d carries stamp actor %q: stamp actor must equal the origin actor",
 				op.Actor, op.Seq, op.Stamp.Actor)
+		}
+		// An op may name its own domain; it must be allowed too, or a delta for
+		// an approved domain could smuggle ops into a refused one.
+		if op.Domain != "" && op.Domain != d.Domain {
+			return 0, fmt.Errorf("crdtsync: Merge: op from actor %s seq %d claims domain %q inside a delta for %q",
+				op.Actor, op.Seq, op.Domain, d.Domain)
 		}
 	}
 
@@ -536,6 +572,9 @@ func (s *Store) Snapshot(domain string) (*Snapshot, error) {
 func (s *Store) ApplySnapshot(snap *Snapshot) error {
 	if snap == nil {
 		return errors.New("crdtsync: ApplySnapshot: nil snapshot")
+	}
+	if err := s.checkDomain(snap.Domain); err != nil {
+		return err
 	}
 	if snap.SchemaVers > SnapshotSchemaVersion {
 		return fmt.Errorf("%w: got %d, this build understands %d", ErrSnapshotSchema, snap.SchemaVers, SnapshotSchemaVersion)

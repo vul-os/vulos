@@ -13,8 +13,18 @@ func TestOpenRejectsEmptyActor(t *testing.T) {
 	// The actor is the LWW tie-break. A blank one would make two boxes
 	// indistinguishable and the tie-break non-deterministic, so Open must refuse
 	// rather than silently produce a replica that cannot converge.
-	if _, err := Open(filepath.Join(t.TempDir(), "x.db"), ""); err == nil {
+	if _, err := Open(filepath.Join(t.TempDir(), "x.db"), "", testDomains); err == nil {
 		t.Fatal("Open with empty actor must fail")
+	}
+}
+
+func TestOpenRejectsEmptyAllowList(t *testing.T) {
+	// Replication is opt-in per domain. An empty allow-list must fail closed
+	// rather than quietly replicate everything.
+	for _, domains := range [][]string{nil, {}, {""}, {"  "}} {
+		if _, err := Open(filepath.Join(t.TempDir(), "x.db"), "A", domains); err == nil {
+			t.Errorf("Open with allow-list %q must fail", domains)
+		}
 	}
 }
 
