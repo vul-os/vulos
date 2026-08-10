@@ -107,15 +107,26 @@ request)` tuple before any certificate is signed. Both routes register only when
 `VULOS_FABRIC_SECRET` is set *and* the sealed per-instance signing key loads;
 otherwise the box logs that it cannot vouch for peers and mounts nothing.
 
-> **Not reachable by a peer today.** `/api/fleetid/vouch/request` is designed to
-> be peer-facing — its own comment says approval, not caller authentication, is
-> what protects it — but the path is absent from `auth.publicPaths` and matches
-> no public prefix, so `authHandler.Middleware` (`cmd/server/main.go:4276`)
-> returns `401` to a remote box before the handler runs. Until that entry is
-> added, a quorum cannot be collected over HTTP; the primitive and its
-> verification (`VerifyQuorum`) are real and tested, but the transport that
-> would deliver a request to a sibling box is closed. There is also no UI for
-> approving a pending vouch — the approve endpoint has no frontend caller.
+**How the request endpoint authenticates itself.** It is exempt from the OS
+session gate (it is in `auth.publicPaths`), because the caller is another box
+with no session here. It is not unauthenticated: `VerifyVouchRequest` requires a
+**type tag**, a **freshness window** (the same one a `VouchCert` is counted in,
+plus a small clock-skew allowance, so a captured request cannot be replayed
+later), and an **Ed25519 signature by the subject's own fleet key** over the
+canonical bytes of the request with the signature field blanked. A request that
+fails any of those never reaches the policy.
+
+> **The signature proves origin, not entitlement.** It establishes only that the
+> request really came from the key it names. Nothing is signed on the strength
+> of it: authorization remains the pre-existing **deny-by-default manual
+> approval** — an operator at the vouching box must approve the exact
+> `(action, subject, payload, request)` tuple first — and a self-vouch is
+> refused outright before the policy is consulted. Do not read "authenticated"
+> as "authorized".
+
+> **Still no approval UI.** The approve endpoint has no frontend caller, so
+> approving a pending vouch today means calling
+> `POST /api/fleetid/vouch/approve` yourself as an admin.
 
 ### Small fleets (1–2 boxes)
 
