@@ -147,14 +147,36 @@ func (s *Store) persistProfileSecrets(userID string, sec profileSecrets, localSe
 	if s.db == nil {
 		return
 	}
-	rec := struct {
-		profileSecrets
-		Settings map[string]string `json:"settings,omitempty"`
-	}{profileSecrets: sec, Settings: localSettings}
+	// READ-MODIFY-WRITE. This row is shared with persistUserSecrets, which keeps
+	// a user's local-only Preferences under "user_prefs". Marshalling a fresh
+	// struct here would silently drop that half — and losing a per-device
+	// preference is quiet, so nobody would notice until it mattered.
+	var raw string
+	_ = s.db.QueryRow(`SELECT data FROM profile_secrets WHERE user_id=?`, userID).Scan(&raw)
+	rec := map[string]any{}
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &rec)
+	}
 
-	// Nothing to keep: drop the row rather than storing an empty document, so
-	// "has secrets" is answerable by the row's existence.
-	if rec.AIAPIKey == "" && rec.PinHash == "" && len(rec.Settings) == 0 {
+	if sec.AIAPIKey == "" {
+		delete(rec, "ai_api_key")
+	} else {
+		rec["ai_api_key"] = sec.AIAPIKey
+	}
+	if sec.PinHash == "" {
+		delete(rec, "pin_hash")
+	} else {
+		rec["pin_hash"] = sec.PinHash
+	}
+	if len(localSettings) == 0 {
+		delete(rec, "settings")
+	} else {
+		rec["settings"] = localSettings
+	}
+
+	// Nothing left to keep: drop the row rather than storing an empty document,
+	// so "has secrets" is answerable by the row's existence.
+	if len(rec) == 0 {
 		if _, err := s.db.Exec(`DELETE FROM profile_secrets WHERE user_id=?`, userID); err != nil {
 			log.Printf("[auth] sqlite: clear profile secrets %s: %v", userID, err)
 		}

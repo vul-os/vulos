@@ -66,7 +66,14 @@ func (s *Store) persistUser(u *User) {
 	if s.db == nil || u == nil {
 		return
 	}
-	data, err := json.Marshal(u)
+	// Preferences is free-form, so a secret-named key is held back from the
+	// row that replicates (see user_secrets.go). PasswordHash deliberately
+	// DOES replicate — the hash is what makes the account usable on another of
+	// your own boxes, and bcrypt is designed to be stored.
+	rep, localPrefs := splitUser(u)
+	s.persistUserSecrets(u.ID, localPrefs)
+
+	data, err := json.Marshal(&rep)
 	if err != nil {
 		log.Printf("[auth] sqlite: marshal user %s: %v", u.ID, err)
 		return
@@ -228,6 +235,9 @@ func (s *Store) loadFromDB() error {
 	// the migration reads what load has already put in memory, so a value found
 	// only in the old location is preserved rather than dropped.
 	if err := s.loadProfileSecrets(); err != nil {
+		return err
+	}
+	if err := s.loadUserSecrets(); err != nil {
 		return err
 	}
 	s.migrateProfileSecrets()

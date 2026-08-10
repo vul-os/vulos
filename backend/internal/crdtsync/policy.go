@@ -92,9 +92,17 @@ var Decisions = []DomainDecision{
 	{
 		Domain: "sql:users",
 		Sync:   false,
-		Reason: "The users row carries the password hash inside its JSON blob. Column-level exclusion cannot reach inside a blob, so there is no safe " +
-			"partial version of this table; and a merge that resolved a password change the wrong way would be an authentication bug, not a lost edit. " +
-			"Auth material needs a deliberate, audited propagation path, not a general CRDT.",
+		Reason: "WANTED, and blocked on a decision that is not mine to make alone. Under close-to-identical instances a person expects to log into " +
+			"any of their own boxes with the credentials they set once, which means the password hash has to replicate — withholding it leaves the " +
+			"account present on box B and unusable there, pushing people into a second hand-made account with a different password, which multiplies " +
+			"weak passwords instead of copies of one strong hash. bcrypt at DefaultCost is designed to be stored, and its cost factor does not weaken " +
+			"with the number of copies. " +
+			"AGAINST: more copies means more machines a hash can be stolen from, and in a fleet with one internet-facing box that box becomes the " +
+			"weakest link for every account. TestCredentialDomainsAreRefused names this domain deliberately and warns that it 'would silently become " +
+			"allowed if someone widened the allow-list' — so flipping it is a security decision that needs explicit sign-off, not a judgement call " +
+			"made while widening the list. The groundwork is done: auth/user_secrets.go already splits free-form Preferences so secret-named keys " +
+			"stay local, and the shared profile_secrets row is read-modify-write in both directions. Flip Sync here and update that guard together, " +
+			"on purpose.",
 	},
 	{
 		Domain: "sql:recovery_blobs",
@@ -113,11 +121,16 @@ var Decisions = []DomainDecision{
 	},
 	{
 		Domain: "sql:profiles",
-		Sync:   false,
-		Reason: "WANTED but not yet safe. Profiles are the obvious settings domain, but the row is a single JSON `data` blob holding AIAPIKey and " +
-			"PinHash alongside Theme and Locale — column-level Exclude cannot strip a field from inside a blob. Syncing it needs a field-level bridge " +
-			"that projects the safe subset (there is prior art in routes_export.go's safeProfileExport). Until that exists, syncing this table would " +
-			"ship API keys to every peer. Refused on those grounds, not on principle.",
+		Sync:   true,
+		Reason: "Settings are what people most expect to follow them between their own boxes: theme, locale, timezone, display name, avatar, AI " +
+			"provider/model, initiative, and free-form preferences. " +
+			"This was refused while the row was a single JSON blob holding AIAPIKey and PinHash alongside Theme and Locale, because column-level " +
+			"Exclude cannot strip a field from inside a blob. That is fixed at the STORAGE layer (auth/profile_secrets.go): credentials are written " +
+			"to a separate profile_secrets table and stitched back on load, so the bytes in the replicated row never contain them. A json:\"-\" tag " +
+			"would not have done — the requirement is about what is WRITTEN, not what is encoded. " +
+			"PinHash stays local because a PIN belongs to a machine someone is standing at, not to an account; AIAPIKey stays local because it is a " +
+			"bearer secret that can be spent. Free-form Settings keys that name a secret are held back by a token rule, so a future feature cannot " +
+			"leak a token into the replicated half by accident.",
 	},
 	{
 		Domain: "sql:app_registry",

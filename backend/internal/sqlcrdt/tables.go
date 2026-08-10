@@ -60,6 +60,22 @@ func ReplicatedTables() []ReplicatedTable {
 			Why: "The audit trail is worth most on the box an attacker did NOT compromise. Replicated grow-only (crdtsync policy), so an entry " +
 				"can be added everywhere and edited or deleted nowhere — an attacker who erases the local log no longer erases the evidence.",
 		},
+		{
+			Domain: "sql:profiles",
+			DBFile: "auth.db",
+			Spec: TableSpec{
+				Name: "profiles",
+				// The whole row replicates. Credentials are not excluded HERE —
+				// they are not in this table at all: auth/profile_secrets.go
+				// writes AIAPIKey, PinHash and secret-named Settings keys to a
+				// separate profile_secrets table, which is never bound. Column
+				// exclusion could not have done this job, because the row is one
+				// JSON `data` blob and Exclude cannot reach inside one.
+				Columns: []string{"data"},
+			},
+			Why: "Settings are what people most expect to follow them between their own boxes. The credential half is a different table and is " +
+				"not replicated; see crdtsync policy for which fields stay local and why.",
+		},
 	}
 }
 

@@ -117,7 +117,15 @@ func TestStartCRDTSyncOpensTheApprovedDomainsOnly(t *testing.T) {
 	if err := store.Set(crdtsync.DomainReminders, "id:1", "text", []byte("x")); err != nil {
 		t.Errorf("the approved domain was not opened: %v", err)
 	}
-	for _, refused := range []string{"sql:sessions", "sql:users", "sql:profiles"} {
+	// sql:profiles was in this list while its row was a single JSON blob mixing
+	// AIAPIKey and PinHash with Theme and Locale. That is fixed at the storage
+	// layer (auth/profile_secrets.go writes credentials to a separate,
+	// never-bound table), so profiles now replicates — deliberately, and it is
+	// NOT one of the domains TestCredentialDomainsAreRefused pins.
+	if err := store.Set("sql:profiles", "u1", "data", []byte("{}")); err != nil {
+		t.Errorf("sql:profiles should replicate now its credentials live in a separate table: %v", err)
+	}
+	for _, refused := range []string{"sql:sessions", "sql:users"} {
 		if err := store.Set(refused, "k", "f", []byte("x")); err == nil {
 			t.Errorf("%s is replicable through the production wiring", refused)
 		}

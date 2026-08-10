@@ -191,3 +191,99 @@ func TestSettingsKeyIsSecret(t *testing.T) {
 		}
 	}
 }
+
+// The profile's secret half and the user's local-only Preferences SHARE one
+// profile_secrets row. Whichever is written second must not drop the other.
+//
+// This is not hypothetical: persistProfileSecrets originally marshalled a fresh
+// struct and replaced the row, so adding user_prefs silently wiped a PIN hash —
+// and losing a per-device credential is quiet, so nobody would notice until
+// someone could not unlock their machine.
+func TestSecretsRow_TheTwoHalvesDoNotClobberEachOther(t *testing.T) {
+	// BOTH ORDERS. Whichever half is written SECOND is the one that can drop
+	// the other, so testing one order proves only half the property — the first
+	// version of this test wrote the profile first, when the row was still
+	// empty, and a mutation that made the profile write replace the whole row
+	// SURVIVED it.
+	for _, order := range []string{"profile-then-user", "user-then-profile"} {
+		t.Run(order, func(t *testing.T) {
+			dir := t.TempDir()
+			s := newTestStoreAt(t, dir)
+
+			writeProfile := func() {
+				s.SetProfile(&Profile{UserID: "u1", Theme: "dark", AIAPIKey: "sk-abc", PinHash: "hash-xyz"})
+			}
+			writeUser := func() {
+				setUserForTest(s, &User{
+					ID: "u1", Username: "sam", PasswordHash: "$2a$10$hash",
+					Preferences: map[string]string{"weather_api_key": "wk-SECRET", "density": "cosy"},
+				})
+			}
+
+			if order == "profile-then-user" {
+				writeProfile()
+				writeUser()
+			} else {
+				writeUser()
+				writeProfile()
+			}
+
+			s2 := newTestStoreAt(t, dir)
+
+			p, ok := s2.GetProfile("u1")
+			if !ok {
+				t.Fatal("profile disappeared")
+			}
+			if p.PinHash != "hash-xyz" {
+				t.Errorf("PinHash = %q — the shared row was clobbered, and losing this locks someone out of their machine", p.PinHash)
+			}
+			if p.AIAPIKey != "sk-abc" {
+				t.Errorf("AIAPIKey = %q — the shared row was clobbered", p.AIAPIKey)
+			}
+
+			u, ok := s2.GetUser("u1")
+			if !ok {
+				t.Fatal("user disappeared")
+			}
+			if u.Preferences["weather_api_key"] != "wk-SECRET" {
+				t.Errorf("local-only preference lost: %q", u.Preferences["weather_api_key"])
+			}
+		})
+	}
+}
+
+// The password hash DOES replicate — deliberately. The hash is what makes an
+// account usable on another of your own boxes; without it the account exists on
+// box B and cannot be logged into, so people make a second account by hand and
+// the two drift. See user_secrets.go for the full reasoning and the residual.
+func TestUserRow_CarriesThePasswordHashButNotSecretPreferences(t *testing.T) {
+	s := newTestStoreAt(t, t.TempDir())
+	setUserForTest(s, &User{
+		ID: "u1", Username: "sam", PasswordHash: "$2a$10$REPLICATED",
+		Preferences: map[string]string{"api_token": "tok-SECRET", "density": "cosy"},
+	})
+
+	var raw string
+	if err := s.db.QueryRow(`SELECT data FROM users WHERE id=?`, "u1").Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "REPLICATED") {
+		t.Errorf("the replicated user row has no password hash — the account cannot be used on another box:\n%s", raw)
+	}
+	if strings.Contains(raw, "tok-SECRET") {
+		t.Errorf("a secret-named preference replicated:\n%s", raw)
+	}
+	if !strings.Contains(raw, "density") {
+		t.Errorf("an ordinary preference was withheld:\n%s", raw)
+	}
+}
+
+// setUserForTest mirrors what auth.go does on every user write: put it in the
+// map, then persist. Using the real persist path is the point — a test helper
+// that wrote the row itself would not exercise the splitting.
+func setUserForTest(s *Store, u *User) {
+	s.mu.Lock()
+	s.users[u.ID] = u
+	s.mu.Unlock()
+	s.persistUser(u)
+}
