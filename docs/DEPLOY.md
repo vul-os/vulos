@@ -25,10 +25,10 @@ Open `http://localhost:8080` to complete first-boot setup.
 git clone https://github.com/vul-os/vulos.git
 cd vulos
 
-# Build the frontend
-npm ci && npm run build
+# Build the frontend — package.json lives in frontend/, not at the repo root
+cd frontend && npm ci && npm run build && cd ..
 
-# Build the Go backend (requires Go 1.21+)
+# Build the Go backend (backend/go.mod requires Go 1.25+)
 cd backend
 go build -trimpath -ldflags="-s -w" -o ../dist/vulos ./cmd/server/
 
@@ -85,9 +85,17 @@ If you deploy via plain Docker or a manual source build (no `--domain`), Caddy
 is not involved — put your own reverse proxy or load balancer in front of
 `:8080` and terminate TLS there instead.
 
-## dm-verity / Verified Boot (optional)
+## dm-verity / Verified Boot
 
-For bare-metal installs requiring a verified rootfs, see `docs/REPRODUCIBLE-BUILDS.md`.
+None of this applies to the Docker or source-build paths above — there is no
+squashfs and no initramfs in a container, so there is nothing for dm-verity to
+protect. It applies only to the bare-metal image.
+
+For where verified boot actually holds today, and where it does not, read
+[ARCHITECTURE.md → OS distribution (bare metal)](ARCHITECTURE.md#os-distribution-bare-metal)
+— it states the current live-USB/netboot vs installed-disk position from the
+code. `docs/REPRODUCIBLE-BUILDS.md` describes how a verity-signed rootfs *would*
+be built and is a design note, not a description of the shipped build.
 
 ## Upgrading
 
@@ -101,4 +109,10 @@ docker stop vulos && docker rm vulos
 
 - **First boot hangs**: ensure `/dev/uinput` is accessible inside the container (`--device /dev/uinput`).
 - **App launch fails**: `appnet` requires `iproute2` and CAP_NET_ADMIN. Use `--cap-add NET_ADMIN`.
-- **Metrics not appearing**: check that `obs.Init()` was called (it is, in `main()`). Verify `/metrics` is reachable.
+- **Metrics not appearing**: `/metrics` is **not public** — an unauthenticated
+  scrape gets `403 metrics are owner-only`, which is the expected answer, not a
+  fault. Two ways in, both owner-scoped: the box owner's OS session, or set
+  `VULOS_METRICS_TOKEN` and have Prometheus send `Authorization: Bearer <token>`
+  (`?token=` also works). If you get a 403 with a token set, check the token
+  matches; if you get an empty body with a 200, that is an `obs.Init()` problem,
+  and it is called in `main()`.
