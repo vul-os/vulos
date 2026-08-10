@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { createElement } from 'react'
+import { render, cleanup } from '@testing-library/react'
 
-import { APP_LOGOS, INSET_LOGOS, ART_RADIUS } from './AppIcons'
+import { APP_LOGOS, INSET_LOGOS, ART_RADIUS, AppIconTile } from './AppIcons'
 
 // AppIcons.test.ts — keeps INSET_LOGOS honest.
 //
@@ -94,5 +96,41 @@ describe('APP_LOGOS / INSET_LOGOS', () => {
     const r = ownPlateRadius(terminal as string)
     expect(r, 'terminal.svg no longer draws its own full-bleed plate').not.toBeNull()
     expect(Math.abs((r as number) - ART_RADIUS)).toBeLessThan(0.01)
+  })
+})
+
+// AppIconTile must actually CONSULT INSET_LOGOS when it renders, not just
+// carry a correct-looking classification beside dead render code. (That was
+// the real bug: INSET_LOGOS + this file's derivation existed and passed, but
+// the brandLogo branch in AppIconTile rendered every bundled logo at a fixed
+// 70% inset on the neutral tile regardless of the set — terminal.svg, which
+// is full-bleed, still rendered as a plate inside a plate.) These tests
+// render the real component and inspect the DOM the two classes actually
+// produce, so a future edit that reintroduces a fixed 70%-inset render (or
+// drops the edge-to-edge one) fails here even though the classification
+// tests above would stay green.
+describe('AppIconTile renders full-bleed logos edge-to-edge, inset logos on the neutral tile', () => {
+  afterEach(cleanup)
+
+  it('a full-bleed logo (terminal, not in INSET_LOGOS) fills the tile and drops the neutral chrome', () => {
+    expect(INSET_LOGOS.has('terminal'), 'terminal.svg is full-bleed; this test assumes it is not in INSET_LOGOS').toBe(false)
+    const { container } = render(createElement(AppIconTile, { id: 'terminal', size: 48 }))
+    const tile = container.querySelector('.vula-itile')
+    const img = container.querySelector('img')
+    expect(tile?.getAttribute('data-logo'), 'a full-bleed logo tile must carry data-logo so the neutral chrome CSS steps out of the way').toBe('')
+    expect(img?.getAttribute('src')).toBe(APP_LOGOS.terminal)
+    expect(img?.style.width, 'a full-bleed logo must fill the tile, not sit inset at 70%').toBe('100%')
+    expect(img?.style.height).toBe('100%')
+  })
+
+  it('an inset logo (firefox, in INSET_LOGOS) keeps the neutral tile and the 70% inset mark', () => {
+    expect(INSET_LOGOS.has('firefox'), 'firefox.svg is a bare mark on transparency; this test assumes it is in INSET_LOGOS').toBe(true)
+    const { container } = render(createElement(AppIconTile, { id: 'firefox', size: 48 }))
+    const tile = container.querySelector('.vula-itile')
+    const img = container.querySelector('img')
+    expect(tile?.hasAttribute('data-logo'), 'a bare-mark logo must NOT get the edge-to-edge treatment — it has nothing to sit on').toBe(false)
+    expect(img?.getAttribute('src')).toBe(APP_LOGOS.firefox)
+    expect(img?.style.width).toBe('70%')
+    expect(img?.style.height).toBe('70%')
   })
 })

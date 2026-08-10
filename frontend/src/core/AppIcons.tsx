@@ -283,6 +283,24 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
     [data-theme="light"] .vula-itile[data-art]:hover, [data-theme="light"] .vula-itile[data-art].is-hover{
       box-shadow: 0 12px 30px -14px color-mix(in srgb, var(--art-b, var(--accent)) 55%, transparent);
     }
+
+    /* ── Logo variant — a bundled brand mark that already draws its own
+          full-bleed plate (public/icons/terminal.svg and the great majority of
+          APP_LOGOS — see INSET_LOGOS below) gets the same treatment as the art
+          plates: the neutral tile chrome steps out of the way and the mark
+          fills the tile edge-to-edge instead of sitting inset inside a second,
+          duller tile. Only the hover lift + glow stay, tinted by the app's hue
+          when APP_COLORS has one. Logos in INSET_LOGOS (bare marks on
+          transparency, e.g. Chrome/Firefox/LibreOffice) do NOT get this
+          attribute and keep today's inset-on-neutral-tile rendering. */
+    .vula-itile[data-logo]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
+    .vula-itile[data-logo]:hover, .vula-itile[data-logo].is-hover{
+      border-color:transparent;
+      box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--tile-accent, var(--accent)) 55%, transparent);
+    }
+    [data-theme="light"] .vula-itile[data-logo]:hover, [data-theme="light"] .vula-itile[data-logo].is-hover{
+      box-shadow: 0 12px 30px -14px color-mix(in srgb, var(--tile-accent, var(--accent)) 40%, transparent);
+    }
   ` + APP_ART_CSS
   document.head.appendChild(style)
 }
@@ -937,16 +955,25 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
   }
 
   // 1. A first-party (or bundled) brand mark WINS — the app should read as
-  //    itself. Diwan/lilmail/envoir/Chrome/… render their own coloured artwork
-  //    on the neutral tile so the surface still reads as one coherent set.
+  //    itself. Most bundled logos (terminal, the catalog tiles, the product
+  //    marks — see INSET_LOGOS) already draw their own full-bleed plate, so
+  //    they render edge-to-edge exactly like the art plates (data-logo steps
+  //    the neutral tile chrome out of the way); painting the neutral tile
+  //    behind one of those produced a plate inside a plate. The few bare marks
+  //    on transparency (Chrome/Firefox/LibreOffice/…) stay inset on the
+  //    neutral tile, same as before, so they have somewhere to sit.
   if (brandLogo && !logoFailed) {
+    const fullBleed = !INSET_LOGOS.has(id)
+    const logoTileStyle: TileStyle = fullBleed && tint
+      ? { ...tileProps.style, '--tile-accent': tint }
+      : tileProps.style
     return (
-      <div {...tileProps}>
+      <div {...tileProps} data-logo={fullBleed ? '' : undefined} style={logoTileStyle}>
         <img
           src={brandLogo}
           alt=""
           className="vula-itile-img"
-          style={{ width: '70%', height: '70%' }}
+          style={fullBleed ? { width: '100%', height: '100%' } : { width: '70%', height: '70%' }}
           onError={() => setLogoFailed(true)}
           loading="lazy"
         />
