@@ -523,6 +523,16 @@ func TestStage_RejectsCertFromAnotherRoot(t *testing.T) {
 	if !errors.Is(err, ErrCertInvalid) {
 		t.Fatalf("a cert chaining to an unpinned root was accepted (err = %v)", err)
 	}
+	// ...and the refusal must come from VALIDATING THE CERT before its key is
+	// used, not incidentally from RaiseFromReleaseCert re-validating it two
+	// steps later. Without this assertion, deleting the chain check in
+	// ReleaseKeyFromCert looks harmless (mutation-tested: it was) — and it
+	// stops being harmless the moment that raise is made non-fatal, which is
+	// exactly what osdist's equivalent already does with it.
+	if strings.Contains(err.Error(), "epoch floor") {
+		t.Errorf("the foreign-root cert was refused by the epoch-floor raise rather than "+
+			"by the chain check that guards the release key: %v", err)
+	}
 	box.assertNothingStaged(t)
 }
 
