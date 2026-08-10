@@ -22,7 +22,7 @@ STRIDE pass. Last updated: 2026-07-07 (added Component 5: Sovereign Assistant; a
 Trust boundaries:
 - **Browser ↔ Backend API**: authenticated session (cookie/token). Untrusted input from browser.
 - **Backend API ↔ OS Shell**: privileged local IPC. Attacker who reaches this can escalate.
-- **Squashfs image**: trusted only if dm-verity hash matches baked key.
+- **Squashfs image**: trusted only where the initramfs maps it through dm-verity against a root hash whose detached signature chains to the baked anchor. That is a property of the boot path, not of the image — see Component 1's mitigations and [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal) for which paths currently do it.
 - **App Sandbox ↔ OS**: the boundary is the namespace + unprivileged-uid drop, **not** a syscall filter — no seccomp allowlist is applied today (see Component 3). Escaping it reaches the OS.
 
 ---
@@ -42,7 +42,13 @@ Trust boundaries:
 | 3 | **Spoofing** | MITM on firstboot network fetch substitutes a malicious image payload before signature verification. |
 
 ### Mitigations in code
-- dm-verity hash baked at build time; kernel refuses to mount tampered root.
+- dm-verity hash produced at build time by `build.sh`'s VERITY-01 block, as a
+  file (`os-core.roothash`) shipped beside the image together with its Merkle
+  tree (`os-core.hashtree`) — **not** baked into the kernel or the bootloader
+  entry, which carry no `roothash=` at all. The initramfs reads those files and
+  runs `veritysetup open`; where it does, the kernel refuses tampered blocks.
+  This mitigation is therefore conditional on the boot path supplying the files
+  and the tool — see [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal).
 - **Signature-first, transport-second.** Trust is enforced by an Ed25519 key
   PINNED in the seed/iPXE binary (`/etc/vulos/trust-anchor.pub`), never by the
   system CA bundle — TLS success alone never authorises a payload.
