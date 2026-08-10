@@ -91,6 +91,32 @@ Break-glass requests take `request_id` and a non-empty `quorum_certs` bundle; an
 insufficient or invalid quorum is treated as an **authorisation failure (`403`)**,
 not a server error, and no key is touched.
 
+### How you obtain the vouch certificates — and why you cannot yet
+
+The certificates come from a vouch service each box runs
+(`backend/services/fleetid/voucher_handler.go`), which registers two routes:
+
+| Route | Facing | Gate |
+|---|---|---|
+| `POST /api/fleetid/vouch/request` | Peer — another box asks *this* box to vouch | Never signs without a prior approval decision; a **self-vouch is refused outright** before the policy is even consulted |
+| `POST /api/fleetid/vouch/approve` | Operator at this box | Admin role required |
+
+The default policy is `NewManualApprovalPolicy` — **it never auto-approves**. A
+human at the vouching box must approve the exact `(action, subject, payload,
+request)` tuple before any certificate is signed. Both routes register only when
+`VULOS_FABRIC_SECRET` is set *and* the sealed per-instance signing key loads;
+otherwise the box logs that it cannot vouch for peers and mounts nothing.
+
+> **Not reachable by a peer today.** `/api/fleetid/vouch/request` is designed to
+> be peer-facing — its own comment says approval, not caller authentication, is
+> what protects it — but the path is absent from `auth.publicPaths` and matches
+> no public prefix, so `authHandler.Middleware` (`cmd/server/main.go:4276`)
+> returns `401` to a remote box before the handler runs. Until that entry is
+> added, a quorum cannot be collected over HTTP; the primitive and its
+> verification (`VerifyQuorum`) are real and tested, but the transport that
+> would deliver a request to a sibling box is closed. There is also no UI for
+> approving a pending vouch — the approve endpoint has no frontend caller.
+
 ### Small fleets (1–2 boxes)
 
 Peer-vouching only becomes available once you have **three or more boxes** (so
