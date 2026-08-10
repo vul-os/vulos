@@ -2,7 +2,7 @@
 
 **You do not need a storage provider to run a Vulos box.** By default a box
 keeps its object data — Files/Drive and app storage — as plain files on its own
-disk (`/var/lib/vulos/storage`), with no endpoint, no bucket, no credentials
+disk (`~/.vulos/storage`), with no endpoint, no bucket, no credentials
 and no third-party service involved. This guide is for the case where you
 *choose* to add an **S3-compatible object store**: a second node that must
 serve the same data, or an off-box copy of the bytes.

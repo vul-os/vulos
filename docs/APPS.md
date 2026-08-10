@@ -19,7 +19,9 @@ There is no separate "bot" runtime — a bot *is* a platform app holding a token
 
 ## Bundled apps
 
-The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, Diwan, PDF Viewer, Sheets, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`frontend/apps/notes/app.json`):
+The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, PDF Viewer, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`frontend/apps/notes/app.json`):
+
+> **Diwan is not one of these.** It is a separate service with its own binary and systemd unit (`scripts/vulos-diwan.service`), like LilMail — there is no `app.json` for it anywhere in the tree. And there is no separate "Sheets" app: spreadsheets, slides, PDFs and whiteboards are document *types* inside Diwan, so the OS has one productivity app rather than five (see `frontend/src/core/AppRegistry.ts`).
 
 ```json
 {
@@ -60,7 +62,7 @@ the "GNOME Calendar/Contacts" of Vulos:
 - **Contacts** — a list + detail/edit address book with full CRUD. Launcher id
   `vulos-contacts`.
 
-Both are React components in `src/builtin/{calendar,contacts}/` — they own no
+Both are React components in `frontend/src/builtin/{calendar,contacts}/` — they own no
 storage of their own. They read/write lilmail through the box's **PIM proxy**:
 the browser calls `/api/pim/{calendar,contacts}/*` with its own session cookie,
 and the box rewrites that to lilmail `/v1/*`, injecting the brokered mail
@@ -361,7 +363,7 @@ The assistant can generate small interactive apps ("viewports") whose backend is
 VULOS_SANDBOX_ENABLED=1
 ```
 
-When enabled, the sandbox service runs AI-generated Python backends from a pre-warmed pool (size tunable with `VULOS_SANDBOX_POOL_SIZE`), on loopback ports 9100–9199, reachable only through the gateway proxy at `/api/sandbox/{id}/`. Scripts get a stripped environment and a hard 5-minute timeout; runs are audit-logged; `POST /api/sandbox/stop`, `GET /api/sandbox/list`, and the proxy are admin-gated.
+When enabled, the sandbox service runs AI-generated Python backends from a pre-warmed pool (size tunable with `VULOS_SANDBOX_POOL_SIZE`), on loopback ports 9100–9199, reachable only through the gateway proxy at `/api/sandbox/{id}/`. Scripts get a stripped environment and a hard 5-minute timeout; runs are audit-logged; `POST /api/sandbox/run` — the endpoint that actually executes the generated code — along with `POST /api/sandbox/stop`, `GET /api/sandbox/list` and the proxy, are all admin-gated.
 
 **Be clear-eyed about the risk posture.** The code's own documentation says this flag must not be set in production unless the host wraps the Python processes in kernel-level isolation (namespaces, seccomp) — the sandbox service itself provides process management, environment stripping, and timeouts, **not** a kernel security boundary. A legacy keyword blocklist exists in the code and is explicitly documented as trivially bypassable — it is not a security control. Treat `VULOS_SANDBOX_ENABLED=1` as "I accept arbitrary code execution by my AI on this host" and only enable it on a disposable or otherwise-isolated machine.
 
@@ -381,8 +383,8 @@ If it is off (the default), asking the assistant for an interactive app still yi
 | `VULOS_REGISTRY_INSECURE` | unset | Skip signature verification. **Refused when `VULOS_ENV=prod`** |
 | `VULOS_APP_CATALOG` | _(empty)_ | Remote catalog URL for the base app store |
 | `VULOS_BUNDLED_APPS` | _(empty)_ | Override path to the bundled apps directory |
-| `VULOS_DNS_API` | `noop` | Subdomain provisioning endpoint (unset = no DNS provider; point at your own) |
-| `VULOS_BASE_DOMAIN` | `vulos.org` | Base domain for app subdomains |
+| `VULOS_DNS_API` | `noop` in dev/CI; **unset in prod disables the subdomain routes entirely** | Subdomain provisioning endpoint. The `noop` default applies only outside prod — with `--env prod` and this unset, `GET /api/apps/{id}/deployment` and `POST /api/apps/{id}/deprovision` are not registered at all, rather than silently no-oping |
+| `VULOS_BASE_DOMAIN` | *(none)* | Base domain for app subdomains. There is deliberately no default — no domain is handed out on your behalf (see the prose above). The `vulos.org` constant in `internal/multiinstance` belongs to a different subsystem, the cross-instance routing table, and is not read from this variable |
 | `VULOS_CADDY_DIR` | _(empty)_ | Emit Caddyfile snippets for custom domains |
 | `VULOS_NGINX_DIR` | `/etc/nginx/vulos-apps` | Edge-cache config directory |
 | `VULOS_CP_BASE_URL` | _(empty)_ | Control plane for `vk_` key introspection (unset = disabled) |
