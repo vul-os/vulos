@@ -265,3 +265,99 @@ func TestApproveEndpoint_GateRefused_NoGrant(t *testing.T) {
 		t.Fatalf("gate-refused approve call must not have granted anything, got %v", d)
 	}
 }
+
+// ─── Request authentication (what makes the endpoint safe to expose) ──────────
+
+// TestVerifyVouchRequest_Properties pins each thing the endpoint's own
+// authentication checks. It is the only thing standing between an anonymous
+// caller on the network and the approval policy, now that the route is exempt
+// from the OS session middleware (auth.publicPaths).
+func TestVerifyVouchRequest_Properties(t *testing.T) {
+	subject := newBox(t)
+	now := time.Now()
+
+	valid := func() VouchRequest {
+		req := VouchRequest{
+			Action:      ActionIdentityRecovery,
+			SubjectID:   subject.vulaID,
+			PayloadHash: b64(hash("payload")),
+			RequestID:   "req-verify-props",
+		}
+		if err := SignVouchRequest(subject.priv, &req, now); err != nil {
+			t.Fatalf("SignVouchRequest: %v", err)
+		}
+		return req
+	}
+
+	// Positive control — without this the negatives below prove nothing.
+	if err := VerifyVouchRequest(valid(), now); err != nil {
+		t.Fatalf("a correctly signed request was rejected: %v", err)
+	}
+
+	t.Run("unsigned rejected", func(t *testing.T) {
+		req := valid()
+		req.Sig = ""
+		if err := VerifyVouchRequest(req, now); err == nil {
+			t.Fatal("an UNSIGNED request verified")
+		}
+	})
+
+	t.Run("tampered field rejected", func(t *testing.T) {
+		// The signature covers the whole request, so swapping the payload the
+		// operator would be asked to approve must invalidate it.
+		req := valid()
+		req.PayloadHash = b64(hash("a different payload entirely"))
+		if err := VerifyVouchRequest(req, now); err == nil {
+			t.Fatal("a request whose payload_hash was swapped after signing verified")
+		}
+	})
+
+	t.Run("wrong signer rejected", func(t *testing.T) {
+		other := newBox(t)
+		req := VouchRequest{
+			Action:      ActionIdentityRecovery,
+			SubjectID:   other.vulaID,
+			PayloadHash: b64(hash("payload")),
+			RequestID:   "req-verify-props",
+		}
+		if err := SignVouchRequest(other.priv, &req, now); err != nil {
+			t.Fatal(err)
+		}
+		// Paste the other box's signature onto the victim's identity.
+		req.SubjectID = subject.vulaID
+		if err := VerifyVouchRequest(req, now); err == nil {
+			t.Fatal("a signature by an unrelated key verified against subject_id")
+		}
+	})
+
+	t.Run("stale request rejected", func(t *testing.T) {
+		// Replay bound: a captured request must not stay usable longer than the
+		// cert it would produce is countable.
+		if err := VerifyVouchRequest(valid(), now.Add(VouchMaxAge+time.Minute)); err == nil {
+			t.Fatal("a request older than the freshness window verified — captures replay forever")
+		}
+	})
+
+	t.Run("future-dated request rejected", func(t *testing.T) {
+		if err := VerifyVouchRequest(valid(), now.Add(-2*ClockSkew-time.Minute)); err == nil {
+			t.Fatal("a request dated beyond the clock-skew allowance verified")
+		}
+	})
+
+	t.Run("wrong type tag rejected", func(t *testing.T) {
+		// Domain separation: the subject's fleet key signs other structures too.
+		req := valid()
+		req.Type = "fleet-vouch" // VouchCertType — a different context
+		if err := VerifyVouchRequest(req, now); err == nil {
+			t.Fatal("a request carrying another context's type tag verified")
+		}
+	})
+
+	t.Run("cannot sign for another identity", func(t *testing.T) {
+		other := newBox(t)
+		req := VouchRequest{Action: ActionIdentityRecovery, SubjectID: other.vulaID, RequestID: "r"}
+		if err := SignVouchRequest(subject.priv, &req, now); err == nil {
+			t.Fatal("SignVouchRequest produced a signature for someone else's subject_id")
+		}
+	})
+}

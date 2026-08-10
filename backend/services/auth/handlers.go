@@ -157,6 +157,17 @@ var publicPaths = map[string]bool{
 	"/api/peering/prekeys/claim":         true, // X3DH forward secrecy: OPK claim (public by design — the signed prekey signature is the authorization; revoked identities fail closed)
 	"/api/peering/prekeys/publish":       true, // X3DH forward secrecy: browser peer publishes its PUBLIC bundle (the signed-prekey signature IS the authorization; forged/revoked bundles fail closed)
 	"/api/peering/profile/notify-change": true, // S2S cache-eviction hint from a peer (only evicts a locally-cached public profile; self-heals on next fetch)
+
+	// FLEET IDENTITY (box-to-box break-glass quorum). Reached by a REMOTE box
+	// asking THIS box to vouch for its break-glass recovery; that box has no OS
+	// session here by definition — the whole point is that its own identity is
+	// broken. Without this entry the middleware 401s every peer and a quorum
+	// cannot be collected over HTTP at all, which is exactly what it did.
+	// Authenticated by the request itself (fleetid.VerifyVouchRequest): an
+	// Ed25519 signature by the key subject_id encodes, inside a freshness
+	// window. NOT the /approve sibling — that one is operator-facing and stays
+	// admin-gated.
+	"/api/fleetid/vouch/request": true, // FLEETID-VOUCH-01: signature-authenticated peer request; a VouchCert is still only signed after an explicit operator approval (default-deny policy)
 }
 
 // publicPrefixes are path prefixes that don't require authentication.

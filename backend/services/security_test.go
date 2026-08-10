@@ -31,8 +31,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"vulos/backend/services/auth"
+	"vulos/backend/services/fleetid"
+	"vulos/backend/services/peering"
 	"vulos/backend/services/signing"
 )
 
@@ -518,6 +521,10 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 		"/api/peering/prekeys/claim":         "X3DH: OPK claim — signed prekey signature is the authorization; revoked identities fail closed",
 		"/api/peering/prekeys/publish":       "X3DH: browser peer publishes its PUBLIC bundle; forged/revoked bundles fail closed",
 		"/api/peering/profile/notify-change": "S2S cache-eviction hint — only evicts a locally-cached public profile, self-heals",
+
+		// Fleet-identity break-glass quorum. The peer asking has no session
+		// here by design — its identity is the thing being recovered.
+		"/api/fleetid/vouch/request": "FLEETID-VOUCH-01: box-to-box break-glass vouch request. Authenticated by the REQUEST, not a session: fleetid.VerifyVouchRequest requires a fresh Ed25519 signature by the key subject_id encodes (a Vula ID IS the public key), rejecting unsigned/forged/stale requests with 401 at the handler. Authorization is separate and stricter — no VouchCert is signed without an operator explicitly approving that exact (action, subject, payload, request id) tuple, and a self-vouch is refused outright. The operator-facing /api/fleetid/vouch/approve is deliberately NOT here and stays admin-gated. Guarded by TestVouchRequest_UnauthenticatedRejectedAtHandler.",
 	}
 
 	// The assertion this test previously only claimed to make. Both directions
@@ -1054,5 +1061,124 @@ func TestSecurityHeaders_PresentOnEveryServedResponse(t *testing.T) {
 					path, got)
 			}
 		})
+	}
+}
+
+// ─── SEC-HARD-08 (cont.): a public path is not an unauthenticated one ─────────
+
+// TestVouchRequest_UnauthenticatedRejectedAtHandler is the pair to the
+// /api/fleetid/vouch/request entry in the reviewed allow-list above. That entry
+// removes the OS SESSION gate from a peer-facing endpoint, which is only safe
+// because the endpoint authenticates the request itself. Both halves are
+// asserted here, at the boundary, with the real middleware in front of the real
+// handler:
+//
+//	1. a SIGNED request reaches the handler (proving the exemption works — this
+//	   is the break-glass quorum path that was 401'd into uselessness), and
+//	2. an UNSIGNED and a WRONGLY-SIGNED request are refused BY THE HANDLER, now
+//	   that the middleware is no longer standing in front of it.
+//
+// The two 401s are told apart by the body: the handler's refusal carries its own
+// JSON reason, which a middleware 401 never does.
+func TestVouchRequest_UnauthenticatedRejectedAtHandler(t *testing.T) {
+	store, err := auth.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("auth.NewStore: %v", err)
+	}
+	handler := auth.NewHandler(store)
+	handler.OnUserCreated = nil
+	handler.OnUserLogin = nil
+	handler.OnRoleChanged = nil
+
+	// The voucher box (THIS box) and the subject box (a remote peer asking).
+	_, voucherPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subjectPub, subjectPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := fleetid.NewVoucherService(voucherPriv, fleetid.NewManualApprovalPolicy())
+	if err != nil {
+		t.Fatalf("NewVoucherService: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	svc.RegisterHandlers(mux, func(*http.Request) bool { return false })
+	srv := httptest.NewServer(handler.Middleware(mux))
+	defer srv.Close()
+
+	post := func(t *testing.T, req fleetid.VouchRequest) (int, string) {
+		t.Helper()
+		body, err := json.Marshal(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.Post(srv.URL+fleetid.DefaultVouchPath, "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("POST %s: %v", fleetid.DefaultVouchPath, err)
+		}
+		defer resp.Body.Close()
+		out, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(out)
+	}
+
+	base := fleetid.VouchRequest{
+		Action:      fleetid.ActionIdentityRecovery,
+		SubjectID:   peering.EncodeVulaID(subjectPub),
+		PayloadHash: base64.RawURLEncoding.EncodeToString([]byte("break-glass-payload-hash")),
+		RequestID:   "req-sec-hard-08",
+	}
+
+	// 1. A properly signed peer request must REACH the handler. With no
+	//    operator approval it is "pending" (202) — which only the handler can
+	//    answer, so a 401 here means the middleware is still eating peer
+	//    traffic and break-glass quorum cannot be collected over HTTP.
+	signed := base
+	if err := fleetid.SignVouchRequest(subjectPriv, &signed, time.Now()); err != nil {
+		t.Fatalf("SignVouchRequest: %v", err)
+	}
+	if code, body := post(t, signed); code == http.StatusUnauthorized {
+		t.Fatalf("SEC-HARD-08 REGRESSION: a signed peer vouch request was 401'd before reaching the handler — "+
+			"%s is not in publicPaths, so break-glass quorum cannot be collected at all. body=%s",
+			fleetid.DefaultVouchPath, body)
+	} else if code != http.StatusAccepted {
+		t.Fatalf("signed request: got %d, want 202 (pending operator approval). body=%s", code, body)
+	}
+
+	// 2. Unsigned — the naked request an anonymous caller on the network can
+	//    make now that the session gate is gone.
+	if code, body := post(t, base); code != http.StatusUnauthorized {
+		t.Errorf("UNSIGNED vouch request got %d, want 401 — the endpoint is public AND unauthenticated. body=%s", code, body)
+	} else if !strings.Contains(body, "unauthenticated vouch request") {
+		t.Errorf("unsigned request was refused, but not by the handler's own check (body=%s)", body)
+	}
+
+	// 3. Signed by the WRONG key — a caller impersonating another box's
+	//    identity. subject_id names a key; only its holder can produce this
+	//    signature.
+	_, attackerPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := signed
+	forgedSelf := forged
+	if err := fleetid.SignVouchRequest(attackerPriv, &forgedSelf, time.Now()); err == nil {
+		t.Fatal("SignVouchRequest let a key sign for someone else's subject_id")
+	}
+	// Take the attacker's signature over their own request and paste it onto
+	// the victim's subject_id — the actual impersonation attempt.
+	attackerReq := base
+	attackerReq.SubjectID = peering.EncodeVulaID(attackerPriv.Public().(ed25519.PublicKey))
+	if err := fleetid.SignVouchRequest(attackerPriv, &attackerReq, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	forged.Sig = attackerReq.Sig
+	if code, body := post(t, forged); code != http.StatusUnauthorized {
+		t.Errorf("FORGED vouch request (signature by an unrelated key) got %d, want 401. body=%s", code, body)
+	} else if !strings.Contains(body, "unauthenticated vouch request") {
+		t.Errorf("forged request was refused, but not by the handler's own signature check (body=%s)", body)
 	}
 }
