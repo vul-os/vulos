@@ -30,6 +30,12 @@ import (
 	"fmt"
 	"time"
 
+	// osdist owns the ONE definition of the release-severity surface
+	// (is_security/severity/notes) that this signer and every verifier apply to
+	// the same bytes. Importing it rather than restating the rules here is
+	// deliberate: an independently maintained copy of a signing rule is how the
+	// signed surface and its verifiers came to disagree in the first place.
+	"vulos/backend/services/osdist"
 	"vulos/backend/services/signing"
 )
 
@@ -130,6 +136,24 @@ func SignImage(releasePriv ed25519.PrivateKey, keyID string, payload ImagePayloa
 //   - ReleasedAt — ISO-8601 timestamp (informational).
 //   - RootHash   — dm-verity root hash (hex).
 //   - Size       — byte length of the image file.
+//   - IsSecurity — this release fixes a security defect.
+//   - Severity   — one of osdist.Severities; required with IsSecurity, forbidden without.
+//   - Notes      — short single-line link-free release note shown to the box owner.
+//
+// # This struct IS the signed surface
+//
+// It must describe exactly the same JSON keys as osdist.StableManifest and
+// services/ota.Manifest.  When it did not — the three severity fields existed on
+// the box side and nowhere here — canonical(manifest) grew a key no signature
+// covered, and the moment a publisher set one, no manifest could ever have
+// verified again.  TestManifestPayloadMatchesTheVerifiers (manifestsurface_test.go)
+// and services/ota's TestManifestSignedSurfaceMatchesSigner both fail if any one
+// of the three moves alone.
+//
+// The severity fields carry `omitempty` so a release that sets none of them
+// canonicalises to the byte-identical seven-key document it always did — every
+// signature already issued keeps verifying.  See osdist.StableManifest's doc for
+// the full compatibility argument.
 type ManifestPayload struct {
 	Channel    string `json:"channel"`
 	Latest     string `json:"latest"`
@@ -138,16 +162,27 @@ type ManifestPayload struct {
 	ReleasedAt string `json:"released_at"` // RFC 3339, informational
 	RootHash   string `json:"roothash"`
 	Size       int64  `json:"size"`
+	IsSecurity bool   `json:"is_security,omitempty"`
+	Severity   string `json:"severity,omitempty"`
+	Notes      string `json:"notes,omitempty"`
 }
 
 // SignManifest signs a ManifestPayload with the release private key.
 // Returns a Signature suitable for serialisation with signing.MarshalSig.
+//
+// It REFUSES to sign an inconsistent or unrenderable release-severity surface
+// (osdist.ValidateSecuritySurface) — the same rule every verifier applies. A
+// signer that will happily sign what no box will read produces artifacts that
+// fail in the field instead of at the ceremony.
 //
 // The caller MUST have validated the release cert (ValidateReleaseCert) before
 // trusting output from this function on the verifier side.
 func SignManifest(releasePriv ed25519.PrivateKey, keyID string, payload ManifestPayload) (signing.Signature, error) {
 	if len(releasePriv) != ed25519.PrivateKeySize {
 		return signing.Signature{}, errors.New("sign: releasePriv must be a valid Ed25519 private key")
+	}
+	if err := osdist.ValidateSecuritySurface(payload.IsSecurity, payload.Severity, payload.Notes); err != nil {
+		return signing.Signature{}, fmt.Errorf("sign: %w", err)
 	}
 	canonical, err := signing.Canonical(payload)
 	if err != nil {

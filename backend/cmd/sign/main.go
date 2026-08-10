@@ -59,8 +59,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"vulos/backend/services/osdist"
 	"vulos/backend/services/signing"
 )
 
@@ -186,7 +188,22 @@ Subcommands:
         -size          image file size in bytes
         -min-epoch     epoch to embed in the signed manifest
         -released-at   release timestamp RFC 3339 (default: now)
+        -security      mark this release as fixing a security defect. Raises the
+                       owner's OS-update banner and fires ONE priority
+                       notification per new version. Requires -severity.
+        -severity      ` + strings.Join(osdist.Severities, "|") + ` — required with
+                       -security, and refused without it.
+        -notes         short single-line release note shown to the box owner in
+                       Settings → OS Update, and used as the security
+                       notification's body. At most ` + strconv.Itoa(osdist.MaxNotesBytes) + ` bytes, printable
+                       text only, and NO LINKS ("://" / "www."): the only place
+                       an update note may send the owner is the button the box
+                       draws itself.
         -out           path to write the .sig file (default: manifest.sig)
+
+      -security/-severity/-notes are INSIDE the signed surface. Omitting all
+      three produces the byte-identical seven-key document earlier releases
+      signed, so every signature already issued keeps verifying.
 
 `)
 }
@@ -381,6 +398,9 @@ func cmdSignManifest(args []string) {
 	sizeStr := fs.String("size", "0", "image file size in bytes")
 	minEpochStr := fs.String("min-epoch", "0", "epoch to embed in the signed manifest")
 	releasedAt := fs.String("released-at", "", "release timestamp RFC 3339 (default: now)")
+	isSecurity := fs.Bool("security", false, "this release fixes a security defect (requires -severity)")
+	severity := fs.String("severity", "", "severity of the fixed defect: "+strings.Join(osdist.Severities, "|"))
+	notes := fs.String("notes", "", "short single-line link-free release note shown to the box owner")
 	outPath := fs.String("out", "manifest.sig", "output path for the .sig file")
 	_ = fs.Parse(args)
 
@@ -415,6 +435,14 @@ func cmdSignManifest(args []string) {
 		fatalf(1, "sign-manifest: invalid -released-at %q: %v", ts, err)
 	}
 
+	// The release-severity surface is checked HERE, before the key file is even
+	// read, so a bad -severity/-notes is a usage error (exit 1) at the ceremony
+	// rather than an artifact that every box in the field refuses.
+	// SignManifest re-checks it — this is the friendly message, that is the gate.
+	if err := osdist.ValidateSecuritySurface(*isSecurity, *severity, *notes); err != nil {
+		fatalf(1, "sign-manifest: %v", err)
+	}
+
 	releasePriv, err := readPrivateKey(*releasePrivPath)
 	if err != nil {
 		fatalf(2, "sign-manifest: read release private key: %v", err)
@@ -428,6 +456,9 @@ func cmdSignManifest(args []string) {
 		ReleasedAt: ts,
 		RootHash:   *roothash,
 		Size:       size,
+		IsSecurity: *isSecurity,
+		Severity:   *severity,
+		Notes:      *notes,
 	}
 
 	sig, err := SignManifest(releasePriv, *keyID, payload)
@@ -446,6 +477,12 @@ func cmdSignManifest(args []string) {
 	fmt.Printf("  channel: %s\n", payload.Channel)
 	fmt.Printf("  latest:  %s\n", payload.Latest)
 	fmt.Printf("  epoch:   %d\n", payload.MinEpoch)
+	if payload.IsSecurity {
+		fmt.Printf("  SECURITY RELEASE (severity %s) — boxes will notify their owner once\n", payload.Severity)
+	}
+	if payload.Notes != "" {
+		fmt.Printf("  notes:   %s\n", payload.Notes)
+	}
 }
 
 // ─── I/O helpers ─────────────────────────────────────────────────────────────

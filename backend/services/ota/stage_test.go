@@ -689,16 +689,25 @@ func TestCheck_VerifiesTheBytesTheSignerSigned(t *testing.T) {
 	}
 }
 
-// TestManifestSignedSurfaceMatchesSigner keeps the three struct definitions from
-// drifting apart again: Manifest, manifestSigPayload and signedManifestKeys must
-// describe the SAME seven JSON keys that cmd/sign/pki.go:ManifestPayload signs.
-// Re-adding an is_security field to Manifest without extending the signer fails
-// here.
+// TestManifestSignedSurfaceMatchesSigner keeps the struct definitions from
+// drifting apart again: Manifest, manifestSigPayload, signedManifestKeys AND
+// osdist.StableManifest must describe the SAME ten JSON keys that
+// cmd/sign/pki.go:ManifestPayload signs. Adding a field to any one of them alone
+// fails here — which is what happened when is_security/severity/notes existed on
+// the box side and nowhere in the signer, making every manifest unverifiable the
+// moment one was set.
+//
+// cmd/sign is package main and cannot be imported, so its field set is
+// TRANSCRIBED below. That transcription is not the only thing holding it:
+// cmd/sign/manifestsurface_test.go asserts the same list from the signer's side
+// AND cross-checks ManifestPayload against osdist.StableManifest by
+// canonicalising both, so a change made only in cmd/sign fails there.
 func TestManifestSignedSurfaceMatchesSigner(t *testing.T) {
 	// The field set cmd/sign/pki.go:ManifestPayload signs, transcribed.
 	want := map[string]struct{}{
 		"channel": {}, "latest": {}, "min_epoch": {}, "path": {},
 		"released_at": {}, "roothash": {}, "size": {},
+		"is_security": {}, "severity": {}, "notes": {},
 	}
 	if !reflect.DeepEqual(want, signedManifestKeys) {
 		t.Errorf("signedManifestKeys = %v, want %v", signedManifestKeys, want)
@@ -709,6 +718,7 @@ func TestManifestSignedSurfaceMatchesSigner(t *testing.T) {
 	}{
 		{"Manifest", reflect.TypeOf(Manifest{})},
 		{"manifestSigPayload", reflect.TypeOf(manifestSigPayload{})},
+		{"osdist.StableManifest", reflect.TypeOf(osdist.StableManifest{})},
 	} {
 		got := map[string]struct{}{}
 		for i := 0; i < tc.typ.NumField(); i++ {
@@ -719,6 +729,83 @@ func TestManifestSignedSurfaceMatchesSigner(t *testing.T) {
 			t.Errorf("%s covers %v, but the release key signs %v — "+
 				"a field outside the signed set is unauthenticated data", tc.name, got, want)
 		}
+	}
+
+	// The three severity fields must be `omitempty` in every definition. That is
+	// not a style preference, it is THE compatibility contract: signing.Canonical
+	// drops a zero value, so a release that sets none of them canonicalises to
+	// the byte-identical seven-key document earlier releases signed. Drop
+	// omitempty from any one of these and every signature ever issued stops
+	// verifying — silently, on boxes in the field, not here.
+	for _, tc := range []struct {
+		name string
+		typ  reflect.Type
+	}{
+		{"Manifest", reflect.TypeOf(Manifest{})},
+		{"manifestSigPayload", reflect.TypeOf(manifestSigPayload{})},
+		{"osdist.StableManifest", reflect.TypeOf(osdist.StableManifest{})},
+	} {
+		for i := 0; i < tc.typ.NumField(); i++ {
+			f := tc.typ.Field(i)
+			parts := strings.Split(f.Tag.Get("json"), ",")
+			switch parts[0] {
+			case "is_security", "severity", "notes":
+			default:
+				continue
+			}
+			if len(parts) < 2 || parts[1] != "omitempty" {
+				t.Errorf("%s.%s has json tag %q — the severity fields MUST be omitempty, "+
+					"or a manifest that sets none of them no longer canonicalises to the "+
+					"seven-key bytes every already-issued signature covers",
+					tc.name, f.Name, f.Tag.Get("json"))
+			}
+		}
+	}
+}
+
+// TestSevenFieldManifestCanonicalisesUnchanged is the compatibility claim itself,
+// measured rather than asserted: a manifest that sets none of the severity fields
+// must canonicalise to the EXACT seven-key bytes the pre-existing signers
+// produced, so every signature already issued (keys/release-cert.json's
+// release-2026-08 among them) keeps verifying with no re-signing.
+//
+// The expected document is a hard-coded literal, not a re-derivation — a
+// re-derivation would move in lockstep with the bug.
+func TestSevenFieldManifestCanonicalisesUnchanged(t *testing.T) {
+	const want = `{"channel":"stable","latest":"v08","min_epoch":3,` +
+		`"path":"os/v08/os-core.squashfs","released_at":"2026-05-20T09:00:00Z",` +
+		`"roothash":"deadbeef","size":734003200}`
+
+	got, err := signing.Canonical(manifestSigPayload{
+		Channel:    "stable",
+		Latest:     "v08",
+		MinEpoch:   3,
+		Path:       "os/v08/os-core.squashfs",
+		ReleasedAt: "2026-05-20T09:00:00Z",
+		RootHash:   "deadbeef",
+		Size:       734003200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Errorf("a manifest with no severity fields now canonicalises to\n  %s\nwant\n  %s\n"+
+			"every signature already issued over the seven-key shape has just been invalidated", got, want)
+	}
+
+	// ...and the same document parsed through osdist's model must reproduce it
+	// too, since a single stable.json serves both verification models.
+	var sm osdist.StableManifest
+	if err := json.Unmarshal([]byte(want), &sm); err != nil {
+		t.Fatal(err)
+	}
+	osdistBytes, err := sm.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(osdistBytes) != want {
+		t.Errorf("osdist.StableManifest re-canonicalises the same seven-key document as\n  %s\nwant\n  %s",
+			osdistBytes, want)
 	}
 }
 

@@ -45,7 +45,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"vulos/backend/services/signing"
 )
@@ -83,8 +86,36 @@ var ErrEpochTooLow = errors.New("osdist: min_epoch below floor")
 //	  "roothash":    "<hex dm-verity root hash>",
 //	  "size":        734003200,
 //	  "released_at": "2026-05-20T09:00:00Z",
-//	  "path":        "os/v08/os-core.squashfs"
+//	  "path":        "os/v08/os-core.squashfs",
+//	  "is_security": true,
+//	  "severity":    "critical",
+//	  "notes":       "Fixes CVE-2026-1234 in the boot verifier."
 //	}
+//
+// # The release-severity surface, and why it is `omitempty`
+//
+// is_security/severity/notes are INSIDE the signed surface — they are part of
+// the same canonical bytes the release key signs (`cmd/sign sign-manifest`
+// -security/-severity/-notes).  Anything a box shows its owner about a release
+// has to be, or it is attacker-appendable to a legitimately signed document.
+//
+// All three carry `omitempty`, and that is what makes the addition compatible
+// rather than breaking: [signing.Canonical] drops a zero value entirely, so a
+// manifest that sets none of them canonicalises to EXACTLY the seven-key bytes
+// it did before these fields existed.  Every signature already issued keeps
+// verifying, byte for byte, with no format version, no dual-verify path and no
+// re-signing ceremony.  A box that meets an old-shape manifest reads
+// is_security=false / severity="" / notes="" — the honest report of a release
+// that says nothing about severity.
+//
+// The corollary, stated plainly because it looks like a hole and is not: an
+// attacker CAN append `"is_security": false` (or `"severity": ""`, or
+// `"notes": ""`) to a signed seven-key document and the signature still
+// verifies, because those canonicalise away.  That is sound.  The canonical
+// form is what is authenticated, and every document sharing a canonical form
+// has the same meaning.  Any value that CHANGES the meaning changes the
+// canonical bytes, and then the signature fails — including flipping a signed
+// is_security from true to false, which is the interesting direction.
 type StableManifest struct {
 	// Channel is the update channel, e.g. "stable" or "edge".
 	Channel string `json:"channel"`
@@ -112,6 +143,141 @@ type StableManifest struct {
 	// Path is the bucket-relative path to the squashfs image,
 	// e.g. "os/v08/os-core.squashfs".
 	Path string `json:"path"`
+
+	// IsSecurity marks this release as fixing a security defect.  It is what
+	// raises the OS-update panel's banner and fires the box owner's priority
+	// notification (cmd/server/routes_ota.go), so it is signed like everything
+	// else the owner is shown.
+	IsSecurity bool `json:"is_security,omitempty"`
+
+	// Severity classifies that defect.  It is a CLOSED SET
+	// ([SeverityLow]..[SeverityCritical]) rather than free text: the string is
+	// rendered to the owner beside the word "Security update", and a closed set
+	// is the difference between a badge and an attacker-chosen sentence.
+	// Required when IsSecurity, and forbidden without it — "critical" on a
+	// release that fixes no vulnerability is exactly the scare copy this pairing
+	// rule removes.
+	Severity string `json:"severity,omitempty"`
+
+	// Notes is a SHORT, SINGLE-LINE, LINK-FREE release note, rendered verbatim
+	// to the box owner in Settings → OS Update and used as the body of the
+	// security push notification.  See [ValidateReleaseNotes] for the exact
+	// constraints and the reasoning; the short version is that a signed field a
+	// human reads and acts on is still a social-engineering surface, so it is
+	// bounded, printable and cannot carry a link.
+	Notes string `json:"notes,omitempty"`
+}
+
+// ─── The release-severity surface ────────────────────────────────────────────
+
+// Severity values for [StableManifest.Severity].  This is the complete set;
+// anything else is refused by [ValidateSecuritySurface] at the signer and at
+// every verifier.
+const (
+	SeverityLow      = "low"
+	SeverityMedium   = "medium"
+	SeverityHigh     = "high"
+	SeverityCritical = "critical"
+)
+
+// Severities is the closed set of accepted [StableManifest.Severity] values, in
+// increasing order.
+var Severities = []string{SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical}
+
+// MaxNotesBytes bounds [StableManifest.Notes].  It is sized for a push
+// notification body — the surface the string actually lands on — not for a
+// changelog.  A release with more to say publishes it where the box does not
+// render it unread.
+const MaxNotesBytes = 200
+
+// ErrSecuritySurface is returned when is_security/severity/notes are internally
+// inconsistent, or when notes carries something that must never be rendered to
+// the box owner.  Signers refuse to sign it; verifiers refuse to read it.
+var ErrSecuritySurface = errors.New("osdist: invalid release-severity surface")
+
+// ValidateSecuritySurface enforces the is_security/severity/notes rules that
+// `cmd/sign sign-manifest`, [ParseAndVerify] and the services/ota client all
+// apply to the SAME bytes.  It lives here, in one place, because three
+// independently maintained copies of a signing rule is precisely how this
+// manifest's signed surface came to disagree with its signer in the first place.
+//
+// The rules:
+//
+//   - is_security ⇒ severity must be one of [Severities].
+//   - !is_security ⇒ severity must be empty.
+//   - notes must satisfy [ValidateReleaseNotes].
+//
+// Being inside the signed surface is necessary but not sufficient. A signature
+// proves the release key said it; it does not make an unbounded attacker-chosen
+// string safe to put in front of the box owner. These rules are what make the
+// two fields renderable.
+func ValidateSecuritySurface(isSecurity bool, severity, notes string) error {
+	switch {
+	case isSecurity && !validSeverity(severity):
+		return fmt.Errorf("%w: is_security requires severity to be one of %s, got %q",
+			ErrSecuritySurface, strings.Join(Severities, "/"), severity)
+	case !isSecurity && severity != "":
+		return fmt.Errorf("%w: severity %q on a release that is not marked is_security",
+			ErrSecuritySurface, severity)
+	}
+	return ValidateReleaseNotes(notes)
+}
+
+func validSeverity(s string) bool {
+	for _, v := range Severities {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateReleaseNotes constrains the one free-text field the box renders to its
+// owner.
+//
+// The threat is not markup — Settings renders the string as text, and React
+// escapes it — the threat is the HUMAN. This string is shown beside a "Download
+// & stage update" button and is used verbatim as the body of a high-priority
+// push notification. Whoever writes it is telling the box owner what to do next.
+// Signing it makes it attributable to the release key; it does not make it safe.
+// So:
+//
+//   - at most [MaxNotesBytes] bytes, and valid UTF-8 — one notification body,
+//     bounded before it is ever allocated or rendered;
+//   - no control characters, so it cannot flood the panel with blank lines
+//     (Settings renders it `whitespace-pre-wrap`) or truncate a log line;
+//   - no Unicode format characters (category Cf: bidi overrides, zero-width
+//     joiners), which are how a string is made to read as something other than
+//     its bytes;
+//   - NO LINKS — no "://" and no "www.". This is the one rule that removes a
+//     capability rather than tidying a string. The only legitimate action for an
+//     OS update is the button the box draws itself; an update note that hands
+//     the owner somewhere else to go is a phishing primitive whether or not the
+//     signature is good, and it is worth exactly nothing to a real release.
+func ValidateReleaseNotes(notes string) error {
+	if notes == "" {
+		return nil
+	}
+	if len(notes) > MaxNotesBytes {
+		return fmt.Errorf("%w: notes is %d bytes, the limit is %d",
+			ErrSecuritySurface, len(notes), MaxNotesBytes)
+	}
+	if !utf8.ValidString(notes) {
+		return fmt.Errorf("%w: notes is not valid UTF-8", ErrSecuritySurface)
+	}
+	for _, r := range notes {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return fmt.Errorf("%w: notes contains the non-printing character %U — "+
+				"it must be a single line of printable text", ErrSecuritySurface, r)
+		}
+	}
+	for _, link := range []string{"://", "www."} {
+		if strings.Contains(strings.ToLower(notes), link) {
+			return fmt.Errorf("%w: notes contains %q — an update note must never "+
+				"send the box owner to a link", ErrSecuritySurface, link)
+		}
+	}
+	return nil
 }
 
 // ─── Canonical bytes ─────────────────────────────────────────────────────────
@@ -160,6 +326,15 @@ func ParseAndVerify(data []byte, sig []byte, signerPub ed25519.PublicKey, epochF
 	// 2. Basic structural validation — required string fields must be non-empty.
 	if m.Channel == "" || m.Latest == "" || m.RootHash == "" || m.Path == "" {
 		return nil, fmt.Errorf("%w: missing required fields (channel/latest/roothash/path)", ErrMalformed)
+	}
+
+	// 2b. The release-severity surface.  Refused BEFORE the signature check on
+	//     purpose: a valid signature over an unrenderable note is still an
+	//     unrenderable note, and this is the gate that says so regardless of who
+	//     signed it.  A compromised release key must not be able to put a link
+	//     in front of the box owner just because it can sign.
+	if err := ValidateSecuritySurface(m.IsSecurity, m.Severity, m.Notes); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
 
 	// 3. Compute canonical bytes for verification.

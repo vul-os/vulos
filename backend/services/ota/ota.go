@@ -257,39 +257,53 @@ var (
 
 // Manifest is the in-memory form of the channel's stable.json.
 //
-// These seven fields ARE the signed surface, and they mirror
+// These ten fields ARE the signed surface, and they mirror
 // osdist.StableManifest's on-disk schema exactly (same JSON field names), so a
 // single stable.json serves both verification models.
 //
-// # Why there are no is_security / severity / notes fields here
+// # is_security / severity / notes are signed now, and that is the whole point
 //
-// There were, with `omitempty`, on the reasoning that a manifest omitting them
-// canonicalizes byte-identically so old signatures keep verifying — and that
-// once the publish side started setting them they would be "part of the same
-// canonical(Manifest) that the release key signs". That second half was not
-// true and could not become true: `cmd/sign sign-manifest` signs a SEVEN-field
-// ManifestPayload {channel, latest, min_epoch, path, released_at, roothash,
-// size} and takes no flag for anything else. The moment a publisher set
-// is_security, canonical(Manifest) would have grown a key the signature did
-// not cover and NO signature could ever have matched again — a guaranteed
-// mismatch, latent until the day the feature was first used.
+// They used to exist here with `omitempty` while `cmd/sign sign-manifest` signed
+// a SEVEN-field ManifestPayload with no flag for any of them. The moment a
+// publisher set is_security, canonical(Manifest) would have grown a key the
+// signature did not cover and NO manifest could ever have verified again. They
+// were removed rather than ignored, because the alternative is worse than a
+// mismatch: a field outside the signed surface is attacker-APPENDABLE to a
+// legitimately signed stable.json without disturbing the signature, and `notes`
+// is rendered to the box owner in Settings → OS Update.
 //
-// Removing them, rather than teaching this client to ignore them, is the fix
-// because the alternative is worse than a mismatch: fields outside the signed
-// surface are attacker-appendable. Anyone able to modify a legitimately signed
-// stable.json in transit could add `"notes": "..."` without disturbing the
-// seven-field signature, and that string is rendered to the box owner in
-// Settings → OS Update. Reading unauthenticated fields as though they were
-// signed is exactly the mistake the rest of this package exists to avoid, so
-// signedManifestKeys below REFUSES a manifest that carries any key outside the
-// signed set instead.
+// The consequence was that the security-update notification in
+// cmd/server/routes_ota.go could never fire. Making it real meant extending the
+// SIGNING surface, in the three places that must move together — cmd/sign's
+// ManifestPayload plus its flags, osdist.StableManifest, and this struct — which
+// is what has now happened. TestManifestSignedSurfaceMatchesSigner fails if any
+// one of them moves alone.
 //
-// Making is_security real therefore means extending the SIGNING surface first,
-// in three places that must move together: cmd/sign's ManifestPayload (plus its
-// flags), osdist.StableManifest, and this struct. Until then UpdateStatus's
-// IsSecurity/Severity/Notes stay zero — the honest report of a manifest that
-// says nothing about severity, rather than a report of what an unsigned field
-// claimed.
+// # Compatibility: additive `omitempty`, no format version
+//
+// signing.Canonical drops a zero value entirely, so a manifest that sets none of
+// the three canonicalises to EXACTLY the seven-key bytes it did before. Every
+// signature already issued keeps verifying, byte for byte — no versioned
+// payload, no dual-verify path, no re-signing ceremony. A box meeting an
+// old-shape manifest reads is_security=false: the honest report of a release
+// that says nothing about severity.
+//
+// A `"format": 2` discriminator was considered and rejected. It would itself
+// have to be inside the signed surface, which means every existing signature
+// becomes invalid the day it is introduced, in exchange for nothing —
+// `omitempty` already encodes "this publisher said nothing" unambiguously.
+//
+// The corollary that looks like a hole and is not: an attacker CAN append
+// `"is_security": false` to a signed seven-key document and the signature still
+// verifies, because it canonicalises away. Sound — the canonical form is what is
+// authenticated, and every document sharing one has the same meaning. A value
+// that CHANGES the meaning changes the canonical bytes and the signature fails,
+// including flipping a signed is_security from true to false.
+//
+// Being signed is necessary but not sufficient: severity is a closed set and
+// notes is bounded, printable and link-free (osdist.ValidateSecuritySurface),
+// because a signature proves who wrote a string, not that it is safe to put in
+// front of the box owner.
 type Manifest struct {
 	Channel    string    `json:"channel"`
 	Latest     string    `json:"latest"`
@@ -298,6 +312,9 @@ type Manifest struct {
 	Size       int64     `json:"size"`
 	ReleasedAt time.Time `json:"released_at"`
 	Path       string    `json:"path"`
+	IsSecurity bool      `json:"is_security,omitempty"`
+	Severity   string    `json:"severity,omitempty"`
+	Notes      string    `json:"notes,omitempty"`
 }
 
 // manifestSigPayload is the EXACT surface `cmd/sign sign-manifest` signs
@@ -309,6 +326,11 @@ type Manifest struct {
 //
 // It is declared here rather than imported because cmd/sign is package main.
 // TestManifestSignedSurfaceMatchesSigner pins it against the field set.
+//
+// The three severity fields carry `omitempty` for the SAME reason the signer
+// does: canonical() must reproduce the signer's bytes, and the signer omits
+// them when they are unset. Without omitempty here, an old seven-key manifest
+// would canonicalise to nine keys and every existing signature would fail.
 type manifestSigPayload struct {
 	Channel    string `json:"channel"`
 	Latest     string `json:"latest"`
@@ -317,6 +339,9 @@ type manifestSigPayload struct {
 	ReleasedAt string `json:"released_at"`
 	RootHash   string `json:"roothash"`
 	Size       int64  `json:"size"`
+	IsSecurity bool   `json:"is_security,omitempty"`
+	Severity   string `json:"severity,omitempty"`
+	Notes      string `json:"notes,omitempty"`
 }
 
 // signedManifestKeys is the complete set of stable.json keys covered by the
@@ -325,6 +350,7 @@ type manifestSigPayload struct {
 var signedManifestKeys = map[string]struct{}{
 	"channel": {}, "latest": {}, "min_epoch": {}, "path": {},
 	"released_at": {}, "roothash": {}, "size": {},
+	"is_security": {}, "severity": {}, "notes": {},
 }
 
 // canonicalSigned returns the deterministic signed byte range for the manifest
@@ -353,7 +379,8 @@ func parseManifest(data []byte) (*Manifest, error) {
 	for k := range raw {
 		if _, ok := signedManifestKeys[k]; !ok {
 			return nil, fmt.Errorf("%w: field %q is outside the signed manifest surface "+
-				"(cmd/sign sign-manifest covers channel/latest/min_epoch/path/released_at/roothash/size) — "+
+				"(cmd/sign sign-manifest covers channel/latest/min_epoch/path/released_at/roothash/size"+
+				"/is_security/severity/notes) — "+
 				"refusing to read a field no signature covers", ErrManifestMalformed, k)
 		}
 	}
@@ -363,6 +390,15 @@ func parseManifest(data []byte) (*Manifest, error) {
 	}
 	if m.Channel == "" || m.Latest == "" || m.RootHash == "" || m.Path == "" {
 		return nil, fmt.Errorf("%w: missing required fields (channel/latest/roothash/path)", ErrManifestMalformed)
+	}
+	// The severity surface is refused here, BEFORE the signature is checked, and
+	// deliberately so: a valid signature over a 4 kB note carrying a link is
+	// still a link in front of the box owner. This gate holds whoever signed it,
+	// which is the point — the release key is the very thing that would be
+	// compromised in the case it defends against. osdist owns the rule so the
+	// signer and both verifiers cannot drift apart on it.
+	if err := osdist.ValidateSecuritySurface(m.IsSecurity, m.Severity, m.Notes); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrManifestMalformed, err)
 	}
 	return &m, nil
 }
@@ -387,13 +423,12 @@ type UpdateStatus struct {
 	// Settings → OS Update screen and the priority notification in
 	// cmd/server/routes_ota.go consume.
 	//
-	// They are currently ALWAYS ZERO, and that is deliberate rather than
-	// unfinished: no signer in this repository covers them (see Manifest's doc
-	// comment), so the only way to populate them would be to read fields the
-	// release key never signed. They stay in the wire shape because the
-	// frontend already parses them and because they are what the signing
-	// surface must grow to carry; they do not get filled from unauthenticated
-	// data in the meantime.
+	// Every one of them is copied from a manifest field the release key SIGNED
+	// and that osdist.ValidateSecuritySurface has already accepted — never from
+	// a key the signature does not cover, which is what parseManifest's
+	// signedManifestKeys check exists to prevent. Like LatestVersion they are
+	// only set when an update is actually Available: a box already running the
+	// latest version has nothing to be warned about.
 	IsSecurity bool   `json:"is_security,omitempty"`
 	Severity   string `json:"severity,omitempty"`
 	Notes      string `json:"notes,omitempty"`
@@ -691,8 +726,13 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 	}
 	if status.Available {
 		status.LatestVersion = manifest.Latest
-		// IsSecurity/Severity/Notes are intentionally NOT set: no signature in
-		// this repository covers them (see Manifest / UpdateStatus docs).
+		// The release-severity surface, carried from the manifest the release key
+		// signed and that parseManifest has already validated. This is what makes
+		// the owner's priority notification (cmd/server/routes_ota.go) able to
+		// fire at all; it could not before, because nothing signed these fields.
+		status.IsSecurity = manifest.IsSecurity
+		status.Severity = manifest.Severity
+		status.Notes = manifest.Notes
 		if !manifest.ReleasedAt.IsZero() {
 			t := manifest.ReleasedAt
 			status.PublishedAt = &t
