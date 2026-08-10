@@ -324,6 +324,12 @@ Two practical notes:
 - **Privileged ports.** 443 and 53 need root (or `CAP_NET_BIND_SERVICE`). If you run the backend as an unprivileged user, override both addresses (e.g. `VULOS_LAN_HTTPS_ADDR=:8443 VULOS_LAN_DNS_ADDR=:5354`) and adjust clients accordingly.
 - **Containers and CI.** Multicast is often unavailable inside containers (no `CAP_NET_RAW`, no multicast-capable interface). The LAN layer treats mDNS as best-effort in that case: the HTTPS listener still comes up, only zero-config discovery is lost.
 
+### Native client pairing (pinning this box's LAN certificate)
+
+A native client (`clients/core/`) is meant to trust this box's LAN TLS certificate by **pinning its public key (SPKI SHA-256)** at first connection, rather than relying on a public certificate authority — the same trust-on-first-use model SSH and Syncthing use. `GET /api/lan/pairing` (session-gated like any other authenticated OS route) and `vulos -print-pairing` (a one-shot console print, for an operator at the console or over SSH) both expose the same payload: the box's name, LAN address, SPKI fingerprint, and a `vulos://pair?...` URI. In the OS shell this is surfaced as **Settings → Native Pairing** (rendered as a QR code plus the fingerprint in text, for reading aloud over a trusted channel).
+
+**This is the box side of the mechanism only.** `clients/core/` implements the pin/verify/store logic, but as of this writing no shell — desktop, Android, or iOS — calls it, and there is no camera-scanning UI anywhere to consume the QR code. Nothing connects end to end for a real user today; this exists so the payload is ready once a client scans it.
+
 ### Same-LAN box-to-box sync (fabric)
 
 If you run more than one box on a LAN, the fabric sync loop discovers sibling boxes over mDNS and exchanges app-registry changesets directly — no cloud, no S3. It is gated on a shared secret: set the same `VULOS_FABRIC_SECRET` on every sibling box. Without the secret the exchange handlers stay **off (fail-closed)** rather than open an unauthenticated endpoint. The fabric handlers are mounted only on the LAN-pinned listener, never on the public surface.

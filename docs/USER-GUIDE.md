@@ -373,24 +373,30 @@ New notifications also appear briefly as **toasts**. Notifications come from two
 
 ### Do Not Disturb
 
-The toggle at the bottom of the notification panel (also in **Settings → Notifications**). DND silences pop-ups; notifications still collect quietly in the bell. The box also honours DND before sending Web Push, so a muted box doesn't buzz your phone.
+The toggle at the bottom of the notification panel (also in **Settings → Notifications**) is a **local, per-browser mute**: anyone signed in can flip it, it silences pop-up toasts on this device only, and notifications still collect quietly in the bell. It lives entirely in this browser's storage — the box is never told about it, so **it does not stop Web Push**: a phone with this browser's Do Not Disturb on will still buzz for a notification that would otherwise push.
 
-> **DND is box-wide, and only an admin can change it.** There is one DND state
-> for the whole box (`~/.vulos/db/dnd.json`), and the delivery path consults it
-> without reference to who a notification is for. Turning it on silences *every*
-> account, so `POST /api/notifications/dnd` is admin-only (DND-SCOPE-01);
-> reading the current state (`GET /api/notifications/dnd`) is open to any
-> signed-in user. The consequence, stated plainly: **a non-admin profile cannot
-> silence their own notifications at all.** Per-user DND is not implemented —
-> it would need DND keyed by recipient and consulted per delivery.
+> **A separate, box-wide DND also exists, and it's the one Web Push honours —
+> but there is no toggle for it anywhere in the UI today.** `~/.vulos/db/dnd.json`
+> holds one DND state for the whole box, consulted by the delivery path without
+> reference to who a notification is for; Web Push checks it before sending, so
+> turning it on really does stop your phone from buzzing (see the "Sovereign
+> Web Push" entry in [ARCHITECTURE.md](ARCHITECTURE.md)). Because
+> turning it on silences *every* account, `POST /api/notifications/dnd` is
+> admin-only (DND-SCOPE-01) while `GET /api/notifications/dnd` (read the
+> current state) is open to any signed-in user. The only caller of the write
+> side today is internal, not a Settings control: a profile whose layout is
+> set to car/driving automatically sets this box-wide DND to "total" while
+> that layout is active and clears it again on exit. Per-user DND is not
+> implemented; it would need DND keyed by recipient and consulted per
+> delivery.
 
 ### Settings → Notifications
 
-- **Do Not Disturb** (box-wide, admin-only — see above) and **Notification sounds** toggles.
+- **Do Not Disturb** — the local, per-browser mute described above, not the box-wide one. **Notification sounds** toggle alongside it.
 - **This device — Push notifications**: an opt-in, per-device Web Push toggle. When on, your box notifies this browser even while the Vulos tab is closed. The payload is end-to-end encrypted (RFC 8291) — whatever relays it can't read it. The toggle is honest about why it can't be enabled when it can't: unsupported browser, no send-path configured on the box, or permission blocked in the browser.
 - **Sources**: turn a source (Mail, Assistant, System, …) off entirely — it stops being collected at all, not just silenced.
 
-Notification preferences live on this device (browser storage), matching the per-device nature of Web Push.
+Notification preferences live on this device (browser storage), matching the per-device nature of Web Push — which is also why this pane's Do Not Disturb can't be the box-wide one described above.
 
 **UnifiedPush — an Android-only alternative, API-only for now.** Alongside Web Push, the box can also send to a push endpoint YOU nominate instead of a browser vendor — the [UnifiedPush](https://unifiedpush.org) standard, where you install a "distributor" app (e.g. ntfy, which you can self-host) that hands you an endpoint URL. Registering one removes the vendor from the delivery path entirely, which Web Push cannot do on Android. This exists today as a backend capability the box exposes (`POST /api/notifications/unifiedpush/subscribe`, opt-in via an operator flag) — there is no Settings toggle for it yet, so using it means registering the endpoint yourself rather than clicking a button. It changes nothing about Web Push, which keeps working exactly as described above whether or not UnifiedPush is also configured. There is no UnifiedPush distributor for iOS, so this option does not touch the iOS exception below.
 
