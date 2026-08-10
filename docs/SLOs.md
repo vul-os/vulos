@@ -1,16 +1,48 @@
 # Vulos OS – Service Level Objectives
 
-| # | Surface | Target | Measurement | Error budget (99.9% / month) | Rollback trigger |
-|---|---------|--------|-------------|------------------------------|------------------|
-| 1 | **App launch p95** | < 3 s from cold (WebSocket ready) | Histogram from `vulos_request_duration_seconds`, filter op=`app.launch` | 43.2 min/month | p95 > 5 s for 5 consecutive minutes |
-| 2 | **Device-pair API p99** | < 500 ms | Same histogram, op=`device.pair` | 43.2 min/month | p99 > 1 s sustained 3 min |
-| 3 | **API error rate** | < 0.5% of requests | `vulos_error_count_total / vulos_request_count_total` over 5 min | 26 min/month of >0.5% | Rate > 2% for 2 min → halt deploy + page oncall |
-| 4 | **Backend availability** | 99.5% | HTTP `/health` success ratio from synthetic probe (30 s interval) | 3.6 h/month | 3 consecutive failures → restart + alert |
-| 5 | **Auth token issuance p95** | < 200 ms | Histogram, op=`auth.login` | 43.2 min/month | p95 > 400 ms for 5 min |
-| 6 | **Sync queue drain** | Queue depth < 50 items within 60 s of burst | `vulos_queue_depth` gauge | N/A (advisory) | Depth > 200 for > 2 min → alert; > 500 → halt new deploys |
+> **Status: these are targets, not measurements. Five of the six cannot be
+> computed on a box today, and the reason is in the code, not the config.**
+>
+> Every SLO below except #4 is defined against a metric in
+> `backend/internal/obs/obs.go`. Those metrics are **registered** — so they do
+> appear in a `/metrics` scrape — but **nothing in the server ever records
+> them**. `vulos_request_count_total`, `vulos_request_duration_seconds`,
+> `vulos_error_count_total`, `vulos_queue_depth` and `vulos_cache_hit_ratio`
+> have no `Inc()`, `Set()` or `Observe()` call anywhere in `backend/` outside
+> `obs_test.go`. A scrape returns them as a permanent zero, which is worse than
+> their being absent: a dashboard built on them looks healthy.
+>
+> Separately, SLOs 1, 2 and 5 say "filter `op=…`". There is no such label to
+> filter on. `RequestDuration` is a plain `prometheus.NewHistogram`
+> (`obs.go:41`), not a `HistogramVec` — it carries no dimensions at all, so
+> per-operation latency cannot be expressed against it even once something
+> starts observing it.
+>
+> The metrics that *are* live are the assistant/sovereignty ones —
+> `vulos_assistant_guard_allowed_total`, `..._blocked_total`,
+> `..._proposals_pending`, `..._rag_mode` — recorded from
+> `routes_assistant.go` and `routes_models.go`. No SLO is defined on them.
+>
+> Closing this needs a code change (record the metrics; make the request
+> histogram a `HistogramVec` keyed by operation), not a doc change. Until then,
+> treat the table as the specification for what to measure once the
+> instrumentation exists.
+
+| # | Surface | Target | Intended measurement | Measurable today? | Error budget (99.9% / month) | Rollback trigger |
+|---|---------|--------|----------------------|-------------------|------------------------------|------------------|
+| 1 | **App launch p95** | < 3 s from cold (WebSocket ready) | Histogram from `vulos_request_duration_seconds`, op=`app.launch` | **No** — metric never observed; histogram has no `op` label | 43.2 min/month | p95 > 5 s for 5 consecutive minutes |
+| 2 | **Device-pair API p99** | < 500 ms | Same histogram, op=`device.pair` | **No** — same two reasons | 43.2 min/month | p99 > 1 s sustained 3 min |
+| 3 | **API error rate** | < 0.5% of requests | `vulos_error_count_total / vulos_request_count_total` over 5 min | **No** — both counters are permanently zero | 26 min/month of >0.5% | Rate > 2% for 2 min → halt deploy + page oncall |
+| 4 | **Backend availability** | 99.5% | HTTP `GET /health` success ratio from a synthetic probe (30 s interval) | **Yes** — `/health` is registered (`main.go:967`) and the probe is external to the metrics stack | 3.6 h/month | 3 consecutive failures → restart + alert |
+| 5 | **Auth token issuance p95** | < 200 ms | Histogram, op=`auth.login` | **No** — same two reasons as #1 | 43.2 min/month | p95 > 400 ms for 5 min |
+| 6 | **Sync queue drain** | Queue depth < 50 items within 60 s of burst | `vulos_queue_depth` gauge | **No** — gauge never set | N/A (advisory) | Depth > 200 for > 2 min → alert; > 500 → halt new deploys |
 
 ## Notes
 
 - **Error budget**: 99.9% availability = 43.2 min downtime / 28-day month.
 - **Rollback trigger** means: the deploy pipeline should pause and alert oncall; it does not automatically revert unless the CI/CD gate is configured to do so.
+- **`/metrics` is not public.** It is owner-scoped: the box owner's OS session, or
+  `VULOS_METRICS_TOKEN` presented as `Authorization: Bearer <token>`. An
+  unauthenticated scrape gets `403 metrics are owner-only`. See
+  [DEPLOY.md](DEPLOY.md#troubleshooting).
 - These SLOs apply to the self-hosted OSS build running on recommended hardware (Raspberry Pi 5 or equivalent x86_64) — the only build Vulos ships. There is no Vulos-operated/cloud-hosted deployment, so these are the complete SLOs.
