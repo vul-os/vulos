@@ -92,6 +92,10 @@ type release struct {
 	// size is what the manifest advertises. Defaults to len(image).
 	size int64
 
+	// releasedAt is the manifest's released_at STRING, exactly as the signer
+	// wrote it. Defaults to a whole-second UTC timestamp.
+	releasedAt string
+
 	certEpoch     int64
 	manifestEpoch int64
 
@@ -123,6 +127,7 @@ func newRelease(version string, image []byte) *release {
 		image:         image,
 		rootHash:      fixtureRootHash(image),
 		size:          int64(len(image)),
+		releasedAt:    "2026-05-20T09:00:00Z",
 		certEpoch:     1,
 		manifestEpoch: 1,
 	}
@@ -174,7 +179,7 @@ func (ch *fakeChannel) publishRelease(t *testing.T, r *release) {
 		Latest:     r.version,
 		MinEpoch:   r.manifestEpoch,
 		Path:       r.imagePath(),
-		ReleasedAt: "2026-05-20T09:00:00Z",
+		ReleasedAt: r.releasedAt,
 		RootHash:   r.rootHash,
 		Size:       r.size,
 	}
@@ -537,8 +542,11 @@ func TestStage_RejectsRetiredReleaseKey(t *testing.T) {
 	}
 
 	// The retired key republishes an older image at epoch 4.
+	// The CERT is the retired one; its manifest claims the current epoch, so
+	// only a check of the cert's OWN min_epoch can refuse this — and the cert
+	// is what authorises the release key that revocation is retiring.
 	old := newRelease("v08", []byte("older os-core squashfs image bytes .................."))
-	old.certEpoch, old.manifestEpoch = 4, 4
+	old.certEpoch, old.manifestEpoch = 4, 5
 	ch.publishRelease(t, old)
 
 	_, err := box.client.Stage(context.Background())
@@ -645,6 +653,29 @@ func TestCheck_RefusesFieldsNoSignatureCovers(t *testing.T) {
 	}
 	if status.IsSecurity || status.Notes != "" {
 		t.Errorf("unsigned metadata reached the owner-facing status: %+v", status)
+	}
+}
+
+// TestCheck_VerifiesTheBytesTheSignerSigned pins that the manifest's canonical
+// bytes are rebuilt from the SERVED DOCUMENT, not re-encoded from the parsed
+// Manifest. released_at is the field that exposes the difference: a signer
+// writing "…09:00:00.500Z" round-trips through time.Time as "…09:00:00.5Z", so
+// a client that canonicalises the parsed struct computes different bytes from
+// the ones the release key signed and rejects a perfectly good release.
+func TestCheck_VerifiesTheBytesTheSignerSigned(t *testing.T) {
+	ch := newFakeChannel(t)
+	r := newRelease("v09", []byte("image bytes"))
+	r.releasedAt = "2026-05-20T09:00:00.500Z"
+	ch.publishRelease(t, r)
+	box := newStageBox(t, ch)
+
+	status, err := box.client.Check(context.Background())
+	if err != nil {
+		t.Fatalf("a correctly signed manifest was rejected because its released_at "+
+			"does not survive a time.Time round-trip: %v", err)
+	}
+	if !status.Available || status.LatestVersion != "v09" {
+		t.Errorf("status = %+v, want v09 available", status)
 	}
 }
 
