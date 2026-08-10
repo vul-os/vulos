@@ -52,8 +52,9 @@ package installer
 //     A netboot must PIN this key, not trust the system CA bundle — TLS success
 //     never authorises a payload.  Absent/malformed anchor ⇒ refuse.
 //  2. Load the release-key certificate and validate it against that anchor;
-//     enforce cert.MinEpoch >= the device epoch floor.  The release key is
-//     trusted only for as long as the offline root says it is.
+//     enforce cert.MinEpoch >= the device epoch floor, and RAISE that floor to
+//     the cert's min_epoch.  The release key is trusted only for as long as the
+//     offline root says it is — see "Why the floor is raised here" below.
 //  3. Verify stable.json against stable.json.sig with the RELEASE key, and
 //     enforce the epoch floor over the manifest as well.  The manifest is
 //     MANDATORY here — see "Why the manifest is no longer optional" below.
@@ -72,6 +73,48 @@ package installer
 // reconstruct the payload in the first place.  A raw-bytes signature bound
 // itself; this one does not, so the medium must carry the manifest that names
 // what it should be, or there is nothing to check.
+//
+// # Why the floor is raised here, and why an unopenable store is fatal
+//
+// The epoch floor is the device's memory of which release keys the offline root
+// has retired (roadmap/SIGNING.md § Minimum Trusted Epoch).  This file used to
+// READ it and never raise it, which is the defect 8846d61c fixed on the OTA
+// path: nothing anywhere moved the floor, so it sat at 0 for the life of the
+// device, every min_epoch >= 0 passed, and issuing a release cert with a higher
+// -min-epoch revoked nothing at all.  signing.EpochStore.RaiseFromReleaseCert
+// is now called as soon as the ROOT-SIGNED cert validates — and only from the
+// cert, never from the release-key-signed manifest below, because an attacker
+// holding a compromised release key could otherwise publish min_epoch=MaxInt64
+// and permanently brick the install path (the floor never falls).
+//
+// The raise happens BEFORE the manifest is verified, on purpose: the authority
+// for it is the root signature on the cert alone.  Making it contingent on a
+// later, separately-signed artifact would let a hostile medium hold the floor
+// down by pairing a good cert with a broken manifest and then replaying the
+// retired cert.  It also means the manifest is checked against the RAISED floor,
+// which enforces cmd/sign's rule that a manifest's min_epoch is at least its
+// cert's.
+//
+// A floor store that will not open is FATAL here.  It used to fall back to
+// floor 0, and floor 0 is not "no opinion" — it is "accept every epoch any root
+// has ever retired", i.e. the exact downgrade this file exists to refuse, chosen
+// silently on behalf of the operator.  Three considerations settle it:
+//
+//   - Where this runs.  The netboot payload is attacker-reachable in transit
+//     (THREAT-MODEL.md #3), and every other input on this path — anchor, cert,
+//     manifest, verity root hash — is already refused rather than downgraded
+//     when it is missing.  A store that is unreadable or holds unparseable JSON
+//     is an anomaly on the one path where anomalies are cheapest to attack.
+//   - What the failure means.  NewEpochStore creates the file at floor 0 when it
+//     is simply ABSENT, so a genuinely new device does not reach the error path
+//     at all; reaching it means the directory is unwritable or the record is
+//     corrupt.  A corrupt record is precisely how an attacker with local write
+//     access would try to reset the floor, and answering that by adopting floor
+//     0 would grant them exactly what they asked for.
+//   - What it costs.  The failure is loud and recoverable — the operator is at
+//     the machine, running an installer, and can be told which file to fix.  The
+//     alternative failure mode is silent and permanent: an image signed by a
+//     retired key installed onto the disk the box then boots forever.
 //
 // # Why a missing dm-verity root hash is fatal here
 //
@@ -141,6 +184,12 @@ var ErrManifestMissing = errors.New("netboot-verify: signed manifest (stable.jso
 // ErrVerityRootHashUnknown is returned when the medium carries no validated
 // dm-verity root hash, leaving the signature unbound to the image bytes.
 var ErrVerityRootHashUnknown = errors.New("netboot-verify: no validated dm-verity root hash for this image — the signature cannot be bound to its bytes")
+
+// ErrEpochFloorUnavailable is returned when the persistent epoch floor cannot be
+// opened or updated.  It is fatal rather than a fallback to floor 0: floor 0
+// accepts every retired release key, and choosing it silently would hand an
+// attacker the downgrade this file exists to refuse.  See the file comment.
+var ErrEpochFloorUnavailable = errors.New("netboot-verify: epoch floor unavailable — refusing to install without rollback protection")
 
 // ─── Verifier configuration ──────────────────────────────────────────────────
 
@@ -226,17 +275,19 @@ func (s *Service) verifyNetbootSquashfs(squashfsPath string, cfg netbootVerifyCo
 		return fmt.Errorf("%w: %v", ErrAnchorMissing, err)
 	}
 
-	// The epoch floor gates BOTH the certificate and the manifest.  If the floor
-	// store cannot be opened, use zero rather than fail: the floor strengthens
-	// authenticity, it does not establish it, and a device that has never taken
-	// an update legitimately has no floor yet.
-	var floor int64
-	if es, err := signing.NewEpochStore(cfg.epochPath); err == nil {
-		floor = es.Current()
+	// The epoch floor gates BOTH the certificate and the manifest, and is RAISED
+	// by the root-signed cert in step 2.  A store that will not open is fatal —
+	// falling back to zero would accept every retired release key.  A brand-new
+	// device does not land here: NewEpochStore creates the record at floor 0 when
+	// it is merely absent.
+	es, err := signing.NewEpochStore(cfg.epochPath)
+	if err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrEpochFloorUnavailable, cfg.epochPath, err)
 	}
 
-	// 2. The release key, and the offline root's statement about it.
-	releasePub, err := s.certifiedReleaseKey(squashfsPath, cfg, anchor, floor)
+	// 2. The release key, the offline root's statement about it, and the floor
+	//    that statement leaves in force.
+	releasePub, floor, err := s.certifiedReleaseKey(squashfsPath, cfg, anchor, es)
 	if err != nil {
 		return err
 	}
@@ -296,44 +347,67 @@ func (s *Service) verifyNetbootSquashfs(squashfsPath string, cfg netbootVerifyCo
 }
 
 // certifiedReleaseKey resolves the release public key the payload was signed
-// with, and refuses to return one the pinned anchor has not certified.
+// with, refuses to return one the pinned anchor has not certified, and returns
+// the epoch floor in force after this cert has been taken into account.
 //
 // The certificate is taken from beside the image when the medium ships one, and
 // from the seed otherwise.  Preferring the medium's copy is safe — it is inert
 // until ValidateReleaseCert accepts it against the pinned anchor — and it is
 // what allows a release key to be rotated without re-flashing every seed.
+//
+// The floor is READ before the cert is validated and RAISED after, so a cert
+// carrying a min_epoch below the floor is REFUSED by this function rather than
+// quietly accepted (RaiseTo is monotonic, so it would not lower the floor — but
+// nothing would have refused the retired key either, and refusing is the whole
+// point).  Only this root-signed cert may move the floor; see
+// signing.EpochStore.RaiseFromReleaseCert for why the release-key-signed
+// manifest must not.
 func (s *Service) certifiedReleaseKey(
 	squashfsPath string,
 	cfg netbootVerifyConfig,
 	anchor []byte,
-	floor int64,
-) ([]byte, error) {
+	es *signing.EpochStore,
+) ([]byte, int64, error) {
+	floor := es.Current()
+
 	certPath := siblingPath(squashfsPath, releaseCertSiblingName)
 	if !isRegularFile(certPath) {
 		certPath = cfg.certPath
 	}
 	certData, err := os.ReadFile(certPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrReleaseCertMissing, err)
+		return nil, 0, fmt.Errorf("%w: %v", ErrReleaseCertMissing, err)
 	}
 	cert, err := signing.ParseReleaseCert(certData)
 	if err != nil {
-		return nil, fmt.Errorf("%w: parse %s: %v", ErrReleaseCertInvalid, certPath, err)
+		return nil, 0, fmt.Errorf("%w: parse %s: %v", ErrReleaseCertInvalid, certPath, err)
 	}
 	if err := signing.ValidateReleaseCert(anchor, cert); err != nil {
-		return nil, fmt.Errorf("%w: %s does not chain to the pinned anchor: %v", ErrReleaseCertInvalid, certPath, err)
+		return nil, 0, fmt.Errorf("%w: %s does not chain to the pinned anchor: %v", ErrReleaseCertInvalid, certPath, err)
 	}
 	// Downgrade defence at the key level: a certificate issued before the
 	// device's floor was raised must not resurrect a retired release key.
 	if cert.MinEpoch < floor {
-		return nil, fmt.Errorf("%w: cert min_epoch %d is below the device epoch floor %d",
+		return nil, 0, fmt.Errorf("%w: cert min_epoch %d is below the device epoch floor %d",
 			ErrReleaseCertInvalid, cert.MinEpoch, floor)
 	}
 	releasePub, err := cert.DecodePubKey()
 	if err != nil {
-		return nil, fmt.Errorf("%w: decode release pubkey: %v", ErrReleaseCertInvalid, err)
+		return nil, 0, fmt.Errorf("%w: decode release pubkey: %v", ErrReleaseCertInvalid, err)
 	}
-	return releasePub, nil
+
+	// Remember what the root has retired.  Fail-closed on a persistence failure:
+	// installing an image while silently failing to record the revocation that
+	// authorised it is the failure mode this mechanism exists to prevent, and
+	// the medium's next cert would be measured against a floor that never moved.
+	if err := es.RaiseFromReleaseCert(anchor, cert); err != nil {
+		return nil, 0, fmt.Errorf("%w: could not record the root-signed epoch floor: %v",
+			ErrEpochFloorUnavailable, err)
+	}
+	if cert.MinEpoch > floor {
+		floor = cert.MinEpoch
+	}
+	return releasePub, floor, nil
 }
 
 // bindPayloadToImage is the step that makes the signature mean something about

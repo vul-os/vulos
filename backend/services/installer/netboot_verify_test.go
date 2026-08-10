@@ -451,6 +451,133 @@ func TestVerifyNetbootSquashfs_RetiredReleaseCert_FailsClosed(t *testing.T) {
 	}
 }
 
+// persistedFloor re-reads the epoch floor FROM DISK, so these tests measure
+// what the next boot would see rather than an in-memory value.
+func (f *verifyFixture) persistedFloor(t *testing.T) int64 {
+	t.Helper()
+	es, err := signing.NewEpochStore(f.epochPath)
+	if err != nil {
+		t.Fatalf("re-open epoch store: %v", err)
+	}
+	return es.Current()
+}
+
+// The floor must RISE, or revocation revokes nothing.  Before this was wired in,
+// verifyNetbootSquashfs read the floor and never moved it: a device sat at 0 for
+// life, every min_epoch >= 0 passed, and issuing a release cert with a higher
+// -min-epoch had no effect on this path at all.
+func TestVerifyNetbootSquashfs_RaisesEpochFloorFromReleaseCert(t *testing.T) {
+	f := newVerifyFixture(t)
+	f.writeCert(t, 5, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 5)
+
+	if before := f.persistedFloor(t); before != 0 {
+		t.Fatalf("fixture should start at floor 0, got %d", before)
+	}
+	if err := f.verify(); err != nil {
+		t.Fatalf("a correctly signed medium at epoch 5 should verify, got: %v", err)
+	}
+	if got := f.persistedFloor(t); got != 5 {
+		t.Fatalf("the root-signed cert's min_epoch 5 must be persisted as the new floor, got %d", got)
+	}
+}
+
+// THE revocation test: a device that has accepted epoch 5 must REFUSE a
+// certificate at 4 — the retired release key cannot be replayed onto it.
+//
+// The floor here is raised by the FIRST install, not by a test-only RaiseTo, so
+// this exercises the mechanism a real device would rely on.
+//
+// The rollback medium deliberately carries a manifest at epoch 9, ABOVE the
+// floor the first install established.  That isolates the gate under test: the
+// only thing below the floor is the CERT, so the manifest's own epoch check
+// cannot stand in for the cert check and mask a missing raise.  With the raise
+// removed, the floor stays 0, cert 4 and manifest 9 both pass, and this medium
+// installs.
+func TestVerifyNetbootSquashfs_RetiredCertAfterRaise_FailsClosed(t *testing.T) {
+	f := newVerifyFixture(t)
+	f.writeCert(t, 5, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 5)
+	if err := f.verify(); err != nil {
+		t.Fatalf("first install at epoch 5 should verify, got: %v", err)
+	}
+	if got := f.persistedFloor(t); got != 5 {
+		t.Fatalf("floor should be 5 after the first install, got %d", got)
+	}
+
+	// The retired key returns, with a manifest that is NOT stale.
+	f.writeCert(t, 4, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 9)
+
+	err := f.verify()
+	if !errors.Is(err, ErrReleaseCertInvalid) {
+		t.Fatalf("a cert at epoch 4 must be refused by a device that has accepted 5, got: %v", err)
+	}
+	// And the refusal must be about the epoch, not some incidental breakage.
+	if !strings.Contains(err.Error(), "below the device epoch floor") {
+		t.Fatalf("refusal should name the epoch floor, got: %v", err)
+	}
+}
+
+// The manifest is checked against the RAISED floor, not the one that was in
+// force when verification started.  cmd/sign's rule is that a manifest's
+// min_epoch is at least its cert's; enforcing it here is what stops a medium
+// pairing a current cert with a stale manifest.  The device starts at floor 0,
+// so ONLY the cert's own raise can refuse this manifest.
+func TestVerifyNetbootSquashfs_StaleManifestUnderCurrentCert_FailsClosed(t *testing.T) {
+	f := newVerifyFixture(t)
+	f.writeCert(t, 5, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 2)
+
+	if before := f.persistedFloor(t); before != 0 {
+		t.Fatalf("fixture should start at floor 0, got %d", before)
+	}
+	if err := f.verify(); !errors.Is(err, osdist.ErrEpochTooLow) {
+		t.Fatalf("a manifest at epoch 2 under a cert at epoch 5 must be refused, got: %v", err)
+	}
+}
+
+// Only the ROOT-SIGNED cert may raise the floor.  The manifest is signed by the
+// RELEASE key — the very key revocation exists to retire — so if it could move
+// the floor, an attacker holding it could publish min_epoch=MaxInt64 and, since
+// the floor never falls, permanently brick this install path.
+func TestVerifyNetbootSquashfs_ManifestDoesNotRaiseTheFloor(t *testing.T) {
+	f := newVerifyFixture(t)
+	f.writeCert(t, 0, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 9) // manifest claims epoch 9; the cert says 0
+
+	if err := f.verify(); err != nil {
+		t.Fatalf("manifest above the cert's epoch is legitimate, got: %v", err)
+	}
+	if got := f.persistedFloor(t); got != 0 {
+		t.Fatalf("only the root-signed cert may raise the floor; manifest epoch 9 moved it to %d", got)
+	}
+}
+
+// An epoch store that will not open is FATAL, not floor 0.  It used to fall back
+// to zero, which is not "no opinion" — it is "accept every retired release key",
+// chosen silently, on the one path where the payload is attacker-reachable in
+// transit.  A corrupt record is exactly how an attacker with local write access
+// would try to reset the floor.
+//
+// The medium here is otherwise perfectly valid, so nothing but the store can be
+// what refuses it.
+func TestVerifyNetbootSquashfs_UnopenableEpochStore_FailsClosed(t *testing.T) {
+	f := newVerifyFixture(t)
+	f.writeCert(t, 0, time.Now().Add(24*time.Hour))
+	f.signedMedium(t, 0)
+	if err := f.verify(); err != nil {
+		t.Fatalf("precondition: this medium must verify with a healthy store, got: %v", err)
+	}
+
+	if err := os.WriteFile(f.epochPath, []byte("{ not json"), 0o644); err != nil {
+		t.Fatalf("corrupt epoch file: %v", err)
+	}
+	if err := f.verify(); !errors.Is(err, ErrEpochFloorUnavailable) {
+		t.Fatalf("an unreadable epoch floor must refuse the install, got: %v", err)
+	}
+}
+
 // A validly-signed manifest at or above the floor is accepted.
 func TestVerifyNetbootSquashfs_EpochAtFloor_Passes(t *testing.T) {
 	f := newVerifyFixture(t)
