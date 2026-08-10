@@ -19,7 +19,7 @@ There is no separate "bot" runtime — a bot *is* a platform app holding a token
 
 ## Bundled apps
 
-The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Maps, Music, PDF Viewer, Text Editor, Video, Weather, and more). Each is described by an `app.json` manifest. A real one (`frontend/apps/notes/app.json`):
+The OS ships with a set of first-party apps under `apps/` in the install tree (Notes, Calculator, Browser, Camera, Clock, Gallery, Music, Phone, Screenshot, Image Editor, Voice Recorder, System Info, Text Editor, Video, Weather). There is **no Maps app and no PDF Viewer** — `frontend/apps/` holds exactly 16 manifests and neither is among them; PDFs are a document *type* inside Diwan, as the next paragraph says. Each is described by an `app.json` manifest. A real one (`frontend/apps/notes/app.json`):
 
 > **Diwan is not one of these.** It is a separate service with its own binary and systemd unit (`scripts/vulos-diwan.service`), like LilMail — there is no `app.json` for it anywhere in the tree. And there is no separate "Sheets" app: spreadsheets, slides, PDFs and whiteboards are document *types* inside Diwan, so the OS has one productivity app rather than five (see `frontend/src/core/AppRegistry.ts`).
 
@@ -301,9 +301,11 @@ Self-hosters running fully standalone leave this off. The automation surface tha
 > **Scope note (read this first).** The Apps & Bots platform described in this
 > section — the `vat_` token registry, the `/api/apps/v1/*` runtime, webhooks,
 > and the MCP endpoint — is a **design, not a built feature**. None of the
-> `POST /api/apps`, `/api/apps/v1/*`, `/api/apps/{id}/rotate/*` or `/mcp` routes
-> below exist in this repository's backend, so the examples will not work
-> against a box. Treat this section as a specification for work that has not
+> `GET`/`POST /api/apps`, `GET`/`PUT`/`DELETE /api/apps/{id}`,
+> `/api/apps/v1/*`, `/api/apps/{id}/rotate/*`, `POST /api/apps/hooks/{id}` or
+> `/mcp` routes below exist in this repository's backend — that is *every*
+> endpoint in the three tables that follow, not just the write ones — so the
+> examples will not work against a box. Treat this section as a specification for work that has not
 > shipped.
 
 The **Apps & Bots platform** is how you give an external program — a cron script, a webhook consumer, an LLM agent — a scoped credential to act on your account.
