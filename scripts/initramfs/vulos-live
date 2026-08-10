@@ -431,9 +431,39 @@ if [ -f "$ROOTHASH_ABS" ]; then
     fi
 fi
 
+# dm_available — is the kernel's device-mapper reachable from HERE, in the
+# initramfs, right now?
+#
+# `veritysetup open` needs three things, and this hook historically checked only
+# two of them (the binary and the hash files). The third is the dm-verity kernel
+# driver: on this image dm-mod.ko/dm-verity.ko are MODULES, and the initramfs is
+# built with MODULES=most, which does not include drivers/md — verified by
+# unpacking a real built initramfs: 1401 modules, none of them device-mapper.
+#
+# That gap matters because of what this hook does on failure. `veritysetup open`
+# failing is a `panic` below, deliberately, since a root-hash mismatch is
+# indistinguishable from tampering. Without this check, the day veritysetup
+# arrives in the initramfs without its kernel driver, every installed machine
+# would panic at boot — a fix for "verity is not running" that bricks the fleet
+# instead. "The driver is not here" is a missing PREREQUISITE, exactly like the
+# binary being absent, and is handled by the same documented policy: fall back on
+# a local disk, refuse to boot on a netboot.
+#
+# devtmpfs creates /dev/mapper/control as soon as dm-mod registers its misc
+# device, so that node is the honest signal for "device-mapper is usable",
+# whether dm is built in or was just modprobed. modprobe failures are ignored on
+# purpose — the node check is the verdict, not modprobe's exit status.
+dm_available() {
+    [ -e /dev/mapper/control ] && return 0
+    modprobe dm_mod >/dev/null 2>&1 || true
+    modprobe dm-verity >/dev/null 2>&1 || true
+    [ -e /dev/mapper/control ]
+}
+
 if command -v veritysetup >/dev/null 2>&1 \
         && [ -f "$HASHTREE_ABS" ] \
-        && [ -f "$ROOTHASH_ABS" ]; then
+        && [ -f "$ROOTHASH_ABS" ] \
+        && dm_available; then
 
     ROOTHASH="$(cat "$ROOTHASH_ABS")"
     if [ -z "$ROOTHASH" ]; then
@@ -460,13 +490,16 @@ else
     # who controls the payload could simply omit veritysetup's inputs to force
     # the unverified loop-mount path (fail-open downgrade).  Refuse it.
     if [ "$NETBOOT" = "1" ]; then
-        panic "vulos-live: netboot with dm-verity inputs missing (veritysetup/hashtree/roothash) — refusing the unverified loop-mount fallback (fail closed). veritysetup=$(command -v veritysetup 2>/dev/null || echo none) hashtree=$([ -f "$HASHTREE_ABS" ] && echo ok || echo MISSING) roothash=$([ -f "$ROOTHASH_ABS" ] && echo ok || echo MISSING)"
+        panic "vulos-live: netboot with dm-verity inputs missing (veritysetup/hashtree/roothash/device-mapper) — refusing the unverified loop-mount fallback (fail closed). veritysetup=$(command -v veritysetup 2>/dev/null || echo none) hashtree=$([ -f "$HASHTREE_ABS" ] && echo ok || echo MISSING) roothash=$([ -f "$ROOTHASH_ABS" ] && echo ok || echo MISSING) device-mapper=$(dm_available && echo ok || echo MISSING)"
     fi
     # Local live-USB / rescue / pre-verity CI build: warn clearly but continue.
+    # Every prerequisite is itemised, because the ONLY way this state was ever
+    # diagnosed was by reading these four lines off a real serial console.
     log_warning_msg "vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity (block-level verification inactive)"
     log_warning_msg "vulos-live:   veritysetup: $(command -v veritysetup 2>/dev/null || echo 'not found')"
     log_warning_msg "vulos-live:   hashtree:    ${HASHTREE_ABS} $([ -f "$HASHTREE_ABS" ] && echo 'found' || echo 'MISSING')"
     log_warning_msg "vulos-live:   roothash:    ${ROOTHASH_ABS} $([ -f "$ROOTHASH_ABS" ] && echo 'found' || echo 'MISSING')"
+    log_warning_msg "vulos-live:   device-mapper: $(dm_available && echo '/dev/mapper/control present' || echo 'MISSING (dm-mod/dm-verity not in this initramfs)')"
 fi
 
 # ── Mount lower layer (dm-verity device or plain loop) ───────────────────────
