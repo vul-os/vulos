@@ -206,6 +206,41 @@ func TestList_UnsupportedCompositor_ReturnsUnavailable(t *testing.T) {
 	}
 }
 
+// A context deadline is NOT "this compositor lacks foreign-toplevel". Before
+// the classifier existed, every non-ExitError landed in the unavailable branch,
+// so a slow or cancelled call reported an unsupported compositor to the user.
+func TestList_TransportError_IsNotUnavailable(t *testing.T) {
+	fake := newFake()
+	fake.errors["wlrctl"] = context.DeadlineExceeded
+
+	svc := newWithExecutor(fake)
+	_, err := svc.List(context.Background())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if isUnavailable(err) {
+		t.Fatalf("a deadline is a failed request, not an unavailable service: %v", err)
+	}
+}
+
+// ...and it must surface as 500, not 503.
+func TestHTTP_GetWindows_TransportErrorIs500(t *testing.T) {
+	fake := newFake()
+	fake.errors["wlrctl"] = context.DeadlineExceeded
+
+	svc := newWithExecutor(fake)
+	mux := http.NewServeMux()
+	svc.RegisterHandlers(mux)
+
+	req := httptest.NewRequest("GET", "/api/shell/windows", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for a transport failure, got %d", rec.Code)
+	}
+}
+
 // Exit 0 with no output IS a real answer: the compositor has no toplevels.
 // This must stay distinguishable from the unavailable case above.
 func TestList_NoWindows_ReturnsEmptyNoError(t *testing.T) {
