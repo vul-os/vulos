@@ -1,12 +1,36 @@
 // Package wltoplevel enumerates and controls native Wayland windows via the
 // wlr-foreign-toplevel-management-v1 protocol.
 //
-// On a bare-metal Vula OS system running labwc the companion tool lswt(1) is
-// used to snapshot the toplevel list and wlrctl(1) to activate/minimize/close
-// individual handles. When neither tool is present, or when the process is not
-// running inside a Wayland session, all list requests return an empty slice and
-// action requests return a graceful "unavailable" error rather than a hard
-// failure.
+// Both halves shell out to wlrctl(1): `wlrctl toplevel list` to snapshot the
+// window list, `wlrctl window <verb> app_id:<id>` to act on one. It used to
+// list via lswt(1) instead, which is not packaged in Debian at all — so on
+// every shipped image the list call failed and this endpoint returned an empty
+// array, indistinguishable from "the compositor has no windows open". wlrctl IS
+// packaged (85 KB) and now ships in build.sh's rootfs.
+//
+// WHAT WAS MEASURED (2026-08-10, labwc headless under Docker/arm64, wlrctl
+// 0.2.2, against a real foot(1) toplevel):
+//
+//	wlrctl toplevel list            -> "demo-app: Demo Window", exit 0
+//	wlrctl toplevel list, 0 windows -> empty output, exit 0
+//	wlrctl window activate app_id:demo-app -> exit 0
+//	wlrctl window minimize app_id:demo-app -> exit 0
+//	wlrctl window close    app_id:demo-app -> exit 0
+//	wlrctl window set-minimized app_id:demo-app -> exit 1,
+//	                                "Unknown toplevel action: 'set-minimized'"
+//	under cage: "Foreign Toplevel Management interface not found!", exit 1
+//
+// Two consequences are baked into the code below. First, Minimize used to send
+// `set-minimized`, which wlrctl rejects — the verb is `minimize`. Second, cage
+// does not implement foreign-toplevel at all, so on a v1 (cage) box this
+// service can never work; that is reported as 503 "unavailable", NOT as an
+// empty window list, because the two mean different things to a dock.
+//
+// Window.State is not populated: `wlrctl toplevel list` prints only
+// "app_id: title" and has no state flags to report. The field is omitted from
+// the JSON rather than sent empty, so a client cannot mistake "unknown" for
+// "no flags set". Recovering state needs a real wlr-foreign-toplevel client
+// (see roadmap/DISPLAY-STACK.md R4), not another shell-out.
 //
 // The command layer is injected via the Executor interface so tests can supply
 // a deterministic fake without spawning real processes.
@@ -22,6 +46,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,17 +54,21 @@ import (
 // Domain types
 // ---------------------------------------------------------------------------
 
-// Window represents a single Wayland toplevel as reported by lswt.
+// Window represents a single Wayland toplevel as reported by wlrctl.
 type Window struct {
 	// Handle is the opaque identifier used to focus/minimize/close the window.
-	// It is the zero-based decimal index from the lswt enumeration order.
+	// It is the zero-based decimal index from the enumeration order.
 	Handle string `json:"handle"`
 
 	Title string `json:"title"`
 	AppID string `json:"app_id"`
 	// State is a comma-separated list of active state flags, e.g.
 	// "activated", "maximized", "minimized", "fullscreen".
-	State string `json:"state"`
+	//
+	// ALWAYS EMPTY with the wlrctl backend, which reports no state flags — see
+	// the package doc. omitempty keeps it out of the JSON entirely so a client
+	// reads "absent" (unknown) rather than "" (no flags active).
+	State string `json:"state,omitempty"`
 }
 
 // actionRequest is the JSON body sent to POST /api/shell/windows/{action}.
@@ -95,56 +124,86 @@ func newWithExecutor(e Executor) *Service {
 
 // List returns all currently visible Wayland toplevels.
 //
-// It tries lswt first (Wayland-native); if unavailable it returns an empty
-// slice with no error so callers (e.g. the dock) degrade gracefully.
+// A non-zero exit or a missing binary returns errUnavailable — NOT an empty
+// slice. Those two states look identical to a dock and mean opposite things:
+// "the compositor reports no open windows" versus "this box cannot answer the
+// question at all" (no wlrctl, no Wayland session, or a cage session, which
+// does not implement foreign-toplevel). This function previously returned
+// (empty, nil) for both, so a v1 box reported "no windows" forever.
+//
+// An empty list with exit 0 is a real answer and is returned as such.
 func (s *Service) List(ctx context.Context) ([]Window, error) {
-	// lswt -t prints one tab-separated line per toplevel:
-	//   <title>\t<app_id>\t<state flags space-separated>
-	// Handles are assigned as zero-based index strings ("0", "1", ...).
-	out, err := s.exec.Output(ctx, "lswt", "-t")
+	out, err := s.exec.Output(ctx, "wlrctl", "toplevel", "list")
 	if err != nil {
-		// Tool missing or no Wayland session — degrade to empty list.
-		log.Printf("[wltoplevel] lswt unavailable (%v) — returning empty window list", err)
-		return []Window{}, nil
+		if !isMissingOrRefused(err) {
+			// A cancelled context or an I/O failure is not "this box has no
+			// foreign-toplevel support" — do not launder it into a 503.
+			return nil, fmt.Errorf("wlrctl toplevel list: %w", err)
+		}
+		// Polled every 2s by the shell, so log the reason once rather than
+		// 30 times a minute.
+		unavailableOnce.Do(func() {
+			log.Printf("[wltoplevel] wlrctl toplevel list unavailable (%v) — "+
+				"/api/shell/windows will report 503 until a foreign-toplevel-capable "+
+				"compositor (labwc, not cage) and wlrctl are both present", err)
+		})
+		return nil, fmt.Errorf("%w: %v", errUnavailable, err)
 	}
-	return parseLswt(bytes.TrimSpace(out)), nil
+	return parseWlrctlList(bytes.TrimSpace(out)), nil
 }
 
-// parseLswt converts raw lswt -t output into a slice of Windows.
-// Expected format per line (tab-separated):
+// unavailableOnce guards the one-time "no wlrctl" log line.
+var unavailableOnce sync.Once
+
+// exitCoder is anything that ran and exited non-zero: *exec.ExitError in
+// production, a stub in tests. The classification below matches this interface
+// rather than the concrete *exec.ExitError so a test can express "the tool ran
+// and refused" at all — with the concrete type, every stubbed error fell into
+// the catch-all branch and the tests silently agreed with whatever it did.
+type exitCoder interface{ ExitCode() int }
+
+// isMissingOrRefused reports whether err means "this box cannot answer" —
+// either wlrctl is not installed, or it ran and refused (measured under cage:
+// "Foreign Toplevel Management interface not found!", exit 1). Anything else
+// — a context deadline, a pipe error — is a genuine failure of this request
+// and must not be reported to the client as an unsupported compositor.
+func isMissingOrRefused(err error) bool {
+	if errors.Is(err, exec.ErrNotFound) {
+		return true
+	}
+	var ec exitCoder
+	return errors.As(err, &ec)
+}
+
+// parseWlrctlList converts `wlrctl toplevel list` output into Windows.
 //
-//	<title>  <app_id>  <state>
+// Measured format, one toplevel per line:
 //
-// State is a space-separated list of flags on a single field, e.g. "activated maximized".
-func parseLswt(raw []byte) []Window {
+//	app_id: title
+//
+// The separator is the FIRST ": " only — titles routinely contain colons
+// ("vim: file.go — 3 changes"), app_ids do not. Handles are zero-based index
+// strings assigned in enumeration order.
+func parseWlrctlList(raw []byte) []Window {
 	if len(raw) == 0 {
 		return []Window{}
 	}
-	var windows []Window
+	windows := []Window{}
 	for i, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, "\t")
-		w := Window{
-			Handle: intToStr(i),
-		}
-		if len(parts) > 0 {
-			w.Title = strings.TrimSpace(parts[0])
-		}
-		if len(parts) > 1 {
-			w.AppID = strings.TrimSpace(parts[1])
-		}
-		if len(parts) > 2 {
-			// State flags are space-separated; normalise to comma-separated for JSON.
-			flags := strings.Fields(strings.TrimSpace(parts[2]))
-			w.State = strings.Join(flags, ",")
+		w := Window{Handle: intToStr(i)}
+		if appID, title, found := strings.Cut(line, ": "); found {
+			w.AppID = strings.TrimSpace(appID)
+			w.Title = strings.TrimSpace(title)
+		} else {
+			// No separator — treat the whole line as the app_id rather than
+			// silently dropping a window we cannot fully describe.
+			w.AppID = line
 		}
 		windows = append(windows, w)
-	}
-	if windows == nil {
-		return []Window{}
 	}
 	return windows
 }
@@ -158,7 +217,7 @@ var errUnavailable = errors.New("wlr-foreign-toplevel helper not available")
 
 // Focus activates (raises and focuses) the window identified by handle.
 //
-// The handle is used to look up the window's app_id + title from a fresh lswt
+// The handle is used to look up the window's app_id + title from a fresh
 // snapshot; wlrctl is then called with an app_id match. This avoids wlrctl
 // needing to understand numeric handles.
 func (s *Service) Focus(ctx context.Context, handle string) error {
@@ -166,8 +225,13 @@ func (s *Service) Focus(ctx context.Context, handle string) error {
 }
 
 // Minimize iconifies the window identified by handle.
+//
+// The verb is `minimize`. It used to be `set-minimized`, which wlrctl rejects
+// outright: "Unknown toplevel action: 'set-minimized'", exit 1 — measured
+// against a live labwc toplevel, 2026-08-10. Every minimize request from the
+// dock was failing on any box that had wlrctl at all.
 func (s *Service) Minimize(ctx context.Context, handle string) error {
-	return s.runAction(ctx, handle, "set-minimized")
+	return s.runAction(ctx, handle, "minimize")
 }
 
 // Close requests the window identified by handle to close.
@@ -204,12 +268,18 @@ func (s *Service) runAction(ctx context.Context, handle, verb string) error {
 	}
 
 	if err := s.exec.Run(ctx, "wlrctl", "window", verb, selector); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return fmt.Errorf("wlrctl window %s %s: exit %d", verb, selector, exitErr.ExitCode())
+		var ec exitCoder
+		if errors.As(err, &ec) {
+			// The tool ran and rejected the request. That is a failed action,
+			// not an unavailable service — a 500, so the caller sees that the
+			// window did not move rather than "your compositor is unsupported".
+			return fmt.Errorf("wlrctl window %s %s: exit %d", verb, selector, ec.ExitCode())
 		}
-		log.Printf("[wltoplevel] wlrctl unavailable (%v)", err)
-		return errUnavailable
+		if errors.Is(err, exec.ErrNotFound) {
+			log.Printf("[wltoplevel] wlrctl not installed (%v)", err)
+			return errUnavailable
+		}
+		return fmt.Errorf("wlrctl window %s %s: %w", verb, selector, err)
 	}
 	return nil
 }
@@ -239,7 +309,21 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
 
 	windows, err := s.List(ctx)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		if errors.Is(err, errUnavailable) {
+			// 503, not 200-with-[]. "I cannot see the windows" must not be
+			// served as "there are no windows" — the dock draws those two
+			// states identically and one of them is a lie.
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "wlr-foreign-toplevel unavailable",
+				"detail": "no wlrctl on PATH, or the compositor does not implement " +
+					"wlr-foreign-toplevel-management-v1 (cage does not; labwc does)",
+			})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "internal error"})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

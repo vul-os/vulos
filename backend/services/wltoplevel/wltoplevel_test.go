@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -18,8 +19,11 @@ import (
 type fakeExecutor struct {
 	// outputs maps command name → stdout bytes to return.
 	outputs map[string][]byte
-	// errors maps command name → error to return.
+	// errors maps command name → error to return from BOTH Output and Run.
 	errors map[string]error
+	// runErr, when set, fails only Run — letting a test exercise "the list
+	// worked but the action failed", which sharing one map cannot express.
+	runErr error
 	// calls records every (name, args) pair that was invoked.
 	calls [][]string
 }
@@ -46,6 +50,9 @@ func (f *fakeExecutor) Output(_ context.Context, name string, args ...string) ([
 
 func (f *fakeExecutor) Run(_ context.Context, name string, args ...string) error {
 	f.record(name, args)
+	if f.runErr != nil {
+		return f.runErr
+	}
 	if err, ok := f.errors[name]; ok {
 		return err
 	}
@@ -53,23 +60,27 @@ func (f *fakeExecutor) Run(_ context.Context, name string, args ...string) error
 }
 
 // ---------------------------------------------------------------------------
-// lswt output fixtures
+// wlrctl output fixtures
 // ---------------------------------------------------------------------------
 
-// lswtOutput returns a valid lswt -t fixture with two windows.
-func lswtOutput() []byte {
+// wlrctlOutput returns a `wlrctl toplevel list` fixture with two windows.
+//
+// The shape is copied from real output measured against a live labwc session
+// on 2026-08-10 ("demo-app: Demo Window"), not invented: one line per
+// toplevel, "app_id: title", no state flags and no trailing metadata.
+func wlrctlOutput() []byte {
 	return []byte(
-		"Firefox\torg.mozilla.firefox\tactivated\n" +
-			"Terminal\torg.wezfurlong.wezterm\t\n",
+		"org.mozilla.firefox: Firefox\n" +
+			"org.wezfurlong.wezterm: Terminal\n",
 	)
 }
 
 // ---------------------------------------------------------------------------
-// parseLswt unit tests
+// parseWlrctlList unit tests
 // ---------------------------------------------------------------------------
 
-func TestParseLswt_TwoWindows(t *testing.T) {
-	windows := parseLswt(lswtOutput())
+func TestParseWlrctlList_TwoWindows(t *testing.T) {
+	windows := parseWlrctlList(wlrctlOutput())
 	if len(windows) != 2 {
 		t.Fatalf("expected 2 windows, got %d", len(windows))
 	}
@@ -85,8 +96,9 @@ func TestParseLswt_TwoWindows(t *testing.T) {
 	if w.AppID != "org.mozilla.firefox" {
 		t.Errorf("window[0].AppID = %q, want %q", w.AppID, "org.mozilla.firefox")
 	}
-	if w.State != "activated" {
-		t.Errorf("window[0].State = %q, want %q", w.State, "activated")
+	// wlrctl reports no state flags at all — see the package doc.
+	if w.State != "" {
+		t.Errorf("window[0].State = %q, want empty (wlrctl reports no state)", w.State)
 	}
 
 	// Second window
@@ -102,21 +114,50 @@ func TestParseLswt_TwoWindows(t *testing.T) {
 	}
 }
 
-func TestParseLswt_Empty(t *testing.T) {
-	windows := parseLswt([]byte{})
+func TestParseWlrctlList_Empty(t *testing.T) {
+	windows := parseWlrctlList([]byte{})
 	if len(windows) != 0 {
 		t.Fatalf("expected 0 windows for empty input, got %d", len(windows))
 	}
 }
 
-func TestParseLswt_MultipleStateFlags(t *testing.T) {
-	raw := []byte("GIMP\torg.gimp.GIMP\tactivated maximized\n")
-	windows := parseLswt(raw)
+// A title containing ": " must not be split on its own colon — only the first
+// separator divides app_id from title.
+func TestParseWlrctlList_TitleContainsColon(t *testing.T) {
+	raw := []byte("nvim: main.go: 3 unsaved changes\n")
+	windows := parseWlrctlList(raw)
 	if len(windows) != 1 {
 		t.Fatalf("expected 1 window, got %d", len(windows))
 	}
-	if windows[0].State != "activated,maximized" {
-		t.Errorf("State = %q, want %q", windows[0].State, "activated,maximized")
+	if windows[0].AppID != "nvim" {
+		t.Errorf("AppID = %q, want %q", windows[0].AppID, "nvim")
+	}
+	if windows[0].Title != "main.go: 3 unsaved changes" {
+		t.Errorf("Title = %q, want %q", windows[0].Title, "main.go: 3 unsaved changes")
+	}
+}
+
+// A line with no ": " separator keeps the window rather than dropping it.
+func TestParseWlrctlList_NoSeparator(t *testing.T) {
+	windows := parseWlrctlList([]byte("bare-app-id\n"))
+	if len(windows) != 1 {
+		t.Fatalf("expected 1 window, got %d", len(windows))
+	}
+	if windows[0].AppID != "bare-app-id" {
+		t.Errorf("AppID = %q, want %q", windows[0].AppID, "bare-app-id")
+	}
+}
+
+// State must be omitted from the wire entirely, not sent as "": a client that
+// sees "state": "" can reasonably conclude no flags are set, which is a claim
+// this backend cannot make.
+func TestWindowJSON_OmitsUnknownState(t *testing.T) {
+	b, err := json.Marshal(parseWlrctlList(wlrctlOutput())[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "state") {
+		t.Errorf("JSON must omit the unknown state field, got: %s", b)
 	}
 }
 
@@ -124,9 +165,9 @@ func TestParseLswt_MultipleStateFlags(t *testing.T) {
 // Service.List unit tests
 // ---------------------------------------------------------------------------
 
-func TestList_WithLswt(t *testing.T) {
+func TestList_WithWlrctl(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	windows, err := svc.List(context.Background())
@@ -138,33 +179,46 @@ func TestList_WithLswt(t *testing.T) {
 	}
 }
 
-func TestList_LswtUnavailable_ReturnsEmptyNoError(t *testing.T) {
+// wlrctl absent => unavailable, NOT an empty window list.
+func TestList_WlrctlMissing_ReturnsUnavailable(t *testing.T) {
 	fake := newFake()
-	// Simulate lswt not being installed (exec.ErrNotFound in practice).
-	fake.errors["lswt"] = &notFoundError{"lswt"}
+	fake.errors["wlrctl"] = &notFoundError{"wlrctl"}
 
 	svc := newWithExecutor(fake)
 	windows, err := svc.List(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error when lswt is unavailable, got: %v", err)
+	if !isUnavailable(err) {
+		t.Fatalf("expected errUnavailable, got: %v", err)
 	}
-	if len(windows) != 0 {
-		t.Fatalf("expected empty slice, got %d windows", len(windows))
+	if windows != nil {
+		t.Fatalf("expected nil windows alongside the error, got %d", len(windows))
 	}
 }
 
-func TestList_OutsideWayland_ReturnsEmptyNoError(t *testing.T) {
-	// Simulate running outside a Wayland session — lswt exits non-zero.
+// Under cage, wlrctl exits 1 with "Foreign Toplevel Management interface not
+// found!" — measured. That is unavailable, not "no windows open".
+func TestList_UnsupportedCompositor_ReturnsUnavailable(t *testing.T) {
 	fake := newFake()
-	fake.errors["lswt"] = &exitError{code: 1}
+	fake.errors["wlrctl"] = &exitError{code: 1}
+
+	svc := newWithExecutor(fake)
+	if _, err := svc.List(context.Background()); !isUnavailable(err) {
+		t.Fatalf("expected errUnavailable, got: %v", err)
+	}
+}
+
+// Exit 0 with no output IS a real answer: the compositor has no toplevels.
+// This must stay distinguishable from the unavailable case above.
+func TestList_NoWindows_ReturnsEmptyNoError(t *testing.T) {
+	fake := newFake()
+	fake.outputs["wlrctl"] = []byte("")
 
 	svc := newWithExecutor(fake)
 	windows, err := svc.List(context.Background())
 	if err != nil {
-		t.Fatalf("expected no error outside Wayland, got: %v", err)
+		t.Fatalf("expected no error for an empty-but-successful list, got: %v", err)
 	}
 	if len(windows) != 0 {
-		t.Fatalf("expected empty slice, got %d windows", len(windows))
+		t.Fatalf("expected 0 windows, got %d", len(windows))
 	}
 }
 
@@ -174,7 +228,7 @@ func TestList_OutsideWayland_ReturnsEmptyNoError(t *testing.T) {
 
 func TestFocus_CallsWlrctl(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	if err := svc.Focus(context.Background(), "0"); err != nil {
@@ -187,19 +241,20 @@ func TestFocus_CallsWlrctl(t *testing.T) {
 
 func TestMinimize_CallsWlrctl(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	if err := svc.Minimize(context.Background(), "1"); err != nil {
 		t.Fatalf("Minimize returned error: %v", err)
 	}
 
-	assertWlrctlCall(t, fake.calls, "window", "set-minimized", "app_id:org.wezfurlong.wezterm")
+	// `minimize`, not `set-minimized` — wlrctl rejects the latter (measured).
+	assertWlrctlCall(t, fake.calls, "window", "minimize", "app_id:org.wezfurlong.wezterm")
 }
 
 func TestClose_CallsWlrctl(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	if err := svc.Close(context.Background(), "0"); err != nil {
@@ -211,7 +266,7 @@ func TestClose_CallsWlrctl(t *testing.T) {
 
 func TestAction_UnknownHandle_ReturnsError(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	err := svc.Focus(context.Background(), "99")
@@ -223,9 +278,10 @@ func TestAction_UnknownHandle_ReturnsError(t *testing.T) {
 	}
 }
 
+// Both the list and the action shell out to wlrctl, so a missing binary must
+// surface as unavailable from whichever call reaches it first.
 func TestAction_WlrctlUnavailable_ReturnsUnavailable(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
 	fake.errors["wlrctl"] = &notFoundError{"wlrctl"}
 
 	svc := newWithExecutor(fake)
@@ -235,13 +291,30 @@ func TestAction_WlrctlUnavailable_ReturnsUnavailable(t *testing.T) {
 	}
 }
 
+// The action path must still reach wlrctl with the right verb when the list
+// succeeds — i.e. the fake's Run half, not just Output.
+func TestAction_RunFails_PropagatesExitCode(t *testing.T) {
+	fake := newFake()
+	fake.outputs["wlrctl"] = wlrctlOutput()
+	fake.runErr = &exitError{code: 1}
+
+	svc := newWithExecutor(fake)
+	err := svc.Focus(context.Background(), "0")
+	if err == nil {
+		t.Fatal("expected an error when wlrctl exits non-zero")
+	}
+	if isUnavailable(err) {
+		t.Fatalf("a non-zero exit is a failed action, not an unavailable service: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handler tests
 // ---------------------------------------------------------------------------
 
 func TestHTTP_GetWindows_JSON(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	mux := http.NewServeMux()
@@ -267,9 +340,40 @@ func TestHTTP_GetWindows_JSON(t *testing.T) {
 	}
 }
 
-func TestHTTP_GetWindows_EmptyWhenNoWayland(t *testing.T) {
+// THE REGRESSION THIS FILE EXISTS TO PREVENT: outside a foreign-toplevel
+// session the endpoint must answer 503, not 200 with []. It used to answer
+// 200 [] on every shipped image, because lswt was never packaged.
+func TestHTTP_GetWindows_UnavailableIs503NotEmptyArray(t *testing.T) {
 	fake := newFake()
-	fake.errors["lswt"] = &exitError{code: 1}
+	fake.errors["wlrctl"] = &exitError{code: 1}
+
+	svc := newWithExecutor(fake)
+	mux := http.NewServeMux()
+	svc.RegisterHandlers(mux)
+
+	req := httptest.NewRequest("GET", "/api/shell/windows", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when foreign-toplevel is unavailable, got %d", rec.Code)
+	}
+	if strings.TrimSpace(rec.Body.String()) == "[]" {
+		t.Fatal("body must not be an empty window array — that is the lie being fixed")
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["error"] == "" {
+		t.Errorf("expected an error field explaining the unavailability, got %v", body)
+	}
+}
+
+// Exit 0 with no toplevels stays a 200 with an empty array.
+func TestHTTP_GetWindows_NoWindowsIs200EmptyArray(t *testing.T) {
+	fake := newFake()
+	fake.outputs["wlrctl"] = []byte("")
 
 	svc := newWithExecutor(fake)
 	mux := http.NewServeMux()
@@ -280,21 +384,20 @@ func TestHTTP_GetWindows_EmptyWhenNoWayland(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 even outside Wayland, got %d", rec.Code)
+		t.Fatalf("expected 200 for an empty-but-successful list, got %d", rec.Code)
 	}
-
 	var windows []Window
 	if err := json.NewDecoder(rec.Body).Decode(&windows); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(windows) != 0 {
-		t.Fatalf("expected empty array, got %d windows", len(windows))
+		t.Fatalf("expected empty array, got %d", len(windows))
 	}
 }
 
 func TestHTTP_Focus_OK(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	mux := http.NewServeMux()
@@ -331,7 +434,6 @@ func TestHTTP_Focus_MissingHandle_BadRequest(t *testing.T) {
 
 func TestHTTP_Focus_WlrctlUnavailable_503(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
 	fake.errors["wlrctl"] = &notFoundError{"wlrctl"}
 
 	svc := newWithExecutor(fake)
@@ -351,7 +453,7 @@ func TestHTTP_Focus_WlrctlUnavailable_503(t *testing.T) {
 
 func TestHTTP_Minimize_OK(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	mux := http.NewServeMux()
@@ -371,7 +473,7 @@ func TestHTTP_Minimize_OK(t *testing.T) {
 
 func TestHTTP_Close_OK(t *testing.T) {
 	fake := newFake()
-	fake.outputs["lswt"] = lswtOutput()
+	fake.outputs["wlrctl"] = wlrctlOutput()
 
 	svc := newWithExecutor(fake)
 	mux := http.NewServeMux()
@@ -421,13 +523,19 @@ func isUnavailable(err error) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal error stubs (avoid importing os/exec in the test)
+// Error stubs
 // ---------------------------------------------------------------------------
 
-// notFoundError mimics exec.ErrNotFound for tools that are not installed.
+// notFoundError mimics what exec returns for a tool that is not installed. It
+// WRAPS the real exec.ErrNotFound: a stub that only looked like the real error
+// in its message would be classified by the fallback branch instead of the
+// not-found branch, and the test would then be agreeing with the wrong code
+// path while looking green.
 type notFoundError struct{ name string }
 
 func (e *notFoundError) Error() string { return e.name + ": executable file not found in $PATH" }
+
+func (e *notFoundError) Unwrap() error { return exec.ErrNotFound }
 
 // exitError mimics *exec.ExitError for non-zero exits.
 type exitError struct{ code int }
