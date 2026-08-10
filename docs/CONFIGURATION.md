@@ -62,9 +62,9 @@ VULOS_ENV=local go run ./backend/cmd/server
 > `cmd/server/routes_newfeatures.go:220`, and
 > `internal/multiinstance/instancekey.go:95`. Those four arm **only** when the
 > environment variable is set — passing `--env=prod` alone leaves them on the
-> dev branch. Rows below that say "in `--env=prod`" and depend on one of those
-> four are marked. Set `VULOS_ENV=prod` as well until this is fixed in code.
-
+> dev branch. Rows anywhere in this document that say "in `--env=prod`" and
+> depend on one of those four are marked accordingly. Until it is fixed in code,
+> set `VULOS_ENV=prod` as well.
 
 ---
 
