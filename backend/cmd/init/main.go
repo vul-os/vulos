@@ -375,6 +375,61 @@ func plymouthQuitRetainSplash() {
 	_ = cmd.Run()
 }
 
+// plymouthDisplayMessage paints a line of text over the running splash. It is
+// the ONLY way this process can say anything to a user whose entire interface
+// is the screen — journald is invisible to them. No-ops when plymouth is absent.
+// Returns whether the message was dispatched, so callers can be tested.
+func plymouthDisplayMessage(msg string) bool {
+	bin, err := exec.LookPath("plymouth")
+	if err != nil {
+		return false
+	}
+	return exec.Command(bin, "display-message", "--text="+msg).Run() == nil
+}
+
+// kioskBrowserPackages are the Debian packages that provide the binaries
+// findKioskBrowser looks for, in the order it prefers them. Named here so the
+// failure message can tell an operator exactly what to install rather than
+// making them read the source.
+var kioskBrowserPackages = []string{"cog", "chromium"}
+
+// noKioskBrowserReported records that the loud path ran. Tests assert on it;
+// production ignores it.
+var noKioskBrowserReported bool
+
+// reportNoKioskBrowser makes a missing kiosk browser loud and diagnosable.
+//
+// This is a total failure of the product's only user interface: on the
+// bare-metal image (init=/sbin/vulos-init) the kiosk browser IS the UI, so
+// without it the machine has no way to show anything at all. It used to be one
+// log.Println into the journal, after the splash had already been handed off to
+// a compositor that never started — a silent, undiagnosable dead screen.
+//
+// It is deliberately NOT fatal. vulos-server keeps running and the box stays
+// reachable over the LAN and SSH, which is exactly what the on-screen message
+// needs to tell the user so they have somewhere to go.
+func reportNoKioskBrowser() {
+	noKioskBrowserReported = true
+
+	log.Printf("[kiosk] FATAL: no kiosk browser found — this machine has no user interface")
+	log.Printf("[kiosk] looked for: %s", strings.Join(kioskBrowserBinaries(), ", "))
+	log.Printf("[kiosk] the OS image is built without one; install: apt install %s",
+		strings.Join(kioskBrowserPackages, " | "))
+	log.Printf("[kiosk] the server is still running — reach this box at http://<its-ip>:8080 or over SSH")
+
+	// Say it on the SCREEN too. Reached before the splash is torn down (see the
+	// ordering note in startKiosk), so plymouth is still up to render this.
+	plymouthDisplayMessage("Vulos: no kiosk browser installed (" +
+		strings.Join(kioskBrowserPackages, " or ") +
+		"). The server is running — connect to this box on port 8080.")
+}
+
+// kioskBrowserBinaries lists the binary names findKioskBrowser probes, kept
+// beside it so the error message cannot drift from the lookup.
+func kioskBrowserBinaries() []string {
+	return []string{"cog", "chromium", "chromium-browser"}
+}
+
 func main() {
 	envFlag := flag.String("env", "", "Runtime environment: local, dev, or prod (default prod). Overrides VULOS_ENV.")
 	flag.Parse()
@@ -1058,14 +1113,27 @@ func startKiosk() {
 	// last-known-good so future failed boots can roll back to this one.
 	markBootHealthy(slotMgrGlobal, bootStateGlobal)
 
-	plymouthProgress(100)      // milestone: kiosk up
-	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
-
+	// Locate the kiosk browser BEFORE handing off the splash.
+	//
+	// This ordering is load-bearing, not cosmetic. plymouthQuitRetainSplash runs
+	// `plymouth quit --retain-splash`, which deliberately leaves the last splash
+	// frame on the framebuffer for a compositor to paint over. When the browser
+	// lookup used to run AFTER it and came up empty, we returned before cage was
+	// even looked up, so nothing ever painted: the box sat on the boot splash at
+	// 100% forever, looking like a hung boot, and the only explanation was one
+	// line in the journal on a machine whose whole UI is the screen.
+	//
+	// findKioskBrowser is a pure PATH/stat lookup with no side effects, so it is
+	// safe to run early — and running it early is precisely what leaves plymouth
+	// alive to put the diagnosis ON THE SCREEN.
 	browserBin, browserArgs := findKioskBrowser()
 	if browserBin == "" {
-		log.Println("no browser (cog/chromium) found, skipping kiosk")
+		reportNoKioskBrowser()
 		return
 	}
+
+	plymouthProgress(100)      // milestone: kiosk up
+	plymouthQuitRetainSplash() // hand off splash to compositor (both labwc + cage paths)
 
 	// D93 BMINIT-17: v2 opt-in → labwc compositor path (native windows).
 	// v1 default → cage single-app kiosk path (always-stream, unchanged).
