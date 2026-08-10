@@ -17,9 +17,12 @@ package installer
 //
 // Read from a real boot's serial console, the symptom was:
 //
-//	vulos-live: a dm-verity prerequisite is missing — mounting squashfs without dm-verity
+//	vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity
 //	  hashtree:    /root/var/cache/vulos/slot-a/os-core.hashtree MISSING
 //	  roothash:    /root/var/cache/vulos/slot-a/os-core.roothash MISSING
+//
+// (that headline now reads "a dm-verity prerequisite is missing" — it was
+// renamed once it could also fire with veritysetup and both files present.)
 //
 // The second reason (veritysetup + the dm-verity kernel module are not IN the
 // initramfs) is a build.sh / rootfs-package change and is NOT fixed here.  Until
