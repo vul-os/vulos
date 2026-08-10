@@ -20,6 +20,7 @@ package ota
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -236,6 +237,96 @@ func TestCheck_NotesRewrittenInTransitFailsVerification(t *testing.T) {
 	}
 	if strings.Contains(status.Notes, "555-0100") {
 		t.Errorf("substituted notes reached the owner-facing status: %+v", status)
+	}
+}
+
+// ─── Each field, isolated, inside the signed bytes ────────────────────────────
+
+// TestCanonicalSigned_CoversEverySeverityField isolates what the transit tests
+// above cannot.
+//
+// is_security and severity are JOINTLY determined by the pairing rule — a
+// document with is_security=false and severity="critical" is structurally
+// invalid — so no end-to-end tampering test can flip is_security and change
+// nothing else. TestCheck_IsSecurityFlippedInTransitFailsVerification therefore
+// proves that the flip is refused, but not that is_security is what carried the
+// refusal; severity moved with it.
+//
+// This closes that gap one level down, on canonicalSigned itself: change exactly
+// ONE field and require the SIGNED BYTES to change. A field that does not move
+// these bytes is not covered by the signature and is appendable in transit,
+// whatever the struct definition claims.
+//
+// Measured, not assumed: dropping is_security from manifestSigPayload leaves
+// every end-to-end test in this file green, and fails here.
+func TestCanonicalSigned_CoversEverySeverityField(t *testing.T) {
+	base := map[string]any{
+		"channel":     "stable",
+		"latest":      "v09",
+		"min_epoch":   int64(1),
+		"path":        "os/v09/os-core.squashfs",
+		"released_at": "2026-05-20T09:00:00Z",
+		"roothash":    "deadbeef",
+		"size":        int64(734003200),
+		"is_security": true,
+		"severity":    osdist.SeverityCritical,
+		"notes":       "Fixes a remote authentication bypass in the box login path.",
+	}
+	docBytes := func(d map[string]any) []byte {
+		b, err := json.Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	signed := func(d map[string]any) string {
+		b, err := canonicalSigned(docBytes(d))
+		if err != nil {
+			t.Fatalf("canonicalSigned: %v", err)
+		}
+		return string(b)
+	}
+	clone := func() map[string]any {
+		c := map[string]any{}
+		for k, v := range base {
+			c[k] = v
+		}
+		return c
+	}
+
+	baseline := signed(base)
+
+	// The control. Without it, a canonicalSigned that returned the raw document
+	// (or a random value) would "pass" every case below while covering nothing:
+	// two encodings of the SAME document must produce IDENTICAL signed bytes, so
+	// the differences asserted afterwards can only come from the field values.
+	reordered := docBytes(clone())
+	again, err := canonicalSigned(reordered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != baseline {
+		t.Fatalf("canonicalSigned is not canonical — two encodings of one document gave\n  %s\nand\n  %s",
+			again, baseline)
+	}
+
+	for _, tc := range []struct {
+		field string
+		to    any
+	}{
+		{"is_security", false},
+		{"severity", osdist.SeverityLow},
+		{"notes", "Routine maintenance release, nothing urgent."},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			d := clone()
+			d[tc.field] = tc.to
+			if signed(d) == baseline {
+				t.Errorf("changing %q did not change the bytes the release key signs — "+
+					"the field is OUTSIDE the signed surface and can be rewritten in transit "+
+					"on a legitimately signed manifest", tc.field)
+			}
+		})
 	}
 }
 

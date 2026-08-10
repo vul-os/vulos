@@ -174,6 +174,54 @@ func canonicalImagePayload(t *testing.T, manifestJSON []byte) []byte {
 	return canonical
 }
 
+// signerManifestDocument models what `cmd/sign sign-manifest` publishes, and it
+// does so INDEPENDENTLY of manifestSigPayload — deliberately, even though
+// restating a signing surface in a test is normally the exact mistake this
+// package's history is a monument to.
+//
+// The reason is that manifestSigPayload is the thing UNDER TEST. Building the
+// channel's document out of it makes the fixture move in lockstep with it, and a
+// signed field silently leaving the canonical surface then produces a document
+// that also omits it — so every transit-tampering test below keeps passing while
+// the field it is about has stopped being signed. That was measured, not
+// assumed: dropping is_security from manifestSigPayload left both flip tests
+// green until this helper existed.
+//
+// What keeps THIS honest is that it is not a free-floating opinion about the
+// format. TestManifestSignedSurfaceMatchesSigner pins the key set of every
+// definition against a literal, and cmd/sign/manifestsurface_test.go pins the
+// real signer against osdist and against a hard-coded seven-key document. If
+// this helper and the signer ever disagree, those fail.
+//
+// `omitempty` is modelled the way the signer applies it: a zero value is not
+// written at all, which is what makes an old seven-key manifest byte-identical.
+func signerManifestDocument(t *testing.T, r *release) []byte {
+	t.Helper()
+	doc := map[string]any{
+		"channel":     "stable",
+		"latest":      r.version,
+		"min_epoch":   r.manifestEpoch,
+		"path":        r.imagePath(),
+		"released_at": r.releasedAt,
+		"roothash":    r.rootHash,
+		"size":        r.size,
+	}
+	if r.isSecurity {
+		doc["is_security"] = r.isSecurity
+	}
+	if r.severity != "" {
+		doc["severity"] = r.severity
+	}
+	if r.notes != "" {
+		doc["notes"] = r.notes
+	}
+	b, err := signing.Canonical(doc)
+	if err != nil {
+		t.Fatalf("canonical manifest document: %v", err)
+	}
+	return b
+}
+
 // publishRelease writes the complete artifact set for r onto the channel.
 func (ch *fakeChannel) publishRelease(t *testing.T, r *release) {
 	t.Helper()
@@ -193,25 +241,10 @@ func (ch *fakeChannel) publishRelease(t *testing.T, r *release) {
 	}
 	ch.files["/"+releaseCertName] = certJSON
 
-	// The manifest, in the exact seven-field surface `cmd/sign sign-manifest`
-	// signs. The canonical bytes ARE the served document, so the signature
-	// covers precisely what the channel hands over.
-	payload := manifestSigPayload{
-		Channel:    "stable",
-		Latest:     r.version,
-		MinEpoch:   r.manifestEpoch,
-		Path:       r.imagePath(),
-		ReleasedAt: r.releasedAt,
-		RootHash:   r.rootHash,
-		Size:       r.size,
-		IsSecurity: r.isSecurity,
-		Severity:   r.severity,
-		Notes:      r.notes,
-	}
-	manifestJSON, err := signing.Canonical(payload)
-	if err != nil {
-		t.Fatalf("canonical manifest payload: %v", err)
-	}
+	// The manifest, in the surface `cmd/sign sign-manifest` signs. The canonical
+	// bytes ARE the served document, so the signature covers precisely what the
+	// channel hands over.
+	manifestJSON := signerManifestDocument(t, r)
 	manifestSig := ch.sigFile(t, ch.relPriv, manifestJSON)
 
 	servedManifest := manifestJSON

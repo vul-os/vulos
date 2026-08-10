@@ -274,7 +274,12 @@ func TestSignManifestSignsTheSeverityFields(t *testing.T) {
 		name   string
 		mutate func(*ManifestPayload)
 	}{
-		{"is_security cleared", func(p *ManifestPayload) { p.IsSecurity, p.Severity = false, "" }},
+		// is_security ALONE. VerifyManifest applies no structural validation, so
+		// this is the one place the field can be isolated from the severity it is
+		// paired with — end to end, the pairing rule means the two always move
+		// together and no tampering test can attribute the refusal to one of them.
+		{"is_security alone", func(p *ManifestPayload) { p.IsSecurity = false }},
+		{"is_security cleared with its severity", func(p *ManifestPayload) { p.IsSecurity, p.Severity = false, "" }},
 		{"severity downgraded", func(p *ManifestPayload) { p.Severity = osdist.SeverityLow }},
 		{"notes rewritten", func(p *ManifestPayload) { p.Notes = "Routine maintenance release." }},
 	} {
