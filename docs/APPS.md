@@ -46,6 +46,31 @@ The OS ships with a set of first-party apps under `apps/` in the install tree (N
 
 The manifest also supports `integrations` (which cloud-provider credentials the gateway may inject), `visibility` (`private` / `local` / `public`, default `private`), and `concurrency` (`singleton` / `replicated` / `collaborative`, default `singleton`).
 
+### System builtins — a different class again
+
+These are React components inside the shell, registered in
+`frontend/src/core/AppRegistry.ts`, not `app.json` sidecars. They appear in the
+launcher alongside the bundled apps but have no manifest, no port and no
+process. Four of them drive the host directly and are worth knowing about
+before you hand someone an account:
+
+| App | Window title | What it does |
+|---|---|---|
+| **Activity Monitor** (`activity`) | Activity Monitor | Live CPU / memory / swap / network / disk-IO / load / uptime / temperature with sparkline history over the telemetry WebSocket, plus filterable **process** and **network** tabs (`GET /api/system/processes`, `GET /api/system/network`). **Read-only — there is no kill or quit action.** |
+| **Disk Usage** (`disks`) | Disk Usage | Per-filesystem used/free/total from `GET /api/disks`, plus a click-to-drill directory breakdown from `GET /api/disks/breakdown?path=`. Read-only. |
+| **Packages** (`packages`) | **Software** | An apt front-end: Installed, Find Packages, Updates, Repositories. It **installs and removes Debian packages** and runs `apt-get update` / `apt-get upgrade -y` from the Updates tab (`POST /api/packages/install`, `/remove`, `/update`, `/upgrade`). Note the launcher entry says "Packages" and the window says "Software". |
+| **Drivers** (`drivers`) | **Additional Drivers** | Lists devices and kernel modules from `GET /api/drivers`, with per-device **Load** and per-module **Unload** buttons that **modprobe kernel modules** (`POST /api/drivers/load`, `/unload`). |
+
+`Packages` and `Drivers` both shell out, so they sit inside the exec surface the
+`VULOS_DISABLE_EXEC` kill-switch turns off, and their mutations are written to
+the exec audit log — see [SECURITY.md](SECURITY.md).
+
+There is also a **Phone** builtin (`vulos-phone`) that is *not* the `phone` web
+app in the list above. The web app talks to ModemManager on the box; the builtin
+is SMS and calls over the **Android** handset's own SIM via the native
+telephony bridge, and it renders a permission banner naming the missing Android
+grants rather than showing empty data when it cannot run.
+
 ---
 
 ## Calendar & Contacts (PIM, the GNOME model)
