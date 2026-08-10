@@ -29,7 +29,7 @@ REGISTRY_UNVERIFIED := registry-unverified.json
 
 .PHONY: build test-local test-dev test-all coverage help \
         dev-keys ceremony sign-registry verify-registry verify-registry-prod \
-        publish-feed verify-feed smoke dev
+        check-release-key publish-feed verify-feed smoke dev
 
 ## build: compile backend and build frontend assets.
 build:
@@ -95,9 +95,70 @@ sign-registry:
 	    echo "ERROR: release key not found: $(RELEASE_PRIV)"; exit 1; \
 	  fi; \
 	fi
+	@$(MAKE) --no-print-directory check-release-key
 	cd $(BACKEND) && go run ./cmd/sign sign-registry \
 	  -release-priv $(abspath $(RELEASE_PRIV)) -registry ../$(REGISTRY)
 	@$(MAKE) --no-print-directory verify-registry
+
+## check-release-key: refuse to sign with a key the SHIPPED release certificate
+## does not authorise. Run automatically by sign-registry and publish-feed.
+##
+## RELEASE_PRIV defaults to keys/release.priv.json, which on any machine where
+## `make dev-keys` has ever run is the DEV key derived from a published seed.
+## keys/release-cert.json and keys/trust-anchor.pub are TRACKED, so a tree that
+## carries real ceremony output plus a leftover dev private key would have every
+## entry of the TRACKED registry.json re-signed with the dev key by a command
+## nobody would think twice about. verify-registry does catch the result — but
+## only after the tracked file has already been rewritten, and only if whoever
+## ran it reads the output.
+##
+## The discriminator is the committed material itself: the public half recorded
+## in RELEASE_PRIV must equal the release_pubkey the shipped certificate
+## authorises. Nothing about "dev" or "prod" is hardcoded here, so this check
+## cannot drift away from the cert the image actually ships.
+##
+## Refusal goes to STDERR — sign-registry's sibling steps send stdout to
+## /dev/null — and names the ways forward. Overriding it must be typed out:
+## VULOS_SIGN_ALLOW_KEY_MISMATCH=1.
+check-release-key:
+	@priv="$(RELEASE_PRIV)"; cert="$(CERT)"; \
+	refuse() { \
+	  { \
+	    echo; \
+	    echo "✗ REFUSING to sign with $$priv: $$1"; \
+	    echo; \
+	    echo "  $$cert is the certificate this repository SHIPS, and it is what"; \
+	    echo "  verify-registry, the initramfs and every box check signatures"; \
+	    echo "  against. Signing with a key it does not authorise would rewrite the"; \
+	    echo "  TRACKED registry.json into a file no released image can verify."; \
+	    echo; \
+	    echo "  To sign a real release, point at the key from the ceremony:"; \
+	    echo "      make sign-registry RELEASE_PRIV=/media/signing/release.priv.json"; \
+	    echo "  To go back to dev signing, regenerate the dev trust material first:"; \
+	    echo "      VULOS_DEV_KEYS_OVERWRITE=1 make dev-keys"; \
+	    echo "  See docs/KEY-CEREMONY.md."; \
+	    echo "  If you really do mean to sign with this key, say so:"; \
+	    echo "      VULOS_SIGN_ALLOW_KEY_MISMATCH=1 make sign-registry"; \
+	    echo "  (then 'git checkout -- registry.json' to restore the signed file)"; \
+	    echo; \
+	  } >&2; \
+	  exit 1; \
+	}; \
+	if [ ! -f "$$priv" ]; then exit 0; fi; \
+	if [ "$${VULOS_SIGN_ALLOW_KEY_MISMATCH:-}" = "1" ]; then \
+	  echo "⚠ VULOS_SIGN_ALLOW_KEY_MISMATCH=1 — not checking $$priv against $$cert" >&2; \
+	  exit 0; \
+	fi; \
+	[ -f "$$cert" ] || refuse "$$cert does not exist, so nothing says which key may sign (refusing rather than guessing)"; \
+	cert_pub=$$(sed -n 's/.*"release_pubkey"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$cert" | head -n1 | tr 'A-Z' 'a-z'); \
+	key_id=$$(sed -n 's/.*"key_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$cert" | head -n1); \
+	priv_pub=$$(sed -n 's/.*"public_key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$$priv" | head -n1 | tr 'A-Z' 'a-z'); \
+	[ -n "$$cert_pub" ] || refuse "could not read release_pubkey from $$cert (refusing rather than guessing)"; \
+	[ -n "$$priv_pub" ] || refuse "could not read public_key from $$priv (refusing rather than guessing)"; \
+	if [ "$$priv_pub" != "$$cert_pub" ]; then \
+	  refuse "its public half is $${priv_pub:0:16}…, but the certificate authorises $${cert_pub:0:16}… (key_id \"$$key_id\")"; \
+	fi; \
+	echo "✓ release key check: $$priv is the key certified as \"$$key_id\""
 
 ## verify-registry: verify every registry.json entry against the shipped anchor.
 ## Public keys only — no private key required. This is what CI runs.
@@ -135,6 +196,7 @@ publish-feed:
 	    echo "ERROR: release key not found: $(RELEASE_PRIV)"; exit 1; \
 	  fi; \
 	fi
+	@$(MAKE) --no-print-directory check-release-key
 	cd $(BACKEND) && go run ./cmd/sign publish-feed \
 	  -release-priv ../$(RELEASE_PRIV) -registry ../$(REGISTRY) -feed ../$(REGISTRY_FEED)
 	@$(MAKE) --no-print-directory verify-feed
