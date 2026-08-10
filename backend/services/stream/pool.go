@@ -425,13 +425,20 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 
 	gstBin, _ := lookPath("gst-launch-1.0")
 	if gstBin != "" {
-		// buildVideoCmd constructs a gst-launch command with the current session bitrate.
-		// Called on initial launch and on every adaptive-bitrate restart.
-		// gstClientBin holds the path to `gst-client` if available.
-		// gst-client can set element properties on a running gst-launch-1.0
-		// pipeline via the GStreamer debug/control TCP socket.
-		// STREAMWIN-05: used for live bitrate updates without pipeline restart.
-		gstClientBin, _ := lookPath("gst-client")
+		// buildVideoCmd constructs a gst-launch command with the current session
+		// bitrate. Called on initial launch and on every adaptive-bitrate restart.
+		//
+		// STREAMWIN-05 originally tried a live bitrate update first, setting the
+		// encoder property on the running pipeline with `gst-client` and only
+		// restarting if that failed. That code is gone: gst-client comes from
+		// GStreamer Daemon (gstd), which Debian does not package — no candidate
+		// in trixie — so it was absent from every image this repo builds and the
+		// live path never once ran. Removing it changes no behaviour, because
+		// the restart below is already what happens on every bitrate change.
+		//
+		// Reinstating a live update means packaging gstd or driving the pipeline
+		// in-process (go-gst), not restoring a lookPath for a binary that has
+		// nowhere to come from.
 
 		sess.buildVideoCmd = func() *exec.Cmd {
 			sess.mu.Lock()
@@ -483,39 +490,6 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			return cmd
 		}
 
-		// tryLiveBitrateUpdate attempts to set the encoder bitrate live via gst-client
-		// without restarting the pipeline (STREAMWIN-05).
-		// Returns true if the live update succeeded; false means the caller must fall
-		// back to the restart path.
-		tryLiveBitrateUpdate := func(kbps int) bool {
-			if gstClientBin == "" {
-				return false
-			}
-			// Determine property name and value for each encoder.
-			// vp8enc uses target-bitrate in bps; nvenc/vaapi use bitrate in kbps.
-			var prop, val string
-			switch gpuInfo.Encoder {
-			case "nvh264enc", "nvav1enc":
-				prop = "bitrate"
-				val = fmt.Sprintf("%d", kbps)
-			case "vaapih264enc", "vaav1enc":
-				prop = "bitrate"
-				val = fmt.Sprintf("%d", kbps)
-			default: // vp8enc
-				prop = "target-bitrate"
-				val = fmt.Sprintf("%d", kbps*1000)
-			}
-			// gst-client pipeline_name element_name property_name property_value
-			// Pipeline name defaults to "pipeline0" for gst-launch-1.0.
-			cmd := exec.Command(gstClientBin,
-				"set_property", "pipeline0", EncoderElementName, prop, val)
-			if err := cmd.Run(); err != nil {
-				return false
-			}
-			log.Printf("[stream] %s: live bitrate update → %dkbps (no restart)", sess.Name, kbps)
-			return true
-		}
-
 		// Video pipeline — adaptive-bitrate restarts via runWithBackoff (STREAM-04).
 		// FPS / MangoHud change controller — watches debounce channels from SetFPS and
 		// SetMangoHud, then kills the current gstVideo process so runWithBackoff restarts
@@ -565,12 +539,13 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			runWithBackoff(ctx, sess.Name+"-video", sess.buildVideoCmd, &sess.gstVideo)
 		}
 
-		// STREAMWIN-05: Debounced adaptive-bitrate change handler.
-		// On each bitrateC signal:
-		//   1. Try a live property set via gst-client (no restart, no black frame).
-		//   2. If gst-client is unavailable or fails, fall back to the old SIGTERM restart.
-		// The debounce window is kept at 5 s so rapid ABR oscillations don't thrash
-		// the encoder; only the live path avoids the visible restart artefact.
+		// STREAMWIN-05: Debounced adaptive-bitrate change handler. Each bitrateC
+		// signal restarts the pipeline at the new bitrate, which costs a visible
+		// black frame. The debounce window is kept at 5 s so rapid ABR
+		// oscillations do not thrash the encoder.
+		//
+		// There is no live, restart-free path any more and there never was one
+		// in practice — see buildVideoCmd on gst-client.
 		go func() {
 			const debounce = 5 * time.Second
 			timer := time.NewTimer(debounce)
@@ -589,13 +564,11 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 					kbps := sess.bitrate
 					cmd := sess.gstVideo
 					sess.mu.Unlock()
-					// Attempt live update first (STREAMWIN-05 happy path).
-					if tryLiveBitrateUpdate(kbps) {
-						// Live update succeeded — no restart needed.
-						continue
-					}
-					// Fallback: restart the pipeline (legacy path).
-					log.Printf("[stream] adaptive bitrate restart (fallback): encoder=%s bitrate=%dkbps",
+					// Restart the pipeline at the new bitrate. This was the
+					// fallback behind a gst-client live update; that update
+					// could never run (see buildVideoCmd), so this was always
+					// the real path.
+					log.Printf("[stream] adaptive bitrate restart: encoder=%s bitrate=%dkbps",
 						sess.Encoder, kbps)
 					if cmd != nil && cmd.Process != nil {
 						syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)

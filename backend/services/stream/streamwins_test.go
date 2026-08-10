@@ -268,65 +268,17 @@ func TestResolutionHysteresisNoBounce(t *testing.T) {
 
 // ─── STREAMWIN-05 tests ───────────────────────────────────────────────────────
 
-// TestLiveBitrateNoRestartWhenClientAvailable verifies that when tryLiveBitrateUpdate
-// returns true (gst-client succeeded), the pipeline process is NOT killed.
+// The two tests that used to sit here — TestLiveBitrateNoRestartWhenClientAvailable
+// and TestLiveBitrateFallbackWhenClientUnavailable — were removed with the
+// gst-client live-bitrate path they described.
 //
-// We test this by asserting that a bitrateC consumer that calls tryLiveBitrateUpdate
-// logs "no restart" rather than calling SIGTERM.
-// We simulate the happy path by stubbing tryLiveBitrateUpdate as a closure.
-func TestLiveBitrateNoRestartWhenClientAvailable(t *testing.T) {
-	restartCalled := false
-	liveUpdateCalled := false
-
-	// Simulate the ABR goroutine's decision logic.
-	tryLive := func(_ int) bool {
-		liveUpdateCalled = true
-		return true // gst-client succeeded
-	}
-	doRestart := func() {
-		restartCalled = true
-	}
-
-	// The logic: try live; if successful, skip restart.
-	kbps := 2000
-	if !tryLive(kbps) {
-		doRestart()
-	}
-
-	if !liveUpdateCalled {
-		t.Error("tryLive was not called")
-	}
-	if restartCalled {
-		t.Error("pipeline restart must not be triggered when live update succeeds")
-	}
-}
-
-// TestLiveBitrateFallbackWhenClientUnavailable verifies that when
-// tryLiveBitrateUpdate returns false, the restart path is taken.
-func TestLiveBitrateFallbackWhenClientUnavailable(t *testing.T) {
-	restartCalled := false
-	liveUpdateCalled := false
-
-	tryLive := func(_ int) bool {
-		liveUpdateCalled = true
-		return false // gst-client not available
-	}
-	doRestart := func() {
-		restartCalled = true
-	}
-
-	kbps := 2000
-	if !tryLive(kbps) {
-		doRestart()
-	}
-
-	if !liveUpdateCalled {
-		t.Error("tryLive was not called")
-	}
-	if !restartCalled {
-		t.Error("restart must be triggered as fallback when live update fails")
-	}
-}
+// They were worth nothing even while that path existed. Neither called into
+// this package: each declared its own `tryLive` closure returning a hard-coded
+// bool, wrote `if !tryLive(kbps) { doRestart() }` in the test body, and then
+// asserted that its own two lines had done what its own two lines say. A test
+// that reimplements the logic it is checking passes no matter what the shipped
+// code does — including when, as here, the shipped code could never run at all
+// because gst-client is in no Debian package.
 
 // TestVideorateInPipeline verifies that the buildVideoCmd for a non-gaming session
 // includes "videorate" in its argument list (STREAMWIN-05).
