@@ -4560,6 +4560,18 @@ func main() {
 				// else to the shared handler.
 				fabricMux := http.NewServeMux()
 				fs.RegisterHandlers(fabricMux)
+				// The general CRDT engine rides the same LAN-only mux and the
+				// same shared secret. It replicates the domains approved in
+				// crdtsync/policy.go — today the assistant's reminders — and is
+				// independent of the app-registry sync above.
+				if crdtStore, cerr := startCRDTSync(ctx, fabricMux, dbDir, cfg.InstanceID, fabricSecret, disc, fabricWANClient, nil); cerr != nil {
+					log.Printf("[crdtsync] disabled: %v", cerr)
+				} else {
+					go func() {
+						<-ctx.Done()
+						_ = crdtStore.Close()
+					}()
+				}
 				fabricMux.Handle("/", handler)
 				lanHandler = fabricMux
 				go fs.Run(ctx)
