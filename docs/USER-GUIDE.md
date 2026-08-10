@@ -363,6 +363,44 @@ Cmd-K's "New event" action deep-links straight into Calendar with the editor pre
 
 ---
 
+## Passwords and 2FA codes
+
+Two more built-in apps, both reachable from Launchpad or Cmd-K. Both are built
+around the assumption that you will one day want to leave, or that the box will
+one day be gone — so both import from what you already use and export something
+you can open without Vulos.
+
+### Vault — passwords
+
+**Vault** is a password manager behind its own **master password**, separate
+from your OS sign-in, and it relocks itself after five minutes of inactivity. It
+has a password generator, and the toolbar's Import/Export button brings an
+existing vault across from:
+
+- **Bitwarden** (`.json`)
+- **Chrome / Chromium** (`.csv`)
+- **KeePass** (`.csv`)
+- **1Password** (`.csv` and `.1pif`)
+- a Vulos encrypted backup (`.vault`)
+
+An import reports exactly how many entries were imported, skipped as duplicates,
+and failed, rather than a bare success message. Export writes a
+passphrase-encrypted `.vault` backup.
+
+### Authenticator — 2FA codes
+
+**Authenticator** holds TOTP codes. Add an account by pasting an `otpauth://`
+URI or typing the name, issuer and secret by hand — or import in bulk from
+**Google Authenticator's "Transfer accounts" QR** (its `otpauth-migration://`
+payload) or a Vulos backup.
+
+Its export is deliberately encrypted with a **passphrase you choose, not with
+any key this box holds** — the situation a 2FA backup exists for is the one
+where the box is gone, and a backup that only the box can decrypt would be
+useless in exactly that case. Keep the passphrase somewhere the box is not.
+
+---
+
 ## Notifications
 
 ### The bell and the panel
