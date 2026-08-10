@@ -310,6 +310,24 @@ Contributions are welcome. Branch as `feat/`, `fix/`, or `docs/`, and run `make 
 
 [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE) — © VulOS.
 
+---
+
 <div align="center">
-<sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
+
+<a href="https://github.com/vul-os/vulos">GitHub</a> · <a href="https://github.com/vul-os/vulos/issues">Issues</a> · <a href="https://github.com/vul-os/vulos/releases">Releases</a>
+
+<br>
+
+<sub>Vulos is a free, open-source, self-hosted <strong>personal server operating system</strong> — a real desktop, your files, and private AI, running on hardware you own.<br>
+Built as an alternative to cloud desktops, consumer NAS appliances, and self-hosted app bundles.<br>
+Keywords: personal server OS, sovereign server, self-hosted desktop, home server operating system,<br>
+private AI server, self-hosted cloud, personal cloud, local-first AI, own your data, single-tenant desktop OS.</sub>
+
 </div>
+
+---
+
+<p align="center">
+  <a href="https://vulos.org"><img src="docs/assets/vulos-logo.png" alt="vulos" height="20"></a><br>
+  <sub><a href="https://vulos.org"><b>vulos</b></a> — open by design</sub>
+</p>
