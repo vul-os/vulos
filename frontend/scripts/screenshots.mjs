@@ -308,6 +308,48 @@ const DEMO_TELEMETRY = {
   net_rx: 2.4 * 1e6, net_tx: 640 * 1e3, disk_read: 1.1 * 1e6, disk_write: 340 * 1e3,
 }
 
+// A machine that is actually doing something.
+//
+// The telemetry mock used to send DEMO_TELEMETRY once. Activity Monitor builds
+// its sparklines by appending each frame to a history buffer, so one frame —
+// or a repeated identical one — draws four dead-flat lines. The graphs were
+// technically "live" and looked like a screenshot of nothing.
+//
+// This walks each series with bounded, series-appropriate motion: CPU drifts
+// and occasionally spikes the way a real box does under bursty load; memory
+// moves slowly because it does; network and disk are spikier. Deterministic
+// (a seeded LCG, no Math.random) so the same run produces the same picture and
+// a regenerated screenshot does not churn its diff for no reason.
+function telemetryWalk(count = 140) {
+  let seed = 0x5eed
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+
+  let cpu = 18, mem = 34, rx = 2.4e6, tx = 6.4e5, dr = 1.1e6, dw = 3.4e5
+  const frames = []
+  for (let i = 0; i < count; i++) {
+    // CPU: gentle drift, with an occasional burst that decays — the shape a
+    // build or an indexing pass leaves behind.
+    cpu = clamp(cpu + (rnd() - 0.48) * 9 + (rnd() > 0.94 ? 34 : 0) - (cpu > 55 ? 7 : 0), 4, 92)
+    mem = clamp(mem + (rnd() - 0.5) * 1.6, 28, 47)
+    rx = clamp(rx * (0.82 + rnd() * 0.5) + (rnd() > 0.9 ? 9e6 : 0), 2e5, 4.2e7)
+    tx = clamp(tx * (0.85 + rnd() * 0.45) + (rnd() > 0.93 ? 2.4e6 : 0), 6e4, 9e6)
+    dr = clamp(dr * (0.8 + rnd() * 0.55) + (rnd() > 0.91 ? 6e6 : 0), 1e5, 2.6e7)
+    dw = clamp(dw * (0.84 + rnd() * 0.5) + (rnd() > 0.95 ? 3e6 : 0), 5e4, 1.1e7)
+    frames.push({
+      ...DEMO_TELEMETRY,
+      cpu: Math.round(cpu),
+      mem_percent: Math.round(mem),
+      mem_used: Math.round((mem / 100) * 16 * 1e9),
+      net_rx: Math.round(rx), net_tx: Math.round(tx),
+      disk_read: Math.round(dr), disk_write: Math.round(dw),
+    })
+  }
+  return frames
+}
+
+const DEMO_TELEMETRY_SERIES = telemetryWalk()
+
 // Calendar (`calendar` shot) — a full month's worth of events (not just today's
 // two) so the month grid reads as a lived-in calendar rather than an almost-
 // empty one. Spread across the ~42-cell 6-week grid around "today".
@@ -424,7 +466,17 @@ async function openPalette(page) {
   const input = page.getByPlaceholder(/Search apps/)
   // Focus the desktop (far-left edge, clear of the menu bar and of the default
   // top-left window position) so the global ⌘K listener receives the keypress.
-  await page.locator('body').click({ position: { x: 12, y: 520 } }).catch(() => {})
+  //
+  // Desktop only. At phone width there IS no exposed desktop: MobileStack gives
+  // the running app the whole screen, so (12,520) lands inside that app's UI and
+  // clicks whatever happens to be there — in the recents shot it was landing in
+  // the File Explorer listing between launches. The palette listener is global
+  // and needs no such nudge on mobile, which is why driving it without the click
+  // works there.
+  const vp = page.viewportSize()
+  if (!vp || vp.width >= 768) {
+    await page.locator('body').click({ position: { x: 12, y: 520 } }).catch(() => {})
+  }
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Meta+k')
     if (await input.isVisible().catch(() => false)) return input
@@ -603,6 +655,28 @@ function winRoot(page, title) {
 // The assertion stays regardless. It is what turned an invisible "two windows
 // shipped empty and the runner said 40 captured, 0 failed" into a loud failure,
 // and it will catch the next thing that leaves a pane on its fallback.
+// expectVisibleText fails the shot if `text` is not on screen. Used by shots
+// whose subject is a SURFACE rather than a window (the phone recents deck), so
+// an empty overlay cannot be captured as if it were the feature — the same
+// class of silent-empty capture that shipped two "Loading..." windows.
+async function expectVisibleText(page, text, timeout = 10_000) {
+  try {
+    await page.getByText(text, { exact: false }).first().waitFor({ state: 'visible', timeout })
+  } catch {
+    // Say what WAS there. A bare "did not render" sends the reader back to
+    // guessing, and the useful signal is almost always the text that showed up
+    // instead.
+    const seen = await page.locator('body').innerText().catch(() => '')
+    // Save the frame too. Text alone has repeatedly been ambiguous here, and
+    // the image says immediately whether the surface is absent, mid-animation,
+    // or simply behind something.
+    await page.screenshot({ path: `/tmp/shotfail-${Date.now()}.png` }).catch(() => {})
+    throw new Error(
+      `expected "${text}" to be visible before capture — the surface did not render.\n` +
+      `      on screen: ${JSON.stringify(seen.replace(/\s*\n+\s*/g, ' | ').slice(0, 260))}`)
+  }
+}
+
 async function waitForAppReady(page, title, { text, selector } = {}, timeout = 20_000) {
   const win = winRoot(page, title)
   const content = win.locator('.vwin-content').first()
@@ -1056,46 +1130,79 @@ const SHOTS = [
     // alongside the others.
     light: true,
     dsf: 2,
-    desc: 'Phone, landscape — the real desktop with two windows stacked on a handset',
-    // A PHONE HELD SIDEWAYS, running the actual desktop.
+    desc: 'Phone — several apps running, in the recents deck',
+    // A PHONE, IN PORTRAIT, showing how multitasking actually works on a phone.
     //
-    // This shot used to be the portrait MobileStack app switcher, and it was
-    // the weakest image in the set: MobileSwitcher lays running apps out as a
-    // single column of full-width cards (grid-cols-1 until the sm: breakpoint,
-    // which 390px never reaches), so however good the cards are it renders as a
-    // flat vertical LIST with the third card sliced off by the dock. There is no
-    // overlap and no depth to capture, because on a phone in portrait the shell
-    // deliberately has none — MOBILE-ADAPTIVE: an app takes the full screen and
-    // the switcher replaces the window stack.
+    // This shot was previously captured at 932x430 — an iPhone held sideways.
+    // src/App.jsx picks its layout purely on WIDTH (<768px → MobileStack), so
+    // 932px is over the line and renders the full DesktopCanvas. The result was
+    // an honest capture of a real mode, but it was indistinguishable from a
+    // tablet: floating windows, menu bar, widget column. As "the mobile
+    // screenshot" it misrepresented the phone experience, which is what people
+    // actually want to see.
     //
-    // Sideways is a different shell, not a smaller one. src/App.jsx picks its
-    // layout purely on WIDTH (<768px → MobileStack), so a 932x430 handset in
-    // landscape is over the line and gets the full DesktopCanvas: menu bar,
-    // wallpaper, ambient widget column, dock, and real draggable overlapping
-    // windows. That is an honest capture of what the product does on that
-    // device, and it is the only place stacked windows exist at phone size.
-    //
-    // 932x430 is an iPhone 15/16 Pro Max in landscape. Everything is sized to
-    // the furniture: windows start below the 32px menu bar, the front frame ends
-    // at x=610 (the widget column begins at 932-12-240 = 680) and at y=344,
-    // ~20px above the dock (viewport height − 66). The widget column is ~294px
-    // tall, so it clears the 430px viewport without being cut off.
-    viewport: { width: 932, height: 430 },
+    // 390x844 is a plain iPhone in portrait, and at that width the shell
+    // deliberately has no floating windows: an app owns the screen and the
+    // recents deck replaces the window stack. That deck is the mobile
+    // multitasking story, so it is what this shows.
+    viewport: { width: 390, height: 844 },
     async drive(page) {
-      // Terminal behind, File Explorer in front. The Terminal is the one app
-      // that is unmistakably a different app from a 100px sliver of its corner,
-      // which is what sells "two windows" rather than "one window with a border".
-      await launchApp(page, 'Terminal', { maximize: false })
-      await placeWindow(page, 'Terminal', { x: 30, y: 44, width: 452, height: 240 })
+      await page.waitForTimeout(1200)
+      // Drive the palette directly rather than through launchApp(): that helper
+      // is built for the desktop shell (it nudges focus by clicking the
+      // wallpaper and then looks for a Maximize button), and none of that
+      // applies inside MobileStack, where the running app owns the screen.
+      for (const app of ['File Explorer', 'Terminal', 'Calendar']) {
+        await page.keyboard.press('Meta+k')
+        const input = page.getByPlaceholder(/Search apps/)
+        if (!await input.isVisible({ timeout: 4_000 }).catch(() => false)) {
+          throw new Error(`the ⌘K palette never opened for "${app}" — nothing was launched`)
+        }
+        await input.fill(app)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(1_200)
+      }
 
-      await launchApp(page, 'File Explorer', { maximize: false })
-      await placeWindow(page, 'File Explorer', { x: 140, y: 100, width: 470, height: 244 })
+      // Open the recents deck from the dock. TAP, not click: this context is
+      // created with isMobile + hasTouch (see captureTheme), so the page is
+      // emulating a touch device.
+      //
+      // Verified in a loop rather than fired once, because the freshly-launched
+      // app is still settling. Checking BEFORE each retry matters: the control
+      // is a toggle, so a blind second tap would close a deck that had already
+      // opened.
+      const deck = page.getByText('Running apps').first()
+      for (let i = 0; i < 6; i++) {
+        if (await deck.isVisible().catch(() => false)) break
+        const appsAll = page.getByRole('button', { name: 'Apps' })
+        // TWO elements answer to "Apps" at phone size: one in the top bar at
+        // y≈10, and the dock control at y≈784. `.first()` picked the top-bar one
+        // every time, so every tap "succeeded" and nothing opened — the tap was
+        // landing on a real element, just not this one. Pick the dock by
+        // position rather than by order.
+        const cnt = await appsAll.count().catch(() => 0)
+        if (cnt === 0) {
+          throw new Error('the dock\'s "Apps" control is not on screen — MobileStack did not mount')
+        }
+        const vh = page.viewportSize().height
+        let apps = null
+        for (let k = 0; k < cnt; k++) {
+          const cand = appsAll.nth(k)
+          const box = await cand.boundingBox().catch(() => null)
+          if (box && box.y > vh * 0.7) { apps = cand; break }
+        }
+        if (!apps) {
+          throw new Error(`found ${cnt} "Apps" control(s) but none in the bottom dock — the dock did not render`)
+        }
+        await apps.tap({ timeout: 4_000 }).catch(() => {})
+        await page.waitForTimeout(700)
+      }
 
-      await page.waitForTimeout(400)
-      await assertStacked(page, [
-        { title: 'Terminal', x: 30, y: 44, width: 452, height: 240 },
-        { title: 'File Explorer', x: 140, y: 100, width: 470, height: 244 },
-      ])
+      // The subject of this shot is the deck itself, so assert it rendered with
+      // all three apps. An empty overlay would otherwise capture silently — the
+      // same failure that once shipped two "Loading..." windows in a hero shot.
+      await expectVisibleText(page, 'Running apps')
+      await expectVisibleText(page, '3 open')
     },
   },
   {
@@ -1213,11 +1320,27 @@ async function captureTheme(browser, theme, overrides, results) {
         ws.onMessage(() => { /* swallow client keystrokes */ })
         ws.send(TERM_SESSION)
       })
-      // Mock Activity Monitor's telemetry WebSocket (`tiled` shot) with one
-      // steady demo reading — enough for useTelemetry() to flip `connected`
-      // and render real CPU/mem gauges instead of the connecting spinner.
+      // Activity Monitor's telemetry WebSocket. Send the whole walk up front,
+      // back to back: the component appends every frame it receives to its
+      // history buffer, so this fills the sparklines with a real trace before
+      // the capture instead of the single flat reading it used to get. The last
+      // frame is also what the gauges read, so the numbers and the graphs agree.
       await page.routeWebSocket(/\/api\/telemetry/, (ws) => {
-        ws.send(JSON.stringify(DEMO_TELEMETRY))
+        // Paced, not blasted. Sending all 140 frames synchronously on connect
+        // queued 140 React state updates at once and starved the main thread —
+        // enough that a tap on the phone dock landed without the app ever
+        // responding to it, which cost a while to track down because the tap
+        // itself reported success. Same failure shape as the ResizeObserver
+        // render loop: the UI is not broken, it is simply too busy to answer.
+        //
+        // A short interval fills the sparklines just as well, since the capture
+        // waits on real content anyway.
+        let i = 0
+        const t = setInterval(() => {
+          if (i >= DEMO_TELEMETRY_SERIES.length) { clearInterval(t); return }
+          try { ws.send(JSON.stringify(DEMO_TELEMETRY_SERIES[i++])) } catch { clearInterval(t) }
+        }, 12)
+        ws.onClose(() => clearInterval(t))
       })
       // Accept — and then hold open, silently — the shell's two ambient event
       // streams. installBackend mocks the REST surface but not these, so they

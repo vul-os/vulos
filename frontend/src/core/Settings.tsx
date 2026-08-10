@@ -393,10 +393,13 @@ export default function Settings({ initialSection }: SettingsProps) {
           middle. Anchoring the measure to the rail keeps the two as one
           continuous surface and pushes all the slack to the outer edge, where
           empty space is just margin. The measure still grows with the window
-          (42 → 48 → 56rem) so a maximised window genuinely uses more of its
-          width instead of only adding gutter. */}
+          (42 → 48rem) and then, on a genuinely wide window, uncapped: a
+          maximised Settings was leaving ~460px of empty gutter on the right
+          because the column stopped at 56rem. Cards and label/value rows are
+          happy full-bleed; the only thing that must NOT stretch is prose, so
+          each panel's description carries its own 68ch measure. */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-       <div className="w-full max-w-2xl @5xl/win:max-w-3xl @7xl/win:max-w-[56rem] px-5 py-6 @3xl/win:px-8 @3xl/win:py-8 @6xl/win:px-10 @6xl/win:py-9">
+       <div className="w-full max-w-2xl @5xl/win:max-w-3xl @7xl/win:max-w-none px-5 py-6 @3xl/win:px-8 @3xl/win:py-8 @6xl/win:px-10 @6xl/win:py-9">
         {active === 'ai' && <AISettings profile={profile} updateProfile={updateProfile} />}
         {active === 'models' && <ModelsPanel />}
         {active === 'aiapps' && <AIAppsSettings />}

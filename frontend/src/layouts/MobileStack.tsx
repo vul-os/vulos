@@ -216,9 +216,21 @@ function MobileSwitcher({ onOpen, onHome }: { onOpen: (id: number) => void; onHo
           <button onClick={onHome} className="focus-primary mt-3 text-xs font-medium accent-text active:opacity-70 transition-opacity">Back to home</button>
         </div>
       ) : (
-        <div className="safe-px-4 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        // A horizontally-snapping deck, not a vertical list.
+        //
+        // As a single column of full-width cards this was the weakest surface in
+        // the product on the device it exists for: at 390x844 exactly two and a
+        // bit cards fit, so the third was always sliced by the dock, and nothing
+        // about it read as "several apps are running" — it read as a stubby
+        // list. Cards now sit side by side at ~76% width so the next one peeks,
+        // which is the phone-recents metaphor every user already knows and the
+        // only layout at this size where more than one app is legible at once.
+        //
+        // snap-x + snap-center makes the peek deliberate rather than an
+        // accident of overflow; sm: keeps the roomier two-up grid for tablets.
+        <div className="safe-px-4 py-4 flex sm:grid sm:grid-cols-2 gap-3.5 overflow-x-auto sm:overflow-visible snap-x snap-mandatory sm:snap-none no-scrollbar [-webkit-overflow-scrolling:touch]">
           {windows.map(win => (
-            <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985]">
+            <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985] shrink-0 w-[76%] snap-center sm:w-auto sm:shrink">
               <div className="flex items-center gap-2.5 px-3 h-12">
                 <AppIcon id={win.appId} size={20} color={undefined} style={undefined} />
                 <span className="text-[13px] font-medium text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
@@ -235,7 +247,12 @@ function MobileSwitcher({ onOpen, onHome }: { onOpen: (id: number) => void; onHo
                 aria-label={`Switch to ${win.title}`}
                 className="block w-full text-left"
               >
-                <div className="vmob-card-body h-44 relative pointer-events-none overflow-hidden">
+                {/* Near-full-height on a phone: a recents card is a portrait
+                    preview of the app, and at a fixed 16rem the deck sat as a
+                    stubby band with two thirds of the screen empty below it.
+                    vh-relative so it fills whatever handset it lands on. The
+                    tablet grid keeps its shorter card. */}
+                <div className="vmob-card-body h-[58vh] sm:h-44 relative pointer-events-none overflow-hidden">
                   <MobileAppFrame win={win} />
                 </div>
               </button>

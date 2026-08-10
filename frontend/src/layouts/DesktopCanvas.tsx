@@ -78,7 +78,7 @@ export default function DesktopCanvas() {
                 const sessionId = (data && data.id) || 'browser'
                 openWindow({
                   appId: 'browser-stream',
-                  title: 'Streaming Chrome',
+                  title: 'Chrome',
                   icon: 'chrome',
                   component: createElement(Suspense, { fallback },
                     createElement(StreamViewer, { sessionId })

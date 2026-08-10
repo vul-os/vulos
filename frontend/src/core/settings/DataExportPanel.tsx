@@ -50,7 +50,7 @@ function Section({ title, desc, children }: SectionProps) {
     <div>
       <header className="mb-5 pb-4 border-b border-[var(--border-default)]">
         <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
-        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed">{desc}</p>}
+        {desc && <p className="mt-1 text-sm text-[var(--text-tertiary)] leading-relaxed max-w-[68ch]">{desc}</p>}
       </header>
       {children}
     </div>

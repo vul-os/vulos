@@ -69,7 +69,7 @@ export async function launchApp(app: AppEntry | null | undefined, { openWindow }
     return
   }
 
-  // ── Streaming Chrome lane — REAL Chromium on the box, streamed over WebRTC ─
+  // ── Chrome (streamed) lane — REAL Chromium on the box, streamed over WebRTC ─
   // Distinct from the iframe "Smart Browser" (type:'web', handled below). This
   // launches a per-user stream.Session via POST /api/browser/launch (the box
   // derives a persistent per-user Chrome profile) and connects the StreamViewer
