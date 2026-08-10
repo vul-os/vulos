@@ -1,6 +1,7 @@
 package energy
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -302,4 +303,60 @@ func contains(s, sub string) bool {
 		}
 		return false
 	}())
+}
+
+// ---------------------------------------------------------------------------
+// DPMS honesty — reported state must match what actually happened
+// ---------------------------------------------------------------------------
+
+// When screen power control is unavailable (wlopm missing, or a cage session
+// that does not implement wlr-output-power-management-v1), the screen stays
+// lit. The reported state must stay lit too. This used to fail silently:
+// setDPMS discarded its error, so ScreenOn went false and /api/energy told a
+// client the display was off while the user was looking at it.
+func TestTick_ScreenOffFails_StateDoesNotClaimScreenIsOff(t *testing.T) {
+	orig := dpmsSetter
+	dpmsSetter = func(bool) error { return errors.New("no DPMS control: wlopm not found") }
+	defer func() { dpmsSetter = orig }()
+
+	m := NewManager(ModeSaver)
+	m.mu.Lock()
+	m.idleStart = time.Now().Add(-1 * time.Hour) // well past ScreenOff
+	m.mu.Unlock()
+
+	m.tick()
+
+	if st := m.State(); !st.ScreenOn {
+		t.Fatal("ScreenOn is false after the DPMS call failed — the state claims " +
+			"a screen that nothing turned off is off")
+	}
+	if st := m.State(); st.ScreenBrightness == 0 {
+		t.Errorf("ScreenBrightness = 0 after a failed screen-off, want non-zero")
+	}
+}
+
+// The success path must still report the screen as off.
+func TestTick_ScreenOffSucceeds_StateReportsOff(t *testing.T) {
+	orig := dpmsSetter
+	var gotOn bool
+	var called bool
+	dpmsSetter = func(on bool) error { called, gotOn = true, on; return nil }
+	defer func() { dpmsSetter = orig }()
+
+	m := NewManager(ModeSaver)
+	m.mu.Lock()
+	m.idleStart = time.Now().Add(-1 * time.Hour)
+	m.mu.Unlock()
+
+	m.tick()
+
+	if !called {
+		t.Fatal("expected a DPMS call")
+	}
+	if gotOn {
+		t.Error("expected setDPMS(false) for screen-off")
+	}
+	if st := m.State(); st.ScreenOn {
+		t.Error("ScreenOn is true after a successful screen-off")
+	}
 }

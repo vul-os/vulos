@@ -3,6 +3,7 @@ package energy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -117,7 +118,9 @@ func (m *Manager) ResetIdle() {
 
 	if wasOff {
 		setBrightness(100)
-		setDPMS(true)
+		if err := dpmsSetter(true); err != nil {
+			logDPMSFailure(err)
+		}
 		log.Printf("[energy] screen woke up")
 	} else if wasDimmed {
 		setBrightness(100)
@@ -180,8 +183,18 @@ func (m *Manager) tick() {
 		}
 		m.mu.Unlock()
 		if changed {
-			setDPMS(false)
-			log.Printf("[energy] screen off (idle %s)", idle.Truncate(time.Second))
+			if err := dpmsSetter(false); err != nil {
+				// Nothing turned the screen off, so do not keep a state that
+				// says it is off — /api/energy would be reporting a blank
+				// screen to a user looking at a lit one.
+				m.mu.Lock()
+				m.state.ScreenOn = true
+				m.state.ScreenBrightness = 100
+				m.mu.Unlock()
+				logDPMSFailure(err)
+			} else {
+				log.Printf("[energy] screen off (idle %s)", idle.Truncate(time.Second))
+			}
 		}
 	}
 
@@ -299,13 +312,67 @@ func setBrightness(percent int) {
 	}
 }
 
-func setDPMS(on bool) {
-	// For Wayland/Cage — toggle via wlopm if available
+// dpmsSetter is the seam the tests replace. Production always uses setDPMS;
+// without an injection point there is no way to test the branch that matters —
+// what the reported state says when the screen did NOT turn off.
+var dpmsSetter = setDPMS
+
+// dpmsFailOnce keeps the loop from printing the same DPMS failure every 5s.
+var dpmsFailOnce sync.Once
+
+// logDPMSFailure reports, once, that screen power control is not available.
+// Once rather than never: silence is what let this go unnoticed, and once
+// rather than always because the energy loop would otherwise repeat it forever.
+func logDPMSFailure(err error) {
+	dpmsFailOnce.Do(func() {
+		log.Printf("[energy] screen power control unavailable (%v) — the display "+
+			"will NOT blank on idle. wlopm is required, and it only works under a "+
+			"compositor implementing wlr-output-power-management-v1 (labwc does, "+
+			"cage does not).", err)
+	})
+}
+
+// dpmsResolve caches the one-time lookup of the DPMS control binary. The energy
+// loop ticks every 5s; without this it would re-fail the same exec forever.
+var (
+	dpmsOnce sync.Once
+	dpmsBin  string
+	dpmsErr  error
+)
+
+// setDPMS turns the display(s) on or off via wlopm, and REPORTS whether it
+// worked.
+//
+// It used to be `exec.Command("wlopm", ...).Run()` with the error discarded —
+// and wlopm is in no image this repo builds, so the call failed every time
+// while the caller went on to record ScreenOn=false and log "screen off". The
+// state a client reads over /api/energy said the screen was off; the screen was
+// on. That is the failure mode this function now refuses to have.
+//
+// Measured 2026-08-10 (arm64, headless, wlopm 0.1.0):
+//
+//	under labwc : wlopm --off '*' / --on '*'  -> exit 0
+//	under cage  : "Wayland server does not support wlr-output-power-management-v1", exit 1
+//	no compositor: "Can not connect to wayland display.", exit 1
+//
+// So this works on a v2 (labwc) seat and cannot work on a v1 (cage) seat. The
+// caller's job is to not claim otherwise.
+func setDPMS(on bool) error {
+	dpmsOnce.Do(func() {
+		dpmsBin, dpmsErr = exec.LookPath("wlopm")
+	})
+	if dpmsErr != nil {
+		return fmt.Errorf("no DPMS control: %w", dpmsErr)
+	}
 	state := "off"
 	if on {
 		state = "on"
 	}
-	exec.Command("wlopm", "--"+state, "*").Run()
+	out, err := exec.Command(dpmsBin, "--"+state, "*").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("wlopm --%s '*': %w: %s", state, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func suspend() {
