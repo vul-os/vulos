@@ -249,7 +249,6 @@ Choosing **New** takes you through, most steps skippable:
 2. **Language**, **Timezone**, **Network** (WiFi scan-and-join, skip if you're on Ethernet).
 3. **Account** — display name, `@vulos` username, password. This is a **local account only** — there is no cloud sign-in step, and this becomes the administrator account you'll use for `sudo` in the Terminal. Optionally enroll a passkey (WebAuthn/FIDO2) for phishing-resistant login.
 4. **Device PIN** — optional quick-unlock PIN for the lock screen.
-5. **Intent** — a few questions about how you'll use Vulos, used only to tune defaults.
 6. **Apps** — the default bundle (the built-in productivity app **Diwan** — Docs/Sheets/Slides/PDF/whiteboards — plus the PIM apps) is pre-checked; opt out of anything you don't want. Files, Calendar, and Contacts are always included. Calendar/Contacts and mail connect to a mailbox you already own — there is no Vulos-hosted mailbox and no Vulos-hosted email address.
 7. **Appearance**, **Identity** (hostname), **Storage** — optionally connect an S3-compatible bucket (Tigris, or a MinIO instance you run) for encrypted backup. Skipping this is fine; your data still lives on the box's own disk.
 8. **SSH** and **Recovery kit** — generate an SSH keypair for the box, and download your account recovery material.
@@ -281,7 +280,7 @@ If the machine you're installing on has no monitor attached, you can still do th
 # Check the backend is responding
 curl http://localhost:8080/api/health
 
-# Check GPU tier detected (0=software, 1=VA-API, 2=NVENC)
+# Check GPU tier detected — a NAME, not a number: software | vaapi | nvenc
 curl http://localhost:8080/api/browser/status | jq .gpu_tier
 
 # Prometheus metrics — owner-only: this returns 403 without credentials.
