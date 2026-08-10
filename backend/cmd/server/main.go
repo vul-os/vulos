@@ -4446,12 +4446,30 @@ func main() {
 				if voucherSvc, verr := fleetid.NewVoucherService(fabricSigner, vouchPolicy); verr != nil {
 					log.Printf("[fleetid] WARNING: voucher service unavailable (%v) — this box cannot vouch for peers' break-glass requests", verr)
 				} else {
+					// The operator's approval queue is only judgeable if a Vula
+					// ID can be turned into "one of your boxes" or "a machine
+					// this box has never heard of". fleetid holds no roster by
+					// design, so the lookup comes from here. Without it the
+					// queue is served unannotated and says so, which is honest
+					// but leaves a human with nothing to go on.
+					voucherSvc.SetPeerAnnotator(fleetVouchAnnotator(sharedInstanceRegistry))
 					voucherSvc.RegisterHandlers(mux, func(r *http.Request) bool {
 						p, _ := authStore.GetProfile(r.Header.Get("X-User-ID"))
 						return p != nil && p.Role == auth.RoleAdmin
 					})
-					log.Printf("[fleetid] voucher service registered (request: peer-facing; approve: admin-gated, default-deny policy)")
+					log.Printf("[fleetid] voucher service registered (request: peer-facing; approve/pending/dismiss: admin-gated, default-deny policy)")
 				}
+
+				// The INITIATOR side. fleetid.GatherQuorum had no production
+				// caller: this box could be asked to vouch, but could not ask.
+				// Owner + step-up, like the break-glass rotate/revoke endpoints
+				// whose quorum_certs input this produces.
+				registerFleetGatherRoute(mux, fleetGatherDeps{
+					AuthStore:  authStore,
+					Registry:   sharedInstanceRegistry,
+					SubjectKey: fabricSigner,
+				})
+				log.Printf("[fleetid] break-glass quorum gather registered at %s (owner + step-up)", FleetGatherPath)
 			}
 
 			// mDNS discoverer: advertise this box and resolve peers. Falls back
