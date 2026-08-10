@@ -257,6 +257,7 @@ apt-get update
 # no DHCP client, no wifi supplicant and no mDNS. Fixed 2026-08-10; the package
 # lists in this file are now covered by scripts/check-image-packages.sh so a
 # repeat shows up as a manifest diff instead of a silent truncation.
+# PACKAGE-SET: deploy   (pinned by scripts/check-image-packages.sh — do not remove)
 apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \
@@ -587,6 +588,7 @@ chroot "$ROOTFS" apt-get update
 # aborted the build under `set -e` (the rootfs never finished building).
 # linux-image-${GOARCH} + initramfs-tools: bootable kernel + initrd.
 # systemd-boot-efi: UEFI bootloader stub copied into the ESP by --disk/--live.
+# PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \

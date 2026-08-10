@@ -150,6 +150,19 @@ jobs:
             exit 1
           fi
 
+  image-packages:
+    name: PKGSET — The Dockerfile and build.sh package lists match their manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # This gate existed for months and NOTHING RAN IT — not CI, not the
+      # Makefile — which is how build.sh's deploy list sat truncated (avahi,
+      # dhcpcd5, wpasupplicant and openssh-server passed to `flatpak` instead of
+      # apt) without anyone noticing. Runs in about a second and needs no Docker.
+      - name: Check pinned apt package sets
+        run: scripts/check-image-packages.sh
+
   licenses:
     name: LICENCES — THIRD_PARTY_NOTICES.md matches the dependency graph
     runs-on: ubuntu-latest
