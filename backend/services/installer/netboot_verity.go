@@ -17,7 +17,7 @@ package installer
 //
 // Read from a real boot's serial console, the symptom was:
 //
-//	vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity
+//	vulos-live: a dm-verity prerequisite is missing — mounting squashfs without dm-verity
 //	  hashtree:    /root/var/cache/vulos/slot-a/os-core.hashtree MISSING
 //	  roothash:    /root/var/cache/vulos/slot-a/os-core.roothash MISSING
 //
