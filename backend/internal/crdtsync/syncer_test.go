@@ -332,16 +332,39 @@ func TestWANPeerSkippedWithoutWANClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true}); err == nil {
+	id := testIdentity(t)
+	peerKey := EncodePeerKey(testIdentity(t).PublicKey())
+
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true, PublicKey: peerKey}); err == nil {
 		t.Fatal("a WAN peer must be skipped when no WAN client is configured")
 	}
 	// With one configured, https is required.
 	sy.cfg.WANHTTPClient = http.DefaultClient
-	if _, err := sy.clientFor(SyncPeer{BaseURL: "http://relayed.example", WAN: true}); err == nil {
+	sy.cfg.Identity = id
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "http://relayed.example", WAN: true, PublicKey: peerKey}); err == nil {
 		t.Fatal("a plaintext WAN peer must be refused")
 	}
-	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true}); err != nil {
-		t.Fatalf("a valid https WAN peer must be accepted: %v", err)
+	// IDENTITY is the other half of failing closed, and it is the one the
+	// shared secret cannot supply. Without a local signing key this box could
+	// not sign a request a peer would accept nor check the signature on a
+	// response it is about to merge, so the peer is skipped — not dialled with
+	// the fleet-wide secret.
+	sy.cfg.Identity = nil
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true, PublicKey: peerKey}); err == nil {
+		t.Fatal("a WAN peer must be skipped when this box has no signing identity")
+	}
+	sy.cfg.Identity = id
+	// And without the PEER's key there is nothing to pin the responder to: the
+	// address came from an unsigned relay answer, so "whoever answers" is not
+	// an identity.
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true}); err == nil {
+		t.Fatal("a WAN peer with no public key must be skipped")
+	}
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true, PublicKey: "not-a-key"}); err == nil {
+		t.Fatal("a WAN peer with an unparseable public key must be skipped")
+	}
+	if _, err := sy.clientFor(SyncPeer{BaseURL: "https://relayed.example", WAN: true, PublicKey: peerKey}); err != nil {
+		t.Fatalf("a valid https WAN peer with both keys must be accepted: %v", err)
 	}
 	// A LAN peer still uses the LAN client with no WAN client present.
 	sy.cfg.WANHTTPClient = nil

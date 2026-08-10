@@ -43,9 +43,34 @@ type EngineStatus struct {
 
 // Authorizer decides whether a request may exchange CRDT state. It is injected
 // rather than assumed so the engine does not hard-code a trust model: the LAN
-// wiring passes the shared-fabric-secret check, and a future WAN transport can
-// pass a stronger one at the same seam.
+// wiring passes the shared-fabric-secret check, and the WAN path passes the
+// per-peer Ed25519 signature check (PeerKeyAuthorizer) at the same seam.
 type Authorizer func(*http.Request) bool
+
+// HandlerOption configures RegisterHandlers.
+type HandlerOption func(*handlerOpts)
+
+type handlerOpts struct {
+	identity *PeerIdentity
+}
+
+// WithResponseSigning makes the endpoints sign their 200 responses with this
+// box's peer identity whenever the caller presented a peer-auth envelope.
+//
+// This is not decoration. A pull RESPONSE is merged into the caller's database,
+// and the caller reached this box at an address an UNSIGNED rendezvous
+// /resolve answer gave it (fabric/rendezvous.go documents that gap). Without a
+// signature over the response body, a relay that lies about an address is a
+// relay that writes to your database. TLS does not close this: it proves the
+// responder holds a certificate for the name the relay chose, which an attacker
+// who controls the relay has for their own domain.
+//
+// Requests that carry no peer-auth envelope — i.e. the LAN shared-secret path —
+// get an unsigned response exactly as before, so this changes nothing on the
+// LAN.
+func WithResponseSigning(id *PeerIdentity) HandlerOption {
+	return func(o *handlerOpts) { o.identity = id }
+}
 
 // RegisterHandlers mounts the engine's transport endpoints on mux:
 //
@@ -61,10 +86,16 @@ type Authorizer func(*http.Request) bool
 //
 // These handlers must be mounted on the LAN-only mux (the same one
 // internal/fabric uses), never the public surface.
-func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
+func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer, options ...HandlerOption) {
 	if authz == nil {
 		log.Printf("[crdtsync] REFUSING to register handlers: no Authorizer supplied (an unauthenticated exchange endpoint is never acceptable)")
 		return
+	}
+	opts := &handlerOpts{}
+	for _, o := range options {
+		if o != nil {
+			o(opts)
+		}
 	}
 	mux.HandleFunc("POST /api/crdt/pull", func(w http.ResponseWriter, r *http.Request) {
 		if !authz(r) {
@@ -93,7 +124,7 @@ func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
 			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, d)
+		opts.respond(w, r, d)
 	})
 
 	mux.HandleFunc("POST /api/crdt/push", func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +151,7 @@ func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
 			http.Error(w, `{"error":"merge failed"}`, http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, PushResponse{Applied: n})
+		opts.respond(w, r, PushResponse{Applied: n})
 	})
 
 	mux.HandleFunc("GET /api/crdt/status", func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +165,7 @@ func (s *Store) RegisterHandlers(mux *http.ServeMux, authz Authorizer) {
 			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, st)
+		opts.respond(w, r, st)
 	})
 }
 
@@ -181,9 +212,54 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+// respond writes a 200 JSON body, signing it when the caller authenticated with
+// a peer-auth envelope and this box has a signing identity.
+//
+// The body is marshalled to bytes FIRST and the header set BEFORE anything is
+// written, because a signature computed after the body has begun streaming
+// cannot be sent — headers are already gone. That is also why the signature
+// rides in a header rather than being folded into the JSON: the Delta/Snapshot
+// shapes are the merge engine's wire types and must not grow a transport field.
+func (o *handlerOpts) respond(w http.ResponseWriter, r *http.Request, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
 		log.Printf("[crdtsync] encode response: %v", err)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
 	}
+	if o != nil && o.identity != nil {
+		// The requester's key and nonce come from the envelope it presented.
+		// Parsing it here does not re-authenticate anything — the Authorizer
+		// already did, and refusing to sign would only deny the caller a proof
+		// it asked for. A caller that presented no envelope (the LAN
+		// shared-secret path) gets an unsigned response, unchanged.
+		if aud, nonce, ok := requesterEnvelopeRef(r); ok {
+			if sig, serr := o.identity.SignResponse(aud, nonce, http.StatusOK, body); serr != nil {
+				log.Printf("[crdtsync] sign response: %v", serr)
+			} else {
+				w.Header().Set(PeerAuthResponseHeader, sig)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(body); err != nil {
+		log.Printf("[crdtsync] write response: %v", err)
+	}
+}
+
+// requesterEnvelopeRef pulls the caller's peer key and nonce out of the
+// peer-auth header so a response can be bound to them.
+func requesterEnvelopeRef(r *http.Request) (peerKey, nonce string, ok bool) {
+	header := r.Header.Get(PeerAuthHeader)
+	if header == "" {
+		return "", "", false
+	}
+	var env peerAuthEnvelope
+	if err := decodeEnvelope(header, &env); err != nil {
+		return "", "", false
+	}
+	if env.PeerKey == "" || env.Nonce == "" {
+		return "", "", false
+	}
+	return env.PeerKey, env.Nonce, true
 }

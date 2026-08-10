@@ -4564,7 +4564,16 @@ func main() {
 				// same shared secret. It replicates the domains approved in
 				// crdtsync/policy.go — today the assistant's reminders — and is
 				// independent of the app-registry sync above.
-				if crdtStore, cerr := startCRDTSync(ctx, fabricMux, dbDir, cfg.InstanceID, fabricSecret, disc, fabricWANClient, nil); cerr != nil {
+				// fabricSigner + the instance roster are what turn on the WAN
+				// path: the syncer signs its requests with this box's
+				// per-instance fabric key and refuses to merge a WAN response
+				// that is not signed by the key it resolved, and
+				// fabricPeerRoster decides which keys are allowed at all
+				// (deny-by-default, revocation-aware). Either being absent
+				// leaves the LAN path exactly as it was and WAN peers skipped —
+				// the shared secret is never sent off the LAN.
+				if crdtStore, cerr := startCRDTSync(ctx, fabricMux, dbDir, cfg.InstanceID, fabricSecret, disc, fabricWANClient, nil,
+					fabricSigner, fabricPeerRoster{reg: sharedInstanceRegistry}); cerr != nil {
 					log.Printf("[crdtsync] disabled: %v", cerr)
 				} else {
 					go func() {

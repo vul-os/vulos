@@ -32,6 +32,18 @@ type Peer struct {
 	// existing LAN-client behaviour for every discoverer except
 	// RendezvousDiscoverer.
 	WAN bool
+	// PublicKey is the peer's Ed25519 identity, base64url (raw, unpadded) —
+	// the same string used as its PeerKeys entry and as its rendezvous address.
+	//
+	// It is set by RendezvousDiscoverer, where it is not something the relay
+	// told us: it is the key we ASKED the relay to resolve, so it is known
+	// before the address is. That ordering is the whole point. It lets a caller
+	// pin the identity of whatever answers at that address, which is what makes
+	// an UNSIGNED /resolve answer safe to act on (see resolve's trust-gap doc).
+	//
+	// Empty for mDNS/static discovery: multicast learns an address, not a key,
+	// and the LAN path's trust comes from the shared secret inside the tunnel.
+	PublicKey string
 }
 
 // Discoverer reports the current set of fabric peers on the LAN. Implementations

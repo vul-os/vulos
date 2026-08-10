@@ -295,7 +295,18 @@ func (d *RendezvousDiscoverer) resolve(ctx context.Context, peerKey string) (Pee
 	// Most-specific endpoint first, matching announce order. WAN: true routes
 	// this peer through the safedial-guarded, real-TLS client — see the
 	// trust-gap doc above and Service.httpClientFor in client.go.
-	return Peer{InstanceID: "", BaseURL: strings.TrimRight(out.Endpoints[0], "/"), WAN: true}, true, nil
+	//
+	// PublicKey is peerKey — the key we ASKED for, not out.Key which the relay
+	// supplied. Echoing the relay's own answer back as an identity would make
+	// the pin worthless: the point is that whoever answers at this address must
+	// prove possession of the key the CALLER was looking for. crdtsync's WAN
+	// path uses it for exactly that.
+	return Peer{
+		InstanceID: "",
+		BaseURL:    strings.TrimRight(out.Endpoints[0], "/"),
+		WAN:        true,
+		PublicKey:  peerKey,
+	}, true, nil
 }
 
 // MultiDiscoverer merges several discoverers, de-duplicating by BaseURL.

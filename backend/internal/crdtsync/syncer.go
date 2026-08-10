@@ -25,9 +25,11 @@ import (
 // change here — it is the SAME interface, which is the whole point of stating
 // the seam rather than reaching for fabric's types directly.
 //
-// What a WAN transport still has to bring with it is covered in
-// roadmap/SYNC.md: a peer identity check stronger than the shared LAN secret,
-// and NAT traversal. Neither is a change to this file.
+// The peer identity a WAN transport needs is in peerauth.go: per-request
+// Ed25519 signatures under the same per-instance fabric key the roster and the
+// rendezvous relay already know a box by, authorised by a deny-by-default
+// roster. What remains outside this package is NAT traversal itself — reaching
+// the address the relay hands back.
 
 // SyncPeer is one reachable replica.
 type SyncPeer struct {
@@ -40,6 +42,14 @@ type SyncPeer struct {
 	// WAN marks a peer resolved through a relay rather than the local network.
 	// A WAN peer is only ever dialled with WANHTTPClient — see clientFor.
 	WAN bool
+	// PublicKey is the peer's Ed25519 identity (base64url, as
+	// EncodePeerKey/rendezvous render it). For a WAN peer it is REQUIRED and
+	// it is the key the relay was asked to resolve — so it is known before the
+	// address is, which is what makes it usable to pin the responder.
+	//
+	// Empty for a LAN peer: mDNS learns an address, not a key, and the LAN path
+	// authenticates with the shared secret inside a link-local tunnel.
+	PublicKey string
 }
 
 // PeerSource yields the currently reachable peers.
@@ -61,8 +71,11 @@ type Doer interface {
 }
 
 // AuthHeader is the shared-secret header the LAN fabric authenticates with.
-// The syncer sends it on every request and the wiring's Authorizer checks it,
-// so the CRDT endpoints are gated exactly like fabric's own.
+// The syncer sends it on requests to LAN peers and the wiring's Authorizer
+// checks it, so the CRDT endpoints are gated exactly like fabric's own.
+//
+// It is deliberately NOT sent to a WAN peer — see post. Those authenticate with
+// PeerAuthHeader instead.
 const AuthHeader = "X-Fabric-Auth"
 
 // DefaultSyncInterval matches internal/fabric's default sync cadence.
@@ -82,8 +95,9 @@ type SyncerConfig struct {
 	// Domains are the domains to reconcile. Required and non-empty; every one
 	// must be in the Store's allow-list.
 	Domains []string
-	// Secret is the shared fabric secret. Required — an unauthenticated
-	// exchange would let any host on the network rewrite replicated state.
+	// Secret is the shared fabric secret, used for LAN peers only. Required —
+	// an unauthenticated exchange would let any host on the network rewrite
+	// replicated state.
 	Secret string
 	// HTTPClient dials LAN peers. Required.
 	HTTPClient Doer
@@ -96,6 +110,15 @@ type SyncerConfig struct {
 	SelfBaseURLs []string
 	// Interval is the sync cadence. Defaults to DefaultSyncInterval.
 	Interval time.Duration
+	// Identity is this box's Ed25519 peer identity — the SAME per-instance
+	// fabric signing key the roster and the rendezvous relay know it by. It is
+	// REQUIRED for WAN sync and unused on the LAN.
+	//
+	// When nil, WAN peers are SKIPPED. That is the fail-closed default and it
+	// is the only correct one: without a key this box could not sign a request
+	// a peer would accept, and could not check the signature on a response it
+	// is about to merge.
+	Identity *PeerIdentity
 }
 
 // Syncer drives pull-then-push reconciliation rounds against discovered peers.
@@ -210,12 +233,35 @@ func (s *Syncer) isSelf(p SyncPeer) bool {
 // the tunnel. Pointing that same client at a relay-supplied address would be
 // trusting an arbitrary internet host's certificate, so a WAN peer with no WAN
 // client is skipped, not downgraded.
+// It also fails closed on IDENTITY, which is the harder half. Over the LAN the
+// shared X-Fabric-Auth secret is defensible; over the WAN it is not an identity
+// at all — every box holds the same value, so it says "a member of this fleet"
+// and never which one, and sending it to a relay-supplied address discloses a
+// fleet-wide credential to whoever that relay named. So a WAN peer is dialled
+// only when BOTH halves of a real per-peer authentication are available:
+//
+//	Identity   — this box's Ed25519 key, to SIGN the request, and
+//	PublicKey  — the peer's key, pinned from the relay lookup, to VERIFY the
+//	             response before a single op of it is merged.
+//
+// Missing either, the peer is skipped. It is never downgraded to the shared
+// secret, and never to the LAN client (which skips certificate verification —
+// safe at a link-local address, not safe at an internet one).
 func (s *Syncer) clientFor(p SyncPeer) (Doer, error) {
 	if !p.WAN {
 		return s.cfg.HTTPClient, nil
 	}
 	if s.cfg.WANHTTPClient == nil {
 		return nil, errors.New("WAN peer skipped: no WAN HTTP client configured")
+	}
+	if s.cfg.Identity == nil {
+		return nil, errors.New("WAN peer skipped: no peer signing identity configured — the shared LAN secret is not a peer identity and will not be sent over the WAN")
+	}
+	if p.PublicKey == "" {
+		return nil, errors.New("WAN peer skipped: no peer public key — its response could not be attributed to the box we meant to reach")
+	}
+	if _, err := DecodePeerKey(p.PublicKey); err != nil {
+		return nil, fmt.Errorf("WAN peer skipped: %w", err)
 	}
 	u, err := url.Parse(p.BaseURL)
 	if err != nil {
@@ -235,14 +281,14 @@ func (s *Syncer) syncPeer(ctx context.Context, p SyncPeer) error {
 	}
 	base := strings.TrimRight(p.BaseURL, "/")
 	for _, domain := range s.cfg.Domains {
-		if err := s.syncDomain(ctx, client, base, domain); err != nil {
+		if err := s.syncDomain(ctx, client, p, base, domain); err != nil {
 			return fmt.Errorf("domain %s: %w", domain, err)
 		}
 	}
 	return nil
 }
 
-func (s *Syncer) syncDomain(ctx context.Context, client Doer, base, domain string) error {
+func (s *Syncer) syncDomain(ctx context.Context, client Doer, p SyncPeer, base, domain string) error {
 	for round := 0; round < maxRoundsPerPeer; round++ {
 		// ── pull ──
 		vv, err := s.cfg.Store.VersionVector(domain)
@@ -250,7 +296,7 @@ func (s *Syncer) syncDomain(ctx context.Context, client Doer, base, domain strin
 			return err
 		}
 		var in Delta
-		if err := s.post(ctx, client, base+"/api/crdt/pull", PullRequest{Domain: domain, VV: vv}, &in); err != nil {
+		if err := s.post(ctx, client, p, base+"/api/crdt/pull", PullRequest{Domain: domain, VV: vv}, &in); err != nil {
 			return fmt.Errorf("pull: %w", err)
 		}
 		if in.Domain == "" {
@@ -271,7 +317,7 @@ func (s *Syncer) syncDomain(ctx context.Context, client Doer, base, domain strin
 		}
 		if len(out.Ops) > 0 || out.SnapshotRequired {
 			var resp PushResponse
-			if err := s.post(ctx, client, base+"/api/crdt/push", out, &resp); err != nil {
+			if err := s.post(ctx, client, p, base+"/api/crdt/push", out, &resp); err != nil {
 				return fmt.Errorf("push: %w", err)
 			}
 		}
@@ -284,9 +330,25 @@ func (s *Syncer) syncDomain(ctx context.Context, client Doer, base, domain strin
 	return nil
 }
 
-// post sends a JSON body to a URL with the shared-secret header and decodes the
-// JSON response.
-func (s *Syncer) post(ctx context.Context, client Doer, url string, body, out any) error {
+// post sends a JSON body to a URL and decodes the JSON response.
+//
+// Which credential travels depends on the peer, and the difference matters:
+//
+//   - LAN peer — the shared X-Fabric-Auth secret, unchanged. It is carried
+//     inside a TLS tunnel to a link-local address multicast resolved, which is
+//     the setting it was designed for.
+//
+//   - WAN peer — a per-request Ed25519 signature, and NOT the shared secret.
+//     Withholding it is deliberate: the address came from a relay whose
+//     /resolve answer is unsigned, so sending a fleet-wide bearer credential
+//     there would hand it to whoever the relay named, before this box has any
+//     way to tell. The signature discloses nothing and is bound to this box as
+//     recipient, so a relay that lies learns nothing it can reuse.
+//
+// The response is then verified against the key that was RESOLVED, before any
+// of it reaches Merge. That is the half a request-only scheme would miss: a
+// pull response is data this box is about to write into its own database.
+func (s *Syncer) post(ctx context.Context, client Doer, p SyncPeer, url string, body, out any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -296,7 +358,24 @@ func (s *Syncer) post(ctx context.Context, client Doer, url string, body, out an
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(AuthHeader, s.cfg.Secret)
+
+	var reqNonce string
+	if p.WAN {
+		if s.cfg.Identity == nil || p.PublicKey == "" {
+			// clientFor already refuses this combination; repeated here so the
+			// invariant holds for any future caller of post, not only that one.
+			return errors.New("WAN peer requires both a local signing identity and the peer's public key")
+		}
+		header, nonce, serr := s.cfg.Identity.SignRequest(req.Method, req.URL.Path, raw, p.PublicKey)
+		if serr != nil {
+			return serr
+		}
+		req.Header.Set(PeerAuthHeader, header)
+		reqNonce = nonce
+	} else {
+		req.Header.Set(AuthHeader, s.cfg.Secret)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -311,6 +390,15 @@ func (s *Syncer) post(ctx context.Context, client Doer, url string, body, out an
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	if p.WAN {
+		// Checked BEFORE the body is decoded, let alone merged. An unsigned or
+		// wrongly-signed 200 from a WAN peer is an error, never a body that is
+		// merged anyway with a warning.
+		if verr := VerifyResponse(resp.Header.Get(PeerAuthResponseHeader), p.PublicKey,
+			s.cfg.Identity.ID(), reqNonce, resp.StatusCode, respBody); verr != nil {
+			return verr
+		}
 	}
 	if out == nil {
 		return nil
