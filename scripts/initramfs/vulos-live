@@ -143,6 +143,74 @@ if _sqf="$(read_cmdline_value vulos.squashfs)" && [ -n "$_sqf" ]; then
             ;;
     esac
 fi
+
+# ── OSDIST-FLIP-01: honour the A/B slot the OS actually selected ──────────────
+#
+# The cmdline above is written ONCE, at install time, pinned to slot-a. An OTA
+# stages the new image into the INACTIVE slot and flips "active" in
+# boot-state.json; the boot-counter rollback flips it back. Until this block
+# existed nothing read that file at boot, so both were inert: a staged update
+# never took effect and — worse — a rollback that had already decided the
+# current slot was bad still booted it. A safety mechanism that reports success
+# while doing nothing is the failure mode this project has been digging out.
+#
+# So: the cmdline supplies the DEFAULT, and boot-state.json overrides it when it
+# names a slot whose image is actually present.
+#
+# FAIL CLOSED, deliberately, in this order:
+#   - no state file, unreadable, or no "active" key  → keep the cmdline path
+#   - "active" is anything but a or b                → keep the cmdline path
+#   - the chosen slot's squashfs is missing          → keep the cmdline path
+# Never boot nothing because a JSON file was truncated mid-write. The worst case
+# here is booting the slot the cmdline named, which is exactly today's
+# behaviour.
+#
+# Parsed with sed rather than jq: the initramfs has no jq, and this must not
+# acquire a dependency that a minimal initrd might omit. The pattern matches
+# "active"<spaces>:<spaces>"<slot>" and tolerates the whole document being on
+# one line, which is how Go's encoding/json writes it without indentation.
+read_active_slot() {
+    _state="$1"
+    [ -r "$_state" ] || return 1
+    _slot="$(sed -n 's/.*"active"[[:space:]]*:[[:space:]]*"\([ab]\)".*/\1/p' "$_state" 2>/dev/null | head -n 1)"
+    [ -n "$_slot" ] || return 1
+    printf '%s' "$_slot"
+}
+
+# slot_squashfs_path echoes the squashfs path for a slot, matching the layout
+# writeSlotABootEntry pins on the cmdline.
+slot_squashfs_path() {
+    printf '/var/cache/vulos/slot-%s/os-core.squashfs' "$1"
+}
+
+# apply_active_slot rewrites SQUASHFS_PATH (and its verity siblings) to the slot
+# boot-state.json names, when that slot's image exists under $2 (the mounted
+# root; empty in tests). Returns 0 and sets SELECTED_SLOT when it overrode the
+# cmdline, non-zero (leaving everything untouched) when it did not.
+#
+# The selected slot comes back in a VARIABLE, not on stdout, and the caller must
+# invoke this plainly — never as `$(apply_active_slot ...)`. Command
+# substitution runs the function in a SUBSHELL, so the SQUASHFS_PATH assignment
+# below would be discarded the moment it returned and the override would do
+# nothing at all. That is exactly how the first version of this was written, and
+# the unit tests below caught it: a slot flip that silently changed nothing is
+# the same failure mode this whole change exists to remove.
+SELECTED_SLOT=""
+apply_active_slot() {
+    _statefile="$1"
+    _rootpfx="$2"
+    SELECTED_SLOT=""
+    _slot="$(read_active_slot "$_statefile")" || return 1
+    _cand="$(slot_squashfs_path "$_slot")"
+    [ -f "${_rootpfx}${_cand}" ] || return 1
+    SQUASHFS_PATH="$_cand"
+    _base="${SQUASHFS_PATH%.squashfs}"
+    HASHTREE_PATH="${_base}.hashtree"
+    ROOTHASH_PATH="${_base}.roothash"
+    SELECTED_SLOT="$_slot"
+    return 0
+}
+
 # ── END-TESTABLE ───────────────────────────────────────────────────────────
 
 # Only activate when live mode is requested via kernel parameter
@@ -168,6 +236,16 @@ mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
 # On success, LOWER_DEV is /dev/mapper/vulos-root (the verity device).
 # On failure (missing tool or files), we fall back to a direct loop mount and
 # print a prominent warning so the operator knows verity is not active.
+
+# OSDIST-FLIP-01: the root is mounted by now, so boot-state.json is readable.
+# Let it override the install-time cmdline slot (see apply_active_slot above for
+# the fail-closed rules). Only meaningful on an installed disk; a live/netboot
+# medium has no slot layout and the call simply keeps the cmdline path.
+if apply_active_slot "${rootmnt}/var/cache/vulos/boot-state.json" "${rootmnt}"; then
+    log_begin_msg "vulos-live: boot-state.json selects slot ${SELECTED_SLOT} — booting ${SQUASHFS_PATH}"
+else
+    log_begin_msg "vulos-live: no usable boot-state slot — using the cmdline image ${SQUASHFS_PATH}"
+fi
 
 SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"
 HASHTREE_ABS="${rootmnt}${HASHTREE_PATH}"

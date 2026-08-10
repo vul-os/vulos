@@ -33,7 +33,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT}/scripts/initramfs/vulos-live"
 SH_BIN="$(command -v dash || command -v sh)"
 
-EXPECTED_ASSERTIONS=15
+EXPECTED_ASSERTIONS=26
 ASSERTIONS_RUN=0
 FAILURES=0
 
@@ -154,6 +154,90 @@ assert_eq "${GOT}" "0" "cmdline_has vulos.live matches vulos.live=0 (key=value f
 echo "-- cmdline_has does not match an absent token"
 GOT="$(run_cmdline_has 'root=LABEL=vulos-root ro quiet splash' 'vulos.live')"
 assert_eq "${GOT}" "1" "cmdline_has vulos.live does not match when the token is absent"
+
+# ── OSDIST-FLIP-01: boot-state.json overrides the install-time cmdline slot ───
+#
+# The cmdline is written ONCE at install, pinned to slot-a. An OTA stages into
+# the other slot and flips "active"; the boot-counter rollback flips it back.
+# Neither did anything until apply_active_slot existed, so a staged update never
+# booted and — worse — a rollback that had decided the running slot was bad
+# still booted it.
+#
+# Every case builds a REAL temp root, so the "is the image actually there" check
+# runs against the filesystem rather than a stub.
+echo ""
+echo "-- OSDIST-FLIP-01: boot-state.json slot selection"
+
+SLOTROOT="$(mktemp -d)"
+trap 'rm -rf "${SLOTROOT}"' EXIT
+mkdir -p "${SLOTROOT}/var/cache/vulos/slot-a" "${SLOTROOT}/var/cache/vulos/slot-b"
+: > "${SLOTROOT}/var/cache/vulos/slot-a/os-core.squashfs"
+: > "${SLOTROOT}/var/cache/vulos/slot-b/os-core.squashfs"
+STATE="${SLOTROOT}/var/cache/vulos/boot-state.json"
+
+# run_slot <state-file> → "<squashfs>|<hashtree>|<roothash>|<selected>"
+run_slot() {
+  ( set -e
+    # shellcheck disable=SC1090
+    . "${EXTRACT}"
+    SQUASHFS_PATH="/var/cache/vulos/slot-a/os-core.squashfs"
+    HASHTREE_PATH="/var/cache/vulos/slot-a/os-core.hashtree"
+    ROOTHASH_PATH="/var/cache/vulos/slot-a/os-core.roothash"
+    # Called PLAINLY, never as $(...): the function mutates SQUASHFS_PATH in the
+    # caller's shell, and command substitution would run it in a subshell and
+    # discard that. The production hook has the same requirement — the first
+    # version of this change got it wrong and these tests are what caught it.
+    apply_active_slot "$1" "${SLOTROOT}" || true
+    printf '%s|%s|%s|%s' "${SQUASHFS_PATH}" "${HASHTREE_PATH}" "${ROOTHASH_PATH}" "${SELECTED_SLOT}" )
+}
+
+printf '{"active":"b","pending":"","boot_counter":0,"last_known_good":"a"}' > "${STATE}"
+OUT="$(run_slot "${STATE}")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-b/os-core.squashfs" "active=b boots slot-b, overriding the slot-a cmdline"
+REST="${OUT#*|}"
+assert_eq "${REST%%|*}" "/var/cache/vulos/slot-b/os-core.hashtree" "verity hashtree follows the selected slot"
+REST2="${REST#*|}"
+assert_eq "${REST2%%|*}" "/var/cache/vulos/slot-b/os-core.roothash" "verity roothash follows the selected slot"
+assert_eq "${OUT##*|}" "b" "the selected slot is reported to the caller"
+
+printf '{"active":"a","pending":"","boot_counter":0,"last_known_good":"a"}' > "${STATE}"
+OUT="$(run_slot "${STATE}")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "active=a boots slot-a (the rollback destination)"
+
+# ── fail-closed paths: each KEEPS the cmdline image, never boots nothing ─────
+
+OUT="$(run_slot "${SLOTROOT}/var/cache/vulos/does-not-exist.json")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "missing boot-state keeps the cmdline image"
+
+# Truncated mid-write: the realistic corruption, since this file is rewritten on
+# every boot-counter increment. Cut INSIDE the value — an earlier version of this
+# case stopped after `"active":"b",` which still contains a complete, parseable
+# pair, so it proved nothing.
+printf '{"active":"b' > "${STATE}"
+OUT="$(run_slot "${STATE}")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "truncated boot-state keeps the cmdline image"
+
+# The [ab] restriction, tested DIRECTLY. Going through apply_active_slot only
+# proves the downstream "does the image exist" check caught it — slot-z has no
+# directory, so the letter restriction could be removed entirely and that path
+# would still pass. Assert the parser itself refuses.
+printf '{"active":"z"}' > "${STATE}"
+if ( . "${EXTRACT}" 2>/dev/null; read_active_slot "${STATE}" >/dev/null ); then
+  assert_eq "accepted" "rejected" "read_active_slot refuses a slot letter outside a|b"
+else
+  assert_eq "rejected" "rejected" "read_active_slot refuses a slot letter outside a|b"
+fi
+
+OUT="$(run_slot "${STATE}")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "an unknown slot letter keeps the cmdline image"
+
+# A flip recorded but never staged: booting it would be booting nothing.
+printf '{"active":"b"}' > "${STATE}"
+rm -f "${SLOTROOT}/var/cache/vulos/slot-b/os-core.squashfs"
+OUT="$(run_slot "${STATE}")"
+assert_eq "${OUT%%|*}" "/var/cache/vulos/slot-a/os-core.squashfs" "a slot with no image on disk keeps the cmdline image"
+assert_eq "${OUT##*|}" "" "and reports no selection, so the caller logs the fallback"
+: > "${SLOTROOT}/var/cache/vulos/slot-b/os-core.squashfs"
 
 # ── Coverage assertion + verdict ──────────────────────────────────────────────
 echo ""
