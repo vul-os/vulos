@@ -289,8 +289,50 @@ mkdir -p "$LOWER" "$UPPER" "$WORK" "$MERGED"
 # medium has no slot layout and the call simply keeps the cmdline path.
 if apply_active_slot "${rootmnt}/var/cache/vulos/boot-state.json" "${rootmnt}"; then
     log_begin_msg "vulos-live: boot-state.json selects slot ${SELECTED_SLOT} — booting ${SQUASHFS_PATH}"
+    _booted_slot="$SELECTED_SLOT"
+    _booted_via="boot-state"
 else
     log_begin_msg "vulos-live: no usable boot-state slot — using the cmdline image ${SQUASHFS_PATH}"
+    # Recover the slot from the cmdline path so the record is still meaningful
+    # when boot-state was not usable; "?" when the path names no slot at all
+    # (a live/netboot medium).
+    case "$SQUASHFS_PATH" in
+        */slot-a/*) _booted_slot="a" ;;
+        */slot-b/*) _booted_slot="b" ;;
+        *)          _booted_slot="?" ;;
+    esac
+    _booted_via="cmdline"
+fi
+
+# Record WHICH SLOT THIS BOOT ACTUALLY USED, on disk, where it outlives the
+# boot.
+#
+# Not a test affordance — an operator asking "did my update actually take?" has
+# no way to answer it today, and neither did this project: the console is the
+# only place the decision was visible, and the installed boot entry carries
+# `quiet splash`, so plymouth swallows it. Every boot logs zero vulos-live
+# lines to the serial. A durable marker is the only honest answer, and it is
+# what lets the QEMU harness assert the flip instead of guessing.
+#
+# Best-effort by design: a read-only or full root must never stop the machine
+# booting over a diagnostic. Written after the slot is chosen and before the
+# switch-root, so it always describes the boot in progress.
+# The kernel cmdline says `ro`, so initramfs-tools has $rootmnt mounted
+# read-only at this point and a plain write silently fails — which it did: the
+# marker never appeared and the only symptom was its absence. Remount rw for
+# the write and put it straight back, every step best-effort. A machine must
+# never fail to boot over a diagnostic file.
+if [ -d "${rootmnt}/var/cache/vulos" ]; then
+    _remounted=0
+    if mount -o remount,rw "$rootmnt" 2>/dev/null; then
+        _remounted=1
+    fi
+    {
+        printf 'slot=%s\nvia=%s\nimage=%s\n' "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
+            > "${rootmnt}/var/cache/vulos/booted-slot"
+        sync
+    } 2>/dev/null || true
+    [ "$_remounted" = "1" ] && mount -o remount,ro "$rootmnt" 2>/dev/null || true
 fi
 
 SQUASHFS_ABS="${rootmnt}${SQUASHFS_PATH}"

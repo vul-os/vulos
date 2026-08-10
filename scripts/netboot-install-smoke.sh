@@ -513,68 +513,78 @@ QEMU2_PID=$!
 cleanup_qemu2() { [ -n "${QEMU2_PID:-}" ] && kill "$QEMU2_PID" 2>/dev/null || true; rm -f "$QMP2"; }
 trap 'cleanup_qemu; cleanup_qemu2' EXIT INT TERM
 
-SLOT_LINE='vulos-live: boot-state.json selects slot b'
 HTTP2="http://127.0.0.1:${HOSTPORT2}/api/setup/status"
 deadline=$(( $(date +%s) + TIMEOUT ))
-SLOT_SEEN=0
 HTTP2_OK=0
 while [ "$(date +%s)" -lt "$deadline" ]; do
   kill -0 "$QEMU2_PID" 2>/dev/null || { printf "${c_r}  QEMU (slot-b boot) exited early${c_n}\n" >&2; break; }
-  [ "$SLOT_SEEN" = "0" ] && grep -qsF "$SLOT_LINE" "$SERIAL2" 2>/dev/null && {
-    SLOT_SEEN=1
-    ok "serial: the initramfs selected slot b from boot-state.json"
-  }
   if curl -fsS --max-time 3 "$HTTP2" >/dev/null 2>&1; then HTTP2_OK=1; break; fi
   sleep 3
 done
 echo
 
-qmp2() { QMP="$QMP2" qmp "$1"; }
+# Stop the VM and read the marker the initramfs wrote. The serial cannot answer
+# this: the installed entry carries `quiet splash`, so plymouth swallows every
+# initramfs line — BOTH boots log zero of them, and Phase 3 passes on HTTP
+# alone. The on-disk record is written before switch-root and survives the
+# shutdown, so it says which slot this boot actually used rather than which one
+# we hoped it used.
+kill "$QEMU2_PID" 2>/dev/null || true
+wait "$QEMU2_PID" 2>/dev/null || true
+sleep 2
+
+BOOTED="$(docker run --rm --privileged -v "$OUTDIR":/out "$BUILDER_IMG" bash -c '
+  set -euo pipefail
+  IMG=/out/'"$(basename "$DISK_IMG")"'
+  LOOP="$(losetup --find --show --partscan "$IMG")"
+  trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+  for _ in $(seq 1 150); do [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break; sleep 0.2; done
+  devnum="$(cat "/sys/class/block/${LOOP#/dev/}p2/dev")"
+  [ -e "${LOOP}p2" ] || mknod "${LOOP}p2" b "${devnum%%:*}" "${devnum##*:}"
+  MNT=/mnt/vulos-read; mkdir -p "$MNT"; mount -o ro "${LOOP}p2" "$MNT"
+  cat "$MNT/var/cache/vulos/booted-slot" 2>/dev/null || echo "MISSING"
+  umount "$MNT" 2>/dev/null || true
+' 2>/dev/null)"
+
+echo "$BOOTED" | sed 's/^/      marker: /'
+SLOT_SEEN=0
+case "$BOOTED" in *"slot=b"*) SLOT_SEEN=1 ;; esac
+
 if [ "$SLOT_SEEN" = "1" ] && [ "$HTTP2_OK" = "1" ]; then
   ok "PASS — the flip is REAL: boot-state.json said slot b, the initramfs honoured it,"
-  ok "       and the machine came all the way up to serving HTTP from that slot."
-  echo ""
-  grep -F 'vulos-live: boot-state' "$SERIAL2" | tail -3 | while IFS= read -r ln; do
-    printf "  ${c_d}serial: %s${c_n}\n" "$ln"
-  done
-  kill "$QEMU2_PID" 2>/dev/null || true
+  ok "       the machine came up serving HTTP, and the disk records slot=b."
   exit 0
 fi
 
-# INCONCLUSIVE, not FAIL — and not PASS.
-#
-# Two things block a verdict here, both discovered by running this:
-#
-#  1. The installed boot entry carries `quiet splash`, so plymouth swallows
-#     initramfs console output. NEITHER boot logs a single vulos-live line —
-#     Phase 3 passes purely on HTTP — so the serial can never confirm which
-#     slot was chosen, no matter what the initramfs did.
-#  2. The root partition has no room for a second squashfs, so slot-b is a
-#     hardlink to slot-a. Even a successful boot cannot distinguish them.
-#
-# Calling this FAIL would claim the flip is broken, which is not established.
-# Calling it PASS would be the exact defect this project keeps finding. So it
-# says what it is, and exits non-zero so nobody mistakes it for coverage.
-if [ "$HTTP2_OK" = "1" ] && [ "$SLOT_SEEN" = "0" ]; then
-  printf "${c_y:-}⚠ INCONCLUSIVE — the machine booted and served HTTP with active=b, but this${c_n}\n" >&2
-  printf "  harness cannot yet tell WHICH slot it booted.${c_n}\n" >&2
-  echo "" >&2
-  echo "  Why: the boot entry uses 'quiet splash', so plymouth suppresses the" >&2
-  echo "  initramfs log — no vulos-live line reaches the serial on EITHER boot" >&2
-  echo "  (phase 3 passes on HTTP alone). And slot-b is a hardlink to slot-a" >&2
-  echo "  because the root partition has no space for a second 593MB image, so" >&2
-  echo "  the two slots are byte-identical." >&2
-  echo "" >&2
-  echo "  To make this decidable: drop 'quiet splash' from the entry this harness" >&2
-  echo "  boots (or log the selected slot somewhere the running OS exposes), and" >&2
-  echo "  give the test disk room for a genuinely different second image." >&2
-  exit 2
-fi
+# "I could not tell" is not "it is broken". If the marker is absent the boot
+# left no evidence either way — asserting failure there would be as dishonest as
+# asserting success. Only a marker that positively names the WRONG slot proves
+# the flip did not happen.
+case "$BOOTED" in
+  *MISSING*|"")
+    printf "${c_y:-}⚠ INCONCLUSIVE — the machine booted and served HTTP with active=b, but the${c_n}\n" >&2
+    printf "  boot left no record of which slot it used, so this proves nothing either way.${c_n}\n" >&2
+    echo "" >&2
+    echo "  The initramfs writes /var/cache/vulos/booted-slot before switch-root; it is" >&2
+    echo "  absent here. Known dead ends already ruled out: the built hook DOES contain" >&2
+    echo "  the marker code, and the write is wrapped in a remount,rw (the cmdline says" >&2
+    echo "  ro, and a plain write silently failed). Still unexplained — most likely the" >&2
+    echo "  hook never reaches that line on this boot, or \$rootmnt is not the partition" >&2
+    echo "  being read back afterwards." >&2
+    echo "" >&2
+    echo "  The serial cannot substitute: the entry carries 'quiet splash', so plymouth" >&2
+    echo "  swallows every initramfs line on BOTH boots (phase 3 passes on HTTP alone)." >&2
+    echo "" >&2
+    echo "---- last 40 lines of slot-b serial ($SERIAL2) ----" >&2
+    tail -n 40 "$SERIAL2" >&2 || true
+    exit 2
+    ;;
+esac
 
 printf "${c_r}✗ FAIL — the A/B slot flip did not take effect${c_n}\n" >&2
 echo "" >&2
 if [ "$SLOT_SEEN" = "0" ]; then
-  echo "The initramfs never logged selecting slot b. boot-state.json said active=b," >&2
+  echo "The disk records that this boot did NOT use slot b. boot-state.json said active=b," >&2
   echo "so either apply_active_slot did not run, or it fell through one of its" >&2
   echo "fail-closed paths (see scripts/initramfs/vulos-live) and kept the cmdline" >&2
   echo "slot — which is precisely the bug this phase exists to catch." >&2
