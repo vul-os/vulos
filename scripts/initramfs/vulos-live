@@ -435,8 +435,8 @@ if [ -f "$ROOTHASH_ABS" ]; then
     fi
 fi
 
-# dm_available — is the kernel's device-mapper reachable from HERE, in the
-# initramfs, right now?
+# dm_available — is the dm-VERITY TARGET reachable from HERE, in the initramfs,
+# right now?
 #
 # `veritysetup open` needs three things, and this hook historically checked only
 # two of them (the binary and the hash files). The third is the dm-verity kernel
@@ -453,15 +453,64 @@ fi
 # binary being absent, and is handled by the same documented policy: fall back on
 # a local disk, refuse to boot on a netboot.
 #
-# devtmpfs creates /dev/mapper/control as soon as dm-mod registers its misc
-# device, so that node is the honest signal for "device-mapper is usable",
-# whether dm is built in or was just modprobed. modprobe failures are ignored on
-# purpose — the node check is the verdict, not modprobe's exit status.
+# WHY THE CHECK IS THE TARGET AND NOT /dev/mapper/control: this was first written
+# as "does the device-mapper control node exist", and a real QEMU boot with
+# dm-mod present but dm-verity NOT loadable walked straight past it into the
+# panic — the exact brick it was written to prevent:
+#
+#   dm_verity: Unknown symbol dm_bufio_get (err -2)      ← dm-verity.ko unloadable
+#   Begin: vulos-live: opening dm-verity device ...      ← checked the wrong thing
+#   Kernel does not support dm-verity mapping.           ← veritysetup's verdict
+#   vulos-live: veritysetup open FAILED ... Boot halted.
+#   (initramfs)
+#
+# dm-mod loading proves only that the CORE is there. So: the control node must
+# exist (device-mapper usable at all) AND dm-verity must be present as a loaded
+# module or built into this kernel. There is no /proc file listing registered dm
+# targets — that is an ioctl — so those two are the honest observable signals.
+#
+# modprobe failures are ignored on purpose: its exit status is not the verdict,
+# the evidence it leaves behind is. A kernel with dm-verity built in has no
+# module to load and no /sys/module directory, which is why modules.builtin is
+# consulted as well; missing that branch would silently disable verity on
+# exactly the kernels that support it best.
+# libdevmapper's udev SYNCHRONISATION must be off in here, or `veritysetup open`
+# never returns.
+#
+# When it creates a device, libdevmapper sets a "udev cookie" (a SysV semaphore)
+# and then BLOCKS until udev signals that it has finished processing the event.
+# The thing that does the signalling is 95-dm-notify.rules, which ships in the
+# dmsetup package — and an initramfs built by initramfs-tools does not contain
+# it. udevd is running in here and happily consumes the event; nothing ever
+# releases the cookie; veritysetup waits forever.
+#
+# That is not a theory. With veritysetup and the dm-verity driver present, a real
+# QEMU boot got as far as
+#
+#   Begin: vulos-live: opening dm-verity device (verity-root)...
+#   device-mapper: verity: sha256 using shash "sha256-generic"
+#
+# — the target was created, so the hash tree and root hash were accepted — and
+# then the machine sat there with a silent console until it was killed. No panic,
+# no error: an indefinite hang, which is the worst possible failure for a boot
+# path because it looks like slow hardware.
+#
+# DM_DISABLE_UDEV=1 tells libdevmapper to create the /dev/mapper node itself and
+# not wait for anyone. This is what Debian's own cryptsetup initramfs scripts do,
+# and it is correct here for the same reason: the initramfs is not a udev-managed
+# system.
+export DM_DISABLE_UDEV=1
+
 dm_available() {
-    [ -e /dev/mapper/control ] && return 0
-    modprobe dm_mod >/dev/null 2>&1 || true
+    [ -e /dev/mapper/control ] || modprobe dm_mod >/dev/null 2>&1 || true
     modprobe dm-verity >/dev/null 2>&1 || true
-    [ -e /dev/mapper/control ]
+
+    [ -e /dev/mapper/control ] || return 1
+    [ -d /sys/module/dm_verity ] && return 0
+
+    _dm_kv="$(uname -r 2>/dev/null)" || _dm_kv=""
+    [ -n "$_dm_kv" ] || return 1
+    grep -q 'dm-verity\.ko' "/lib/modules/${_dm_kv}/modules.builtin" 2>/dev/null
 }
 
 if command -v veritysetup >/dev/null 2>&1 \
@@ -499,7 +548,7 @@ else
     # Local live-USB / rescue / pre-verity CI build: warn clearly but continue.
     # Every prerequisite is itemised, because the ONLY way this state was ever
     # diagnosed was by reading these four lines off a real serial console.
-    log_warning_msg "vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity (block-level verification inactive)"
+    log_warning_msg "vulos-live: a dm-verity prerequisite is missing — mounting squashfs without dm-verity (block-level verification inactive)"
     log_warning_msg "vulos-live:   veritysetup: $(command -v veritysetup 2>/dev/null || echo 'not found')"
     log_warning_msg "vulos-live:   hashtree:    ${HASHTREE_ABS} $([ -f "$HASHTREE_ABS" ] && echo 'found' || echo 'MISSING')"
     log_warning_msg "vulos-live:   roothash:    ${ROOTHASH_ABS} $([ -f "$ROOTHASH_ABS" ] && echo 'found' || echo 'MISSING')"
