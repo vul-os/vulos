@@ -57,7 +57,9 @@ package installer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -363,12 +365,18 @@ func loadVerifiedStableManifest(manifestPath string, vp diskManifestVerifyPaths)
 		return
 	}
 
+	floor, floorErr := readEpochFloor(vp.EpochPath)
+	if floorErr != nil {
+		err = floorErr
+		return
+	}
+
 	vcfg := verify.SquashfsVerifyConfig{
 		AnchorPath:         vp.AnchorPath,
 		CertPath:           vp.CertPath,
 		SigPath:            sigPath,
 		ImagePayloadForSig: payload,
-		EpochFloor:         readEpochFloorBestEffort(vp.EpochPath),
+		EpochFloor:         floor,
 	}
 	// VerifyManifestSignature, not VerifySquashfsBeforePivot: this call verifies
 	// a manifest DESCRIBING an image that is not the one this process is running,
@@ -390,18 +398,38 @@ func loadVerifiedStableManifest(manifestPath string, vp diskManifestVerifyPaths)
 // returns 0 on any read/parse error, since a fresh or live-booted system has
 // no persisted epoch floor yet (a brand-new device's floor is conservatively
 // 0, same as verifyOSBeforeBoot assumes).
-func readEpochFloorBestEffort(epochPath string) int64 {
+// readEpochFloor returns the signing-epoch floor recorded at epochPath.
+//
+// ABSENT is not an error: a device that has never accepted a release cert has
+// no record, and floor 0 is the correct, honest answer for it.
+//
+// PRESENT-BUT-UNREADABLE is an error, and this is the distinction that matters.
+// Floor 0 does not mean "no opinion" — it means "accept every retired release
+// key". Returning it silently when the record exists but cannot be read or
+// parsed hands an attacker who can corrupt one small file the ability to undo
+// every revocation the root has ever issued, on the path that decides which OS
+// gets written to the disk.
+//
+// This used to be readEpochFloorBestEffort, returning 0 on any error. It was
+// the odd one out in its own caller: the manifest, its parse, its required
+// fields and its signature all refuse when missing. Only the revocation floor
+// downgraded. The same fail-open was closed on the netboot path (ErrEpochFloor
+// Unavailable) and in cmd/init's pre-pivot gate; this was the fourth instance.
+func readEpochFloor(epochPath string) (int64, error) {
 	data, err := os.ReadFile(epochPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil // never accepted a cert — floor 0 is the truth, not a downgrade
+	}
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("epoch floor record %q exists but cannot be read; refusing to fall back to floor 0, which would accept every retired release key: %w", epochPath, err)
 	}
 	var rec struct {
 		Floor int64 `json:"floor"`
 	}
 	if err := json.Unmarshal(data, &rec); err != nil {
-		return 0
+		return 0, fmt.Errorf("epoch floor record %q is corrupt; refusing to fall back to floor 0, which would accept every retired release key: %w", epochPath, err)
 	}
-	return rec.Floor
+	return rec.Floor, nil
 }
 
 // ─── Carrying the manifest onto the target root ───────────────────────────────
