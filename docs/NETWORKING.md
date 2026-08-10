@@ -134,15 +134,21 @@ The box is now served at `https://box1.relay-a.example.com` **and**
 
 | Variable | Purpose |
 |---|---|
-| `VULOS_RELAY_ENDPOINTS_FILE` | Path to the JSON endpoint list. **Preferred.** Must be mode 0600. |
+| `VULOS_RELAY_ENDPOINTS_FILE` | Path to the JSON endpoint list. **Preferred.** Must not be world-accessible (the check tests world bits only, so `0640` passes). A rejected file is not fatal — the box boots with no tunnels. |
 | `VULOS_RELAY_ENDPOINTS` | The same list inline, for platforms whose secret channel is the environment (Fly, Docker, Kubernetes). |
 | `VULOS_RELAY_BASE_URL` / `_NAME` / `_TOKEN` | The legacy single-endpoint form. Still fully supported. |
 
-**Using Pier instead** is a supported alternative and needs no code change: set
-`VULOS_RELAY_BASE_URL` to your Pier instance and run Pier's own agent alongside
-the OS (Pier's tunnel server and client agent are separate binaries from that
-project; the OS does not embed either). Pier speaks the same rendezvous contract,
-so `VULOS_RENDEZVOUS_URL` may list Vulos and Pier nodes interchangeably.
+**Using Pier instead** is a supported alternative and needs no code change, and
+no sidecar: list the Pier relay in `VULOS_RELAY_ENDPOINTS` (or the legacy
+`VULOS_RELAY_BASE_URL`) and **the OS's own embedded agent dials it**, through the
+same header-trust boundary it uses for a Vulos relay. Pier speaks the same
+reverse-tunnel wire protocol and the same rendezvous contract, so
+`VULOS_RENDEZVOUS_URL` may list Vulos and Pier nodes interchangeably.
+
+The agent holds one link per endpoint and has no notion of "provider", so a
+built-in Vulos relay and a Pier relay can sit in **one endpoint set at the same
+time** for redundancy — the two are not mutually exclusive
+(`services/relayconfig/providers.go`).
 
 Under the hood, the box-side contract is:
 
@@ -338,7 +344,7 @@ Two practical notes:
 
 A native client (`clients/core/`) is meant to trust this box's LAN TLS certificate by **pinning its public key (SPKI SHA-256)** at first connection, rather than relying on a public certificate authority — the same trust-on-first-use model SSH and Syncthing use. `GET /api/lan/pairing` (session-gated like any other authenticated OS route) and `vulos-server -print-pairing` (a one-shot console print, for an operator at the console or over SSH) both expose the same payload: the box's name, LAN address, SPKI fingerprint, and a `vulos://pair?...` URI. In the OS shell this is surfaced as **Settings → Native Pairing** (rendered as a QR code plus the fingerprint in text, for reading aloud over a trusted channel).
 
-**This is the box side of the mechanism only.** `clients/core/` implements the pin/verify/store logic, but as of this writing no shell — desktop, Android, or iOS — calls it, and there is no camera-scanning UI anywhere to consume the QR code. Nothing connects end to end for a real user today; this exists so the payload is ready once a client scans it.
+**This is the box side of the mechanism only.** `clients/core/` implements the pin/verify/store logic, but as of this writing no shell — desktop, Android, or iOS — calls it, and nothing consumes *this* QR code. The Android shell does ship a camera QR scanner (`nativeBridge.camera.scanQR`, ZXing), but it is wired to the setup wizard's cluster **join code**, not to a `vulos://pair` payload. Nothing connects end to end for a real user today; this exists so the payload is ready once a client scans it.
 
 ### Same-LAN box-to-box sync (fabric)
 
@@ -428,7 +434,7 @@ Ports actually bound by the software in this repo:
 | 443 | TCP | LAN HTTPS listener (pinned to LAN IP) | `VULOS_LAN_ENABLE=1` | LAN only by construction; do not forward. |
 | 53 | UDP | LAN DNS responder | `VULOS_LAN_ENABLE=1` | LAN only; do not forward. |
 | 5353 | UDP (multicast) | mDNS: `vulos.local`, Drop discovery, fabric sibling discovery | LAN layer / Drop / fabric | Multicast never crosses your router; nothing to forward. |
-| 3478 | UDP/TCP | TURN media relay (coturn) | Only if `TURN_SECRET` is set. The backend mints HMAC credentials **and execs `turnserver` itself** (`main.go:511`) when the binary is on `PATH` | On the coturn host, per coturn docs. |
+| 3478 | UDP/TCP | TURN media relay (coturn) | Only if `TURN_SECRET` is set. The backend mints HMAC credentials **and execs `turnserver` itself** (`main.go:519`) when the binary is on `PATH` | On the coturn host, per coturn docs. |
 | ephemeral UDP | UDP | WebRTC media (calls, streaming, in-process SFU) | During calls | Outbound/NAT-traversed; TURN covers the hard cases. |
 
 AI-generated sandbox backends bind `127.0.0.1` only and are reached through the gateway — they never listen externally.
@@ -473,7 +479,7 @@ A BYO opt-in still exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GP
 
 ## TURN: media relay for hard NATs
 
-WebRTC media (calls, streaming) normally flows peer-to-peer over ephemeral UDP. When both sides sit behind symmetric NATs, a TURN relay is the escape hatch. Vulos does not *bundle* a TURN server, but it will **launch one for you**: when `TURN_SECRET` is set, `main.go:511` calls `StartCoturn`, which writes a `turnserver.conf` and execs `turnserver` (`services/network/turn.go:113`). You supply the coturn binary on `PATH`; the box supplies the config and the process:
+WebRTC media (calls, streaming) normally flows peer-to-peer over ephemeral UDP. When both sides sit behind symmetric NATs, a TURN relay is the escape hatch. Vulos does not *bundle* a TURN server, but it will **launch one for you**: when `TURN_SECRET` is set, `main.go:519` calls `StartCoturn`, which writes a `turnserver.conf` and execs `turnserver` (`services/network/turn.go:113`). You supply the coturn binary on `PATH`; the box supplies the config and the process:
 
 | Variable | Default | Purpose |
 |---|---|---|
