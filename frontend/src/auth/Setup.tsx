@@ -106,13 +106,24 @@ const JOIN_CODE_RE = /VULOS-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}/i
 // — a Vulos account handle (enables Mail, still bring-your-own) + the full Diwan
 // productivity suite — and lets a lean user opt out. Inserted after 'account' and
 // before 'appearance' so it shows in every new-system flow.
-const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
+// EXPORTED FOR TEST: Setup.test.ts asserts against THIS array. It used to keep
+// a private copy of the list and assert against that, so the copy — which still
+// named long-deleted 'cloudAccount'/'intent' steps — stayed green while the real
+// flow changed underneath it. Never re-declare this list in a test.
+export const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
 // STEPS so flipping flowType at the chooser keeps `step` aligned; then the
 // join-only steps, then the shared pin + ready. Lost in a merge — restored.
-const IS09_JOIN_STEPS = ['welcome', 'IS09_chooser', 'IS09_join_storage', 'IS09_syncing', 'pin', 'ready']
+export const IS09_JOIN_STEPS = ['welcome', 'IS09_chooser', 'IS09_join_storage', 'IS09_syncing', 'pin', 'ready']
+
+// INIT-09: the step list the wizard actually walks, chosen by flow type. The
+// component below calls this exact function, so a test that calls it is
+// exercising the real selection and not a re-implementation of it.
+export function baseStepsFor(flowType: string): string[] {
+  return flowType === 'join' ? IS09_JOIN_STEPS : STEPS
+}
 
 type DeviceAccent = 'blue' | 'violet' | 'amber' | 'emerald'
 
@@ -299,7 +310,7 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // INIT-09: choose active step list based on flow type
-  const IS09_baseSteps = IS09_flowType === 'join' ? IS09_JOIN_STEPS : STEPS
+  const IS09_baseSteps = baseStepsFor(IS09_flowType)
 
 
   const current = IS09_baseSteps[step]
