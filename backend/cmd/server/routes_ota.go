@@ -220,12 +220,21 @@ func onSecurityCheck(notifySvc *notify.Service, ownerID func() string) func(ota.
 		}
 
 		notifySvc.SendNotification(notify.Notification{
-			Title:  "Security update available",
-			Body:   body,
-			Level:  notify.LevelUrgent, // highest achievable priority for a non-call alert (PriorityHigh)
-			Source: "os-update",
-			Type:   notify.TypeAlert,
-			UserID: owner, // targeted → web-pushed to the owner even with the app closed
+			Title: "Security update available",
+			Body:  body,
+			Level: notify.LevelUrgent,
+			// Priority is set EXPLICITLY. notify.Send derives PriorityHigh from
+			// LevelUrgent, but SendNotification does not — fillDefaults only fills
+			// an empty Priority with PriorityNormal — so this alert was being
+			// recorded at normal priority while the line above claimed otherwise.
+			// DND's priority mode let it through anyway on the LevelUrgent
+			// fallback, which is why nothing looked wrong; any consumer reading
+			// Priority saw a routine notification. PriorityHigh is the ceiling for
+			// a non-call alert (clampPriority reserves critical for calls).
+			Priority: notify.PriorityHigh,
+			Source:   "os-update",
+			Type:     notify.TypeAlert,
+			UserID:   owner, // targeted → web-pushed to the owner even with the app closed
 		})
 	}
 }
