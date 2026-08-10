@@ -64,11 +64,16 @@ export default function MobileStack() {
           app's identity while an app is fullscreen, else the shell brand. */}
       <div className="vmob-bar safe-pt safe-px shrink-0">
         <div className="px-3 h-11 flex items-center justify-between gap-2">
+          {/* flex-1 on the title button: the trailing status cluster is shrink-0, so
+              without it the button sizes to content inside justify-between and is the
+              first thing squeezed. At 390px that rendered "Assistant" as "Ass…" —
+              useless as identity, and an unfortunate thing to print. Claiming the
+              leftover space puts the app's name ahead of the badges. */}
           {showApp ? (
             <button
               onClick={() => setView('home')}
               aria-label="Back to home"
-              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-3 flex items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
+              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-3 flex flex-1 items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
               <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
               <AppIcon id={activeWin.appId} size={18} color={undefined} style={undefined} />
