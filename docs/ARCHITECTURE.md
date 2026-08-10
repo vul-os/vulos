@@ -309,28 +309,70 @@ flowchart TD
     A["Signed squashfs"] --> B["dm-verity Merkle tree"]
     B --> C["A/B slots"]
     C --> D["boot counter in boot-state.json"]
-    D --> E["rollback RECORDED — not yet acted on (OSDIST-FLIP-01)"]
+    D --> E["initramfs boots the slot boot-state.json names (OSDIST-FLIP-01)"]
 ```
 
 - OS ships as a signed, immutable squashfs pulled from `os.vulos.org`
-- dm-verity enforces block-level integrity at runtime via the initramfs
+- dm-verity enforces block-level integrity at runtime via the initramfs —
+  on the live-USB path; **not on an installed disk yet**, see the note below
 - A/B slots: a new image is staged into the inactive slot, and `init` counts
   boots and decides when a rollback is warranted
 - Trust anchor: Ed25519 public key baked into the seed at flash time; forks supply their own key + bucket URL
 
-> **The slot flip does not work yet (OSDIST-FLIP-01).** Everything above the
-> flip is real — staging, verification, the boot counter, the
-> `last_known_good` bookkeeping in `boot-state.json` — but *nothing rewrites
-> the bootloader entry*. `services/installer`'s `writeSlotABootEntry` writes
-> the systemd-boot entry **once, at install time, hardcoded to slot-a**
-> (`vulos.slot=a vulos.squashfs=…/slot-a/os-core.squashfs`), and
-> `scripts/initramfs/vulos-live` reads only that kernel cmdline — it never
-> consults `boot-state.json`. So a staged update does not become active on
-> reboot, and a rollback is *recorded* (with a loud log line saying it had no
-> effect) rather than performed. Closing this needs either an entry rewriter
-> that runs on flip with the ESP mounted writable, or an initramfs that reads
-> `boot-state.json` and picks the slot itself — and either way it has to be
-> proven by an actual reboot via `scripts/netboot-install-smoke.sh`.
+> **The slot flip works, and is proven by a reboot (OSDIST-FLIP-01).** This
+> section previously said the flip did not work, because
+> `writeSlotABootEntry` writes the systemd-boot entry **once, at install time,
+> hardcoded to slot-a** and nothing rewrote it. That entry is still written
+> once and still says slot-a — what changed is that the bootloader entry is no
+> longer the thing that decides. `scripts/initramfs/vulos-live` now reads
+> `boot-state.json` at init-bottom and boots the slot it names, treating the
+> cmdline as the default rather than the answer. It fails closed in that order:
+> no state file, an unreadable or truncated one, an `active` outside `a|b`, or a
+> chosen slot whose squashfs is missing all keep the cmdline image, so a
+> half-written JSON file can never boot nothing.
+>
+> Proven end-to-end, not just unit-tested: `scripts/netboot-install-smoke.sh`
+> Phase 4 stages slot-b, flips `active` to `b`, boots the same disk again with
+> nothing else changed, and requires BOTH that the machine serves HTTP AND that
+> `/var/cache/vulos/booted-slot` records `slot=b via=boot-state`. Requiring both
+> matters — HTTP alone would pass if it quietly booted slot-a. A rollback uses
+> the same mechanism in the other direction, so the boot counter's decision now
+> takes effect instead of being recorded with a log line saying it had none.
+>
+> Two limits of that proof, stated so nobody reads more into it than it shows:
+> the harness HARDLINKS slot-b to slot-a's image (the installed root partition
+> has no room for a second ~593 MB squashfs — itself worth knowing, since an
+> A/B update on a disk that size has nowhere to stage), so what is proven is
+> *which slot the firmware and initramfs choose*, not that a genuinely different
+> image boots. And the update path above the flip — download, verify, stage into
+> the inactive slot — is exercised by its own tests, not by this reboot.
+
+> **dm-verity is NOT active on a netboot-installed disk.** The bullet above says
+> dm-verity enforces block-level integrity at runtime. That is true of the
+> live-USB path and untrue of an installed disk today, for two independent
+> reasons, both visible on the serial console of a real boot:
+>
+> ```
+> vulos-live: veritysetup or hash files absent — mounting squashfs without dm-verity
+>   veritysetup: not found
+>   hashtree:    /root/var/cache/vulos/slot-a/os-core.hashtree MISSING
+>   roothash:    /root/var/cache/vulos/slot-a/os-core.roothash MISSING
+> ```
+>
+> 1. `stageFirstSquashfs` (`services/installer/netboot_install.go`) copies
+>    **only** `os-core.squashfs` into the slot. It never stages the sibling
+>    `os-core.hashtree`, `os-core.roothash` or `os-core.roothash.sig` that
+>    `gen-verity.sh` produces and that the hook looks for beside the image.
+> 2. `veritysetup` is not in the initramfs.
+>
+> The hook then takes its documented fallback: an unverified loop mount, with a
+> warning. It does not fail closed here because the installed cmdline carries no
+> `vulos.netboot=1`, and that gate is deliberately reserved for payloads fetched
+> over the network. So the install is not silently downgraded past a check that
+> was supposed to stop it — but the protection the bullet above claims is not
+> running, and the signature gate over the roothash never executes either,
+> because there is no roothash to verify. Closing this needs both causes fixed
+> together and re-proven by an actual boot; fixing either alone changes nothing.
 
 ---
 
