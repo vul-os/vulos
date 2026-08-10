@@ -125,8 +125,19 @@ image and emits three files beside it in the output directory:
 | `os-core.hashtree` | the dm-verity Merkle tree |
 | `os-core.roothash` | one line of hex — the verity root hash |
 
-A detached `os-core.roothash.sig` binds that root hash to the trust anchor; it is
-produced by the offline signing step (§5), not by the build.
+A detached `os-core.roothash.sig` is what would bind that root hash to the trust
+anchor. It is produced by the offline signing step (§5), never by the build — the
+release private key does not touch a build machine.
+
+**No shipped build carries one today.** `build.sh` emits the three files above and
+no `.sig`, and it compiles only `vulos-server` and `vulos-init`, so
+`vulos-verify-sig` is source in this repository rather than a binary on a box.
+The initramfs hook contains the check and takes its documented
+"roothash signature not verified" branch instead. So dm-verity binds the image to
+a root hash, and nothing yet binds that root hash to the release key: an attacker
+who can substitute the squashfs *and* the roothash together is not stopped by
+this layer. Stated here because the table above otherwise reads as a complete
+chain. See THREAT-MODEL.md, which records the same gap as residual risk.
 
 **The root hash is not embedded in the bootloader.** The installer's boot entry
 (`writeSlotABootEntry`, `backend/services/installer/netboot_install.go:520`)
