@@ -39,7 +39,7 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `S3_SECRET_KEY` | _(empty)_ | Backup vault S3 secret key |
 | `S3_REGION` | `us-east-1` | Backup vault S3 region |
 | `S3_USE_SSL` | `true` | Whether the backup vault talks to `S3_ENDPOINT` over TLS |
-| `VULOS_RESTIC_PASSWORD` (canonical) / `RESTIC_PASSWORD` (fallback) | dev-only default `vulos-default-key` | Encryption passphrase for the Restic backup vault. **Fails closed in prod — but only on `VULOS_ENV=prod`, not on `--env=prod`** (`services/vault/vault.go:95,134` read the env var directly): refuses to `Init`/`Backup` while the passphrase is still the well-known dev default — set a real secret before enabling backups in production. |
+| `VULOS_RESTIC_PASSWORD` (canonical) / `RESTIC_PASSWORD` (fallback) | dev-only default `vulos-default-key` | Encryption passphrase for the Restic backup vault. **Fails closed in prod** (`services/vault/vault.go:97,136`, via `env.IsProdActive()` — so `--env=prod` and `VULOS_ENV=prod` both arm it): refuses to `Init`/`Backup` while the passphrase is still the well-known dev default — set a real secret before enabling backups in production. |
 | `AI_PROVIDER` | `ollama` | AI backend: `ollama`, `openai`, `claude`, or `custom` (any OpenAI-compatible endpoint). Note: the value is `claude`, **not** `anthropic`. |
 | `AI_MODEL` | `llama3` | Model name/slug passed to the configured provider |
 | `AI_API_KEY` | _(empty)_ | API key for `openai`/`claude`/`custom` providers (unused for `ollama`) |
