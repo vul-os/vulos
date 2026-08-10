@@ -246,6 +246,23 @@ interface ProviderOption {
   blurb: string
 }
 
+// The provider POST /api/relayconfig/reset actually reverts to. It is NOT
+// 'ephor': relayconfig.DefaultConfig() returns ProviderVulos, and the endpoint's
+// ResetToEphor() is a deprecated alias that calls ResetToDefault().
+//
+// This panel used to say "Reset to ephor" on the button and "Reverted to the
+// ephor default." afterwards, and gated the button on provider !== 'ephor' — so
+// it named the wrong provider in three places and hid the button on exactly the
+// configuration where it was most useful. That is not stale branding from the
+// ephor→Pier rename (the dropdown label was already "Pier relay"); the UI was
+// describing an action the backend does not perform.
+//
+// RelayPanel.test.tsx pins this constant to what relayconfig.go's DefaultConfig
+// actually returns, by reading the Go source — so a future change to the
+// backend default fails here instead of silently making this panel lie again.
+// eslint-disable-next-line react-refresh/only-export-components
+export const DEFAULT_PROVIDER = 'vulos'
+
 const PROVIDERS: ProviderOption[] = [
   {
     value: 'vulos',
@@ -285,7 +302,7 @@ export default function RelayPanel() {
   const [showAddNode, setShowAddNode] = useState(false)
   const [nodeDraft, setNodeDraft] = useState<NodeDraft>({ url: '', name: '', token: '', region: '' })
 
-  const [provider, setProvider] = useState('ephor')
+  const [provider, setProvider] = useState(DEFAULT_PROVIDER)
   const [turnServers, setTurnServers] = useState<TurnServerDraft[]>([emptyTurnServer()])
   const [libp2pPeers, setLibp2pPeers] = useState('')
   const [wgEndpoint, setWgEndpoint] = useState('')
@@ -378,13 +395,13 @@ export default function RelayPanel() {
     }
   }
 
-  const resetToEphor = async () => {
+  const resetToDefault = async () => {
     setSaving(true)
     setSaveMsg(null)
     try {
       await requireStepUp()
       await jsonFetch('/api/relayconfig/reset', { method: 'POST' })
-      setSaveMsg({ ok: true, text: 'Reverted to the ephor default.' })
+      setSaveMsg({ ok: true, text: 'Reverted to the built-in Vulos relay.' })
       load()
     } catch (e) {
       if (errorCode(e) !== 'CANCELLED') setSaveMsg({ ok: false, text: errorMessage(e, 'Could not reset.') })
@@ -539,7 +556,7 @@ export default function RelayPanel() {
           <p className="text-xs text-warning leading-relaxed">
             With no relay tunnel, this box is only reachable from outside your network if you've
             forwarded a port to it (or it has a static public IP). Remote access will stop working
-            until you do — or you switch back to ephor.
+            until you do — or you switch back to the Vulos relay.
           </p>
         </div>
       )}
@@ -563,9 +580,9 @@ export default function RelayPanel() {
         <button onClick={runTest} disabled={testing} className="btn-secondary text-sm disabled:opacity-40">
           {testing ? 'Testing…' : 'Test active provider'}
         </button>
-        {config?.provider !== 'ephor' && (
-          <button onClick={resetToEphor} disabled={saving} className="btn-secondary text-sm disabled:opacity-40">
-            Reset to ephor
+        {config?.provider !== DEFAULT_PROVIDER && (
+          <button onClick={resetToDefault} disabled={saving} className="btn-secondary text-sm disabled:opacity-40">
+            Reset to the Vulos relay
           </button>
         )}
       </div>
