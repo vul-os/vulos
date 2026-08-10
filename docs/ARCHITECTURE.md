@@ -380,8 +380,23 @@ flowchart TD
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /metrics` | Prometheus textfile (`vulos_*` namespace) |
+| `GET /metrics` | Prometheus textfile (`vulos_*` namespace). **Not public** — owner session, or `VULOS_METRICS_TOKEN` as a bearer token; anything else gets `403 metrics are owner-only` (`metricsAuthorized`, `backend/cmd/server/metrics_auth.go`) |
 | OTel traces | Active when `OTEL_EXPORTER_OTLP_ENDPOINT` set; `backend/internal/obs.Start(ctx, op)` |
+
+> **Half of the metric set is registered but never recorded.** `obs.Init()`
+> registers nine collectors. The four assistant/sovereignty ones —
+> `vulos_assistant_guard_allowed_total`, `..._blocked_total`,
+> `..._proposals_pending`, `..._rag_mode` — are live, written from
+> `routes_assistant.go` and `routes_models.go`. The five generic ones —
+> `vulos_request_count_total`, `vulos_request_duration_seconds`,
+> `vulos_error_count_total`, `vulos_queue_depth`, `vulos_cache_hit_ratio` — have
+> no `Inc()`/`Set()`/`Observe()` call anywhere in `backend/` outside
+> `obs_test.go`. They scrape as a permanent zero rather than being absent, which
+> is the worse failure: a dashboard built on them looks healthy. There is also
+> no HTTP middleware feeding them, and `RequestDuration` is a plain `Histogram`
+> with no labels, so per-route or per-operation latency cannot be expressed
+> against it as it stands. [SLOs.md](SLOs.md) records which service level
+> objectives this makes uncomputable.
 
 ---
 
