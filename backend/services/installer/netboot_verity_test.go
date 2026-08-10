@@ -372,7 +372,7 @@ func TestStageVerityArtifacts_RoothashIsNeverLeftWithoutItsHashtree(t *testing.T
 // check ran after mkfs.
 func TestRunNetbootInstall_BadVerityArtifactsAbortBeforeThediskIsTouched(t *testing.T) {
 	f := newVerifyFixture(t)
-	f.writeSig(t, f.squashfsPath+".sig", f.image)
+	f.signedMedium(t, 0)
 	c := f.cfg()
 
 	dir := filepath.Dir(f.squashfsPath)

@@ -262,31 +262,41 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 	var verity *verityArtifacts
 
 	steps := []step{
-		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
-		// against the PINNED trust anchor BEFORE anything destructive happens.
-		// This runs FIRST — before the disk is even partitioned — because the
-		// image + pinned anchor are already in RAM on the live medium and depend
-		// on nothing we write. Fail-closed: a tampered/substituted/downgraded
-		// image aborts the install with the TARGET DISK STILL INTACT (no wipe, no
-		// format), and of course before any byte reaches the permanent slot. This
-		// is strictly stronger than verifying after partitioning: a bad image can
-		// no longer cost the operator their existing disk contents.
-		{name: "verify-squashfs", pct: 3, fn: func() error {
-			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig())
-		}},
-		// VERITY-03: resolve + VALIDATE the dm-verity siblings here, still
-		// before the disk is partitioned.  A hash tree that does not describe
-		// the image would panic the machine on every subsequent boot (the
-		// initramfs hook panics when `veritysetup open` fails, by design), so
-		// an inconsistent medium must cost the operator nothing but a failed
+		// VERITY-03: resolve + VALIDATE the dm-verity siblings FIRST, before the
+		// disk is partitioned.  A hash tree that does not describe the image
+		// would panic the machine on every subsequent boot (the initramfs hook
+		// panics when the verity device cannot be mounted, by design), so an
+		// inconsistent medium must cost the operator nothing but a failed
 		// install — not their existing disk and not a bricked boot.
-		{name: "verify-verity", pct: 4, fn: func() error {
+		//
+		// This step USED to run second, after verify-squashfs, and the order was
+		// arbitrary because the two were independent: the signature covered the
+		// raw image bytes and bound itself. It no longer does. The release key
+		// signs an ImagePayload that NAMES a root hash, so the root hash this
+		// step validates is the only thing tying that signature to the bytes on
+		// the medium — verify-squashfs now consumes it. See netboot_verify.go.
+		{name: "verify-verity", pct: 3, fn: func() error {
 			v, err := s.resolveVerityArtifacts(ctx, req.SquashfsPath)
 			if err != nil {
 				return err
 			}
 			verity = v
 			return nil
+		}},
+		// SECURITY (NETB-03, THREAT-MODEL #1/#3): verify the squashfs signature
+		// chain — pinned anchor → release cert → release key → signed
+		// ImagePayload → this image's root hash — BEFORE anything destructive
+		// happens. Still before the disk is partitioned, because the image and
+		// the pinned anchor are already in RAM on the live medium and depend on
+		// nothing we write. Fail-closed: a tampered/substituted/downgraded image
+		// aborts the install with the TARGET DISK STILL INTACT (no wipe, no
+		// format), and of course before any byte reaches the permanent slot.
+		{name: "verify-squashfs", pct: 4, fn: func() error {
+			var rootHash string
+			if verity != nil {
+				rootHash = verity.rootHashHex
+			}
+			return s.verifyNetbootSquashfs(req.SquashfsPath, s.netbootVerifyConfig(), rootHash)
 		}},
 		{name: "partition", pct: 5, fn: func() error {
 			return s.partition(ctx, dev)

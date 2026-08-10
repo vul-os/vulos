@@ -316,10 +316,11 @@ func TestCopyWithProgress_ProgressRange(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRunNetbootInstall_PartitionFailure(t *testing.T) {
-	// verify-squashfs runs first, so the image must pass verification for the
-	// pipeline to reach the partition step under test.
+	// verify-verity then verify-squashfs run before partition, so the medium must
+	// carry a complete, correctly signed artifact set for the pipeline to reach
+	// the partition step under test.
 	f := newVerifyFixture(t)
-	f.writeSig(t, f.squashfsPath+".sig", f.image)
+	f.signedMedium(t, 0)
 	c := f.cfg()
 
 	mc := newMockCmd()
@@ -355,10 +356,10 @@ func TestRunNetbootInstall_PartitionFailure(t *testing.T) {
 }
 
 func TestRunNetbootInstall_NVMePartitionSuffix(t *testing.T) {
-	// verify-squashfs runs first; provide a valid signed image so the pipeline
-	// proceeds to partitioning.
+	// The verification steps run before partition; provide a complete signed
+	// medium so the pipeline proceeds to partitioning.
 	f := newVerifyFixture(t)
-	f.writeSig(t, f.squashfsPath+".sig", f.image)
+	f.signedMedium(t, 0)
 	c := f.cfg()
 
 	mc := newMockCmd()

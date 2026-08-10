@@ -31,13 +31,17 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"vulos/backend/cmd/verify"
+	"vulos/backend/services/osdist"
 	"vulos/backend/services/signing"
 )
 
@@ -61,46 +65,112 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 		t.Fatalf("VULOS_E2E_SQUASHFS does not exist: %v", err)
 	}
 
-	// ── 1. Sign the REAL squashfs with a throwaway release key ────────────────
+	// ── 1. Produce the artifact set a real signed release produces ───────────
 	//
-	// verifyNetbootSquashfs (netboot_verify.go) requires a detached signature
-	// over the RAW image bytes: signing.Verify(anchor, imageBytes, sig).
-	// `cmd/sign sign-image` does NOT produce this — it signs a canonical JSON
-	// ImagePayload (path/roothash/size/min_epoch), a different byte string
-	// entirely, so its output would never verify here (see the report this
-	// test's task produced: no tool in this repo currently emits a raw-bytes
-	// squashfs .sig). Sign directly with the `signing` package instead, which
-	// is what a raw-bytes signer would eventually need to do too — this is
-	// not a mock, it is exactly the primitive verifyNetbootSquashfs calls.
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	// verifyNetbootSquashfs verifies the chain `cmd/sign` emits:
+	//
+	//	offline ROOT key ──issue-release-cert──▶ cert ──▶ RELEASE key
+	//	   │ baked as the seed's trust-anchor.pub        │ signs canonical(ManifestPayload)
+	//	   ▼                                             └ signs canonical(ImagePayload)
+	//	pinned anchor
+	//
+	// This block used to sign the RAW IMAGE BYTES with the anchor key, because
+	// that is what the verifier used to demand — a shape `cmd/sign` cannot
+	// produce, so the E2E "proof" exercised a chain that could never exist in
+	// production. It now builds the real one, with throwaway keys standing in
+	// for the offline root and the release key; every signature below is made
+	// with the same `signing` primitives cmd/sign calls, not a stand-in for
+	// them.
+	rootPub, rootPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate throwaway root key: %v", err)
+	}
+	releasePub, releasePriv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate throwaway release key: %v", err)
 	}
 	if err := os.MkdirAll("/etc/vulos", 0o755); err != nil {
 		t.Fatalf("mkdir /etc/vulos: %v", err)
 	}
-	if err := os.WriteFile(signing.DefaultAnchorPath, []byte(signing.EncodeAnchor(pub)), 0o644); err != nil {
+	if err := os.WriteFile(signing.DefaultAnchorPath, []byte(signing.EncodeAnchor(rootPub)), 0o644); err != nil {
 		t.Fatalf("write trust anchor: %v", err)
 	}
-	imageBytes, err := os.ReadFile(squashfsPath)
+
+	dir := filepath.Dir(squashfsPath)
+
+	// The release certificate, signed by the root key, beside the image.
+	cert, err := signing.IssueReleaseCert(rootPriv, releasePub, "netboot-e2e-test", time.Now().Add(24*time.Hour), 0)
 	if err != nil {
-		t.Fatalf("read squashfs: %v", err)
+		t.Fatalf("issue release cert: %v", err)
 	}
-	sigBytes := signing.Sign(priv, imageBytes)
-	sigData, err := signing.MarshalSig(signing.Signature{
-		Algorithm: signing.AlgorithmID,
-		KeyID:     "netboot-e2e-test",
-		SigBytes:  sigBytes,
-	})
+	certData, err := json.Marshal(cert)
 	if err != nil {
-		t.Fatalf("marshal .sig: %v", err)
+		t.Fatalf("marshal release cert: %v", err)
 	}
-	if err := os.WriteFile(squashfsPath+".sig", sigData, 0o644); err != nil {
-		t.Fatalf("write .sig: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, "release-cert.json"), certData, 0o644); err != nil {
+		t.Fatalf("write release cert: %v", err)
 	}
-	t.Logf("signed %s (%d bytes) with a throwaway release key; no signed stable.json manifest "+
-		"is provided, so roothash/epoch-floor enforcement is not exercised here — the base "+
-		"signature check is", squashfsPath, len(imageBytes))
+
+	// The manifest must name THIS image: the real dm-verity root hash the build
+	// produced, and the real byte length. Anything else and the binding check
+	// fails, which is the point of it.
+	rootHashRaw, err := os.ReadFile(filepath.Join(dir, "os-core.roothash"))
+	if err != nil {
+		t.Fatalf("read os-core.roothash (VERITY-01 must have produced it): %v", err)
+	}
+	rootHash := strings.ToLower(strings.TrimSpace(string(rootHashRaw)))
+	st, err := os.Stat(squashfsPath)
+	if err != nil {
+		t.Fatalf("stat squashfs: %v", err)
+	}
+	manifest := &osdist.StableManifest{
+		Channel:    "stable",
+		Latest:     "e2e",
+		MinEpoch:   0,
+		RootHash:   rootHash,
+		Size:       st.Size(),
+		ReleasedAt: time.Unix(0, 0).UTC(),
+		Path:       "os/e2e/os-core.squashfs",
+	}
+	manifestBytes, err := manifest.Canonical()
+	if err != nil {
+		t.Fatalf("canonical manifest: %v", err)
+	}
+	writeSig := func(path string, over []byte) {
+		data, err := signing.MarshalSig(signing.Signature{
+			Algorithm: signing.AlgorithmID,
+			KeyID:     "netboot-e2e-test",
+			SigBytes:  signing.Sign(releasePriv, over),
+		})
+		if err != nil {
+			t.Fatalf("marshal .sig for %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	manifestPath := filepath.Join(dir, "stable.json")
+	if err := os.WriteFile(manifestPath, manifestBytes, 0o644); err != nil {
+		t.Fatalf("write stable.json: %v", err)
+	}
+	writeSig(manifestPath+".sig", manifestBytes)
+
+	// The image signature, over the ImagePayload the manifest describes —
+	// unmarshalled from the manifest bytes exactly as the verifier will do.
+	var payload verify.ImagePayload
+	if err := json.Unmarshal(manifestBytes, &payload); err != nil {
+		t.Fatalf("unmarshal image payload: %v", err)
+	}
+	canonicalPayload, err := signing.Canonical(payload)
+	if err != nil {
+		t.Fatalf("canonical image payload: %v", err)
+	}
+	writeSig(squashfsPath+".sig", canonicalPayload)
+
+	t.Logf("signed %s (%d bytes, roothash %s) with a throwaway two-tier PKI: "+
+		"root→release cert→release key over canonical(ImagePayload) and "+
+		"canonical(ManifestPayload), i.e. the shape cmd/sign emits",
+		squashfsPath, st.Size(), rootHash)
 
 	// ── 2. Confirm the seed source files the pipeline reads are in place ──────
 	// These are placed by scripts/netboot-install-smoke.sh at their real,
@@ -128,10 +198,6 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 		}
 	}
 
-	step("verify-squashfs", func() error {
-		return svc.verifyNetbootSquashfs(squashfsPath, svc.netbootVerifyConfig())
-	})
-
 	// VERITY-03: resolve + validate the dm-verity siblings before the disk is
 	// touched, exactly as runNetbootInstall does.  This is not a formality here:
 	// the smoke harness's builder container HAS veritysetup (cryptsetup-bin), so
@@ -154,6 +220,15 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 				v.hashtree, v.roothash, v.rootHashHex, v.sig != "")
 		}
 		return nil
+	})
+	// The signature chain is checked AFTER verity, because the root hash verity
+	// just validated is what binds the signed ImagePayload to these bytes.
+	step("verify-squashfs", func() error {
+		var rh string
+		if verity != nil {
+			rh = verity.rootHashHex
+		}
+		return svc.verifyNetbootSquashfs(squashfsPath, svc.netbootVerifyConfig(), rh)
 	})
 	step("partition", func() error {
 		return svc.partition(ctx, dev)
