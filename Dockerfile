@@ -98,10 +98,29 @@ RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmwa
 
 # Core + remote browser stack (Xvfb + Chromium + GStreamer)
 #
-# TWO DISPLAY STACKS AND TWO AUDIO SERVERS ARE INSTALLED HERE ON PURPOSE — for
-# now. Both are genuinely wired in the Go backend, so this is an undecided
-# architecture rather than dead weight, and deleting either half breaks a real
-# path. Before anyone "cleans this up", the traps:
+# THIS IMAGE SHIPS ONE DISPLAY STACK: X11. That is deliberate, and it is not the
+# same list as build.sh's bare-metal rootfs — see roadmap/DISPLAY-STACK.md for
+# the measurements. The short version:
+#
+#   This image runs `stream.Pool` — apps streamed over WebRTC. pool.go's
+#   `useCage` requires BOTH /dev/dri and a `cage` binary, and a container
+#   without --device /dev/dri lands on gpu.TierSoftware, so every session here
+#   took the Xvfb branch already. The Wayland half was inert: no input injector
+#   is constructed on the cage branch, capture still pointed at an X display
+#   cage never starts, and there is no xdg-desktop-portal ScreenCast client
+#   anywhere in the repo for pipewiresrc to bind to.
+#
+#   Removing `labwc cage xdg-desktop-portal-wlr` took 24 packages and 10.2 MiB
+#   out of the image, and 26 of the 32 CVEs the whole display-stack question was
+#   worth — because cage and labwc both hard-`Depends: xwayland`, and xwayland
+#   carries 25 open CVEs on its own. Dropping Wayland removes far MORE X server
+#   than dropping X11 does; the older comment here had that backwards.
+#
+#   The bare-metal rootfs in build.sh keeps labwc and cage. It has a real seat,
+#   real DRM and real libinput; this container has none of those. Do not
+#   "reunify" the two lists.
+#
+# Before anyone cleans anything else up here, the traps:
 #
 #   pulseaudio is NOT redundant with pipewire-pulse. pipewire-pulse provides
 #   the client socket, not the daemon binary; services/webbrowser/chrome.go
@@ -114,11 +133,9 @@ RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmwa
 #   PipeWire's session manager, started by systemd, not by us. A grep-based
 #   "unused package" sweep will flag it and be wrong.
 #
-#   X11 (xvfb, xdotool, matchbox) and Wayland (labwc, cage, wlopm) are both
-#   live. Picking one is the single biggest size and CVE win available here,
-#   but it is a real decision with real work behind it — VA-API under Wayland
-#   and a replacement for xdotool input injection — so it is tracked in
-#   docs/decisions.md rather than made by whoever edits this file next.
+#   x11-xserver-utils is here for exactly one binary, xrandr (stream resize),
+#   and it drags in 31 MiB of `cpp`. It stays only because this image DOES run
+#   an X server; build.sh's rootfs does not, which is why it is gone from there.
 #
 # The package set is pinned by scripts/check-image-packages.sh: adding anything
 # here must be a deliberate diff, not a side effect.
@@ -134,11 +151,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     matchbox-window-manager x11-xserver-utils \
-    labwc cage \
     flatpak \
     pipewire pipewire-pulse wireplumber \
     gstreamer1.0-pipewire \
-    xdg-desktop-portal-wlr \
     libgbm1 libegl1 \
     plymouth plymouth-themes \
     avahi-daemon avahi-utils dhcpcd5 wpasupplicant \
@@ -182,10 +197,10 @@ ClientAliveCountMax 3\n' > /etc/ssh/sshd_config.d/vulos.conf
 # Layer 3: Static assets (changes with content updates)
 COPY frontend/apps/ /opt/vulos/apps/
 
-# labwc compositor config (browser pinned to background, floating focus)
-COPY assets/labwc/ /root/.config/labwc/
-# Vula OS traffic-light openbox theme for labwc SSD
-COPY assets/themes/vulos/ /usr/share/themes/vulos/
+# The labwc rc.xml and its openbox SSD theme are NOT copied into this image:
+# labwc does not ship here (see the package list above), so both would be config
+# for a binary that cannot be started. build.sh installs them into the
+# bare-metal rootfs, which is where labwc actually runs.
 # BMINIT-07: Plymouth boot splash — vulos theme
 # Kernel cmdline: quiet splash plymouth.theme=vulos
 COPY assets/plymouth/themes/vulos/ /usr/share/plymouth/themes/vulos/

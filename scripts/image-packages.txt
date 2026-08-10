@@ -4,7 +4,6 @@ bash
 bluez
 bluez-tools
 ca-certificates
-cage
 chromium
 curl
 dhcpcd5
@@ -22,7 +21,6 @@ iproute2
 iptables
 joystick
 jq
-labwc
 libegl1
 libevdev2
 libgbm1
@@ -47,6 +45,5 @@ wget
 wireplumber
 wpasupplicant
 x11-xserver-utils
-xdg-desktop-portal-wlr
 xdotool
 xvfb

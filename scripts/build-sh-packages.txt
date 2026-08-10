@@ -73,7 +73,6 @@ rootfs jq
 rootfs labwc
 rootfs libevdev2
 rootfs libva2
-rootfs matchbox-window-manager
 rootfs mesa-va-drivers
 rootfs mesa-vulkan-drivers
 rootfs openssh-server
@@ -93,4 +92,3 @@ rootfs tini
 rootfs vainfo
 rootfs wget
 rootfs wpasupplicant
-rootfs x11-xserver-utils

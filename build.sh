@@ -588,6 +588,18 @@ chroot "$ROOTFS" apt-get update
 # aborted the build under `set -e` (the rootfs never finished building).
 # linux-image-${GOARCH} + initramfs-tools: bootable kernel + initrd.
 # systemd-boot-efi: UEFI bootloader stub copied into the ESP by --disk/--live.
+#
+# NO X SERVER IS INSTALLED HERE — no xvfb, no xserver-xorg — and that is why
+# `matchbox-window-manager` and `x11-xserver-utils` are NOT in this list, though
+# they are in the Dockerfile's. Neither can run without an X server: matchbox is
+# a window manager for one, and x11-xserver-utils exists here only to provide
+# xrandr, which has nothing to query. Removing them drops 15 packages and
+# 37,003 KB (36.1 MiB) of Installed-Size from the rootfs, 30,958 KB of which is
+# cpp-14-aarch64-linux-gnu — a C preprocessor pulled in by x11-xserver-utils'
+# Depends and run by nobody (measured arm64, 2026-08-10; the amd64 cpp-14 is
+# 34,503 KB, so the win is comparable there). Zero CVEs, zero working features.
+# The container image keeps both, because it DOES start an Xvfb.
+# See roadmap/DISPLAY-STACK.md.
 # PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
@@ -599,7 +611,6 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     mesa-va-drivers mesa-vulkan-drivers libva2 vainfo \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
-    matchbox-window-manager x11-xserver-utils \
     labwc cage \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes \
