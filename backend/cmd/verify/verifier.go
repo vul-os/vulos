@@ -159,16 +159,34 @@ type SquashfsVerifyConfig struct {
 	// Its RootHash field must equal ExpectedRootHash.
 	ImagePayloadForSig ImagePayload
 
-	// EpochFloor is the device's current minimum trusted epoch.
-	// The release cert's MinEpoch must be >= EpochFloor.
+	// EpochFloor is a STATIC minimum trusted epoch, used only when EpochStore
+	// is nil.  The release cert's MinEpoch must be >= the floor in force.
 	EpochFloor int64
+
+	// EpochStore is the device's PERSISTENT epoch floor.  When set it supplies
+	// the floor in place of EpochFloor, and — this is the part that makes
+	// revocation real — the floor is RAISED to the min_epoch of the root-signed
+	// release cert once that cert validates.
+	//
+	// Without a store this gate is check-only, and a check-only floor never
+	// moves: a device sits at 0 for life, every min_epoch >= 0 passes, and
+	// issuing a release cert with a higher -min-epoch revokes nothing.  That was
+	// true of every caller here until this field existed; see
+	// signing.EpochStore.RaiseFromReleaseCert and commit 8846d61c.
+	//
+	// Only the ROOT-SIGNED cert may move the floor.  The manifest is signed by
+	// the RELEASE key — the very key revocation exists to retire — so letting it
+	// raise the floor would let a stolen key publish min_epoch=MaxInt64 and, as
+	// the floor never falls, permanently brick the device.
+	EpochStore *signing.EpochStore
 }
 
 // VerifySquashfsBeforePivot performs the full pre-pivot verification gate:
 //
 //  1. Load the baked trust anchor from cfg.AnchorPath.
 //  2. Load and validate the release cert (cfg.CertPath) against the anchor.
-//  3. Enforce cert.MinEpoch >= cfg.EpochFloor.
+//  3. Enforce cert.MinEpoch >= the epoch floor in force, then RAISE that floor
+//     to the cert's min_epoch when cfg.EpochStore is set.
 //  4. Decode the release public key from the cert.
 //  5. Verify the squashfs image signature (ImagePayload signed by release key).
 //  6. Check that ImagePayload.RootHash == cfg.ExpectedRootHash.
@@ -210,10 +228,30 @@ func VerifySquashfsBeforePivot(cfg SquashfsVerifyConfig) error {
 		return fmt.Errorf("verify: release cert validation: %w", err)
 	}
 
-	// 3. Epoch floor enforcement.
-	if cert.MinEpoch < cfg.EpochFloor {
+	// 3. Epoch floor enforcement — the gate that refuses a RETIRED release key.
+	floor := cfg.EpochFloor
+	if cfg.EpochStore != nil {
+		floor = cfg.EpochStore.Current()
+	}
+	if cert.MinEpoch < floor {
 		return fmt.Errorf("verify: release cert min_epoch %d is below device floor %d",
-			cert.MinEpoch, cfg.EpochFloor)
+			cert.MinEpoch, floor)
+	}
+
+	// ...and the raise that gives that gate something to enforce.  It happens
+	// here, as soon as the ROOT signature over the cert has been checked and
+	// before any release-key-signed artifact is examined, so a hostile medium
+	// cannot hold the floor down by pairing a good cert with a broken image
+	// signature and then replaying the retired cert.
+	//
+	// Fail-closed on a persistence failure: booting an image while silently
+	// failing to record the revocation that authorised it is the failure mode
+	// this mechanism exists to prevent, and the next boot would measure the next
+	// cert against a floor that never moved.
+	if cfg.EpochStore != nil {
+		if err := cfg.EpochStore.RaiseFromReleaseCert(anchorPub, cert); err != nil {
+			return fmt.Errorf("verify: record the root-signed epoch floor: %w", err)
+		}
 	}
 
 	// 4. Decode the release public key.

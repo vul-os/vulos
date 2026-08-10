@@ -24,6 +24,7 @@ import (
 	"vulos/backend/services/hwdetect"
 	"vulos/backend/services/labwc"
 	"vulos/backend/services/osdist"
+	"vulos/backend/services/signing"
 )
 
 // slotMgrGlobal and bootStateGlobal hold the SlotManager and BootState after
@@ -256,25 +257,38 @@ const (
 	// verityReleaseCertPath is the release-key certificate (ReleaseCert JSON).
 	// Validated against the baked trust anchor before the image sig is trusted.
 	verityReleaseCertPath = "/etc/vulos/release-cert.json"
-
-	// verityEpochPath is the persistent epoch floor (signing.DefaultEpochPath).
-	verityEpochPath = "/var/lib/vulos/epoch-floor.json"
 )
 
-// verityEpochFloor reads the epoch floor from the persistent store.
-// Returns 0 on any error (conservative — new device has floor 0).
-func verityEpochFloor() int64 {
-	data, err := os.ReadFile(verityEpochPath)
-	if err != nil {
-		return 0
-	}
-	var rec struct {
-		Floor int64 `json:"floor"`
-	}
-	if err := json.Unmarshal(data, &rec); err != nil {
-		return 0
-	}
-	return rec.Floor
+// verityEpochPath is the persistent epoch floor (signing.DefaultEpochPath).
+// A var, not a const, purely as a TEST SEAM: the fail-closed behaviour of
+// openVerityEpochStore is only observable against a store this process can
+// break on purpose. Production never assigns it.
+var verityEpochPath = signing.DefaultEpochPath
+
+// openVerityEpochStore opens the device's PERSISTENT epoch floor — the record
+// of which release keys the offline root has retired.
+//
+// It used to be a hand-rolled read that returned 0 on any error.  Both halves of
+// that were wrong:
+//
+//   - Nothing raised the floor.  It was read, compared, and never written, so a
+//     device sat at 0 for its whole life, every min_epoch >= 0 passed, and
+//     issuing a release cert with a higher -min-epoch revoked nothing on this
+//     path.  signing.EpochStore.RaiseFromReleaseCert (8846d61c) is the raise;
+//     handing the STORE to the verifier rather than a number is what lets it
+//     happen.
+//   - Returning 0 on error is not "conservative".  Floor 0 accepts every epoch
+//     any root has ever retired.  A genuinely new device does not need that
+//     fallback — NewEpochStore CREATES the record at floor 0 when it is merely
+//     absent — so the error path means the directory is unwritable or the record
+//     is corrupt, and a corrupt record is exactly how an attacker with local
+//     write access would try to reset the floor.  Answering that by adopting
+//     floor 0 grants them what they asked for.
+//
+// The caller halts the boot on error, which is this file's standing contract for
+// the VERITY-02 gate.
+func openVerityEpochStore() (*signing.EpochStore, error) {
+	return signing.NewEpochStore(verityEpochPath)
 }
 
 // verifyOSBeforeBoot is the VERITY-02 pivot gate.
@@ -313,7 +327,15 @@ func verifyOSBeforeBoot() {
 		log.Fatalf("[verity] HALT: manifest %q missing required fields (roothash/path)", verityManifestPath)
 	}
 
-	epochFloor := verityEpochFloor()
+	// The persistent epoch floor. Handing the STORE to the verifier (rather than
+	// a number read out of it) is what lets the root-signed cert RAISE it, which
+	// is what makes -min-epoch revoke anything at all on this path.
+	epochStore, err := openVerityEpochStore()
+	if err != nil {
+		log.Fatalf("[verity] HALT: epoch floor %q unavailable — refusing to boot without rollback protection: %v",
+			verityEpochPath, err)
+	}
+	epochFloor := epochStore.Current()
 
 	cfg := verify.SquashfsVerifyConfig{
 		// AnchorPath defaults to signing.DefaultAnchorPath (/etc/vulos/trust-anchor.pub)
@@ -322,15 +344,15 @@ func verifyOSBeforeBoot() {
 		SigPath:            verityManifestSigPath,
 		ExpectedRootHash:   payload.RootHash,
 		ImagePayloadForSig: payload,
-		EpochFloor:         epochFloor,
+		EpochStore:         epochStore,
 	}
 
 	if err := verify.VerifySquashfsBeforePivot(cfg); err != nil {
 		log.Fatalf("[verity] HALT: OS image verification failed (fail-closed): %v", err)
 	}
 
-	log.Printf("[verity] OS image verified OK (roothash=%s, epoch_floor=%d)",
-		payload.RootHash, epochFloor)
+	log.Printf("[verity] OS image verified OK (roothash=%s, epoch_floor=%d→%d)",
+		payload.RootHash, epochFloor, epochStore.Current())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

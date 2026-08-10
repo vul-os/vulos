@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -558,4 +559,146 @@ func TestVerifySquashfsBeforePivot_BrokenCertSig(t *testing.T) {
 }
 func TestVerifySquashfsBeforePivot_MissingAnchor(t *testing.T) {
 	VERITY02_TestVerifySquashfsBeforePivot_MissingAnchor(t)
+}
+
+// ─── Epoch revocation: the floor must RISE ───────────────────────────────────
+//
+// Until SquashfsVerifyConfig carried an EpochStore, this gate only ever CHECKED
+// the floor.  Nothing raised it, so a device sat at 0 for life, every min_epoch
+// >= 0 passed, and issuing a release cert with a higher -min-epoch revoked
+// nothing on the pre-pivot path.
+
+// epochFixture builds a complete, valid pre-pivot input set at the given cert
+// epoch, sharing one root key so successive certs chain to the same anchor.
+type epochFixture struct {
+	anchorPath string
+	rootPriv   ed25519.PrivateKey
+	releasePub ed25519.PublicKey
+	priv       ed25519.PrivateKey
+	epochPath  string
+}
+
+func newEpochFixture(t *testing.T) *epochFixture {
+	t.Helper()
+	rootPub, rootPriv := genKeyPair(t)
+	releasePub, releasePriv := genKeyPair(t)
+	return &epochFixture{
+		anchorPath: writeTempAnchor(t, rootPub),
+		rootPriv:   rootPriv,
+		releasePub: releasePub,
+		priv:       releasePriv,
+		epochPath:  filepath.Join(t.TempDir(), "epoch-floor.json"),
+	}
+}
+
+// cfgAt returns a config whose cert (and manifest payload) carry certEpoch, with
+// a fresh EpochStore opened on the fixture's persistent path.
+func (f *epochFixture) cfgAt(t *testing.T, certEpoch int64) SquashfsVerifyConfig {
+	t.Helper()
+	cert := issueTestCert(t, f.rootPriv, f.releasePub, certEpoch, time.Now().Add(24*time.Hour))
+	certPath := writeTempCert(t, cert)
+
+	payload := ImagePayload{
+		Path:       "os/v08/os-core.squashfs",
+		RootHash:   "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+		Size:       12345,
+		MinEpoch:   certEpoch,
+		ReleasedAt: "2026-05-20T09:00:00Z",
+	}
+	squashfsPath, sigPath := makeImageSig(t, f.priv, payload)
+
+	es, err := signing.NewEpochStore(f.epochPath)
+	if err != nil {
+		t.Fatalf("open epoch store: %v", err)
+	}
+	return SquashfsVerifyConfig{
+		AnchorPath:         f.anchorPath,
+		CertPath:           certPath,
+		SquashfsPath:       squashfsPath,
+		SigPath:            sigPath,
+		ExpectedRootHash:   payload.RootHash,
+		ImagePayloadForSig: payload,
+		EpochStore:         es,
+	}
+}
+
+// persistedFloor re-reads the floor FROM DISK, so these tests measure what the
+// NEXT boot would see rather than an in-memory value.
+func (f *epochFixture) persistedFloor(t *testing.T) int64 {
+	t.Helper()
+	es, err := signing.NewEpochStore(f.epochPath)
+	if err != nil {
+		t.Fatalf("re-open epoch store: %v", err)
+	}
+	return es.Current()
+}
+
+func TestVerifySquashfsBeforePivot_RaisesEpochFloorFromReleaseCert(t *testing.T) {
+	f := newEpochFixture(t)
+	if before := f.persistedFloor(t); before != 0 {
+		t.Fatalf("fixture should start at floor 0, got %d", before)
+	}
+
+	if err := VerifySquashfsBeforePivot(f.cfgAt(t, 7)); err != nil {
+		t.Fatalf("a valid chain at epoch 7 should verify: %v", err)
+	}
+	if got := f.persistedFloor(t); got != 7 {
+		t.Fatalf("the root-signed cert's min_epoch 7 must be persisted as the new floor, got %d", got)
+	}
+}
+
+// THE revocation test on this path: a device that has booted epoch 7 must
+// REFUSE a cert at 6.
+//
+// Everything else about the second input set is valid and self-consistent — the
+// cert chains to the same anchor, the image signature covers the payload, and
+// the root hashes agree — and the static EpochFloor is left at 0.  So the ONLY
+// thing that can refuse it is the floor the first boot raised.  With the raise
+// removed the floor stays 0, cert min_epoch 6 clears it, and the retired key
+// boots the machine.
+func TestVerifySquashfsBeforePivot_RetiredCertAfterRaise_FailsClosed(t *testing.T) {
+	f := newEpochFixture(t)
+	if err := VerifySquashfsBeforePivot(f.cfgAt(t, 7)); err != nil {
+		t.Fatalf("first boot at epoch 7 should verify: %v", err)
+	}
+
+	err := VerifySquashfsBeforePivot(f.cfgAt(t, 6))
+	if err == nil {
+		t.Fatal("a cert at epoch 6 must be refused by a device that has accepted 7")
+	}
+	if !strings.Contains(err.Error(), "below device floor") {
+		t.Fatalf("refusal should name the epoch floor, got: %v", err)
+	}
+}
+
+// The floor never falls: re-presenting the retired cert cannot lower it, and the
+// current one still boots afterwards.
+func TestVerifySquashfsBeforePivot_FloorSurvivesARetiredCert(t *testing.T) {
+	f := newEpochFixture(t)
+	if err := VerifySquashfsBeforePivot(f.cfgAt(t, 7)); err != nil {
+		t.Fatalf("first boot at epoch 7 should verify: %v", err)
+	}
+	if err := VerifySquashfsBeforePivot(f.cfgAt(t, 6)); err == nil {
+		t.Fatal("expected the retired cert to be refused")
+	}
+	if got := f.persistedFloor(t); got != 7 {
+		t.Fatalf("a refused cert must not move the floor, got %d", got)
+	}
+	if err := VerifySquashfsBeforePivot(f.cfgAt(t, 7)); err != nil {
+		t.Fatalf("the current cert must still boot after a rejected rollback: %v", err)
+	}
+}
+
+// The static EpochFloor still governs callers that hold no store (backend/
+// internal/installer verifies a manifest before writing it to a target disk and
+// has no persistent floor of its own to raise).
+func TestVerifySquashfsBeforePivot_StaticFloorWithoutStore(t *testing.T) {
+	f := newEpochFixture(t)
+	cfg := f.cfgAt(t, 1)
+	cfg.EpochStore = nil
+	cfg.EpochFloor = 5
+
+	if err := VerifySquashfsBeforePivot(cfg); err == nil {
+		t.Fatal("a cert at epoch 1 must be refused against a static floor of 5")
+	}
 }
