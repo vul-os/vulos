@@ -73,7 +73,7 @@ flowchart TD
 
 **Streaming on demand.** Native Linux apps (GIMP, LibreOffice, games) launch in their own Xvfb virtual display and stream via WebRTC. Close the window, stream stops. No persistent VNC session.
 
-**Multi-instance sync (narrower than originally designed).** The design goal is a leaderless CRDT where every instance holds a full mergeable copy and concurrent writes converge without a leader — via cr-sqlite. **cr-sqlite is not integrated** (it needs CGO/a native extension load, which conflicts with the pure-Go/no-CGO rule, `docs/decisions.md` D23/D94-J), so that merge does not run today. What is real: a pure-Go leaderless CRDT for the **app registry only** (`backend/internal/multiinstance/`), synced same-LAN via mDNS (`backend/internal/fabric/`); and a real S3 cold-path **snapshot of one instance's local DB file** (`backend/services/sync/`), not a cross-node merge. See roadmap/SYNC.md and roadmap/CLUSTER.md for the full reality check and the forward plan (a shared DMTAP-substrate Sync spec, relay as WAN rendezvous).
+**Multi-instance sync (narrower than originally designed).** The design goal is a leaderless CRDT where every instance holds a full mergeable copy and concurrent writes converge without a leader. **That whole-database merge does not run today** — cr-sqlite is not integrated, and how it should be is under active evaluation, so do not read the current shape as the settled architecture. What is real: a leaderless CRDT for the **app registry only** (`backend/internal/multiinstance/`), synced same-LAN via mDNS (`backend/internal/fabric/`) and gated behind `VULOS_LAN_ENABLE=1`; and a real S3 cold-path **snapshot of one instance's local DB file** (`backend/services/sync/`), not a cross-node merge. See roadmap/SYNC.md and roadmap/CLUSTER.md for the full reality check and the forward plan (a shared DMTAP-substrate Sync spec, relay as WAN rendezvous).
 
 ---
 
@@ -264,16 +264,16 @@ the numbers above describe encoder *configuration*, not measured performance.
 
 ```mermaid
 flowchart LR
-    A["Instance A"] -->|"peering mesh (WebSocket/Ziti) — hot path code exists, non-functional: no cr-sqlite"| B["Instance B"]
+    A["Instance A"] -->|"peering mesh (WebSocket/Ziti) — no data moves over this path today"| B["Instance B"]
     A --> S3["S3 bucket (checkpoint + compaction) — real, per-instance snapshot"]
     B --> S3
 ```
 
-- **Hot path (not implemented)**: the intent is for live instances to stream changesets directly over the peering mesh (relay fallback for NAT/cross-location). An earlier transport implementation streamed `crsql_changes`, but that table never populated because cr-sqlite cannot load under the no-CGO rule; the dead code was removed. No data moves over this path today.
+- **Hot path (not implemented)**: the intent is for live instances to stream changesets directly over the peering mesh (relay fallback for NAT/cross-location). An earlier transport implementation streamed `crsql_changes`, but that table never populated — cr-sqlite is not integrated — and the dead code was removed. **No data moves over this path today.** How whole-database sync gets built is under active evaluation; treat the mechanism as unsettled and read the current behaviour below as the only thing to rely on.
 - **Cold path (real)**: periodic durable checkpoint of each instance's own local DB file to the shared S3 bucket; offline instances catch up from the bucket.
 - **Snapshot/compaction (real)**: periodic compacted snapshot so new instances bootstrap from `snapshot + short tail`, not unbounded replay — this snapshots one instance's local state, not a cross-node merge.
 - **Coordination (real)**: bucket-backed leases with fencing tokens (`If-Match` CAS) prevent concurrent compaction.
-- **What actually merges across instances today**: only the app registry, via a pure-Go CRDT (`backend/internal/multiinstance/`) over same-LAN mDNS (`backend/internal/fabric/`) — no CGO, no cr-sqlite, no WAN path yet.
+- **What actually merges across instances today**: only the **app registry**, via a CRDT in `backend/internal/multiinstance/`, over **same-LAN mDNS** (`backend/internal/fabric/`). Nothing else merges, and there is no WAN path. Note this whole layer is gated behind `VULOS_LAN_ENABLE=1` (`backend/cmd/server/main.go:4335`) — without it, neither the fabric nor the rendezvous discoverers are wired up at all.
 
 ---
 
