@@ -995,10 +995,24 @@ const SHOTS = [
     name: 'instances',
     light: true,
     desc: 'Dashboard — Instances (routing across device + cloud)',
+    // ASSERTED, because this shot silently captured the wrong thing for a long
+    // time: a BLANK MAIL WINDOW floating over the Home page. The Dashboard
+    // launch had not taken, the Instances click was swallowed by `.catch(() =>
+    // {})`, and whatever window happened to be open got photographed instead.
+    //
+    // Mail is the worst possible thing to capture by accident: it is an iframe
+    // pointing at lilmail, which does not run in this fixture, so it renders
+    // as an empty white rectangle no matter how long you wait. Every app shot
+    // should be a BUILTIN that genuinely renders from the mocked data — those
+    // are the ones that can actually be verified.
     async drive(page) {
       await launchApp(page, 'Dashboard')
-      await page.getByRole('button', { name: 'Instances' }).first().click().catch(() => {})
+      await waitForAppReady(page, 'Dashboard', { text: 'Instances' })
+      await page.getByRole('button', { name: 'Instances' }).first().click()
       await page.waitForTimeout(900)
+      // Something only the Instances pane renders — not a window title, which
+      // would still pass on an empty pane.
+      await expectVisibleText(page, 'Instances')
     },
   },
   {

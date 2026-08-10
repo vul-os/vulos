@@ -146,7 +146,12 @@ const builtinRegistry: App[] = [
     name: 'Home',
     icon: 'home',
     description: 'Your day at a glance — what needs you, agenda, recent activity',
-    keywords: ['home', 'today', 'brief', 'agenda', 'overview', 'start', 'dashboard', 'summary', 'assistant'],
+    // NOT 'dashboard': there is a separate Dashboard app, and giving Home that
+    // keyword made a search for "Dashboard" rank Home first and open the wrong
+    // window. It went unnoticed because the screenshots that exercise it had no
+    // content assertion — dashboard-light.png was a picture of Home for a
+    // while, captured and reported as a clean pass.
+    keywords: ['home', 'today', 'brief', 'overview', 'start', 'summary', 'agenda'],
     category: 'system',
     builtin: true,
   },
