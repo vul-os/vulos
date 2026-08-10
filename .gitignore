@@ -19,6 +19,8 @@ __pycache__/
 backend/init
 backend/server
 backend/vulos-server
+backend/vulos-init
+backend/vulos-verify-sig
 backend/sign
 backend/verify
 /results.csv
