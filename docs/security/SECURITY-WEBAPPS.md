@@ -96,13 +96,24 @@ All other apps that use `innerHTML` with user-supplied data were verified to use
 | `appfs` `GET/PUT/DELETE /api/appdata/{app}/{path}` | `backend/services/appfs/appfs.go` | **Safe** — `safeJoin()` rejects `..`, absolute paths, and validates canonical prefix. |
 | Desktop icons `GET /api/desktop/icon/{name}` | `backend/services/desktop/desktop.go` | **Safe** — rejects `/` and `..` in name before calling `findSystemIcon()`. |
 | Static frontend `GET /` | `backend/cmd/server/main.go` | **Safe** — uses `http.FileServer(http.Dir(webrootDir))` with `filepath.Clean()`. |
-| Music `audio.src = "/audio/" + encodeURIComponent(track.path)` | `frontend/apps/music/index.html` | **Backend-dependent** — path is server-assigned from `/api/library` response; not user-typed. Risk is low if library API sanitizes. |
-| Gallery `/media/{path}` | `frontend/apps/gallery/index.html` | **Backend-dependent** — same pattern; path from `/api/media` response. |
-| Screenshot `/api/file/{name}` | `frontend/apps/screenshot/index.html` | **Backend-dependent** — `encodeURIComponent(name)` used; name comes from `/api/screenshots` list. |
+| Music `/audio/{path}`, `/api/library`, `/api/art` | `frontend/apps/music/server.py` | **Safe** — `serve_audio` (`:229-236`) and `serve_art` (`:204-213`) `realpath` the joined path and reject anything not under `MUSIC_DIR`. |
+| Gallery `/media/{path}`, `/api/media` | `frontend/apps/gallery/server.py` | **Safe** — `serve_media` (`:370-378`) `realpath`s and confines to `MEDIA_DIR`. |
+| Screenshot `/api/file/{name}`, `/api/screenshots` | `frontend/apps/screenshot/server.py` | **Safe** — `serve_screenshot` (`:131-139`) rejects any `os.sep` or leading `.` in the name before joining to `SCREENSHOTS_DIR`. |
 
-No direct `../` injection vectors found in frontend code. All file paths passed to fetch calls are either server-provided enumerations or `encodeURIComponent`-encoded user inputs going to backend endpoints.
+> **These three are not Vulos backend endpoints.** `/api/library`, `/api/media`,
+> `/api/screenshots`, `/api/file/{name}` and `/audio/`, `/media/` are served by
+> each app's **own Python sidecar** (`frontend/apps/*/server.py`), not by the Go
+> server — none of them is registered on the backend mux. An earlier revision of
+> this table listed them as "backend-dependent" and recommended Go-side work
+> that has no code to apply to.
 
-**Recommendation (not patched, requires backend work):** The gallery, music, and screenshot backend handlers that serve files by path should explicitly `filepath.Clean` and confine to the tenant's media root, similar to `appfs.safeJoin()`.
+No direct `../` injection vectors found in frontend code. All file paths passed to fetch calls are either server-provided enumerations or `encodeURIComponent`-encoded user inputs going to the app's own sidecar.
+
+**Confinement is implemented in each sidecar** using the Python equivalent of
+`appfs.safeJoin()` — `os.path.realpath` plus a prefix check against the media
+root. The `realpath` ordering matters and is correct in all three: the path is
+resolved *before* the prefix comparison, so a symlink out of the media root is
+caught rather than followed.
 
 ---
 
