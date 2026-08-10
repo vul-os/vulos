@@ -299,16 +299,24 @@ curl -b "$COOKIE" http://localhost:8080/metrics | grep vulos_
 
 **Bare metal — live USB or installed to disk.** Vulos checks its release channel in the background automatically; that check only ever verifies, it never downloads or stages anything on its own. To actually upgrade: **Settings → OS Update** shows the running version and the latest verified one, and lets you explicitly **Download & stage** it — staging downloads, verifies, and writes the release to the inactive A/B slot. There is no upgrade step for the **live USB session** — it boots the exact image on the stick every time, so you get a newer version by downloading a newer `.img.gz` and reflashing.
 
-> **Staging works; activating the staged image does not yet (OSDIST-FLIP-01).**
-> The slot flip is unfinished: the systemd-boot entry is written once at
-> install time hardcoded to slot-a, and the initramfs reads only that kernel
-> cmdline — it never consults `boot-state.json`. So a staged update **stays
-> staged** across a reboot, and the failed-boot rollback is recorded in
-> `boot-state.json` but not performed (init logs that it had no effect).
-> Until this lands, treat "Download & stage" as verifying and pre-fetching a
-> release, not as installing it, and re-flash the USB stick to change the
-> running OS version. See [ARCHITECTURE.md](ARCHITECTURE.md) and
-> [SECURITY.md](SECURITY.md) for the full picture.
+> **A staged image activates on the next reboot (OSDIST-FLIP-01).** This
+> section previously said it did not. The initramfs
+> (`scripts/initramfs/vulos-live`) now reads `boot-state.json` at init-bottom
+> and boots the slot it names, treating the kernel cmdline as the default
+> rather than the answer. The systemd-boot entry is still written once at
+> install time and still says slot-a; it is no longer what decides. The
+> failed-boot rollback works by the same route, in the other direction.
+>
+> Two things to know before you rely on it. Nothing reboots the box for you —
+> staging marks the slot pending and you choose when. And what has been proven
+> by an actual reboot is *which slot boots*, not that a wholly different image
+> boots, because the test harness hardlinks the two slots' images; see
+> [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal)
+> for the exact limits of that proof.
+>
+> The selection fails safe: a missing, unreadable or truncated
+> `boot-state.json`, an `active` value outside `a|b`, or a chosen slot whose
+> squashfs is absent all keep the current image rather than booting nothing.
 
 **Docker:**
 
