@@ -80,9 +80,9 @@ A **New system** setup walks through these steps, most skippable:
 
 ### The recovery phrase
 
-The moment your account is created, the server mints a per-user master key and shows a **24-word recovery phrase — exactly once**. You must tick a box confirming you've written it down before the wizard lets you continue; there's no way to dismiss the screen without acknowledging it. The warning is literal: **a forgotten password cannot be recovered without this phrase** — the master key it protects wraps your encrypted content. Store it offline. More in [SECURITY.md](SECURITY.md) and [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
+The moment your account is created, the server mints a per-user master key and shows a **24-word recovery phrase — exactly once**. A checkbox gates the **Continue** button — but there **is** a way past the screen without ticking it: a **"Skip for now" → "Skip and accept the risk"** path (`frontend/src/auth/MasterKeyReveal.tsx:119-158`), which the wizard treats identically to confirming. So it is possible to finish setup having never seen the phrase. The warning is literal: **a forgotten password cannot be recovered without this phrase** — the master key it protects wraps your encrypted content. Store it offline. More in [SECURITY.md](SECURITY.md) and [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
-The recovery **kit** (the JSON file from setup) is separate from the recovery **phrase**. An admin can re-download the kit later from a trusted local session at `GET /api/recovery/kit`. The phrase itself is never re-shown.
+The recovery **kit** (the JSON file from setup) is separate from the recovery **phrase**. An admin can re-download the kit later at `GET /api/recovery/kit`. It is **admin-gated but not restricted to a local session** — `routes_kit.go:23-46` checks the role and uses `RemoteAddr` only for the audit log, so the same request works from anywhere the box is reachable. (The setup wizard's on-screen text makes the same "trusted local session" claim, and is wrong in the same way.) The phrase itself is never re-shown.
 
 ### Optional private AI
 
@@ -447,7 +447,7 @@ Backend-level configuration (environment variables, `--env` profiles) is in [CON
 
 Vulos is multi-user with three roles: **Admin**, **User**, **Guest**. The first account created during setup is the admin. In **Settings → Users & Profiles** an admin can:
 
-- Add a user (display name, username, password — 4+ characters).
+- Add a user (display name, username, password). **The server requires 12+ characters** (`minPasswordLength`, `backend/services/auth/auth.go:28`); the field's "4+ chars" placeholder is wrong and is not enforced client-side, so a shorter password is accepted by the form and then rejected on submit. The setup wizard has the same bug — it validates 4.
 - Change any other user's role.
 - Remove a user (irreversible).
 

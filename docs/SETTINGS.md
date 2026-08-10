@@ -76,7 +76,7 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 
 | Pane | What you do there |
 |---|---|
-| **Users & Profiles** | Set your own lock-screen PIN. Admins can also add a user (display name, username, a 4+ character password), change any other user's role (Admin/User/Guest), and remove a user (irreversible). |
+| **Users & Profiles** | Set your own lock-screen PIN. Admins can also add a user (display name, username, and a password — **the server requires 12+ characters**, though the field's placeholder says "4+ chars" and nothing checks it before submit, so a short password is rejected only after you press the button), change any other user's role (Admin/User/Guest), and remove a user (irreversible). |
 | **Device PIN** | Set, change, or remove the 4–8 digit lock-screen PIN for this device. The PIN never leaves the device — it's derived locally (argon2id) and sealed via the TPM where one is available. Changing or removing it needs a full password re-auth; the pane also shows lockout state (attempts remaining, or a permanent lock requiring full sign-in). |
 | **Fingerprint** | Only shown as usable when the box detects a supported `fprintd`/`libfprint2` reader (Synaptics, Goodix, ELAN, AuthenTec, DigitalPersona, Validity, and similar USB sensors — not available in most VMs or on macOS/Windows). Enroll, re-enroll, or remove fingerprint unlock; after 3 failed scans the lock screen falls back to PIN or password. |
 | **Account** | Display name, language, timezone, and **Log Out**. |
