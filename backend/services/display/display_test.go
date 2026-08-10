@@ -1,8 +1,11 @@
 package display
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -333,4 +336,131 @@ func TestGetStatus_XrandrSkip(t *testing.T) {
 	}
 	svc := &Service{compositor: "x11"}
 	_ = svc.GetStatus(t.Context())
+}
+
+// ---------------------------------------------------------------------------
+// The "cage" compositor label must never shell out to wlr-randr
+// ---------------------------------------------------------------------------
+//
+// detectCompositor returns "cage" ONLY from the branch where
+// exec.LookPath("wlr-randr") already failed. The switch arms used to read
+// `case "wlroots", "cage":` and exec wlr-randr for both, so the probe's verdict
+// was computed and discarded and the "cage" path could only ever produce
+// "executable file not found in $PATH". build.sh's --deploy list installs
+// labwc and cage but no wlr-randr, so that is a live configuration, not a
+// hypothetical one.
+//
+// These tests fail if anyone merges the arms back together: an exec of a
+// missing binary yields *exec.Error, which is not errNoWlrRandr.
+
+// withEmptyPath guarantees wlr-randr is genuinely unreachable, so that a
+// regression really does attempt (and fail) an exec rather than silently
+// finding a wlr-randr that happens to exist on the developer's machine.
+func withEmptyPath(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", t.TempDir())
+	if _, err := exec.LookPath("wlr-randr"); err == nil {
+		t.Fatal("precondition failed: wlr-randr is still on PATH after it was emptied")
+	}
+}
+
+func TestCageSetResolutionDoesNotExecWlrRandr(t *testing.T) {
+	withEmptyPath(t)
+	s := &Service{compositor: "cage"}
+
+	err := s.SetResolution(context.Background(), "HDMI-A-1", "1920x1080")
+	if err == nil {
+		t.Fatal("SetResolution on a cage host returned nil; wlr-randr is absent there")
+	}
+	if !errors.Is(err, errNoWlrRandr) {
+		t.Errorf("want errNoWlrRandr, got %#v (%v)", err, err)
+	}
+	var execErr *exec.Error
+	if errors.As(err, &execErr) {
+		t.Errorf("SetResolution shelled out to %q instead of reporting the missing package", execErr.Name)
+	}
+}
+
+func TestCageEnableOutputDoesNotExecWlrRandr(t *testing.T) {
+	withEmptyPath(t)
+	s := &Service{compositor: "cage"}
+
+	for _, enable := range []bool{true, false} {
+		err := s.EnableOutput(context.Background(), "HDMI-A-1", enable)
+		if !errors.Is(err, errNoWlrRandr) {
+			t.Errorf("EnableOutput(enable=%v): want errNoWlrRandr, got %#v (%v)", enable, err, err)
+		}
+		var execErr *exec.Error
+		if errors.As(err, &execErr) {
+			t.Errorf("EnableOutput(enable=%v) shelled out to %q", enable, execErr.Name)
+		}
+	}
+}
+
+// listOutputs needs a sharper instrument than the other two. Asserting only
+// "returns nil" is hollow here: listWlr ALSO returns nil when the exec fails,
+// so that assertion passes on the very regression it is meant to catch
+// (verified — the merged-arm mutant kept it green). So plant a wlr-randr that
+// is present, works, and records that it ran; then the exec is observable and
+// the empty result cannot be mistaken for the absence of a shell-out.
+func TestCageListOutputsDoesNotExecWlrRandr(t *testing.T) {
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "it-ran")
+	// Only redirections and builtins: this stub runs with PATH set to `dir`
+	// alone, so `touch` and `cat` would not resolve (measured: exit 127, which
+	// listWlr reports as a plain failure and would have hidden the exec).
+	script := "#!/bin/sh\n: > " + sentinel + "\nprintf '%s' '" + fixtureWlr + "'\n"
+	if err := os.WriteFile(filepath.Join(dir, "wlr-randr"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	// Precondition: this stub is genuinely reachable and genuinely parses, so a
+	// regression would produce a NON-empty list rather than nil-by-failure.
+	if outs := (&Service{compositor: "wlroots"}).listOutputs(context.Background()); len(outs) == 0 {
+		t.Fatal("precondition failed: the wlr-randr stub did not run or did not parse")
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("precondition failed: sentinel not written by the stub: %v", err)
+	}
+	if err := os.Remove(sentinel); err != nil {
+		t.Fatal(err)
+	}
+
+	got := (&Service{compositor: "cage"}).listOutputs(context.Background())
+
+	if _, err := os.Stat(sentinel); err == nil {
+		t.Error("listOutputs on a cage host EXECUTED wlr-randr; the label means that binary is absent")
+	}
+	if got != nil {
+		t.Errorf("listOutputs on a cage host = %v, want nil", got)
+	}
+}
+
+// The wlroots label is the one that means "wlr-randr is present", so it must
+// keep shelling out — otherwise this fix would have disabled the working path.
+func TestWlrootsStillExecsWlrRandr(t *testing.T) {
+	withEmptyPath(t)
+	s := &Service{compositor: "wlroots"}
+
+	err := s.SetResolution(context.Background(), "HDMI-A-1", "1920x1080")
+	if errors.Is(err, errNoWlrRandr) {
+		t.Fatal("the wlroots path stopped invoking wlr-randr; only the cage label should short-circuit")
+	}
+	var execErr *exec.Error
+	if !errors.As(err, &execErr) {
+		t.Fatalf("expected an exec failure for the absent binary, got %#v", err)
+	}
+}
+
+// The invariant the whole fix rests on: this label is produced only when the
+// lookup failed. If detectCompositor ever returns "cage" while wlr-randr IS
+// present, errNoWlrRandr becomes a lie and the short-circuit above is wrong.
+func TestDetectCompositorCageMeansWlrRandrAbsent(t *testing.T) {
+	withEmptyPath(t)
+	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
+
+	if got := detectCompositor(); got != "cage" {
+		t.Fatalf("detectCompositor() = %q, want \"cage\" when WAYLAND_DISPLAY is set and wlr-randr is absent", got)
+	}
 }

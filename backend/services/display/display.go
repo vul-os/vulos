@@ -2,6 +2,7 @@ package display
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -100,8 +101,10 @@ func (s *Service) SetResolution(ctx context.Context, outputName, resolution stri
 	defer s.mu.Unlock()
 
 	switch s.compositor {
-	case "wlroots", "cage":
+	case "wlroots":
 		return run(ctx, "wlr-randr", "--output", outputName, "--mode", resolution)
+	case "cage":
+		return errNoWlrRandr
 	case "x11":
 		return run(ctx, "xrandr", "--output", outputName, "--mode", resolution)
 	}
@@ -114,12 +117,14 @@ func (s *Service) EnableOutput(ctx context.Context, outputName string, enable bo
 	defer s.mu.Unlock()
 
 	switch s.compositor {
-	case "wlroots", "cage":
+	case "wlroots":
 		flag := "--on"
 		if !enable {
 			flag = "--off"
 		}
 		return run(ctx, "wlr-randr", "--output", outputName, flag)
+	case "cage":
+		return errNoWlrRandr
 	case "x11":
 		flag := "--auto"
 		if !enable {
@@ -132,8 +137,11 @@ func (s *Service) EnableOutput(ctx context.Context, outputName string, enable bo
 
 func (s *Service) listOutputs(ctx context.Context) []Output {
 	switch s.compositor {
-	case "wlroots", "cage":
+	case "wlroots":
 		return s.listWlr(ctx)
+	case "cage":
+		log.Printf("[display] %v — no outputs reported", errNoWlrRandr)
+		return nil
 	case "x11":
 		return s.listXrandr(ctx)
 	}
@@ -299,11 +307,39 @@ func clampBrightness(percent int) int {
 	return percent
 }
 
+// errNoWlrRandr is what the "cage" compositor label actually means.
+//
+// Read detectCompositor below: "cage" is returned ONLY on the branch where
+// exec.LookPath("wlr-randr") has already FAILED. The probe decided the binary
+// was absent and then the result was thrown away — every "wlroots", "cage"
+// switch arm went on to exec wlr-randr anyway, so on a "cage" host that shell-out
+// could not do anything but fail with "executable file not found in $PATH".
+// Callers got that as the error text, or (in listOutputs) an empty output list
+// and a log line blaming wlr-randr for "failing", which reads as a broken
+// compositor rather than a package that was never installed.
+//
+// This is not hypothetical and not limited to the retired cage-in-a-container
+// path: build.sh's `--deploy` package list installs labwc and cage but no
+// wlr-randr, so a host set up that way sets WAYLAND_DISPLAY, takes this branch,
+// and hits it on every /api/display call. (The bare-metal rootfs list does
+// install wlr-randr and so reports "wlroots"; the container ships no Wayland
+// compositor at all and reports "x11".)
+//
+// Note the missing piece is the CLI, not the capability: cage does advertise
+// zwlr_output_manager_v1, so a Wayland client could manage outputs here. Until
+// something speaks that protocol directly, say plainly what is wrong.
+var errNoWlrRandr = errors.New(
+	"wlr-randr is not installed: a Wayland compositor is running, but the wlroots " +
+		"output-management CLI this code drives is absent, so displays cannot be " +
+		"listed or reconfigured — install the wlr-randr package on this host")
+
 func detectCompositor() string {
 	if os.Getenv("WAYLAND_DISPLAY") != "" {
 		if _, err := exec.LookPath("wlr-randr"); err == nil {
 			return "wlroots"
 		}
+		// NOTE: reaching here PROVES wlr-randr is absent. Anything switching on
+		// the "cage" label below must not shell out to it. See errNoWlrRandr.
 		return "cage"
 	}
 	if os.Getenv("DISPLAY") != "" {
