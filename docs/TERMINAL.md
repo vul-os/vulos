@@ -55,8 +55,9 @@ df -h                    # free space on the box
 du -sh ~/.vulos/*        # what's using space inside your data dir
 ```
 
-The `/api/health` endpoint also degrades itself below 500 MiB free. It needs a
-session — unauthenticated it is a `401` — so run it with your session cookie:
+The `/api/health` endpoint also degrades itself below 500 MiB free. Anyone can
+read the `ok`/`degraded` verdict, but the per-check breakdown that names *which*
+check failed is session-gated, so run it with your session cookie:
 
 ```bash
 curl -s -b "$COOKIE" http://localhost:8080/api/health | jq
