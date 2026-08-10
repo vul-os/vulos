@@ -250,6 +250,27 @@ func (s *Store) Keys(domain string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// AllKeys returns every key in a domain, INCLUDING keys whose fields are all
+// tombstoned. Keys omits those; a materialiser needs them, because a deleted
+// row must be actively removed from the target store rather than merely not
+// written.
+func (s *Store) AllKeys(domain string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT key FROM crdt_reg WHERE domain=? ORDER BY key`, domain)
+	if err != nil {
+		return nil, fmt.Errorf("crdtsync: AllKeys: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
 // Counter returns the merged PN-counter value: Σpos − Σneg across all actors.
 func (s *Store) Counter(domain, key, field string) (int64, error) {
 	rows, err := s.db.Query(`SELECT pos, neg FROM crdt_ctr WHERE domain=? AND key=? AND field=?`, domain, key, field)
