@@ -112,7 +112,7 @@ Open `http://<the address shown>:8080` in a browser on **any other device on the
 
 ## Installing to disk (the primary path)
 
-Installing to the machine's own disk is the way to actually keep a Vulos box — this is what "your own personal server on hardware you own" means in practice. It turns the live session above into a permanent install: a persistent ext4 root, signature-verified at every boot, with A/B slots that updates stage into. (The slots exist and staging works; the automatic *flip* between them does not yet — see the OS-update note below.)
+Installing to the machine's own disk is the way to actually keep a Vulos box — this is what "your own personal server on hardware you own" means in practice. It turns the live session above into a permanent install: a persistent ext4 root, signature-verified at every boot, with A/B slots that updates stage into and boot from. (Staging and the flip both work; nothing reboots the box for you — see the OS-update note below.)
 
 > **Honesty check:** `vulos-install --disk` is real code that runs today — it isn't a placeholder — but it has not yet been run end-to-end against a physical disk on real hardware outside development testing. Keep the USB stick handy the first time you try it, and don't run it against a machine holding data you haven't backed up.
 
