@@ -60,7 +60,7 @@ Peering is **closed by default**: *"No open inboxes. You don't receive anything 
 - **Add someone**: Peering → Requests tab → enter their Vula ID or their server name (e.g. `alice.vulos.org`) plus an optional message. This sends a signed contact request (`POST /api/peering/contacts/request`).
 - **Approve or block** incoming requests from the same tab. Only after mutual approval do messages, files, and calls flow.
 - **Per-contact permissions**: each contact carries capability flags (message / media / call / video) you can edit from the Contacts tab. There is no ambient "any approved peer can do anything" authority.
-- **Find people** by email or name through the public directory: `GET /api/peering/discover?email=...` proxies a lookup against `vulos.org` (override with `VULOS_VERIFY_URL` for forks).
+- **Find people** by email or name through a directory you configure: `GET /api/peering/discover?email=...` proxies a lookup against whatever `VULOS_VERIFY_URL` names. There is **no default** (`discovery.go`'s `discoveryDefaultBaseURL` is `""`) — unset, the box logs "no directory configured — people discovery disabled" and every lookup returns empty without touching the network. Vulos the org runs no directory.
 
 Under the hood, everything a peer sends arrives as a signed **envelope** — canonical JSON `{id, from, to, type, timestamp, payload, signature}` with an Ed25519 signature over the canonical bytes. Your box verifies the signature, checks the sender isn't revoked, and checks the approved-contacts list before anything is processed. The single exception is the first contact request itself, which is how an unknown peer introduces themselves.
 
@@ -142,8 +142,7 @@ Who can see you is your choice — Drop tab → discoverability setting:
 
 Two supplements cover the cases mDNS can't:
 
-- **Bluetooth LE proximity** (optional): boxes with BLE hardware also advertise a rotating, privacy-preserving beacon (a truncated hash of the Vula ID that changes every 10 minutes) so nearby devices find each other even on networks that filter multicast. No BLE hardware → silently skipped.
-- **Proximity Code**: for devices on *different* networks, generate a 6-digit one-time code (valid 5 minutes or first use) on one device and type it on the other. The exchange goes through a rendezvous service (`https://rendezvous.vulos.org` by default, override with `VULOS_RENDEZVOUS_URL`).
+- **Proximity Code**: for devices on *different* networks, generate a 6-digit one-time code (valid 5 minutes or first use) on one device and type it on the other. The exchange goes through a rendezvous service you name with `VULOS_RENDEZVOUS_URL`. There is **no default** (`drop_proximity.go`'s `proxDefaultRendezvousBase` is `""`): unset, cross-network proximity redemption is disabled and only same-box/LAN redemption works.
 
 ### Sending and receiving
 
@@ -172,7 +171,9 @@ Delivery to a peer is a **direct, signed HTTPS request** to their box. When the 
 
 ### The store-and-forward relay
 
-For peers separated by NAT or long offline periods, Vulos supports an opt-in **relay**: any mutually trusted Vulos instance (yours, a friend's, or a hosted one) willing to hold encrypted blobs until the recipient picks them up. The relay base URL is configured with `VULOS_RELAY_BASE_URL`.
+For peers separated by NAT or long offline periods, Vulos supports an opt-in **relay**: any mutually trusted Vulos instance (yours or a friend's) willing to hold encrypted blobs until the recipient picks them up.
+
+> **Your box can host one; it cannot yet use one.** Everything below describes the *serving* side, which is real and fully enforced. The **depositing** side is not wired: nothing in the repo POSTs to `/api/peering/relay/deposit` outside tests, no peering code reads a relay base URL to choose a relay for delivery, and the delivery ladder never falls back to store-and-forward. Treat this as a capability the box offers other implementations, not as a fallback your own messages take today.
 
 The relay is deliberately **content-blind**:
 
@@ -182,7 +183,7 @@ The relay is deliberately **content-blind**:
 
 Running your own relay: it's off by default (`~/.vulos/peering/relay/config.json`, `enabled: false`). Limits when enabled: 25 MB per blob, 100 MB queued per recipient, 500 MB total (configurable), blobs expire after 72 hours by default (7-day hard cap).
 
-**Trusting someone else's relay.** Before depositing with a relay you don't control, your box can demand proof that the relay runs inside a verified trusted-execution enclave (AWS Nitro attestation, checked against pinned code measurements with a freshness window). Any verification failure is a hard reject — no deposit. Even without attestation, remember the relay only ever holds ciphertext.
+**Trusting someone else's relay.** The intent is that before depositing with a relay you don't control, your box demands proof that the relay runs inside a verified trusted-execution enclave (AWS Nitro attestation, checked against pinned code measurements with a freshness window), with any verification failure a hard reject. The verifier is implemented (`services/peering/relay_attest.go`) but has **no non-test callers**, which follows from there being no depositing client at all. Even without attestation, the relay only ever holds ciphertext.
 
 Large file shares ride the same principles — sealed, capability-scoped, resumable in bounded chunks through the relay. See [FILES.md](FILES.md) for the sharing UX.
 
@@ -280,8 +281,8 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 | Env var | Purpose |
 |---|---|
 | `VULOS_RELAY_BASE_URL` | Store-and-forward relay base URL |
-| `VULOS_RENDEZVOUS_URL` | Drop proximity-code rendezvous (default `https://rendezvous.vulos.org`) |
-| `VULOS_VERIFY_URL` | Directory for people lookup (default `https://vulos.org`) |
+| `VULOS_RENDEZVOUS_URL` | Drop proximity-code rendezvous. **No default** — unset disables cross-network redemption (LAN/same-box only). |
+| `VULOS_VERIFY_URL` | Directory for people lookup. **No default** — unset disables people discovery entirely. |
 
 ### API quick reference
 
