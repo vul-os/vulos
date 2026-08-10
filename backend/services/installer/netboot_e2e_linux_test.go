@@ -167,6 +167,21 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 	}
 	writeSig(squashfsPath+".sig", canonicalPayload)
 
+	// MUTATION-PROVEN, not assumed: with one byte of this .sig flipped (an 'A'
+	// to a 'B', so the file still parses and the package still compiles — a
+	// mutation that only breaks the build proves nothing), a full harness run
+	// stops here:
+	//
+	//	── step: verify-verity
+	//	── step: verify-squashfs
+	//	step "verify-squashfs" failed: netboot-verify: squashfs signature
+	//	verification failed against the certified release key
+	//	--- FAIL: TestNetbootInstall_RealPipeline_E2E (1.84s)
+	//
+	// i.e. the pipeline aborts before partition, with the target disk untouched.
+	// Worth pinning in a comment because the check this replaced could not fail
+	// for a REAL artifact and could not pass for one either — a green E2E run is
+	// only evidence of a signature check if a broken signature turns it red.
 	t.Logf("signed %s (%d bytes, roothash %s) with a throwaway two-tier PKI: "+
 		"root→release cert→release key over canonical(ImagePayload) and "+
 		"canonical(ManifestPayload), i.e. the shape cmd/sign emits",
