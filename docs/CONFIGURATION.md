@@ -39,7 +39,7 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `S3_SECRET_KEY` | _(empty)_ | Backup vault S3 secret key |
 | `S3_REGION` | `us-east-1` | Backup vault S3 region |
 | `S3_USE_SSL` | `true` | Whether the backup vault talks to `S3_ENDPOINT` over TLS |
-| `VULOS_RESTIC_PASSWORD` (canonical) / `RESTIC_PASSWORD` (fallback) | dev-only default `vulos-default-key` | Encryption passphrase for the Restic backup vault. **Fails closed in prod**: `--env=prod` refuses to `Init`/`Backup` while the passphrase is still the well-known dev default — set a real secret before enabling backups in production. |
+| `VULOS_RESTIC_PASSWORD` (canonical) / `RESTIC_PASSWORD` (fallback) | dev-only default `vulos-default-key` | Encryption passphrase for the Restic backup vault. **Fails closed in prod — but only on `VULOS_ENV=prod`, not on `--env=prod`** (`services/vault/vault.go:95,134` read the env var directly): refuses to `Init`/`Backup` while the passphrase is still the well-known dev default — set a real secret before enabling backups in production. |
 | `AI_PROVIDER` | `ollama` | AI backend: `ollama`, `openai`, `claude`, or `custom` (any OpenAI-compatible endpoint). Note: the value is `claude`, **not** `anthropic`. |
 | `AI_MODEL` | `llama3` | Model name/slug passed to the configured provider |
 | `AI_API_KEY` | _(empty)_ | API key for `openai`/`claude`/`custom` providers (unused for `ollama`) |
@@ -50,10 +50,21 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `LLMUX_URL` (canonical) / `VULOS_LLMUX_URL` (alias) | _(empty)_ | **Remote mode only.** Base URL of an llmux gateway running as its own process; forces `AI_PROVIDER=custom` internally |
 | `LLMUX_KEY` (canonical) / `VULOS_LLMUX_KEY` (alias) | _(empty)_ | API key/bearer token presented to the gateway — same meaning in embedded or remote mode |
 | `VULOS_LLMUX_CONFIG` (canonical) / `LLMUX_CONFIG` (alias) | _(empty)_ | **Embedded mode only.** llmux's own JSON config file; optional, llmux's own environment (`OLLAMA_HOST`, `OPENAI_API_KEY`, …) fills in what it doesn't set |
-| `DISPLAY` | `:99` | X11 display for app streaming (Xvfb) |
+| `DISPLAY` | _(inherited; no built-in default)_ | X11 display for app streaming (Xvfb). The backend reads it bare (`main.go:4813`) and never defaults it — the `:99` you may have seen comes from the container image (`Dockerfile:255`), not from Vulos |
 | `VULOS_MAIL_URL` | `http://localhost:3000` | URL of the LilMail service (proxied at `/api/mail/url`) |
 | `VULOS_OS_BUCKET_URL` | `https://os.vulos.org` | OS update bucket URL (baked into seed at build time; override for forks) |
 | `VULOS_OS_AUTOUPDATE` | **on** (unset) | The background OS auto-update loop — **the only outbound connection a fresh, unconfigured box makes**. Set to `0`/`off`/`false`/`no`/`disable`/`disabled`/`none` (case-insensitive) for zero default egress; you then pull updates manually from Settings → OS Update. Any other value, including a typo, leaves it **on** — the fail-safe direction is updates flowing (`backend/services/osdist/update.go:132-142`) |
+
+> **`--env=prod` and `VULOS_ENV=prod` are not interchangeable.** The `--env`
+> flag is parsed into an internal value (`main.go:162,174`) and is **never**
+> exported to the environment, while four prod gates read `os.Getenv("VULOS_ENV")`
+> directly: `services/vault/vault.go:95` and `:134`,
+> `cmd/server/routes_newfeatures.go:220`, and
+> `internal/multiinstance/instancekey.go:95`. Those four arm **only** when the
+> environment variable is set — passing `--env=prod` alone leaves them on the
+> dev branch. Rows below that say "in `--env=prod`" and depend on one of those
+> four are marked. Set `VULOS_ENV=prod` as well until this is fixed in code.
+
 
 ---
 
@@ -111,8 +122,12 @@ and every one of those seams stays inert.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VULOS_CLOUD_URL` | _(empty)_ | Control-plane base URL — enrollment, sign-up proxy, region default |
-| `VULOS_CLOUD_API_URL` | falls back to `VULOS_CLOUD_URL` | Alternate CP base for enrollment / identity-claim proxy |
+| `VULOS_CP_URL` | _(empty)_ | Control-plane base URL — **highest precedence of the three** (`internal/gwurl/gwurl.go:86`) |
+| `VULOS_CLOUD_URL` | _(empty)_ | Control-plane base URL — enrollment, sign-up proxy, region default. Used only if `VULOS_CP_URL` is empty |
+| `VULOS_CLOUD_API_URL` | _(empty)_ | Alternate CP base. Used only if both above are empty — it is **last**, not a fallback for `VULOS_CLOUD_URL` specifically |
+| `VULOS_GATEWAY_ALLOW_PRIVATE` | unset | Permit a private-network control-plane URL (`gwurl.go:89`) |
+
+A **persisted runtime override** set through `gwurl.Set` (stored in `gateway.json`) beats all three environment variables (`gwurl.go:25-33`).
 | `VULOS_CLOUD_ALLOW_INSECURE` | off | **Dev-only.** Allows plaintext/insecure control-plane connections — never set in production |
 | `VULOS_DEVICE_ULID` | _(empty)_ | This device's ULID, sent to the control-plane/integrations client |
 | `VULOS_REGION` | `eu` | Declared region for identity/storage-provisioning |
@@ -208,7 +223,7 @@ than going through a control plane's brokered OAuth flow.
 | `MICROSOFT_OAUTH_CLIENT_ID` / `MICROSOFT_OAUTH_CLIENT_SECRET` | _(unset; provider unavailable)_ | Your own Microsoft OAuth app credentials (Graph Mail/Calendar/Files/Contacts) |
 | `DROPBOX_OAUTH_CLIENT_ID` / `DROPBOX_OAUTH_CLIENT_SECRET` | _(unset; provider unavailable)_ | Your own Dropbox OAuth app credentials |
 | `OAUTH_REDIRECT_BASE` | `http://localhost:8080` | Externally-reachable base URL used to build each provider's OAuth redirect URI (`<base>/api/integrations/{provider}/callback`) — **must** be set to your real public URL in production |
-| `INTEGRATIONS_KEK` | none; **required in production** | Base64, 32-byte key-encryption-key used to encrypt OAuth refresh tokens at rest. The server refuses to run with a default/dev key in `--env=prod` |
+| `INTEGRATIONS_KEK` | none; **required in production** | Base64, 32-byte key-encryption-key used to encrypt OAuth refresh tokens at rest. In prod an unset/invalid KEK **disables the self-host integrations surface** — the routes are not registered and startup logs `[integrations] SELF-HOST path DISABLED` (`routes_integrations_selfhost.go:58-64`). The box still boots |
 
 Google Cloud Storage (GCS) has no local client-secret variable — it is
 accessed via CP-brokered short-lived bearer tokens (when a control plane is
@@ -223,8 +238,9 @@ configured), not local OAuth credentials.
 | `VULOS_DISABLE_EXEC` | unset (exec allowed) | Any non-empty value disables all privileged exec endpoints (`/api/exec` and related) at runtime |
 | `VULOS_SANDBOX_ENABLED` | disabled | Opt-in for arbitrary AI-generated-code execution (the Python viewport sandbox). Real kernel isolation (namespaces/seccomp) is **not yet implemented** for this path — only enable it in an environment you understand the risk of |
 | `VULOS_SANDBOX_POOL_SIZE` | `3` (forced to `0` when the sandbox is disabled) | Pre-warmed Python process pool size for the sandbox |
+| `VULOS_DATA_DIR` | `$HOME/.vulos` | Root of all on-disk state — DBs, auth, logs, models, slots. Relative paths are made absolute (`internal/datadir/datadir.go`) |
 | `VULOS_FILES_TRASH_RETENTION` | `720h` (30 days) | How long a soft-deleted Files node is kept before the tombstone-purge sweep reclaims its bucket bytes. Go duration string (e.g. `168h` for 7 days) |
-| `VULOS_RPID` | `localhost` (dev only) | WebAuthn Relying Party ID for passkeys. The server refuses to start in `--env=prod` while this is still the dev default — set it to your real domain |
+| `VULOS_RPID` | `localhost` (dev only) | WebAuthn Relying Party ID for passkeys. In prod the server **keeps booting with passkeys disabled** (`##### PASSKEYS DISABLED #####`, `main.go:1292-1301`) rather than refusing to start — so password login silently becomes the only front door. Set it to your real domain |
 | `VULOS_ORIGIN` | `http://localhost:8080` (dev only) | WebAuthn expected origin for passkeys. Same prod fail-closed behavior as `VULOS_RPID` |
 | `VULOS_METRICS_TOKEN` | _(empty)_ | Optional bearer token for scraping `GET /metrics` without an owner session |
 | `VULOS_BOOTSTRAP_ADMIN_EMAIL` | _(empty)_ | Email address permitted to bootstrap the very first admin account |
