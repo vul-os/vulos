@@ -62,6 +62,7 @@ A few conventions:
 | D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 | D98 | 2026-08-07 | UnifiedPush (UP-CELL-01) implemented box-side, alongside Web Push, per D96-F: user-registered distributor endpoint, SSRF-screened via the shared `safedial` guard, same DND/owner-targeting choke point, prune-on-404/410; flag-gated (`VULOS_PUSH_UNIFIEDPUSH_ENABLE`); no client UI yet — see gap noted below | **active rule** |
 | D99 | 2026-08-07 | Both run modes supported (installed-to-disk primary, live-from-flash ephemeral); CI publishes the live images + the content-identity roothash, the maintainer signs `stable.json` OFFLINE against it, and `vulos-install --disk` builds the persistent system on the target — founder-builds-everything rejected (cannot build amd64 locally), key-in-CI and box-self-signs rejected | **active rule** |
+| D100 | 2026-08-10 | Display stack: "pick X11 or Wayland" is REJECTED as the wrong question — the two stacks are the dependency sets of two different runtimes (container `stream.Pool` vs bare-metal `vulos-init` seat), so the package sets get split by target instead. Evidence and recommendations in [roadmap/DISPLAY-STACK.md](../roadmap/DISPLAY-STACK.md) | **investigation complete; R1/R3/R4 NOT executed** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -735,3 +736,61 @@ signature* — visible, not silent.
 landed. Until it does, the only persistent paths are installing onto a server you
 already run (`./build.sh --deploy`) or the self-host bundle. Documentation must
 not describe bare-metal installation as available before that command ships.
+
+---
+
+## D100 (2026-08-10) — Display stack: split the package set by target; "pick one stack" is the wrong question
+
+Full evidence, with every claim tagged `[MEASURED]` / `[READ]` / `[ASSUMED]` and
+reproduction commands, lives in **[roadmap/DISPLAY-STACK.md](../roadmap/DISPLAY-STACK.md)**.
+This entry records what was decided and what was *not*.
+
+**A. The premise that had deferred this was wrong in three measured ways.**
+
+1. Consolidating is not the biggest image-size win. Dropping *both* stacks
+   entirely saves 49.3 MiB of a 1371 MiB image — 3.6%. `chromium` +
+   `chromium-common` alone are 366.7 MiB (24.3%).
+2. Consolidating is not the biggest CVE win: 32 of 687 open CVE/package pairs
+   (4.7%). `python3.13` and `libsoup-3.0` carry more, each, than the whole X11
+   stack.
+3. "Dropping X11 is the security win" is **inverted**. Dropping the X11 packages
+   removes 3 open CVEs; dropping the *Wayland* packages removes 26 — because
+   `cage` and `labwc` both hard-`Depends` on `xwayland`, which carries 25 by
+   itself. The Wayland stack drags an X server in regardless.
+
+**B. Decision: reject the framing.** The two stacks are not competing
+implementations of one thing. They are the dependency sets of two different
+runtimes that happened to share one apt list: the container image runs
+`stream.Pool` on Xvfb (the cage branch needs `/dev/dri`, which a stock container
+lacks, so it never takes it), and the bare-metal rootfs runs the `vulos-init`
+kiosk seat on cage/labwc and ships no X server at all. A single global "pick one"
+would break one of the two products. So the package sets get **split by target**
+instead — remove the Wayland packages from the `Dockerfile` only, remove
+`matchbox-window-manager` / `x11-xserver-utils` from `build.sh`'s rootfs list
+only, and keep X11 in the container image, which is the only path that carries a
+frame today.
+
+**C. One blocking unknown is resolved, one is not.**
+
+- *Resolved:* `xdotool`'s replacement needs no new package. The exact `cage` and
+  `labwc` binaries this image ships both advertise `zwp_virtual_keyboard_manager_v1`
+  and `zwlr_virtual_pointer_manager_v1` on a headless session `[MEASURED]`.
+- *Not resolved:* VA-API under Wayland was **not tested**, in either stack,
+  because the investigating machine has no `/dev/dri`. That is a hardware
+  finding, not a Wayland finding. Dropping X11 from the container image stays a
+  gamble until someone runs the encode on real GPU hardware (V1/V2 in
+  DISPLAY-STACK.md §5).
+
+**D. Execution status.** This entry is a decision, not a completion. Two items
+have landed on `feature/post-0.1.0`: `scripts/check-image-packages.sh` now covers
+both of `build.sh`'s package lists (b8cf678), which is the prerequisite that
+stops the split from silently drifting back, and the remote-deploy list's four
+packages that were being passed to `flatpak` instead of `apt` are fixed
+(182b9fa). The package removals themselves and the Go Wayland client (R4) are
+tracked in DISPLAY-STACK.md §4; `scripts/check-image-packages.sh` and its
+manifests are the authority on which lists currently contain what — read them
+rather than trusting this paragraph's date.
+
+**E. Not decided here.** `mesa-vulkan-drivers` + `libllvm19` are 220 MiB — 4.5×
+the entire display-stack prize — and nobody has asked whether they are needed.
+That is the size question that should have been asked first, and it remains open.
