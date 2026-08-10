@@ -173,11 +173,16 @@ func TestParseAndVerify_RefusesSignedButUnrenderableSurface(t *testing.T) {
 		{"a link the owner is told to follow", func(m *StableManifest) {
 			m.Notes = "Apply immediately: https://vulos-security.example/patch"
 		}, "://"},
-		{"a scheme in any case", func(m *StableManifest) {
-			m.Notes = "Apply immediately: HTTPS://vulos-security.example/patch"
-		}, "://"},
 		{"a bare host", func(m *StableManifest) {
 			m.Notes = "Details at www.vulos-security.example"
+		}, "www."},
+		// Upper case, because the rule lower-cases before matching. Note that
+		// "://" carries no letters, so a "HTTPS://" case would NOT distinguish a
+		// case-insensitive match from a case-sensitive one — it passes either
+		// way. Mutation-tested: dropping strings.ToLower survives every case but
+		// this one.
+		{"a bare host in upper case", func(m *StableManifest) {
+			m.Notes = "Details at WWW.Vulos-Security.example"
 		}, "www."},
 		{"notes longer than a notification body", func(m *StableManifest) {
 			m.Notes = strings.Repeat("A", MaxNotesBytes+1)

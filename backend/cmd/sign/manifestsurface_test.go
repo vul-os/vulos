@@ -54,6 +54,21 @@ func fullyPopulatedPayload() ManifestPayload {
 	}
 }
 
+// jsonTagKeys returns a struct's declared JSON key set, read from the tags.
+//
+// It is deliberately NOT derived from encoded output: a field carrying
+// `omitempty` vanishes from the encoding of any value that leaves it zero, so a
+// key set read from canonical bytes cannot see a field that was just ADDED to
+// the struct — mutation-tested, and it survived. The tags always show it.
+func jsonTagKeys(t *testing.T, typ reflect.Type) map[string]struct{} {
+	t.Helper()
+	keys := map[string]struct{}{}
+	for i := 0; i < typ.NumField(); i++ {
+		keys[strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]] = struct{}{}
+	}
+	return keys
+}
+
 // canonicalKeys returns the top-level key set of signing.Canonical(v) — i.e.
 // exactly the keys a signature over v covers, after omitempty has had its say.
 func canonicalKeys(t *testing.T, v any) map[string]struct{} {
@@ -74,29 +89,39 @@ func canonicalKeys(t *testing.T, v any) map[string]struct{} {
 }
 
 // TestManifestPayloadMatchesTheVerifiers is the cross-check that no single-file
-// edit can satisfy: the bytes this signer produces and the bytes
-// osdist.StableManifest describes must carry the same keys.
+// edit can satisfy: this signer's declared surface and osdist.StableManifest's
+// must be the same set of JSON keys, and both must be the documented ten.
 func TestManifestPayloadMatchesTheVerifiers(t *testing.T) {
-	signer := canonicalKeys(t, fullyPopulatedPayload())
+	signer := jsonTagKeys(t, reflect.TypeOf(ManifestPayload{}))
 	if !reflect.DeepEqual(signedManifestKeySet, signer) {
-		t.Errorf("cmd/sign ManifestPayload signs %v, want %v", signer, signedManifestKeySet)
+		t.Errorf("cmd/sign ManifestPayload declares %v, want %v", signer, signedManifestKeySet)
 	}
 
-	verifier := canonicalKeys(t, osdist.StableManifest{
-		Channel:    "stable",
-		Latest:     "v09",
-		MinEpoch:   3,
-		Path:       "os/v09/os-core.squashfs",
-		RootHash:   "deadbeef",
-		Size:       734003200,
-		IsSecurity: true,
-		Severity:   osdist.SeverityCritical,
-		Notes:      "Fixes a remote authentication bypass in the login path.",
-	})
+	verifier := jsonTagKeys(t, reflect.TypeOf(osdist.StableManifest{}))
 	if !reflect.DeepEqual(signer, verifier) {
-		t.Errorf("the signer covers %v but osdist.StableManifest describes %v — "+
+		t.Errorf("the signer declares %v but osdist.StableManifest declares %v — "+
 			"a key on one side and not the other is either an unsigned field the box "+
 			"reads, or a signature no box can reproduce", signer, verifier)
+	}
+
+	// fullyPopulatedPayload must genuinely populate EVERY field, or the
+	// canonical-encoding assertions that rely on it silently stop covering
+	// whatever it forgot. Checked by reflection so a newly added field cannot be
+	// left out quietly.
+	full := reflect.ValueOf(fullyPopulatedPayload())
+	for i := 0; i < full.NumField(); i++ {
+		if full.Field(i).IsZero() {
+			t.Errorf("fullyPopulatedPayload leaves %s zero — omitempty will drop it and "+
+				"every canonical assertion below stops covering it",
+				full.Type().Field(i).Name)
+		}
+	}
+
+	// ...and with every field set, the ENCODING carries exactly those keys. This
+	// is the layer the tag check cannot see: a mistyped or duplicated tag, or a
+	// field the encoder drops for some other reason.
+	if encoded := canonicalKeys(t, fullyPopulatedPayload()); !reflect.DeepEqual(signedManifestKeySet, encoded) {
+		t.Errorf("a fully-populated ManifestPayload encodes %v, want %v", encoded, signedManifestKeySet)
 	}
 }
 
