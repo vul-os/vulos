@@ -3,6 +3,7 @@ import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
+import { useShellSession } from './useShellSession'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // The window shape + reducer actions are the heart of the window manager
@@ -615,12 +616,34 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     mounted.current = true
   }, [])
 
-  // Auto-save state on changes (debounced)
+  // Cross-tab session: exactly one WRITER owns the persisted state; other tabs
+  // on the same desktop follow it. See providers/shellSession.ts for why this
+  // is an election rather than a merge.
+  const session = useShellSession(state.activeDesktop)
+
+  // Auto-save state on changes (debounced).
+  //
+  // ONLY THE WRITER SAVES. Every tab used to write this one key on its own
+  // debounce with its own in-memory copy, so two tabs silently overwrote each
+  // other — open a window in one, move a window in the other, and the second
+  // tab's save dropped the first tab's window with nothing thrown and nothing
+  // shown. A follower persisting here would restore exactly that.
   useEffect(() => {
     if (!mounted.current) return
-    const timer = setTimeout(() => saveShellState(state), 500)
+    if (session.role !== 'writer') return
+    const timer = setTimeout(() => {
+      saveShellState(state)
+      session.publish(state)
+    }, 500)
     return () => clearTimeout(timer)
-  }, [state.desktops, state.activeDesktop])
+  }, [state.desktops, state.activeDesktop, session.role, session.publish, session])
+
+  // A follower mirrors whatever the writer publishes, so both tabs show the
+  // same desktop instead of drifting apart.
+  useEffect(() => {
+    if (session.role !== 'follower' || !session.mirrored) return
+    dispatch({ type: 'RESTORE_STATE', saved: session.mirrored as SavedShellState })
+  }, [session.role, session.mirrored])
 
   // Current desktop's windows (for dock, etc.)
   const currentDesktop = state.desktops[state.activeDesktop] || initialDesktop
