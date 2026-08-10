@@ -55,16 +55,17 @@ VULOS_ENV=local go run ./backend/cmd/server
 | `VULOS_OS_BUCKET_URL` | `https://os.vulos.org` | OS update bucket URL (baked into seed at build time; override for forks) |
 | `VULOS_OS_AUTOUPDATE` | **on** (unset) | The background OS auto-update loop — **the only outbound connection a fresh, unconfigured box makes**. Set to `0`/`off`/`false`/`no`/`disable`/`disabled`/`none` (case-insensitive) for zero default egress; you then pull updates manually from Settings → OS Update. Any other value, including a typo, leaves it **on** — the fail-safe direction is updates flowing (`backend/services/osdist/update.go:132-142`) |
 
-> **`--env=prod` and `VULOS_ENV=prod` are not interchangeable.** The `--env`
-> flag is parsed into an internal value (`main.go:162,174`) and is **never**
-> exported to the environment, while four prod gates read `os.Getenv("VULOS_ENV")`
-> directly: `services/vault/vault.go:95` and `:134`,
-> `cmd/server/routes_newfeatures.go:220`, and
-> `internal/multiinstance/instancekey.go:95`. Those four arm **only** when the
-> environment variable is set — passing `--env=prod` alone leaves them on the
-> dev branch. Rows anywhere in this document that say "in `--env=prod`" and
-> depend on one of those four are marked accordingly. Until it is fixed in code,
-> set `VULOS_ENV=prod` as well.
+> **`--env=prod` and `VULOS_ENV=prod` are interchangeable** (fixed in
+> `7e05ff61`). `services/env` owns environment resolution: `env.Resolve()`
+> parses the flag *and* publishes the result in one call, so `main()` cannot
+> parse without publishing, and every fail-closed production gate reads
+> `env.IsProdActive()` rather than `os.Getenv("VULOS_ENV")`. Starting the box
+> the documented way — `--env prod`, which is how `cmd/init` launches the
+> server, leaving `VULOS_ENV` unset — arms the Restic dev-passphrase refusal
+> (`services/vault/vault.go:97,136`), the DNS/Caddy provisioning gate
+> (`cmd/server/routes_newfeatures.go:225`) and fabric-key sealing
+> (`internal/multiinstance/instancekey.go:105`). Each is pinned by a test that
+> goes red if the gate is reverted to a raw getenv.
 
 ---
 
