@@ -9,9 +9,24 @@
 //
 // It does NOT reimplement any assistant behaviour — the streaming turn, the
 // sovereignty badge/tier picker and the proposal gate all belong to that
-// component and are rendered as-is. This file is chrome: a docked column on
-// desktop, a full-height sheet on a phone, and the two controls (pop out to a
-// real window, close) that a panel needs and the app itself cannot provide.
+// component and are rendered as-is. This file is chrome: a docked column,
+// and the two controls (pop out to a real window, close) that a panel needs
+// and the app itself cannot provide.
+//
+// PHONE-WIDTH NOTE: this panel only ever mounts inside DesktopCanvas (see
+// layouts/DesktopCanvas.tsx), which App.tsx's Shell() only renders once
+// useViewport() reports 'desktop' — i.e. viewport width >= 768px (see
+// shell/useViewport.ts's MOBILE_BREAKPOINT). Below that width the whole shell
+// switches to layouts/MobileStack.tsx instead, which fullscreens the real
+// `assistant` builtin window rather than ever mounting this slide-over. So
+// `narrow` below (useNarrow(640)) can never actually be true in production —
+// a genuine phone can never get this file's mount condition (>=768px) AND
+// its own narrow threshold (<=640px) at once. It is kept as defensive/
+// forward-compatible styling rather than deleted, but do not read the
+// `narrow` branch below as "this is what a phone sees": a phone never reaches
+// this file at all. The narrowest width this panel is actually reachable at
+// is 768px (a small tablet or a narrow desktop window), where it renders as
+// a min(420px, 42vw) docked column — verified to still be legible there.
 import { lazy, Suspense, useEffect, useCallback } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { useNarrow } from './useNarrow'

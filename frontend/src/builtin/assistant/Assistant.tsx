@@ -860,11 +860,21 @@ export default function Assistant() {
           the user instead of left blank. */}
       <div ref={scrollRef} role="log" aria-live="polite" aria-atomic="false" aria-busy={busy}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-        <div className={`${COLUMN} px-4 @xl:px-6 ${empty ? 'h-full' : 'min-h-full py-6 flex flex-col gap-5'}`}>
+        <div className={`${COLUMN} px-4 @xl:px-6 min-h-full ${empty ? '' : 'py-6 flex flex-col gap-5'}`}>
           {empty ? (
-            <div className="h-full flex flex-col items-center justify-center text-center select-none py-8 pb-14">
+            /* `justify-center-safe`, not `justify-center`: on a short surface
+               (a phone window, or any surface where the tier picker's banner
+               also pushes the composer up) this block is taller than the
+               space left for it. Plain `center` clips the OVERFLOW evenly on
+               both ends with no way to scroll to the top half — scrollTop
+               can't go negative — so the heading and icon became permanently
+               unreachable, not merely off-screen. `safe center` falls back to
+               start-alignment exactly when centering would clip, which keeps
+               every bit of the empty state reachable by scrolling down from
+               the top instead. */
+            <div className="min-h-full flex flex-col items-center justify-center-safe text-center select-none py-8 pb-14">
               <div
-                className="va-float w-14 h-14 rounded-2xl flex items-center justify-center text-[24px] leading-none accent-bg-soft accent-text"
+                className="va-float w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-[24px] leading-none accent-bg-soft accent-text"
                 aria-hidden="true"
               >
                 ✦
