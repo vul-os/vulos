@@ -215,15 +215,39 @@ docker run --rm --privileged \
     export VULOS_NETBOOT_E2E=1
     export VULOS_E2E_DISK=vda
     export VULOS_E2E_SQUASHFS="$SQUASHFS"
-    go test ./services/installer/... -run TestNetbootInstall_RealPipeline_E2E -v -timeout 10m
+    # -count=1 is NOT optional. This test partitions and formats a real
+    # loop-backed disk; Go happily served a CACHED pass for it, so Phase 2
+    # reported "real install pipeline succeeded" without executing a single
+    # disk operation, and then shipped whatever stale image was lying around.
+    go test ./services/installer/... -run TestNetbootInstall_RealPipeline_E2E -count=1 -v -timeout 10m
     TESTRC=$?
 
-    wait "$LINKER_PID" 2>/dev/null || true
+    # A linker failure is FATAL, not advisory. It was `|| true`, which
+    # swallowed its exit status — so when parted failed to register partitions
+    # it printed "FATAL: ... never appeared", the run carried on regardless, and
+    # an image with NO PARTITION TABLE was copied out and declared a success.
+    LINKRC=0
+    wait "$LINKER_PID" 2>/dev/null || LINKRC=$?
     cleanup
     trap - EXIT
 
+    if [ "$LINKRC" -ne 0 ]; then
+      echo "FATAL: the partition linker failed (rc=$LINKRC) — the disk was never partitioned, so nothing below is meaningful" >&2
+      exit 1
+    fi
     if [ "$TESTRC" -ne 0 ]; then
       exit "$TESTRC"
+    fi
+
+    # Post-condition: what we are about to hand to QEMU must actually BE a
+    # partitioned disk. Everything upstream can report success and still leave a
+    # blank 1.4G file here — that is exactly what happened, and the only symptom
+    # from the firmware was dropping to an EFI shell, which reads like a
+    # bootloader problem rather than a missing GPT.
+    if ! parted -s /work/output/_netboot-disk.img print >/dev/null 2>&1; then
+      echo "FATAL: the produced image has no readable partition table — refusing to call this an install" >&2
+      parted -s /work/output/_netboot-disk.img unit s print 2>&1 | head -6 >&2 || true
+      exit 1
     fi
 
     cp /work/output/_netboot-disk.img /src/output/_netboot-installed-vda.img
@@ -231,7 +255,11 @@ docker run --rm --privileged \
   '
 
 [ -f "$DISK_IMG" ] || die "install pipeline did not produce $DISK_IMG"
-ok "Phase 2 done — real install pipeline succeeded; disk image: $DISK_IMG ($(du -h "$DISK_IMG" | cut -f1))"
+# Cheap GPT sniff on the host: byte 512.. of a GPT disk starts "EFI PART".
+if ! dd if="$DISK_IMG" bs=1 skip=512 count=8 2>/dev/null | grep -q "EFI PART"; then
+  die "the copied disk image has no GPT header — Phase 2 produced something QEMU cannot boot"
+fi
+ok "Phase 2 done — real install pipeline succeeded; disk image: $DISK_IMG ($(du -h "$DISK_IMG" | cut -f1)), GPT present"
 
 # ── Phase 3: boot the installed disk in QEMU and assert real success ────────
 #
@@ -337,17 +365,22 @@ qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$SHOT\"}}" >/dev/
 
 if [ "$PASS" = "1" ]; then
   ok "PASS — $PASS_MSG"
-  grep -E "$OVERLAY_PATTERNS" "$SERIAL" 2>/dev/null | tail -5 | while IFS= read -r ln; do
+  # `|| true`: under `set -euo pipefail` this pipeline returns non-zero whenever
+  # grep matches nothing, which killed the script immediately after it had
+  # printed PASS — the run looked like a pass and exited 1. These lines are
+  # diagnostic only and must never decide the verdict.
+  { grep -E "$OVERLAY_PATTERNS" "$SERIAL" 2>/dev/null | tail -5 || true; } | while IFS= read -r ln; do
     printf "  ${c_d}serial: %s${c_n}\n" "$ln"
   done
   if [ "$SHOW" = "1" ]; then
     echo ""
     say "QEMU window is open — press Ctrl-C to stop."
     wait "$QEMU_PID"
-  else
-    qmp '{"execute":"quit"}' >/dev/null 2>&1 || true
+    exit 0
   fi
-  exit 0
+  qmp '{"execute":"quit"}' >/dev/null 2>&1 || true
+  sleep 2
+  PHASE3_OK=1
 else
   printf "${c_r}✗ FAIL — netboot-installed OS did not reach a sane state within ${TIMEOUT}s${c_n}\n" >&2
   echo "" >&2
@@ -369,3 +402,189 @@ else
   qmp '{"execute":"quit"}' >/dev/null 2>&1 || true
   exit 1
 fi
+
+# ── Phase 4: OSDIST-FLIP-01 — flip the active slot and prove the flip BOOTS ──
+#
+# Phase 3 proves the machine boots slot-a, which is what the install pinned on
+# the kernel command line. That says nothing about whether an OTA can ever take
+# effect, and for a long time it could not: the cmdline is written once at
+# install and boot-state.json was read by nothing at boot, so a staged update —
+# and, worse, a boot-counter ROLLBACK — recorded intent that no boot honoured.
+#
+# The initramfs now reads boot-state.json and picks the slot itself. That is
+# unit-tested, but a unit test cannot show that real firmware, a real
+# systemd-boot entry and a real initramfs agree. Only a reboot can. So:
+#
+#   1. stage a REAL second image into slot-b (a copy of the slot-a squashfs and
+#      its verity siblings — the point is which slot boots, not what differs
+#      inside it),
+#   2. flip "active" to b in boot-state.json,
+#   3. boot the SAME disk again, unchanged otherwise, with a fresh vars.fd,
+#   4. require BOTH that the initramfs says it selected slot b AND that the OS
+#      comes all the way up to a serving HTTP endpoint from it.
+#
+# Requiring both matters. The serial line alone is our own log and would pass if
+# the machine then failed to boot; HTTP alone would pass if it quietly booted
+# slot-a. Together they say the flip was honoured and the result is a working
+# system.
+[ "${PHASE3_OK:-0}" = "1" ] || exit 0
+
+echo ""
+say "Phase 4 — staging slot-b and flipping boot-state.json to it…"
+
+docker run --rm --privileged \
+  -v "$OUTDIR":/out \
+  "$BUILDER_IMG" \
+  bash -c '
+    set -euo pipefail
+    IMG=/out/'"$(basename "$DISK_IMG")"'
+    LOOP="$(losetup --find --show --partscan "$IMG")"
+    trap "losetup -d $LOOP 2>/dev/null || true" EXIT
+
+    # --partscan alone does not reliably materialise ${LOOP}p1/p2 in this
+    # container: the kernel registers the partitions under /sys but the device
+    # nodes are never created, so mount fails with "Cant lookup blockdev".
+    # Phase 2 hits the same thing and solves it the same way — wait for /sys,
+    # then mknod the nodes by their real major:minor.
+    for _ in $(seq 1 150); do
+      [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] && break
+      sleep 0.2
+    done
+    [ -e "/sys/class/block/${LOOP#/dev/}p2/dev" ] || { echo "FATAL: partitions never registered for $LOOP" >&2; exit 1; }
+    for pnum in 1 2; do
+      devnum="$(cat "/sys/class/block/${LOOP#/dev/}p${pnum}/dev")"
+      [ -e "${LOOP}p${pnum}" ] || mknod "${LOOP}p${pnum}" b "${devnum%%:*}" "${devnum##*:}"
+    done
+
+    MNT=/mnt/vulos-flip
+    mkdir -p "$MNT"
+    # p2 is the ext4 root the installer created (p1 is the ESP).
+    mount "${LOOP}p2" "$MNT"
+    trap "umount $MNT 2>/dev/null || true; losetup -d $LOOP 2>/dev/null || true" EXIT
+
+    SA="$MNT/var/cache/vulos/slot-a"
+    SB="$MNT/var/cache/vulos/slot-b"
+    [ -f "$SA/os-core.squashfs" ] || { echo "FATAL: slot-a has no squashfs — Phase 2 did not lay out the slots" >&2; exit 1; }
+    mkdir -p "$SB"
+    # HARDLINK, not copy. The root partition the installer creates has no room
+    # for a second 593MB squashfs — a real copy fails with ENOSPC — and that is
+    # itself worth knowing: on a disk this size an A/B update has nowhere to
+    # stage. It does not weaken what this phase tests. The question here is
+    # WHICH SLOT THE FIRMWARE AND INITRAMFS CHOOSE, and a hardlink is a real
+    # file at the slot-b path: -f succeeds, the mount succeeds, and the boot
+    # either goes through slot-b or it does not. What the bytes contain is not
+    # under test.
+    for f in os-core.squashfs os-core.hashtree os-core.roothash os-core.roothash.sig; do
+      [ -f "$SA/$f" ] && ln -f "$SA/$f" "$SB/$f"
+    done
+    echo "slot-b staged: $(ls -1 "$SB" | tr "\n" " ")"
+
+    BS="$MNT/var/cache/vulos/boot-state.json"
+    [ -f "$BS" ] || { echo "FATAL: no boot-state.json on the installed disk" >&2; exit 1; }
+    echo "  before: $(cat "$BS")"
+    printf "{\"active\":\"b\",\"pending\":\"\",\"boot_counter\":0,\"last_known_good\":\"a\"}" > "$BS"
+    echo "  after:  $(cat "$BS")"
+    sync
+  ' || { printf "${c_r}✗ Phase 4 setup failed${c_n}\n" >&2; exit 1; }
+
+ok "slot-b staged and boot-state.json flipped to active=b"
+
+VARS2="$OUTDIR/_netboot-uefi-vars-slotb.fd"
+cp "$EDK2_VARS_SRC" "$VARS2"
+SERIAL2="$OUTDIR/_netboot-serial-slotb.log"
+: > "$SERIAL2"
+QMP2="$OUTDIR/_netboot-qmp-slotb.sock"
+rm -f "$QMP2"
+HOSTPORT2=$(( HOSTPORT + 1 ))
+
+say "Booting the SAME disk again — nothing changed but boot-state.json…"
+qemu-system-aarch64 \
+  -machine virt,gic-version=3 -accel hvf -cpu host -smp 4 -m "${VM_MEM_MB:-4096}" \
+  -drive if=pflash,format=raw,readonly=on,file="$EDK2_CODE" \
+  -drive if=pflash,format=raw,file="$VARS2" \
+  -drive if=virtio,format=raw,file="$DISK_IMG" \
+  -device virtio-net-pci,netdev=n1 \
+  -netdev user,id=n1,hostfwd=tcp:127.0.0.1:${HOSTPORT2}-:8080 \
+  -qmp unix:"$QMP2",server,nowait \
+  -serial "file:$SERIAL2" \
+  -display none -vga none \
+  -no-reboot &
+QEMU2_PID=$!
+cleanup_qemu2() { [ -n "${QEMU2_PID:-}" ] && kill "$QEMU2_PID" 2>/dev/null || true; rm -f "$QMP2"; }
+trap 'cleanup_qemu; cleanup_qemu2' EXIT INT TERM
+
+SLOT_LINE='vulos-live: boot-state.json selects slot b'
+HTTP2="http://127.0.0.1:${HOSTPORT2}/api/setup/status"
+deadline=$(( $(date +%s) + TIMEOUT ))
+SLOT_SEEN=0
+HTTP2_OK=0
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  kill -0 "$QEMU2_PID" 2>/dev/null || { printf "${c_r}  QEMU (slot-b boot) exited early${c_n}\n" >&2; break; }
+  [ "$SLOT_SEEN" = "0" ] && grep -qsF "$SLOT_LINE" "$SERIAL2" 2>/dev/null && {
+    SLOT_SEEN=1
+    ok "serial: the initramfs selected slot b from boot-state.json"
+  }
+  if curl -fsS --max-time 3 "$HTTP2" >/dev/null 2>&1; then HTTP2_OK=1; break; fi
+  sleep 3
+done
+echo
+
+qmp2() { QMP="$QMP2" qmp "$1"; }
+if [ "$SLOT_SEEN" = "1" ] && [ "$HTTP2_OK" = "1" ]; then
+  ok "PASS — the flip is REAL: boot-state.json said slot b, the initramfs honoured it,"
+  ok "       and the machine came all the way up to serving HTTP from that slot."
+  echo ""
+  grep -F 'vulos-live: boot-state' "$SERIAL2" | tail -3 | while IFS= read -r ln; do
+    printf "  ${c_d}serial: %s${c_n}\n" "$ln"
+  done
+  kill "$QEMU2_PID" 2>/dev/null || true
+  exit 0
+fi
+
+# INCONCLUSIVE, not FAIL — and not PASS.
+#
+# Two things block a verdict here, both discovered by running this:
+#
+#  1. The installed boot entry carries `quiet splash`, so plymouth swallows
+#     initramfs console output. NEITHER boot logs a single vulos-live line —
+#     Phase 3 passes purely on HTTP — so the serial can never confirm which
+#     slot was chosen, no matter what the initramfs did.
+#  2. The root partition has no room for a second squashfs, so slot-b is a
+#     hardlink to slot-a. Even a successful boot cannot distinguish them.
+#
+# Calling this FAIL would claim the flip is broken, which is not established.
+# Calling it PASS would be the exact defect this project keeps finding. So it
+# says what it is, and exits non-zero so nobody mistakes it for coverage.
+if [ "$HTTP2_OK" = "1" ] && [ "$SLOT_SEEN" = "0" ]; then
+  printf "${c_y:-}⚠ INCONCLUSIVE — the machine booted and served HTTP with active=b, but this${c_n}\n" >&2
+  printf "  harness cannot yet tell WHICH slot it booted.${c_n}\n" >&2
+  echo "" >&2
+  echo "  Why: the boot entry uses 'quiet splash', so plymouth suppresses the" >&2
+  echo "  initramfs log — no vulos-live line reaches the serial on EITHER boot" >&2
+  echo "  (phase 3 passes on HTTP alone). And slot-b is a hardlink to slot-a" >&2
+  echo "  because the root partition has no space for a second 593MB image, so" >&2
+  echo "  the two slots are byte-identical." >&2
+  echo "" >&2
+  echo "  To make this decidable: drop 'quiet splash' from the entry this harness" >&2
+  echo "  boots (or log the selected slot somewhere the running OS exposes), and" >&2
+  echo "  give the test disk room for a genuinely different second image." >&2
+  exit 2
+fi
+
+printf "${c_r}✗ FAIL — the A/B slot flip did not take effect${c_n}\n" >&2
+echo "" >&2
+if [ "$SLOT_SEEN" = "0" ]; then
+  echo "The initramfs never logged selecting slot b. boot-state.json said active=b," >&2
+  echo "so either apply_active_slot did not run, or it fell through one of its" >&2
+  echo "fail-closed paths (see scripts/initramfs/vulos-live) and kept the cmdline" >&2
+  echo "slot — which is precisely the bug this phase exists to catch." >&2
+elif [ "$HTTP2_OK" = "0" ]; then
+  echo "The initramfs DID select slot b, but the OS never reached a serving state" >&2
+  echo "from it — so the flip is honoured and the slot-b image is not bootable." >&2
+fi
+echo "" >&2
+echo "---- last 60 lines of slot-b serial ($SERIAL2) ----" >&2
+tail -n 60 "$SERIAL2" >&2 || true
+kill "$QEMU2_PID" 2>/dev/null || true
+exit 1
+

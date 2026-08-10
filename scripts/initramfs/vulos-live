@@ -172,10 +172,56 @@ fi
 read_active_slot() {
     _state="$1"
     [ -r "$_state" ] || return 1
-    _slot="$(sed -n 's/.*"active"[[:space:]]*:[[:space:]]*"\([ab]\)".*/\1/p' "$_state" 2>/dev/null | head -n 1)"
-    [ -n "$_slot" ] || return 1
-    printf '%s' "$_slot"
+
+    # PURE SHELL — no sed, no head, no tr, no awk.
+    #
+    # This first used `sed ... | head -n 1`, and every real boot died with
+    # "head: not found": the initramfs does not ship it. Replacing head with
+    # GNU sed's `{p;q;}` then broke the unit tests, because macOS ships BSD sed
+    # which rejects that syntax. Both failures are the same mistake — depending
+    # on a tool being present and behaving the same everywhere — and an
+    # initramfs is the worst place to make it. Parameter expansion is in the
+    # shell itself, so it cannot be missing.
+    #
+    # `|| [ -n "$_line" ]` keeps the last line when the file has no trailing
+    # newline, which is exactly how Go writes this one. Without it, a
+    # single-line boot-state.json is read and then discarded — the same
+    # discarding-what-read-just-populated bug already fixed in cmdline_has.
+    _slot=""
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        case "$_line" in
+            *'"active"'*)
+                _t="${_line#*\"active\"}"
+                _t="${_t#*:}"
+                # strip leading spaces/tabs before the opening quote
+                while :; do
+                    case "$_t" in
+                        " "*) _t="${_t# }" ;;
+                        "	"*) _t="${_t#	}" ;;
+                        *) break ;;
+                    esac
+                done
+                _t="${_t#\"}"
+                # The value must be CLOSED. Without this, a document truncated
+                # mid-write — `{"active":"b` — yields "b" and the machine acts
+                # on a half-written file. %%"* silently returns the whole
+                # remainder when there is no closing quote, so the absence has
+                # to be checked, not inferred.
+                case "$_t" in
+                    *\"*) _slot="${_t%%\"*}" ;;
+                    *) _slot="" ;;
+                esac
+                break
+                ;;
+        esac
+    done < "$_state"
+
+    case "$_slot" in
+        a|b) printf '%s' "$_slot"; return 0 ;;
+    esac
+    return 1
 }
+
 
 # slot_squashfs_path echoes the squashfs path for a slot, matching the layout
 # writeSlotABootEntry pins on the cmdline.
