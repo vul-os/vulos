@@ -546,10 +546,21 @@ if command -v veritysetup >/dev/null 2>&1 \
             LOWER_DEV="/dev/mapper/${VERITY_NAME}"
             log_end_msg "vulos-live: dm-verity device active → $LOWER_DEV"
         else
-            # veritysetup open failed: root hash mismatch or kernel module absent.
-            # This is a security-relevant failure — panic rather than silently boot
-            # an unverified image.
-            panic "vulos-live: veritysetup open FAILED — root hash mismatch or dm-verity kernel module absent. Boot halted."
+            # veritysetup open failed. This is a security-relevant failure —
+            # panic rather than silently boot an unverified image.
+            #
+            # NOTE, measured rather than assumed: a WRONG ROOT HASH DOES NOT FAIL
+            # HERE. dm-verity is lazy — `veritysetup open` only creates the
+            # mapping; the kernel does not read a single data block, let alone
+            # check one, until something mounts the device. A boot with a
+            # deliberately corrupted os-core.roothash got past this branch with
+            # exit 0 and was caught one step later by the squashfs mount (see the
+            # panic below, which is the one that actually fires for tampering).
+            # What reaches this branch is the structural failures: the dm-verity
+            # target unavailable, a hash tree that is not a hash tree, bad
+            # geometry. Both paths halt the boot, which is what matters — but the
+            # message has to be honest about which one an operator is reading.
+            panic "vulos-live: veritysetup open FAILED — dm-verity target unusable (unreadable/ill-formed hash tree, or the kernel driver is absent). Boot halted."
         fi
     fi
 else
@@ -578,6 +589,15 @@ fi
 # overlay would lose the record of a boot that did happen. If verity was
 # supposed to open and could not, the hook has already panicked and nothing is
 # written — which is correct, because that machine did not boot.
+#
+# One limit on how far `verity=active` can be read, since it is what
+# scripts/netboot-install-smoke.sh Phase 5 asserts on: it means THE VERITY DEVICE
+# WAS OPENED, not that the OS came up through it. A disk with a wrong root hash
+# gets `verity=active` written here and then halts at the mount below, because
+# dm-verity checks nothing until a block is read. The marker is only evidence of
+# a verified boot when read together with the machine actually being up — which
+# is why Phase 5 requires the HTTP boot of Phase 3/4 to have passed first, and
+# does not treat this line as sufficient on its own.
 record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
     "$([ -n "$LOWER_DEV" ] && echo active || echo inactive)" || true
 
@@ -585,8 +605,22 @@ record_booted_slot "$rootmnt" "$_booted_slot" "$_booted_via" "$SQUASHFS_PATH" \
 if [ -n "$LOWER_DEV" ]; then
     # Mount the dm-verity block device read-only as the overlayfs lower layer.
     # The kernel verifies every 4096-byte block against the Merkle tree on read.
+    #
+    # THIS is where a root-hash mismatch actually lands, not the `veritysetup
+    # open` branch above — see the note there. Because dm-verity checks nothing
+    # until a block is read, the FIRST read is the mount, and a wrong root hash
+    # surfaces as this mount failing with the kernel printing
+    #
+    #   device-mapper: verity: 7:1: metadata block 1 is corrupted
+    #
+    # just above it. Verified by booting a disk whose os-core.roothash had been
+    # replaced with a valid-shaped but wrong 64-hex value: the machine halted
+    # here, at "(initramfs)", and never served HTTP. So the failure is fail-closed
+    # as designed — but the previous message ("failed to mount ... as squashfs")
+    # reads like a filesystem problem, when the overwhelmingly likely cause is
+    # that the image does not match the root hash it is pinned to. Say that.
     if ! mount -t squashfs -o ro "$LOWER_DEV" "$LOWER"; then
-        panic "vulos-live: failed to mount dm-verity device $LOWER_DEV as squashfs"
+        panic "vulos-live: dm-verity VERIFICATION FAILED — $SQUASHFS_ABS does not match the root hash in $ROOTHASH_PATH (the kernel rejects blocks as they are read; look for 'device-mapper: verity: ... is corrupted' above). The image is damaged or has been tampered with. Boot halted."
     fi
 else
     # Fallback: direct loop mount (no block-level verity). The initramfs `mount`
