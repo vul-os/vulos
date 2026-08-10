@@ -1,0 +1,65 @@
+#!/bin/sh
+# initramfs-tools HOOK — put veritysetup inside the initramfs (VERITY-03).
+#
+# This is the missing half of dm-verity. The installer stages
+# os-core.hashtree + os-core.roothash beside the squashfs in the slot
+# (backend/services/installer/netboot_verity.go), and scripts/initramfs/
+# vulos-live is written to open them — but it opens them by running
+# `veritysetup`, and NOTHING PUT VERITYSETUP IN THE INITRAMFS. Measured with
+# unmkinitramfs on the real ESP image across four smoke runs, every one of them
+# reported IR_VERITYSETUP=no, so the hook took its documented unverified
+# loop-mount fallback on every boot and the machine came up with block-level
+# integrity silently off.
+#
+# Why a custom hook is required at all: Debian ships no verity support in its
+# initramfs hooks. cryptsetup-initramfs (the obvious candidate) covers LUKS
+# only — it contains zero occurrences of "verity" — so nothing in the archive
+# copies this binary in. Installing cryptsetup-bin in the BUILDER image does
+# not help either: that puts veritysetup on the machine running build.sh, not
+# in the initramfs the target boots. That distinction was the whole bug.
+#
+# The kernel side (dm-mod, dm-bufio, dm-verity, reed_solomon) is handled
+# separately, via /etc/initramfs-tools/modules in build.sh — MODULES=most
+# excludes drivers/md entirely, and dm-verity.ko without dm-bufio and
+# reed_solomon loads with "Unknown symbol". Both halves are needed; either one
+# alone leaves verity inactive.
+#
+# HOOK CONVENTIONS ARE LOAD-BEARING HERE. A hook that does not answer
+# `prereqs` on argv[1], or that does not source hook-functions before calling
+# copy_exec, fails during update-initramfs — and build.sh's update-initramfs
+# call is `|| echo`-guarded, so a malformed hook would degrade to a warning in
+# a 20-minute build log and an initrd that boots fine with verity off. That is
+# why build.sh asserts on the CONTENTS of the produced initrd afterwards rather
+# than trusting this file to have run.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Fail LOUDLY rather than produce a verity-incapable initrd quietly. The
+# alternative — skipping when the binary is absent — is precisely the failure
+# mode this hook exists to end: everything reports success and the protection
+# is not running. Same posture as the vulos-os-bucket-url hook alongside it.
+#
+# /sbin and /usr/sbin are the same directory on a merged-usr trixie rootfs;
+# both are probed anyway so this keeps working on a non-merged one.
+VS=""
+for _cand in /sbin/veritysetup /usr/sbin/veritysetup; do
+    if [ -x "$_cand" ]; then VS="$_cand"; break; fi
+done
+if [ -z "$VS" ]; then
+    echo "ERROR: vulos-verity hook: veritysetup not found (/sbin, /usr/sbin) —" >&2
+    echo "       install cryptsetup-bin in the rootfs. Aborting initramfs build" >&2
+    echo "       rather than shipping an initrd that cannot open a verity device." >&2
+    exit 1
+fi
+
+# copy_exec, not cp: veritysetup is dynamically linked against libcryptsetup,
+# libdevmapper, libssl, libargon2, libjson-c, libblkid, libuuid and libpopt,
+# and copy_exec is what walks that closure into DESTDIR. A plain copy produces
+# a binary that dies with "error while loading shared libraries" at the exact
+# moment it is needed, which reaches the operator as a panic from vulos-live.
+copy_exec "$VS" /sbin/veritysetup

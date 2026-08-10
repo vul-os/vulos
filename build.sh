@@ -639,6 +639,26 @@ chroot "$ROOTFS" apt-get update
 # and it Depends on libwayland-client0 + libwpebackend-fdo-1.0-1, which is the
 # backend `--platform=wl` needs on the cage/labwc seat this image runs.
 #
+# cryptsetup-bin IS THE ROOTFS'S HALF OF dm-verity (VERITY-03). It provides
+# /sbin/veritysetup, which scripts/initramfs/vulos-live execs to open the OS
+# squashfs through the kernel's dm-verity target — and which the initramfs did
+# not contain. Measured with unmkinitramfs on the real ESP image across four
+# netboot-install smoke runs: IR_VERITYSETUP=no, every time. The hook therefore
+# took its documented unverified loop-mount fallback on every boot, so
+# ARCHITECTURE.md's block-level-integrity claim was false for installed disks.
+#
+# It is installed HERE, in the rootfs, and not only in
+# scripts/baremetal-builder.Dockerfile — that image already had it, which is
+# exactly why the gap survived so long: veritysetup was present on the machine
+# RUNNING the build (used to GENERATE the hash tree) and absent from the image
+# the build PRODUCES. A package in the builder cannot be copied into an initrd
+# by a hook that runs inside the target rootfs.
+#
+# 1.4 MB of Installed-Size for veritysetup + cryptsetup + integritysetup
+# (arm64, trixie); the initrd grows ~1.8 MB once copy_exec pulls its shared
+# libraries in. cryptsetup-bin, not cryptsetup: the latter adds the LUKS
+# initramfs/systemd integration this image has no use for.
+#
 # The /etc/chromium/policies/managed/vulos.json this script writes further down
 # stays inert (it always was — nothing here ever installed chromium to read it).
 # Its content is kiosk UX hardening: no password manager, no autofill, no sync,
@@ -664,7 +684,8 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     plymouth plymouth-themes \
     avahi-daemon avahi-utils dhcpcd5 wpasupplicant \
     openssh-server \
-    initramfs-tools "linux-image-${GOARCH}" systemd-boot-efi
+    initramfs-tools "linux-image-${GOARCH}" systemd-boot-efi \
+    cryptsetup-bin
 
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 
@@ -930,12 +951,131 @@ chmod 0755 "$_BUCKET_HOOK"
 echo "  ${GREEN}✓${NC} OS bucket URL initramfs hook installed"
 unset _IS_FORK_BUILD _BUCKET_URL _BUCKET_HOOK
 
+# ═══════════════════════════════════
+# VERITY-03: make the SHIPPED initramfs able to use dm-verity
+#
+# Everything else in the dm-verity chain already worked. The build generates a
+# Merkle tree + root hash (below), the installer stages os-core.hashtree /
+# os-core.roothash / .sig into the slot beside the squashfs
+# (stageVerityArtifacts, backend/services/installer/netboot_verity.go), and
+# scripts/initramfs/vulos-live opens the device before it mounts anything. The
+# one thing missing was that the initramfs contained neither the veritysetup
+# BINARY nor the dm-verity kernel DRIVER, so vulos-live's prerequisite check
+# failed on every boot and it took the unverified loop-mount fallback. Measured
+# on the real ESP image with unmkinitramfs across four smoke runs:
+# IR_VERITYSETUP=no IR_DMVERITY=no. Everything reported success; the protection
+# was not running.
+#
+# Three pieces, all required — any one alone leaves verity inactive:
+#   1. cryptsetup-bin in the rootfs (the pinned list above, plus the top-up
+#      below for cached rootfs trees),
+#   2. an initramfs-tools hook that copy_execs it in
+#      (scripts/initramfs/vulos-verity),
+#   3. the dm modules, because MODULES=most does not include drivers/md.
+#
+# This lives in the COMMON rootfs section, not the --live block, on purpose:
+# --disk, --live and the netboot payload all boot the same initrd out of
+# $ROOTFS/boot, and verity that only works for one image kind is a trap.
+# ═══════════════════════════════════
+echo "${BLUE}▸ Making the initramfs dm-verity capable (VERITY-03)...${NC}"
+
+# 1. veritysetup must exist in the ROOTFS for a hook running inside it to copy.
+#
+# It is in the pinned package list above — but that list only runs on a FRESH
+# debootstrap. `--reuse-rootfs`, which CI and scripts/netboot-install-smoke.sh
+# both use, skips the entire install block, so a rootfs cached before this
+# change would take the hook and the modules and still have no binary to copy;
+# the hook would abort update-initramfs and the build would go on with a
+# verity-incapable initrd. Top it up where the fresh and cached paths meet.
+if [ ! -x "$ROOTFS/sbin/veritysetup" ] && [ ! -x "$ROOTFS/usr/sbin/veritysetup" ]; then
+    echo "  ${DIM}veritysetup absent from this rootfs (cached tree) — installing cryptsetup-bin${NC}"
+    chroot "$ROOTFS" sh -c 'apt-get update && apt-get install -y --no-install-recommends cryptsetup-bin'
+    chroot "$ROOTFS" apt-get clean
+fi
+[ -x "$ROOTFS/sbin/veritysetup" ] || [ -x "$ROOTFS/usr/sbin/veritysetup" ] || {
+    echo "${RED}✗ VERITY-03: cryptsetup-bin did not provide veritysetup in the rootfs${NC}"
+    echo "${RED}  Without it the initramfs cannot open a dm-verity device and every${NC}"
+    echo "${RED}  installed machine would mount its OS unverified.${NC}"
+    exit 1
+}
+echo "  ${GREEN}✓${NC} veritysetup present in rootfs"
+
+# 2. The hook that puts it inside the cpio. Debian ships no verity hook of its
+#    own (cryptsetup-initramfs is LUKS-only — zero "verity" hits), so this one
+#    is ours. It is a tracked file rather than a heredoc so it can be read and
+#    reviewed next to the init-bottom hook it serves.
+mkdir -p "$ROOTFS/etc/initramfs-tools/hooks"
+cp "$ROOT_DIR/scripts/initramfs/vulos-verity" "$ROOTFS/etc/initramfs-tools/hooks/vulos-verity"
+chmod 0755 "$ROOTFS/etc/initramfs-tools/hooks/vulos-verity"
+echo "  ${GREEN}✓${NC} veritysetup initramfs hook installed"
+
+# 3. The kernel side. ALL FOUR, and the reason is not tidiness:
+#      dm-mod        device-mapper core; without it /dev/mapper/control never
+#                    appears and vulos-live's dm_available() returns false
+#      dm-verity     the target itself
+#      dm-bufio      dm-verity.ko links against it — loading dm-verity without
+#                    it gives "dm_verity: Unknown symbol dm_bufio_get (err -2)",
+#                    which is a MODULE that is present and unloadable: the
+#                    failure looks like a missing driver at the veritysetup
+#                    call, one step too late to diagnose
+#      reed_solomon  same, for the forward-error-correction symbols
+#    MODULES=most (the initramfs-tools default this image builds with) excludes
+#    drivers/md entirely, so none of these arrive on their own.
+for _m in dm-mod dm-bufio dm-verity reed_solomon; do
+    grep -qxF "$_m" "$ROOTFS/etc/initramfs-tools/modules" 2>/dev/null \
+      || echo "$_m" >> "$ROOTFS/etc/initramfs-tools/modules"
+done
+echo "  ${GREEN}✓${NC} dm-mod, dm-bufio, dm-verity, reed_solomon queued into the initramfs"
+
+# The assertion that makes the three steps above evidence instead of intent.
+#
+# update-initramfs is invoked `|| echo`-guarded everywhere in this script, so a
+# hook that fails — a missing binary, a malformed PREREQ block, a copy_exec
+# that could not resolve a library — degrades to one dim line in a twenty-minute
+# build log and an initrd that boots perfectly well with verity off. That is the
+# exact shape of the defect this whole change exists to close, so the produced
+# initrd is opened and read back rather than trusted.
+#
+# lsinitramfs (initramfs-tools) is used INSIDE the chroot: a real initrd here is
+# an uncompressed early cpio with a compressed main archive concatenated after
+# it, and a naive `cpio -t`/`gzip -dc` sees only one of the two — a probe that
+# reports "absent" on every run, which is worse than no probe because it reads
+# as evidence.
+assert_initrd_verity_capable() {
+    _aiv_label="$1"
+    _aiv_img="$(ls -1 "$ROOTFS"/boot/initrd.img-* 2>/dev/null | sort -V | tail -1)"
+    if [ -z "$_aiv_img" ]; then
+        echo "  ${DIM}no initrd in $ROOTFS/boot — verity capability not asserted ($_aiv_label)${NC}"
+        return 0
+    fi
+    _aiv_list="$OUTDIR/_initrd-contents-${_aiv_label}.txt"
+    if ! chroot "$ROOTFS" lsinitramfs "/boot/$(basename "$_aiv_img")" > "$_aiv_list" 2>/dev/null; then
+        echo "  ${DIM}lsinitramfs unavailable in the rootfs — verity capability not asserted ($_aiv_label)${NC}"
+        return 0
+    fi
+    _aiv_missing=""
+    grep -q 'sbin/veritysetup' "$_aiv_list" || _aiv_missing="$_aiv_missing veritysetup"
+    for _m in dm-mod dm-bufio dm-verity reed_solomon; do
+        grep -q "${_m}\.ko" "$_aiv_list" || _aiv_missing="$_aiv_missing ${_m}.ko"
+    done
+    if [ -n "$_aiv_missing" ]; then
+        echo "${RED}✗ VERITY-03: the initramfs built at $_aiv_label is NOT verity-capable${NC}"
+        echo "${RED}  missing from $(basename "$_aiv_img"):$_aiv_missing${NC}"
+        echo "${RED}  Full listing: $_aiv_list${NC}"
+        echo "${RED}  A machine booting this initrd mounts its OS through a plain loop${NC}"
+        echo "${RED}  device with no block-level verification — see scripts/initramfs/vulos-live.${NC}"
+        exit 1
+    fi
+    echo "  ${GREEN}✓${NC} initrd is verity-capable at $_aiv_label: veritysetup + dm-mod, dm-bufio, dm-verity, reed_solomon ($(wc -l < "$_aiv_list" | tr -d ' ') entries)"
+}
+
 # Regenerate every installed initrd with the vulos theme + plymouth hook +
 # trust-anchor hook baked in.  Runs on both fresh and --reuse-rootfs builds
 # (kernel already present).  Must run AFTER embed-anchor.sh so the
 # vulos-trust-anchor initramfs hook is in place before update-initramfs.
 chroot "$ROOTFS" sh -c 'command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all' \
     || echo "  ${DIM}update-initramfs unavailable — splash/trust-anchor will be late-stage only${NC}"
+assert_initrd_verity_capable rootfs
 
 mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
     "$ROOTFS/root/.vulos/sandbox" "$ROOTFS/root/.vulos/browser/extensions" \
@@ -1198,6 +1338,10 @@ if [ "$LIVE_MODE" = "1" ]; then
   # Regenerate initramfs so the hook + modules are baked in
   chroot "$ROOTFS" sh -c 'command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all' \
       || echo "  ${DIM}update-initramfs unavailable — hook will be absent${NC}"
+  # This regeneration, not the earlier one, produces the initrd that lands on
+  # the ESP and that the netboot installer copies into the slot — so the verity
+  # capability is asserted again HERE, on the artifact that actually ships.
+  assert_initrd_verity_capable live
 
   # Locate kernel and initrd (needed for ESP population)
   LIVE_KIMG="$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -1)"
