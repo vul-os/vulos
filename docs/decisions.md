@@ -62,7 +62,7 @@ A few conventions:
 | D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 | D98 | 2026-08-07 | UnifiedPush (UP-CELL-01) implemented box-side, alongside Web Push, per D96-F: user-registered distributor endpoint, SSRF-screened via the shared `safedial` guard, same DND/owner-targeting choke point, prune-on-404/410; flag-gated (`VULOS_PUSH_UNIFIEDPUSH_ENABLE`); no client UI yet — see gap noted below | **active rule** |
 | D99 | 2026-08-07 | Both run modes supported (installed-to-disk primary, live-from-flash ephemeral); CI publishes the live images + the content-identity roothash, the maintainer signs `stable.json` OFFLINE against it, and `vulos-install --disk` builds the persistent system on the target — founder-builds-everything rejected (cannot build amd64 locally), key-in-CI and box-self-signs rejected | **active rule** |
-| D100 | 2026-08-10 | Display stack: "pick X11 or Wayland" is REJECTED as the wrong question — the two stacks are the dependency sets of two different runtimes (container `stream.Pool` vs bare-metal `vulos-init` seat), so the package sets get split by target instead. Evidence and recommendations in [roadmap/DISPLAY-STACK.md](../roadmap/DISPLAY-STACK.md) | **investigation complete; R1/R3/R4 NOT executed** |
+| D100 | 2026-08-10 | Display stack: "pick X11 or Wayland" is REJECTED as the wrong question — the two stacks are the dependency sets of two different runtimes (container `stream.Pool` vs bare-metal `vulos-init` seat), so the package sets get split by target instead. Evidence and recommendations in [roadmap/DISPLAY-STACK.md](../roadmap/DISPLAY-STACK.md) | **split landed (c7580e13); arm64 only — amd64 and VA-API unverified** |
 
 > If you're adding a new decision, append it at the bottom of the **Decision log** below, give it the next number (D33+), and add a row to this index.
 
@@ -781,15 +781,41 @@ frame today.
   gamble until someone runs the encode on real GPU hardware (V1/V2 in
   DISPLAY-STACK.md §5).
 
-**D. Execution status.** This entry is a decision, not a completion. Two items
-have landed on `feature/post-0.1.0`: `scripts/check-image-packages.sh` now covers
-both of `build.sh`'s package lists (b8cf678), which is the prerequisite that
-stops the split from silently drifting back, and the remote-deploy list's four
-packages that were being passed to `flatpak` instead of `apt` are fixed
-(182b9fa). The package removals themselves and the Go Wayland client (R4) are
-tracked in DISPLAY-STACK.md §4; `scripts/check-image-packages.sh` and its
-manifests are the authority on which lists currently contain what — read them
-rather than trusting this paragraph's date.
+**D. Execution status — the split has landed.** Four items are on
+`feature/post-0.1.0`:
+
+- `scripts/check-image-packages.sh` now covers both of `build.sh`'s package
+  lists (b8cf678), the prerequisite that stops the split from silently drifting
+  back; and the remote-deploy list's four packages that were being passed to
+  `flatpak` instead of `apt` are fixed (182b9fa).
+- **The package split itself (c7580e13).** Wayland out of the container,
+  X11 out of the rootfs, both measured `linux/arm64`:
+  - `Dockerfile` — removing `labwc cage xdg-desktop-portal-wlr` takes
+    **24 packages, 10.2 MiB, and 26 of the 32 CVE/package pairs** the whole
+    display-stack question was worth. X11 stays: it is the only path that
+    carries a frame.
+  - `build.sh` rootfs — removing `matchbox-window-manager` and
+    `x11-xserver-utils` takes **15 packages and 37,003 KB (36.1 MiB), and zero
+    CVEs**. Neither can run there, because that rootfs installs no X server.
+    **30,958 KB of that — 83.7% — is `cpp-14-aarch64-linux-gnu`**, a C
+    preprocessor pulled in solely because `x11-xserver-utils` hard-`Depends: cpp`,
+    to obtain `xrandr`.
+- `build.sh` now installs the four Wayland tools the Go code already execs
+  (9a051857).
+
+`scripts/check-image-packages.sh` and its manifests are the authority on which
+lists currently contain what — read them rather than trusting this paragraph's
+date.
+
+**D′. What these numbers do NOT cover.** Every figure above is `linux/arm64` on
+Docker/OrbStack, Debian trixie. **No amd64 number in D100 or DISPLAY-STACK.md
+comes from a built image** — the amd64 figures are package-metadata arithmetic
+and are tagged `[ASSUMED]` (V6 in DISPLAY-STACK.md §5). amd64 also installs
+`intel-media-va-driver-non-free` (40,457 KB), on its own comparable to the entire
+X11 stack, which no arm64 measurement sees. And VA-API / hardware encode is
+untested in either stack (C above, V1/V2). Recorded explicitly because the
+inverted CVE claim in A.3 survived long enough to be planned around precisely
+by not being written down as unverified.
 
 **E. Not decided here.** `mesa-vulkan-drivers` + `libllvm19` are 220 MiB — 4.5×
 the entire display-stack prize — and nobody has asked whether they are needed.
