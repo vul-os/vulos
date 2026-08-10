@@ -1,6 +1,7 @@
 package signing
 
 import (
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,14 +102,58 @@ func (s *EpochStore) RaiseTo(n int64) error {
 	return nil
 }
 
+// RaiseFromReleaseCert is the AUTOMATIC floor-raising path: it raises the floor
+// to the min_epoch carried by a ROOT-SIGNED release certificate, after
+// re-verifying that certificate against the baked trust anchor.
+//
+// # Why the release cert, and nothing else
+//
+// roadmap/SIGNING.md defines revocation as "the root signs a new manifest with
+// a higher min_epoch; once a device SEES it, the old epoch is permanently below
+// its floor", and requires each device to store "the highest epoch it has ever
+// seen".  Something must therefore turn "seen" into "stored", or the floor sits
+// at 0 forever and raising -min-epoch revokes nothing.
+//
+// Two artifacts carry a min_epoch: this ROOT-signed cert, and the channel
+// manifest — which, in the OTA path, is signed by the RELEASE key the cert
+// authorises.  Only the root-signed value may raise the floor:
+//
+//   - Revocation exists to retire a compromised RELEASE key.  If a
+//     release-key-signed manifest could raise the floor, the very attacker the
+//     mechanism defends against could publish min_epoch = MaxInt64 and, because
+//     the floor never falls, permanently brick every device's update path.  The
+//     adversary must not be able to drive the defence.
+//   - The offline root is already the revocation authority: `vulos-sign
+//     issue-release-cert -min-epoch N` is precisely the operator action that
+//     means "epochs below N are retired".  Honouring exactly that value keeps
+//     one authority, not two.
+//
+// Re-verification is deliberate: RaiseFromReleaseCert takes the cert, not a
+// pre-validated epoch number, so it is impossible to raise the floor from a
+// cert nobody proved the root signed.  Verification failure raises nothing.
+//
+// Monotonic (delegates to RaiseTo): a cert carrying a LOWER min_epoch is a
+// no-op here, never a lowering — refusing such a cert outright is AcceptEpoch's
+// job, which callers must do first.
+func (s *EpochStore) RaiseFromReleaseCert(rootPub ed25519.PublicKey, cert ReleaseCert) error {
+	if err := ValidateReleaseCert(rootPub, cert); err != nil {
+		return fmt.Errorf("signing: epoch raise from release cert: %w", err)
+	}
+	if cert.MinEpoch < 0 {
+		return fmt.Errorf("signing: epoch raise: negative min_epoch %d in release cert", cert.MinEpoch)
+	}
+	return s.RaiseTo(cert.MinEpoch)
+}
+
 // AcceptEpoch checks whether a claimed epoch value is acceptable given the
 // current floor.  It returns a non-nil error if claimed < Current(), which
 // indicates a rollback or downgrade attempt.
 //
-// AcceptEpoch does NOT raise the floor — raising is an explicit, root-signed
-// operation performed via BumpFloor (or RaiseTo after external verification).
-// The distinction keeps rollback protection separate from the floor-raising
-// policy.
+// AcceptEpoch does NOT raise the floor — checking and raising are separate on
+// purpose, so a caller can refuse a stale artifact without that refusal
+// depending on the floor-raising policy.  Raising is done by
+// RaiseFromReleaseCert (automatic, driven by a root-signed release cert) or
+// BumpFloor (an explicit, root-signed out-of-band bump).
 func (s *EpochStore) AcceptEpoch(claimed int64) error {
 	floor := s.Current()
 	if claimed < floor {

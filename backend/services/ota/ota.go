@@ -66,10 +66,18 @@
 //	                      canonical bytes (signing.Canonical), verified with
 //	                      the release pubkey the cert just authorised.
 //
-// The manifest's min_epoch is then checked against the box's persistent
-// rollback floor (signing.EpochStore.AcceptEpoch) — check only; this package
-// never calls RaiseTo/BumpFloor, exactly like every other verify-only surface
-// in services/signing.
+// Both the release cert's and the manifest's min_epoch are checked against the
+// box's persistent rollback floor (signing.EpochStore.AcceptEpoch), and the
+// floor is RAISED to the ROOT-SIGNED cert's min_epoch once that cert verifies
+// (signing.EpochStore.RaiseFromReleaseCert).
+//
+// That raise is what makes revocation real. This package used to be check-only
+// — "never calls RaiseTo/BumpFloor" — and so was every other caller: nothing in
+// the tree raised the floor, so a device sat at floor 0 for life, every
+// min_epoch >= 0 passed, and issuing a cert with a higher -min-epoch revoked
+// nothing at all. Verify-only still means what it says about the SYSTEM (no
+// image is downloaded, no A/B slot is touched, staging stays explicit); it does
+// not extend to declining to remember which epochs the root has retired.
 package ota
 
 import (
@@ -427,6 +435,38 @@ func (c *Client) Check(ctx context.Context) (UpdateStatus, error) {
 	releasePub, err := signing.ReleaseKeyFromCert(anchorPub, cert)
 	if err != nil {
 		return c.recordFailure(fmt.Errorf("%w: %v", ErrCertInvalid, err))
+	}
+
+	// ── Revocation gate (SIGNING.md § Minimum Trusted Epoch) ─────────────────
+	// The cert's min_epoch is the ROOT's statement of which release keys are
+	// still current. A cert below this box's floor is a retired one being
+	// replayed — refuse it before its release key is used for anything. This
+	// is the check that makes bumping -min-epoch actually revoke.
+	if err := c.cfg.EpochStore.AcceptEpoch(cert.MinEpoch); err != nil {
+		return c.recordFailure(fmt.Errorf("%w: release cert: %v", ErrEpochRejected, err))
+	}
+
+	// ── ...and the raise that gives the gate above something to enforce ──────
+	// Until this call existed, nothing anywhere raised the floor: it stayed at
+	// 0 for the life of the device, every min_epoch >= 0 passed, and raising
+	// -min-epoch revoked nothing. The floor rises here, and only here in this
+	// package, because a root signature over this cert is what authorises it —
+	// see signing.RaiseFromReleaseCert for why the release-key-signed manifest
+	// below must NOT be allowed to move it.
+	//
+	// This runs BEFORE the manifest is verified, on purpose. The authority for
+	// the raise is the root signature on the cert alone; making it contingent
+	// on a later, separately-signed artifact would let a hostile channel hold
+	// the floor down by serving a good cert with a broken manifest, and then
+	// replay the retired cert afterwards. It also means the manifest below is
+	// checked against the RAISED floor, enforcing cmd/sign's rule that a
+	// manifest's min_epoch is at least its cert's.
+	//
+	// Fail-closed: if the new floor cannot be persisted, this check fails.
+	// Reporting an update as verified while the rollback defence silently did
+	// not record is the failure mode this whole mechanism exists to prevent.
+	if err := c.cfg.EpochStore.RaiseFromReleaseCert(anchorPub, cert); err != nil {
+		return c.recordFailure(fmt.Errorf("%w: epoch floor: %v", ErrCertInvalid, err))
 	}
 
 	manifestData, err := c.fetch(ctx, manifestName)

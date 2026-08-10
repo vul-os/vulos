@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -172,6 +173,116 @@ func SIGN04_TestAcceptEpoch_DoesNotRaiseFloor(t *testing.T) {
 	}
 }
 
+// ─── RaiseFromReleaseCert (the automatic raise) tests ────────────────────────
+
+// issueTestCert issues a root-signed release cert at minEpoch using rootPriv.
+func issueTestCert(t *testing.T, rootPriv ed25519.PrivateKey, minEpoch int64) ReleaseCert {
+	t.Helper()
+	relPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	cert, err := IssueReleaseCert(rootPriv, relPub, "release-test",
+		time.Now().Add(24*time.Hour), minEpoch)
+	if err != nil {
+		t.Fatalf("IssueReleaseCert: %v", err)
+	}
+	return cert
+}
+
+// SIGN04_TestRaiseFromReleaseCert_RaisesToCertEpoch — the mechanism that was
+// missing entirely: a verified root-signed cert moves the floor.
+func SIGN04_TestRaiseFromReleaseCert_RaisesToCertEpoch(t *testing.T) {
+	s := newTempEpochStore(t)
+	anchorPath, rootPriv := writeTempAnchorKey(t)
+	rootPub, err := LoadAnchor(anchorPath)
+	if err != nil {
+		t.Fatalf("LoadAnchor: %v", err)
+	}
+
+	if err := s.RaiseFromReleaseCert(rootPub, issueTestCert(t, rootPriv, 4)); err != nil {
+		t.Fatalf("RaiseFromReleaseCert: %v", err)
+	}
+	if got := s.Current(); got != 4 {
+		t.Fatalf("floor after raising from a cert at epoch 4: got %d, want 4", got)
+	}
+	if err := s.AcceptEpoch(3); err == nil {
+		t.Fatal("epoch 3 still accepted after the floor rose to 4 — revocation is inert")
+	}
+}
+
+// SIGN04_TestRaiseFromReleaseCert_ForgedCertRaisesNothing — the raise is gated
+// on the root signature, not on the caller's say-so.
+func SIGN04_TestRaiseFromReleaseCert_ForgedCertRaisesNothing(t *testing.T) {
+	s := newTempEpochStore(t)
+	anchorPath, _ := writeTempAnchorKey(t)
+	rootPub, err := LoadAnchor(anchorPath)
+	if err != nil {
+		t.Fatalf("LoadAnchor: %v", err)
+	}
+	_, attackerRoot, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RaiseFromReleaseCert(rootPub, issueTestCert(t, attackerRoot, 500)); err == nil {
+		t.Fatal("a cert signed by an unrelated key was accepted for a floor raise")
+	}
+	if got := s.Current(); got != 0 {
+		t.Fatalf("a forged cert moved the floor to %d", got)
+	}
+}
+
+// SIGN04_TestRaiseFromReleaseCert_NeverLowers — a validly signed cert carrying
+// an OLDER epoch must not walk the floor back down. Refusing it is the caller's
+// job (AcceptEpoch); silently lowering here would be the worst outcome.
+func SIGN04_TestRaiseFromReleaseCert_NeverLowers(t *testing.T) {
+	s := newTempEpochStore(t)
+	anchorPath, rootPriv := writeTempAnchorKey(t)
+	rootPub, err := LoadAnchor(anchorPath)
+	if err != nil {
+		t.Fatalf("LoadAnchor: %v", err)
+	}
+
+	if err := s.RaiseFromReleaseCert(rootPub, issueTestCert(t, rootPriv, 9)); err != nil {
+		t.Fatalf("RaiseFromReleaseCert(9): %v", err)
+	}
+	if err := s.RaiseFromReleaseCert(rootPub, issueTestCert(t, rootPriv, 2)); err != nil {
+		t.Fatalf("RaiseFromReleaseCert(2) should be a no-op, got: %v", err)
+	}
+	if got := s.Current(); got != 9 {
+		t.Fatalf("floor LOWERED to %d by an older cert (want 9)", got)
+	}
+}
+
+// SIGN04_TestRaiseFromReleaseCert_ExpiredCertRaisesNothing — cert validation is
+// the full ValidateReleaseCert, expiry included, not just the signature.
+func SIGN04_TestRaiseFromReleaseCert_ExpiredCertRaisesNothing(t *testing.T) {
+	s := newTempEpochStore(t)
+	anchorPath, rootPriv := writeTempAnchorKey(t)
+	rootPub, err := LoadAnchor(anchorPath)
+	if err != nil {
+		t.Fatalf("LoadAnchor: %v", err)
+	}
+
+	relPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired, err := IssueReleaseCert(rootPriv, relPub, "release-old",
+		time.Now().Add(-1*time.Hour), 42)
+	if err != nil {
+		t.Fatalf("IssueReleaseCert: %v", err)
+	}
+
+	if err := s.RaiseFromReleaseCert(rootPub, expired); err == nil {
+		t.Fatal("an EXPIRED cert was accepted for a floor raise")
+	}
+	if got := s.Current(); got != 0 {
+		t.Fatalf("an expired cert moved the floor to %d", got)
+	}
+}
+
 // ─── BumpFloor (root-signed) tests ───────────────────────────────────────────
 
 // SIGN04_TestBumpFloor_Valid verifies that a root-signed bump message raises
@@ -288,3 +399,16 @@ func TestBumpFloor_UnsignedRejected(t *testing.T)    { SIGN04_TestBumpFloor_Unsi
 func TestBumpFloor_WrongMessageType(t *testing.T)    { SIGN04_TestBumpFloor_WrongMessageType(t) }
 func TestBumpFloor_Monotonic(t *testing.T)           { SIGN04_TestBumpFloor_Monotonic(t) }
 func TestBumpFloor_TamperedBytes(t *testing.T)       { SIGN04_TestBumpFloor_TamperedBytes(t) }
+
+func TestRaiseFromReleaseCert_RaisesToCertEpoch(t *testing.T) {
+	SIGN04_TestRaiseFromReleaseCert_RaisesToCertEpoch(t)
+}
+func TestRaiseFromReleaseCert_ForgedCertRaisesNothing(t *testing.T) {
+	SIGN04_TestRaiseFromReleaseCert_ForgedCertRaisesNothing(t)
+}
+func TestRaiseFromReleaseCert_NeverLowers(t *testing.T) {
+	SIGN04_TestRaiseFromReleaseCert_NeverLowers(t)
+}
+func TestRaiseFromReleaseCert_ExpiredCertRaisesNothing(t *testing.T) {
+	SIGN04_TestRaiseFromReleaseCert_ExpiredCertRaisesNothing(t)
+}
