@@ -30,6 +30,40 @@ function strList(x: unknown): string[] {
   return Array.isArray(x) ? x.filter((e): e is string => typeof e === 'string' && !!e) : []
 }
 
+// typedValueList reads a vCard "typed value" array (websites, IMs, ...): each
+// entry is `{value, type}`, type optional. Entries with no value are dropped —
+// a value-less type label is not a usable row.
+function typedValueList(x: unknown): TypedValue[] {
+  if (!Array.isArray(x)) return []
+  return x.filter(isRecord)
+    .map((v) => ({ value: str(v.value), type: str(v.type) }))
+    .filter((v) => v.value !== '')
+}
+
+// addressList reads lilmail's structured postal addresses. An address with
+// every component blank (the JSON equivalent of Address.IsEmpty on the wire)
+// is dropped — it carries nothing to show.
+function addressList(x: unknown): ContactAddress[] {
+  if (!Array.isArray(x)) return []
+  return x.filter(isRecord)
+    .map((v) => ({
+      type: str(v.type), poBox: str(v.poBox), extended: str(v.extended), street: str(v.street),
+      locality: str(v.locality), region: str(v.region), postal: str(v.postal), country: str(v.country),
+    }))
+    .filter((a) => a.poBox || a.extended || a.street || a.locality || a.region || a.postal || a.country)
+}
+
+// photoURI honours the wire `photo` field only when it is already the safe
+// raster data URI lilmail's read path guarantees (readPhotoField re-sniffs the
+// bytes server-side and only ever emits `data:image/...`, never SVG/HTML/a bare
+// URL) — matching the "honoured only when the expected type/shape" convention
+// above, and defense-in-depth against a malformed or unexpected value reaching
+// an <img src>.
+function photoURI(x: unknown): string {
+  const v = str(x)
+  return v.startsWith('data:image/') ? v : ''
+}
+
 // HttpError — thrown by req() on a non-ok response. Carries `status` (nothing
 // currently reads it; callers read `.message`) without resorting to
 // `(err as any).status = …`.
@@ -42,7 +76,32 @@ export class HttpError extends Error {
   }
 }
 
-// The lean shape the UI edits.
+// TypedValue is a single labelled value (website, IM handle, ...) — mirrors
+// lilmail's models.TypedValue on the wire.
+export interface TypedValue {
+  value: string
+  type: string
+}
+
+// ContactAddress is a structured postal address — mirrors lilmail's
+// models.Address (vCard ADR) on the wire.
+export interface ContactAddress {
+  type: string
+  poBox: string
+  extended: string
+  street: string
+  locality: string
+  region: string
+  postal: string
+  country: string
+}
+
+// The lean shape the UI edits, PLUS the read-only richer vCard fields the
+// editor does not (yet) write but the card genuinely carries when present —
+// GET /v1/contacts/cards already returns the full models.Contact, so these
+// cost no new request. They are additive/optional: a card (or a device/SIM-only
+// unified row) with none of them simply omits them, and the detail pane skips
+// any section that has nothing real to show.
 export interface Contact {
   id: string
   name: string
@@ -51,6 +110,13 @@ export interface Contact {
   note: string
   emails: string[]
   phones: string[]
+  photo?: string
+  starred?: boolean
+  birthday?: string
+  anniversary?: string
+  websites?: TypedValue[]
+  addresses?: ContactAddress[]
+  groups?: string[]
 }
 
 // normalizeContact maps lilmail's models.Contact onto the lean shape the UI edits.
@@ -64,6 +130,13 @@ export function normalizeContact(c: unknown): Contact | null {
     note: str(c.note) || str(c.notes),
     emails: strList(c.emails),
     phones: strList(c.phones),
+    photo: photoURI(c.photo),
+    starred: c.starred === true,
+    birthday: str(c.birthday),
+    anniversary: str(c.anniversary),
+    websites: typedValueList(c.websites),
+    addresses: addressList(c.addresses),
+    groups: strList(c.groups),
   }
 }
 

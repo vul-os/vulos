@@ -365,10 +365,25 @@ const CALENDAR_EVENTS = [
   { uid: 'e9', summary: 'Backup verification', start: iso(todayAt(8, 0) - 8 * dayMs), end: iso(todayAt(8, 30) - 8 * dayMs), location: '', allDay: false },
 ]
 
+// A tiny solid-colour 32x32 PNG (a synthetic demo avatar, not a real photo) so
+// the `contacts` shot exercises the real <img> avatar path instead of only
+// ever showing the initials fallback.
+const DEMO_AVATAR_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR42u3NQQkAAAgEsMttPjOYxxQ+hMH+S9ecikAgEAgEAoFAIPgSLLgpUHlFyiv/AAAAAElFTkSuQmCC'
+
 // Contacts (`contacts` shot) — a small, recognisable address book so the list +
-// detail panes both render real content instead of an empty state.
+// detail panes both render real content instead of an empty state. Priya
+// additionally carries the fuller vCard fields (photo/birthday/website/
+// address/starred/groups) lilmail's /v1/contacts/cards genuinely returns, so
+// the shot proves out the detail pane's richer rows, not just email/phone.
 const CONTACTS_CARDS = [
-  { uid: 'c1', name: 'Priya Menon', org: 'Acme, Inc.', title: 'Head of Product', emails: ['priya@acme.io'], phones: ['+1 415 555 0134'] },
+  {
+    uid: 'c1', name: 'Priya Menon', org: 'Acme, Inc.', title: 'Head of Product', emails: ['priya@acme.io'], phones: ['+1 415 555 0134'],
+    photo: DEMO_AVATAR_PNG, starred: true, birthday: '1988-11-02',
+    websites: [{ value: 'priyamenon.com', type: 'work' }],
+    addresses: [{ type: 'work', street: '548 Market St', locality: 'San Francisco', region: 'CA', postal: '94104', country: 'USA' }],
+    groups: ['Work', 'Design Review'],
+  },
   { uid: 'c2', name: 'Sam Okafor', org: 'Acme, Inc.', title: 'Engineering Lead', emails: ['sam@acme.io'], phones: ['+1 415 555 0198'] },
   { uid: 'c3', name: 'Marta Costa', org: 'Lisbon Design Collective', title: 'Creative Director', emails: ['marta@lisbondesign.pt'], phones: ['+351 21 555 0198'] },
   { uid: 'c4', name: 'Nadia Rahman', org: 'Northwind Studio', title: 'Studio Manager', emails: ['nadia@northwind.studio'], phones: ['+44 20 7946 0102'] },
@@ -1135,6 +1150,30 @@ const SHOTS = [
       // assistant-first home.
       await page.getByRole('button', { name: 'Library' }).first().click().catch(() => {})
       await page.waitForTimeout(700)
+    },
+  },
+  {
+    name: 'mobile-assistant',
+    light: true,
+    dsf: 2,
+    desc: 'MobileStack — the Assistant builtin fullscreen on a phone, with a real answer',
+    // The `assistant` shot above only proves the desktop window. Assistant.tsx
+    // is explicitly built to render from the SAME markup at two container
+    // sizes (see the LAYOUT NOTE at the top of that file) — a phone-width
+    // fullscreen MobileStack window is the third size in practice (narrower
+    // than either the desktop window or the 420px slide-over), and nothing
+    // was capturing it. `launchApp` works unchanged here: it drives ⌘K, which
+    // is mounted in MobileStack too, and `maximize:false` skips the
+    // desktop-only "Maximize window" lookup.
+    viewport: { width: 390, height: 844 },
+    async drive(page) {
+      await page.waitForTimeout(700)
+      await launchApp(page, 'Assistant', { maximize: false })
+      await page.getByRole('button', { name: /What needs my attention/ }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
+      // A real answer, not the empty composer or a stuck "Loading…" — the
+      // harness has shipped that silently before.
+      await expectVisibleText(page, "You're mostly clear this morning")
     },
   },
   {

@@ -18,7 +18,7 @@ import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
 import { useNarrow } from '../../shell/useNarrow'
 import { listContacts, createContact, updateContact, deleteContact } from './contactsApi'
-import type { Contact, ContactFormInput } from './contactsApi'
+import type { Contact, ContactAddress, ContactFormInput } from './contactsApi'
 import { nativeBridge } from '../../core/nativeBridge'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -65,6 +65,63 @@ function initials(name: string): string {
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0][0].toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+// Favourite star, shown next to the name only when the card's CATEGORIES
+// carried the reserved starred marker (see lilmail's StarredCategory).
+function StarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M8 1.3l1.98 4.28 4.72.53-3.5 3.24.94 4.65L8 11.7l-4.14 2.3.94-4.65-3.5-3.24 4.72-.53z" />
+    </svg>
+  )
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+// formatVCardDate renders a raw vCard BDAY/ANNIVERSARY value ("1990-03-14",
+// "19900314", "--03-14" or "--0314" for a year-less birthday) as a readable
+// date. A shape it doesn't recognise is shown verbatim — the raw wire value is
+// still honest content, just unformatted, rather than a card silently losing
+// its birthday over a parser gap.
+function formatVCardDate(raw: string): string {
+  const s = raw.trim()
+  let m = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(s)
+  if (m) {
+    const mi = Number(m[2]) - 1
+    if (mi >= 0 && mi < 12) return `${MONTHS[mi]} ${Number(m[3])}, ${m[1]}`
+  }
+  m = /^--(\d{2})-?(\d{2})$/.exec(s)
+  if (m) {
+    const mi = Number(m[1]) - 1
+    if (mi >= 0 && mi < 12) return `${MONTHS[mi]} ${Number(m[2])}`
+  }
+  return s
+}
+
+// safeHttpUrl turns a vCard URL value into a clickable http(s) href, or null
+// when it isn't one. Website values are other people's free-text data (no
+// scheme is required by the vCard URL property, e.g. "example.com"), so this
+// both supplies a default https:// scheme AND is the XSS guard: without it, a
+// value like "javascript:alert(1)" would flow straight into an href the same
+// way the plain string is otherwise rendered as escaped text.
+function safeHttpUrl(raw: string): string | null {
+  const v = raw.trim()
+  if (!v) return null
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
+// formatAddressLines lays out a structured postal address as display lines,
+// dropping components that are blank rather than leaving a stray ", ".
+function formatAddressLines(a: ContactAddress): string[] {
+  const line1 = [a.street, a.extended, a.poBox].filter(Boolean).join(', ')
+  const line2 = [a.locality, a.region, a.postal].filter(Boolean).join(', ')
+  return [line1, line2, a.country].filter(Boolean)
 }
 
 // The form shape the create/edit editor works on — always has a trailing
@@ -521,7 +578,12 @@ interface ContactDetailProps {
 
 function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps) {
   const subtitle = [contact.title, contact.org].filter(Boolean).join(' · ')
-  const hasFields = contact.emails.length > 0 || contact.phones.length > 0 || !!contact.note
+  const websites = contact.websites || []
+  const addresses = contact.addresses || []
+  const groups = contact.groups || []
+  const hasFields = contact.emails.length > 0 || contact.phones.length > 0 || !!contact.note ||
+    !!contact.birthday || !!contact.anniversary || websites.length > 0 || addresses.length > 0 || groups.length > 0
+  const avatarClass = 'w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] shrink-0 rounded-full ring-1 ring-inset ring-white/5'
   return (
     <div className="animate-[fadeIn_0.18s_ease-out]" data-contact-detail>
       {/* PANE_MEASURE: every detail surface shares this column so the card never
@@ -532,11 +594,25 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
             buttons take their own full-width row instead of squeezing the name
             into a two-line wrap ("Ada / Lovelace"). */}
         <header className="flex flex-wrap items-start gap-4 sm:gap-5">
-          <span className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] shrink-0 grid place-items-center rounded-full text-[22px] mono font-semibold ring-1 ring-inset ring-white/5"
-            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
+          {/* The photo is lilmail's own read path re-sniffed to a safe raster
+              data URI (never SVG/HTML/a bare URL — see contactsApi.photoURI), so
+              this is exactly as safe as any other <img src> the shell renders.
+              Falls back to the initials tile when the card has none. */}
+          {contact.photo ? (
+            <img src={contact.photo} alt="" className={`${avatarClass} object-cover`} />
+          ) : (
+            <span className={`${avatarClass} grid place-items-center text-[22px] mono font-semibold`}
+              style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{initials(contact.name)}</span>
+          )}
           <div className="min-w-0 flex-1 pt-0.5">
-            <h2 className="text-[22px] sm:text-[25px] font-semibold tracking-[-0.02em] leading-tight break-words">
+            <h2 className="flex items-center gap-2 text-[22px] sm:text-[25px] font-semibold tracking-[-0.02em] leading-tight break-words">
               {contact.name || '(no name)'}
+              {contact.starred && (
+                <span title="Favorite">
+                  <StarIcon className="w-[0.7em] h-[0.7em] shrink-0 text-amber-400" />
+                  <span className="sr-only">Favorite</span>
+                </span>
+              )}
             </h2>
             {subtitle && <div className="text-[13.5px] text-neutral-400 mt-1 break-words">{subtitle}</div>}
             <div className="mt-2.5"><SourceBadges sources={contact.sources} /></div>
@@ -581,6 +657,59 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
                     <span className="truncate">{p}</span>
                   </a>
                 ))}
+              </Field>
+            )}
+            {addresses.length > 0 && (
+              <Field label="Address">
+                <div className="flex flex-col gap-3">
+                  {addresses.map((a, i) => (
+                    <div key={i}>
+                      {a.type && <div className="mono text-[10.5px] uppercase tracking-[0.1em] text-neutral-600 mb-0.5">{a.type}</div>}
+                      {formatAddressLines(a).map((line, j) => (
+                        <div key={j} className="text-[13.5px] text-neutral-300 leading-relaxed">{line}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {contact.birthday && (
+              <Field label="Birthday">
+                <p className="text-[13.5px] text-neutral-300">{formatVCardDate(contact.birthday)}</p>
+              </Field>
+            )}
+            {contact.anniversary && (
+              <Field label="Anniversary">
+                <p className="text-[13.5px] text-neutral-300">{formatVCardDate(contact.anniversary)}</p>
+              </Field>
+            )}
+            {websites.length > 0 && (
+              <Field label="Website">
+                {websites.map((w, i) => {
+                  const href = safeHttpUrl(w.value)
+                  return href ? (
+                    <a key={i} href={href} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 text-[13.5px] px-2.5 py-2 -mx-2.5 rounded-lg hover:bg-neutral-800/60 transition-colors focus-primary"
+                      style={{ color: 'var(--accent)' }}>
+                      <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 opacity-70" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="8" cy="8" r="6.5"/><path d="M1.5 8h13M8 1.5c2 2 2 11 0 13M8 1.5c-2 2-2 11 0 13" strokeLinecap="round"/></svg>
+                      <span className="truncate">{w.value}</span>
+                    </a>
+                  ) : (
+                    <span key={i} className="text-[13.5px] text-neutral-300 px-2.5 py-2 -mx-2.5 truncate">{w.value}</span>
+                  )
+                })}
+              </Field>
+            )}
+            {groups.length > 0 && (
+              <Field label="Groups">
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map((g) => (
+                    <span key={g}
+                      className="text-[11.5px] px-2 py-0.5 rounded-full bg-neutral-800/70 text-neutral-300 ring-1 ring-inset ring-neutral-700/60">
+                      {g}
+                    </span>
+                  ))}
+                </div>
               </Field>
             )}
             {contact.note && (

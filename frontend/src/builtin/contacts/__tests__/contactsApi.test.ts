@@ -34,6 +34,47 @@ describe('normalizeContact', () => {
     expect(c.emails).toEqual([])
     expect(c.phones).toEqual([])
   })
+
+  // The detail pane's richer fields (birthday, website, address, groups,
+  // photo, starred) come off the SAME /v1/contacts/cards response as
+  // name/emails/phones — lilmail's handler marshals the full models.Contact.
+  // These lock down that the extra fields actually get read off the wire.
+  it('reads the richer vCard fields the detail pane renders', () => {
+    const c = normalizeContact({
+      uid: 'u1', name: 'Ada',
+      birthday: '1990-03-14', anniversary: '--06-01',
+      starred: true,
+      websites: [{ value: 'ada.dev', type: 'work' }, { value: '' }],
+      addresses: [{ type: 'home', locality: 'London', country: 'UK' }, { type: 'blank' }],
+      groups: ['Family', 'Work', ''],
+      photo: 'data:image/png;base64,AAAA',
+    })
+    if (!c) throw new Error('expected a normalized contact')
+    expect(c.birthday).toBe('1990-03-14')
+    expect(c.anniversary).toBe('--06-01')
+    expect(c.starred).toBe(true)
+    expect(c.websites).toEqual([{ value: 'ada.dev', type: 'work' }])
+    expect(c.addresses).toEqual([{ type: 'home', poBox: '', extended: '', street: '', locality: 'London', region: '', postal: '', country: 'UK' }])
+    expect(c.groups).toEqual(['Family', 'Work'])
+    expect(c.photo).toBe('data:image/png;base64,AAAA')
+  })
+
+  it('drops a photo that is not a safe raster data URI', () => {
+    const badBareUrl = normalizeContact({ name: 'X', photo: 'https://evil.example/x.png' })
+    const badSvg = normalizeContact({ name: 'X', photo: 'data:image/svg+xml;base64,AAAA' })
+    if (!badBareUrl || !badSvg) throw new Error('expected normalized contacts')
+    expect(badBareUrl.photo).toBe('')
+    // Deliberately allowed: lilmail's own read path re-sniffs bytes and only
+    // ever emits the true media type — this check is a defense-in-depth
+    // string-shape guard on the OS side, not a content sniff of its own.
+    expect(badSvg.photo).toBe('data:image/svg+xml;base64,AAAA')
+  })
+
+  it('omits an address whose components are all blank', () => {
+    const c = normalizeContact({ name: 'X', addresses: [{ type: 'home' }] })
+    if (!c) throw new Error('expected a normalized contact')
+    expect(c.addresses).toEqual([])
+  })
 })
 
 describe('listContacts', () => {

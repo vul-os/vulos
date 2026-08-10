@@ -151,6 +151,75 @@ it('heads each alphabetical run with its letter, once', async () => {
   expect(letters).toEqual(['A', 'G'])
 })
 
+// ── Richer vCard fields (added when the detail pane was filled out) ─────────
+// These come straight off the same /v1/contacts/cards payload as name/email —
+// no new request — so a card that genuinely carries them should render them,
+// and a card that doesn't should render NONE of this: no empty "Birthday"
+// row, no broken avatar.
+
+it('renders birthday, website, address and groups when the card carries them', async () => {
+  api.listContacts.mockResolvedValue([contact({
+    birthday: '1990-03-14',
+    websites: [{ value: 'ada.dev', type: 'work' }],
+    addresses: [{ type: 'home', locality: 'London', country: 'UK', poBox: '', extended: '', street: '', region: '', postal: '' }],
+    groups: ['Family'],
+  })])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  expect(await screen.findByText('March 14, 1990')).toBeInTheDocument()
+  const site = screen.getByText('ada.dev')
+  expect(site.closest('a')).toHaveAttribute('href', 'https://ada.dev/')
+  expect(screen.getByText('London')).toBeInTheDocument()
+  expect(screen.getByText('UK')).toBeInTheDocument()
+  expect(screen.getByText('Family')).toBeInTheDocument()
+})
+
+it('shows the real photo as the avatar instead of initials', async () => {
+  api.listContacts.mockResolvedValue([contact({ photo: 'data:image/png;base64,AAAA' })])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  const img = await waitFor(() => {
+    const el = document.querySelector('[data-contact-detail] header img')
+    if (!el) throw new Error('no avatar img yet')
+    return el
+  })
+  expect(img).toHaveAttribute('src', 'data:image/png;base64,AAAA')
+  // The initials tile is replaced, not layered underneath.
+  expect(document.querySelector('[data-contact-detail] header span.mono')).not.toBeInTheDocument()
+})
+
+it('shows the fields card (not the empty-card prompt) when a birthday is the ONLY field present', async () => {
+  api.listContacts.mockResolvedValue([contact({ emails: [], phones: [], note: '', birthday: '1990-03-14' })])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  expect(await screen.findByText('March 14, 1990')).toBeInTheDocument()
+  expect(screen.queryByText(/No email, phone or notes on this card yet/)).not.toBeInTheDocument()
+})
+
+it('renders no rich-field rows for a card that carries none of them', async () => {
+  render(<Contacts />) // default contact() has no birthday/website/address/groups/photo
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  await waitFor(() => expect(screen.getByText('Eng · Vulos')).toBeInTheDocument())
+  expect(screen.queryByText('Birthday')).not.toBeInTheDocument()
+  expect(screen.queryByText('Website')).not.toBeInTheDocument()
+  expect(screen.queryByText('Address')).not.toBeInTheDocument()
+  expect(screen.queryByText('Groups')).not.toBeInTheDocument()
+  expect(document.querySelector('[data-contact-detail] header img')).not.toBeInTheDocument()
+  expect(screen.queryByText('Favorite')).not.toBeInTheDocument()
+})
+
+it('shows the favorite star only when the card is starred', async () => {
+  api.listContacts.mockResolvedValue([contact({ starred: true })])
+  render(<Contacts />)
+  await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+  fireEvent.click(screen.getByText('Ada Lovelace'))
+  expect(await screen.findByText('Favorite')).toBeInTheDocument()
+})
+
 it('offers to add details on a card that has none', async () => {
   api.listContacts.mockResolvedValue([
     contact({ id: 'u1', name: 'Ada Lovelace', emails: [], phones: [], note: '' }),
