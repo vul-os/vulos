@@ -83,8 +83,8 @@ actually read and write through — do not conflate the two.
 | `VULOS_STORAGE_SECRET_KEY` (or `VULOS_S3_SECRET_KEY`) | _(empty)_ | Object-store secret key |
 | `VULOS_STORAGE_SESSION_TOKEN` | _(empty)_ | Optional STS session token |
 | `VULOS_STORAGE_USE_SSL` (or `VULOS_S3_USE_SSL`) | `false` | Whether the storage gateway talks TLS to its endpoint |
-| `VULOS_STORAGE_BUCKET` | _(empty, no default by design)_ | Per-user bucket name; deliberately has no fallback so a misconfigured deployment fails closed instead of writing into a guessed bucket |
-| `VULOS_STORAGE_BUCKET_PREFIX` | `vulos-` | Prefix used when deriving a per-user bucket name |
+| `VULOS_STORAGE_BUCKET` | _(empty, no default by design)_ | **Opt-in single shared bucket for every user** — the opposite of per-user. Deliberately has no fallback (a misconfigured deployment fails closed rather than writing into a guessed bucket). Safe only for a genuinely single-user box: if set while more than one user exists, `main()` calls `log.Fatalf` at boot (`backend/cmd/server/main.go`) and the whole server refuses to start, not just the request that would have used it. Leave unset to get isolated per-user buckets instead (see [STORAGE-PROVIDERS.md](STORAGE-PROVIDERS.md#plugging-your-provider-into-vulos)) |
+| `VULOS_STORAGE_BUCKET_PREFIX` | `vulos-` | Prefix used when *`VULOS_STORAGE_BUCKET` is unset* and a bucket name is derived per user (`<prefix><userID>`) — has no effect when `VULOS_STORAGE_BUCKET` is set |
 | `VULOS_STORAGE_OS_BUCKET` (or `VULOS_S3_BUCKET`) | `vulos-cluster` | Shared OS-level bucket (updates, cluster metadata) |
 | `VULOS_STORAGE_LOCAL_ROOT` | `~/.vulos/storage` | Local-filesystem fallback root when no object store is configured (standalone mode) |
 | `VULOS_STORAGE_STS_ENDPOINT` | _(empty → self-host defaults to the box's own object-store endpoint)_ | STS endpoint for per-app credential isolation (see below) |

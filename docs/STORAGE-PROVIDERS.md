@@ -260,6 +260,32 @@ from the environment:
   `VULOS_RESTIC_PASSWORD` — **set a real secret before enabling backups in
   production; the box fails closed on the dev default.**
 
+**`VULOS_STORAGE_BUCKET` is an opt-in override, not a normal required
+setting — leave it unset unless you specifically want one shared bucket.**
+By default (unset) the box derives a **separate bucket per user**,
+`<VULOS_STORAGE_BUCKET_PREFIX><userID>` (prefix defaults to `vulos-`), so
+cross-user isolation holds without you having to name anything. Setting
+`VULOS_STORAGE_BUCKET` overrides that: **every account on the box is pointed
+at that one literal bucket instead.** That is only safe on a genuinely
+single-user box — the moment a second user account exists, the whole server
+process **refuses to start** (`log.Fatalf` in `backend/cmd/server/main.go`,
+checked once at boot against the user store). This is not a per-request
+rejection: it takes the entire box offline for every account, not just the
+new one, until an operator unsets `VULOS_STORAGE_BUCKET` (or removes the
+extra user) and restarts. If you plan to add a second person to your box
+later, do not set this variable up front.
+
+**Vulos does not create any of these buckets for you**, per-user or shared —
+there is no bucket-creation call anywhere in the per-user storage path. You
+must create each bucket with your provider, under the exact name the box will
+resolve to, before the first upload; the box surfaces provider "bucket not
+found" errors otherwise. (The unrelated `vulos-cluster` bucket used for the
+box's own OS/sync data — see [CONFIGURATION.md → `VULOS_STORAGE_OS_BUCKET`]
+(CONFIGURATION.md#storage-two-independent-s3-configs) — *is* auto-created by
+the first-boot wizard's self-provisioned local MinIO step; that is a
+different bucket serving a different purpose and has no bearing on per-user
+Files/Drive buckets.)
+
 The full variable reference, including per-app STS isolation, is in
 [CONFIGURATION.md → Storage](CONFIGURATION.md#storage-two-independent-s3-configs).
 Backup and restore procedures live in [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
