@@ -61,6 +61,18 @@ hosts and ports, and a broker secret). When those are set, the broker mode is
 active; when they are not, the proxy falls back to forwarding only your session
 cookie.
 
+**Broker mode is owner-only on a multi-profile box.** The injected credential
+describes a *single* mailbox for the whole box (the owner's), and it does not
+carry the caller's own OS identity downstream — so if broker mode were open to
+every profile, a second account on the box could read *and write* the owner's
+calendar and address book through it. To prevent that, `/api/pim/*` denies any
+caller who is not the resolved box owner while broker mode is active, returning
+`403` (`backend/cmd/server/mailbroker_owner.go`, `brokeredMailAllowed`) — a
+non-owner profile's Calendar and Contacts apps simply don't work in this mode.
+In session-cookie mode (broker unset) there is no box-wide credential to
+protect, so every authenticated profile is allowed and lilmail scopes the
+answer to whichever cookie it received.
+
 ---
 
 ## Unified contacts — one address book from every source
