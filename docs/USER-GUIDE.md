@@ -416,9 +416,9 @@ Open **Settings** from the Launchpad, Home quick launch, or Cmd-K (palette actio
 |---|---|
 | **Intelligence** | AI Assistant · AI Models (owner only) · AI Apps (per-app AI access) |
 | **Appearance** | Appearance · Notifications |
-| **Devices** | WiFi · Bluetooth · Sound · Display · Battery & Energy · Location |
+| **Devices** | WiFi · Bluetooth · Sound · Display · Battery & Energy · Location · This device (Android app only) |
 | **Data** | Backup & Sync · Search & Index · Storage · Storage Mode |
-| **Network** | Connection Mode · Remote Access · Custom Domain · Relay & Reachability (owner) · CDN (owner) · TURN / WebRTC |
+| **Network** | Connection Mode · Remote Access · Native Pairing · Custom Domain · Relay & Reachability (owner) · CDN (owner) · TURN / WebRTC |
 | **Developer** | Webhooks (owner) · Developer |
 | **Account & Security** | Users & Profiles · Device PIN · Fingerprint · Account · Offline Data · Export My Data · Sign-in security |
 | **System** | OS Update · Box Health (owner only) · About |
