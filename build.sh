@@ -246,6 +246,17 @@ export DEBIAN_FRONTEND=noninteractive
 sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
 
 apt-get update
+# Single install list. Trailing-backslash continuation must be unbroken — see the
+# identical note above the rootfs list. This one WAS broken: the list terminated
+# at `plymouth plymouth-themes` and the next two stanzas ran as bare
+# `flatpak rsync systemd systemd-sysv avahi-daemon …` commands, i.e. avahi,
+# dhcpcd5, wpasupplicant and openssh-server were passed as ARGUMENTS TO FLATPAK
+# and never installed. `flatpak rsync` exits non-zero, so under `set -e` this
+# aborted first-time setup before sshd config, flatpak remote-add, the vulos
+# directories and `.setup-complete` — leaving a remote box with no SSH server,
+# no DHCP client, no wifi supplicant and no mDNS. Fixed 2026-08-10; the package
+# lists in this file are now covered by scripts/check-image-packages.sh so a
+# repeat shows up as a manifest diff instead of a silent truncation.
 apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
     iproute2 iptables \
@@ -259,10 +270,8 @@ apt-get install -y --no-install-recommends \
     matchbox-window-manager x11-xserver-utils \
     labwc cage \
     flatpak rsync systemd systemd-sysv \
-    plymouth plymouth-themes
-    flatpak rsync systemd systemd-sysv \
-    avahi-daemon avahi-utils dhcpcd5 wpasupplicant
-    flatpak rsync systemd systemd-sysv \
+    plymouth plymouth-themes \
+    avahi-daemon avahi-utils dhcpcd5 wpasupplicant \
     openssh-server
 
 # Intel VA-API (amd64 only)
