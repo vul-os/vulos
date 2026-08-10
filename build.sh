@@ -181,7 +181,14 @@ echo "${BLUE}▸ Building Go binaries ($GOARCH)...${NC}"
 cd "$ROOT_DIR/backend"
 GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-server" ./cmd/server
 GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-init" ./cmd/init
-echo "  ${GREEN}✓${NC} vulos-server, vulos-init"
+# vulos-verify-sig is the initramfs's roothash-authenticity gate (VERITY-04).
+# It existed as SOURCE ONLY: this script compiled vulos-server and vulos-init and
+# nothing else, so the binary scripts/initramfs/vulos-live execs was on no
+# shipped box, and the gate took its "signature not verified" branch on every
+# boot that has ever happened. Same shape as the veritysetup bug — the tool was
+# in the BUILDER, not in the thing the build produces.
+GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-verify-sig" ./cmd/vulos-verify-sig
+echo "  ${GREEN}✓${NC} vulos-server, vulos-init, vulos-verify-sig"
 
 # ═══════════════════════════════════
 # 2. Build frontend
@@ -767,7 +774,12 @@ SSHD_CONF
 
 cp "$OUTDIR/vulos-server" "$ROOTFS/usr/local/bin/"
 cp "$OUTDIR/vulos-init" "$ROOTFS/sbin/vulos-init"
-chmod +x "$ROOTFS/usr/local/bin/vulos-server" "$ROOTFS/sbin/vulos-init"
+# VERITY-04: the roothash gate's verifier must be in the ROOTFS before the
+# initramfs hook that copies it into the cpio can run. /sbin, beside vulos-init,
+# because the initramfs hook copies it to /sbin/vulos-verify-sig and having the
+# two paths agree is one less thing to get wrong.
+cp "$OUTDIR/vulos-verify-sig" "$ROOTFS/sbin/vulos-verify-sig"
+chmod +x "$ROOTFS/usr/local/bin/vulos-server" "$ROOTFS/sbin/vulos-init" "$ROOTFS/sbin/vulos-verify-sig"
 
 if [ -f "$OUTDIR/xdg-open" ]; then
     cp "$OUTDIR/xdg-open" "$ROOTFS/usr/local/bin/xdg-open"
@@ -1000,6 +1012,21 @@ fi
 }
 echo "  ${GREEN}✓${NC} veritysetup present in rootfs"
 
+# 1b. ...and so must vulos-verify-sig (VERITY-04), for the same reason and with
+# the same --reuse-rootfs hazard. It is compiled and copied to $ROOTFS/sbin
+# above, in the common path, so this is an assertion rather than a top-up: if it
+# is absent, the Go build or the copy silently did not happen and the hook below
+# would abort update-initramfs into a `|| echo`-guarded warning.
+[ -x "$ROOTFS/sbin/vulos-verify-sig" ] || {
+    echo "${RED}✗ VERITY-04: vulos-verify-sig is not in the rootfs at /sbin${NC}"
+    echo "${RED}  Without it the initramfs cannot tell whether the dm-verity root hash${NC}"
+    echo "${RED}  came from the release key, and scripts/initramfs/vulos-live takes its${NC}"
+    echo "${RED}  'roothash signature not verified' branch on every boot — which is the${NC}"
+    echo "${RED}  state every shipped build has been in.${NC}"
+    exit 1
+}
+echo "  ${GREEN}✓${NC} vulos-verify-sig present in rootfs"
+
 # 2. The hook that puts it inside the cpio. Debian ships no verity hook of its
 #    own (cryptsetup-initramfs is LUKS-only — zero "verity" hits), so this one
 #    is ours. It is a tracked file rather than a heredoc so it can be read and
@@ -1055,6 +1082,12 @@ assert_initrd_verity_capable() {
     fi
     _aiv_missing=""
     grep -q 'sbin/veritysetup' "$_aiv_list" || _aiv_missing="$_aiv_missing veritysetup"
+    # VERITY-04. Compiling the binary and copying it into the rootfs is NOT the
+    # same as it being in the initrd — that distinction is the whole reason this
+    # assertion block exists (cryptsetup-bin was in the BUILDER image for months
+    # while every produced initramfs reported IR_VERITYSETUP=no). Read it back
+    # out of the archive that was actually produced.
+    grep -q 'sbin/vulos-verify-sig' "$_aiv_list" || _aiv_missing="$_aiv_missing vulos-verify-sig"
     for _m in dm-mod dm-bufio dm-verity reed_solomon; do
         grep -q "${_m}\.ko" "$_aiv_list" || _aiv_missing="$_aiv_missing ${_m}.ko"
     done
@@ -1066,7 +1099,7 @@ assert_initrd_verity_capable() {
         echo "${RED}  device with no block-level verification — see scripts/initramfs/vulos-live.${NC}"
         exit 1
     fi
-    echo "  ${GREEN}✓${NC} initrd is verity-capable at $_aiv_label: veritysetup + dm-mod, dm-bufio, dm-verity, reed_solomon ($(wc -l < "$_aiv_list" | tr -d ' ') entries)"
+    echo "  ${GREEN}✓${NC} initrd is verity-capable at $_aiv_label: veritysetup + vulos-verify-sig + dm-mod, dm-bufio, dm-verity, reed_solomon ($(wc -l < "$_aiv_list" | tr -d ' ') entries)"
 }
 
 # Regenerate every installed initrd with the vulos theme + plymouth hook +
@@ -1394,6 +1427,110 @@ if [ "$LIVE_MODE" = "1" ]; then
     echo "  ${GREEN}✓${NC} root hash  → os-core.roothash  (surfaced for stable.json signing)"
   else
     echo "  ${DIM}veritysetup unavailable — root hash not produced (install cryptsetup-bin for production builds)${NC}"
+  fi
+
+  # ═══════════════════════════════════
+  # VERITY-04: bind the root hash to the RELEASE KEY
+  #
+  # dm-verity binds the image to the root hash above. NOTHING binds that root
+  # hash to anyone. An attacker who substitutes the squashfs AND os-core.roothash
+  # together defeats dm-verity completely — the kernel verifies the attacker's
+  # image against the attacker's hash tree and reports success. That was the
+  # state of every installed disk: verity genuinely active, and pinned to an
+  # unauthenticated number.
+  #
+  # The fix is a signature over the root hash, and the constraint on producing
+  # it is absolute: THE RELEASE PRIVATE KEY NEVER TOUCHES A BUILD MACHINE.
+  # .github/workflows/release.yml publishes os-core.roothash as a release asset
+  # precisely so a human can sign it afterwards — "the release private key is
+  # never on a CI runner (see docs/KEY-CEREMONY.md), so signing is a deliberate
+  # offline step". So this build CANNOT sign in general, and does not pretend to.
+  #
+  # What it does instead is the honest version of the same thing: sign only when
+  # a release private key is ALREADY PRESENT on this machine. That is true for a
+  # developer build and for scripts/netboot-install-smoke.sh (keys/release.priv.json,
+  # `make dev-keys`), and false on a CI runner, which gets an unsigned roothash
+  # and the exact command to run offline. The .sig is therefore an
+  # OPERATOR-SUPPLIED INPUT in production, the same shape stable.json already
+  # has, not a build output.
+  #
+  # The installer picks it up with no change on its side: stageVerityArtifacts
+  # already copies "<roothash>.sig" into the slot when the medium ships one
+  # (backend/services/installer/netboot_verity.go), and scripts/initramfs/
+  # vulos-live already derives that name from the squashfs it boots. The one
+  # thing missing was anything that ever produced the file.
+  # ═══════════════════════════════════
+  VERITY_ROOTHASH_SIG="$VERITY_ROOTHASH_FILE.sig"
+  rm -f "$VERITY_ROOTHASH_SIG"
+  if [ -n "$VERITY_ROOT_HASH" ]; then
+    LIVE_RELEASE_PRIV="${VULOS_RELEASE_PRIV_KEY:-$ROOT_DIR/keys/release.priv.json}"
+    LIVE_RELEASE_CERT="$ROOTFS/etc/vulos/release-cert.json"
+
+    # Is the key we found USABLE — i.e. does the cert this image ships actually
+    # authorise it? This is not a nicety. keys/*.priv.json is GITIGNORED, while
+    # keys/trust-anchor.pub and keys/release-cert.json are TRACKED and currently
+    # hold PRODUCTION ceremony output (1d9b8cb9). So the overwhelmingly common
+    # state of a developer machine is a leftover dev release key that the shipped
+    # cert does not certify — measured on this repo right now, where the tracked
+    # cert authorises dbc913bf… and the local keys/release.priv.json is ba8b1e8b….
+    #
+    # An UNUSABLE implicit key is not an error: it means "this machine cannot
+    # sign", which is the same situation as CI, and the correct outcome is an
+    # unsigned roothash plus the offline command. An unusable key the operator
+    # named EXPLICITLY via VULOS_RELEASE_PRIV_KEY is an error, because they asked
+    # for a signature and would otherwise get a silently unsigned image.
+    # scripts/baremetal-smoke.sh's throwaway keypair exists for exactly this
+    # reason and is the pattern to copy.
+    LIVE_SIGN_OK=0
+    if [ -f "$LIVE_RELEASE_PRIV" ] && [ -f "$LIVE_RELEASE_CERT" ]; then
+      _lc_pub="$(grep -o '"release_pubkey"[[:space:]]*:[[:space:]]*"[0-9a-f]*"' "$LIVE_RELEASE_CERT" 2>/dev/null | grep -o '[0-9a-f]\{64\}')"
+      _lk_pub="$(grep -o '"public_key"[[:space:]]*:[[:space:]]*"[0-9a-f]*"' "$LIVE_RELEASE_PRIV" 2>/dev/null | grep -o '[0-9a-f]\{64\}')"
+      if [ -n "$_lc_pub" ] && [ "$_lc_pub" = "$_lk_pub" ]; then
+        LIVE_SIGN_OK=1
+      elif [ -n "${VULOS_RELEASE_PRIV_KEY:-}" ]; then
+        echo "${RED}✗ VERITY-04: VULOS_RELEASE_PRIV_KEY does not match the embedded release cert${NC}"
+        echo "${RED}  cert ($LIVE_RELEASE_CERT) authorises: ${_lc_pub:-<unreadable>}${NC}"
+        echo "${RED}  key  ($LIVE_RELEASE_PRIV) public half: ${_lk_pub:-<unreadable>}${NC}"
+        echo "${RED}  You asked for a signed root hash; signing with this key would produce${NC}"
+        echo "${RED}  a bundle every box rejects at boot. Use the key the cert certifies.${NC}"
+        exit 1
+      else
+        echo "  ${DIM}keys/release.priv.json does not match the shipped release cert —${NC}"
+        echo "  ${DIM}  treating this machine as having no release key (see below).${NC}"
+      fi
+      unset _lc_pub _lk_pub
+    fi
+
+    if [ "$LIVE_SIGN_OK" = "1" ]; then
+      echo "${BLUE}▸ Signing the dm-verity root hash (VERITY-04)...${NC}"
+      "$ROOT_DIR/scripts/verity/sign-roothash.sh" \
+          "$SQUASHFS" "$VERITY_ROOTHASH_FILE" \
+          "$LIVE_RELEASE_PRIV" "$LIVE_RELEASE_CERT" \
+          "$VERITY_ROOTHASH_SIG" \
+          "vulos-live-$(date -u +%Y%m%d)" "os-core.squashfs" || {
+        # A FAILED signing attempt is fatal, unlike an ABSENT key. The key was
+        # here and the ceremony broke — a mismatched key, a corrupt cert, a
+        # broken toolchain. Continuing would ship an image whose roothash is
+        # unauthenticated while the build log says signing ran.
+        echo "${RED}✗ VERITY-04: sign-roothash.sh failed with a release key present${NC}"
+        exit 1
+      }
+      echo "  ${GREEN}✓${NC} signed roothash bundle → os-core.roothash.sig"
+      echo "  ${DIM}  the installer stages it into the slot; the initramfs verifies it${NC}"
+      echo "  ${DIM}  against the pinned anchor before handing the hash to veritysetup${NC}"
+    else
+      # NOT an error. This is the CI and the production build path.
+      echo "  ${DIM}no release private key on this machine — os-core.roothash is UNSIGNED${NC}"
+      echo "  ${DIM}  (expected in CI: the release key is never on a runner)${NC}"
+      echo "  ${DIM}  Sign it offline, on the machine that holds the key:${NC}"
+      echo "  ${DIM}    scripts/verity/sign-roothash.sh \\${NC}"
+      echo "  ${DIM}      $SQUASHFS $VERITY_ROOTHASH_FILE \\${NC}"
+      echo "  ${DIM}      <release.priv.json> <release-cert.json> \\${NC}"
+      echo "  ${DIM}      $VERITY_ROOTHASH_SIG${NC}"
+      echo "  ${DIM}  and ship the .sig beside the image. Until then a NETBOOT refuses${NC}"
+      echo "  ${DIM}  to boot this medium and a local disk boots with verity active but${NC}"
+      echo "  ${DIM}  the root hash unauthenticated (see scripts/initramfs/vulos-live).${NC}"
+    fi
   fi
 
   # --- Build bootable GPT image ---

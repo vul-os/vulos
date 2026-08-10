@@ -63,3 +63,38 @@ fi
 # a binary that dies with "error while loading shared libraries" at the exact
 # moment it is needed, which reaches the operator as a panic from vulos-live.
 copy_exec "$VS" /sbin/veritysetup
+
+# VERITY-04: vulos-verify-sig, the ROOTHASH AUTHENTICITY gate.
+#
+# veritysetup alone binds the image to a root hash. It does not bind that root
+# hash to anyone, so an attacker who substitutes the squashfs AND the roothash
+# together defeats dm-verity completely — the kernel verifies the attacker's
+# image against the attacker's tree and reports success. vulos-live checks the
+# root hash against the pinned trust anchor before handing it to veritysetup,
+# and it does that by exec'ing this binary.
+#
+# It belongs in the SAME hook as veritysetup for the reason this hook exists at
+# all: the two halves of the check are useless apart, and splitting them across
+# two hooks is an invitation to ship one without the other. build.sh compiles it
+# from backend/cmd/vulos-verify-sig and drops it at /sbin — for a long time it
+# compiled neither, which is why the gate has never run on a shipped box.
+#
+# Fail LOUDLY, same posture as veritysetup above. An initrd that can open a
+# verity device but cannot tell whether the root hash is authentic is precisely
+# the "everything reports success and the protection is not running" state.
+#
+# copy_exec works for a static CGO_ENABLED=0 Go binary too (empty library
+# closure); it is used rather than cp so the binary lands with the same
+# permissions and path handling as everything else in here.
+VVS=""
+for _cand in /sbin/vulos-verify-sig /usr/sbin/vulos-verify-sig /usr/local/bin/vulos-verify-sig; do
+    if [ -x "$_cand" ]; then VVS="$_cand"; break; fi
+done
+if [ -z "$VVS" ]; then
+    echo "ERROR: vulos-verity hook: vulos-verify-sig not found (/sbin, /usr/sbin," >&2
+    echo "       /usr/local/bin) — build.sh must compile backend/cmd/vulos-verify-sig" >&2
+    echo "       into the rootfs. Aborting initramfs build rather than shipping an" >&2
+    echo "       initrd that cannot authenticate the dm-verity root hash." >&2
+    exit 1
+fi
+copy_exec "$VVS" /sbin/vulos-verify-sig
