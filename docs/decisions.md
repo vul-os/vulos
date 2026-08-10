@@ -57,7 +57,7 @@ A few conventions:
 | D32 | 2026-05-16 16:51 | Triple-check security: 2 Opus auditors (OSS verify) | **active rule** |
 | D93 | 2026-05-20 09:00 | Bare-metal window model: React always WM; v1 always-stream/cage, v2 surface/labwc | **active rule** |
 | D94 | 2026-05-20 | Image-based OS distribution: signed immutable squashfs in public bucket, A/B + rollback, netboot-to-install, offline-PKI/min-epoch, bucket leases, two-tier sync, manifest concurrency | **active rule** |
-| D95 | 2026-08-03 | Stack re-review: Go and React/JSX reaffirmed (Rust and Svelte rejected, with rationale); gradual JSDoc type-checking ruled compatible with the never-`.tsx` invariant | **active rule** |
+| D95 | 2026-08-03 | Stack re-review: Go and React/JSX reaffirmed (Rust and Svelte rejected, with rationale); gradual JSDoc type-checking ruled compatible with the never-`.tsx` invariant | **partly superseded**: Go/React stand, Rust/Svelte still rejected; the never-`.tsx` invariant is OVERTURNED by D97 |
 | D96 | 2026-08-04 | Native installable clients (Windows/macOS/Linux/Android/iOS): `mobile/`→`clients/`, one shared Go core + thin per-platform shells (Wails/gomobile), Tauri evaluated and rejected; TOFU/pinned-SPKI trust model for a local box; push is already sovereign on Android (foreground service, no FCM), APNs unavoidable on iOS | **active rule** — F's Android UnifiedPush option shipped box-side, see D98 |
 | D97 | 2026-08-04 | TypeScript adopted for `src/lib/`; the never-`.tsx` invariant is OVERTURNED (supersedes the framing in D95-C); oxlint evaluated and rejected (misses `react-hooks/rules-of-hooks`) | **active rule** |
 | D98 | 2026-08-07 | UnifiedPush (UP-CELL-01) implemented box-side, alongside Web Push, per D96-F: user-registered distributor endpoint, SSRF-screened via the shared `safedial` guard, same DND/owner-targeting choke point, prune-on-404/410; flag-gated (`VULOS_PUSH_UNIFIEDPUSH_ENABLE`); no client UI yet — see gap noted below | **active rule** |
@@ -643,6 +643,18 @@ The exposure window is the first pairing (before any key is pinned, a MITM could
 **F. oxlint evaluated and rejected.** Considered alongside the TS migration as a faster ESLint replacement. Run on an identical probe (two deliberately planted error-level violations): oxlint caught `no-unused-vars` and `exhaustive-deps` but **missed `react-hooks/rules-of-hooks` entirely** — the rule that catches conditional/early-return hooks, a real bug class in this shell. Faster is not worth silently dropping that rule. ESLint stays as the linter of record.
 
 Design updated: [`roadmap/TYPE-SAFETY.md`](../roadmap/TYPE-SAFETY.md). `ROADMAP.md`'s "Settled invariants" line amended to point here.
+
+**G. Status update — the migration went far past `src/lib/`.** This entry scoped
+the track to `src/lib/` and expected "~48.9k lines of existing JS" to keep
+building untouched. As measured in `frontend/src` today: **133 `.tsx`, 93 `.ts`,
+0 `.jsx`, and 3 `.js`** (`core/location/reporter.js`,
+`lib/offline/index.js`, `__tests__/integration/setup.js`). The shell is
+TypeScript, not just its lib. `allowJs: true` / `checkJs: false` are still set in
+`tsconfig.json`, so those three files are compiled but unchecked — the remaining
+work is three files, not a codebase. Read D97-D as still binding (vulos-cloud is
+not in scope) and D97-C as *more* important now, not less: strictness applies to
+declared types, and a boundary that casts unvalidated JSON is still typed fiction
+at 133 files just as it was at one.
 
 ---
 
