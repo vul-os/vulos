@@ -600,6 +600,27 @@ chroot "$ROOTFS" apt-get update
 # 34,503 KB, so the win is comparable there). Zero CVEs, zero working features.
 # The container image keeps both, because it DOES start an Xvfb.
 # See roadmap/DISPLAY-STACK.md.
+#
+# wlr-randr / wlopm / wlrctl / brightnessctl are the FOUR BINARIES THE GO CODE
+# ALREADY EXECS and that no image contained, so display listing, screen-off and
+# /api/shell/windows were dead paths that failed at runtime:
+#
+#   wlr-randr     display.go listOutputs/SetResolution/EnableOutput, and the
+#                 detectCompositor() probe that can never return "wlroots"
+#                 without it
+#   wlopm         energy.go screen power (labwc only — cage does not implement
+#                 wlr-output-power-management-v1; measured)
+#   wlrctl        wltoplevel list + focus/minimize/close (labwc only —
+#                 cage does not implement foreign-toplevel; measured)
+#   brightnessctl display.go SetBrightness; a direct-sysfs fallback exists, but
+#                 brightnessctl handles the backlight-permission cases it does not
+#
+# 332 KB of Installed-Size for all four (81+80+85+86), arm64. They are NOT added
+# to the Dockerfile: that image has no compositor and no backlight, so there they
+# would be four more packages that cannot run.
+#
+# lswt, which wltoplevel used to list windows with, is deliberately absent: it is
+# in no Debian suite. That is why the window list moved to wlrctl.
 # PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
@@ -612,6 +633,7 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     labwc cage \
+    wlr-randr wlopm wlrctl brightnessctl \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes \
     avahi-daemon avahi-utils dhcpcd5 wpasupplicant \

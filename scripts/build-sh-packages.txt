@@ -53,6 +53,7 @@ rootfs avahi-utils
 rootfs bash
 rootfs bluez
 rootfs bluez-tools
+rootfs brightnessctl
 rootfs ca-certificates
 rootfs cage
 rootfs curl
@@ -91,4 +92,7 @@ rootfs systemd-sysv
 rootfs tini
 rootfs vainfo
 rootfs wget
+rootfs wlopm
+rootfs wlr-randr
+rootfs wlrctl
 rootfs wpasupplicant
