@@ -358,7 +358,7 @@ export default function Contacts() {
           grows a step at ≥1280px so long names/addresses stop truncating on the
           wide desktop the founder actually runs it on. */}
       {showList && (
-      <div className={`${narrow ? 'w-full' : 'w-[17.5rem] xl:w-[20rem] shrink-0 border-r border-neutral-800/70 bg-neutral-900/25'} flex flex-col min-h-0`}>
+      <div className={`${narrow ? 'w-full' : 'w-[17.5rem] lg:w-[22rem] xl:w-[26rem] 2xl:w-[30rem] shrink-0 border-r border-neutral-800/70 bg-neutral-900/25'} flex flex-col min-h-0`}>
         <div className="shrink-0 px-3 pt-3 pb-2.5 border-b border-neutral-800/70">
           <div className="flex items-center gap-2 mb-2.5">
             <h1 className="text-[15px] font-semibold tracking-tight text-neutral-100">Contacts</h1>
