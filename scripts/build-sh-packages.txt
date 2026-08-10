@@ -56,6 +56,7 @@ rootfs bluez-tools
 rootfs brightnessctl
 rootfs ca-certificates
 rootfs cage
+rootfs cog
 rootfs curl
 rootfs dhcpcd5
 rootfs evtest

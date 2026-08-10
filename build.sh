@@ -621,6 +621,31 @@ chroot "$ROOTFS" apt-get update
 #
 # lswt, which wltoplevel used to list windows with, is deliberately absent: it is
 # in no Debian suite. That is why the window list moved to wlrctl.
+#
+# cog IS THE KIOSK. Without it this image boots to a dead screen: vulos-init's
+# findKioskBrowser() looks for `cog` then `chromium`, this list shipped NEITHER,
+# so it returned "" and startKiosk logged one line and returned — after
+# `plymouth quit --retain-splash` had already run, so the box sat on a frozen
+# 100% boot splash with the only explanation in the journal. Verified by
+# building a container from this exact list and running the same four lookups
+# findBinary() performs: LookPath(cog), stat(/usr/bin/cog), LookPath(chromium),
+# LookPath(chromium-browser) — all four NOT-FOUND.
+#
+# cog, not chromium, because the Go code prefers cog and it is far cheaper here:
+# measured by apt closure against this very list (arm64, trixie), cog adds 12
+# packages / 121,579 KB (118.7 MiB), chromium adds 13 packages / 379,542 KB
+# (370.6 MiB). 251.9 MiB cheaper for the same job — rendering the React shell at
+# localhost:8080. cog is WPE WebKit, purpose-built as a single-window browser,
+# and it Depends on libwayland-client0 + libwpebackend-fdo-1.0-1, which is the
+# backend `--platform=wl` needs on the cage/labwc seat this image runs.
+#
+# The /etc/chromium/policies/managed/vulos.json this script writes further down
+# stays inert (it always was — nothing here ever installed chromium to read it).
+# Its content is kiosk UX hardening: no password manager, no autofill, no sync,
+# no signin, no bookmark bar, no safebrowsing/metrics reporting. cog satisfies
+# that intent structurally rather than by policy — WPE WebKit has no password
+# manager, no autofill, no sync, no browser chrome and no bookmark bar to turn
+# off. The Dockerfile's chromium is a different target and still reads it.
 # PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
@@ -633,6 +658,7 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     bluez bluez-tools pulseaudio-module-bluetooth \
     joystick evtest libevdev2 \
     labwc cage \
+    cog \
     wlr-randr wlopm wlrctl brightnessctl \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes \
