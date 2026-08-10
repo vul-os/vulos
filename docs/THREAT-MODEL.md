@@ -46,19 +46,26 @@ Trust boundaries:
   file (`os-core.roothash`) shipped beside the image together with its Merkle
   tree (`os-core.hashtree`) — **not** baked into the kernel or the bootloader
   entry, which carry no `roothash=` at all. The initramfs reads those files and
-  runs `veritysetup open`; where it does, the kernel refuses tampered blocks.
-  This mitigation is therefore conditional on the boot path supplying the files
-  and the tool — see [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal).
+  runs `veritysetup open`, and the kernel then refuses tampered blocks. This is
+  **active on a newly installed disk**, proven by a real boot (VERITY-03). It
+  remains conditional on the boot path supplying the files and the tool: a
+  pre-existing disk with no verity siblings still boots unverified — see
+  [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal).
 - **Signature-first, transport-second.** Trust is enforced by an Ed25519 key
   PINNED in the seed/iPXE binary (`/etc/vulos/trust-anchor.pub`), never by the
   system CA bundle — TLS success alone never authorises a payload.
 - **iPXE** `imgverify`s kernel + initramfs against the pinned anchor before exec.
-- **Live/netboot squashfs** (threat #1/#3): the initramfs (`scripts/initramfs/vulos-live`)
-  binds the dm-verity root hash to the pinned anchor via a detached signature
-  (`os-core.roothash.sig`, checked by the `vulos-verify-sig` CLI) and, when
-  `vulos.netboot=1` is set, FAILS CLOSED if verity/signature inputs are absent —
-  an attacker can no longer omit the roothash files to downgrade into an
-  unverified loop mount.
+- **Live/netboot squashfs** (threat #1/#3): when `vulos.netboot=1` is set the
+  initramfs (`scripts/initramfs/vulos-live`) FAILS CLOSED if verity/signature
+  inputs are absent — an attacker cannot omit the roothash files to downgrade
+  into an unverified loop mount. The hook is written to bind the root hash to
+  the pinned anchor via a detached signature (`os-core.roothash.sig`, checked by
+  `vulos-verify-sig`), **but that binding is not reachable on any shipped
+  build**: `build.sh` produces no `.sig` and does not compile
+  `vulos-verify-sig`, so a local boot takes the branch that logs the roothash
+  signature as unverified. Residual risk: on the local-disk path dm-verity gives
+  tamper detection against the staged roothash, and **nothing yet establishes
+  that roothash's provenance**.
 - **Netboot-to-install** (`backend/services/installer/netboot_install.go`): the
   squashfs is signature-verified against the pinned anchor BEFORE a single byte
   is written to the permanent slot (`verifyNetbootSquashfs`, `netboot_verify.go`);
