@@ -978,6 +978,21 @@ func (c *Client) bindByVerity(ctx context.Context, imagePath, hashtreeRelPath, r
 func verityVerifyWithTool(ctx context.Context, imagePath, hashtreePath, rootHash string) error {
 	bin, err := exec.LookPath("veritysetup")
 	if err != nil {
+		// build.sh VERITY-03 installs cryptsetup-bin into the rootfs and gates
+		// on /sbin/veritysetup or /usr/sbin/veritysetup existing. Those are sbin
+		// paths: if this process was started with a PATH that omits them, the
+		// tool IS on the box and LookPath still fails — and after this change
+		// that is the difference between an update that stages and one refused
+		// with ErrVerityUnavailable. Check the two paths the build guarantees
+		// before giving up.
+		for _, p := range []string{"/sbin/veritysetup", "/usr/sbin/veritysetup"} {
+			if info, serr := os.Stat(p); serr == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+				bin, err = p, nil
+				break
+			}
+		}
+	}
+	if err != nil {
 		return fmt.Errorf("%w: veritysetup not available: %v", ErrVerityUnavailable, err)
 	}
 	out, err := exec.CommandContext(ctx, bin, "verify", imagePath, hashtreePath, rootHash).CombinedOutput()
