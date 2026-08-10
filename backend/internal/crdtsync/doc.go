@@ -78,13 +78,17 @@
 // are ordinary Go calls over JSON-serialisable values; handlers.go exposes them
 // over HTTP and syncer.go drives a pull-then-push round against whatever
 // PeerSource it is given. internal/fabric's mDNS Discoverer is one PeerSource
-// (adapted in the wiring); a WAN/relay rendezvous discoverer is another, and
-// slots in at the same seam with no engine change. See roadmap/CRDTSYNC.md.
+// (adapted in cmd/server/crdtsync_wiring.go); a WAN/relay rendezvous
+// discoverer is another and slots in at the same seam with no engine change —
+// what it must still bring is a peer identity check stronger than the shared
+// LAN secret. See roadmap/SYNC.md.
 //
-// # What this engine does NOT decide
+// # Which data syncs
 //
-// Which data is allowed to sync is a policy question, answered per domain in
-// roadmap/CRDTSYNC.md and enforced by the domain bridge (internal/prefsync),
-// not here. The engine will faithfully replicate anything it is handed, which
-// is exactly why the allow-list lives at the boundary where a human can read it.
+// The engine will faithfully replicate anything it is handed, so what it is
+// handed is the security boundary. That decision is an ALLOW-LIST in policy.go,
+// recorded per domain with its reasoning (refusals included), and it is
+// ENFORCED rather than documented: Open requires a non-empty allow-list and
+// every path that can introduce state checks it. internal/sqlcrdt binds each
+// approved domain to the table and columns that hold it.
 package crdtsync

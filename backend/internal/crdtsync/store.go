@@ -490,9 +490,15 @@ func (s *Store) Merge(d *Delta) (int, error) {
 				return err
 			}
 			// The STATE merge runs unconditionally, not only for newly-inserted
-			// ops: it is a max, so re-applying is free, and running it always
-			// means a log row that survived a crash mid-transaction still gets
-			// reflected in state.
+			// ops. Re-applying is free (it is a max), and it keeps this loop
+			// independent of whether the log row happened to be new — which
+			// matters after compaction, when an op can be absent from the log
+			// while its effect is already in state.
+			//
+			// Note this is belt-and-braces, not crash recovery: the log insert
+			// and the state merge share one transaction, so there is no window
+			// in which one lands without the other. Mutation testing confirms
+			// no test distinguishes the two forms.
 			if err := s.applyToState(tx, op); err != nil {
 				return err
 			}
