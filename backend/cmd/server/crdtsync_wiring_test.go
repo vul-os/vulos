@@ -1,23 +1,30 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"go/ast"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
 	"vulos/backend/internal/crdtsync"
 	"vulos/backend/internal/fabric"
+	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/sqlcrdt"
 )
 
@@ -418,5 +425,302 @@ func TestReplicatedTablesArePolicyApproved(t *testing.T) {
 		if !approved[rt.Domain] {
 			t.Errorf("%s is bridged by the wiring but not approved by policy", rt.Domain)
 		}
+	}
+}
+
+// ── WAN peer identity at the wiring site ─────────────────────────────────────
+//
+// The precedent this file exists for was a route on no mux. The identity
+// equivalent — and the shape a hurried wiring change would actually take — is a
+// call that IS reached and IS on a mux but is handed `nil, nil` for the signing
+// key and the roster, so every WAN peer is silently skipped forever while the
+// engine reports itself healthy. These tests close that.
+
+func newWiringIdentity(t *testing.T) (ed25519.PrivateKey, *crdtsync.PeerIdentity) {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := crdtsync.NewPeerIdentity(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return priv, id
+}
+
+func TestStartCRDTSyncMountsPeerKeyAuthWhenIdentityIsSupplied(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	selfPriv, selfID := newWiringIdentity(t)
+	_, peer := newWiringIdentity(t)
+	_, stranger := newWiringIdentity(t)
+	roster, err := crdtsync.NewStaticPeerRoster(peer.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), "INSTANCE-A", wiringSecret,
+		fabric.NewStaticDiscoverer(), nil, nil, selfPriv, roster)
+	if err != nil {
+		t.Fatalf("startCRDTSync: %v", err)
+	}
+	defer store.Close()
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body := []byte(`{"domain":"` + crdtsync.DomainReminders + `"}`)
+	call := func(from *crdtsync.PeerIdentity) (int, string, string) {
+		t.Helper()
+		header, _, err := from.SignRequest(http.MethodPost, "/api/crdt/pull", body, selfID.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+		req.Header.Set(crdtsync.PeerAuthHeader, header)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, resp.Header.Get(crdtsync.PeerAuthResponseHeader), string(bytes.TrimRight(raw, "\n"))
+	}
+
+	// A rostered peer gets in with no shared secret at all, and gets a response
+	// it can attribute to this box.
+	code, sig, respBody := call(peer)
+	if code != http.StatusOK {
+		t.Fatalf("a rostered signed peer got %d: %s", code, respBody)
+	}
+	if sig == "" {
+		t.Fatal("the production wiring served an UNSIGNED response to a WAN peer")
+	}
+
+	// A stranger with a perfectly valid key does not.
+	if code, _, _ := call(stranger); code != http.StatusUnauthorized {
+		t.Fatalf("an unrostered peer got %d, want 401", code)
+	}
+
+	// And the LAN secret path is untouched.
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+	req.Header.Set(crdtsync.AuthHeader, wiringSecret)
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the LAN shared-secret path regressed: %d", resp.StatusCode)
+	}
+}
+
+func TestStartCRDTSyncWithoutIdentityMountsOnlyTheSecretPath(t *testing.T) {
+	// The fail-closed half: no key or no roster means WAN peers are skipped,
+	// and a signed request is NOT accepted (there is nothing to verify it with).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, peer := newWiringIdentity(t)
+	_, selfID := newWiringIdentity(t)
+
+	mux := http.NewServeMux()
+	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), "INSTANCE-A", wiringSecret,
+		fabric.NewStaticDiscoverer(), nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("startCRDTSync: %v", err)
+	}
+	defer store.Close()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body := []byte(`{"domain":"` + crdtsync.DomainReminders + `"}`)
+	header, _, err := peer.SignRequest(http.MethodPost, "/api/crdt/pull", body, selfID.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+	req.Header.Set(crdtsync.PeerAuthHeader, header)
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("a signed request was accepted with no verifier configured: %d", resp.StatusCode)
+	}
+}
+
+func TestFabricPeerRosterHonoursRevocationAndRotation(t *testing.T) {
+	// The roster IS the authorisation boundary, so its edge cases are the
+	// security-relevant ones, not decoration.
+	dir := t.TempDir()
+	reg, err := multiinstance.Open(filepath.Join(dir, "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	roster := fabricPeerRoster{reg: reg}
+
+	mk := func() (ed25519.PublicKey, string) {
+		pub, _, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Stored in base64-STANDARD, which is what the roster column uses —
+		// while the rendezvous layer speaks base64url. If those ever became two
+		// identities every peer would be silently denied.
+		return pub, base64.StdEncoding.EncodeToString(pub)
+	}
+
+	good, goodB64 := mk()
+	revoked, revokedB64 := mk()
+	rotated, rotatedNewB64 := mk()
+	rotatedOld, rotatedOldB64 := mk()
+	expired, expiredOldB64 := mk()
+	_, expiredNewB64 := mk()
+	stranger, _ := mk()
+
+	for _, in := range []multiinstance.Instance{
+		{ULID: "GOOD", Ed25519PublicKey: goodB64},
+		{ULID: "REVOKED", Ed25519PublicKey: revokedB64, Revoked: true},
+		{ULID: "ROTATED", Ed25519PublicKey: rotatedNewB64,
+			PrevEd25519PublicKey: rotatedOldB64, PrevKeyExpiresAt: time.Now().Add(time.Hour)},
+		{ULID: "EXPIRED", Ed25519PublicKey: expiredNewB64,
+			PrevEd25519PublicKey: expiredOldB64, PrevKeyExpiresAt: time.Now().Add(-time.Hour)},
+	} {
+		if err := reg.Upsert(in); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		key  ed25519.PublicKey
+		want bool
+	}{
+		{"a rostered instance", good, true},
+		{"a REVOKED instance", revoked, false},
+		{"the new key after a rotation", rotated, true},
+		{"the previous key inside the overlap window", rotatedOld, true},
+		{"the previous key after the window closed", expired, false},
+		{"a key nobody enrolled", stranger, false},
+	} {
+		if got := roster.TrustedPeer(tc.key); got != tc.want {
+			t.Errorf("%s: TrustedPeer = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+
+	// A revoked instance is refused even when the key presented is its PREVIOUS
+	// one inside a live overlap window — revocation must dominate rotation.
+	revokedOld, revokedOldB64 := mk()
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID: "REVOKED", Ed25519PublicKey: revokedB64, Revoked: true,
+		PrevEd25519PublicKey: revokedOldB64, PrevKeyExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if roster.TrustedPeer(revokedOld) {
+		t.Error("a revoked instance was trusted via its rotation-overlap key")
+	}
+
+	// Fail closed with no registry at all.
+	if (fabricPeerRoster{}).TrustedPeer(good) {
+		t.Error("a nil registry trusted a peer")
+	}
+}
+
+// TestCRDTSyncCallSitePassesRealIdentityAndRoster pins the ARGUMENTS, not just
+// the reachability, of main.go's call.
+//
+// A call that is reached, mounted, and handed `nil, nil` for the signing key
+// and the roster compiles, passes every behavioural test in this file, logs
+// "active", and skips every WAN peer forever. That is the same class of failure
+// as a route on no mux, one layer in, so it gets the same treatment: read the
+// syntax tree and require the arguments to be real expressions.
+func TestCRDTSyncCallSitePassesRealIdentityAndRoster(t *testing.T) {
+	args, found := callArgs(t, "main.go", "startCRDTSync")
+	if !found {
+		t.Fatal("main.go contains no call to startCRDTSync")
+	}
+	const (
+		signerArg = 8
+		rosterArg = 9
+	)
+	if len(args) <= rosterArg {
+		t.Fatalf("startCRDTSync is called with %d arguments; the identity and roster are not being passed at all: %v", len(args), args)
+	}
+	if args[signerArg] == "nil" {
+		t.Error("main.go passes nil for the WAN signing identity — every WAN peer would be silently skipped while the engine reports itself active")
+	}
+	if args[rosterArg] == "nil" {
+		t.Error("main.go passes nil for the peer roster — with no roster there is nobody to authorise, so WAN sync could never run")
+	}
+	// The roster must be built from the real instance registry, not an empty
+	// literal that would trust nobody.
+	if !strings.Contains(args[rosterArg], "sharedInstanceRegistry") {
+		t.Errorf("the peer roster is not built from the instance registry: %q", args[rosterArg])
+	}
+	t.Logf("startCRDTSync(identity=%s, roster=%s)", args[signerArg], args[rosterArg])
+}
+
+// callArgs returns the source text of each argument of the first call to fnName
+// in file.
+func callArgs(t *testing.T, filename, fnName string) (args []string, found bool) {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", filename, err)
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || id.Name != fnName {
+			return true
+		}
+		found = true
+		for _, a := range call.Args {
+			var b strings.Builder
+			if err := printer.Fprint(&b, fset, a); err != nil {
+				args = append(args, "<unprintable>")
+				continue
+			}
+			args = append(args, strings.Join(strings.Fields(b.String()), " "))
+		}
+		return false
+	})
+	return args, found
+}
+
+// TestCallArgsDetectsNilArguments is the meta-test for callArgs: it proves the
+// analyser reports arguments at all. Without it, a bug that returned an empty
+// slice would make the pin above pass no matter what main.go said.
+func TestCallArgsDetectsNilArguments(t *testing.T) {
+	dir := t.TempDir()
+	src := `package main
+func startCRDTSync(a, b any) {}
+func main() { startCRDTSync(nil, realThing()) }
+func realThing() any { return nil }
+`
+	path := filepath.Join(dir, "fixture.go")
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args, found := callArgs(t, path, "startCRDTSync")
+	if !found {
+		t.Fatal("callArgs found no call in the fixture")
+	}
+	if len(args) != 2 || args[0] != "nil" || args[1] != "realThing()" {
+		t.Fatalf("callArgs returned %q; it is not reading arguments correctly", args)
 	}
 }
