@@ -435,6 +435,33 @@ if [ -f "$ROOTHASH_ABS" ]; then
     fi
 fi
 
+# libdevmapper's udev SYNCHRONISATION must be off in here, or `veritysetup open`
+# never returns.
+#
+# When it creates a device, libdevmapper sets a "udev cookie" (a SysV semaphore)
+# and then BLOCKS until udev signals that it has finished processing the event.
+# The thing that does the signalling is 95-dm-notify.rules, which ships in the
+# dmsetup package — and an initramfs built by initramfs-tools does not contain
+# it. udevd is running in here and happily consumes the event; nothing ever
+# releases the cookie; veritysetup waits forever.
+#
+# That is not a theory. With veritysetup and the dm-verity driver present, a real
+# QEMU boot got as far as
+#
+#   Begin: vulos-live: opening dm-verity device (verity-root)...
+#   device-mapper: verity: sha256 using shash "sha256-generic"
+#
+# — the target was created, so the hash tree and root hash were accepted — and
+# then the machine sat there with a silent console until it was killed. No panic,
+# no error: an indefinite hang, which is the worst possible failure for a boot
+# path because it looks like slow hardware.
+#
+# DM_DISABLE_UDEV=1 tells libdevmapper to create the /dev/mapper node itself and
+# not wait for anyone. This is what Debian's own cryptsetup initramfs scripts do,
+# and it is correct here for the same reason: the initramfs is not a udev-managed
+# system.
+export DM_DISABLE_UDEV=1
+
 # dm_available — is the dm-VERITY TARGET reachable from HERE, in the initramfs,
 # right now?
 #
@@ -474,33 +501,13 @@ fi
 # module to load and no /sys/module directory, which is why modules.builtin is
 # consulted as well; missing that branch would silently disable verity on
 # exactly the kernels that support it best.
-# libdevmapper's udev SYNCHRONISATION must be off in here, or `veritysetup open`
-# never returns.
 #
-# When it creates a device, libdevmapper sets a "udev cookie" (a SysV semaphore)
-# and then BLOCKS until udev signals that it has finished processing the event.
-# The thing that does the signalling is 95-dm-notify.rules, which ships in the
-# dmsetup package — and an initramfs built by initramfs-tools does not contain
-# it. udevd is running in here and happily consumes the event; nothing ever
-# releases the cookie; veritysetup waits forever.
-#
-# That is not a theory. With veritysetup and the dm-verity driver present, a real
-# QEMU boot got as far as
-#
-#   Begin: vulos-live: opening dm-verity device (verity-root)...
-#   device-mapper: verity: sha256 using shash "sha256-generic"
-#
-# — the target was created, so the hash tree and root hash were accepted — and
-# then the machine sat there with a silent console until it was killed. No panic,
-# no error: an indefinite hang, which is the worst possible failure for a boot
-# path because it looks like slow hardware.
-#
-# DM_DISABLE_UDEV=1 tells libdevmapper to create the /dev/mapper node itself and
-# not wait for anyone. This is what Debian's own cryptsetup initramfs scripts do,
-# and it is correct here for the same reason: the initramfs is not a udev-managed
-# system.
-export DM_DISABLE_UDEV=1
-
+# modules.builtin is scanned with PURE SHELL, not grep. The initramfs does not
+# ship grep — its /bin is klibc's (cat, dd, ls, mount, sh, uname, …) and nothing
+# else — so a `grep -q` here would fail as command-not-found on every kernel,
+# quietly turning the built-in branch into dead code that always answers "no".
+# That is the same mistake this file has already paid for twice (`head: not
+# found`, and `! grep` making the whole hook exit 0).
 dm_available() {
     [ -e /dev/mapper/control ] || modprobe dm_mod >/dev/null 2>&1 || true
     modprobe dm-verity >/dev/null 2>&1 || true
@@ -510,7 +517,14 @@ dm_available() {
 
     _dm_kv="$(uname -r 2>/dev/null)" || _dm_kv=""
     [ -n "$_dm_kv" ] || return 1
-    grep -q 'dm-verity\.ko' "/lib/modules/${_dm_kv}/modules.builtin" 2>/dev/null
+    _dm_bi="/lib/modules/${_dm_kv}/modules.builtin"
+    [ -r "$_dm_bi" ] || return 1
+    while IFS= read -r _dm_line || [ -n "$_dm_line" ]; do
+        case "$_dm_line" in
+            *dm-verity.ko*) return 0 ;;
+        esac
+    done < "$_dm_bi"
+    return 1
 }
 
 if command -v veritysetup >/dev/null 2>&1 \
