@@ -123,18 +123,21 @@ refusal keeps working, not because anything ships them.
 
 ### ⚠️ `make dev-keys` overwrites the ceremony material
 
-`scripts/signing/dev-keys.sh` writes **all six** key files unconditionally,
-including `keys/trust-anchor.pub` and `keys/release-cert.json`. Running it in
-this repo replaces the production anchor and cert with dev ones, after which
-`make verify-registry` fails — `registry.json` is signed by `release-2026-08`,
-which a dev anchor does not certify.
+`scripts/signing/dev-keys.sh` writes all six key files, including
+`keys/trust-anchor.pub` and `keys/release-cert.json`. Since commit `3f5a8dd8` it
+**refuses to run** when the material already in `keys/` is not the dev material:
+it reads `DevAnchorPubB64` out of `devanchor.go` rather than guessing, compares
+it against the anchor on disk, checks the cert's `key_id`, and aborts if either
+is production. The typed-out override is `VULOS_DEV_KEYS_OVERWRITE=1`, which
+also prints a warning.
 
-`make sign-registry` runs it for you: with no `RELEASE_PRIV=` argument it
-defaults to `keys/release.priv.json`, and if that file is absent (it is
-gitignored, so it is absent on every fresh clone) the target regenerates the dev
-keys before signing. On a clean clone, a bare `make sign-registry` therefore
-clobbers the shipped production anchor and re-signs all 55 entries with the dev
-key. **Always pass the real key:**
+That guard matters because of how `make sign-registry` behaves: with no
+`RELEASE_PRIV=` argument it defaults to `keys/release.priv.json`, and that file
+is gitignored — so it is absent on every fresh clone, and the target used to
+regenerate the dev keys before signing. A bare `make sign-registry` on a clean
+clone would therefore have clobbered the shipped production anchor and re-signed
+all 55 entries with the dev key. It now stops instead. **Still pass the real
+key:**
 
 ```bash
 make sign-registry RELEASE_PRIV=/path/to/release.priv.json
@@ -361,24 +364,35 @@ is not optional maintenance. Repeat §4.2 → §4.5 with a new release key and a
 
 No reflash. This is the entire reason the root key exists.
 
-**The epoch floor does not yet help here.** The mechanism is built and enforced
-— `signing.EpochStore.AcceptEpoch` is called on the OTA path
-(`services/ota/ota.go`), `cmd/verify` compares `cert.MinEpoch` against the
-device floor, and the netboot verifier passes the floor into
-`osdist.ParseAndVerify` — but **nothing ever raises the floor on a real box**.
-`AcceptEpoch` deliberately only checks; the floor moves only via `RaiseTo` or
-the root-signed `BumpFloor`, and neither has a caller outside
-`services/signing/epoch_test.go` (`ota.go` says so in its own package doc). A
-new device is initialised at floor 0 and stays there for life, so every
-`min_epoch >= 0` is accepted.
+**How the epoch floor makes that stick.** Two things happen on the OTA path
+(`services/ota/ota.go`), in this order, before the manifest is looked at:
 
-The practical consequence: bumping `-min-epoch` records intent and will start
-working the day a floor-raising surface exists, but today it does **not** make a
-revoked key's artifacts unacceptable. Until then, what actually retires the old
-key is its cert expiring (§ routine rotation) and boxes booting an image
-carrying the new cert. Assume a compromised release key stays usable against a
-box that has not taken the update, for as long as its old cert has left to run
-— which is why the 12-month `-not-after` in §4.3 is a security parameter, not
+1. **The gate.** `EpochStore.AcceptEpoch(cert.MinEpoch)` refuses a release cert
+   whose `min_epoch` is below this box's floor — a retired cert being replayed
+   is rejected before its release key is used for anything.
+2. **The raise.** `EpochStore.RaiseFromReleaseCert(anchorPub, cert)` re-validates
+   the root signature over the cert and raises the floor to its `min_epoch`. The
+   floor is monotonic, so it never falls.
+
+The raise takes the cert rather than a pre-validated number, so the floor can
+never be moved by a cert nobody proved the root signed. Only the **root-signed**
+value may raise it: if a release-key-signed *manifest* could, the very attacker
+this mechanism defends against could publish `min_epoch = MaxInt64` and
+permanently brick every device's update path. The raise also runs *before* the
+manifest is verified, so a hostile channel cannot hold the floor down by serving
+a good cert with a broken manifest and replaying the retired cert afterwards —
+and it fails closed, because reporting an update as verified while the rollback
+defence silently failed to persist is the exact failure this exists to prevent.
+
+> **This changed recently.** Until commit `8846d61c`, `AcceptEpoch` only ever
+> *checked* the floor and nothing anywhere raised it: a device sat at floor 0 for
+> life, every `min_epoch >= 0` passed, and bumping `-min-epoch` revoked nothing.
+> If you are reading an older note that says the floor never rises, that is why.
+
+A box still only learns the new floor when it **checks for an update**, so a box
+that never reaches its channel keeps whatever floor it last recorded. Between a
+revocation and that check, the old cert's own expiry is the remaining bound —
+which is why the 12-month `-not-after` in §4.3 is a security parameter, not
 paperwork.
 
 ### Root key compromised
