@@ -30,7 +30,7 @@
 #
 #   UEFI (edk2) → systemd-boot → kernel → initramfs (branded Plymouth splash)
 #     → vulos-init (mounts, hwdetect, net, sshd) → vulos-server
-#       → labwc/cage compositor + browser shell → HTTP 200 on /api/health
+#       → labwc/cage compositor + browser shell → HTTP 200 on /api/setup/status
 #
 # Usage:
 #   scripts/baremetal-smoke.sh              # CI: build, boot headless, assert, exit 0/1
@@ -198,8 +198,11 @@ PY
 }
 
 # ── 3. Poll readiness ───────────────────────────────────────────────────────
-# /api/health is auth-gated (returns 401) — use the public setup-status
-# endpoint as the "server is up and routing" readiness signal.
+# Readiness = /api/setup/status. /api/health is no longer auth-gated (it now
+# serves an anonymous caller the verdict — {"status","timestamp"} + 200/503 —
+# and withholds the per-check detail), but it is still the wrong readiness
+# signal here: it answers 503 on a HEALTHY-but-degraded box, e.g. low disk in a
+# scratch VM, which is not "the server is up and routing". Keep setup-status.
 say "Waiting up to ${TIMEOUT}s for http://127.0.0.1:${HOSTPORT}/api/setup/status …"
 URL="http://127.0.0.1:${HOSTPORT}/api/setup/status"
 deadline=$(( $(date +%s) + TIMEOUT ))

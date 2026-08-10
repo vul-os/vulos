@@ -25,7 +25,7 @@
 // TS export capitalised from Go's unexported `clusterHealthResponse`.
 export interface ClusterHealthResponse {
   status: string
-  checks: Record<string, string>
+  checks?: Record<string, string>
   timestamp: string
 }
 

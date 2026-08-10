@@ -1010,7 +1010,12 @@ func main() {
 		writeJSON(w, map[string]string{"version": Version, "deploy_mode": string(deployMode)})
 	})
 
-	// NET-07: cluster health (data-dir writable, disk space, sync lag) — public
+	// NET-07: cluster health (data-dir writable, disk space, sync lag).
+	// Reachable without a session (auth.publicPaths), but the VERDICT ONLY:
+	// anonymous callers get {"status","timestamp"} + 200/503, and the per-check
+	// detail is withheld. See the SECURITY note on handleClusterHealth in
+	// health.go for why each check is withheld. This comment used to say
+	// "public" while the route was in fact 401-ing every anonymous caller.
 	// syncer is wired below after cluster init; use a pointer so the handler
 	// always reads the current value. nilSyncer is replaced once cluster is ready.
 	var clusterSyncer *sync.Syncer

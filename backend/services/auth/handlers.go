@@ -100,6 +100,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 var publicPaths = map[string]bool{
 	"/health":                true,
 	"/healthz":               true, // trivial liveness probe (status page) — no auth
+	"/api/health":            true, // cluster health VERDICT only ({"status","timestamp"} + 200/503). The per-check detail — absolute data-dir path in errors, exact free MiB, S3 sync topology — is withheld unless X-User-ID is set; the handler (cmd/server/health.go) does that redaction itself. NOT fully public: no session = no detail.
 	"/api/auth/me":           true,
 	"/api/auth/logout":       true,
 	"/api/auth/register":     true,

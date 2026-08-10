@@ -472,6 +472,7 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 	expectedPublicPaths := map[string]string{
 		"/health":                "liveness probe — no sensitive data",
 		"/healthz":               "trivial liveness probe (status page) — no auth",
+		"/api/health":            "cluster health VERDICT only for anonymous callers (status + timestamp + 200/503); the handler in cmd/server/health.go withholds the per-check detail (absolute data-dir path in error strings, exact free MiB, S3 sync topology) unless X-User-ID is set. Guarded by TestClusterHealth_AnonymousGetsVerdictOnly.",
 		"/api/auth/me":           "returns empty without a valid session",
 		"/api/auth/logout":       "logout is harmless without a session",
 		"/api/auth/register":     "first-user registration — protected at handler level",

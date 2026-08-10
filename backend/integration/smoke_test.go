@@ -212,6 +212,7 @@ func sessionToken(r *http.Response) string {
 // TestSmoke is the top-level container; each invariant is a sub-test.
 func TestSmoke(t *testing.T) {
 	t.Run("HealthReachableUnauthenticated", testHealthReachable)
+	t.Run("ApiHealthReachableUnauthenticated", testAPIHealthReachable)
 	t.Run("SEC_C1_SpoofedXUserIDStripped", testSpoofedHeaderStripped)
 	t.Run("SEC_ProtectedRouteRequiresSession", testProtectedRouteRequiresSession)
 	t.Run("SEC_AdminGate_NoSession", testAdminGateNoSession)
@@ -231,6 +232,33 @@ func testHealthReachable(t *testing.T) {
 	defer mustClose(resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("GET /health: want 200, got %d", resp.StatusCode)
+	}
+}
+
+// testAPIHealthReachable: GET /api/health must not be 401'd by the session
+// middleware.
+//
+// The mock route for it has been mounted in buildServer since this file was
+// written, labelled "also public" — but nothing ever requested it, and the path
+// was NOT in publicPaths, so the label was wrong for as long as it existed and
+// no test noticed. Three docs pages and roadmap/NETWORK.md's external-router
+// design tell you to curl this endpoint as a first diagnostic; someone doing
+// that on a sick box got a 401 and concluded auth was broken.
+//
+// What the REAL handler serves an anonymous caller (the verdict only — no
+// per-check detail) is pinned separately in
+// backend/cmd/server/health_test.go: TestClusterHealth_AnonymousGetsVerdictOnly.
+// This test covers only the middleware half of that contract.
+func testAPIHealthReachable(t *testing.T) {
+	srv := buildServer(t)
+	resp := get(t, srv, "/api/health", nil)
+	defer mustClose(resp)
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Fatalf("GET /api/health unauthenticated: 401 — the auth middleware is gating the " +
+			"endpoint the troubleshooting docs tell you to curl first. It must be in publicPaths.")
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /api/health unauthenticated: want 200, got %d", resp.StatusCode)
 	}
 }
 
