@@ -46,7 +46,7 @@ looking for the pitch (what Vulos is, why it exists), start at the
 | [Running Your Own Relay](RELAY-SELF-HOST.md) | Step-by-step: standing up `vulos relay serve` on Hetzner and Fly.io |
 | [Relay-Hosting Providers](RELAY-PROVIDERS.md) | Where to host a relay and what it costs — plus using a tunnel service (Cloudflare Tunnel, ngrok) instead |
 | [Custom Domain](CUSTOM-DOMAIN.md) | Pointing a domain you own at your box or a published app |
-| [Storage Providers](STORAGE-PROVIDERS.md) | Choosing an S3-compatible bucket for backup (R2/B2/Wasabi/AWS/Tigris/self-host) |
+| [Storage Providers](STORAGE-PROVIDERS.md) | Choosing an S3-compatible bucket for Files/Drive storage and/or backup (R2/B2/Wasabi/AWS/Tigris/self-host) |
 | [Deploy](DEPLOY.md) | Self-hosting reference: Docker, building from source, TLS termination, upgrading |
 
 ## Keeping it healthy
