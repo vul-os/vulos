@@ -542,6 +542,7 @@ ART['voice-recorder'] = ART.microphone
 
 export { ART }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hasArt is a one-line predicate over the ART map declared in this file; moving it out would separate a lookup from the table it looks in for an HMR nicety.
 export function hasArt(id: string | undefined): boolean {
   return !!id && Object.prototype.hasOwnProperty.call(ART, id)
 }

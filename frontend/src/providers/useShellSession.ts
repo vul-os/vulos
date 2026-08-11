@@ -34,7 +34,10 @@ export interface ShellSession {
 }
 
 export function useShellSession(desktopId: string): ShellSession {
-  const tabId = useMemo(newTabId, [])
+  // Inline arrow, not a bare `newTabId` reference: useMemo's first argument is
+  // the factory, so passing the function itself reads as "memoize this value"
+  // to anyone skimming, and the lint rule cannot tell the two apart.
+  const tabId = useMemo(() => newTabId(), [])
   const chanRef = useRef<Channel | null>(null)
   const peersRef = useRef<Map<string, PeerInfo>>(new Map())
   const roleRef = useRef<SessionRole>('writer')
@@ -61,10 +64,13 @@ export function useShellSession(desktopId: string): ShellSession {
     chanRef.current = ch
     // No BroadcastChannel: this tab is alone as far as it can tell, and behaves
     // exactly as the shell did before any of this existed.
-    if (!ch) {
-      setRole('writer')
-      return
-    }
+    //
+    // No setRole here. 'writer' is the initial state, and every path that could
+    // make this tab a follower — the message handler, the settle timeout, the
+    // heartbeat — lives past this return and needs `ch`. So with no channel the
+    // role has never been anything else, and setting it would only schedule a
+    // render to replace a value with itself.
+    if (!ch) return
 
     const note = (m: { tabId: string; desktopId: string; role?: SessionRole }) => {
       peersRef.current.set(m.tabId, {

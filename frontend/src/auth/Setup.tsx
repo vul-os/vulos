@@ -110,17 +110,20 @@ const JOIN_CODE_RE = /VULOS-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}/i
 // a private copy of the list and assert against that, so the copy — which still
 // named long-deleted 'cloudAccount'/'intent' steps — stayed green while the real
 // flow changed underneath it. Never re-declare this list in a test.
+// eslint-disable-next-line react-refresh/only-export-components -- the step lists and baseStepsFor are exported here ON PURPOSE so a test walks the SAME list the wizard walks; a copy in another module is exactly the drift the comment above warns about.
 export const STEPS = ['welcome', 'IS09_chooser', 'device', 'language', 'timezone', 'network', 'account', 'pin', 'apps', 'appearance', 'identity', 'storage', 'ssh', 'recoverykit', 'ready']
 
 // INIT-09: join-flow step list (used when the chooser picks "Join", or when
 // setup mode === 'sync'). Shares indices 0–1 (welcome, IS09_chooser) with
 // STEPS so flipping flowType at the chooser keeps `step` aligned; then the
 // join-only steps, then the shared pin + ready. Lost in a merge — restored.
+// eslint-disable-next-line react-refresh/only-export-components -- see STEPS above.
 export const IS09_JOIN_STEPS = ['welcome', 'IS09_chooser', 'IS09_join_storage', 'IS09_syncing', 'pin', 'ready']
 
 // INIT-09: the step list the wizard actually walks, chosen by flow type. The
 // component below calls this exact function, so a test that calls it is
 // exercising the real selection and not a re-implementation of it.
+// eslint-disable-next-line react-refresh/only-export-components -- see STEPS above.
 export function baseStepsFor(flowType: string): string[] {
   return flowType === 'join' ? IS09_JOIN_STEPS : STEPS
 }

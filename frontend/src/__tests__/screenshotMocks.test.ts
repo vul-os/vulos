@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 // Every API the screenshot harness mocks must exist in the real server.
@@ -33,7 +34,6 @@ const BACKEND = resolve(__dirname, '../../../backend')
 
 /** Read every Go source file under the backend, once. */
 function backendSource(): string {
-  const { execSync } = require('node:child_process') as typeof import('node:child_process')
   // `grep -rh` over .go is far cheaper than walking the tree in JS, and this
   // only needs the registration lines.
   // Two registration shapes exist and both serve real traffic:

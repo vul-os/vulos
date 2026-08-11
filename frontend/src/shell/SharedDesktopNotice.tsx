@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useShell } from '../providers/ShellProvider'
 
 // SharedDesktopNotice — tell the user when a second window is on this desktop,
@@ -40,9 +40,17 @@ export default function SharedDesktopNotice() {
   // Re-arm when the peer goes away and comes back: a dismissal applies to the
   // situation the user dismissed, not to every future one. Without this,
   // dismissing once would hide a genuinely new second window an hour later.
-  useEffect(() => {
+  //
+  // Adjusted DURING RENDER rather than in an effect. This is React's documented
+  // pattern for resetting state when an input changes: the re-render happens
+  // before anything is committed, so the banner never paints in the stale state
+  // and then correct itself. An effect would set state synchronously after
+  // commit, which is a cascading render and a visible flash of the wrong thing.
+  const [seenPeerCount, setSeenPeerCount] = useState(peerCount)
+  if (peerCount !== seenPeerCount) {
+    setSeenPeerCount(peerCount)
     if (peerCount === 0) setDismissed(false)
-  }, [peerCount])
+  }
 
   if (peerCount === 0 || dismissed) return null
 

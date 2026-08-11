@@ -2,7 +2,7 @@
 // suite — never commit this file. Captures named apps at desktop (1440x900)
 // and phone (390x844), both themes, into OUT_DIR.
 import { test, type Page } from '@playwright/test'
-import { installBackend, json, sseBody } from './mock-backend.js'
+import { installBackend, json } from './mock-backend.js'
 import fs from 'node:fs'
 
 const OUT_DIR = process.env.SHOT_OUT || '/tmp/polish-shots'

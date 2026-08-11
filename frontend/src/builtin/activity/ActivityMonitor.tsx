@@ -625,6 +625,7 @@ function GraphCard({ label, value, details, data, color, colorFill, borderColor,
  * Exported so the regression is testable: a test can assert the same reference
  * comes back, which is the exact property that stops the loop.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- nextGraphSize is exported so a test can exercise the REAL identity-preserving comparison that stops the resize loop, rather than a re-implementation of it.
 export function nextGraphSize(prev: { w: number, h: number }, width: number, height: number): { w: number, h: number } {
   return prev.w === width && prev.h === height ? prev : { w: width, h: height }
 }

@@ -31,7 +31,7 @@ const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 interface MissionControlCell { x: number; y: number; scale: number }
 
 export default function DesktopCanvas() {
-  const { windows, allWindows, chatOpen, missionControlOpen, setMissionControl, focusWindow, minimizeWindow, openWindow } = useShell()
+  const { windows, allWindows, missionControlOpen, setMissionControl, focusWindow, minimizeWindow, openWindow } = useShell()
   const mcLayout = useMissionControlLayout(windows.filter(w => !w.minimized), missionControlOpen) as Record<number, MissionControlCell>
   // useWallpaper()'s return type is `null` per TS's inference of that file's
   // untyped `createContext(null)` (core/useWallpaper.jsx, out of scope) — the

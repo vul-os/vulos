@@ -74,6 +74,32 @@ describe('SharedDesktopNotice', () => {
     expect(addDesktop).not.toHaveBeenCalled()
   })
 
+  it('re-arms after the peer leaves and a NEW one arrives', () => {
+    // A dismissal applies to the situation the user dismissed, not to every
+    // future one. Dismiss now, and an hour later a genuinely new second window
+    // must still announce itself.
+    //
+    // This is also the only test that exercises the re-arm at all: the reset was
+    // moved out of an effect and into a render-time adjustment (React's pattern
+    // for resetting state when an input changes), and disabling the reset
+    // entirely still passed every other test in this file.
+    mockSession = { role: 'follower', peers: [{ tabId: 'a' }] }
+    const { container, rerender } = render(<SharedDesktopNotice />)
+    fireEvent.click(screen.getByRole('button', { name: /keep sharing/i }))
+    expect(container).toBeEmptyDOMElement()
+
+    // The peer closes its tab.
+    mockSession = { role: 'writer', peers: [] }
+    rerender(<SharedDesktopNotice />)
+    expect(container).toBeEmptyDOMElement()
+
+    // A different window opens later. The banner is due again.
+    mockSession = { role: 'follower', peers: [{ tabId: 'b' }] }
+    rerender(<SharedDesktopNotice />)
+    expect(container).not.toBeEmptyDOMElement()
+    expect(screen.getByRole('button', { name: /keep sharing/i })).toBeTruthy()
+  })
+
   it('counts multiple peers rather than saying "another window"', () => {
     mockSession = { role: 'writer', peers: [{ tabId: 'a' }, { tabId: 'b' }] }
     render(<SharedDesktopNotice />)
