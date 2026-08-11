@@ -360,6 +360,25 @@ if (CHECK) {
   const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''
   if (current !== text) {
     console.error(`${OUT} is stale — run: node scripts/licensing/gen-notices.mjs`)
+    // SHOW WHAT DIFFERS. "Stale" alone costs a whole CI cycle to interpret, and
+    // when the file is correct on the developer's machine and stale on the
+    // runner — which is exactly what happened here — it is not interpretable at
+    // all: the fix it suggests is the command that produced the file.
+    //
+    // The line numbers are the on-disk file's, and only the first few
+    // divergences are printed; a genuine regeneration changes hundreds of lines
+    // and the first one is enough to identify the cause.
+    const a = current.split('\n')
+    const b = text.split('\n')
+    const diffs = []
+    for (let i = 0; i < Math.max(a.length, b.length) && diffs.length < 12; i++) {
+      if (a[i] !== b[i]) {
+        diffs.push(`  line ${i + 1}:\n    on disk:   ${JSON.stringify(a[i] ?? '<end of file>')}` +
+                   `\n    generated: ${JSON.stringify(b[i] ?? '<end of file>')}`)
+      }
+    }
+    console.error(`\n${a.length} lines on disk, ${b.length} generated. First differences:\n`)
+    console.error(diffs.join('\n'))
     process.exit(1)
   }
   console.log(`${OUT} is up to date.`)
