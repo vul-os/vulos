@@ -30,7 +30,7 @@ Vulos is a **sovereign personal server** — your own computer in the cloud (or 
 
 Nothing here runs on someone else's servers by default. Your data sits on hardware you control, your AI runs through a gateway you own, and there's no third party you have to sign in through to use any of it. The idea isn't secrecy for its own sake — it's **agency**: keeping your inbox, calendar, files, and AI on a machine that answers to you.
 
-Run it on hardware you own two ways: installed on a machine's own disk, so it persists like any normal computer, or booted live from a flash drive to try it with nothing touching your internal disk. See [Two ways to run it](#two-ways-to-run-it) below for which is which.
+Run it on hardware you own two ways: deployed onto a machine you already run, so it persists like any normal computer, or booted live from a flash drive to try it with nothing touching your internal disk. See [Two ways to run it](#two-ways-to-run-it) below for which is which.
 
 > *"Vula" is isiZulu for "open."*
 
@@ -221,7 +221,7 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 </picture>
 </div>
 
-Vulos is built to be owned end to end, and there are two legitimate ways to put it on hardware you own — pick based on whether you want it to stick around.
+Vulos is built to be owned end to end, and there are two ways to put it on hardware you own — pick based on whether you want it to stick around.
 
 **Deploy it — for a box you're keeping.** Have a VPS, or a spare machine with a Debian-family Linux on it, that you can SSH into as root? Point the deploy script at it and it installs the persistent OS there, as a systemd service:
 
