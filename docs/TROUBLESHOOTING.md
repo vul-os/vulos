@@ -22,15 +22,18 @@ sudo journalctl -u vulos -n 200 --no-pager    # OS backend log
 sudo journalctl -u vulos -f                   # follow live
 ```
 
-**Bare metal — installed to disk with `vulos-install --disk`.** These commands
-do **not** apply there. The boot entry that installer writes carries
-`init=/sbin/vulos-init` (`backend/internal/installer/disk.go`), so Vulos's own
-init is PID 1; `startSystemd()` in `backend/cmd/init/main.go` only logs that
-systemd is present and never starts it. There is therefore no `vulos.service`,
-no `vulos-console.service` status screen, and no journal to read — the backend's
-output goes to the kernel console the cmdline names (`console=tty1`, and
-`console=ttyAMA0,115200` for a serial line). Diagnose such a box from a browser
-on another device, or over SSH.
+**Bare metal — installed to disk with `vulos-install --disk`.** Not a state any
+box is in today: nothing in `build.sh`, the `Makefile` or CI compiles
+`backend/cmd/installer`, so that binary is on no shipped image (see
+[GETTING-STARTED.md → Installing to the machine's own
+disk](GETTING-STARTED.md#install-it-to-the-machines-disk)). If you do produce
+such a disk, note that these commands would not apply to it either: the boot
+entry that installer writes carries `init=/sbin/vulos-init`
+(`backend/internal/installer/disk.go`), so Vulos's own init is PID 1, and
+`startSystemd()` in `backend/cmd/init/main.go` only logs that systemd is present
+rather than starting it. No `vulos.service`, no `vulos-console.service` status
+screen, no journal — output goes to the kernel console the cmdline names
+(`console=tty1`, plus `console=ttyAMA0,115200` for a serial line).
 
 **Deployed to a server you run (`./build.sh --deploy`).** Same `vulos.service`
 unit, installed by the deploy script over SSH — see [DEPLOY.md](DEPLOY.md).
@@ -112,9 +115,13 @@ docker run ... --device /dev/uinput ...
 **Likely cause:** port 8080 already taken on the host.
 **Fix:** map a different host port (`-p 9090:8080`) or set `PORT` for a bare-metal run.
 
+**Symptom:** `vulos-install: command not found` in the live session's Terminal.
+**Likely cause:** not a broken image. `backend/cmd/installer` is compiled by nothing — `build.sh` builds `vulos-server`, `vulos-init` and `vulos-verify-sig` and stops there — so the binary is on no shipped image.
+**Fix:** none available; use a route that works today. See [GETTING-STARTED.md → Installing to the machine's own disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
+
 **Symptom:** `vulos-install --disk` reports a manifest verification failure.
-**Likely cause:** `stable.json`/`stable.json.sig` are missing from, or don't match, the release you downloaded — the installer refuses to write an unverifiable system rather than installing insecurely.
-**Fix:** re-download the release assets for the exact version you're installing and re-run. See [GETTING-STARTED.md → Install it to the machine's disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
+**Likely cause:** `stable.json`/`stable.json.sig` are missing from, or don't match, the release you're installing — the installer refuses to write an unverifiable system rather than installing insecurely. Note that those two files are offline signing output, not release-workflow output, so a release can legitimately ship without them.
+**Fix:** re-download both from the exact release's assets, keeping the `.sig` beside the manifest — the installer always looks for the signature at the manifest path with `.sig` appended, and has no separate flag for it.
 
 **Symptom:** mail doesn't receive; port 25 times out from outside.
 **Likely cause:** most residential and many cloud ISPs block inbound port 25.
