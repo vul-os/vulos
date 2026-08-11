@@ -13,11 +13,18 @@
 docker run -d \
   --name vulos \
   -p 8080:8080 \
+  --shm-size=1g \
   -v vulos-data:/root/.vulos \
   ghcr.io/vul-os/vulos:latest
 ```
 
 Open `http://localhost:8080` to complete first-boot setup.
+
+`--shm-size=1g` matters as soon as you use streamed apps: Docker's 64 MB default
+of shared memory is too small for the compositor and browser, and sessions crash
+or render corrupt frames without it. Your data lives on the `vulos-data` named
+volume and survives restarts, removal and upgrades — but not
+`docker volume rm`.
 
 ## Building from Source
 
