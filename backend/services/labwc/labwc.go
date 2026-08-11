@@ -85,8 +85,8 @@ func Start(env []string, cfgPath string) (*Manager, error) {
 	}
 
 	cmd := exec.Command(bin, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	// Inject the socket name into labwc's env so it knows where to bind.
 	composed := make([]string, 0, len(env)+3)

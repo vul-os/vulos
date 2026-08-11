@@ -126,8 +126,8 @@ func (tc TURNConfig) StartCoturn(ctx context.Context, dataDir string) (*exec.Cmd
 	}
 
 	cmd := exec.CommandContext(ctx, "turnserver", "-c", cfgPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start coturn: %w", err)

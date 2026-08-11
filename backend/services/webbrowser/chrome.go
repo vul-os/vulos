@@ -229,8 +229,8 @@ func (s *Service) startPulseAudioLocked() error {
 	cmd := exec.CommandContext(s.ctx, bin, args...)
 	cmd.Env = os.Environ()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
 		return err
 	}

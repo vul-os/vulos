@@ -82,8 +82,8 @@ func launchCageSession(ctx context.Context, sess *Session, cageBin string, appEn
 	cageCmd := exec.CommandContext(ctx, cageBin, "--", "sleep", "infinity")
 	cageCmd.Env = appEnv
 	cageCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cageCmd.Stdout = os.Stdout
-	cageCmd.Stderr = os.Stderr
+	cageCmd.Stdout = nil
+	cageCmd.Stderr = nil
 	if err := cageCmd.Start(); err != nil {
 		return fmt.Errorf("cage: %w", err)
 	}
@@ -415,8 +415,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 	sess.app = exec.CommandContext(ctx, opts.Command, opts.Args...)
 	sess.app.Env = appEnv
 	sess.app.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	sess.app.Stdout = os.Stdout
-	sess.app.Stderr = os.Stderr
+	sess.app.Stdout = nil
+	sess.app.Stderr = nil
 	if err := sess.app.Start(); err != nil {
 		sess.Stop()
 		releaseReservation()
@@ -505,8 +505,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				cmd.Env = gstEnv
 			}
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+			cmd.Stdout = nil
+			cmd.Stderr = nil
 			return cmd
 		}
 
@@ -623,8 +623,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 				cmd.Env = append(os.Environ(), "DISPLAY="+display)
 			}
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+			cmd.Stdout = nil
+			cmd.Stderr = nil
 			return cmd
 		}, &sess.gstAudio)
 	}
@@ -667,8 +667,8 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			newApp := exec.CommandContext(ctx, opts.Command, opts.Args...)
 			newApp.Env = appEnv
 			newApp.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			newApp.Stdout = os.Stdout
-			newApp.Stderr = os.Stderr
+			newApp.Stdout = nil
+			newApp.Stderr = nil
 			if err := newApp.Start(); err != nil {
 				log.Printf("[stream] %s restart failed: %v", opts.Name, err)
 				sess.Stop()

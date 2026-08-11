@@ -119,8 +119,8 @@ func (s *Service) Create(name, arch string) (*Prefix, error) {
 		"WINEARCH="+winearch,
 		"WINEDEBUG=-all",
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
 		os.RemoveAll(pfxDir)
 		return nil, fmt.Errorf("wineboot init: %w", err)
@@ -195,8 +195,8 @@ func (s *Service) Run(name, exe string, args []string) error {
 		"WINEDEBUG=-all",
 		"DISPLAY="+os.Getenv("DISPLAY"),
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	return cmd.Start()
 }
 
