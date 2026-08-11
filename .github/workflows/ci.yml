@@ -70,6 +70,16 @@ jobs:
       # contract described in README § Frontend test layers — it asserts the
       # UI-level security invariants, so a regression here must break the build,
       # not be discovered later. Fully mocked backend: no Go server or DB needed.
+      # Machine facts, recorded because two rounds of guessing about them were
+      # wrong. The step below was killed abruptly (exit 137, under two seconds
+      # after the previous package printed, no Go timeout reached), and the size
+      # of the box it happened on was never in the log.
+      - name: Runner size
+        run: |
+          nproc
+          free -h
+          df -h /
+
       - name: Test (Vitest — frontend security contract)
         run: npm run test
 
@@ -105,8 +115,12 @@ jobs:
       # backend is broken" and is nothing of the kind, which is the worst
       # possible failure mode for the gate everything else depends on.
       - name: Test
-        # -timeout 120s per package, well above the ~14s the slowest package
-        # takes, so it only ever fires on a HANG.
+        # -p 1 and -timeout 120s. One package at a time: the kill happens within
+        # two seconds of the previous package finishing, which is the signature
+        # of an abrupt OOM rather than the hang the orphaned sync.test suggested,
+        # and serialising is the only lever available here that bounds peak
+        # memory. The timeout stays because it costs nothing and turns any real
+        # hang into a stack instead of a signal.
         #
         # This step failed with exit 137 and no explanation: the runner's
         # "Complete job" phase reported `Terminate orphan process: pid (sync.test)`,
@@ -120,7 +134,7 @@ jobs:
         # goroutines. A bounded timeout turns an uninformative SIGKILL into a
         # panic with a full stack, which names the test and the line it is
         # blocked on.
-        run: cd backend && go test -p 2 -timeout 120s ./...
+        run: cd backend && go test -p 1 -timeout 120s ./...
 
       # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
       # backend/e2e/realserver_test.go's package doc for what this proves that
