@@ -130,6 +130,13 @@ type Syncer struct {
 	lastErr  map[string]string
 	lastSync time.Time
 	rounds   int
+	// lastPeers is what discovery returned on the most recent round, AFTER the
+	// self-filter. It is recorded even when it is empty, because empty is the
+	// case worth seeing: a round with no peers logs nothing, does nothing, and
+	// is indistinguishable from a healthy round in every other signal this
+	// type reports. Rounds climbing while this stays empty is the difference
+	// between "the loop is broken" and "the loop has nobody to talk to".
+	lastPeers []string
 }
 
 // NewSyncer validates the configuration and returns a Syncer. It fails rather
@@ -196,10 +203,12 @@ func (s *Syncer) SyncOnce(ctx context.Context) {
 		log.Printf("[crdtsync] peer discovery: %v", err)
 		return
 	}
+	dialled := make([]string, 0, len(peers))
 	for _, p := range peers {
 		if s.isSelf(p) {
 			continue
 		}
+		dialled = append(dialled, p.BaseURL)
 		if err := s.syncPeer(ctx, p); err != nil {
 			s.recordErr(p.BaseURL, err)
 			log.Printf("[crdtsync] sync %s: %v", p.BaseURL, err)
@@ -210,6 +219,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) {
 	s.mu.Lock()
 	s.lastSync = time.Now()
 	s.rounds++
+	s.lastPeers = dialled
 	s.mu.Unlock()
 }
 
@@ -419,10 +429,13 @@ func (s *Syncer) recordErr(peer string, err error) {
 // SyncerStatus is observability for the loop itself, distinct from the engine's
 // per-domain EngineStatus.
 type SyncerStatus struct {
-	Actor      string            `json:"actor"`
-	Domains    []string          `json:"domains"`
-	Interval   string            `json:"interval"`
-	Rounds     int               `json:"rounds"`
+	Actor    string   `json:"actor"`
+	Domains  []string `json:"domains"`
+	Interval string   `json:"interval"`
+	Rounds   int      `json:"rounds"`
+	// Peers is what the last round actually dialled. An empty list next to a
+	// climbing Rounds is a healthy loop with nothing to sync against.
+	Peers      []string          `json:"peers"`
 	LastSyncMS int64             `json:"last_sync_ms,omitempty"`
 	PeerErrors map[string]string `json:"peer_errors,omitempty"`
 }
@@ -440,12 +453,42 @@ func (s *Syncer) Status() SyncerStatus {
 		Domains:    append([]string(nil), s.cfg.Domains...),
 		Interval:   s.cfg.Interval.String(),
 		Rounds:     s.rounds,
+		Peers:      append([]string{}, s.lastPeers...),
 		PeerErrors: errs,
 	}
 	if !s.lastSync.IsZero() {
 		st.LastSyncMS = s.lastSync.UTC().UnixMilli()
 	}
 	return st
+}
+
+// RegisterSyncStatusHandler exposes the LOOP's health at
+// GET /api/crdt/sync-status, behind the same authorizer as every other CRDT
+// endpoint.
+//
+// The engine's own /api/crdt/status answers "what state do I hold" — version
+// vectors, log sizes, register counts. It cannot answer "is replication
+// happening", and those are different questions with the same failure mode: a
+// box that has never synced with anybody reports a perfectly healthy engine
+// holding perfectly local data.
+//
+// This was not an abstract omission. Status() existed, was documented as
+// "observability for the loop itself", and had no caller outside this package's
+// tests — so when two boxes silently failed to converge, the loop's round
+// count, dialled peers and per-peer errors were all being computed and all
+// being thrown away. The diagnosis had to be reconstructed from which log lines
+// were ABSENT.
+func RegisterSyncStatusHandler(mux *http.ServeMux, authz Authorizer, s *Syncer) {
+	mux.HandleFunc("GET /api/crdt/sync-status", func(w http.ResponseWriter, r *http.Request) {
+		if !authz(r) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(s.Status()); err != nil {
+			log.Printf("[crdtsync] sync-status: %v", err)
+		}
+	})
 }
 
 // SecretAuthorizer returns the Authorizer for the CRDT endpoints: a constant-

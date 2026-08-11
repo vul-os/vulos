@@ -59,7 +59,7 @@ func TestStartCRDTSyncRegistersWorkingRoutes(t *testing.T) {
 
 	mux := http.NewServeMux()
 	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), "INSTANCE-A", wiringSecret,
-		fabric.NewStaticDiscoverer(), nil, nil, nil, nil)
+		fabric.NewStaticDiscoverer(), nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startCRDTSync: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestStartCRDTSyncOpensTheApprovedDomainsOnly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	store, err := startCRDTSync(ctx, http.NewServeMux(), newWiringDBDir(t), "INSTANCE-A", wiringSecret,
-		fabric.NewStaticDiscoverer(), nil, nil, nil, nil)
+		fabric.NewStaticDiscoverer(), nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startCRDTSync: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestStartCRDTSyncFailsClosed(t *testing.T) {
 	t.Run("no secret", func(t *testing.T) {
 		// An unauthenticated exchange endpoint must never be mounted.
 		mux := http.NewServeMux()
-		if store, err := startCRDTSync(ctx, mux, dir, "A", "", fabric.NewStaticDiscoverer(), nil, nil, nil, nil); err == nil {
+		if store, err := startCRDTSync(ctx, mux, dir, "A", "", fabric.NewStaticDiscoverer(), nil, nil, nil, nil, nil); err == nil {
 			store.Close()
 			t.Fatal("startCRDTSync succeeded with no secret")
 		}
@@ -158,7 +158,7 @@ func TestStartCRDTSyncFailsClosed(t *testing.T) {
 	})
 
 	t.Run("no discoverer", func(t *testing.T) {
-		if store, err := startCRDTSync(ctx, http.NewServeMux(), dir, "A", wiringSecret, nil, nil, nil, nil, nil); err == nil {
+		if store, err := startCRDTSync(ctx, http.NewServeMux(), dir, "A", wiringSecret, nil, nil, nil, nil, nil, nil); err == nil {
 			store.Close()
 			t.Fatal("startCRDTSync succeeded with no discoverer")
 		}
@@ -170,7 +170,7 @@ func TestStartCRDTSyncFailsClosed(t *testing.T) {
 		// healthy while replicating nothing.
 		empty := t.TempDir()
 		if store, err := startCRDTSync(ctx, http.NewServeMux(), empty, "A", wiringSecret,
-			fabric.NewStaticDiscoverer(), nil, nil, nil, nil); err == nil {
+			fabric.NewStaticDiscoverer(), nil, nil, nil, nil, nil); err == nil {
 			store.Close()
 			t.Fatal("startCRDTSync succeeded with no bridgeable table")
 		}
@@ -478,7 +478,7 @@ func TestStartCRDTSyncMountsPeerKeyAuthWhenIdentityIsSupplied(t *testing.T) {
 
 	mux := http.NewServeMux()
 	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), "INSTANCE-A", wiringSecret,
-		fabric.NewStaticDiscoverer(), nil, nil, selfPriv, roster)
+		fabric.NewStaticDiscoverer(), nil, nil, selfPriv, roster, nil)
 	if err != nil {
 		t.Fatalf("startCRDTSync: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestStartCRDTSyncWithoutIdentityMountsOnlyTheSecretPath(t *testing.T) {
 
 	mux := http.NewServeMux()
 	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), "INSTANCE-A", wiringSecret,
-		fabric.NewStaticDiscoverer(), nil, nil, nil, nil)
+		fabric.NewStaticDiscoverer(), nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("startCRDTSync: %v", err)
 	}

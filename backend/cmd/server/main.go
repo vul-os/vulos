@@ -4632,8 +4632,23 @@ func main() {
 				// (deny-by-default, revocation-aware). Either being absent
 				// leaves the LAN path exactly as it was and WAN peers skipped —
 				// the shared secret is never sent off the LAN.
+				// A replicated row is written into auth.db underneath this
+				// process; the auth store's in-memory working set is loaded once
+				// at startup and would not contain it. Without this reload an
+				// account that syncs from another of the owner's boxes exists in
+				// SQLite and cannot be logged into until the box restarts.
+				onReplicatedRows := func(table string) {
+					if table != "users" && table != "profiles" {
+						return
+					}
+					if err := authStore.ReloadFromDB(); err != nil {
+						log.Printf("[crdtsync] reload auth store after replicated %s rows: %v", table, err)
+						return
+					}
+					log.Printf("[crdtsync] replicated %s rows applied; auth store reloaded", table)
+				}
 				if crdtStore, cerr := startCRDTSync(ctx, fabricMux, dbDir, cfg.InstanceID, fabricSecret, disc, fabricWANClient, nil,
-					fabricSigner, fabricPeerRoster{reg: sharedInstanceRegistry}); cerr != nil {
+					fabricSigner, fabricPeerRoster{reg: sharedInstanceRegistry}, onReplicatedRows); cerr != nil {
 					log.Printf("[crdtsync] disabled: %v", cerr)
 				} else {
 					go func() {

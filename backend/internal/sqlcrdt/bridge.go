@@ -73,6 +73,9 @@ type Bridge struct {
 	live     *sql.DB
 	tables   []TableSpec
 	colCache map[string]*tableInfo
+	// onApplied is notified after rows land in the live DB on a peer's behalf.
+	// See SetOnApplied for why a service holding its own cache needs this.
+	onApplied func(applied int)
 }
 
 type tableInfo struct {
@@ -156,6 +159,36 @@ func (b *Bridge) Close() error {
 
 // Domain returns the crdtsync domain name for a table.
 func Domain(table string) string { return "sql:" + table }
+
+// SetOnApplied registers a callback fired after a cycle writes rows into the
+// LIVE database on behalf of a peer. It is not called when a cycle merely
+// captures local writes, and not called when nothing was applied.
+//
+// The bridge writes SQL underneath a running process. Any service that holds
+// its own in-memory view of a bridged table will not see those rows until it is
+// told to look again — and "until it is told" was, in practice, "until the box
+// restarts". The auth store is the case that made this necessary: a replicated
+// account existed in auth.db and could not be logged into, because Login
+// iterates an in-memory map that was populated once at startup.
+//
+// Safe to call before Run. A nil callback disables notification.
+func (b *Bridge) SetOnApplied(fn func(applied int)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.onApplied = fn
+}
+
+// notifyApplied invokes the callback outside the bridge's lock: the callback
+// reloads another service's state and must never be able to deadlock against a
+// cycle already in progress.
+func (b *Bridge) notifyApplied(applied int) {
+	b.mu.Lock()
+	fn := b.onApplied
+	b.mu.Unlock()
+	if fn != nil {
+		fn(applied)
+	}
+}
 
 // Cycle runs one full local round: capture local SQL writes into the CRDT, then
 // materialise the merged CRDT state back into SQL.
@@ -378,12 +411,20 @@ func (b *Bridge) upsertRow(ti *tableInfo, pk []SQLValue, fields map[string][]byt
 			strings.Join(conflictCols, ","))
 	} else {
 		sets := make([]string, len(updateCols))
+		// A guard so an unchanged row is a genuine no-op. Without it, DO UPDATE
+		// rewrites identical values on every cycle and reports a row affected
+		// every time — which makes the applied count, and anything hung off it,
+		// fire continuously against a table nobody is touching. `IS NOT` rather
+		// than `<>` because `NULL <> NULL` is NULL, and a column that is NULL on
+		// both sides must count as unchanged rather than as unknown.
+		diffs := make([]string, len(updateCols))
 		for i, c := range updateCols {
 			sets[i] = sqlIdent(c) + "=excluded." + sqlIdent(c)
+			diffs[i] = sqlIdent(ti.name) + "." + sqlIdent(c) + " IS NOT excluded." + sqlIdent(c)
 		}
-		q = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT(%s) DO UPDATE SET %s",
+		q = fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT(%s) DO UPDATE SET %s WHERE %s",
 			sqlIdent(ti.name), strings.Join(quoted, ","), strings.Join(placeholders, ","),
-			strings.Join(conflictCols, ","), strings.Join(sets, ","))
+			strings.Join(conflictCols, ","), strings.Join(sets, ","), strings.Join(diffs, " OR "))
 	}
 	res, err := b.live.Exec(q, args...)
 	if err != nil {

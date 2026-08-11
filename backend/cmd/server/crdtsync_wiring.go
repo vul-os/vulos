@@ -116,6 +116,10 @@ func startCRDTSync(
 	selfBaseURLs []string,
 	signer ed25519.PrivateKey,
 	roster crdtsync.PeerRoster,
+	// onApplied is called with a replicated table's name after rows are written
+	// into the live database on a peer's behalf, so a service holding its own
+	// in-memory view of that table can reload it. May be nil.
+	onApplied func(table string),
 ) (*crdtsync.Store, error) {
 	if fabricSecret == "" {
 		return nil, fmt.Errorf("no fabric secret: an unauthenticated CRDT exchange endpoint is never acceptable")
@@ -228,6 +232,11 @@ func startCRDTSync(
 		return nil, fmt.Errorf("syncer: %w", err)
 	}
 
+	// The loop's own health, on the same mux and behind the same authorizer as
+	// the engine endpoints. Without this an operator can see WHAT this box
+	// holds and never whether it is talking to anyone.
+	crdtsync.RegisterSyncStatusHandler(lanMux, authz, syncer)
+
 	// A local write nudges the network round rather than waiting for the tick.
 	store.SetOnLocalChange(syncer.Nudge)
 
@@ -244,6 +253,10 @@ func startCRDTSync(
 			// not take the whole engine down with it.
 			log.Printf("[crdtsync] %s not bridged: %v", rt.Domain, berr)
 			continue
+		}
+		if onApplied != nil {
+			table := rt.Spec.Name
+			br.SetOnApplied(func(int) { onApplied(table) })
 		}
 		go br.Run(ctx, sqlcrdt.DefaultCycleInterval, syncer.Nudge)
 		go func(b *sqlcrdt.Bridge) {

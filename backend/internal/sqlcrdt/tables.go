@@ -122,13 +122,16 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration, onCaptured fun
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			captured, _, err := b.Cycle()
+			captured, applied, err := b.Cycle()
 			if err != nil {
 				log.Printf("[sqlcrdt] cycle: %v", err)
 				continue
 			}
 			if captured > 0 && onCaptured != nil {
 				onCaptured()
+			}
+			if applied > 0 {
+				b.notifyApplied(applied)
 			}
 		}
 	}

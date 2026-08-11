@@ -610,6 +610,25 @@ func (s *Store) Login(username, password string) (*User, error) {
 	return nil, errInvalidLogin
 }
 
+// ReloadFromDB re-reads the authoritative tables into the in-memory working
+// set. It exists for ONE caller: the CRDT bridge, which writes replicated rows
+// straight into auth.db underneath this process.
+//
+// Without it, an account that reaches this box from another of the owner's
+// boxes is present in SQLite and invisible to every code path that matters.
+// Login iterates s.users, so the replicated user is "not found", and the box
+// only notices the account when it is next restarted. That is not a subtle
+// degradation — it is the difference between "one account across your machines"
+// working and appearing to work.
+//
+// Idempotent, and safe to call on a cadence: loadFromDB merges into the maps
+// rather than replacing them, so a concurrent local write is not dropped.
+func (s *Store) ReloadFromDB() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadFromDB()
+}
+
 // HasAnyUsers returns true if at least one user exists.
 func (s *Store) HasAnyUsers() bool {
 	s.mu.RLock()

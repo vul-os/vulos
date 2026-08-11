@@ -4,16 +4,20 @@ package e2e
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"vulos/backend/internal/crdtsync"
 
 	_ "modernc.org/sqlite"
 )
@@ -270,10 +274,11 @@ func TestTwoBoxes_AccountReachesTheSecondBox(t *testing.T) {
 	// more precise claim: that the ACCOUNT reached the second box. The single
 	// login afterwards proves the replicated row is usable, which is the part a
 	// database read cannot tell you.
+	bDB := authDBPath(t, b)
 	deadline := time.Now().Add(100 * time.Second)
 	replicated := false
 	for time.Now().Before(deadline) {
-		if userRowExists(t, b.dataDir, user) {
+		if userRowExists(t, bDB, user) {
 			replicated = true
 			break
 		}
@@ -291,55 +296,106 @@ func TestTwoBoxes_AccountReachesTheSecondBox(t *testing.T) {
 			"second one failing:\n%s", rep.status, rep.body)
 	}
 
-	// SKIP, not FAIL — a red test meaning "this harness cannot reach that" gets
-	// ignored, and an ignored suite is worse than a missing test.
+	// Ask each box what its sync loop is actually DOING, rather than inferring it
+	// from which log lines are absent. /api/crdt/sync-status reports the round
+	// count, the peers the last round dialled, and the last error per peer; the
+	// engine's /api/crdt/status reports what state each box actually holds.
 	//
-	// WHAT THE EVIDENCE ACTUALLY SAYS, re-examined 2026-08-11. This skip used to
-	// blame two processes sharing one mDNS identity. That is not supported:
-	//
-	//   - discovery here is STATIC, not mDNS. Both boxes log "1
-	//     manually-configured peer(s) from VULOS_FABRIC_PEERS accepted, 0
-	//     refused", and each peer URL is read back from the other box's own
-	//     "[lan] serving OS over HTTPS on …" line, so it is the real listener.
-	//   - the two boxes have DIFFERENT instance IDs, so isSelf cannot be
-	//     discarding the peer on identity.
-	//   - no transport error appears in either log. fabric.SyncOnce logs
-	//     "discovery failed" when discovery errors and "sync with peer … failed"
-	//     when an exchange errors. Across three sync ticks (30s cadence, 100s
-	//     window) NEITHER appears — which means discovery SUCCEEDS and returns an
-	//     EMPTY peer list, silently. Nothing is being attempted at all.
-	//
-	// So the open question is not "can two boxes reach each other on one host".
-	// It is why the composed discoverer yields no peers at sync time when the
-	// static peer was accepted at configuration time. Closing this starts there,
-	// and probably starts by making that empty result visible: a successful
-	// discovery returning zero peers currently logs nothing.
-	t.Skipf("box B never received the account row (watched its auth.db directly for 100s, so "+
-		"this is not login rate-limiting). Policy is proven: both boxes bridged sql:users, both "+
-		"started, neither refused its endpoints, and no transport error was logged on either "+
-		"side. See the comment above for what the logs do and do not support.\nA logs:\n%s\nB logs:\n%s",
-		a.logBuf.String(), b.logBuf.String())
+	// Those four readings are what closed this. The inference from silence had
+	// concluded that discovery was returning zero peers. It was not: both boxes
+	// were dialling, no peer was erroring, and box B's engine ALREADY HELD box
+	// A's rows — version vector keyed to A's actor, three registers in
+	// sql:users. Replication had been working the whole time. What was broken
+	// was the last mile out of the CRDT store and into the live database, and
+	// no amount of staring at logs was going to show that.
+	diag := fmt.Sprintf("A sync-status: %s\nA engine:      %s\nB sync-status: %s\nB engine:      %s",
+		crdtGet(t, a, secret, "sync-status"), crdtGet(t, a, secret, "status"),
+		crdtGet(t, b, secret, "sync-status"), crdtGet(t, b, secret, "status"))
+
+	// FAIL, not skip. This test skipped for a long time on the theory that two
+	// boxes on one host could not reach each other. That theory was wrong, and
+	// it survived because the check meant to test it could not return true (see
+	// userRowExists). Convergence works, and it takes well under the deadline
+	// above — so not converging is a regression in the product, and the suite
+	// should say so.
+	t.Fatalf("box B never received the account row within the deadline, watching its own "+
+		"auth.db directly.\n%s\nA logs:\n%s\nB logs:\n%s",
+		diag, a.logBuf.String(), b.logBuf.String())
+}
+
+// authDBPath returns the auth database a box is ACTUALLY using, read from the
+// box's own startup log rather than assembled from an assumption.
+//
+// The assumption was wrong, and wrong in the way that hides itself: this helper
+// used to build filepath.Join(dataDir, ".vulos", "db", "auth.db"), the box uses
+// <dataDir>/db/auth.db, and the os.Stat miss was reported as "the row is not
+// there yet". Polled for a hundred seconds it says "never converged" with total
+// confidence, for a file that does not exist and never will. A check that
+// cannot return true is worse than no check, because it produces a conclusion.
+//
+// The box prints the path it bridged. Taking it from there cannot drift.
+func authDBPath(t *testing.T, b *box) string {
+	t.Helper()
+	m := regexp.MustCompile(`\[crdtsync\] bridging sql:users \(([^)]+)\)`).
+		FindStringSubmatch(b.logBuf.String())
+	if m == nil {
+		t.Fatalf("box never logged which auth.db it bridged, so there is no file to watch:\n%s",
+			b.logBuf.String())
+	}
+	return m[1]
 }
 
 // userRowExists reports whether a username is present in a box's auth database.
 //
 // Opened READ-ONLY and with a fresh connection each call: the box process owns
-// this file and is writing to it, and holding a handle across a 100-second poll
-// is a good way to fight its WAL for no reason.
-func userRowExists(t *testing.T, dataDir, username string) bool {
+// this file and is writing to it, and holding a handle across a long poll is a
+// good way to fight its WAL for no reason.
+//
+// ## Two ways this was hollow, and why both produced the same confident answer
+//
+// It queried `WHERE username = ?`. There is no username column: users is
+// (id TEXT PRIMARY KEY, data TEXT), and the name lives inside the JSON blob —
+// which is also why the whole `data` column is what replicates. The query
+// therefore failed with "no such column" on EVERY call, and the error was
+// swallowed as `return false`.
+//
+// It also looked in <dataDir>/.vulos/db/auth.db, and the box uses
+// <dataDir>/db/auth.db, so os.Stat missed and that too was reported as false.
+//
+// Either alone guaranteed "the row never arrived" for a hundred seconds. Both
+// together produced a diagnosis of a product defect that the evidence did not
+// support. The rule that would have caught it: a check that cannot distinguish
+// "not yet" from "I cannot look" has no business reporting "not yet".
+//
+// So now only ONE condition returns false — the users table not existing yet,
+// which is a real and transient startup state. Everything else is fatal.
+func userRowExists(t *testing.T, dbPath, username string) bool {
 	t.Helper()
-	dbPath := filepath.Join(dataDir, ".vulos", "db", "auth.db")
 	if _, err := os.Stat(dbPath); err != nil {
-		return false
+		t.Fatalf("auth database %s is not readable: %v", dbPath, err)
 	}
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_pragma=busy_timeout(2000)")
 	if err != nil {
-		return false
+		t.Fatalf("open %s: %v", dbPath, err)
 	}
 	defer db.Close()
+
+	var tables int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'`,
+	).Scan(&tables); err != nil {
+		t.Fatalf("read schema of %s: %v", dbPath, err)
+	}
+	if tables == 0 {
+		return false // box still migrating; the only legitimate "not yet"
+	}
+
 	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE username = ?`, username).Scan(&n); err != nil {
-		return false // table may not exist yet on a box still starting
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM users WHERE json_extract(data, '$.username') = ?`, username,
+	).Scan(&n); err != nil {
+		t.Fatalf("query users in %s: %v (a failing query must not be reported as "+
+			"'not converged' — that is what made this check hollow)", dbPath, err)
 	}
 	return n > 0
 }
@@ -382,4 +438,32 @@ func TestTwoBoxes_EngineStartsOnBoth(t *testing.T) {
 			t.Fatalf("box %s refused to register the exchange endpoints:\n%s", name, logs)
 		}
 	}
+}
+
+// syncStatus reads a box's CRDT sync-loop health off its LAN listener.
+//
+// This endpoint exists because the failure it describes is silent by nature: a
+// loop that discovers no peers logs nothing, errors on nothing, and leaves a
+// perfectly consistent local database behind. Returning the error text rather
+// than failing keeps this usable inside a diagnostic message.
+func crdtGet(t *testing.T, b *box, secret, endpoint string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, lanURLOf(t, b)+"/api/crdt/"+endpoint, nil)
+	if err != nil {
+		return "request: " + err.Error()
+	}
+	req.Header.Set(crdtsync.AuthHeader, secret)
+	// The LAN listener serves a self-signed certificate; this is the same
+	// localhost process the test already started.
+	cl := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // test-only, localhost
+	}
+	res, err := cl.Do(req)
+	if err != nil {
+		return "unreachable: " + err.Error()
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+	return fmt.Sprintf("HTTP %d %s", res.StatusCode, strings.TrimSpace(string(body)))
 }
