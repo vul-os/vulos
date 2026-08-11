@@ -10,25 +10,20 @@ This chapter assumes a running box — see [GETTING-STARTED.md](GETTING-STARTED.
 
 Before you set anything up, one decision matters more than any setting inside the desktop: **is this box going to persist, or is it a live session?** Vulos supports both, on purpose, and they behave very differently.
 
-### Install it — for a box you're keeping
+### Set it up to persist — for a box you're keeping
 
-This is the primary way Vulos is meant to be run. An installed box behaves like any normal computer: it writes your accounts, files, keys, and settings to its own disk, and everything is exactly where you left it after a reboot, a power cut, or pulling the plug.
+This is how Vulos is meant to be run. A persistent box behaves like any normal computer: it writes your accounts, files, keys, and settings to its own disk, and everything is exactly where you left it after a reboot, a power cut, or pulling the plug.
 
-There are three ways to get a persistent box, all disk-backed:
+There are two ways to get a persistent box today:
 
-- **Install to a bare-metal machine's own disk** — the primary path, for a mini-PC, spare laptop, or server you're setting up from scratch. Boot the live USB (below), then from inside that live session run:
+- **Deploy to a machine you already run** — a VPS, or a spare machine with a Debian-family Linux on it, reachable over SSH as root by key. The build runs on your own machine and is pushed across:
   ```bash
-  sudo vulos-install --disk /dev/sdX
+  ./build.sh --deploy YOUR_SERVER_IP
   ```
-  This partitions the target disk, verifies a signed release manifest, and unpacks Vulos onto it — the machine then boots Vulos from its own drive from then on, no USB required. It's new: the command exists and runs today, but it has not yet been run end-to-end against real disk hardware, so treat a first run as something to watch closely and keep a way to reflash the USB if it doesn't go cleanly. Full walkthrough: [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
-- **Deploy to a server you already run** — a VPS, a home box, anything reachable over SSH, already running some Linux distro you don't want to reimage:
-  ```bash
-  ./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
-  ```
-  This installs the real OS onto that server's own disk over SSH. See [DEPLOY.md](DEPLOY.md).
+  `--domain` cannot be passed alone — automatic TLS is issued over DNS-01, so it needs DNS credentials in the same command (`--domain os.example.com --dns-namecheap USER APIKEY`) or the script exits. See [DEPLOY.md](DEPLOY.md).
 - **Docker**, with your data on a named volume (`-v vulos-data:/root/.vulos`) — see [GETTING-STARTED.md](GETTING-STARTED.md).
 
-All three write to a disk that's already there and persist normally.
+**Installing to a bare machine's own disk is not available yet**, although the README and the release notes still describe it as the primary path. `vulos-install` is not compiled into any shipped image, so it is not in the live session that would run it. The specifics, and what that installer would and would not give you, are in [GETTING-STARTED.md → Installing to the machine's own disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 ### Try it live from a flash drive — for testing, demos, or a disposable machine
 
@@ -42,11 +37,10 @@ This is a **live session**, not an installed system. The root filesystem is a re
 
 - **Nothing persists across a reboot.** The account you create, the recovery phrase you're shown, any files you upload, any app you install — all of it lives in RAM for that boot only. Pull the drive or restart the machine and you're back to a blank first-boot wizard.
 - It's genuinely useful anyway: the fastest way to see the real desktop on real hardware before committing a machine to it, a demo you can hand someone without any cleanup, or a recovery/rescue environment that's guaranteed clean every time you boot it.
-- `vulos-install --live /dev/sdX` (the installer CLI shipped in the image) writes *another* bootable live USB — it's a USB-to-USB copier for the live environment, not a way to install onto the machine you're running on.
 
 ### Moving from a live session to something that persists
 
-There's no in-place "make this permanent" button for a live session — a live boot never writes to the internal disk, so there's nothing to promote. Anything you set up during the live session (accounts, files, settings) is gone once you run the installer, because it partitions and reformats the target disk. To keep what you built, treat the live session as a preview: once you know Vulos is what you want on that machine, run `sudo vulos-install --disk /dev/sdX` from inside it, and redo first-boot setup on the freshly installed system. If you connected S3-compatible storage during the live session's setup wizard, the **Join existing** flow on the new install can sync your data back down from that storage — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
+There's no in-place "make this permanent" button for a live session — a live boot never writes to the internal disk, so there's nothing to promote. Treat the live session as a preview: it tells you whether the machine is a good host, and then you set that machine up persistently by another route (today, install a Debian-family Linux on it and use `./build.sh --deploy`). If you connected S3-compatible storage during the live session's setup wizard, the **Join existing** flow on the persistent box can sync your data back down from that storage — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 
 ---
 
