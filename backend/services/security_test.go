@@ -1073,10 +1073,10 @@ func TestSecurityHeaders_PresentOnEveryServedResponse(t *testing.T) {
 // asserted here, at the boundary, with the real middleware in front of the real
 // handler:
 //
-//	1. a SIGNED request reaches the handler (proving the exemption works — this
-//	   is the break-glass quorum path that was 401'd into uselessness), and
-//	2. an UNSIGNED and a WRONGLY-SIGNED request are refused BY THE HANDLER, now
-//	   that the middleware is no longer standing in front of it.
+//  1. a SIGNED request reaches the handler (proving the exemption works — this
+//     is the break-glass quorum path that was 401'd into uselessness), and
+//  2. an UNSIGNED and a WRONGLY-SIGNED request are refused BY THE HANDLER, now
+//     that the middleware is no longer standing in front of it.
 //
 // The two 401s are told apart by the body: the handler's refusal carries its own
 // JSON reason, which a middleware 401 never does.

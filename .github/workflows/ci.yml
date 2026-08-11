@@ -95,8 +95,17 @@ jobs:
       - name: Vet
         run: cd backend && go vet ./...
 
+      # `-p 2` bounds how many PACKAGES compile/run at once.
+      #
+      # Unbounded, this step was KILLED on the runner — exit 137, partway through
+      # the package list, with no test having failed. go test defaults -p to
+      # GOMAXPROCS and runs that many package binaries concurrently, each with
+      # its own SQLite databases and temp trees; on a 2-core/7GB hosted runner
+      # that is enough live state to be OOM-killed. A killed step reads as "the
+      # backend is broken" and is nothing of the kind, which is the worst
+      # possible failure mode for the gate everything else depends on.
       - name: Test
-        run: cd backend && go test ./...
+        run: cd backend && go test -p 2 ./...
 
       # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
       # backend/e2e/realserver_test.go's package doc for what this proves that

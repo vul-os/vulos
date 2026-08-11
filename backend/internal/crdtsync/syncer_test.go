@@ -300,11 +300,11 @@ func TestNewSyncerValidation(t *testing.T) {
 		t.Fatalf("valid config rejected: %v", err)
 	}
 	bad := map[string]func(SyncerConfig) SyncerConfig{
-		"no store":      func(c SyncerConfig) SyncerConfig { c.Store = nil; return c },
-		"no peers":      func(c SyncerConfig) SyncerConfig { c.Peers = nil; return c },
-		"no client":     func(c SyncerConfig) SyncerConfig { c.HTTPClient = nil; return c },
-		"no secret":     func(c SyncerConfig) SyncerConfig { c.Secret = ""; return c },
-		"no domains":    func(c SyncerConfig) SyncerConfig { c.Domains = nil; return c },
+		"no store":   func(c SyncerConfig) SyncerConfig { c.Store = nil; return c },
+		"no peers":   func(c SyncerConfig) SyncerConfig { c.Peers = nil; return c },
+		"no client":  func(c SyncerConfig) SyncerConfig { c.HTTPClient = nil; return c },
+		"no secret":  func(c SyncerConfig) SyncerConfig { c.Secret = ""; return c },
+		"no domains": func(c SyncerConfig) SyncerConfig { c.Domains = nil; return c },
 		"refused domain": func(c SyncerConfig) SyncerConfig {
 			c.Domains = []string{"sql:sessions"}
 			return c
@@ -381,7 +381,7 @@ func TestSyncerSkipsSelf(t *testing.T) {
 		Peers: PeerSourceFunc(func(context.Context) ([]SyncPeer, error) {
 			return []SyncPeer{
 				{InstanceID: "AAA", BaseURL: "http://elsewhere.invalid"}, // self by id
-				{BaseURL: a.srv.URL},                                    // self by URL
+				{BaseURL: a.srv.URL}, // self by URL
 			}, nil
 		}),
 		Domains:      domains,

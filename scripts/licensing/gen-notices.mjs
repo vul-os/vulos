@@ -64,19 +64,56 @@ function licenseFiles(dir) {
 /** github.com/Foo -> github.com/!foo — the Go module cache's case-escape. */
 const escapeModPath = (p) => p.replace(/[A-Z]/g, (c) => '!' + c.toLowerCase())
 
+/**
+ * The platforms this document must cover.
+ *
+ * `go list -deps ./...` resolves build constraints for the CURRENT GOOS, so the
+ * dependency set — and therefore this file — used to depend on which machine
+ * generated it. That is not a cosmetic difference for a licensing notice.
+ *
+ * Measured 2026-08-11 on this repo: a darwin-generated notices file OMITS
+ * github.com/prometheus/procfs, which is reachable only from the `//go:build
+ * linux` packages (cmd/init, internal/installer, services/installer) and is
+ * therefore shipped in every Vulos image; and it LISTS github.com/mattn/go-isatty
+ * and github.com/ncruces/go-strftime, which the linux build never includes.
+ * Vulos ships as a linux OS, so the file distributed with the product was
+ * under-reporting code that ships and over-reporting code that does not.
+ *
+ * It also made the CI check unsatisfiable: the notices were regenerated on a
+ * mac, verified there, and `--check` then failed on an ubuntu runner — with a
+ * message telling the developer to run the very command that had just produced
+ * the file.
+ *
+ * Taking the UNION across a fixed platform list fixes both. The list is
+ * explicit rather than derived from the host so that two machines produce
+ * byte-identical output.
+ */
+const NOTICE_PLATFORMS = [
+  { GOOS: 'linux', GOARCH: 'amd64' },
+  { GOOS: 'linux', GOARCH: 'arm64' },
+  { GOOS: 'darwin', GOARCH: 'arm64' },
+]
+
 function collectGo() {
   const backend = join(REPO, 'backend')
   const modcache = execFileSync('go', ['env', 'GOMODCACHE'], { cwd: backend, encoding: 'utf8' }).trim()
-  const out = execFileSync(
-    'go',
-    ['list', '-deps', '-f', '{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}{{end}}', './...'],
-    { cwd: backend, encoding: 'utf8', maxBuffer: 64 << 20 },
-  )
   const seen = new Map()
-  for (const line of out.split('\n')) {
-    const [path, version] = line.trim().split('\t')
-    if (!path || !version || isFirstParty(path)) continue
-    seen.set(`${path}@${version}`, { path, version })
+  for (const plat of NOTICE_PLATFORMS) {
+    const out = execFileSync(
+      'go',
+      ['list', '-deps', '-f', '{{if .Module}}{{.Module.Path}}\t{{.Module.Version}}{{end}}', './...'],
+      {
+        cwd: backend,
+        encoding: 'utf8',
+        maxBuffer: 64 << 20,
+        env: { ...process.env, GOOS: plat.GOOS, GOARCH: plat.GOARCH },
+      },
+    )
+    for (const line of out.split('\n')) {
+      const [path, version] = line.trim().split('\t')
+      if (!path || !version || isFirstParty(path)) continue
+      seen.set(`${path}@${version}`, { path, version })
+    }
   }
   const mods = []
   for (const { path, version } of [...seen.values()].sort((a, b) => a.path.localeCompare(b.path))) {

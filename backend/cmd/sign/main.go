@@ -191,11 +191,11 @@ Subcommands:
         -security      mark this release as fixing a security defect. Raises the
                        owner's OS-update banner and fires ONE priority
                        notification per new version. Requires -severity.
-        -severity      ` + strings.Join(osdist.Severities, "|") + ` — required with
+        -severity      `+strings.Join(osdist.Severities, "|")+` — required with
                        -security, and refused without it.
         -notes         short single-line release note shown to the box owner in
                        Settings → OS Update, and used as the security
-                       notification's body. At most ` + strconv.Itoa(osdist.MaxNotesBytes) + ` bytes, printable
+                       notification's body. At most `+strconv.Itoa(osdist.MaxNotesBytes)+` bytes, printable
                        text only, and NO LINKS ("://" / "www."): the only place
                        an update note may send the owner is the button the box
                        draws itself.
