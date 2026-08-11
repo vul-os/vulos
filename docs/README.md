@@ -13,7 +13,7 @@ looking for the pitch (what Vulos is, why it exists), start at the
 
 | Guide | What's inside |
 |---|---|
-| [Getting Started](GETTING-STARTED.md) | The install guide: USB live session vs. installing to disk, Docker, deploying to a server you already run, requirements, first boot, upgrading |
+| [Getting Started](GETTING-STARTED.md) | The install guide: what you need before you start, choosing between Docker, a live USB and deploying over SSH, what a working first boot looks like, and what to do when it isn't |
 | [User Guide](USER-GUIDE.md) | The daily-driver manual: windows and the dock, Files, the App Hub, the assistant, Calendar/Contacts/Notes, notifications, using it from your phone |
 
 ## Using Vulos day to day
