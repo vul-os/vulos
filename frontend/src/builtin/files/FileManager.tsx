@@ -754,7 +754,7 @@ export default function FileManager() {
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="@container flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Column headers */}
           <div className="flex items-center px-3 py-1.5 border-b border-neutral-800/40 text-[12px] text-neutral-600 uppercase tracking-wide shrink-0 select-none bg-neutral-950/50">
             <span className="flex-1 flex items-center gap-1.5 min-w-0 cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('name')}>
@@ -763,7 +763,16 @@ export default function FileManager() {
             <span className="w-16 shrink-0 text-right cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('size')}>
               Size{sortArrow('size')}
             </span>
-            <span className="w-32 shrink-0 text-right cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('modified')}>
+            {/* Modified is dropped on a narrow window. Size (64px) and Modified
+                (128px) were both shrink-0, so they always claimed ~192px while
+                Name was flex-1 min-w-0 and absorbed the entire squeeze — in the
+                phone multitasking preview that left filenames truncated to about
+                three characters ("De…", "Do…", "Mu…"), which is not a file list.
+                A date is the least useful of the three when space is scarce.
+                @container, not a viewport breakpoint: a file window can be narrow
+                on a wide screen, so the WINDOW's width is what must decide. Same
+                pattern as DiskUsage and Assistant. */}
+            <span className="hidden @md:block w-32 shrink-0 text-right cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('modified')}>
               Modified{sortArrow('modified')}
             </span>
           </div>
@@ -806,7 +815,7 @@ export default function FileManager() {
                         </span>
                       </span>
                       <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
-                      <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
+                      <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                         {p.split('/').slice(0, -1).join('/')}
                       </span>
                     </div>
@@ -829,7 +838,7 @@ export default function FileManager() {
                       <span className="truncate">{r.name}</span>
                     </span>
                     <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
-                    <span className="w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
+                    <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
                       {r.path}
                     </span>
                   </div>
@@ -864,7 +873,7 @@ export default function FileManager() {
                   <span className="w-16 shrink-0 text-right text-neutral-600 tabular-nums">
                     {entry.isDir ? '—' : fmtSize(entry.size)}
                   </span>
-                  <span className="w-32 shrink-0 text-right text-neutral-600 truncate tabular-nums">
+                  <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-600 truncate tabular-nums">
                     {entry.modified}
                   </span>
                 </div>
