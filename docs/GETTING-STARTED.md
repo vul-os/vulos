@@ -481,7 +481,7 @@ image — it never downloads or stages anything by itself. Staging is admin-only
 and needs a fresh step-up re-authentication. Nothing ever reboots the box for
 you. And what boots a staged slot is the A/B mechanism described under
 [Installing to the machine's own disk](#install-it-to-the-machines-disk), which
-which needs a signed release to install in the first place — so on a live USB or
+needs a signed release to install in the first place — so on a live USB or
 a deployed server, staging still has nothing that will bring the new image up.
 
 **Docker:**
