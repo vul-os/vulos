@@ -91,18 +91,17 @@ var Decisions = []DomainDecision{
 	},
 	{
 		Domain: "sql:users",
-		Sync:   false,
-		Reason: "WANTED, and blocked on a decision that is not mine to make alone. Under close-to-identical instances a person expects to log into " +
-			"any of their own boxes with the credentials they set once, which means the password hash has to replicate — withholding it leaves the " +
-			"account present on box B and unusable there, pushing people into a second hand-made account with a different password, which multiplies " +
-			"weak passwords instead of copies of one strong hash. bcrypt at DefaultCost is designed to be stored, and its cost factor does not weaken " +
-			"with the number of copies. " +
-			"AGAINST: more copies means more machines a hash can be stolen from, and in a fleet with one internet-facing box that box becomes the " +
-			"weakest link for every account. TestCredentialDomainsAreRefused names this domain deliberately and warns that it 'would silently become " +
-			"allowed if someone widened the allow-list' — so flipping it is a security decision that needs explicit sign-off, not a judgement call " +
-			"made while widening the list. The groundwork is done: auth/user_secrets.go already splits free-form Preferences so secret-named keys " +
-			"stay local, and the shared profile_secrets row is read-modify-write in both directions. Flip Sync here and update that guard together, " +
-			"on purpose.",
+		Sync:   true,
+		Reason: "The account itself, and the reason a fleet feels like one machine: a person logs into any of their own boxes with the credentials " +
+			"they set once. That requires the password hash to replicate. Withholding it leaves the account present on box B and unusable there, " +
+			"which pushes people into creating a second account by hand with a different password — multiplying weak passwords instead of copies of " +
+			"one strong hash. bcrypt at DefaultCost is designed to be STORED, and its cost factor is a defence that does not weaken with the number " +
+			"of copies; an attacker who reads this table already owns that box. " +
+			"RESIDUAL, accepted on the record rather than hidden: more copies means more machines a hash can be stolen from, and in a fleet with one " +
+			"internet-facing box that box becomes the weakest link for every account. The mitigation is the one that always applied — a strong " +
+			"password and bcrypt's cost factor. " +
+			"Free-form Preferences are NOT replicated wholesale: secret-named keys stay local by the same token rule Profile.Settings uses, so a " +
+			"future feature cannot leak a token into the replicated half by accident (auth/user_secrets.go).",
 	},
 	{
 		Domain: "sql:recovery_blobs",

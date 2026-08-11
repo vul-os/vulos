@@ -125,7 +125,14 @@ func TestStartCRDTSyncOpensTheApprovedDomainsOnly(t *testing.T) {
 	if err := store.Set("sql:profiles", "u1", "data", []byte("{}")); err != nil {
 		t.Errorf("sql:profiles should replicate now its credentials live in a separate table: %v", err)
 	}
-	for _, refused := range []string{"sql:sessions", "sql:users"} {
+	// sql:users replicates now: the password hash is what makes an account
+	// usable on another of the owner's boxes. Signed off deliberately, with the
+	// residual recorded in the policy entry — see the note on mustRefuse in
+	// crdtsync/policy_test.go.
+	if err := store.Set("sql:users", "u1", "data", []byte("{}")); err != nil {
+		t.Errorf("sql:users should replicate — an account that cannot be used on a second box defeats the fleet: %v", err)
+	}
+	for _, refused := range []string{"sql:sessions", "sql:master_key_blobs"} {
 		if err := store.Set(refused, "k", "f", []byte("x")); err == nil {
 			t.Errorf("%s is replicable through the production wiring", refused)
 		}

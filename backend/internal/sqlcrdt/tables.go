@@ -76,6 +76,21 @@ func ReplicatedTables() []ReplicatedTable {
 			Why: "Settings are what people most expect to follow them between their own boxes. The credential half is a different table and is " +
 				"not replicated; see crdtsync policy for which fields stay local and why.",
 		},
+		{
+			Domain: "sql:users",
+			DBFile: "auth.db",
+			Spec: TableSpec{
+				Name: "users",
+				// The whole row, password hash included — that hash is what makes
+				// the account usable on another of the owner's boxes. Free-form
+				// Preferences are filtered before they reach this table: secret-
+				// named keys are written to profile_secrets instead, which is
+				// never bound (auth/user_secrets.go).
+				Columns: []string{"data"},
+			},
+			Why: "One account across your own machines is what makes a fleet feel like one computer. Without the hash the account exists on the " +
+				"second box and cannot be logged into, so people make a second account with a different password and the two drift apart.",
+		},
 	}
 }
 

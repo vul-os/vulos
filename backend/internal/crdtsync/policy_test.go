@@ -53,9 +53,15 @@ func TestCredentialDomainsAreRefused(t *testing.T) {
 	// The domains it would be most damaging to replicate must be explicitly
 	// refused, not merely absent — absence looks like an oversight and would
 	// silently become allowed if someone widened the allow-list.
+	// sql:users was here. It now replicates, on purpose: the password hash is
+	// what makes an account usable on another of the owner's boxes, and
+	// withholding it multiplies weak hand-made accounts instead of copies of one
+	// strong bcrypt hash. The residual — more machines a hash can be stolen
+	// from — is recorded in the policy entry rather than hidden. This list keeps
+	// every domain whose replication would hand an attacker something they can
+	// USE DIRECTLY rather than have to crack.
 	mustRefuse := []string{
 		"sql:sessions",
-		"sql:users",
 		"sql:recovery_blobs",
 		"sql:master_key_blobs",
 		"sql:local_api_keys",
@@ -162,13 +168,17 @@ func TestRefusedDomainCannotArriveByAnyRoute(t *testing.T) {
 func TestRefusalErrorCarriesTheReason(t *testing.T) {
 	// A refusal that explains itself is one a developer fixes correctly instead
 	// of working around.
+	// sql:sessions, not sql:users — users replicates now (see the policy entry
+	// and the note on mustRefuse above). Sessions is the clearest remaining
+	// refusal: a replicated bearer token is usable directly, with nothing to
+	// crack first.
 	s := newTestStore(t, "A")
-	err := s.Set("sql:users", "k", "f", []byte("v"))
+	err := s.Set("sql:sessions", "k", "f", []byte("v"))
 	var notAllowed *ErrDomainNotAllowed
 	if !errors.As(err, &notAllowed) {
 		t.Fatalf("err = %v, want *ErrDomainNotAllowed", err)
 	}
-	if !strings.Contains(err.Error(), "password hash") {
+	if !strings.Contains(err.Error(), "bearer token") {
 		t.Fatalf("refusal does not explain itself: %v", err)
 	}
 	// An unknown domain is refused too, just without a recorded reason.
