@@ -169,7 +169,7 @@ type MediaStore struct {
 }
 
 // NewMediaStore creates a MediaStore backed by
-// filepath.Join(home, ".vulos", "peering", "media").
+// filepath.Join(root, "peering", "media").
 //
 // signingKey is the local Ed25519 private key.  The first 32 bytes (the seed)
 // are used as the HMAC-SHA256 secret for signed URL generation.  The key is

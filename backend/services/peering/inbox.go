@@ -116,7 +116,7 @@ type InboxStore struct {
 }
 
 // NewInboxStore creates an InboxStore backed by
-// filepath.Join(home, ".vulos", "peering", "inbox").
+// filepath.Join(root, "peering", "inbox").
 //
 // The inbox directory is created idempotently on the first call.
 func NewInboxStore(home string) (*InboxStore, error) {

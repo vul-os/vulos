@@ -75,9 +75,17 @@ func (s *Service) VulaID() string { return s.vulaID }
 // exists. The tree is created idempotently — safe to call multiple times or
 // when the directories already exist.
 //
-// home should be the value of os.UserHomeDir() (or the user's home path).
-func New(home string) *Service {
-	root := filepath.Join(home, "peering")
+// root is the VULOS DATA ROOT — datadir.Root(), i.e. $VULOS_DATA_DIR or
+// ~/.vulos. It is NOT os.UserHomeDir(), which is what this comment used to say.
+//
+// The distinction has teeth here. This function joins "peering" onto what it is
+// given and then calls loadOrGenerate on <root>/peering/identity, which MINTS A
+// NEW Ed25519 KEYPAIR when it finds none. A caller who passed a real home
+// directory would not get a misplaced file — it would get a box with a
+// different Vula ID, which is the name every peer knows it by. Nothing would
+// report an error; the identity would simply be new.
+func New(dataRoot string) *Service {
+	root := filepath.Join(dataRoot, "peering")
 
 	// Create subdirectories idempotently.
 	for _, sub := range subdirs {
@@ -104,7 +112,7 @@ func New(home string) *Service {
 	}
 
 	log.Printf("[peering] storage root: %s", root)
-	return &Service{home: home, root: root, priv: priv, pub: pub, vulaID: vulaID}
+	return &Service{home: dataRoot, root: root, priv: priv, pub: pub, vulaID: vulaID}
 }
 
 // RegisterHandlers wires the node-identity peering routes onto mux.

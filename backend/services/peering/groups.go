@@ -141,7 +141,7 @@ type GroupStore struct {
 }
 
 // NewGroupStore creates a GroupStore backed by
-// filepath.Join(home, ".vulos", "peering", "groups").
+// filepath.Join(root, "peering", "groups").
 //
 // The directory is created idempotently.
 func NewGroupStore(home string) (*GroupStore, error) {

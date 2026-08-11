@@ -192,7 +192,7 @@ type ContactStore struct {
 }
 
 // NewContactStore opens (or creates) the contacts store rooted at
-// filepath.Join(home, ".vulos", "peering", "contacts.json").
+// filepath.Join(root, "peering", "contacts.json").
 //
 // If the file does not exist it is created with an empty contacts list.
 // If the file exists but is malformed, NewContactStore returns an error.

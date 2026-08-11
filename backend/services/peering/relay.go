@@ -269,7 +269,7 @@ func (rs *RelayStore) WithBilling(b *cpbilling.Client) *RelayStore {
 }
 
 // NewRelayStore creates a RelayStore backed by
-// filepath.Join(home, ".vulos", "peering", "relay").
+// filepath.Join(root, "peering", "relay").
 //
 // contacts must be non-nil and is used for mutual-trust verification.
 // The relay directory tree is created idempotently.

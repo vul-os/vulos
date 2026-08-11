@@ -47,7 +47,7 @@ func (h *Handler) stepUp() *stepUpGate {
 
 // NewHandler returns an HTTP handler for the credential vault.
 // dirFn maps a userID to the directory where that user's vault files live.
-// A sensible default: filepath.Join(home, ".vulos", "auth", "vault", userID).
+// A sensible default: filepath.Join(root, "auth", "vault", userID).
 func NewHandler(dirFn func(userID string) string) *Handler {
 	return &Handler{
 		vaults: make(map[string]*Vault),

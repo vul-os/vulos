@@ -128,7 +128,7 @@ type OutboxQueue struct {
 }
 
 // NewOutboxQueue creates an OutboxQueue backed by
-// filepath.Join(home, ".vulos", "peering", "outbox").
+// filepath.Join(root, "peering", "outbox").
 //
 // The outbox directory is created idempotently. client is the shared
 // PeerClient used for outbound HTTP delivery.
