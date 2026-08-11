@@ -650,7 +650,7 @@ export default function FileManager() {
             <div className="flex items-center overflow-hidden whitespace-nowrap gap-0.5">
               {breadcrumbs.map((b, i) => (
                 <span key={i} className="inline-flex items-center">
-                  {i > 0 && <IconChevronRight className="text-neutral-700 mx-0.5 shrink-0" />}
+                  {i > 0 && <IconChevronRight className="text-neutral-400 mx-0.5 shrink-0" />}
                   <span
                     className="text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
                     onClick={(e) => { e.stopPropagation(); loadDir(b.path) }}
@@ -665,18 +665,18 @@ export default function FileManager() {
 
         {/* Search */}
         <div className="flex items-center gap-1.5 bg-neutral-950/80 border border-neutral-800/50 rounded-lg px-2.5 py-1.5 w-28 sm:w-44 shrink-0 focus-within:accent-border-soft transition-colors">
-          <IconSearch className="text-neutral-600 shrink-0" />
+          <IconSearch className="text-neutral-400 shrink-0" />
           <input
             ref={searchRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') doSearch(); if (e.key === 'Escape') { setQuery(''); setSearchResults(null) } }}
             placeholder="Search..."
-            className="flex-1 min-w-0 bg-transparent border-none outline-none text-neutral-300 text-xs placeholder:text-neutral-600"
+            className="flex-1 min-w-0 bg-transparent border-none outline-none text-neutral-300 text-xs placeholder:text-neutral-400"
           />
           {query && (
             <button
-              className="text-neutral-600 hover:text-neutral-300 transition-colors"
+              className="text-neutral-400 hover:text-neutral-300 transition-colors"
               onClick={() => { setQuery(''); setSearchResults(null) }}
             >
               <IconClose />
@@ -687,7 +687,7 @@ export default function FileManager() {
         {/* Hidden files toggle */}
         <button
           className={`w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors
-            ${hidden ? 'accent-bg-soft accent-text' : 'text-neutral-600 hover:bg-neutral-800 hover:text-neutral-300'}`}
+            ${hidden ? 'accent-bg-soft accent-text' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-300'}`}
           onClick={() => { setHidden(!hidden); loadDir(cwd, false) }}
           title="Show hidden files"
           aria-label="Toggle hidden files"
@@ -712,7 +712,7 @@ export default function FileManager() {
         <div className="hidden sm:flex w-44 shrink-0 border-r border-neutral-800/40 bg-neutral-900/50 overflow-y-auto overflow-x-hidden py-3 flex-col gap-1">
           {/* Places */}
           <div className="flex flex-col">
-            <div className="text-[12px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
+            <div className="text-[12px] font-semibold text-neutral-400 uppercase tracking-wider px-3 pb-1.5">
               Places
             </div>
             {SIDEBAR_PLACES.map(place => (
@@ -724,7 +724,7 @@ export default function FileManager() {
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
-                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-600'}`} />
+                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-400'}`} />
                 <span>{place.label}</span>
               </button>
             ))}
@@ -734,7 +734,7 @@ export default function FileManager() {
 
           {/* System */}
           <div className="flex flex-col">
-            <div className="text-[12px] font-semibold text-neutral-600 uppercase tracking-wider px-3 pb-1.5">
+            <div className="text-[12px] font-semibold text-neutral-400 uppercase tracking-wider px-3 pb-1.5">
               System
             </div>
             {SIDEBAR_SYSTEM.map(place => (
@@ -746,7 +746,7 @@ export default function FileManager() {
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
-                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-600'}`} />
+                <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-400'}`} />
                 <span>{place.label}</span>
               </button>
             ))}
@@ -756,7 +756,7 @@ export default function FileManager() {
         {/* Main content area */}
         <div className="@container flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Column headers */}
-          <div className="flex items-center px-3 py-1.5 border-b border-neutral-800/40 text-[12px] text-neutral-600 uppercase tracking-wide shrink-0 select-none bg-neutral-950/50">
+          <div className="flex items-center px-3 py-1.5 border-b border-neutral-800/40 text-[12px] text-neutral-400 uppercase tracking-wide shrink-0 select-none bg-neutral-950/50">
             <span className="flex-1 flex items-center gap-1.5 min-w-0 cursor-pointer hover:text-neutral-400 transition-colors" onClick={() => toggleSort('name')}>
               Name{sortArrow('name')}
             </span>
@@ -780,7 +780,7 @@ export default function FileManager() {
           {/* File rows */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {loading && (
-              <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-600 text-xs">
+              <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-400 text-xs">
                 <span className="spinner w-6 h-6" aria-hidden="true" />
                 <span>Reading folder…</span>
               </div>
@@ -788,7 +788,7 @@ export default function FileManager() {
 
             {searchResults ? (
               searchResults.items.length === 0 ? (
-                <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-600 text-xs">
+                <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-400 text-xs">
                   <IconSearch className="w-8 h-8 opacity-30" />
                   <span>No matches for “{query}”</span>
                 </div>
@@ -814,8 +814,8 @@ export default function FileManager() {
                           {Math.round((r.score || 0) * 100)}%
                         </span>
                       </span>
-                      <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
-                      <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
+                      <span className="w-16 shrink-0 text-right text-neutral-400">{'—'}</span>
+                      <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-400 truncate text-[12px]">
                         {p.split('/').slice(0, -1).join('/')}
                       </span>
                     </div>
@@ -837,8 +837,8 @@ export default function FileManager() {
                       <FileIcon name={r.name} isDir={false} isLink={false} />
                       <span className="truncate">{r.name}</span>
                     </span>
-                    <span className="w-16 shrink-0 text-right text-neutral-700">{'—'}</span>
-                    <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-700 truncate text-[12px]">
+                    <span className="w-16 shrink-0 text-right text-neutral-400">{'—'}</span>
+                    <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-400 truncate text-[12px]">
                       {r.path}
                     </span>
                   </div>
@@ -865,15 +865,15 @@ export default function FileManager() {
                       {entry.name}
                     </span>
                     {entry.linkTarget && (
-                      <span className="text-neutral-600 text-[12px] ml-1 shrink-0 flex items-center gap-0.5">
-                        <IconChevronRight className="text-neutral-700" /> {entry.linkTarget}
+                      <span className="text-neutral-400 text-[12px] ml-1 shrink-0 flex items-center gap-0.5">
+                        <IconChevronRight className="text-neutral-400" /> {entry.linkTarget}
                       </span>
                     )}
                   </span>
-                  <span className="w-16 shrink-0 text-right text-neutral-600 tabular-nums">
+                  <span className="w-16 shrink-0 text-right text-neutral-400 tabular-nums">
                     {entry.isDir ? '—' : fmtSize(entry.size)}
                   </span>
-                  <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-600 truncate tabular-nums">
+                  <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-400 truncate tabular-nums">
                     {entry.modified}
                   </span>
                 </div>
@@ -884,7 +884,7 @@ export default function FileManager() {
               loadError ? (
                 <div className="py-12 flex flex-col items-center gap-3 text-xs">
                   <span className="text-warning">Couldn't read this folder.</span>
-                  <span className="text-neutral-600">It may be offline, gone, or you may not have permission.</span>
+                  <span className="text-neutral-400">It may be offline, gone, or you may not have permission.</span>
                   <button
                     type="button"
                     onClick={() => loadDir(cwd, false)}
@@ -894,7 +894,7 @@ export default function FileManager() {
                   </button>
                 </div>
               ) : (
-                <div className="py-12 flex flex-col items-center gap-3 text-neutral-700 text-xs">
+                <div className="py-12 flex flex-col items-center gap-3 text-neutral-400 text-xs">
                   <span>Empty directory</span>
                   <AskAIButton context={`I'm browsing an empty folder at ${cwd}. What would you suggest I do here?`} label="Ask AI about this folder" />
                 </div>
@@ -920,7 +920,7 @@ export default function FileManager() {
                 </span>
               </div>
               <button
-                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
                 onClick={() => { setPreview(null); setSelected(null) }}
                 aria-label="Close preview"
               >
@@ -933,31 +933,31 @@ export default function FileManager() {
               <div className="px-3 py-2.5 border-b border-neutral-800/30 shrink-0 space-y-1">
                 {preview.entry.perms && (
                   <div className="flex justify-between text-[12px]">
-                    <span className="text-neutral-600">Permissions</span>
+                    <span className="text-neutral-400">Permissions</span>
                     <span className="text-neutral-400 font-mono text-[12px]">{preview.entry.perms}</span>
                   </div>
                 )}
                 {preview.entry.owner && (
                   <div className="flex justify-between text-[12px]">
-                    <span className="text-neutral-600">Owner</span>
+                    <span className="text-neutral-400">Owner</span>
                     <span className="text-neutral-400">{preview.entry.owner}:{preview.entry.group}</span>
                   </div>
                 )}
                 {preview.entry.size !== undefined && !preview.entry.isDir && (
                   <div className="flex justify-between text-[12px]">
-                    <span className="text-neutral-600">Size</span>
+                    <span className="text-neutral-400">Size</span>
                     <span className="text-neutral-400">{fmtSize(preview.entry.size)}</span>
                   </div>
                 )}
                 {preview.entry.modified && (
                   <div className="flex justify-between text-[12px]">
-                    <span className="text-neutral-600">Modified</span>
+                    <span className="text-neutral-400">Modified</span>
                     <span className="text-neutral-400">{preview.entry.modified}</span>
                   </div>
                 )}
                 {preview.entry.linkTarget && (
                   <div className="flex justify-between text-[12px]">
-                    <span className="text-neutral-600">Link</span>
+                    <span className="text-neutral-400">Link</span>
                     <span className="text-neutral-400 truncate ml-2">{preview.entry.linkTarget}</span>
                   </div>
                 )}
@@ -967,11 +967,11 @@ export default function FileManager() {
             {preview.type === 'semantic' && (
               <div className="px-3 py-2.5 border-b border-neutral-800/30 shrink-0 space-y-1">
                 <div className="flex justify-between text-[12px]">
-                  <span className="text-neutral-600">Match</span>
+                  <span className="text-neutral-400">Match</span>
                   <span className="accent-text">{Math.round((preview.score || 0) * 100)}%</span>
                 </div>
                 <div className="flex justify-between text-[12px]">
-                  <span className="text-neutral-600">Path</span>
+                  <span className="text-neutral-400">Path</span>
                   <span className="text-neutral-500 text-[12px] truncate ml-2">{preview.path}</span>
                 </div>
               </div>
@@ -980,19 +980,19 @@ export default function FileManager() {
             {/* Preview body */}
             <div className="flex-1 overflow-auto min-h-0">
               {previewLoading ? (
-                <div className="py-10 flex flex-col items-center justify-center gap-2.5 text-neutral-600 text-xs">
+                <div className="py-10 flex flex-col items-center justify-center gap-2.5 text-neutral-400 text-xs">
                   <span className="spinner w-5 h-5" aria-hidden="true" />
                   <span>Loading preview…</span>
                 </div>
               ) : preview.type === 'dir' ? (
                 <div className="p-8 flex flex-col items-center text-center gap-2.5">
                   <IconFolder className="accent-text opacity-40 w-10 h-10" />
-                  <div className="text-neutral-600 text-xs">Double-click to open directory</div>
+                  <div className="text-neutral-400 text-xs">Double-click to open directory</div>
                 </div>
               ) : preview.type === 'image' ? (
                 <div className="p-8 flex flex-col items-center text-center gap-2.5">
                   <IconImage className="text-pink-400 opacity-40 w-10 h-10" />
-                  <div className="text-neutral-600 text-xs truncate max-w-full">{preview.name}</div>
+                  <div className="text-neutral-400 text-xs truncate max-w-full">{preview.name}</div>
                 </div>
               ) : (
                 <pre className="m-0 p-3 text-[12px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-all font-mono">
@@ -1005,9 +1005,9 @@ export default function FileManager() {
       </div>
 
       {/* Status bar */}
-      <div className="flex justify-between items-center px-3 py-1 bg-neutral-900/50 border-t border-neutral-800/40 text-[12px] text-neutral-600 shrink-0">
+      <div className="flex justify-between items-center px-3 py-1 bg-neutral-900/50 border-t border-neutral-800/40 text-[12px] text-neutral-400 shrink-0">
         <span>{entries.length} items</span>
-        <span className="text-neutral-700 truncate ml-4">{cwd}</span>
+        <span className="text-neutral-400 truncate ml-4">{cwd}</span>
       </div>
 
       {/* File context menu */}
@@ -1018,7 +1018,7 @@ export default function FileManager() {
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[200px] shadow-2xl shadow-black/60">
-            <div className="px-3 py-1.5 text-[12px] text-neutral-600 truncate border-b border-neutral-700/40 mb-1">
+            <div className="px-3 py-1.5 text-[12px] text-neutral-400 truncate border-b border-neutral-700/40 mb-1">
               {ctxMenu.entry.name}
             </div>
             <button
