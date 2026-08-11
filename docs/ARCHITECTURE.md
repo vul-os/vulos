@@ -336,7 +336,7 @@ Video calling is third-party: install Jitsi Meet / Element Call from the App Sto
 > is a separate, **live session** mode — read-only root, RAM-only writable
 > layer, nothing persists across a reboot — and has no A/B slots or update path
 > to roll back, because it never writes to the machine's disk in the first
-> place. See [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
+> place. See [GETTING-STARTED.md → Install it to the machine's disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 ```mermaid
 flowchart TD
