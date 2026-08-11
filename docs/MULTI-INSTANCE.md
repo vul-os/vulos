@@ -186,6 +186,22 @@ VULOS_FABRIC_PEERS=https://192.168.1.42:443
 Comma-separated for more than one. This composes with mDNS rather than
 replacing it, so a peer in the same broadcast domain is still found automatically.
 
+> **It must be a private address.** A peer named this way is dialled with the LAN
+> client — no certificate verification, no SSRF guard — and the fabric secret goes
+> with the request. That is the right transport for your own wired network, which
+> is the case this setting exists for, and the wrong one for anything reachable
+> across the internet.
+>
+> So entries are checked at startup and a non-private one is **refused with a log
+> line naming it**, rather than dialled. Loopback, `10/8`, `172.16/12`,
+> `192.168/16`, link-local and IPv6 unique-local are accepted. A **hostname** is
+> refused too: it cannot be classified without resolving it, and resolution can
+> change afterwards.
+>
+> For a box across the internet, use rendezvous discovery with a pinned instance
+> key — see *Beyond the LAN* above. Do not reach for this setting instead: it
+> would hand your fleet secret to whatever answers.
+
 **A named peer logs `peer rejected our auth (401)`.**
 Two causes, and the message names both. Either the secrets genuinely differ, or
 — more often — the URL points at the box's **ordinary HTTP port** instead of its

@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -288,4 +289,60 @@ func TestDirect_EnvGatedOffByDefault(t *testing.T) {
 	if c2.ACMECacheDir != "/tmp/acme-cache" {
 		t.Fatalf("default ACME cache not applied: %q", c2.ACMECacheDir)
 	}
+}
+
+// The self-reachability probe can skip certificate verification, which exists so
+// a test can point it at a self-signed loopback listener. Its doc comment says
+// "production leaves it false", and today that is true — the single non-test
+// caller passes false.
+//
+// A doc comment is not an enforcement. The failure mode is quiet in the worst
+// direction: skipping verification makes the probe MORE likely to succeed, so a
+// box would begin advertising a direct endpoint whose certificate nobody
+// checked, and nothing would look broken. So production refuses the insecure
+// path outright rather than relying on nobody passing true.
+func TestInsecureTLSProbeIsRefusedInProduction(t *testing.T) {
+	setProdForTest(t, true)
+	svc := &Service{endpoint: "https://127.0.0.1:1"}
+	err := svc.CheckReachable(context.Background(), true)
+	if err == nil {
+		t.Fatal("production accepted an unverified-TLS self-probe")
+	}
+	if !strings.Contains(err.Error(), "insecure") {
+		t.Errorf("the refusal should say why it refused, got: %v", err)
+	}
+}
+
+// The same call outside production still takes the insecure path — the flag has
+// to keep working, or the loopback tests above are testing nothing.
+func TestInsecureTLSProbeStillWorksOutsideProduction(t *testing.T) {
+	setProdForTest(t, false)
+	svc := &Service{endpoint: "https://127.0.0.1:1"}
+	err := svc.CheckReachable(context.Background(), true)
+	// 127.0.0.1:1 has nothing listening, so this fails — but it must fail as an
+	// UNREACHABLE endpoint, not as a refusal, which is what proves the insecure
+	// path was entered rather than short-circuited.
+	if err == nil {
+		t.Fatal("expected the probe to fail against a closed port")
+	}
+	if strings.Contains(err.Error(), "insecure") {
+		t.Errorf("development refused instead of probing: %v", err)
+	}
+}
+
+func setProdForTest(t *testing.T, on bool) {
+	t.Helper()
+	prev, had := os.LookupEnv("VULOS_ENV")
+	if on {
+		os.Setenv("VULOS_ENV", "prod")
+	} else {
+		os.Unsetenv("VULOS_ENV")
+	}
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("VULOS_ENV", prev)
+		} else {
+			os.Unsetenv("VULOS_ENV")
+		}
+	})
 }

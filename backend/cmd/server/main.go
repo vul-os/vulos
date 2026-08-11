@@ -4508,14 +4508,32 @@ func main() {
 			// disable mDNS, so the usual case keeps working with no round trip.
 			if staticPeers := reach.SplitList(os.Getenv("VULOS_FABRIC_PEERS")); len(staticPeers) > 0 {
 				peers := make([]fabric.Peer, 0, len(staticPeers))
+				skipped := 0
 				for _, raw := range staticPeers {
+					// A static peer is dialled with the LAN client — no cert
+					// verification, no SSRF guard, fabric secret attached — so it
+					// must name an address on the operator's own network. See
+					// staticPeerIsLocal for why a public address is refused here
+					// rather than quietly re-routed.
+					if !staticPeerIsLocal(raw) {
+						log.Printf("[fabric] REFUSING manually-configured peer %q: it is not a "+
+							"private/loopback address, and a static peer is dialled with the LAN "+
+							"client (no certificate verification) carrying the fabric secret. "+
+							"Use it for boxes on your own network; for a box across the internet "+
+							"use rendezvous discovery with a pinned instance key.", raw)
+						skipped++
+						continue
+					}
 					// InstanceID is left empty: the operator knows an address,
 					// not a ULID. Peer documents that this is supported and that
 					// self-skip then relies on SelfBaseURLs.
 					peers = append(peers, fabric.Peer{BaseURL: strings.TrimRight(raw, "/")})
 				}
-				disc = fabric.NewMultiDiscoverer(disc, fabric.NewStaticDiscoverer(peers...))
-				log.Printf("[fabric] %d manually-configured peer(s) from VULOS_FABRIC_PEERS (mDNS still active)", len(peers))
+				_ = skipped
+				if len(peers) > 0 {
+					disc = fabric.NewMultiDiscoverer(disc, fabric.NewStaticDiscoverer(peers...))
+				}
+				log.Printf("[fabric] %d manually-configured peer(s) from VULOS_FABRIC_PEERS accepted, %d refused (mDNS still active)", len(peers), skipped)
 			}
 
 			// Rendezvous discovery (FABRIC-WAN-01): mDNS only sees multicast, so

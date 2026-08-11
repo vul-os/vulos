@@ -21,7 +21,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
 	"time"
+	vulenv "vulos/backend/services/env"
 )
 
 // selfProbeTimeout bounds the self-reachability check.
@@ -49,6 +51,19 @@ func (s *Service) CheckReachable(ctx context.Context, insecureTLS bool) error {
 	req.Header.Set(ProbeHeader, nonce)
 
 	tr := &http.Transport{DisableKeepAlives: true}
+	// The insecure path is refused outright in production rather than merely
+	// left unused there. Today the only non-test caller passes false, which is
+	// what the doc comment above promises — but that promise is one edit away
+	// from being untrue, and the edit would be silent: skipping verification
+	// makes a self-probe MORE likely to succeed, so the box would start
+	// advertising an endpoint whose certificate nobody checked.
+	//
+	// Failing closed here costs nothing legitimate. A production box that
+	// genuinely is reachable presents a real certificate and passes; one that
+	// does not should not be advertising the endpoint.
+	if insecureTLS && vulenv.IsProdActive() {
+		return errReach("insecure TLS refused in production")
+	}
 	if insecureTLS {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // TEST-ONLY self-signed loopback
 	}
