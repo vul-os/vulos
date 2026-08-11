@@ -10,8 +10,8 @@ Related chapters: [GETTING-STARTED.md](GETTING-STARTED.md), [CONFIGURATION.md](C
 
 The Go backend writes everything to standard output/error. Where that ends up depends on how you installed Vulos.
 
-**Bare metal — live USB or installed to disk (systemd).** The image runs the
-backend as a single `vulos.service` unit on port 8080. A second unit,
+**Bare metal — live USB (systemd).** The live image boots systemd as PID 1 and
+runs the backend as a single `vulos.service` unit on port 8080. A second unit,
 `vulos-console.service`, owns the physical console (`tty1`) and shows a
 read-only status screen instead of a login prompt — see
 [GETTING-STARTED.md → What you'll see on screen](GETTING-STARTED.md#what-youll-see-on-screen).
@@ -21,6 +21,16 @@ sudo systemctl status vulos.service           # is it up?
 sudo journalctl -u vulos -n 200 --no-pager    # OS backend log
 sudo journalctl -u vulos -f                   # follow live
 ```
+
+**Bare metal — installed to disk with `vulos-install --disk`.** These commands
+do **not** apply there. The boot entry that installer writes carries
+`init=/sbin/vulos-init` (`backend/internal/installer/disk.go`), so Vulos's own
+init is PID 1; `startSystemd()` in `backend/cmd/init/main.go` only logs that
+systemd is present and never starts it. There is therefore no `vulos.service`,
+no `vulos-console.service` status screen, and no journal to read — the backend's
+output goes to the kernel console the cmdline names (`console=tty1`, and
+`console=ttyAMA0,115200` for a serial line). Diagnose such a box from a browser
+on another device, or over SSH.
 
 **Deployed to a server you run (`./build.sh --deploy`).** Same `vulos.service`
 unit, installed by the deploy script over SSH — see [DEPLOY.md](DEPLOY.md).
@@ -84,7 +94,7 @@ If your metrics look "empty", check you are hitting the right port and that you 
 
 ## First boot and setup
 
-These match the quick table in [GETTING-STARTED.md](GETTING-STARTED.md#troubleshooting), with more detail.
+These match the quick table in [GETTING-STARTED.md → When something goes wrong](GETTING-STARTED.md#when-something-goes-wrong), with more detail.
 
 **Symptom:** first boot hangs, or input (keyboard/mouse into streamed apps) does nothing.
 **Likely cause:** `/dev/uinput` is not available in the container. The server tries to create it itself (you'll see `[init] created /dev/uinput` in the log when that works) and otherwise falls back to the much slower `xdotool` path — or input fails entirely in an unprivileged container.
@@ -104,7 +114,7 @@ docker run ... --device /dev/uinput ...
 
 **Symptom:** `vulos-install --disk` reports a manifest verification failure.
 **Likely cause:** `stable.json`/`stable.json.sig` are missing from, or don't match, the release you downloaded — the installer refuses to write an unverifiable system rather than installing insecurely.
-**Fix:** re-download the release assets for the exact version you're installing and re-run. See [GETTING-STARTED.md → Installing to disk](GETTING-STARTED.md#installing-to-disk-the-primary-path).
+**Fix:** re-download the release assets for the exact version you're installing and re-run. See [GETTING-STARTED.md → Install it to the machine's disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 **Symptom:** mail doesn't receive; port 25 times out from outside.
 **Likely cause:** most residential and many cloud ISPs block inbound port 25.
