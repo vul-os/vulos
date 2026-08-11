@@ -28,6 +28,7 @@ looking for the pitch (what Vulos is, why it exists), start at the
 | [Mail, Calendar & Contacts](MAIL-CALENDAR-CONTACTS.md) | Bring your own mailbox — connecting existing mail/calendar/contacts accounts |
 | [Comms](COMMS.md) | Chat and video calling — why third-party (Element/Cinny, Jitsi Meet), installing and self-hosting |
 | [Peering](PEERING.md) | Your Vula ID, contact requests, LAN Drop file transfer, and reaching other people's boxes |
+| [Running more than one box](MULTI-INSTANCE.md) | Setting up a fleet so your account, settings and reminders follow you — and what deliberately stays on one machine |
 
 ## Your account & devices
 
