@@ -272,8 +272,14 @@
   --text-primary: #12141a;
   --text-secondary: #333844;
   --text-tertiary: #565d6b;
-  --text-muted: #6b7280;
-  --text-faint: #8b93a1;
+  /* Measured on the shell's own #f4f6fb surface: #6b7280 was 4.47:1 and
+     #8b93a1 was 2.86:1, both below the 4.5 WCAG AA floor for normal text — and
+     both carry real widget copy ("Nothing on your calendar.", the day name, the
+     notifications heading). Same hue and saturation, darkened until they clear:
+     5.65 and 4.75. They sit closer together than before because a near-white
+     surface has little room between AA and invisible. */
+  --text-muted: #5c626e;
+  --text-faint: #656e7d;
   --text-ghost: #aab0bc;
   --text-dim: #cbcfd8;
   --text-invisible: #dde0e6;
@@ -337,8 +343,8 @@
     --text-primary: #12141a;
     --text-secondary: #333844;
     --text-tertiary: #565d6b;
-    --text-muted: #6b7280;
-    --text-faint: #8b93a1;
+    --text-muted: #5c626e;
+    --text-faint: #656e7d;
     --text-ghost: #aab0bc;
     --text-dim: #cbcfd8;
     --text-invisible: #dde0e6;
