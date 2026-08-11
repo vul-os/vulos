@@ -223,11 +223,15 @@ Details: **[docs/ASSISTANT.md](docs/ASSISTANT.md)** and the threat model in **[d
 
 Vulos is built to be owned end to end, and there are two legitimate ways to put it on hardware you own — pick based on whether you want it to stick around.
 
-**Install it — the primary path, for a box you're keeping.** Boot the live image (below) on a bare-metal machine and run `sudo vulos-install --disk /dev/sdX` from inside it: a persistent ext4 root, verified at boot, A/B slots and rollback. It's real code that runs today, but it hasn't yet been run end-to-end against a physical disk outside development testing — see [docs/GETTING-STARTED.md → Installing to disk](docs/GETTING-STARTED.md#installing-to-disk-the-primary-path). Already have a server you SSH into? Point the deploy script at it instead and it installs the same persistent OS there:
+**Deploy it — for a box you're keeping.** Have a VPS, or a spare machine with a Debian-family Linux on it, that you can SSH into as root? Point the deploy script at it and it installs the persistent OS there, as a systemd service:
 
 ```bash
-./build.sh --deploy YOUR_SERVER_IP --domain os.yourdomain.com
+./build.sh --deploy YOUR_SERVER_IP
 ```
+
+(`--domain` needs DNS credentials in the same command — automatic TLS is issued over DNS-01 — e.g. `--domain os.example.com --dns-namecheap USER APIKEY`.)
+
+Installing onto a bare machine's **own disk** from inside the live session, via `vulos-install --disk`, is the path this project intends as primary. It is not available yet: that binary is compiled by nothing in the build, so it is absent from the image that would run it. The specifics are in [docs/GETTING-STARTED.md → Installing to the machine's own disk](docs/GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 **Try it live from a flash drive — for testing, demos, or a disposable machine.** The published `.img.gz` boots a full Vulos desktop straight off a USB stick:
 
@@ -264,7 +268,7 @@ Vulos is free — the software charges nothing and there's no account, subscript
 A mini-PC, a spare laptop, or a cloud server all work — the same image runs on each. GPU is optional and only matters for accelerated app streaming. Requirements are in [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 
 **Does flashing the USB image install Vulos, or just let me try it?**
-By itself, just try it. The published `.img.gz` boots a live session — the root filesystem is read-only and the writable layer lives in RAM — so accounts, files, and settings are gone on the next reboot. From inside that live session, `sudo vulos-install --disk /dev/sdX` installs Vulos onto the machine's own disk so it persists — the primary path for bare metal, though it hasn't yet been run end-to-end against real disk hardware outside development testing. Deploying to a server you already run (`./build.sh --deploy`) and Docker both persist normally today too. See [Two ways to run it](#two-ways-to-run-it).
+By itself, just try it. The published `.img.gz` boots a live session — the root filesystem is read-only and the writable layer lives in RAM — so accounts, files, and settings are gone on the next reboot. To keep a box, deploy to a machine you already run (`./build.sh --deploy`) or use Docker; both persist normally today. Installing from the live session onto the machine's own disk is intended but not yet available — see [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#install-it-to-the-machines-disk). See [Two ways to run it](#two-ways-to-run-it).
 
 **Is the AI free?**
 "Sovereign AI" means your gateway and your keys, not a bundled frontier model. Bring your own provider key (you pay that provider directly) or run local models where your hardware allows, so nothing leaves the box. See [docs/ASSISTANT.md](docs/ASSISTANT.md).
