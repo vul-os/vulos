@@ -143,8 +143,26 @@ function collectNpm() {
     if (!key.startsWith('node_modules/')) continue // file: links to our own repos
     const name = key.slice(key.lastIndexOf('node_modules/') + 'node_modules/'.length)
     if (isFirstParty(name)) continue
+    // PLATFORM-SPECIFIC packages are rendered from lockfile metadata ALONE,
+    // never from node_modules — even when they happen to be installed.
+    //
+    // The package LIST comes from package-lock.json and is the same everywhere.
+    // The licence TEXT was read from node_modules, which is not: npm installs
+    // only the optional binaries matching the host, so @tailwindcss/oxide-
+    // darwin-x64 has its MIT text on a mac and no directory at all on a linux
+    // runner. The generator then wrote the full licence in one case and "ships
+    // no licence file" in the other, and the CI check called the committed file
+    // stale while it was correct on the machine that produced it.
+    //
+    // Deciding from `os`/`cpu` rather than from whether the directory exists
+    // makes the output identical on every machine, which is the only property
+    // that lets a committed file be checked at all. The cost is that these
+    // packages are attributed by their declared SPDX licence instead of their
+    // bundled text — accurate, just less complete, and it is the same on every
+    // platform.
+    const platformSpecific = Array.isArray(meta.os) || Array.isArray(meta.cpu)
     const dir = join(FRONTEND, key)
-    const files = licenseFiles(dir)
+    const files = platformSpecific ? [] : licenseFiles(dir)
     const parts = files.map((f) => ({ file: f, text: readFileSync(join(dir, f), 'utf8').trimEnd() }))
     pkgs.push({
       name,
