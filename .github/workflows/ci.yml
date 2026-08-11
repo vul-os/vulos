@@ -105,7 +105,22 @@ jobs:
       # backend is broken" and is nothing of the kind, which is the worst
       # possible failure mode for the gate everything else depends on.
       - name: Test
-        run: cd backend && go test -p 2 ./...
+        # -timeout 120s per package, well above the ~14s the slowest package
+        # takes, so it only ever fires on a HANG.
+        #
+        # This step failed with exit 137 and no explanation: the runner's
+        # "Complete job" phase reported `Terminate orphan process: pid (sync.test)`,
+        # i.e. one package's test binary hung and was killed. Ten packages never
+        # reported at all, because go test prints results in package order and
+        # everything after the hung one stays buffered — so the log ends at an
+        # unrelated package and reads like a crash there.
+        #
+        # Go's own default timeout is 10 MINUTES per package, longer than this
+        # job survives, so the hang was always killed before Go could dump
+        # goroutines. A bounded timeout turns an uninformative SIGKILL into a
+        # panic with a full stack, which names the test and the line it is
+        # blocked on.
+        run: cd backend && go test -p 2 -timeout 120s ./...
 
       # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
       # backend/e2e/realserver_test.go's package doc for what this proves that
