@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseColor, toHex, contrast, adjustForContrast, accentText, accentSolid,
+  parseColor, toHex, contrast, accentText, accentSolid,
 } from '../core/accentContrast'
 
 // The accent is chosen by the USER, so no stylesheet value can promise that

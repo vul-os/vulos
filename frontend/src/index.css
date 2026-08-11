@@ -65,9 +65,17 @@
   /* Text — a legibility ramp from primary copy down to near-invisible dividers. */
   --text-primary: #f2f4f8;
   --text-secondary: #c3c8d2;
-  --text-tertiary: #8b93a2;
-  --text-muted: #6d7585;
-  --text-faint: #545b69;
+  /* Measured against --bg-elevated #171a21, the LIGHTEST surface these land on,
+     not the #08090c canvas — a value tuned to the canvas reads a full point
+     lower on a menu or popover. Before: faint 2.55:1, muted 3.76:1, both below
+     AA while carrying real widget copy (the day name, the Notifications
+     heading, "Nothing on your calendar."). After: 4.83 / 5.65 / 7.03, three
+     steps that stay distinguishable AND legible.
+     --text-tertiary moved too, not because it failed (5.63) but because raising
+     muted to 5.65 would have made the two the same colour. */
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
   --text-ghost: #414653;
   --text-dim: #2f333d;
   --text-invisible: #23262e;
@@ -186,9 +194,9 @@
   --border-emphasis: #3a4150;
   --text-primary: #f2f4f8;
   --text-secondary: #c3c8d2;
-  --text-tertiary: #8b93a2;
-  --text-muted: #6d7585;
-  --text-faint: #545b69;
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
   --text-ghost: #414653;
   --text-dim: #2f333d;
   --text-invisible: #23262e;

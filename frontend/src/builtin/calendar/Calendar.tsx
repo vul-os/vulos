@@ -278,17 +278,17 @@ export default function Calendar({ initialQuery = '' }: CalendarProps = {}) {
           <div className="flex rounded-md border border-neutral-700/80 overflow-hidden text-[12px] font-mono p-0.5 gap-0.5">
             <button type="button" onClick={() => setView('month')}
               className={`px-3 py-1.5 sm:py-1 rounded transition-colors ${view === 'month' ? 'text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
-              style={view === 'month' ? { background: 'var(--accent)' } : undefined}>Month</button>
+              style={view === 'month' ? { background: 'var(--accent-solid, var(--accent))' } : undefined}>Month</button>
             <button type="button" onClick={() => setView('agenda')}
               className={`px-3 py-1.5 sm:py-1 rounded transition-colors ${view === 'agenda' ? 'text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
-              style={view === 'agenda' ? { background: 'var(--accent)' } : undefined}>Agenda</button>
+              style={view === 'agenda' ? { background: 'var(--accent-solid, var(--accent))' } : undefined}>Agenda</button>
           </div>
           <button
             type="button"
             onClick={() => openEditorForDay(view === 'month' ? month : now)}
             aria-label="New event"
             className="text-[12px] px-3 py-2 sm:py-1.5 rounded-md text-white font-medium transition-all hover:brightness-110 active:scale-[0.97] focus-primary whitespace-nowrap shadow-sm"
-            style={{ background: 'var(--accent)' }}
+            style={{ background: 'var(--accent-solid, var(--accent))' }}
           >
             + New event
           </button>
@@ -376,7 +376,7 @@ function MonthGrid({ days, month, now, byDay, onDay, onEvent }: MonthGridProps) 
               <div className="flex items-center justify-between">
                 <span className="text-[12px] font-semibold grid place-items-center min-w-6 h-6 px-1 rounded-full transition-colors"
                   style={isToday
-                    ? { background: 'var(--accent)', color: 'var(--accent-contrast)' }
+                    ? { background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-contrast)' }
                     : { color: inMonth ? 'var(--text-primary)' : 'var(--text-faint)' }}>
                   {day.getDate()}
                 </span>
@@ -456,7 +456,7 @@ function AgendaList({ groups, now, onEvent, loading }: AgendaListProps) {
         return (
         <div key={g.key}>
           <div className="sticky top-0 z-10 flex items-center gap-2 bg-neutral-950/95 backdrop-blur px-4 py-1.5 text-[12px] font-mono uppercase tracking-wider border-b border-neutral-800/50"
-            style={isToday ? { color: 'var(--accent)' } : undefined}>
+            style={isToday ? { color: 'var(--accent-text, var(--accent))' } : undefined}>
             {isToday && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
             <span className={isToday ? '' : 'text-neutral-500'}>{fmtDayLabel(g.date, now)}</span>
           </div>

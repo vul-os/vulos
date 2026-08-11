@@ -100,16 +100,33 @@ const SCAN = () => {
  * a defect.
  */
 
-async function boot(page: Page) {
+/**
+ * Boot the shell in an explicit theme.
+ *
+ * The theme has to be PINNED. Left alone, this suite booted whatever the
+ * resolved default happened to be — light, as it turned out — so a gate written
+ * to protect "the desktop shell" was measuring half of it, and the dark theme
+ * that most of this UI was designed against went unchecked. The marketing site
+ * taught this the expensive way: a sweep run only against dark passed, and the
+ * light theme turned out to have 576 sub-AA strings behind it.
+ */
+async function boot(page: Page, theme: 'dark' | 'light') {
+  await page.addInitScript((t) => {
+    try { localStorage.setItem('vulos-theme', t) } catch { /* private mode */ }
+  }, theme)
   await installBackend(page)
   await page.goto('/')
   await expect(page.getByTitle('Applications')).toBeVisible({ timeout: 20_000 })
+  await page.evaluate((t) => {
+    document.documentElement.setAttribute('data-theme', t)
+  }, theme)
   await page.waitForTimeout(2000)
 }
 
-test('desktop shell text meets WCAG AA', async ({ page }) => {
+for (const theme of ['dark', 'light'] as const) {
+test(`desktop shell text meets WCAG AA on the ${theme} theme`, async ({ page }) => {
   test.setTimeout(120_000)
-  await boot(page)
+  await boot(page, theme)
 
   const all = await page.evaluate(SCAN)
   // A shell that failed to render would report nothing and pass.
@@ -124,3 +141,4 @@ test('desktop shell text meets WCAG AA', async ({ page }) => {
     'shell text below WCAG AA, measured on composited pixels',
   ).toEqual([])
 })
+}
