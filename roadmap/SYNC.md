@@ -76,7 +76,7 @@ Approved domains are bound to their table and **explicit column list** in `sqlcr
 | Tier | Path | Latency | Durability | Built |
 |---|---|---|---|---|
 | **Hot** | instance ↔ instance CRDT delta exchange over the **LAN fabric** (mDNS + authenticated HTTPS) | low | none (transient) | **real, four domains, LAN only** — `crdtsync` + `sqlcrdt`, wired for `users`, `profiles`, `reminders` and `acctsec_sensitive_actions` |
-| **Hot (WAN)** | the same exchange via **relay rendezvous** for NAT / cross-location | low | none | **not implemented** — seam stated below |
+| **Hot (WAN)** | the same exchange via **relay rendezvous** for NAT / cross-location | low | none | **authenticated, not reachable** — signed per-instance transport is built and tested (see §1 below); no relay is operated and NAT traversal is not done, so two boxes in different places still cannot find each other |
 | **Cold** | periodic **durable checkpoint** to the shared S3 bucket | high | durable | **real** — whole-DB-file `VACUUM INTO` snapshot, not a cross-node merge |
 
 - **Hot path (LAN, real):** each box pulls a delta from a peer, merges it, then pushes back the ops that peer is missing — using the sender's version vector returned on the pull, so the reverse direction costs no extra round trip. Rounds are bounded per peer; a truncated delta is never a correctness problem because merge is idempotent and order-independent.
@@ -88,7 +88,14 @@ The hot path is for *liveness between active peers*; the cold path is for *durab
 
 ---
 
-## The WAN seam (not implemented)
+## The WAN seam (authenticated, not reachable)
+
+> Re-measured 2026-08-11. This section used to be titled "not implemented", which
+> was true when written and is now too strong: the part everyone assumed was
+> missing — per-instance authentication — is built, wired and tested. What is
+> genuinely absent is the ability for two boxes in different locations to reach
+> each other at all. Keeping the old title would have kept a solved problem on
+> the list and hidden the unsolved one behind it.
 
 The engine is transport-agnostic by construction. `crdtsync.PeerSource` is the entire discovery surface:
 
@@ -101,7 +108,9 @@ type SyncPeer struct { InstanceID, BaseURL string; WAN bool }
 
 What still has to be built before that is safe:
 
-1. **Peer identity.** LAN auth is a single shared `X-Fabric-Auth` secret, which is defensible inside a link-local tunnel and is not a peer identity. A WAN path needs per-instance authentication (fabric already has Ed25519 per-instance keys and a roster; the CRDT endpoints do not use them yet). Until then the engine treats a WAN peer as reachable but not trusted, which is why it does not run over one.
+1. **Peer identity — RESOLVED, and this entry was stale.** It said "the CRDT endpoints do not use them yet". They do. `crdtsync/peerauth.go` implements per-instance Ed25519 identity end to end: requests are signed, responses are verified and attributed, and membership is checked against the multi-instance roster deny-by-default. `cmd/server/crdtsync_wiring.go` wires it — `NewPeerIdentity(signer)`, `NewPeerVerifier(pub, roster)`, `AnyOfAuthorizer(secret, PeerKeyAuthorizer(verifier))` — so a WAN peer is authenticated by key, not by the shared secret, which never leaves the LAN. It is covered by nine tests in `wansync_test.go` (signed convergence, unrostered refusal, revocation, unattributable response, replay, offline catch-up) and twelve in `peerauth_test.go`. Mutation-tested 2026-08-11: replacing the roster check with `if false` fails `TestWANSyncRefusesAnUnrosteredPeerAndNothingCrosses` AND `TestWANSyncStopsAtRevocation`, so the enforcement is real rather than merely present. Fail-closed throughout: with no `Identity` or no `WANHTTPClient` a WAN peer is SKIPPED, never downgraded to the LAN client (which skips certificate verification because link-local trust comes from the tunnel).
+
+   What remains is REACHABILITY, not identity: getting two boxes in different locations to exchange packets at all — rendezvous relay operation and NAT traversal. That is a deployment and transport problem, and it is the honest content of "WAN is not delivered" everywhere else in this document.
 2. **Transport safety, already enforced.** The syncer **fails closed** on WAN peers: with no WAN client configured they are *skipped*, never dialled with the LAN client — which skips certificate verification because it points at link-local addresses. A WAN peer must also be `https`. This mirrors `fabric`'s FABRIC-SSRF-01 reasoning.
 3. **NAT traversal / rendezvous liveness** — the relay work tracked separately.
 
