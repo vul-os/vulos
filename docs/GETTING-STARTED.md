@@ -64,12 +64,13 @@ the live USB and boot it: that is the real desktop on real hardware and it tells
 you in ten minutes whether that machine is a good host. To then *keep* it, put
 some Linux on that machine and use the deploy route.
 
-**A fourth route is described elsewhere and does not work yet.** Installing to a
-bare machine's own disk from inside the live session — `vulos-install --disk` —
-is the path the README and the release notes call primary. It cannot be followed
-today; the details are in [Installing to the machine's own
-disk](#install-it-to-the-machines-disk) below, so you do not waste an evening
-discovering it yourself.
+**A fourth route needs a signed release.** Installing to a bare machine's own
+disk from inside the live session — `vulos-install --disk` — is the path the
+README and the release notes call primary. The command ships and finds the image
+now; what it still requires is a release carrying a hand-signed `stable.json`,
+because the release key deliberately never touches a build machine. The details
+are in [Installing to the machine's own disk](#install-it-to-the-machines-disk)
+below, including what the refusal looks like so you can recognise it.
 
 [Building from source](#building-from-source) is at the end, if you want to work on
 Vulos itself.
@@ -289,27 +290,30 @@ This is the route the project README, the release notes and
 [USER-GUIDE.md](USER-GUIDE.md) all call the primary one: Vulos on a bare
 machine's own drive, booting without the USB stick, everything persisting.
 
-**It cannot be followed today, and this page would rather say so than send you
-after it.** Three separate things are missing, each verifiable in the source
-tree:
+**It needs one thing the project cannot ship for you, and this page would rather
+say so than send you after it.** Two of the three things that used to be missing
+are now in place:
 
-1. **The `vulos-install` command is on no shipped image.** It exists as source
-   (`backend/cmd/installer`), but `build.sh` compiles exactly three Go binaries
-   into the image — `vulos-server`, `vulos-init` and `vulos-verify-sig` — and
-   nothing in `build.sh`, the `Makefile` or CI ever builds `./cmd/installer`.
-   Boot the live USB, open Terminal, type `vulos-install`, and the shell will
-   tell you there is no such command.
-2. **The live image does not carry what the installer would read.** Its source
-   defaults to `/run/live/medium/vulos/os-core.squashfs`, and nothing on the
-   live image mounts `/run/live/medium`. The published image puts the OS at
-   `/image.squashfs` on the partition labelled `VULOS-LIVE-DATA`, and that is
-   the only file on it.
-3. **No release ships the signed manifest it requires.** `stable.json` and
-   `stable.json.sig` are produced by an offline signing step, not by the release
-   workflow, so they appear among a release's assets only when the maintainer
-   has signed that version by hand.
+1. ~~The `vulos-install` command is on no shipped image.~~ **Fixed.** `build.sh`
+   now compiles `./cmd/installer` alongside the server, and the build fails if
+   the binary is not present and executable in the rootfs the image is packed
+   from. Boot the live USB, open Terminal, and `vulos-install` is there.
+2. ~~The live image does not carry what the installer would read.~~ **Fixed.**
+   The installer used to default to `/run/live/medium/vulos/os-core.squashfs`, a
+   path no Vulos image creates — the OS is at `/image.squashfs` on the partition
+   labelled `VULOS-LIVE-DATA`. It now searches the paths the image is legitimately
+   reachable under and tells you every one it tried if it finds nothing.
+3. **No release ships the signed manifest it requires — and this one is
+   deliberate.** `stable.json` and `stable.json.sig` are produced by an offline
+   signing step, not by CI, because the release private key never touches a build
+   machine. They appear among a release's assets only when the maintainer has
+   signed that version by hand. Without them the installer refuses to proceed
+   rather than writing an image whose signature it could not check.
 
-If you were wondering whether you had done something wrong: no.
+So the route works when a signed release exists, and refuses clearly when one
+does not. If you hit that refusal, you have not done anything wrong: check the
+release's assets for `stable.json` and `stable.json.sig`, and use one of the
+routes above in the meantime.
 
 ### What it would give you, when it lands
 
@@ -477,8 +481,8 @@ image — it never downloads or stages anything by itself. Staging is admin-only
 and needs a fresh step-up re-authentication. Nothing ever reboots the box for
 you. And what boots a staged slot is the A/B mechanism described under
 [Installing to the machine's own disk](#install-it-to-the-machines-disk), which
-is the path that does not work yet — so on a live USB or a deployed server,
-staging has nothing that will bring the new image up.
+which needs a signed release to install in the first place — so on a live USB or
+a deployed server, staging still has nothing that will bring the new image up.
 
 **Docker:**
 

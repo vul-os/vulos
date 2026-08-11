@@ -331,8 +331,11 @@ Video calling is third-party: install Jitsi Meet / Element Call from the App Sto
 > produced today by running `vulos-install --disk /dev/sdX` from a booted live
 > session (`build.sh --disk` itself is a local build-time target only, used by
 > the boot smoke harness — it is not what ships to a real disk, and it is not a
-> release artifact). `vulos-install --disk` has landed in code but has not yet
-> been exercised end-to-end against real disk hardware. The published `.img.gz`
+> release artifact). `vulos-install --disk` now ships in the image (build.sh
+> compiles it and fails the build if it is not in the rootfs) and resolves the
+> OS image by searching the paths a live medium actually uses. It has NOT been
+> exercised end-to-end against real disk hardware, and it refuses to run without
+> a hand-signed stable.json — which no CI-produced release carries, by design. The published `.img.gz`
 > is a separate, **live session** mode — read-only root, RAM-only writable
 > layer, nothing persists across a reboot — and has no A/B slots or update path
 > to roll back, because it never writes to the machine's disk in the first
