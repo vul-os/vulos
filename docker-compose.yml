@@ -1,4 +1,4 @@
-# Vula OS — Dev Environment
+# Vulos — Dev Environment
 # Usage:
 #   docker compose up        → backend on :8080, frontend on :5173
 #   docker compose up --build → rebuild everything

@@ -1,4 +1,4 @@
-# Vula OS — Debian Container (layered for fast rebuilds)
+# Vulos — Debian Container (layered for fast rebuilds)
 #
 # ── Default build (pre-built frontend + backend binary) ───────────────────────
 #
@@ -176,7 +176,7 @@ RUN mkdir -p /opt/vulos/webroot /opt/vulos/apps \
 
 # Hardened sshd configuration
 RUN mkdir -p /etc/ssh/sshd_config.d \
-    && printf '# Vula OS — hardened sshd config\n\
+    && printf '# Vulos — hardened sshd config\n\
 # Key-only auth — no passwords\n\
 PasswordAuthentication no\n\
 ChallengeResponseAuthentication no\n\

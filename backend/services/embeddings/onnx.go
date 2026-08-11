@@ -148,7 +148,7 @@ def _fallback_token_id(word):
 `
 
 const onnxHelperScript = `#!/usr/bin/env python3
-"""Vula OS — ONNX embedding helper. Runs a single embedding and prints JSON."""
+"""Vulos — ONNX embedding helper. Runs a single embedding and prints JSON."""
 import sys, json, os, numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer

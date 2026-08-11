@@ -516,7 +516,7 @@ func waitForPort(port int, timeout time.Duration) error {
 // This is the bootstrap that warm processes run while waiting for a script path.
 func writeLauncherScript(path string) {
 	const launcher = `"""
-Vula OS Sandbox Pool Launcher — trusted bootstrap, NOT user code.
+Vulos Sandbox Pool Launcher — trusted bootstrap, NOT user code.
 Reads a single line from stdin: the path to the user script.
 Then executes it in the current process, inheriting VULOS_PORT / PORT
 from the environment already set by the Go host.
