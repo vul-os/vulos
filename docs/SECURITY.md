@@ -42,7 +42,7 @@ All of this lives in `backend/services/auth` and `backend/services/passkeys`. At
 | Passkey (WebAuthn) | Primary | Yes — origin-bound, key never leaves the authenticator | Requires `VULOS_RPID`/`VULOS_ORIGIN` in prod |
 | Password | Fallback | No | Rate-limited with IP bans; pairs with the recovery phrase |
 | Recovery phrase | Account recovery | n/a | Offline mnemonic; uniform failure responses |
-| Device PIN | Unlock only | Device-local | **The hardened implementation is not wired up** — the live PIN is salted SHA-256 in the profile row with no lockout ladder. See below |
+| Device PIN | Unlock only | Device-local | **The hardened implementation is not wired up** — the live PIN is salted SHA-256 with no lockout ladder. It is stored in `profile_secrets`, a table that is deliberately excluded from multi-instance replication, so a PIN set on one box does not unlock another. See below |
 | QR / phone approval | Kiosk login | Yes — nothing typed on the untrusted device | Single-use, short-TTL challenge |
 | Fingerprint | Hardware-dependent | Local biometric | Part of the prod hardware checks |
 
@@ -79,7 +79,10 @@ Failed logins are rate-limited with escalating IP bans; admins can inspect and l
 >
 > What actually runs is the per-user profile PIN (`POST /api/auth/pin/set`,
 > `/validate` → `Store.SetPIN`/`ValidatePIN`, `backend/services/auth/profiles.go:131-176`).
-> That is a **single-round salted SHA-256** stored in the profile row: no
+> That is a **single-round salted SHA-256** stored in `profile_secrets` (moved
+> out of the profile row when profiles began replicating between a person's
+> boxes — a PIN belongs to the machine you are standing at, not to the account,
+> so it must not travel): no
 > argon2id, no AES-GCM, no TPM, and **no PIN lockout ladder** — the only backoff
 > is the generic per-IP limiter (5 failures per 10 minutes). It also does no
 > server-side length or digit validation, and `ValidatePIN` returns **true when
@@ -197,7 +200,7 @@ What is actually protected on disk, so you can judge what a stolen disk (without
 | Identity/auth SQLite stores | File mode `0600`, owned by the backend process user; pure-Go SQLite (no CGO C library in the attack surface) |
 | Account master key | Never stored — only password/phrase-wrapped slots; the server cannot decrypt your content-blind data even under subpoena of the disk |
 | Passkey credentials | Sealed with the device keystore (TPM-backed where present) before hitting disk |
-| Device PIN material | *(design, not wired)* argon2id-derived wrap + AES-256-GCM, optionally TPM-re-sealed. **What is stored today** is a salted SHA-256 PIN hash inside the user's profile record |
+| Device PIN material | *(design, not wired)* argon2id-derived wrap + AES-256-GCM, optionally TPM-re-sealed. **What is stored today** is a salted SHA-256 PIN hash in `profile_secrets`, which never replicates to another box |
 | TOTP vault secrets | AES-256-GCM under `~/.vulos/auth/totp/` |
 | Fabric signing key | AES-256-GCM sealed under `VULOS_FABRIC_KEY_HEX` (fail-closed in prod) |
 | Bare-metal trust anchor (`/etc/vulos/trust-anchor.pub`) | Baked into the OS image; controls which signed updates VERITY-02 accepts |
