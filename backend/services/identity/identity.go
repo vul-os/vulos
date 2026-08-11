@@ -28,13 +28,28 @@ const instanceFile = "instance.json"
 const legacyFile = "instance-id"
 
 // Load reads the instance identity from disk, or generates a new one on first boot.
-// home is the user home directory (e.g. os.UserHomeDir()).
-// Preferred path: <home>/.vulos/db/instance.json
-// Fallback path:  <home>/.vulos/instance-id  (NET-06 legacy)
-func Load(home string) (*Instance, error) {
-	dbDir := filepath.Join(home, "db")
+//
+// root is the VULOS DATA ROOT — datadir.Root(), i.e. $VULOS_DATA_DIR or
+// ~/.vulos. It is NOT the user's home directory, and the difference is not
+// cosmetic: this function joins "db" onto what it is given, so a caller that
+// passes os.UserHomeDir() gets ~/db/instance.json, finds nothing there, and
+// silently MINTS A NEW IDENTITY in a directory nothing else reads. The instance
+// ULID is what peers know this box by, so a second identity is not a cosmetic
+// fault — it is a box that has changed who it is.
+//
+// The parameter used to be called `home` and the comment used to say "the user
+// home directory (e.g. os.UserHomeDir())" while promising
+// <home>/.vulos/db/instance.json. Both were wrong; only the paths below are
+// authoritative. A first-boot e2e test believed the comment, looked in
+// <tmp>/.vulos/db/, and had been failing ever since — unnoticed, because that
+// suite is `//go:build e2e` and nothing ran it.
+//
+// Preferred path: <root>/db/instance.json
+// Fallback path:  <root>/instance-id  (NET-06 legacy)
+func Load(root string) (*Instance, error) {
+	dbDir := filepath.Join(root, "db")
 	newPath := filepath.Join(dbDir, instanceFile)
-	legacyPath := filepath.Join(home, legacyFile)
+	legacyPath := filepath.Join(root, legacyFile)
 
 	// Try the preferred new path first.
 	if inst, err := readJSON(newPath); err == nil {
@@ -58,7 +73,7 @@ func Load(home string) (*Instance, error) {
 			}
 			// Migrate to the new path; best-effort.
 			_ = os.MkdirAll(dbDir, 0755)
-			_ = Save(inst, home)
+			_ = Save(inst, root)
 			return inst, nil
 		}
 	}
@@ -75,7 +90,7 @@ func Load(home string) (*Instance, error) {
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return nil, err
 	}
-	if err := Save(inst, home); err != nil {
+	if err := Save(inst, root); err != nil {
 		return nil, err
 	}
 	return inst, nil
@@ -91,8 +106,8 @@ func instanceRegion() string {
 }
 
 // Save persists the instance to ~/.vulos/db/instance.json with mode 0600.
-func Save(inst *Instance, home string) error {
-	dbDir := filepath.Join(home, "db")
+func Save(inst *Instance, root string) error {
+	dbDir := filepath.Join(root, "db")
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return err
 	}

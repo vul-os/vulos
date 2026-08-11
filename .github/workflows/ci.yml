@@ -119,6 +119,21 @@ jobs:
         run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
         timeout-minutes: 8
 
+      # A SECOND `//go:build e2e` package, in a different directory, which the
+      # path above does not match. It had never run anywhere and all three of
+      # its failing tests were asserting on paths the product does not use —
+      # including a negative assertion ("no storage.json after a bad
+      # passphrase") that was checking a directory nothing writes, so it would
+      # have passed however badly the product behaved.
+      #
+      # Listed explicitly rather than folded into a wildcard: `-tags e2e ./...`
+      # would also re-run every ordinary package, and the point here is that a
+      # tagged package is easy to miss precisely because it looks like it is
+      # already covered.
+      - name: Test (e2e — first-boot wizard, join, OTA staging)
+        run: cd backend && go test -tags e2e ./firstboot/e2e/ -count=1 -timeout=5m
+        timeout-minutes: 8
+
   clients-core:
     name: clients/core Build, Vet & Test
     runs-on: ubuntu-latest

@@ -314,7 +314,12 @@ func TestE2E_FirstBootWizard_LocalAccount(t *testing.T) {
 		t.Errorf("after local-account setup: expected 'normal', got %q", r.Mode)
 	}
 
-	instPath := filepath.Join(h.home, ".vulos", "db", "instance.json")
+	// identity.Load joins "db" onto the DATA ROOT it is given — and h.home is
+	// what this harness passes as that root. There is no ".vulos" segment: that
+	// belongs to datadir.Root()'s own resolution (~/.vulos), not to a path built
+	// on top of it. This assertion had the extra segment, so it looked for a file
+	// nothing writes and failed on every run since the suite was written.
+	instPath := filepath.Join(h.home, "db", "instance.json")
 	if _, err := os.Stat(instPath); err != nil {
 		t.Fatalf("instance.json not created: %v", err)
 	}
@@ -453,7 +458,14 @@ func TestE2E_JoinCluster_WrongPassphraseRejected(t *testing.T) {
 	}
 
 	// No storage.json written.
-	storagePath := filepath.Join(h.home, ".vulos", "db", "storage.json")
+	//
+	// The path matters more than usual here, because this is a NEGATIVE
+	// assertion. It used to look under <home>/.vulos/db/, which nothing writes —
+	// so it passed unconditionally and would have kept passing if a bad
+	// passphrase HAD persisted the storage config. routes_storage.go and
+	// firstboot_test.go both use <root>/db/storage.json; that is where the file
+	// would appear, so that is where a test claiming it is absent has to look.
+	storagePath := filepath.Join(h.home, "db", "storage.json")
 	if _, err := os.Stat(storagePath); err == nil {
 		t.Error("storage.json written despite bad passphrase")
 	}
@@ -571,7 +583,7 @@ func TestE2E_OTAStage_TrustAnchorSeeded(t *testing.T) {
 	h := newE2EHarness(t)
 
 	// Verify the anchor key file exists.
-	anchorPath := filepath.Join(h.home, ".vulos", "keys", "ota-anchor.json")
+	anchorPath := filepath.Join(h.home, "keys", "ota-anchor.json")
 	if _, err := os.Stat(anchorPath); err != nil {
 		t.Fatalf("ota-anchor.json not found: %v", err)
 	}
@@ -618,7 +630,7 @@ func TestE2E_OTAStage_TrustAnchorSeeded(t *testing.T) {
 func TestE2E_OTAStage_BrokerPubkeySeeded(t *testing.T) {
 	h := newE2EHarness(t)
 
-	brokerPath := filepath.Join(h.home, ".vulos", "keys", "broker-pubkey.json")
+	brokerPath := filepath.Join(h.home, "keys", "broker-pubkey.json")
 	data, err := os.ReadFile(brokerPath)
 	if err != nil {
 		t.Fatalf("broker-pubkey.json: %v", err)
