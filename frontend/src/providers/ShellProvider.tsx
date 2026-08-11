@@ -452,36 +452,52 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
 
 // Persist shell state to localStorage (survives refresh)
 const STORAGE_KEY = 'vulos-shell-state'
+/**
+ * The structured-cloneable projection of shell state.
+ *
+ * Extracted from saveShellState because TWO paths need it and only one had it.
+ * `component` on a window is a React element, which localStorage never saw
+ * (JSON.stringify would have dropped it) but BroadcastChannel does: postMessage
+ * structured-clones, and a React element throws
+ *   "Symbol(react.transitional.element) could not be cloned".
+ *
+ * Publishing raw state therefore threw an uncaught error the moment any window
+ * with a React component was open — which is every builtin app. Three e2e specs
+ * were failing on it, and cross-tab mirroring never delivered a single message.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function serializableShellState(state: ShellState): SavedShellState {
+  const toSave: SavedShellState = {
+    desktops: {},
+    activeDesktop: state.activeDesktop,
+  }
+  for (const [id, desk] of Object.entries(state.desktops)) {
+    toSave.desktops[id] = {
+      ...desk,
+      windows: desk.windows
+        // Keep windows we can faithfully rebuild on reload: URL/web-view apps,
+        // and builtin React apps (rebuilt from their appId). Stream / browser /
+        // raw-html windows need a live backend session, so they're dropped.
+        .filter(w => (w.url && !w.component && !w.html) || isBuiltinComponent(w.appId))
+        .map(w => {
+          const base = {
+            id: w.id, appId: w.appId, title: w.title, icon: w.icon,
+            position: w.position, size: w.size, minimized: w.minimized,
+            _tile: w._tile || null, _maximized: !!w._maximized,
+          }
+          return isBuiltinComponent(w.appId)
+            ? { ...base, _builtin: true }
+            : { ...base, url: w.url }
+        }),
+    }
+  }
+  return toSave
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
 export function saveShellState(state: ShellState): void {
   try {
-    // Only persist serializable window data (strip component/html which can be large)
-    const toSave: SavedShellState = {
-      desktops: {},
-      activeDesktop: state.activeDesktop,
-    }
-    for (const [id, desk] of Object.entries(state.desktops)) {
-      toSave.desktops[id] = {
-        ...desk,
-        windows: desk.windows
-          // Persist windows we can faithfully rebuild on reload: URL/web-view
-          // apps, and builtin React apps (rebuilt from their appId). Stream /
-          // browser / raw-html windows need a live backend session, so they're
-          // intentionally dropped.
-          .filter(w => (w.url && !w.component && !w.html) || isBuiltinComponent(w.appId))
-          .map(w => {
-            const base = {
-              id: w.id, appId: w.appId, title: w.title, icon: w.icon,
-              position: w.position, size: w.size, minimized: w.minimized,
-              _tile: w._tile || null, _maximized: !!w._maximized,
-            }
-            return isBuiltinComponent(w.appId)
-              ? { ...base, _builtin: true }
-              : { ...base, url: w.url }
-          }),
-      }
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableShellState(state)))
   } catch { /* noop */ }
 }
 // eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
@@ -636,7 +652,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     if (session.role !== 'writer') return
     const timer = setTimeout(() => {
       saveShellState(state)
-      session.publish(state)
+      session.publish(serializableShellState(state))
     }, 500)
     return () => clearTimeout(timer)
   }, [state.desktops, state.activeDesktop, session.role, session.publish, session])
