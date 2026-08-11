@@ -582,3 +582,82 @@ func TestNewRemindersStoreDBInMemory(t *testing.T) {
 		t.Fatalf("expected 1 reminder, got %+v", list)
 	}
 }
+
+// ── SCHEDULER: what exactly-once does NOT cover — a fleet of boxes ───────────
+//
+// TestReminderSchedulerExactlyOnceConcurrent above proves the guarantee for
+// racing sweeps over ONE store, which is the single-box case. A fleet is a
+// different shape and the guarantee does not reach it: reminders REPLICATE
+// (crdtsync policy approves `sql:reminders`, on the stated grounds that "a
+// reminder is only useful if it fires wherever you are"), but each box runs its
+// own ReminderScheduler over its own SQLite file. MarkFired is atomic within a
+// database and there is one database per box, so every box wins its own flip.
+//
+// This is a CHARACTERIZATION test: it records what the code does today, which is
+// notify once PER BOX. It is not an endorsement — see the residual documented in
+// docs/MULTI-INSTANCE.md. It exists so that a change in this behaviour is a
+// deliberate edit to an assertion rather than a silent difference nobody sees
+// until a user reports being reminded twice.
+//
+// Note what this means for the convergent state: `done` ends up 1 everywhere and
+// the databases AGREE. Convergence is not the property at stake. The notification
+// is a side effect fired on the way to convergence, and side effects do not merge.
+func TestReminderFiresOncePerBoxAcrossAFleet(t *testing.T) {
+	boxA := newTestRemindersStore(t)
+	boxB := newTestRemindersStore(t)
+
+	dueAt := future(30 * time.Second)
+	rem, err := boxA.SetReminder("alice", "take the bread out", dueAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Replication, as crdtsync would deliver it: the SAME row, same id, on box B.
+	// Inserting a fresh reminder instead would prove nothing — two different
+	// reminders firing twice is correct behaviour.
+	if _, err := boxB.db.Exec(
+		`INSERT INTO reminders (id, user_id, text, remind_at, created_at, done) VALUES (?,?,?,?,?,0)`,
+		rem.ID, "alice", "take the bread out", dueAt.UTC().Unix(), time.Now().UTC().Unix(),
+	); err != nil {
+		t.Fatalf("simulate replication to box B: %v", err)
+	}
+
+	notifA, notifB := &capturingNotifier{}, &capturingNotifier{}
+	schedA, schedB := NewReminderScheduler(boxA, notifA), NewReminderScheduler(boxB, notifB)
+	after := func() time.Time { return dueAt.Add(time.Second) }
+	schedA.now, schedB.now = after, after
+
+	// Both boxes sweep before either one's `done = 1` has replicated to the other.
+	// That window is 15s wide by default (reminderPollInterval) and the two boxes'
+	// tickers are unsynchronised, so it is ordinary, not adversarial.
+	if _, err := schedA.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := schedB.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	total := len(notifA.fired) + len(notifB.fired)
+	if total != 2 {
+		t.Fatalf("expected the current per-box behaviour to notify twice for one reminder, got %d "+
+			"(if this now says 1, cross-box suppression was added — update this test and the "+
+			"residual in docs/MULTI-INSTANCE.md rather than deleting either)", total)
+	}
+	if len(notifA.fired) != 1 || len(notifB.fired) != 1 {
+		t.Fatalf("each box should have fired it once: A=%d B=%d", len(notifA.fired), len(notifB.fired))
+	}
+	if notifA.fired[0].id != notifB.fired[0].id {
+		t.Fatalf("the two notifications must be the SAME reminder for this to be a duplicate: %s vs %s",
+			notifA.fired[0].id, notifB.fired[0].id)
+	}
+
+	// Once box A's flip replicates, box B stops re-firing: the duplicate is a
+	// window, not a permanent condition. This is the half that already works, and
+	// it is why the fix is about the window rather than about the mechanism.
+	if _, err := boxB.db.Exec(`UPDATE reminders SET done = 1 WHERE id = ?`, rem.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := schedB.Sweep(context.Background()); n != 0 {
+		t.Fatalf("box B re-fired a reminder already marked done, got %d", n)
+	}
+}

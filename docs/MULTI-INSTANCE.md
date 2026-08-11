@@ -45,9 +45,40 @@ Everything else is either replicated today or named in
 `backend/internal/crdtsync/policy.go` with the reason it is not — that file is
 the source of truth, and it records refusals as deliberately as approvals.
 
-### One residual you should know about
+### Two residuals you should know about
 
-Your password hash replicates. That is what makes an account usable on a second
+**A reminder can notify you once per box.**
+
+Reminders replicate, which is the point — one is only useful if it fires
+wherever you are. But each box runs its own scheduler over its own database,
+sweeping every 15 seconds on its own clock. Marking a reminder done is atomic
+*within* a database, and there is one database per box, so each box can win its
+own flip and send its own notification before the other's "done" has arrived.
+
+In practice you see the duplicate when two boxes sweep within the replication
+window of each other, or when a box that was off comes back and catches up
+before sync has converged. Once the flip does replicate, the reminder stays
+fired everywhere — the duplicate is a window, not a permanent condition, and the
+databases agree afterwards. Convergence was never the problem: a notification is
+a side effect on the way to convergence, and side effects do not merge.
+
+Making this exactly-once would need the boxes to agree on which one notifies,
+and agreeing on that means electing a coordinator — which is the property this
+design gives up on purpose. The honest trade is a reminder that occasionally
+arrives twice rather than a fleet with a box whose failure stops your reminders.
+`TestReminderFiresOncePerBoxAcrossAFleet` pins the current behaviour so it
+cannot change without someone editing an assertion.
+
+**Push notifications are per box, and that is not a bug you can configure away.**
+
+Each box generates its own VAPID key pair on first boot (`db/vapid.json`) and
+keeps subscriptions in its own `db/push_subs.sqlite`, outside the replicated
+set. A subscription your browser created against one box is bound to that box's
+key, and no other box holds the private half. Turn notifications on separately in
+each box's UI — and expect the reminder duplication above to reach your phone
+once per box you did that on.
+
+**Your password hash replicates.** That is what makes an account usable on a second
 box, and bcrypt is designed to be stored — its cost factor is the defence, and
 it does not weaken with the number of copies.
 
