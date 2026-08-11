@@ -104,11 +104,27 @@ vulos-server backup --db ~/.vulos/db/files.db
 | `VULOS_S3_ENDPOINT` | `localhost:9000` | Cluster S3 endpoint |
 | `VULOS_S3_BUCKET` | `vulos-cluster` | Bucket |
 | `VULOS_S3_ACCESS_KEY` / `VULOS_S3_SECRET_KEY` | _(required)_ | Credentials |
-| `VULOS_S3_USE_SSL` | `false` | TLS |
+| `VULOS_S3_USE_SSL` | `false` | TLS. **Required for any endpoint that is not on this machine** — see below. |
 | `VULOS_CLUSTER_PASSPHRASE` | _(required)_ | **Encrypts the snapshot** — the second secret to keep |
 | `VULOS_BACKUP_DB` | `~/.vulos/db/auth.db` | Which database the default snapshot covers |
 | `VULOS_NODE_ID` | hostname | Snapshot labeling |
 | `VULOS_BACKUP_INTERVAL` | _(unset = off)_ | e.g. `1h` — periodic automatic snapshots |
+
+> **TLS is not optional once the endpoint leaves this machine.** The cluster
+> subsystem encrypts objects with **SSE-C** — server-side encryption with a
+> customer-provided key — which means the key is not used on your box. It travels
+> to the endpoint in a request header on every PUT and GET, and the endpoint does
+> the encrypting and decrypting.
+>
+> Over TLS to a MinIO you run, that is fine. Over plain HTTP to anything off-box
+> it is not: the key and the object body are both readable by whatever sits on the
+> path, and "encrypted at rest" is worth nothing to someone who watched the key go
+> past. `VULOS_S3_USE_SSL` defaults to `false` because the default endpoint is
+> `localhost:9000`, where it is harmless.
+>
+> Vulos now **refuses to start this client in production** (`--env=prod`) when the
+> endpoint is off-box and TLS is off, and logs a warning outside production. If
+> you point `VULOS_S3_ENDPOINT` at another host, set `VULOS_S3_USE_SSL=true`.
 
 **HTTP surface** (admin-only; registered only when the cluster S3 client is configured):
 

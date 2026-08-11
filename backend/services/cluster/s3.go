@@ -75,6 +75,9 @@ func NewClient(ctx context.Context, cfg S3Config, passphrase string) (*Client, e
 	if !cfg.Configured() {
 		return nil, errors.New("cluster: S3 not configured (check VULOS_S3_* env vars)")
 	}
+	if err := guardTransport(cfg); err != nil {
+		return nil, err
+	}
 
 	mc, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
@@ -103,6 +106,11 @@ func NewClient(ctx context.Context, cfg S3Config, passphrase string) (*Client, e
 func NewClientWithKey(cfg S3Config, key []byte) (*Client, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("cluster: encryption key must be 32 bytes, got %d", len(key))
+	}
+	// Checked here too, not only in NewClient: this constructor is a separate
+	// door into the same transport.
+	if err := guardTransport(cfg); err != nil {
+		return nil, err
 	}
 	mc, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
