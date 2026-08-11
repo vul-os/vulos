@@ -56,17 +56,23 @@ list.
 |---|---|---|---|
 | **[Docker](#docker-see-it-in-two-minutes)** | "Show me what this is." No hardware commitment, works on the laptop you're reading this on. | Yes — in a Docker volume | No |
 | **[Live USB](#live-usb-run-it-on-real-hardware)** | "Will it run on that old machine?" The real desktop on real hardware, writing nothing to the machine's disk. | **No.** Everything is gone on reboot. | Yes |
-| **[Install to disk](#install-it-to-the-machines-disk)** | "This is my box now." Permanent, boots from its own drive. | Yes | Yes |
+| **[Deploy over SSH](#deploy-onto-a-linux-machine-you-already-run)** | "I already have a machine for this." A VPS, or any Linux box on your desk you can SSH into as root. | Yes | Yes |
 
-**The recommendation:** if you have a spare machine and you want to keep it,
-flash the live USB, boot it, confirm the machine is happy, and then install to
-disk from inside that live session. That is one sitting, and the live USB is
-your fallback if the install goes badly. If you only want to look at Vulos
-today, use Docker — you can throw it away with one command.
+**The recommendation:** if you just want to see Vulos today, use Docker — one
+command, and one command to throw it away. If you have a spare machine, flash
+the live USB and boot it: that is the real desktop on real hardware and it tells
+you in ten minutes whether that machine is a good host. To then *keep* it, put
+some Linux on that machine and use the deploy route.
 
-Two other paths exist and are covered at the end: [installing onto a
-Linux server you already SSH into](#other-ways-in), and [running from
-source](#other-ways-in) if you want to work on Vulos itself.
+**A fourth route is described elsewhere and does not work yet.** Installing to a
+bare machine's own disk from inside the live session — `vulos-install --disk` —
+is the path the README and the release notes call primary. It cannot be followed
+today; the details are in [Installing to the machine's own
+disk](#install-it-to-the-machines-disk) below, so you do not waste an evening
+discovering it yourself.
+
+[Building from source](#building-from-source) is at the end, if you want to work on
+Vulos itself.
 
 ---
 
@@ -218,9 +224,8 @@ Those are real values, not placeholders. Read them like this:
 
 The `https://` line only appears when HTTPS actually came up.
 
-This status screen is what the **live USB** shows. A machine you have installed
-to disk boots differently — see [After the install, what changes on
-screen](#after-the-install-what-changes-on-screen).
+This status screen belongs to a systemd unit (`vulos-console.service`), so you
+get it on the live USB and on a machine set up with the deploy route.
 
 ### Reaching it from another device
 
@@ -233,139 +238,120 @@ browser will warn you once. Accepting it is expected on your own LAN.
 
 ---
 
+## Deploy onto a Linux machine you already run
+
+If you have a VPS, or a spare machine with any Debian-family Linux already on
+it, this is the way to get a Vulos box that keeps its state. The deploy script
+builds Vulos on **your** machine and pushes the result onto **that** one over
+SSH, then runs it as a systemd service.
+
+**What you need:**
+
+- The target reachable over SSH **as root with a key** — the script tests the
+  connection with `BatchMode`, so a password prompt counts as a failure.
+- A **Debian-family** target. First-run setup uses `apt-get` and edits
+  `/etc/apt/sources.list.d/debian.sources`.
+- **Go 1.25+ and Node 22+ on your own machine**, because the build happens
+  locally before anything is copied.
+
+```bash
+git clone https://github.com/vul-os/vulos.git
+cd vulos
+./build.sh --deploy YOUR_SERVER_IP
+```
+
+It verifies SSH first, installs system packages on the first run only (marked
+by `/var/lib/vulos/.setup-complete`, so later deploys skip it), hardens sshd to
+key-only, copies `vulos-server` and `vulos-init` to `/usr/local/bin/`, and
+starts a `vulos.service` unit. Then open port 8080 on that host in a browser and
+you are in the [setup wizard](#first-boot-the-setup-wizard).
+
+A deployed box has no kiosk browser — the deploy package set deliberately omits
+one, because a server does not need a screen. You drive it from a browser
+elsewhere, which is how Vulos is meant to be used anyway.
+
+**On the `--domain` flag:** it cannot be used alone. Automatic TLS is issued
+over DNS-01, so `--domain` without DNS credentials in the same command exits
+immediately:
+
+```bash
+./build.sh --deploy YOUR_SERVER_IP --domain os.example.com --dns-namecheap USER APIKEY
+```
+
+Full detail, including what Caddy is doing and how upgrades work, is in
+[DEPLOY.md](DEPLOY.md).
+
+---
+
 ## Install it to the machine's disk
 
-This is what turns a live session into a box you keep: Vulos on the machine's
-own drive, booting without the USB stick, with everything you create surviving a
-reboot.
+This is the route the project README, the release notes and
+[USER-GUIDE.md](USER-GUIDE.md) all call the primary one: Vulos on a bare
+machine's own drive, booting without the USB stick, everything persisting.
 
-> **Read this before you run anything below.**
->
-> `vulos-install --disk` **destroys everything on the target drive.** It writes a
-> new partition table over it — every existing partition, operating system and
-> file is gone, and there is no undo and no recovery. It does not inspect the
-> disk first, so it will not warn you that Windows was on it.
->
-> It also has not yet been run end-to-end against a physical disk on real
-> hardware outside development testing. It is real code that runs today, not a
-> placeholder — but keep the live USB handy, and do not point it at a machine
-> holding anything you have not backed up.
+**It cannot be followed today, and this page would rather say so than send you
+after it.** Three separate things are missing, each verifiable in the source
+tree:
 
-### What you get, and what you don't
+1. **The `vulos-install` command is on no shipped image.** It exists as source
+   (`backend/cmd/installer`), but `build.sh` compiles exactly three Go binaries
+   into the image — `vulos-server`, `vulos-init` and `vulos-verify-sig` — and
+   nothing in `build.sh`, the `Makefile` or CI ever builds `./cmd/installer`.
+   Boot the live USB, open Terminal, type `vulos-install`, and the shell will
+   tell you there is no such command.
+2. **The live image does not carry what the installer would read.** Its source
+   defaults to `/run/live/medium/vulos/os-core.squashfs`, and nothing on the
+   live image mounts `/run/live/medium`. The published image puts the OS at
+   `/image.squashfs` on the partition labelled `VULOS-LIVE-DATA`, and that is
+   the only file on it.
+3. **No release ships the signed manifest it requires.** `stable.json` and
+   `stable.json.sig` are produced by an offline signing step, not by the release
+   workflow, so they appear among a release's assets only when the maintainer
+   has signed that version by hand.
 
-Honest about this, because the words "verified boot" get used loosely:
+If you were wondering whether you had done something wrong: no.
 
-- **You get a persistent ext4 root** labelled `vulos-root`, and a signed release
-  manifest is verified at **every** boot. If that signature check fails, the box
-  halts rather than booting — deliberately.
-- **You do not get dm-verity on this path.** The install writes a plain ext4
-  root, so there is no block-level integrity device for the signed root hash to
-  be bound to. The boot says so in the log rather than pretending otherwise.
-- **You do not get A/B slot updates on this path.** The initramfs code that
-  reads `boot-state.json` and boots the slot it names only runs for a root
-  booted in live mode, and the boot entry this installer writes is not that.
-  Staging an update from Settings on such a box therefore has nothing that will
-  boot it. To move to a newer version, boot a newer live USB and install again.
+### What it would give you, when it lands
 
-Both of those exist and are proven by real reboots — but on the netboot-install
-path, which this page does not walk you through and which has no UI yet.
-[ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal)
-has the exact bounds of that proof.
+Worth stating precisely, because "verified boot" gets used loosely and the
+installer's own source is clear about its limits:
 
-### 1. Boot the live USB and open Terminal
+- **A persistent ext4 root** labelled `vulos-root`, with the signed release
+  manifest verified at **every** boot. A failed signature check halts the boot
+  rather than continuing — deliberately.
+- **No dm-verity.** The installer writes a plain ext4 root, so there is no
+  block-level integrity device for the signed root hash to be bound to. The
+  boot logs that plainly rather than implying otherwise.
+- **No A/B slot updates.** The initramfs code that reads `boot-state.json` and
+  boots the slot it names exits early unless the kernel command line says
+  `vulos.live`, and the boot entry this installer writes does not. Staging an
+  update from Settings on such a disk would have nothing that boots it.
+- **Destructive, with one confirmation.** It writes a new GPT over the target —
+  every partition, OS and file gone, no undo — and it does not inspect the disk
+  first, so it cannot warn you what was there. It prints
+  `WARNING: All data on /dev/sdX will be overwritten.` and waits, and that is
+  the only guard.
+- **Unproven on real hardware.** It has not been run end-to-end against a
+  physical disk outside development testing.
 
-Boot the stick as above and go through the setup wizard. Use throwaway details —
-nothing in this session survives the install.
+dm-verity and the A/B slot flip are both real and both proven by actual
+reboots — but on the **netboot install** path, a different mechanism that has no
+user interface yet and that this page does not cover. [ARCHITECTURE.md → OS
+distribution](ARCHITECTURE.md#os-distribution-bare-metal) states the exact
+bounds of those proofs.
 
-On the desktop, open **Terminal** from the Launchpad, from the dock, or with
-Cmd-K.
+### What to do instead
 
-<picture>
-  <img src="screenshots/terminal-light.png" alt="The Terminal app: a real shell on the machine you're running Vulos from" width="880" />
-</picture>
-
-### 2. Fetch the signed manifest for this release
-
-The installer refuses to write a system that could not be verified at boot, so
-it needs a **signed manifest** — `stable.json` plus its detached signature
-`stable.json.sig` — matching the exact release you downloaded. These are release
-assets. You cannot generate them: they only appear once the maintainer has signed
-that version offline (the reasoning is in [decisions.md](decisions.md)).
-
-```bash
-curl -fsSLO https://github.com/vul-os/vulos/releases/download/vX.Y.Z/stable.json
-curl -fsSLO https://github.com/vul-os/vulos/releases/download/vX.Y.Z/stable.json.sig
-```
-
-Download **both**, into the same directory. The installer always looks for the
-signature at the manifest's path with `.sig` appended — there is no separate
-flag for it.
-
-**If a release does not list those two files among its assets, it has not been
-signed, and a disk install cannot be verified for it.** The live USB is
-unaffected; use a signed release, or stay on the live session for now.
-
-### 3. Identify the target disk
-
-```bash
-lsblk
-```
-
-Pick the **disk**, not a partition — `/dev/sda`, never `/dev/sda1`. If you are
-installing onto the same machine you booted the stick from, make very sure you
-are choosing the internal drive and not the USB stick you are running from.
-
-### 4. Install
-
-```bash
-sudo vulos-install --disk /dev/sdX --disk-manifest ./stable.json
-```
-
-It must run as root, and it stops to confirm before touching anything:
-
-```
-WARNING: All data on /dev/sdX will be overwritten.
-Press Enter to continue, Ctrl-C to abort...
-```
-
-This is your last exit. Ctrl-C here changes nothing.
-
-Once you continue, it verifies the manifest signature against the trust anchor
-baked into the image **before** the disk is touched — a bad or missing signature
-aborts with everything still intact. After that it partitions the drive (a FAT32
-EFI System Partition, then an ext4 root labelled `vulos-root`), unpacks the
-system, copies the manifest and signature into the new root's `/etc/vulos/`, and
-installs the bootloader, printing a percentage as it goes.
-
-The percentage sits at 20% for a while during the unpack. That is the longest
-step and it reports no progress of its own; it is not stuck.
-
-**What you should see at the end:** a line saying the install is complete and
-that the disk now boots Vulos from its own drive. Anything else — particularly a
-`FAILED:` line — means nothing usable was written, and the message names the
-reason.
-
-### 5. Reboot into it
-
-Power off, remove the USB stick, and boot normally.
-
-### After the install, what changes on screen
-
-An installed disk boots into the kiosk browser and stays there. Two differences
-from the live session are worth knowing:
-
-- **The console status screen is not there.** It is a systemd unit, and an
-  installed disk boots Vulos's own init directly rather than systemd. To check on
-  the box, use a browser from another device.
-- **The desktop starts even with no monitor attached.** The boot entry the
-  installer writes tells it to, which is the opposite of the live USB's
-  behaviour.
+For a machine that keeps its state, use the [deploy
+route](#deploy-onto-a-linux-machine-you-already-run): install any Linux you like
+on the machine, then push Vulos onto it over SSH. You get a persistent box on
+hardware you own today, without the bootloader work.
 
 ---
 
 ## First boot: the setup wizard
 
-However you got here — Docker, live USB or an installed disk — the first time
+However you got here — Docker, live USB or a deployed server — the first time
 you open Vulos it checks whether an account exists. If none does, you get the
 setup wizard instead of a sign-in screen.
 
@@ -480,17 +466,19 @@ curl -b "$COOKIE" http://localhost:8080/metrics | grep vulos_
 **Live USB.** There is no upgrade step — it boots exactly the image on the stick
 every time. Download a newer `.img.gz` and reflash.
 
-**Installed to disk with `vulos-install --disk`.** Boot a newer live USB and run
-the install again. **Settings → OS Update** will show you the running and latest
-versions and will let you stage a release, but nothing on this disk layout will
-boot a staged slot — see [What you get, and what you
-don't](#what-you-get-and-what-you-dont) above.
+**Deployed with `./build.sh --deploy`.** Re-run the same deploy command; it
+skips the one-time package install and replaces the binaries. See
+[DEPLOY.md → Upgrading](DEPLOY.md#upgrading).
 
-Either way the update check itself is passive: Vulos verifies its release
-channel in the background against the trust chain baked into the image, and that
-check **never** downloads or stages anything on its own. Staging is always an
-explicit **Download & stage** click, is admin-only, and requires a fresh
-step-up re-authentication. Nothing ever reboots the box for you.
+**Settings → OS Update** shows the running version and the latest verified one
+and offers **Download & stage**. Understand what it is before you rely on it:
+the background check only ever *verifies* against the trust chain baked into the
+image — it never downloads or stages anything by itself. Staging is admin-only
+and needs a fresh step-up re-authentication. Nothing ever reboots the box for
+you. And what boots a staged slot is the A/B mechanism described under
+[Installing to the machine's own disk](#install-it-to-the-machines-disk), which
+is the path that does not work yet — so on a live USB or a deployed server,
+staging has nothing that will bring the new image up.
 
 **Docker:**
 
@@ -538,17 +526,23 @@ Usually it means there is no LAN address yet because DHCP has not finished.
 No DHCP lease. Check the cable, or attach a monitor and join WiFi through the
 setup wizard.
 
-**`vulos-install --disk` fails signature verification.**
-`stable.json` and `stable.json.sig` do not match the release you are installing,
-or one of them was not found. The signature must be in the same directory as the
-manifest with `.sig` appended. Re-download both from that exact release's assets.
-Nothing was written to the disk.
+**`vulos-install: command not found` in the live session's Terminal.**
+Expected, not a broken install. That binary is not compiled into any shipped
+image — see [Installing to the machine's own
+disk](#install-it-to-the-machines-disk).
 
-**A disk install boots and then the screen stays on the splash.**
-Report it. This was a real bug — the image shipped no kiosk browser, so the box
-sat at a finished-looking splash forever with the explanation only in the
-journal. It is fixed (the image now ships `cog`), and the failure is now loud
-rather than silent, but the symptom is distinctive enough to be worth naming.
+**The boot splash reaches 100% and stays there forever.**
+Worth reporting with the machine's details. This was a real bug: the image
+shipped no kiosk browser at all, so the box sat on a finished-looking splash
+with the only explanation in the journal. It is fixed — the image now ships
+`cog` — and the failure is now announced on screen rather than in silence, but
+the symptom is distinctive enough to be worth naming here.
+
+**The desktop never appears, and the console says a kiosk browser is missing.**
+That is the fixed failure above, being loud. The message names what it looked
+for (`cog`, `chromium`, `chromium-browser`) and reminds you the server is still
+running and reachable on port 8080 — so you can finish setup from another
+device.
 
 **The desktop hangs on first boot under Docker.**
 `/dev/uinput` is not reachable in the container. Vulos tries to create it itself
@@ -567,25 +561,9 @@ see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
-## Other ways in
+## Building from source
 
-**Onto a Linux server you already SSH into.** If you have a VPS or home server
-running some other distro, you do not need the USB at all — the deploy script
-pushes the whole stack (Go binary, frontend, GStreamer, and Caddy for TLS) over
-SSH as root and wires up a systemd unit:
-
-```bash
-git clone https://github.com/vul-os/vulos.git
-cd vulos
-./build.sh --deploy YOUR_SERVER_IP
-```
-
-Note that `--domain` is not usable on its own: automatic TLS is issued over
-DNS-01, so it requires DNS credentials in the same command
-(`--domain os.example.com --dns-namecheap USER APIKEY`) or the script refuses to
-start. Full detail in [DEPLOY.md](DEPLOY.md).
-
-**From source, to work on Vulos itself.** Node 22+ and Go 1.25+:
+To work on Vulos itself. Node 22+ and Go 1.25+:
 
 ```bash
 git clone https://github.com/vul-os/vulos.git
