@@ -23,8 +23,10 @@ sudo journalctl -u vulos -f                   # follow live
 ```
 
 **Bare metal — installed to disk with `vulos-install --disk`.** Not a state any
-box is in today: nothing in `build.sh`, the `Makefile` or CI compiles
-`backend/cmd/installer`, so that binary is on no shipped image (see
+box is in today — though no longer for the reason this once gave. `build.sh`
+builds `./cmd/installer`, copies it to `/usr/local/bin/vulos-install` in the
+rootfs, and fails the build if it is not executable there, so the command does
+ship. What stops the route is the hand-signed `stable.json` it requires (see
 [GETTING-STARTED.md → Installing to the machine's own
 disk](GETTING-STARTED.md#install-it-to-the-machines-disk)). If you do produce
 such a disk, note that these commands would not apply to it either: the boot
@@ -116,8 +118,8 @@ docker run ... --device /dev/uinput ...
 **Fix:** map a different host port (`-p 9090:8080`) or set `PORT` for a bare-metal run.
 
 **Symptom:** `vulos-install: command not found` in the live session's Terminal.
-**Likely cause:** not a broken image. `backend/cmd/installer` is compiled by nothing — `build.sh` builds `vulos-server`, `vulos-init` and `vulos-verify-sig` and stops there — so the binary is on no shipped image.
-**Fix:** none available; use a route that works today. See [GETTING-STARTED.md → Installing to the machine's own disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
+**Likely cause:** you are not in a live session, or the image predates the command. `vulos-install` is installed to `/usr/local/bin` in the OS image's rootfs only — a Docker container and a `./build.sh --deploy` target are ordinary Linux systems and never receive it. On an image built before `./cmd/installer` was added to the build, it is genuinely absent.
+**Fix:** boot the live USB and open Terminal there; if you already are, reflash with a current `.img.gz`. Note that finding the command is not the same as being able to install: `--disk` still needs a release carrying a hand-signed `stable.json`, and the next entry covers the refusal you will see. See [GETTING-STARTED.md → Installing to the machine's own disk](GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 **Symptom:** `vulos-install --disk` reports a manifest verification failure.
 **Likely cause:** `stable.json`/`stable.json.sig` are missing from, or don't match, the release you're installing — the installer refuses to write an unverifiable system rather than installing insecurely. Note that those two files are offline signing output, not release-workflow output, so a release can legitimately ship without them.

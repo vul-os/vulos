@@ -231,7 +231,7 @@ Vulos is built to be owned end to end, and there are two ways to put it on hardw
 
 (`--domain` needs DNS credentials in the same command — automatic TLS is issued over DNS-01 — e.g. `--domain os.example.com --dns-namecheap USER APIKEY`.)
 
-Installing onto a bare machine's **own disk** from inside the live session, via `vulos-install --disk`, is the path this project intends as primary. It is not available yet: that binary is compiled by nothing in the build, so it is absent from the image that would run it. The specifics are in [docs/GETTING-STARTED.md → Installing to the machine's own disk](docs/GETTING-STARTED.md#install-it-to-the-machines-disk).
+Installing onto a bare machine's **own disk** from inside the live session, via `vulos-install --disk`, is the path this project intends as primary. It is not available yet, though the reason has narrowed: the binary now ships — `build.sh` builds `./cmd/installer` into `/usr/local/bin/vulos-install` and fails if it is missing from the rootfs — and what remains is that no release yet carries the hand-signed `stable.json` the installer requires before it will write a system, because the release key never touches a build machine. The specifics are in [docs/GETTING-STARTED.md → Installing to the machine's own disk](docs/GETTING-STARTED.md#install-it-to-the-machines-disk).
 
 **Try it live from a flash drive — for testing, demos, or a disposable machine.** The published `.img.gz` boots a full Vulos desktop straight off a USB stick:
 
