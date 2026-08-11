@@ -88,6 +88,70 @@ const SCAN = () => {
 
   const out: { text: string; ratio: number; need: number; color: string; bg: string; size: number }[] = []
 
+  // GENERATED CONTENT — ::before/::after text — is also invisible to a
+  // textContent walk, and the docs site renders callout labels ("NOTE",
+  // "WARNING") this way. Both corpora measure clean today; the point of scanning
+  // it is that "clean and unmeasurable" is the state the placeholder defect
+  // lived in for months.
+  //
+  // Only literal strings: counters, attr() and url() are not text a contrast
+  // ratio applies to.
+  for (const el of document.querySelectorAll('*')) {
+    if (el.closest('svg')) continue
+    if ((el as HTMLElement).closest('button:disabled, fieldset:disabled')) continue
+    for (const pseudo of ['::before', '::after']) {
+      const cs = getComputedStyle(el, pseudo)
+      const raw = cs.content
+      if (!raw || raw === 'none' || raw === 'normal' || !/^["']/.test(raw)) continue
+      const text = raw.slice(1, -1).trim()
+      if (!text) continue
+      const fg = parse(cs.color)
+      if (!fg) continue
+      const op = chainOpacity(el)
+      if (op < 0.05) continue
+      const bg = bgOf(el)
+      const eff = over({ ...fg, a: fg.a * op }, bg)
+      const size = parseFloat(cs.fontSize) || 0
+      const need = size >= 24 ? 3 : 4.5
+      const got = ratio(eff, bg)
+      if (got + 0.0001 < need) {
+        out.push({
+          text: `${pseudo} "${text.slice(0, 28)}"`,
+          ratio: +got.toFixed(2), need, size, color: cs.color,
+          bg: `rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)})`,
+        })
+      }
+    }
+  }
+
+  // INPUT VALUES are the third kind of non-textContent text: what a field
+  // currently holds is rendered with the input's own colour, and reading
+  // el.textContent on an <input> returns nothing at all.
+  for (const el of document.querySelectorAll('input, textarea, select')) {
+    const v = (el as HTMLInputElement).value
+    if (!v.trim() || (el as HTMLElement).offsetParent === null) continue
+    if ((el as HTMLInputElement).type === 'password') continue // rendered as dots
+    if ((el as HTMLElement).closest('button:disabled, fieldset:disabled')) continue
+    const cs = getComputedStyle(el)
+    const fg = parse(cs.color)
+    if (!fg) continue
+    const op = chainOpacity(el)
+    if (op < 0.05) continue
+    const bg = bgOf(el)
+    const eff = over({ ...fg, a: fg.a * op }, bg)
+    const size = parseFloat(cs.fontSize)
+    const weight = parseInt(cs.fontWeight) || 400
+    const need = size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5
+    const got = ratio(eff, bg)
+    if (got + 0.0001 < need) {
+      out.push({
+        text: `value: ${v.slice(0, 28)}`,
+        ratio: +got.toFixed(2), need, size, color: cs.color,
+        bg: `rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)})`,
+      })
+    }
+  }
+
   // PLACEHOLDERS are text the reader sees and this scan could not see: it walks
   // textContent, and a placeholder is an attribute. The mobile assistant's
   // "What do you need?" sat at 2.42:1 in plain sight while every gate reported
