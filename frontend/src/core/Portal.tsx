@@ -577,7 +577,7 @@ Only output the viewport block — no explanations outside it.`
       {/* Conversation */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {conversation.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-neutral-600 text-sm">
+          <div className="flex flex-col items-center justify-center h-full text-neutral-400 text-sm">
             <p>What do you need?</p>
           </div>
         )}

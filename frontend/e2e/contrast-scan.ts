@@ -91,6 +91,12 @@ const SCAN = () => {
     const t = (el.textContent || '').trim()
     if (!t || el.children.length) continue
     if (el.closest('svg')) continue
+    // WCAG 1.4.3 exempts INACTIVE user interface components, and a disabled
+    // control dimmed to 30% is the standard way to show that state. Reporting it
+    // would mean either failing forever or dimming disabled less than enabled,
+    // which removes the signal. `disabled` only — an aria-disabled control that
+    // still responds is not exempt, and neither is a merely unselected tab.
+    if ((el as HTMLElement).closest('button:disabled, fieldset:disabled')) continue
     if (!(el as HTMLElement).offsetParent) continue
     const r = el.getBoundingClientRect()
     if (r.width < 2 || r.height < 2) continue

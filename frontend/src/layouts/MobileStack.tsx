@@ -286,7 +286,7 @@ function DockButton({ children, label, active, badge, disabled, onClick }: DockB
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       className={`touch-target flex-1 flex flex-col items-center justify-center gap-1 py-1.5 select-none transition-colors duration-150
-        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent)]' : 'text-[color:var(--text-tertiary)] active:text-[color:var(--text-primary)]'}`}
+        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent-text,var(--accent))]' : 'text-[color:var(--text-tertiary)] active:text-[color:var(--text-primary)]'}`}
     >
       <span
         className="relative flex items-center justify-center h-8 min-w-[3.25rem] rounded-full transition-colors duration-150"
