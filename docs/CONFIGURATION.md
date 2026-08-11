@@ -213,6 +213,47 @@ Mint a grant with `vulos relay grant <name>`.
 
 ---
 
+## Telephony (SMS / calls through your own adapter)
+
+Off unless configured, and fail-closed: with nothing set the provider is a no-op
+that accepts no inbound traffic and sends nothing. Vulos hardcodes no vendor —
+you point it at your own HTTP adapter, a shim in front of Twilio, Telnyx, a SIP
+gateway or anything else, and point that adapter's inbound webhook back at
+`/api/telephony/provider/inbound`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VULOS_TELEPHONY_PROVIDER` | _(empty → disabled)_ | `http` or `webhook` selects the BYO adapter. Empty, `none` or `off` leaves telephony inert |
+| `VULOS_TELEPHONY_NUMBER` | _(empty)_ | The virtual/second number. **Required** for the `http` provider |
+| `VULOS_TELEPHONY_SEND_URL` | _(empty)_ | POST endpoint on your adapter for outbound SMS |
+| `VULOS_TELEPHONY_CALL_URL` | _(empty)_ | POST endpoint for outbound calls. Optional — leave unset for SMS only |
+| `VULOS_TELEPHONY_PROVIDER_TOKEN` | _(empty)_ | Bearer token sent to those endpoints. Optional |
+| `VULOS_TELEPHONY_WEBHOOK_SECRET` | _(empty)_ | HMAC secret for inbound webhooks. **Required for inbound SMS/calls to be accepted at all** — without it nothing inbound is trusted |
+| `VULOS_TELEPHONY_SIM_PHONEBOOK` | _(unset)_ | `1` opts into reading contacts off a modem's SIM. Needs AT passthrough, which ModemManager only allows when started with `--debug`, so it degrades silently to "no SIM source" on a normally-configured box rather than failing |
+
+An incomplete configuration is treated as no configuration: if the provider is
+set to `http` but the required values are missing, the box falls back to the
+no-op provider rather than half-starting.
+
+---
+
+## Database paths
+
+Each store can be relocated. Defaults sit under `~/.vulos/db/`; see
+[BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for what each one holds and what losing
+it costs.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VULOS_AUTH_DB` | `~/.vulos/db/auth.db` | Users, sessions, profiles, wrapped master keys. Also what `vulos-server migrate` operates on |
+| `VULOS_FILES_DB` | `~/.vulos/db/files.db` | The Drive index: folders, permissions, share links, versions |
+| `VULOS_DEPLOY_DB` | `~/.vulos/db/app_deployments.json` | App deployment records. A JSON store, not SQLite |
+| `VULOS_CUSTOMDOMAIN_DB` | `~/.vulos/db/app_custom_domains.json` | Custom-domain records. JSON |
+| `VULOS_EXTERNAL_UPSTREAM_DB` | `~/.vulos/db/app_external_upstreams.json` | External upstream registrations. JSON |
+| `VULOS_PEERING_DIR` | `~/.vulos/peering` | Box identity and social state — the Ed25519 keypair behind your Vula ID, contacts, groups, inbox/outbox |
+
+---
+
 ## Integrations / OAuth (self-host)
 
 Only needed when self-hosting external-account integrations yourself, rather
