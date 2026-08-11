@@ -624,7 +624,7 @@ Only output the viewport block — no explanations outside it.`
           onKeyDown={handleKeyNav}
           placeholder="What do you need?"
           disabled={thinking}
-          className="flex-1 bg-transparent text-[var(--text-primary)] text-sm outline-none placeholder:text-neutral-600"
+          className="flex-1 bg-transparent text-[var(--text-primary)] text-sm outline-none placeholder:text-neutral-400"
         />
         {voiceSupported && (
           <button

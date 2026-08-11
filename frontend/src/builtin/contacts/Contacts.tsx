@@ -448,7 +448,7 @@ export default function Contacts() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search contacts"
               aria-label="Search contacts"
-              className="w-full min-w-0 h-9 bg-neutral-800/50 border border-neutral-800 rounded-lg pl-8 pr-8 text-[13px] text-neutral-100 placeholder-neutral-600 focus-primary transition-colors focus:border-neutral-700"
+              className="w-full min-w-0 h-9 bg-neutral-800/50 border border-neutral-800 rounded-lg pl-8 pr-8 text-[13px] text-neutral-100 placeholder-neutral-400 focus-primary transition-colors focus:border-neutral-700"
             />
             {query && (
               <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
@@ -813,7 +813,7 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }: ContactEdito
 const FIELD_LABEL = 'mono text-[11px] uppercase tracking-[0.12em] text-neutral-400'
 const FIELD_INPUT =
   'w-full min-w-0 bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-[13.5px] ' +
-  'text-neutral-100 placeholder-neutral-600 transition-colors hover:border-neutral-700 ' +
+  'text-neutral-100 placeholder-neutral-400 transition-colors hover:border-neutral-700 ' +
   'focus:border-[color-mix(in_srgb,var(--accent)_55%,var(--border-emphasis))] focus-primary'
 
 interface InputProps {

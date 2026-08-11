@@ -295,7 +295,11 @@
      5.65 and 4.75. They sit closer together than before because a near-white
      surface has little room between AA and invisible. */
   --text-muted: #5c626e;
-  --text-faint: #656e7d;
+  /* Derived against #efefef, the DARKEST surface an input sits on in this theme,
+     not the #f4f6fb shell: for dark text on light, a darker surface is the worse
+     case. Tuned to the shell it measured 4.46:1 in a Contacts search field.
+     Now 4.82 there, 5.12 on the shell, 5.54 on white. */
+  --text-faint: #606977;
   --text-ghost: #aab0bc;
   --text-dim: #cbcfd8;
   --text-invisible: #dde0e6;
@@ -364,7 +368,7 @@
     --text-secondary: #333844;
     --text-tertiary: #565d6b;
     --text-muted: #5c626e;
-    --text-faint: #656e7d;
+    --text-faint: #606977;
     --text-ghost: #aab0bc;
     --text-dim: #cbcfd8;
     --text-invisible: #dde0e6;
@@ -778,6 +782,19 @@ html, body, #root {
 }
 
 /* Primary focus rings follow accent */
+/* Placeholders are TEXT the reader sees, and they state what a field is for.
+   Without this rule they fall back to the browser default — a translucent
+   version of the text colour, which measured 3.39:1 on .input — and no
+   textContent-based audit can see them at all, because a placeholder is an
+   attribute. --text-faint is the scale's lowest step that still clears AA on
+   every surface an input sits on. `opacity: 1` because some engines dim the
+   pseudo-element on top of its colour. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+
 .focus-primary:focus,
 .focus-primary:focus-visible {
   outline: 2px solid var(--accent);

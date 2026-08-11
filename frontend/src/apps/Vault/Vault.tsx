@@ -644,7 +644,7 @@ function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Master password"
-          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+          className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-400 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
           autoComplete="current-password"
         />
         {error && (
@@ -947,7 +947,7 @@ function Field({ label, required, children }: { label: ReactNode; required?: boo
   )
 }
 
-const inputCls = 'w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30'
+const inputCls = 'w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-400 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30'
 
 // ── Entry detail view ─────────────────────────────────────────────────────────
 function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
@@ -1285,7 +1285,7 @@ export default function Vault() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search vault…"
-                className="w-full bg-neutral-800/60 border border-neutral-700/50 rounded-lg pl-9 pr-8 py-1.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-600 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="w-full bg-neutral-800/60 border border-neutral-700/50 rounded-lg pl-9 pr-8 py-1.5 text-sm text-[var(--text-primary)] outline-none placeholder:text-neutral-400 focus:border-[var(--accent)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               />
               {search && (
                 <button

@@ -256,7 +256,7 @@ export default function Drivers() {
               <input
                 type="text" value={modFilter} onChange={e => setModFilter(e.target.value)}
                 placeholder="Filter modules..."
-                className="w-full pl-10 pr-3 py-2 bg-neutral-900/60 border border-neutral-800/50 rounded-lg text-sm text-neutral-200 outline-none placeholder:text-neutral-600 focus:border-neutral-700 focus:bg-neutral-900/80 transition-colors duration-(--motion-fast)"
+                className="w-full pl-10 pr-3 py-2 bg-neutral-900/60 border border-neutral-800/50 rounded-lg text-sm text-neutral-200 outline-none placeholder:text-neutral-400 focus:border-neutral-700 focus:bg-neutral-900/80 transition-colors duration-(--motion-fast)"
               />
             </div>
             {filteredModules.length === 0 ? (

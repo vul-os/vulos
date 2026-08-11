@@ -372,7 +372,7 @@ export default function ActivityMonitor() {
         <input
           type="text" placeholder="Filter..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-300 placeholder-neutral-600 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
+          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-300 placeholder-neutral-400 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
         />
       </div>
 

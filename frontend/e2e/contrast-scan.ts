@@ -87,6 +87,40 @@ const SCAN = () => {
   }
 
   const out: { text: string; ratio: number; need: number; color: string; bg: string; size: number }[] = []
+
+  // PLACEHOLDERS are text the reader sees and this scan could not see: it walks
+  // textContent, and a placeholder is an attribute. The mobile assistant's
+  // "What do you need?" sat at 2.42:1 in plain sight while every gate reported
+  // the shell clean.
+  //
+  // Measured through getComputedStyle(el, '::placeholder'), which resolves the
+  // pseudo-element's own colour rather than the input's.
+  for (const el of document.querySelectorAll('input[placeholder], textarea[placeholder]')) {
+    const ph = (el as HTMLInputElement).placeholder
+    if (!ph.trim() || (el as HTMLElement).offsetParent === null) continue
+    if ((el as HTMLElement).closest('button:disabled, fieldset:disabled')) continue
+    const cs = getComputedStyle(el)
+    const fg = parse(getComputedStyle(el, '::placeholder').color)
+    if (!fg) continue
+    const op = chainOpacity(el)
+    if (op < 0.05) continue
+    const bg = bgOf(el)
+    const eff = over({ ...fg, a: fg.a * op }, bg)
+    const size = parseFloat(cs.fontSize)
+    const weight = parseInt(cs.fontWeight) || 400
+    const need = size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5
+    const got = ratio(eff, bg)
+    if (got + 0.0001 < need) {
+      out.push({
+        text: 'placeholder: ' + ph.slice(0, 30),
+        ratio: +got.toFixed(2),
+        need,
+        size,
+        color: getComputedStyle(el, '::placeholder').color,
+        bg: `rgb(${Math.round(bg.r)},${Math.round(bg.g)},${Math.round(bg.b)})`,
+      })
+    }
+  }
   for (const el of document.querySelectorAll('p,li,td,th,a,span,div,small,button,label,h1,h2,h3,h4')) {
     const t = (el.textContent || '').trim()
     if (!t || el.children.length) continue

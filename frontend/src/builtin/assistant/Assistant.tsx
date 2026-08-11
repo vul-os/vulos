@@ -984,7 +984,7 @@ export default function Assistant() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) submit(e) }}
               placeholder="Ask about your mail…"
               aria-label="Ask about your mail"
-              className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13.5px] leading-relaxed text-neutral-100 placeholder-neutral-600 focus:outline-none"
+              className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[13.5px] leading-relaxed text-neutral-100 placeholder-neutral-400 focus:outline-none"
             />
             <div className="flex items-center gap-3 pl-3.5 pr-2 pb-2 pt-0.5">
               {/* Container query, not `sm:` — inside the 420px slide-over these
