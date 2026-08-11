@@ -139,7 +139,7 @@ export default function DesktopCanvas() {
               <img src={DEFAULT_WALLPAPER} alt="" className="w-20 h-20 sm:w-24 sm:h-24" style={{ opacity: isDark ? 0.9 : 0.6, filter: isDark ? 'brightness(1.55)' : 'none' }} />
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-semibold tracking-[0.28em] pl-[0.28em]" style={{ color: 'var(--text-primary)', opacity: isDark ? 0.95 : 0.9 }}>Vulos</div>
-                <div className="text-[10px] font-medium uppercase tracking-[0.36em] pl-[0.36em] mt-2" style={{ color: 'var(--accent)', opacity: 0.85 }}>alpha</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.36em] pl-[0.36em] mt-2" style={{ color: 'var(--accent-text, var(--accent))' }}>alpha</div>
               </div>
             </div>
           </>

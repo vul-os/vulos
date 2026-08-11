@@ -86,21 +86,19 @@ const SCAN = () => {
 }
 
 /**
- * Two known shortfalls, each a design decision rather than a defect I can fix by
- * picking a number. Listed by their visible text so a NEW failure cannot hide
- * behind them.
+ * No exceptions. Both entries that used to sit here are fixed:
  *
- *  - "alpha": the empty-desktop watermark, `var(--accent)` at opacity 0.85. The
- *    accent is set at RUNTIME from the user's preference (ThemeProvider applies
- *    it to documentElement, DEFAULT_ACCENT = #3b82f6), so no static value makes
- *    this safe — a user may pick any colour. Fixing it properly means not using
- *    a user-chosen accent for small text, which is a product decision.
- *  - the calendar date: Tailwind's `text-neutral-500` (#737373) at 4.39:1 — a 2%
- *    shortfall. The fix is either repalleting neutral-500 for the whole UI or
- *    moving these components onto the semantic --text-* tokens; both are wider
- *    than this test.
+ *  - the "alpha" watermark was `var(--accent)` at opacity 0.85 and measured
+ *    2.80:1. The accent is the USER's choice, so no palette value could fix it;
+ *    it now uses --accent-text, derived at runtime from whatever they picked
+ *    (core/accentContrast.ts).
+ *  - the menu-bar date was Tailwind's `text-neutral-500` at 4.39:1 and is now
+ *    neutral-400.
+ *
+ * If a shortfall ever has to be tolerated again, list it by its visible text so
+ * a NEW failure cannot hide behind it — and say why it is a decision rather than
+ * a defect.
  */
-const KNOWN = [/^alpha$/, /^\w{3}, \w{3} \d+$/]
 
 async function boot(page: Page) {
   await installBackend(page)
@@ -121,9 +119,8 @@ test('desktop shell text meets WCAG AA', async ({ page }) => {
   )
   expect(measured, 'the shell rendered almost no text, so this would pass vacuously').toBeGreaterThan(20)
 
-  const unexpected = all.filter((f) => !KNOWN.some((re) => re.test(f.text)))
   expect(
-    unexpected.map((f) => `${f.ratio} (need ${f.need}) ${f.color} on ${f.bg} ${f.size}px "${f.text}"`),
+    all.map((f) => `${f.ratio} (need ${f.need}) ${f.color} on ${f.bg} ${f.size}px "${f.text}"`),
     'shell text below WCAG AA, measured on composited pixels',
   ).toEqual([])
 })

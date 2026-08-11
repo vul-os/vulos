@@ -706,7 +706,11 @@ html, body, #root {
 
 .btn-primary {
   padding: 0.5rem 1.25rem;
-  background: var(--accent);
+  /* --accent-solid, not --accent: this is a filled surface carrying WHITE text,
+     which is the opposite job from accent-as-text. The user's accent is used
+     verbatim as a fill elsewhere; here it is derived so white clears 4.5:1 on
+     it. Measured before: the default blue gave 3.68:1. */
+  background: var(--accent-solid, var(--accent));
   border: none;
   border-radius: 0.5rem;
   color: white;
@@ -715,7 +719,7 @@ html, body, #root {
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard);
 }
-.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent-solid, var(--accent)) 88%, white 12%); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 
 /* Secondary action button — token-driven neutral surface, pairs with .btn-primary. */
@@ -763,7 +767,11 @@ html, body, #root {
    retheme with the chosen --accent and semantic states share one
    source of truth. -soft = low-alpha tint; -border = translucent edge.
    ═══════════════════════════════════════ */
-.accent-text        { color: var(--accent); }
+/* --accent-text, not --accent: the user picks the accent, so only a derived
+   value can promise the TEXT drawn in it meets AA against the surface. See
+   core/accentContrast.ts; ThemeProvider sets it whenever accent or theme
+   changes, and it falls back to the raw accent if that has not run yet. */
+.accent-text        { color: var(--accent-text, var(--accent)); }
 .accent-bg          { background: var(--accent); }
 .accent-bg-soft     { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .accent-bg-hover:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }

@@ -586,7 +586,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
                   badge off the right edge, which is the one element that must
                   never be lost. Native phone status bars show the time only;
                   the date returns at >=640px where there is room. */}
-              <span className="hidden sm:inline text-[12px] text-neutral-500">{formatDate(now)}</span>
+              <span className="hidden sm:inline text-[12px] text-neutral-400">{formatDate(now)}</span>
             </div>
           </StatusButton>
           <Dropdown open={openDropdown === 'clock'} onClose={closeDropdown} containerRef={clockRef}>

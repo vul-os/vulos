@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { accentText, accentSolid, worstSurfaceFor } from './accentContrast'
 
 type ResolvedTheme = 'light' | 'dark'
 
@@ -199,10 +200,38 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, [nightShiftActive, nightShiftWarmth])
 
-  // Apply accent colour as CSS custom property
+  // Apply the accent, plus the two legibility-corrected variants derived from
+  // it.
+  //
+  // The accent is the USER's choice, so no stylesheet value can promise that
+  // accent-coloured TEXT is readable. Deriving here is the only place that can:
+  // it runs whenever the accent or the resolved theme changes, and it reads the
+  // surface actually in effect rather than assuming one.
+  //
+  //   --accent        exactly what they picked. Fills, borders, dots, focus.
+  //   --accent-text   moved until it clears 4.5:1 on this theme's base surface.
+  //   --accent-solid  moved until WHITE clears 4.5:1 on top of it.
+  //
+  // The last two move in OPPOSITE directions on a dark theme, which is why they
+  // cannot be one token: accent text has to lighten to be read, and an accent
+  // button has to darken for white to be read on it.
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', accent)
-  }, [accent])
+    const el = document.documentElement
+    el.style.setProperty('--accent', accent)
+    // Read the surface AFTER --accent is set, so the computed value reflects the
+    // theme that is actually applied rather than the one being replaced.
+    // Derive against the WORST of the surfaces accent text actually lands on,
+    // not just the root canvas. Targeting --bg-base alone under-corrected:
+    // panels and popovers are lighter than the desktop on the light theme, so a
+    // value that measured 4.5 on the canvas measured 4.18 on a panel.
+    const cs = getComputedStyle(el)
+    const surfaces = ['--bg-base', '--bg-surface', '--bg-elevated']
+      .map((v) => cs.getPropertyValue(v).trim())
+      .filter(Boolean)
+    const worst = worstSurfaceFor(accent, surfaces.length ? surfaces : ['#08090c'])
+    el.style.setProperty('--accent-text', accentText(accent, worst) ?? accent)
+    el.style.setProperty('--accent-solid', accentSolid(accent) ?? accent)
+  }, [accent, resolved])
 
   // Persisted setters
   const setTheme = useCallback((t: string) => { setThemeState(t); lsSet(STORAGE_KEYS.theme, t) }, [])
