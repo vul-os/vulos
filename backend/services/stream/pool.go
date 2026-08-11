@@ -333,8 +333,28 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 			"-screen", "0", "3840x2160x24",
 			"-ac", "+render", "+extension", "RANDR", "-noreset")
 		sess.xvfb.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		sess.xvfb.Stdout = os.Stdout
-		sess.xvfb.Stderr = os.Stderr
+		// Xvfb does NOT inherit our stdout/stderr.
+		//
+		// It is a long-lived child in its own process group, and handing it the
+		// parent's pipes means the parent's exit cannot be observed while it
+		// lives: whoever is reading those descriptors keeps waiting. Under
+		// `go test` that is fatal rather than untidy — the test binary exits,
+		// PASS is printed, and the package still FAILS with "Test I/O incomplete
+		// 12s after exiting / exec: WaitDelay expired before I/O complete".
+		//
+		// That is what killed the backend CI job: exit 137 after an unrelated
+		// package, with an orphaned Xvfb named in the runner's cleanup. It could
+		// not be reproduced on macOS or in a plain golang container because
+		// neither has Xvfb installed, so the Start() above simply fails there and
+		// nothing is left holding anything. Installing xvfb in the container
+		// reproduces it exactly.
+		//
+		// Nothing is lost by discarding: Xvfb's chatter was interleaved into the
+		// server log and has never been the thing anyone diagnosed a session
+		// with. Failures surface through Start()'s error and the display-socket
+		// wait below.
+		sess.xvfb.Stdout = nil
+		sess.xvfb.Stderr = nil
 		if err := sess.xvfb.Start(); err != nil {
 			cancel()
 			releaseReservation()
