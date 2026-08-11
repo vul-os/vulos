@@ -188,7 +188,16 @@ GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/
 # boot that has ever happened. Same shape as the veritysetup bug — the tool was
 # in the BUILDER, not in the thing the build produces.
 GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-verify-sig" ./cmd/vulos-verify-sig
-echo "  ${GREEN}✓${NC} vulos-server, vulos-init, vulos-verify-sig"
+
+# vulos-install is the bare-metal installer CLI — the command GETTING-STARTED,
+# the README and the release notes all point at for "install to the machine's
+# own disk", which they call the primary route. It was source-only for the same
+# reason vulos-verify-sig was: this script compiled two binaries and nothing
+# else, so a user who booted the live USB, opened Terminal and typed
+# `vulos-install` was told there is no such command. Documented as the primary
+# path, absent from every image that has ever shipped.
+GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-install" ./cmd/installer
+echo "  ${GREEN}✓${NC} vulos-server, vulos-init, vulos-verify-sig, vulos-install"
 
 # ═══════════════════════════════════
 # 2. Build frontend
@@ -779,7 +788,23 @@ cp "$OUTDIR/vulos-init" "$ROOTFS/sbin/vulos-init"
 # because the initramfs hook copies it to /sbin/vulos-verify-sig and having the
 # two paths agree is one less thing to get wrong.
 cp "$OUTDIR/vulos-verify-sig" "$ROOTFS/sbin/vulos-verify-sig"
-chmod +x "$ROOTFS/usr/local/bin/vulos-server" "$ROOTFS/sbin/vulos-init" "$ROOTFS/sbin/vulos-verify-sig"
+# vulos-install goes in /usr/local/bin so it is on a normal login's PATH — the
+# docs tell a user to boot the live USB, open Terminal and just type it.
+# Compiling it is not enough: veritysetup was in the BUILDER while the image
+# went without, and that distinction cost a day. The assertion below is what
+# makes this real rather than intended.
+cp "$OUTDIR/vulos-install" "$ROOTFS/usr/local/bin/vulos-install"
+chmod +x "$ROOTFS/usr/local/bin/vulos-server" "$ROOTFS/sbin/vulos-init" "$ROOTFS/sbin/vulos-verify-sig" "$ROOTFS/usr/local/bin/vulos-install"
+
+# Prove it landed. A missing binary here is exactly the failure this change
+# exists to close, and `cp` succeeding says nothing about the file being present
+# and executable in the tree the squashfs is packed from.
+for _b in usr/local/bin/vulos-server sbin/vulos-init sbin/vulos-verify-sig usr/local/bin/vulos-install; do
+    if [ ! -x "$ROOTFS/$_b" ]; then
+        echo "${RED}FATAL: $_b is not in the rootfs — the image would ship without it${NC}" >&2
+        exit 1
+    fi
+done
 
 if [ -f "$OUTDIR/xdg-open" ]; then
     cp "$OUTDIR/xdg-open" "$ROOTFS/usr/local/bin/xdg-open"

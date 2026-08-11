@@ -94,7 +94,12 @@ func WriteBootableESP(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("esp: TargetDisk must not be empty")
 	}
 	if cfg.SquashfsPath == "" {
-		cfg.SquashfsPath = liveSquashfsPath
+		resolved, why, rerr := resolveSquashfs()
+		if rerr != nil {
+			return fmt.Errorf("esp: %w", rerr)
+		}
+		log.Printf("[installer] OS image: %s (%s)", resolved, why)
+		cfg.SquashfsPath = resolved
 	}
 	if cfg.ManifestPath == "" {
 		cfg.ManifestPath = liveManifestPath

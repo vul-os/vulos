@@ -137,7 +137,15 @@ func WriteBootableDisk(ctx context.Context, cfg DiskConfig) error {
 		return fmt.Errorf("disk: TargetDisk must not be empty")
 	}
 	if cfg.SquashfsPath == "" {
-		cfg.SquashfsPath = liveSquashfsPath
+		// Resolved rather than assumed: the old default named a path no Vulos
+		// live image creates, so this route could not read the image it exists
+		// to copy. See livesource.go.
+		resolved, why, rerr := resolveSquashfs()
+		if rerr != nil {
+			return fmt.Errorf("disk: %w", rerr)
+		}
+		log.Printf("[installer] OS image: %s (%s)", resolved, why)
+		cfg.SquashfsPath = resolved
 	}
 	if cfg.StableManifestPath == "" {
 		cfg.StableManifestPath = diskManifestDefaultPath
