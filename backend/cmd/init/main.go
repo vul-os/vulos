@@ -1752,11 +1752,25 @@ func reapLoop() {
 	}
 }
 
+// binRoot is prefixed to ABSOLUTE candidate paths before they are probed.
+//
+// Empty in production, so /usr/bin/cog is probed as /usr/bin/cog. Tests point it
+// at a temp directory, which is the only way to make "no browser is installed"
+// an achievable state: emptying $PATH hides the LookPath candidates but cannot
+// hide an os.Stat of an absolute path, so a test asserting the not-found branch
+// was really asserting that the machine running it had no browser in /usr/bin.
+//
+// That held on a developer's mac — where this whole package is `//go:build
+// linux` and never compiled, let alone run — and failed the moment it reached a
+// CI runner, which ships a browser.
+var binRoot = ""
+
 func findBinary(names ...string) string {
 	for _, name := range names {
 		if filepath.IsAbs(name) {
-			if _, err := os.Stat(name); err == nil {
-				return name
+			p := filepath.Join(binRoot, name)
+			if _, err := os.Stat(p); err == nil {
+				return p
 			}
 			continue
 		}

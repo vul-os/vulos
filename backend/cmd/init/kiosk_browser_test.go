@@ -95,7 +95,17 @@ func TestFindKioskBrowserFallsBackToChromium(t *testing.T) {
 // lookup yields nothing, and the caller must treat that as a failure rather
 // than proceeding.
 func TestFindKioskBrowserEmptyWhenNoBrowserInstalled(t *testing.T) {
+	// BOTH probes have to be blinded. Emptying $PATH only hides the LookPath
+	// candidates; the absolute ones (/usr/bin/cog, /usr/bin/chromium, …) are
+	// os.Stat'd directly, so without binRoot this test was asserting that the
+	// machine running it happened to have no browser in /usr/bin. It passed on
+	// developer machines because this package is `//go:build linux` and never ran
+	// there at all, then failed on the first CI runner it met.
 	t.Setenv("PATH", t.TempDir())
+	root := t.TempDir()
+	old := binRoot
+	binRoot = root
+	t.Cleanup(func() { binRoot = old })
 
 	bin, args := findKioskBrowser()
 
