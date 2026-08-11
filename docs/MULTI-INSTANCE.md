@@ -145,8 +145,22 @@ setting it. A bare `vulos-server` run does not enable it.
 The secrets differ. They must be byte-identical on every box.
 
 **One box syncs and the other does not.**
-mDNS does not cross subnets or most VLANs. Both boxes must be on the same
-broadcast domain.
+mDNS does not cross subnets or most VLANs. Either put both boxes on the same
+broadcast domain, or name the peer by hand:
+
+```sh
+VULOS_FABRIC_PEERS=https://192.168.1.42:443
+```
+
+Comma-separated for more than one. This composes with mDNS rather than
+replacing it, so a peer in the same broadcast domain is still found automatically.
+
+**A named peer logs `peer rejected our auth (401)`.**
+Two causes, and the message names both. Either the secrets genuinely differ, or
+— more often — the URL points at the box's **ordinary HTTP port** instead of its
+LAN listener. The fabric endpoints are served only on the LAN listener, so a
+peer URL built from the address you use in a browser will be refused however
+correct the secret is.
 
 **Settings sync but a device PIN does not.**
 That is correct — see the table above.

@@ -4494,6 +4494,30 @@ func main() {
 				disc = mdisc
 			}
 
+			// Manually-configured peers (VULOS_FABRIC_PEERS, comma-separated
+			// base URLs). mDNS is multicast, and multicast does not cross a
+			// subnet or most VLANs — so two of an operator's own boxes could sit
+			// on one wired network, both configured correctly, and never find
+			// each other, with "nothing happens" as the only symptom. There was
+			// no way to tell the box about a peer by hand: StaticDiscoverer
+			// existed and said in its own doc comment that it is "useful for a
+			// manually-configured peer list in environments where multicast is
+			// unavailable", and nothing read configuration into it.
+			//
+			// Composed rather than substituted: a statically-named peer does not
+			// disable mDNS, so the usual case keeps working with no round trip.
+			if staticPeers := reach.SplitList(os.Getenv("VULOS_FABRIC_PEERS")); len(staticPeers) > 0 {
+				peers := make([]fabric.Peer, 0, len(staticPeers))
+				for _, raw := range staticPeers {
+					// InstanceID is left empty: the operator knows an address,
+					// not a ULID. Peer documents that this is supported and that
+					// self-skip then relies on SelfBaseURLs.
+					peers = append(peers, fabric.Peer{BaseURL: strings.TrimRight(raw, "/")})
+				}
+				disc = fabric.NewMultiDiscoverer(disc, fabric.NewStaticDiscoverer(peers...))
+				log.Printf("[fabric] %d manually-configured peer(s) from VULOS_FABRIC_PEERS (mDNS still active)", len(peers))
+			}
+
 			// Rendezvous discovery (FABRIC-WAN-01): mDNS only sees multicast, so
 			// until now two of your own boxes in two different houses could never
 			// find each other. Pointing VULOS_RENDEZVOUS_URL at any relay running

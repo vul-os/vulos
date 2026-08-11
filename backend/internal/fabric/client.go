@@ -55,7 +55,15 @@ func (s *Service) pull(ctx context.Context, p Peer, since time.Time) (*multiinst
 	defer drainClose(resp.Body)
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("fabric: peer rejected our auth (401) — shared secret mismatch")
+		// A 401 here has TWO causes and they need different fixes, so naming
+		// only one of them sends people to rotate a secret that was never
+		// wrong. The fabric endpoints are served on the LAN-only listener; a
+		// peer URL pointing at the box's ordinary HTTP port reaches the public
+		// mux instead, which 401s every request because it has no fabric auth
+		// at all. That is indistinguishable from a bad secret from out here.
+		return nil, errors.New("fabric: peer rejected our auth (401) — either the shared secret differs, " +
+			"or the peer URL points at the box's ordinary HTTP port rather than its LAN listener (the fabric " +
+			"endpoints are served only on the latter)")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fabric: pull unexpected status %d", resp.StatusCode)
