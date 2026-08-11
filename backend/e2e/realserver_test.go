@@ -61,8 +61,12 @@ type box struct {
 	t       *testing.T
 	baseURL string
 	dataDir string
-	cmd     *exec.Cmd
-	logBuf  *syncBuffer
+	// lanURL is the box's LAN HTTPS listener, when one was started. The fabric
+	// and CRDT exchange endpoints are served only there — baseURL reaches the
+	// public mux, which 401s them. Empty for boxes started without it.
+	lanURL string
+	cmd    *exec.Cmd
+	logBuf *syncBuffer
 }
 
 // syncBuffer collects the server's stdout+stderr so a failure can print what
