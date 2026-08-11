@@ -255,22 +255,33 @@ async function buildStoreFixtures() {
   return { registry, installed }
 }
 
-// A scripted, honest Terminal session rendered by the REAL xterm widget over a
-// mocked PTY WebSocket. Pure ANSI bytes — nothing is drawn by hand.
+// A scripted Terminal session rendered by the REAL xterm widget over a mocked
+// PTY WebSocket. Pure ANSI bytes — nothing is drawn by hand.
+//
+// EVERY COMMAND HERE MUST EXIST ON A REAL BOX. The previous version showed
+// `vulos status` and `vulos apps ls --published`, and called itself honest in
+// this very comment. Neither command exists — not unshipped, never written:
+// backend/cmd/vulos dispatches exactly `web`, `relay` and `help`. It also
+// showed apps published at mail.ada.vulos.app, implying hosted subdomains under
+// a domain the project deliberately does not run for anyone.
+//
+// A screenshot is a claim about what the software does. This one appears in the
+// docs and on the marketing site, so it was inviting people to expect a CLI
+// surface that was never built.
+//
+// The `vulos` CLI itself is not on the image either, and that is deliberate —
+// docs/RELAY-SELF-HOST.md tells you to build it yourself. So this session uses
+// the shell a user actually gets, doing things that are actually true of a
+// running box: the server process, its data directory, and its unit.
 const E = '\x1b'
 const TERM_SESSION = [
-  `${E}[1;35mVulos OS${E}[0m  ${E}[90mada@vulos-box · sovereign instance${E}[0m\r\n`,
-  `${E}[90mType 'vulos help' for the box control CLI.${E}[0m\r\n\r\n`,
-  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ vulos status\r\n`,
-  `  instance   ${E}[32m●${E}[0m online     region eu-central\r\n`,
-  `  reachable  relay + direct (wss/yamux)\r\n`,
-  `  apps       18 installed · 3 published\r\n`,
-  `  storage    12.4 GB / 50 GB\r\n`,
-  `  assistant  ${E}[35mlocal${E}[0m · llama3 (on-device)\r\n\r\n`,
-  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ vulos apps ls --published\r\n`,
-  `  ${E}[32mmail${E}[0m       mail.ada.vulos.app\r\n`,
-  `  ${E}[32moffice${E}[0m     photos.ada.vulos.app\r\n`,
-  `  ${E}[32mjellyfin${E}[0m   media.ada.vulos.app\r\n\r\n`,
+  `${E}[1;35mVulos OS${E}[0m  ${E}[90mada@vulos-box · sovereign instance${E}[0m\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ systemctl is-active vulos\r\n`,
+  `${E}[32mactive${E}[0m\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ curl -s localhost:8080/health\r\n`,
+  `{"status":"ok"}\r\n\r\n`,
+  `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ du -sh ~/.vulos\r\n`,
+  `12.4G\t/home/ada/.vulos\r\n\r\n`,
   `${E}[1;36mada@vulos${E}[0m:${E}[1;34m~${E}[0m$ ${E}[7m ${E}[0m\r\n`,
 ].join('')
 
