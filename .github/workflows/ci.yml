@@ -98,6 +98,27 @@ jobs:
       - name: Test
         run: cd backend && go test ./...
 
+      # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
+      # backend/e2e/realserver_test.go's package doc for what this proves that
+      # every other "e2e" in the repo does not (no mocks, no in-process mux,
+      # real on-disk stores, real middleware order). It is `//go:build e2e`,
+      # so the `go test ./...` step above silently excludes it — this step is
+      # the only thing in CI that has ever run it. It is what caught a real
+      # production bug: an account replicated to a second box could not be
+      # logged into there.
+      #
+      # Kept in this job rather than a separate one: it needs the identical
+      # checkout + Go toolchain already set up above, and its own TestMain
+      # builds cmd/server itself (`go build -o <tmp> ./cmd/server`, ~60-120s
+      # locally) — there is no artifact from the Build step above to hand it,
+      # so a separate job would just repeat the same checkout/setup-go for no
+      # benefit. Timed out explicitly (both `go test -timeout` and the step's
+      # own `timeout-minutes`) so a hung server process fails the job instead
+      # of running out the clock silently.
+      - name: Test (e2e — real server binary over real HTTP)
+        run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
+        timeout-minutes: 8
+
   clients-core:
     name: clients/core Build, Vet & Test
     runs-on: ubuntu-latest
