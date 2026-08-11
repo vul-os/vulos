@@ -534,7 +534,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
       <div className={`flex items-center gap-0.5 ${className}`}>
         {/* WiFi */}
         <div className="relative" ref={wifiRef}>
-          <StatusButton onClick={() => toggleDropdown('wifi')} active={openDropdown === 'wifi'}>
+          <StatusButton onClick={() => toggleDropdown('wifi')} active={openDropdown === 'wifi'} label="Network">
             <WifiIcon connected={connected} size={14} />
           </StatusButton>
           <Dropdown open={openDropdown === 'wifi'} onClose={closeDropdown} containerRef={wifiRef}>
@@ -545,7 +545,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
         {/* Battery */}
         {battery !== null && (
           <div className="relative" ref={batteryRef}>
-            <StatusButton onClick={() => toggleDropdown('battery')} active={openDropdown === 'battery'}>
+            <StatusButton onClick={() => toggleDropdown('battery')} active={openDropdown === 'battery'} label="Battery">
               <div className="flex items-center gap-1">
                 <BatteryIcon percent={battery} charging={charging} size={16} />
                 <span className="text-[12px] font-mono text-neutral-400">{battery}%</span>
@@ -561,7 +561,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
         <NotificationCenter />
 
         {/* Theme toggle */}
-        <StatusButton onClick={toggle}>
+        <StatusButton onClick={toggle} label={isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}>
           {isDark ? (
             <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
               <path d="M8 1a.5.5 0 01.5.5v1a.5.5 0 01-1 0v-1A.5.5 0 018 1zm0 11a.5.5 0 01.5.5v1a.5.5 0 01-1 0v-1A.5.5 0 018 12zm7-4a.5.5 0 010 1h-1a.5.5 0 010-1h1zM3 8a.5.5 0 010 1H2a.5.5 0 010-1h1zm9.354-3.646a.5.5 0 010 .708l-.708.707a.5.5 0 11-.707-.708l.707-.707a.5.5 0 01.708 0zM5.06 10.232a.5.5 0 010 .707l-.707.708a.5.5 0 11-.708-.708l.708-.707a.5.5 0 01.707 0zm7.678.708a.5.5 0 01-.708 0l-.707-.708a.5.5 0 01.707-.707l.708.707a.5.5 0 010 .708zM5.06 5.768a.5.5 0 01-.707 0l-.708-.707a.5.5 0 11.708-.708l.707.708a.5.5 0 010 .707zM8 4.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" />
@@ -601,7 +601,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
 
   return (
     <div className={`relative ${className}`} ref={systemRef}>
-      <StatusButton onClick={() => toggleDropdown('system')} active={openDropdown === 'system'}>
+      <StatusButton onClick={() => toggleDropdown('system')} active={openDropdown === 'system'} label="System menu">
         <div className="flex items-center gap-2">
           <img src="/vulos.png" alt="" className="w-4 h-4 opacity-70" />
           <span className="text-xs font-semibold text-neutral-300 tracking-wide">vula</span>
@@ -619,10 +619,14 @@ interface StatusButtonProps {
   onClick?: () => void
   active?: boolean
   wide?: boolean
+  /** Accessible name. REQUIRED for icon-only buttons — without it a screen
+   *  reader announces "button" and nothing else. Optional only because the
+   *  clock renders its time as text and is named by its content. */
+  label?: string
 }
-function StatusButton({ children, onClick, active, wide }: StatusButtonProps) {
+function StatusButton({ children, onClick, active, wide, label }: StatusButtonProps) {
   return (
-    <button onClick={onClick}
+    <button onClick={onClick} aria-label={label}
       className={`h-8 flex items-center justify-center rounded-md transition-colors text-neutral-400 hover:text-neutral-200
         ${wide ? 'px-2' : 'px-1.5'}
         ${active ? 'bg-neutral-700/60 text-neutral-200' : 'hover:bg-neutral-800/60'}`}>
