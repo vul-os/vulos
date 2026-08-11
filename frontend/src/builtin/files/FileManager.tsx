@@ -291,8 +291,8 @@ function FileIcon({ name, isDir, isLink, className = '' }: { name: string; isDir
   if (CONFIG_EXTS.has(ext)) return <IconConfig className={`text-yellow-500 ${className}`} />
   if (SHELL_EXTS.has(ext)) return <IconTerminal className={`text-green-400 ${className}`} />
   if (PDF_EXTS.has(ext)) return <IconPdf className={`text-red-400 ${className}`} />
-  if (LOCK_EXTS.has(ext)) return <IconLock className={`text-neutral-500 ${className}`} />
-  return <IconFile className={`text-neutral-500 ${className}`} />
+  if (LOCK_EXTS.has(ext)) return <IconLock className={`text-neutral-400 ${className}`} />
+  return <IconFile className={`text-neutral-400 ${className}`} />
 }
 
 /* ── Sidebar places with icon components ── */
@@ -721,7 +721,7 @@ export default function FileManager() {
                 className={`flex items-center gap-2.5 px-3 py-[5px] mx-1.5 rounded-md text-xs text-left w-auto transition-colors
                   ${isActive(place)
                     ? 'bg-neutral-800/80 text-neutral-100'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+                    : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
                 <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-400'}`} />
@@ -743,7 +743,7 @@ export default function FileManager() {
                 className={`flex items-center gap-2.5 px-3 py-[5px] mx-1.5 rounded-md text-xs text-left w-auto transition-colors
                   ${isActive(place)
                     ? 'bg-neutral-800/80 text-neutral-100'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+                    : 'text-neutral-400 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
                 onClick={() => loadDir(place.path)}
               >
                 <place.Icon className={`shrink-0 ${isActive(place) ? 'accent-text' : 'text-neutral-400'}`} />
@@ -972,7 +972,7 @@ export default function FileManager() {
                 </div>
                 <div className="flex justify-between text-[12px]">
                   <span className="text-neutral-400">Path</span>
-                  <span className="text-neutral-500 text-[12px] truncate ml-2">{preview.path}</span>
+                  <span className="text-neutral-400 text-[12px] truncate ml-2">{preview.path}</span>
                 </div>
               </div>
             )}
@@ -995,7 +995,7 @@ export default function FileManager() {
                   <div className="text-neutral-400 text-xs truncate max-w-full">{preview.name}</div>
                 </div>
               ) : (
-                <pre className="m-0 p-3 text-[12px] leading-relaxed text-neutral-500 whitespace-pre-wrap break-all font-mono">
+                <pre className="m-0 p-3 text-[12px] leading-relaxed text-neutral-400 whitespace-pre-wrap break-all font-mono">
                   {preview.content}
                 </pre>
               )}

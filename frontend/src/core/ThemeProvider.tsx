@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
-import { accentText, accentSolid, worstSurfaceFor } from './accentContrast'
+import { accentText, accentSolid, worstSurfaceFor, compositeOver } from './accentContrast'
 
 type ResolvedTheme = 'light' | 'dark'
 
@@ -225,9 +225,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     // panels and popovers are lighter than the desktop on the light theme, so a
     // value that measured 4.5 on the canvas measured 4.18 on a panel.
     const cs = getComputedStyle(el)
-    const surfaces = ['--bg-base', '--bg-surface', '--bg-elevated']
+    // --accent-soft is included because accent text is often drawn ON a tint of
+    // its own hue — a chip, a selected row, a section heading in a highlighted
+    // card. That is the hardest surface it meets, and leaving it out left
+    // "AI Assistant" at 4.26:1 on light and 4.40:1 on dark after everything else
+    // had been corrected. It is a color-mix against transparent, so it is
+    // resolved and composited over each opaque surface rather than used raw.
+    const opaque = ['--bg-base', '--bg-surface', '--bg-elevated']
       .map((v) => cs.getPropertyValue(v).trim())
       .filter(Boolean)
+    const soft = cs.getPropertyValue('--accent-soft').trim()
+    const surfaces = [...opaque, ...opaque.map((b) => compositeOver(soft, b) ?? b)]
     const worst = worstSurfaceFor(accent, surfaces.length ? surfaces : ['#08090c'])
     el.style.setProperty('--accent-text', accentText(accent, worst) ?? accent)
     el.style.setProperty('--accent-solid', accentSolid(accent) ?? accent)

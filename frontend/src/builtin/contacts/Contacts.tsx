@@ -396,7 +396,7 @@ export default function Contacts() {
             <PersonGlyph className="w-8 h-8" stroke="var(--accent)" />
           </div>
           <div className="text-neutral-100 text-[16px] font-semibold tracking-tight">Contacts unavailable.</div>
-          <p className="text-neutral-500 text-[13px] mt-2 leading-relaxed text-balance">
+          <p className="text-neutral-400 text-[13px] mt-2 leading-relaxed text-balance">
             Connect a mail account (Gmail, Outlook, or IMAP/CardDAV) to see and manage your contacts.
           </p>
           <button type="button" onClick={connectMail}
@@ -420,7 +420,7 @@ export default function Contacts() {
           <div className="flex items-center gap-2 mb-2.5">
             <h1 className="text-[15px] font-semibold tracking-tight text-neutral-100">Contacts</h1>
             {!loading && (
-              <span className="mono text-[11.5px] px-1.5 py-0.5 rounded-md bg-neutral-800/70 text-neutral-500 leading-none">
+              <span className="mono text-[11.5px] px-1.5 py-0.5 rounded-md bg-neutral-800/70 text-neutral-400 leading-none">
                 {contacts.length}
               </span>
             )}
@@ -442,7 +442,7 @@ export default function Contacts() {
             </div>
           </div>
           <div className="relative">
-            <svg viewBox="0 0 16 16" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" strokeLinecap="round"/></svg>
+            <svg viewBox="0 0 16 16" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M11 11l3 3" strokeLinecap="round"/></svg>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -452,7 +452,7 @@ export default function Contacts() {
             />
             {query && (
               <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-md text-neutral-600 hover:text-neutral-200 transition-colors focus-primary">
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-md text-neutral-400 hover:text-neutral-200 transition-colors focus-primary">
                 <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
               </button>
             )}
@@ -476,11 +476,11 @@ export default function Contacts() {
             </ul>
           ) : filtered.length === 0 ? (
             <div className="px-6 py-10 text-center animate-[fadeIn_0.2s_ease-out]">
-              <div className="w-11 h-11 mx-auto mb-3 grid place-items-center rounded-xl border border-neutral-800 text-neutral-700">
+              <div className="w-11 h-11 mx-auto mb-3 grid place-items-center rounded-xl border border-neutral-800 text-neutral-400">
                 <PersonGlyph className="w-5 h-5" />
               </div>
               <div className="text-[13px] text-neutral-400 font-medium">{query ? 'No matches.' : 'No contacts yet.'}</div>
-              <div className="text-[12px] text-neutral-600 mt-1 leading-relaxed">
+              <div className="text-[12px] text-neutral-400 mt-1 leading-relaxed">
                 {query ? 'Try a different name, address or company.' : 'Add someone, or connect a mail account to sync an address book.'}
               </div>
               {!query && (
@@ -494,7 +494,7 @@ export default function Contacts() {
             <div className="pb-3">
               {grouped.map((g) => (
                 <section key={g.letter}>
-                  <h2 className="sticky top-0 z-10 mono px-3.5 py-1 text-[11px] font-semibold tracking-[0.12em] text-neutral-600 bg-neutral-950/85 backdrop-blur-sm border-b border-neutral-900">
+                  <h2 className="sticky top-0 z-10 mono px-3.5 py-1 text-[11px] font-semibold tracking-[0.12em] text-neutral-400 bg-neutral-950/85 backdrop-blur-sm border-b border-neutral-900">
                     {g.letter}
                   </h2>
                   <ul>
@@ -514,7 +514,7 @@ export default function Contacts() {
                                 <SourceDots sources={c.sources} />
                               )}
                             </span>
-                            <span className="block text-[12px] text-neutral-500 truncate leading-snug">
+                            <span className="block text-[12px] text-neutral-400 truncate leading-snug">
                               {c.emails[0] || c.phones[0] || c.org || '—'}
                             </span>
                           </span>
@@ -552,11 +552,11 @@ export default function Contacts() {
           ) : (
             <div className="h-full grid place-items-center text-center px-6 py-10 animate-[fadeIn_0.2s_ease-out]">
               <div className="max-w-xs">
-                <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800/80 text-neutral-700 bg-neutral-900/40">
+                <div className="w-14 h-14 mx-auto mb-4 grid place-items-center rounded-2xl border border-neutral-800/80 text-neutral-400 bg-neutral-900/40">
                   <PersonGlyph className="w-7 h-7" />
                 </div>
                 <div className="text-[14px] text-neutral-400 font-medium">No contact selected</div>
-                <div className="text-[12.5px] text-neutral-600 mt-1.5 leading-relaxed">
+                <div className="text-[12.5px] text-neutral-400 mt-1.5 leading-relaxed">
                   Pick someone from the list to see their card, or add a new one.
                 </div>
               </div>
@@ -629,7 +629,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
 
         {contact._readonly && (
           <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/50 px-3.5 py-3 text-[12.5px] text-neutral-400 leading-relaxed">
-            <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 mt-px text-neutral-600" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.9v.1" strokeLinecap="round"/></svg>
+            <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 mt-px text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.9v.1" strokeLinecap="round"/></svg>
             <span>This card came from your phone. Edit it on the device it lives on and it will sync back here.</span>
           </div>
         )}
@@ -653,7 +653,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
                 {contact.phones.map((p, i) => (
                   <a key={i} href={`tel:${p}`}
                     className="flex items-center gap-2.5 text-[13.5px] text-neutral-200 px-2.5 py-2 -mx-2.5 rounded-lg hover:bg-neutral-800/60 transition-colors focus-primary">
-                    <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
+                    <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
                     <span className="truncate">{p}</span>
                   </a>
                 ))}
@@ -664,7 +664,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
                 <div className="flex flex-col gap-3">
                   {addresses.map((a, i) => (
                     <div key={i}>
-                      {a.type && <div className="mono text-[10.5px] uppercase tracking-[0.1em] text-neutral-600 mb-0.5">{a.type}</div>}
+                      {a.type && <div className="mono text-[10.5px] uppercase tracking-[0.1em] text-neutral-400 mb-0.5">{a.type}</div>}
                       {formatAddressLines(a).map((line, j) => (
                         <div key={j} className="text-[13.5px] text-neutral-300 leading-relaxed">{line}</div>
                       ))}
@@ -721,7 +721,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
           </div>
         ) : (
           <div className="mt-6 rounded-2xl border border-dashed border-neutral-800 px-5 py-8 text-center">
-            <div className="text-[13px] text-neutral-500">No email, phone or notes on this card yet.</div>
+            <div className="text-[13px] text-neutral-400">No email, phone or notes on this card yet.</div>
             {!contact._readonly && (
               <button type="button" onClick={onEdit}
                 className="mt-3 text-[12.5px] font-medium px-3 h-8 rounded-lg border border-neutral-800 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700 transition-colors focus-primary">
@@ -741,7 +741,7 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="px-4 sm:px-5 py-4 sm:flex sm:gap-4">
-      <div className="mono text-[11px] uppercase tracking-[0.12em] text-neutral-500 mb-1.5 sm:mb-0 sm:w-[4.25rem] sm:shrink-0 sm:pt-2">{label}</div>
+      <div className="mono text-[11px] uppercase tracking-[0.12em] text-neutral-400 mb-1.5 sm:mb-0 sm:w-[4.25rem] sm:shrink-0 sm:pt-2">{label}</div>
       <div className="min-w-0 flex-1 flex flex-col gap-0.5">{children}</div>
     </div>
   )
@@ -810,7 +810,7 @@ function ContactEditor({ form, setForm, onSave, onCancel, saving }: ContactEdito
 
 // One spacing/typography scale for every form control in the editor — the old
 // controls were 1.5px-padded, 12px-labelled and read as unstyled browser inputs.
-const FIELD_LABEL = 'mono text-[11px] uppercase tracking-[0.12em] text-neutral-500'
+const FIELD_LABEL = 'mono text-[11px] uppercase tracking-[0.12em] text-neutral-400'
 const FIELD_INPUT =
   'w-full min-w-0 bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2 text-[13.5px] ' +
   'text-neutral-100 placeholder-neutral-600 transition-colors hover:border-neutral-700 ' +

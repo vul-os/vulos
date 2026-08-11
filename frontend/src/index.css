@@ -119,6 +119,14 @@
   /* Semantic status tokens (WAVE-23): one source of truth for success / warning
      / danger / info tints so panels stop hardcoding emerald-/amber-/red-/blue-
      Tailwind classes. `-soft` variants are the low-alpha background tints. */
+  /* Tier tones for the trust badge. These are drawn ON a soft tint of their own
+     hue, which is the hardest surface for them: the 400-level Tailwind steps
+     they replaced measured 1.62:1 for "On device" on the light theme. Bright on
+     dark, deep on light — the badge keeps its meaning in both. */
+  --tier-local:     #6ee7b7;
+  --tier-sovereign: #fde047;
+  --tier-brokered:  #fcd34d;
+  --tier-external:  #fca5a5;
   --status-success: #35c081;
   --status-warning: #f0b232;
   --status-danger: #f2565b;
@@ -316,6 +324,10 @@
   /* Status colours read slightly deeper on white for contrast. */
   --status-danger: #dc2626;
   --status-warning: #d97706;
+  --tier-local:     #065f46;
+  --tier-sovereign: #854d0e;
+  --tier-brokered:  #92400e;
+  --tier-external:  #991b1b;
   --status-success: #16a34a;
 }
 
@@ -372,7 +384,11 @@
     --scrim: rgba(15, 23, 42, 0.22);
     --status-danger: #dc2626;
     --status-warning: #d97706;
-    --status-success: #16a34a;
+    --tier-local:     #065f46;
+  --tier-sovereign: #854d0e;
+  --tier-brokered:  #92400e;
+  --tier-external:  #991b1b;
+  --status-success: #16a34a;
   }
 }
 
@@ -943,3 +959,11 @@ html, body, #root {
   padding: 0.125rem 0;
   pointer-events: none;
 }
+
+/* Trust-badge tier tones — see --tier-* in the token blocks above. A class
+   rather than an inline style so sovereignty.ts keeps handing components a
+   className, as it always has. */
+.tier-tone-local     { color: var(--tier-local); }
+.tier-tone-sovereign { color: var(--tier-sovereign); }
+.tier-tone-brokered  { color: var(--tier-brokered); }
+.tier-tone-external  { color: var(--tier-external); }

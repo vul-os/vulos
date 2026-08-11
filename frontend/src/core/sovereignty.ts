@@ -34,13 +34,13 @@ export interface SovereigntyEgress {
 // TIERS — the shared vocabulary with the backend Guard + llmux gateway, ordered
 // most → least private. Kept in sync with backend TierLabel() and the Assistant.
 export const TIERS: Record<string, SovereigntyTier> = {
-  local:     { dot: '#22c55e', tone: 'text-emerald-400', label: 'On your device',
+  local:     { dot: '#22c55e', tone: 'tier-tone-local', label: 'On your device',
                blurb: 'Inference runs on this box. Nothing leaves your server.' },
-  sovereign: { dot: '#eab308', tone: 'text-yellow-400', label: 'Operator-declared endpoint (unverified)',
+  sovereign: { dot: '#eab308', tone: 'tier-tone-sovereign', label: 'Operator-declared endpoint (unverified)',
                blurb: 'An off-box endpoint the operator declared as in-region / no-train. Vulos does not operate or verify it — treat it as off-box egress you have chosen to trust.' },
-  brokered:  { dot: '#f59e0b', tone: 'text-amber-400', label: 'Brokered · no-train',
+  brokered:  { dot: '#f59e0b', tone: 'tier-tone-brokered', label: 'Brokered · no-train',
                blurb: 'A named third-party model under a no-train agreement. Requires the egress opt-in.' },
-  external:  { dot: '#ef4444', tone: 'text-red-400', label: 'External · not private',
+  external:  { dot: '#ef4444', tone: 'tier-tone-external', label: 'External · not private',
                blurb: 'An off-box endpoint that may mine or train on your data. Blocked unless explicitly authorized.' },
 }
 

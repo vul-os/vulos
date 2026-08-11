@@ -167,3 +167,41 @@ export function worstSurfaceFor(colour: string, surfaces: string[]): string {
   }
   return worst
 }
+
+/**
+ * Flatten a translucent CSS colour over an opaque one, returning hex.
+ *
+ * Needed because the surfaces accent text lands on are not all opaque:
+ * --accent-soft is `color-mix(accent N%, transparent)`, and a tint of the
+ * accent's own hue is the hardest background the accent has to be read on.
+ *
+ * Resolution goes through a 1x1 canvas rather than a parser, because the value
+ * may be color-mix(), oklch() or anything else CSS grows — the same reason the
+ * contrast scanner stopped parsing colour strings by hand after oklch made it
+ * silently skip half the dark theme.
+ */
+export function compositeOver(translucent: string, opaque: string): string | null {
+  if (typeof document === 'undefined') return null
+  const base = parseColor(opaque)
+  if (!base || !translucent) return null
+  try {
+    const cv = document.createElement('canvas')
+    cv.width = 1
+    cv.height = 1
+    const ctx = cv.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.fillStyle = '#000'
+    ctx.fillStyle = translucent
+    ctx.clearRect(0, 0, 1, 1)
+    ctx.fillRect(0, 0, 1, 1)
+    const d = ctx.getImageData(0, 0, 1, 1).data
+    const a = d[3] / 255
+    return toHex({
+      r: d[0] * a + base.r * (1 - a),
+      g: d[1] * a + base.g * (1 - a),
+      b: d[2] * a + base.b * (1 - a),
+    })
+  } catch {
+    return null
+  }
+}
