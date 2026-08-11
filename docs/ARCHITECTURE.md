@@ -358,6 +358,28 @@ flowchart TD
   boots and decides when a rollback is warranted
 - Trust anchor: Ed25519 public key baked into the seed at flash time; forks supply their own key + bucket URL
 
+**A missing roothash signature is FATAL ON NETBOOT and TOLERATED ON A LOCAL
+DISK.** The asymmetry is deliberate, and it is the fact that decides what can be
+booted before a signing ceremony has ever been run:
+
+- On netboot the payload is attacker-reachable in transit over possibly plain
+  HTTP, so omitting the `.sig` would be a free fail-open downgrade for anyone who
+  controls the wire. `scripts/initramfs/vulos-live` panics: *"netboot requires a
+  signed os-core.roothash … refusing to boot an unauthenticated image over the
+  network (fail closed)"*.
+- On an installed disk, refusing would brick every machine installed before
+  signatures were producible — each has `os-core.hashtree` and `os-core.roothash`
+  and no `.sig`. Deleting a `.sig` from a disk you can already write to buys an
+  attacker nothing they could not get by deleting the hashtree, which this path
+  has always tolerated by falling back to a loop mount. The boot records
+  `sig=unsigned` so an operator can read which case happened rather than assume.
+
+A **present-but-invalid** signature is fatal on both paths. There is deliberately
+no third outcome.
+
+Practically: a `./build.sh --disk` image boots and can be tested end to end with
+no release key in existence, and a netboot image cannot.
+
 > **The slot flip works, and is proven by a reboot (OSDIST-FLIP-01).** This
 > section previously said the flip did not work, because
 > `writeSlotABootEntry` writes the systemd-boot entry **once, at install time,
