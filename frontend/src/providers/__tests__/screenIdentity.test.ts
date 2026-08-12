@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseScreenIdentity, isMultiScreen } from '../screenIdentity'
+import { parseScreenIdentity, isMultiScreen, screenWindowTitle } from '../screenIdentity'
 
 // The screen identity arrives in a URL parameter, which is attacker-controlled
 // by definition — anyone can type ?screen=whatever. It grants nothing, but it
@@ -57,5 +57,40 @@ describe('isMultiScreen', () => {
   })
   it('is true only when more than one screen was launched', () => {
     expect(isMultiScreen(parseScreenIdentity('?screen=HDMI-A-1&screens=2&screenIndex=1'))).toBe(true)
+  })
+})
+
+// screenWindowTitle exists so labwc can tell two identical browser windows
+// apart and place each on its own output. Its correctness is therefore a
+// compositor concern, not a cosmetic one: if two instances carry the same
+// title, one windowRule matches both and both land on one monitor.
+describe('screenWindowTitle', () => {
+  const base = 'Vulos'
+
+  it('appends the connector name on a multi-screen kiosk', () => {
+    const id = parseScreenIdentity('?screen=HDMI-A-1&screens=2&screenIndex=1')
+    expect(screenWindowTitle(id, base)).toBe('Vulos — HDMI-A-1')
+  })
+
+  it('gives two screens DIFFERENT titles — the whole point', () => {
+    const a = screenWindowTitle(parseScreenIdentity('?screen=HDMI-A-1&screens=2&screenIndex=1'), base)
+    const b = screenWindowTitle(parseScreenIdentity('?screen=DP-2&screens=2&screenIndex=2'), base)
+    expect(a).not.toBe(b)
+  })
+
+  it('leaves an ordinary tab alone', () => {
+    expect(screenWindowTitle(null, base)).toBe(base)
+  })
+
+  it('leaves a single-screen kiosk alone', () => {
+    const id = parseScreenIdentity('?screen=HDMI-A-1&screens=1&screenIndex=1')
+    expect(screenWindowTitle(id, base)).toBe(base)
+  })
+
+  it('embeds exactly the connector name MoveToOutput expects', () => {
+    // The title must contain the name verbatim: labwc's output attribute takes
+    // "HDMI-A-1", and a decorated or truncated name would not match the rule.
+    const id = parseScreenIdentity('?screen=DVI_D-1&screens=3&screenIndex=2')
+    expect(screenWindowTitle(id, base)).toContain('DVI_D-1')
   })
 })

@@ -56,3 +56,26 @@ test('an inconsistent identity is refused rather than half-rendered', async ({ p
   await expect(page.getByText('ON DEVICE').first()).toBeVisible()
   await expect(page.locator(SELECTOR)).toHaveCount(0)
 })
+
+// The WINDOW TITLE is what lets labwc place each browser on its own output:
+// a windowRule matches the title and applies MoveToOutput. If two instances
+// share a title, one rule matches both and they land on the same monitor. So
+// this is a compositor contract, asserted in a real browser rather than in a
+// pure function only.
+test('each screen gets a distinct window title for the compositor to match', async ({ page }) => {
+  await installBackend(page, {})
+  await page.goto('/?screen=HDMI-A-1&screens=2&screenIndex=1')
+  await expect(page.getByText('ON DEVICE').first()).toBeVisible()
+  await expect(page).toHaveTitle(/HDMI-A-1$/)
+
+  await page.goto('/?screen=DP-2&screens=2&screenIndex=2')
+  await expect(page.getByText('ON DEVICE').first()).toBeVisible()
+  await expect(page).toHaveTitle(/DP-2$/)
+})
+
+test('a single-screen kiosk keeps the plain title', async ({ page }) => {
+  await installBackend(page, {})
+  await page.goto('/?screen=HDMI-A-1&screens=1&screenIndex=1')
+  await expect(page.getByText('ON DEVICE').first()).toBeVisible()
+  await expect(page).not.toHaveTitle(/HDMI-A-1/)
+})

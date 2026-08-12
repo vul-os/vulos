@@ -115,3 +115,31 @@ export function readScreenIdentity(): ScreenIdentity | null {
 export function isMultiScreen(id: ScreenIdentity | null): boolean {
   return id !== null && id.total > 1
 }
+
+/**
+ * screenWindowTitle builds the document title for a kiosk browser instance.
+ *
+ * This exists for the COMPOSITOR, not for a human. A multi-output kiosk runs
+ * one browser per screen, and labwc places a window on a given output with:
+ *
+ *   <windowRule title="Vulos — HDMI-A-1" matchOnce="yes">
+ *     <action name="MoveToOutput" output="HDMI-A-1" />
+ *   </windowRule>
+ *
+ * A rule can only name a window it can tell apart, and every instance of this
+ * shell is otherwise identical: same origin, same app, same title. So the
+ * window announces which screen it believes it is on, and the compositor uses
+ * that to put it there.
+ *
+ * The name embedded here is the DRM connector name that vulos-kiosk read from
+ * /sys/class/drm and passed in as `screen=`, and it is the same string
+ * MoveToOutput's `output` attribute wants. One name from one source, so the
+ * two halves agree by construction rather than by someone keeping them in sync.
+ *
+ * Returns the base title unchanged when there is no multi-screen identity —
+ * an ordinary tab must not have a connector name in its title bar.
+ */
+export function screenWindowTitle(id: ScreenIdentity | null, base: string): string {
+  if (!isMultiScreen(id) || !id) return base
+  return `${base} — ${id.name}`
+}

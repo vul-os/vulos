@@ -1,6 +1,6 @@
-import { useMemo, type MouseEventHandler, type ReactNode, type SVGProps } from 'react'
+import { useEffect, useMemo, type MouseEventHandler, type ReactNode, type SVGProps } from 'react'
 import { useShell } from '../providers/ShellProvider'
-import { isMultiScreen, readScreenIdentity } from '../providers/screenIdentity'
+import { isMultiScreen, readScreenIdentity, screenWindowTitle } from '../providers/screenIdentity'
 import LifePulse from '../core/SystemPulse'
 import TrustBadge from './TrustBadge'
 import ThemeToggle from '../core/ThemeToggle'
@@ -61,6 +61,21 @@ function ScreenIndicator({ narrow }: { narrow: boolean }) {
   // the launcher assigns it in the URL and a browser cannot migrate between
   // outputs without being relaunched.
   const id = useMemo(() => readScreenIdentity(), [])
+
+  // Announce the screen in the WINDOW TITLE as well as on screen.
+  //
+  // That title is what lets the compositor place this window: labwc matches a
+  // windowRule on it and applies MoveToOutput, and every instance of this shell
+  // is otherwise indistinguishable. Without it a multi-output kiosk starts N
+  // browsers and labwc lands them all on the active output.
+  //
+  // Single screen and ordinary tabs are left alone — screenWindowTitle returns
+  // the base title unchanged, so no connector name appears in a normal tab.
+  useEffect(() => {
+    const base = document.title.split(' — ')[0] || 'Vulos'
+    document.title = screenWindowTitle(id, base)
+  }, [id])
+
   if (!isMultiScreen(id) || !id) return null
 
   return (
