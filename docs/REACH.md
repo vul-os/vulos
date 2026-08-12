@@ -400,7 +400,6 @@ operators, and no single one is load-bearing.
 | **`vulos relay serve`** | Behind NAT/CGNAT and you want all three facets from one binary | You run a small VPS. |
 | **Pier relay** | You already run Pier, or want its other coordinator kinds | A separate project to track. Fully supported; same rendezvous contract. |
 | **Tailscale / Headscale / WireGuard mesh** | You want a private mesh, not a public URL | Covers facet B only. Facets A and C stay on their own paths. Ingress is actuated by the mesh daemon, outside Vulos. |
-| **Cloudflare Tunnel / ngrok** | You'd rather not run a VPS at all | Only sound in TCP/TLS-passthrough mode (`ngrok tls`, a raw-TCP `cloudflared` rule) — their default HTTP modes terminate TLS at the provider's edge, a stronger exposure than the built-in relay. See [RELAY-PROVIDERS.md → Using a tunnel service instead](RELAY-PROVIDERS.md#using-a-tunnel-service-instead-cloudflare-tunnel-ngrok). |
 | **LAN only** | The box never needs to be reached from outside | Nothing to run, nothing to trust. |
 
 ---
