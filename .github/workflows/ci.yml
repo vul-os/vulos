@@ -274,6 +274,60 @@ jobs:
           # start. THIS IS A DIAGNOSTIC CHANGE, not a fix — it is expected to
           # still fail; what matters is reading back WHICH packages are the
           # ones that don't report.
+          # RESULT of the reversal (this commit's predecessor): decisive, and it
+          # rules out both remaining theories at once. Four runs on the reversed
+          # ./services/... order all failed, but NOT on upload..wltoplevel —
+          # those nine ran first (their original tail position) and all
+          # reported ok. The kill instead landed at a different, unrelated
+          # alphabetically-adjacent pair: services/signing ok, services/sandbox
+          # never reports — position 20 of 85, not ~76. So it is not "the same
+          # nine packages" (proven: they passed when moved) and not "a fixed
+          # package count" either (77 in forward order vs 20 reversed — not
+          # close). Elapsed time to death was ~31s reversed vs ~130-222s
+          # forward, so not time-based either, confirming the earlier reading.
+          #
+          # What both orderings share: the kill always lands between two
+          # packages that are ALPHABETICALLY ADJACENT IN THE ORDER GIVEN (no
+          # package ever scheduled between them), right as `go` moves from a
+          # package that just finished to compiling/linking/running the next
+          # one. That is consistent with some OS-level resource — not memory,
+          # not disk, both already excluded by measurement — accumulating at a
+          # rate that depends on WHICH packages ran, not how many or how long,
+          # and tripping a SIGKILL once a threshold is crossed. Candidates
+          # nobody has measured yet: open file descriptors, process/thread
+          # count (cgroup pids.current vs pids.max), or a system-wide (not
+          # this-cgroup) memory squeeze that the job's own oom counters cannot
+          # see because memory.max is "max" here — a cgroup with no ceiling
+          # cannot self-report an OOM it structurally cannot trigger, but the
+          # ROOT cgroup / whole VM can still be reclaimed under, and a global
+          # OOM kill would land on this job's processes without showing up in
+          # ITS oom_kill counter.
+          #
+          # A background sampler was tried once before and became a failure of
+          # its own — it wrote to the STEP's own stdout, so its file
+          # descriptor kept that pipe's write end open after go test returned,
+          # and a step whose output never closes is itself killed. This one
+          # writes ONLY to a file the step never reads from, so it cannot hold
+          # the step open the same way; a later `if: always()` step reads the
+          # file back, which also survives a SIGKILL of this step since the
+          # file itself isn't touched by that signal.
+          mkdir -p /tmp/ci-diag
+          : > /tmp/ci-diag/sampler.log
+          (
+            while true; do
+              {
+                echo "== $(date -u +%H:%M:%S.%N) =="
+                cat /sys/fs/cgroup/pids.current 2>/dev/null | sed 's/^/pids.current=/'
+                cat /sys/fs/cgroup/pids.max 2>/dev/null | sed 's/^/pids.max=/'
+                free -m | sed -n '2p' | awk '{print "mem_used_mb="$3" mem_free_mb="$4" mem_avail_mb="$7}'
+                echo "nproc_procs=$(ps -e --no-headers | wc -l)"
+              } >> /tmp/ci-diag/sampler.log 2>&1
+              sleep 1
+            done
+          ) < /dev/null > /dev/null 2>&1 &
+          SAMPLER_PID=$!
+          disown "$SAMPLER_PID" || true
+
           go test -p 1 -timeout 120s $(go list ./services/... | tac)
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
@@ -281,10 +335,25 @@ jobs:
           # this run is only meaningful if it covers what ./... covered.
           go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services')
           rc2=$?
+
+          kill "$SAMPLER_PID" 2>/dev/null || true
           set -e
           echo "::notice::go test exited services=${rc1} rest=${rc2}"
           [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]
         timeout-minutes: 25
+
+      # ALWAYS, because the run that matters is the one that got SIGKILLed —
+      # the sampler.log file survives that signal even though the step didn't,
+      # since it was written to disk by a background process, not to the
+      # step's own stdout. Tail rather than the whole file: the file grows at
+      # 1 sample/sec and only the seconds right before death are informative.
+      - name: Diagnostics after tests (pids/mem sampler tail, ulimits)
+        if: always()
+        run: |
+          echo "---- ulimits ----"
+          ulimit -a || true
+          echo "---- last 40 sampler lines (1/sec) before step end ----"
+          tail -n 200 /tmp/ci-diag/sampler.log 2>/dev/null || echo "no sampler log"
 
       # Disk at the moment the Test step ends, pass or fail.
       #
