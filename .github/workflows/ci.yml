@@ -231,18 +231,50 @@ jobs:
         run: |
           cd backend
           set +e
-          # TWO invocations, not one. This is an experiment as much as a fix.
+          # RESULT of the two-invocation experiment (previous commit): it did
+          # NOT stop the kill, but it localised it far more precisely than
+          # intended. Across five runs after the split, the ./services/...
+          # invocation ALONE (85 packages, not 121) still dies, every time, at
+          # the same boundary the unsplit run always died at: services/telephony
+          # reports ok, services/upload never does. `go list ./services/...`
+          # puts telephony at position 76 of 85 and upload at 77 — i.e. this is
+          # NOT about a process living across 121 packages, it reproduces inside
+          # 85. Two runs from just before the split (5f1d9df9, d6b3ee3a) died one
+          # package earlier still, at telemetry (74) rather than telephony (76)
+          # — off by one or two, not exact, which reads as a kill arriving
+          # WHILE the current package's test binary runs rather than cleanly
+          # between packages, i.e. jitter around a threshold rather than a
+          # razor-exact boundary.
           #
-          # The kill is positional and cumulative but caused by no individual
-          # package, so the remaining suspect is state accumulating inside a
-          # single long-lived `go` process across 121 packages. Splitting the run
-          # gives each half a fresh process. If the failure stops, that localises
-          # it to per-process state and is also a usable mitigation; if it
-          # continues, the theory is dead and the split costs nothing.
+          # Wall-clock time to death does NOT match that precision: 130s,
+          # 214s, 217s, 218s, 222s across the same five runs — no shared
+          # value, so this is not a step-silence or wall-clock timeout (those
+          # would land at a constant elapsed time regardless of which package
+          # is running). Time-to-death tracks nothing; PACKAGE COUNT does.
           #
-          # The split is by directory rather than by count so it stays
-          # meaningful as packages are added.
-          go test -p 1 -timeout 120s ./services/...
+          # services/upload itself is unremarkable (1172 lines, stdlib +
+          # internal/ulid only, no cgo, no subprocess) and passes individually,
+          # so nothing about compiling or linking IT explains a kill. Two
+          # theories are left, and they make different predictions under
+          # reordering:
+          #   (a) COUNT: something accumulates inside the single `go` process
+          #       driving this list and trips near position ~76, regardless of
+          #       which packages sit there.
+          #   (b) PACKAGE: something about upload..wltoplevel specifically (or
+          #       about services/telephony, the one before them, which shells
+          #       out to a faked `mmcli` via os/exec in its tests) triggers the
+          #       kill wherever in the list it lands.
+          #
+          # Reversed order is the experiment that tells them apart: under (a)
+          # the kill should still land ~76 packages in — now near the END of
+          # this reversed list, killing packages that have always passed
+          # before (e.g. signing, snapshot) while upload..wltoplevel, now near
+          # the START, report fine. Under (b) upload..wltoplevel (and/or
+          # telephony) fail again regardless of their new position near the
+          # start. THIS IS A DIAGNOSTIC CHANGE, not a fix — it is expected to
+          # still fail; what matters is reading back WHICH packages are the
+          # ones that don't report.
+          go test -p 1 -timeout 120s $(go list ./services/... | tac)
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
           # enumerated list silently drops a package added at the repo root, and
