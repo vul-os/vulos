@@ -282,6 +282,13 @@ func signalProcess(cmd *exec.Cmd, sig syscall.Signal) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
+	// Reaped children are not signalled. Resolving the pgid first is not
+	// protection: on a RECYCLED pid, Getpgid succeeds and returns the new
+	// process's group, so the kill below lands on a stranger. ProcessState is
+	// non-nil only after Wait has returned. See internal/procgroup.
+	if cmd.ProcessState != nil {
+		return nil
+	}
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err == nil {
 		return syscall.Kill(-pgid, sig)

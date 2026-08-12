@@ -30,6 +30,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"vulos/backend/internal/procgroup"
 
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/input"
@@ -886,10 +887,7 @@ func runWithBackoff(ctx context.Context, name string, makeFn func() *exec.Cmd, s
 // the large one, where a process reaped seconds or minutes ago is signalled by
 // number.
 func signalGroup(cmd *exec.Cmd, sig syscall.Signal) {
-	if !shouldSignal(cmd) {
-		return
-	}
-	_ = syscall.Kill(-cmd.Process.Pid, sig)
+	procgroup.Signal(cmd, sig)
 }
 
 // shouldSignal is the decision signalGroup makes, split out so it can be tested
@@ -902,5 +900,5 @@ func signalGroup(cmd *exec.Cmd, sig syscall.Signal) {
 // version of signalgroup_test.go did. The decision is deterministic, so that is
 // what gets pinned.
 func shouldSignal(cmd *exec.Cmd) bool {
-	return cmd != nil && cmd.Process != nil && cmd.ProcessState == nil
+	return procgroup.ShouldSignal(cmd)
 }

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"vulos/backend/internal/procgroup"
 )
 
 // defaultPoolSize is the number of pre-warmed Python processes kept ready.
@@ -333,11 +334,11 @@ func (s *Sandbox) PoolLen() int {
 
 func (s *Sandbox) kill(sc *Script) {
 	if sc.cmd != nil && sc.cmd.Process != nil && sc.Running {
-		syscall.Kill(-sc.cmd.Process.Pid, syscall.SIGTERM)
+		procgroup.Signal(sc.cmd, syscall.SIGTERM)
 		select {
 		case <-sc.done:
 		case <-time.After(3 * time.Second):
-			syscall.Kill(-sc.cmd.Process.Pid, syscall.SIGKILL)
+			procgroup.Signal(sc.cmd, syscall.SIGKILL)
 		}
 	}
 }
@@ -488,11 +489,11 @@ func killWarm(wp *warmProcess) {
 		wp.stdin.Close()
 	}
 	if wp.cmd != nil && wp.cmd.Process != nil {
-		syscall.Kill(-wp.cmd.Process.Pid, syscall.SIGTERM)
+		procgroup.Signal(wp.cmd, syscall.SIGTERM)
 		select {
 		case <-wp.done:
 		case <-time.After(2 * time.Second):
-			syscall.Kill(-wp.cmd.Process.Pid, syscall.SIGKILL)
+			procgroup.Signal(wp.cmd, syscall.SIGKILL)
 		}
 	}
 }

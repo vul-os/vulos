@@ -31,6 +31,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"vulos/backend/internal/procgroup"
 
 	"vulos/backend/services/gpu"
 	"vulos/backend/services/stream"
@@ -367,9 +368,9 @@ func (s *Service) StopAll() {
 		s.cancel()
 	}
 	if s.pulse != nil && s.pulse.Process != nil {
-		syscall.Kill(-s.pulse.Process.Pid, syscall.SIGTERM)
+		procgroup.Signal(s.pulse, syscall.SIGTERM)
 		time.Sleep(300 * time.Millisecond)
-		syscall.Kill(-s.pulse.Process.Pid, syscall.SIGKILL)
+		procgroup.Signal(s.pulse, syscall.SIGKILL)
 	}
 	s.pulseStarted = false
 }
