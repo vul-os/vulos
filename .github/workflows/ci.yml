@@ -337,7 +337,7 @@ jobs:
           trap 'echo "::warning::SIGINT received by the test step at $(date -u +%T)"' INT
           trap 'echo "::warning::SIGHUP received by the test step at $(date -u +%T)"' HUP
           echo "test step pid $$ starting at $(date -u +%T)"
-          go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 | tee /tmp/gotest-services.log
+          go test -p 1 -timeout 120s $(go list ./services/...) 2>&1 | tee /tmp/gotest-services.log
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
           # enumerated list silently drops a package added at the repo root, and
@@ -394,6 +394,27 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── EXPERIMENT RUNNING 2026-08-12: services in FORWARD order.
+      #
+      # The `| tac` is removed for this run only. It is the experiment named in
+      # the note below, and its precondition is met: the current instrumentation
+      # has now been read twice in the reversed configuration, at 32.17s and
+      # 32.21s.
+      #
+      # Read the `Finished process ... elapsed time` figure from the runner
+      # diagnostic step:
+      #   ~32s again  → a fixed clock kills the step regardless of what it is
+      #                 doing. Package identity is irrelevant, services/sandbox
+      #                 was a coincidence of pace, and the "positional" reading
+      #                 is retired along with it.
+      #   clearly different → the elapsed time depends on the work, so the
+      #                 timer reading is wrong and package order genuinely
+      #                 matters.
+      #
+      # Either answer eliminates one of the two live readings, which is why this
+      # is worth a deliberate order change after having argued against making
+      # one casually.
+      #
       # ── REREAD 2026-08-12: "positional, not package-specific" may ALSO rest
       #    on the bad ~110s measurement. A fixed 32.2s clock explains both runs.
       #
