@@ -1228,6 +1228,36 @@ jobs:
           fi
           echo "OK — no private key material tracked in git."
 
+  smoke-relay-nat:
+    # REACH-NAT — the one promise in docs/REACH.md that had no automated
+    # evidence: "Most boxes sit behind NAT, CGNAT, or a router nobody can
+    # configure." scripts/smoke-relay.sh proves multi-relay and failover, but
+    # everything in it binds 127.0.0.1, where nothing was ever unreachable.
+    #
+    # This runs a box behind a stateful firewall that DROPS every new inbound
+    # connection — what NAT does to reachability — and requires it to stay
+    # reachable through the relay. It needs NET_ADMIN to install that firewall.
+    #
+    # A SEPARATE job on purpose. It is new to CI and has only ever run on a
+    # developer machine; keeping it out of the backend job means a failure here
+    # is visible and isolated rather than confused with the backend result.
+    name: REACH-NAT — a box behind a DROP firewall stays reachable
+    runs-on: ubuntu-latest
+    needs: [backend]
+    env:
+      GOTOOLCHAIN: auto
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run the NAT reachability smoke test
+        run: bash scripts/smoke-relay-nat.sh
+        timeout-minutes: 20
+
   smoke-peering:
     name: SMOKE-01 — Peering Route Regression
     runs-on: ubuntu-latest
