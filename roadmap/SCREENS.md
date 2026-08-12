@@ -119,6 +119,42 @@ environment are duplicated between `build.sh` and `cmd/init/main.go` and must
 stay identical, and a headless box must still exit 0 rather than restart
 forever.
 
+## The one genuinely unknown mechanism, narrowed
+
+Everything else about the launcher is understood. The part that was not, and is
+now half-answered: **how do you make browser instance N appear on output N?**
+
+A browser cannot choose its own Wayland output. The compositor places it. So
+the launcher cannot simply start two browsers and hope.
+
+What the labwc documentation establishes (checked 2026-08-13, syntax NOT yet
+verified against the version in the image):
+
+- labwc supports **window rules**, and a rule takes an **optional `output`
+  attribute**. Omitted, the rule applies to all outputs. That is the placement
+  mechanism, and it is per-window rather than per-process.
+- Because rules match on window identity, each browser instance must be
+  **distinguishable** — a distinct `app_id` or title per screen — so a rule can
+  name it. cog and chromium both accept flags that affect this.
+- **`wlr-randr`** configures output position, resolution and scale, and
+  `backend/services/display/display.go` already shells out to it. Output
+  geometry is therefore a solved problem; only window-to-output binding is not.
+- labwc's default new-window placement is "center" on the ACTIVE output, which
+  is why the naive approach — start N browsers, let them land — puts them all
+  on one screen.
+
+So the remaining work is: give each instance a distinct identity, generate a
+labwc rc.xml with one rule per output binding that identity to that output, and
+pass each instance its own `screen`/`screens`/`screenIndex` parameters (the
+parser and indicator for those are built, tested and rendered — see above).
+
+**Do not write that rc.xml from memory.** The exact element and attribute names
+were not confirmed, and a wrong rule fails the way everything in this area
+fails: silently, with all the browsers on one monitor and nothing in any log
+saying why. Read `labwc-config(5)` on the image, or run labwc with two virtual
+outputs under QEMU and iterate against a screendump, which is the verification
+this whole feature needs anyway.
+
 ## What is genuinely unresolved
 
 Named rather than glossed, because these are the parts that will decide whether
