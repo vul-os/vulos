@@ -394,6 +394,34 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── RUNNER'S OWN LOG 2026-08-12: it did not kill the step, and the step
+      #    lived 32 SECONDS, not the ~110 repeated throughout these notes.
+      #
+      # From Worker_20260812-184034-utc.log:
+      #     Finished process 11980 with exit code 137, and elapsed time 00:00:32.17
+      #     Force kill process on cancellation: 'False'
+      # with no cancel message received.
+      #
+      # Two things follow, and one of them is a correction.
+      #
+      # 1. The runner OBSERVED the exit. Its ProcessInvoker reports a child that
+      #    ended with 137; it did not initiate a kill, was not cancelling, and
+      #    force-kill-on-cancellation is off. So this is not a workflow or
+      #    runner configuration problem. Something else on the machine SIGKILLed
+      #    the step's shell.
+      #
+      # 2. THE ~110s FIGURE WAS WRONG. It came from the first and last log-line
+      #    timestamps of lines matching the job name, which also swept in other
+      #    steps. The step's own process lived 32 seconds. That number was
+      #    repeated across several of these notes and was the entire basis for
+      #    the "it lands at Go's 120s -timeout" theory — a theory that was
+      #    already dead on other evidence, which is the only reason the bad
+      #    measurement did not cost more than it did.
+      #
+      # Anything reasoning from ~110s in the notes below is reasoning from a
+      # measurement that does not hold. The package counts stand (20 reported),
+      # and 20 packages in 32 seconds is unremarkable rather than a stall.
+      #
       # ── SIGNATURE 2026-08-12: the step's SHELL is SIGKILLed; its children live
       #
       # With traps installed on TERM/INT/HUP, a failing run fires NONE of them.
