@@ -79,6 +79,46 @@ output is, to that code, a second tab.
   window "to the next monitor" is then moving it between desktops, which the
   shell already supports, rather than a new spatial concept.
 
+## What is built as of 2026-08-12, and what is NOT
+
+Stated precisely, because the built half looks like a working feature and is
+not one yet.
+
+**Built and tested.** `frontend/src/providers/screenIdentity.ts` parses a screen
+identity out of a URL query string, and `frontend/src/shell/TopBar.tsx` renders
+the output's name in the top bar when more than one screen was launched. 14
+tests, mutation-tested three ways: removing the index>total consistency check,
+loosening the connector-name pattern, and making `isMultiScreen` accept
+`total=1` each turn it red.
+
+**NOT built: anything that SETS the parameter.** Neither `build.sh`'s
+`vulos-kiosk` script nor `backend/cmd/init/main.go` writes `?screen=`,
+`?screens=` or `?screenIndex=` into the URL it opens. Verified by grep, not
+assumed.
+
+The consequence, plainly: `readScreenIdentity()` returns null on every real
+boot today, `isMultiScreen()` is therefore always false, and the indicator
+renders for nobody. **The feature is reachable from no surface.** Its tests all
+pass, which is exactly what makes this worth writing down — a green suite over
+an unreachable feature is the shape this repository has shipped before, and the
+tests are honest about the parser while saying nothing about whether anything
+calls it.
+
+**What the launcher side needs**, so the remaining work is not re-derived:
+enumerate connected outputs (`backend/services/display/display.go` already
+models them, including `Position`), start one browser per output under a
+multi-output compositor — `labwc` is already in
+`scripts/build-sh-packages.txt`, alongside the single-output `cage` used today
+— and append `screen=<output name>&screens=<n>&screenIndex=<i>` to each URL.
+The parser refuses partial or inconsistent input, so a launcher that sets only
+some of the three gets single-screen behaviour rather than a broken chip.
+
+Two constraints that must survive it, both currently asserted by
+`backend/internal/docsref/kiosk_test.go`: the browser list and the wlroots
+environment are duplicated between `build.sh` and `cmd/init/main.go` and must
+stay identical, and a headless box must still exit 0 rather than restart
+forever.
+
 ## What is genuinely unresolved
 
 Named rather than glossed, because these are the parts that will decide whether
