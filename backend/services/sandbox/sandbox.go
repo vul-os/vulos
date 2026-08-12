@@ -213,8 +213,13 @@ func (s *Sandbox) Run(ctx context.Context, id, code string) (*Script, error) {
 			fmt.Sprintf("VULOS_PORT=%d", port),
 			fmt.Sprintf("PORT=%d", port),
 		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		// NOT os.Stdout/os.Stderr. A sandboxed child inherits whatever file
+		// descriptors it is handed, and under `go test` those are the pipe the
+		// CI runner reads the step's output from. A child that outlives the test
+		// keeps that pipe open, the step's output never closes, and the runner
+		// SIGKILLs it — exit 137, with the tests all reporting pass first.
+		cmd.Stdout = nil
+		cmd.Stderr = nil
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 		if err := cmd.Start(); err != nil {
@@ -444,8 +449,10 @@ func (s *Sandbox) spawnWarm() {
 		fmt.Sprintf("PORT=%d", port),
 	}
 	cmd.Stdin = pr // launcher reads from here
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// See the note at the script-spawn site above: handing a long-lived child
+	// this process's stdout leaks the CI runner's output pipe into it.
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
