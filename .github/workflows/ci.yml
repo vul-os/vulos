@@ -9,6 +9,18 @@ on:
     branches:
       - main
       - "staging/**"
+      # feature/** too. Every gate in this file ran on main and staging only,
+      # so the branch where the work actually happens was ungated: a full day's
+      # commits went in without CI seeing any of them, and the failures that
+      # were eventually found — gofmt drift, a licence file that could not be
+      # generated identically on two machines, a test asserting the absence of a
+      # browser on a runner that ships one — were all found by dispatching runs
+      # by hand.
+      #
+      # The cost is one run per push on a feature branch. The alternative is
+      # what just happened: discovering a day later that the branch has been red
+      # the whole time.
+      - "feature/**"
   pull_request:
     branches:
       - main
