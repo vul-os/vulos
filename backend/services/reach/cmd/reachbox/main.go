@@ -24,6 +24,20 @@
 //	  exactly as documented in docs/REACH.md and implemented by reach.FromEnv.
 //	REACHBOX_LABEL   — identifies this box in its own HTTP responses and logs.
 //	                   Defaults to "reachbox".
+//	REACHBOX_LISTEN  — OPTIONAL host:port for a plain HTTP listener serving the
+//	                   SAME handler the tunnel serves. Unset (the default) means
+//	                   no listener at all, which is what scripts/smoke-relay.sh
+//	                   uses.
+//
+//	                   It exists for ONE purpose: scripts/smoke-relay-nat.sh
+//	                   needs a direct-dial target in order to PROVE that the
+//	                   relay cannot reach the box directly. Without something
+//	                   listening, "the relay could not connect to the box" is
+//	                   true because nothing was listening, not because the box
+//	                   is behind NAT — the control probe would pass for the
+//	                   wrong reason and the NAT claim would be unfounded. With
+//	                   it, the same probe succeeds the moment the box is NOT
+//	                   isolated, which is what makes the isolation testable.
 //
 // # Failure posture
 //
@@ -39,6 +53,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -80,6 +95,25 @@ func main() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "reachbox:%s path=%s", label, r.URL.Path)
 	})
+
+	// The optional direct listener. Same handler, so a response proves nothing
+	// about WHICH path served it — the caller distinguishes them by where it
+	// connected, which is the whole point of the NAT control probe.
+	if addr := strings.TrimSpace(os.Getenv("REACHBOX_LISTEN")); addr != "" {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			// Loud and fatal: this listener exists to make a NEGATIVE claim
+			// testable ("the relay cannot reach this"). If it silently failed
+			// to bind, the probe that must fail would fail for the wrong
+			// reason and the harness would report a NAT property it never
+			// established.
+			log.Fatalf("[reachbox %s] REACHBOX_LISTEN=%s: %v", label, addr, err)
+		}
+		log.Printf("[reachbox %s] direct listener on %s", label, ln.Addr())
+		srv := &http.Server{Handler: handler}
+		go func() { _ = srv.Serve(ln) }()
+		defer func() { _ = srv.Close() }()
+	}
 
 	targets := make([]tunnel.Target, 0, set.Len())
 	for _, ep := range set.All() {
