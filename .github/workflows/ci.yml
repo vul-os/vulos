@@ -528,11 +528,28 @@ jobs:
       - name: Runner diagnostic log around the kill
         if: always()
         run: |
-          d=$(find "$RUNNER_TEMP/.." -maxdepth 3 -type d -name _diag 2>/dev/null | head -1)
+          # _diag lives beside the RUNNER INSTALL, not the work tree. The first
+          # version searched under $RUNNER_TEMP/.. (/home/runner/work/_temp/..)
+          # and correctly reported UNKNOWN with the path it had searched — which
+          # is the only reason this was a two-minute fix rather than a silent
+          # "nothing found" that read as evidence of absence.
+          d=""
+          for cand in /home/runner/runners/*/_diag "$RUNNER_TEMP/../../_diag" \
+                      "$AGENT_TOOLSDIRECTORY/../_diag" /opt/actions-runner/_diag; do
+            [ -d "$cand" ] && { d="$cand"; break; }
+          done
           if [ -z "$d" ]; then
-            echo "UNKNOWN: no _diag directory found under $RUNNER_TEMP/.."
+            d=$(find /home/runner /opt -maxdepth 4 -type d -name _diag 2>/dev/null | head -1)
+          fi
+          if [ -z "$d" ]; then
+            echo "UNKNOWN: no _diag directory found. Searched /home/runner/runners/*/_diag,"
+            echo "  \$RUNNER_TEMP/../../_diag, \$AGENT_TOOLSDIRECTORY/../_diag,"
+            echo "  /opt/actions-runner/_diag, then a find under /home/runner and /opt."
+            echo "--- what IS under /home/runner (depth 1) ---"
+            ls -la /home/runner 2>/dev/null | head -20
             exit 0
           fi
+          echo "found _diag at $d"
           f=$(ls -t "$d"/Worker_*.log 2>/dev/null | head -1)
           if [ -z "$f" ]; then
             echo "UNKNOWN: _diag exists at $d but holds no Worker_*.log"
