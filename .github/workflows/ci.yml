@@ -394,6 +394,36 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── SIGNATURE 2026-08-12: the step's SHELL is SIGKILLed; its children live
+      #
+      # With traps installed on TERM/INT/HUP, a failing run fires NONE of them.
+      # Nothing negotiated. The step was SIGKILLed outright.
+      #
+      # And the cleanup list names what survived it:
+      #     Terminate orphan process: pid (11935) (go)
+      #     Terminate orphan process: pid (11936) (tee)
+      #     Terminate orphan process: pid (16284) (sandbox.test)
+      # against "test step pid 11928 starting at 18:11:00".
+      #
+      # So pid 11928 — the bash running this step — was killed, while the
+      # processes it started kept running. Not the process group; the parent
+      # alone. The job then continued into the following steps normally, so the
+      # runner itself was healthy and only this step's shell died.
+      #
+      # That is a much narrower signature than "something kills the toolchain".
+      # It rules out anything that would take the whole tree down (a cgroup
+      # group-kill, a job cancellation, the VM going away) and it rules out an
+      # orderly supervisor, which would have sent SIGTERM first. Combined with
+      # the earlier exclusions — no OOM records, 15 GB free of 16, 85 GB disk
+      # free, no Go timeout, no concurrency block — what remains is a targeted
+      # SIGKILL at the step's shell from something that does not announce
+      # itself.
+      #
+      # Worth trying next: `ps -o pid,ppid,stat,etime,comm` snapshots around the
+      # kill window, and checking whether the runner's own diagnostic logs
+      # (Runner_*.log under the runner's _diag directory, exposed via
+      # ACTIONS_STEP_DEBUG) record a step teardown at that timestamp.
+      #
       # ── CORRECTION 2026-08-12: it is NOT Go's -timeout. Measured, not argued.
       #
       # With go test's output teed to a file that survives the kill, a failing
