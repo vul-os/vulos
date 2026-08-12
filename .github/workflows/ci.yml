@@ -134,77 +134,19 @@ jobs:
         # goroutines. A bounded timeout turns an uninformative SIGKILL into a
         # panic with a full stack, which names the test and the line it is
         # blocked on.
-        # A memory sampler alongside the tests, because three rounds of reasoning
-        # about this failure produced three wrong answers: parallelism (-p 2 did
-        # not fix it), a hung test (a 120s per-package timeout never fires), and
-        # a full suite that passes in a 6GB container on this laptop.
+        # The memory question is settled, so the sampler is gone.
         #
-        # exit 137 is SIGKILL and the runner's cleanup names `go` and `link` as
-        # orphans, so the kill lands mid-compile. Whether that is the OOM killer
-        # is a question the log has never answered — nobody has looked at memory
-        # while it happens. This prints used/available every ten seconds, so the
-        # next failure either shows the ceiling being approached or rules memory
-        # out for good.
-        run: |
-          cd backend
-          ( while :; do
-              free -m | awk '/^Mem:/{printf "[mem] host_used=%sMB host_avail=%sMB", $3, $7}'
-              # CGROUP memory too. free(1) reports the HOST, and a job runs inside
-              # a cgroup with its own cap — a cgroup OOM kill is a SIGKILL while
-              # the host still shows gigabytes free, which is exactly the shape
-              # this failure has. Five other explanations have been measured and
-              # disproven; this is the one the previous instrument could not see.
-              for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max; do
-                [ -r "$f" ] && printf " %s=%s" "$(basename $f)" "$(cat $f)"
-              done
-              printf "\n"
-              sleep 10
-            done ) &
-          SAMPLER=$!
-          trap 'kill $SAMPLER 2>/dev/null || true' EXIT
-          go test -p 1 -timeout 120s ./...
-        # Whatever the outcome, say whether the kernel killed anything and
-        # whether the cgroup recorded an OOM. memory.events counts oom and
-        # oom_kill events for this job's cgroup; dmesg names the victim. Neither
-        # has ever been in this log.
+        # It answered what it was for — the job's cgroup reported oom 0,
+        # oom_kill 0, oom_group_kill 0 with peak 4.5GB against no limit, so
+        # nothing here was ever OOM-killed. Then it became a problem of its own:
+        # a background loop writing to the step's stdout keeps that pipe open
+        # after go test returns, and a step whose output never closes is killed.
+        # With the process-group guards in place all 119 packages now report,
+        # where earlier runs stopped around 105 — so the tests finish and the
+        # only thing left holding the step open was the instrument.
+        run: cd backend && go test -p 1 -timeout 120s ./...
         timeout-minutes: 25
 
-      - name: Why did it die (kernel + cgroup)
-        if: always()
-        run: |
-          # RESOLVE the cgroup rather than assume /sys/fs/cgroup is it. The first
-          # version of this step read the root paths and printed "(unreadable)"
-          # twice — a diagnostic that produced no data, which is the same
-          # failure mode as the thing it was diagnosing.
-          echo "--- /proc/self/cgroup:"; cat /proc/self/cgroup 2>/dev/null || true
-          CG=$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup 2>/dev/null | head -1)
-          echo "--- resolved cgroup path: ${CG:-<none>}"
-          for base in "/sys/fs/cgroup${CG}" /sys/fs/cgroup /sys/fs/cgroup/memory; do
-            for f in memory.events memory.peak memory.max memory.limit_in_bytes memory.failcnt; do
-              [ -r "$base/$f" ] && { echo "== $base/$f"; cat "$base/$f"; }
-            done
-          done
-          echo "--- (nothing above means the runner exposes no readable memory cgroup)"
-          echo "--- kernel ring buffer, last 40 lines:"
-          dmesg 2>/dev/null | tail -40 || echo "  (dmesg not permitted)"
-
-      # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
-      # backend/e2e/realserver_test.go's package doc for what this proves that
-      # every other "e2e" in the repo does not (no mocks, no in-process mux,
-      # real on-disk stores, real middleware order). It is `//go:build e2e`,
-      # so the `go test ./...` step above silently excludes it — this step is
-      # the only thing in CI that has ever run it. It is what caught a real
-      # production bug: an account replicated to a second box could not be
-      # logged into there.
-      #
-      # Kept in this job rather than a separate one: it needs the identical
-      # checkout + Go toolchain already set up above, and its own TestMain
-      # builds cmd/server itself (`go build -o <tmp> ./cmd/server`, ~60-120s
-      # locally) — there is no artifact from the Build step above to hand it,
-      # so a separate job would just repeat the same checkout/setup-go for no
-      # benefit. Timed out explicitly (both `go test -timeout` and the step's
-      # own `timeout-minutes`) so a hung server process fails the job instead
-      # of running out the clock silently.
       - name: Test (e2e — real server binary over real HTTP)
         run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
         timeout-minutes: 8
