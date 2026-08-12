@@ -148,13 +148,36 @@ jobs:
         run: |
           cd backend
           ( while :; do
-              free -m | awk '/^Mem:/{printf "[mem] used=%sMB avail=%sMB\n", $3, $7}'
+              free -m | awk '/^Mem:/{printf "[mem] host_used=%sMB host_avail=%sMB", $3, $7}'
+              # CGROUP memory too. free(1) reports the HOST, and a job runs inside
+              # a cgroup with its own cap — a cgroup OOM kill is a SIGKILL while
+              # the host still shows gigabytes free, which is exactly the shape
+              # this failure has. Five other explanations have been measured and
+              # disproven; this is the one the previous instrument could not see.
+              for f in /sys/fs/cgroup/memory.current /sys/fs/cgroup/memory.max; do
+                [ -r "$f" ] && printf " %s=%s" "$(basename $f)" "$(cat $f)"
+              done
+              printf "\n"
               sleep 10
             done ) &
           SAMPLER=$!
           trap 'kill $SAMPLER 2>/dev/null || true' EXIT
           go test -p 1 -timeout 120s ./...
+        # Whatever the outcome, say whether the kernel killed anything and
+        # whether the cgroup recorded an OOM. memory.events counts oom and
+        # oom_kill events for this job's cgroup; dmesg names the victim. Neither
+        # has ever been in this log.
         timeout-minutes: 25
+
+      - name: Why did it die (kernel + cgroup)
+        if: always()
+        run: |
+          echo "--- cgroup memory events (oom/oom_kill counters for this job):"
+          cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "  (unreadable)"
+          echo "--- cgroup peak/max:"
+          cat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.max 2>/dev/null || echo "  (unreadable)"
+          echo "--- kernel ring buffer, last 40 lines:"
+          dmesg 2>/dev/null | tail -40 || echo "  (dmesg not permitted)"
 
       # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
       # backend/e2e/realserver_test.go's package doc for what this proves that
