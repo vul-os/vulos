@@ -184,10 +184,23 @@ const RELAY_REACH = {
       healthy: true, down_for_seconds: 0, last_error: '' },
     { endpoint: { name: 'relay-us', url: 'wss://relay.us-east.vulos.host', region: 'us-east' },
       healthy: true, down_for_seconds: 0, last_error: '' },
+    // A PIER broker in the same endpoint set as the two built-in relays. Not a
+    // staged impossibility: services/relayconfig/providers.go states that the
+    // tunnel agent "holds one link per relay in VULOS_RELAY_ENDPOINTS with no
+    // notion of provider", so "an owner can run a built-in Vulos relay AND a
+    // Pier relay AT THE SAME TIME, in one endpoint set" — the provider label
+    // selects whose reporting is authoritative, not who may be listed.
+    //
+    // This is what the relay guide's second figure has been describing with a
+    // placeholder: "Pier sits alongside your Vulos relays; it does not replace
+    // them."
+    { endpoint: { name: 'pier-lon', url: 'wss://pier.lon.example.net', region: 'eu-west' },
+      healthy: true, down_for_seconds: 0, last_error: '' },
   ],
   links: [
     { name: 'relay-eu', state: 'up', public_url: 'https://ada.eu-central.vulos.host' },
     { name: 'relay-us', state: 'up', public_url: 'https://ada.us-east.vulos.host' },
+    { name: 'pier-lon', state: 'up', public_url: 'https://ada.lon.example.net' },
   ],
 }
 
@@ -944,6 +957,22 @@ const SHOTS = [
     // shot scrolls to that card rather than clicking anything, which is the
     // detail that made the existing settings-relay shot unusable for the guide:
     // it frames the top of the panel, where the options are not yet visible.
+    // The relay NODE list, showing a Pier broker beside the two built-in relays.
+    // Frames the endpoints rather than the provider radios — a different figure
+    // from settings-relay-providers, answering "can I run both at once" rather
+    // than "what can I choose".
+    name: 'settings-relay-nodes',
+    light: true,
+    desc: 'Settings — Relay & Reachability: a Pier broker alongside two Vulos relays',
+    async drive(page) {
+      await launchApp(page, 'Settings')
+      await page.getByRole('button', { name: 'Relay & Reachability' }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
+      await page.getByText('pier-lon').first().scrollIntoViewIfNeeded().catch(() => {})
+      await page.waitForTimeout(500)
+    },
+  },
+  {
     name: 'settings-relay-providers',
     light: true,
     desc: 'Settings — Relay & Reachability: all six reachability providers',
