@@ -231,11 +231,27 @@ jobs:
         run: |
           cd backend
           set +e
-          go test -p 1 -timeout 120s ./...
-          rc=$?
+          # TWO invocations, not one. This is an experiment as much as a fix.
+          #
+          # The kill is positional and cumulative but caused by no individual
+          # package, so the remaining suspect is state accumulating inside a
+          # single long-lived `go` process across 121 packages. Splitting the run
+          # gives each half a fresh process. If the failure stops, that localises
+          # it to per-process state and is also a usable mitigation; if it
+          # continues, the theory is dead and the split costs nothing.
+          #
+          # The split is by directory rather than by count so it stays
+          # meaningful as packages are added.
+          go test -p 1 -timeout 120s ./services/...
+          rc1=$?
+          # Everything EXCEPT services, computed rather than enumerated: an
+          # enumerated list silently drops a package added at the repo root, and
+          # this run is only meaningful if it covers what ./... covered.
+          go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services')
+          rc2=$?
           set -e
-          echo "::notice::go test exited ${rc}"
-          exit "$rc"
+          echo "::notice::go test exited services=${rc1} rest=${rc2}"
+          [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]
         timeout-minutes: 25
 
       # Disk at the moment the Test step ends, pass or fail.
