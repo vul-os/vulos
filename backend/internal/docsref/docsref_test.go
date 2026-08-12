@@ -77,6 +77,13 @@ func resolves(t *testing.T, cited string) bool {
 func markdownFiles(t *testing.T) []string {
 	t.Helper()
 	var out []string
+	// NOTE: roadmap/*.md is NOT scanned, and that is a known gap rather than a
+	// decision. Adding it on 2026-08-12 surfaced 13 stale citations across
+	// CLUSTER.md, FILES.md, NODE-CAPABILITY.md, OFFLINE-DATA.md, SYNC.md and
+	// TYPE-SAFETY.md — several naming files that were deliberately deleted, such
+	// as services/sync/hotpath.go. Turning the scan on means fixing or annotating
+	// each one first; doing it in the same change would have meant committing a
+	// red gate.
 	for _, pat := range []string{"docs/*.md", "*.md"} {
 		m, err := filepath.Glob(filepath.Join(repoRoot, pat))
 		if err != nil {
