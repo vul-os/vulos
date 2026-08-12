@@ -394,6 +394,34 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── DETERMINISTIC 2026-08-12: the kill lands at 32.2s, twice, to 40ms.
+      #
+      #     Finished process 11980 ... elapsed time 00:00:32.1700540
+      #     Finished process 12613 ... elapsed time 00:00:32.2112690
+      #
+      # Same 20 packages reported, same orphans (go, tee, sandbox.test), on two
+      # different commits.
+      #
+      # This kills the pid-recycling theory committed one step earlier. A
+      # SIGKILL landing on a recycled pid is a race and would scatter across
+      # runs; it would not repeat to within 40 milliseconds. The four unguarded
+      # Process.Kill() sites found under that theory are still a genuine defect
+      # and the fix stands on its own merits — but they are not this.
+      #
+      # A clock this precise means the run is deterministic up to the moment it
+      # dies, and 20 packages in 32 seconds is a normal pace rather than a
+      # stall. So the trigger is REACHING a particular point, not spending time.
+      # services/sandbox is the package in flight at that point, every time.
+      #
+      # sandbox itself only signals through the guarded procgroup.Signal, so it
+      # is not obviously the killer — but it is reproducibly what the run is
+      # doing when the shell dies, and that is now the narrowest fact available.
+      #
+      # Worth trying next, in order of cost: run the reversed services list
+      # locally but STOP after the 20th package and compare which package is
+      # 21st; and have the step log `ps -o pid,ppid,pgid,comm` immediately
+      # before and after the sandbox package to see what exists at that moment.
+      #
       # ── RUNNER'S OWN LOG 2026-08-12: it did not kill the step, and the step
       #    lived 32 SECONDS, not the ~110 repeated throughout these notes.
       #
