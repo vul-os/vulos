@@ -1,7 +1,12 @@
 package stream
 
 import (
+	"fmt"
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -121,5 +126,52 @@ func TestShouldSignalRefusesAReapedCommand(t *testing.T) {
 
 	if shouldSignal(nil) || shouldSignal(&exec.Cmd{}) {
 		t.Error("nil or never-started commands are signalled")
+	}
+}
+
+// EVERY group kill in this package must go through signalGroup.
+//
+// Fixing Session.Close alone was not enough: pool.go still killed cage's group
+// directly in the launch-failure path — which is the path CI takes, since no
+// compositor comes up there — and stream.go still signalled gstVideo and the
+// app supervisor's children the same way. A guard that one call site honours
+// and five bypass is not a guard.
+func TestNoDirectGroupKillsRemain(t *testing.T) {
+	root := "."
+	var offenders []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		if strings.HasSuffix(path, "_test.go") {
+			return nil // tests may signal their own fixtures directly
+		}
+		src, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") {
+				continue // a comment about the pattern is not the pattern
+			}
+			// signalGroup's own body is the sanctioned implementation — it is the
+			// one place the guard has already been applied, two lines above.
+			if strings.Contains(line, "syscall.Kill(-cmd.Process.Pid, sig)") {
+				continue
+			}
+			if strings.Contains(line, "syscall.Kill(-") {
+				offenders = append(offenders, fmt.Sprintf("%s:%d: %s", path, i+1, trimmed))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(offenders) > 0 {
+		t.Errorf("these signal a process GROUP by pid without the reaped-process guard, "+
+			"so a recycled pid can take an unrelated group with it — use signalGroup:\n%s",
+			strings.Join(offenders, "\n"))
 	}
 }

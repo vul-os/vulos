@@ -266,7 +266,7 @@ func (s *Session) peerConnect() {
 	if s.peerCount == 1 {
 		if s.gstVideo != nil && s.gstVideo.Process != nil {
 			// Resume a SIGSTOP-suspended process (subsequent reconnects).
-			syscall.Kill(-s.gstVideo.Process.Pid, syscall.SIGCONT)
+			signalGroup(s.gstVideo, syscall.SIGCONT)
 			log.Printf("[stream] %s: video encode resumed (peer connected)", s.Name)
 		} else if s.videoStartFn != nil {
 			// Start for the very first peer (process was never launched yet).
@@ -289,7 +289,7 @@ func (s *Session) peerDisconnect() {
 	s.peerCount--
 	if s.peerCount == 0 {
 		if s.gstVideo != nil && s.gstVideo.Process != nil {
-			syscall.Kill(-s.gstVideo.Process.Pid, syscall.SIGSTOP)
+			signalGroup(s.gstVideo, syscall.SIGSTOP)
 			log.Printf("[stream] %s: video encode suspended (no peers connected)", s.Name)
 		}
 	}
@@ -707,7 +707,7 @@ func (s *Session) startIdleWatcher() {
 					if proc != nil && proc.Process != nil {
 						log.Printf("[stream] %s: idle suspend (no input for %.0fs, no peers)",
 							s.Name, since.Seconds())
-						syscall.Kill(-proc.Process.Pid, syscall.SIGSTOP)
+						signalGroup(proc, syscall.SIGSTOP)
 					}
 
 				case since >= idleStaticThreshold && !idleAlready:

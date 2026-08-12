@@ -98,7 +98,9 @@ func launchCageSession(ctx context.Context, sess *Session, cageBin string, appEn
 		time.Sleep(100 * time.Millisecond)
 	}
 	// Socket didn't appear — kill cage and return an error so caller falls back.
-	syscall.Kill(-cageCmd.Process.Pid, syscall.SIGKILL)
+	// Guarded: cage may already have exited (that is often WHY the socket never
+	// appeared), and signalling a reaped pid by number kills whoever inherited it.
+	signalGroup(cageCmd, syscall.SIGKILL)
 	sess.cage = nil
 	return fmt.Errorf("cage: wayland socket %s not ready after 2s", wayland)
 }
@@ -528,7 +530,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 					if cur != nil && cur.Process != nil {
 						log.Printf("[stream] %s: restarting video pipeline (fps=%d mangohud=%v)",
 							sess.Name, sess.FPS, sess.MangoHud)
-						syscall.Kill(-cur.Process.Pid, syscall.SIGTERM)
+						signalGroup(cur, syscall.SIGTERM)
 					}
 				})
 			}
@@ -590,9 +592,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 					// the real path.
 					log.Printf("[stream] adaptive bitrate restart: encoder=%s bitrate=%dkbps",
 						sess.Encoder, kbps)
-					if cmd != nil && cmd.Process != nil {
-						syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-					}
+					signalGroup(cmd, syscall.SIGTERM)
 				}
 			}
 		}()
