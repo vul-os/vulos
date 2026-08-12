@@ -328,12 +328,12 @@ jobs:
           SAMPLER_PID=$!
           disown "$SAMPLER_PID" || true
 
-          go test -p 1 -timeout 120s $(go list ./services/... | tac)
+          go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 | tee /tmp/gotest-services.log
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
           # enumerated list silently drops a package added at the repo root, and
           # this run is only meaningful if it covers what ./... covered.
-          go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services')
+          go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services') 2>&1 | tee /tmp/gotest-rest.log
           rc2=$?
 
           kill "$SAMPLER_PID" 2>/dev/null || true
@@ -443,6 +443,34 @@ jobs:
       # free of 16 GB at failure, no kernel OOM records), cgroup memory, disk
       # (85 GB free), the 25-minute step budget, and every individual package
       # run on its own.
+      # Survive the kill. When the step is SIGKILLed the runner's captured
+      # output ends wherever it ended, and anything go test wrote in its final
+      # moments is simply gone. Writing to a file as well means the last words
+      # are still on disk for an if:always() step to read.
+      #
+      # This settles a question the local reproduction sharpened. The full
+      # reversed services order passes on linux/amd64 with EXIT=0, so the stall
+      # needs the runner. And if Go's own -timeout were firing, it would print
+      # "panic: test timed out after 2m0s" plus a full goroutine dump naming
+      # what is blocked. That output has never been seen — which means EITHER
+      # something external kills the step at ~110s and the closeness to the
+      # 120s -timeout is coincidence, OR Go did print the dump and it died with
+      # the pipe. Those are different problems and the log file tells them
+      # apart.
+      - name: Last words from go test (survives a killed step)
+        if: always()
+        run: |
+          for f in /tmp/gotest-services.log /tmp/gotest-rest.log; do
+            if [ -f "$f" ]; then
+              echo "=== tail of $f ($(wc -l < "$f") lines) ==="
+              tail -40 "$f"
+              echo "=== timeout panic present in $f? ==="
+              grep -c 'test timed out' "$f" || echo 0
+            else
+              echo "=== $f absent — the step died before that invocation began ==="
+            fi
+          done
+
       - name: Kernel log after tests (OOM killer?)
         if: always()
         run: |
