@@ -446,9 +446,72 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 done
 echo
 
+# ── Is the DESKTOP actually on the screen? ───────────────────────────────────
+#
+# This used to capture a screendump and assert that the FILE EXISTS. Nothing
+# ever looked at the pixels — so the harness set vulos.kiosk=force specifically
+# "to see the desktop", took a picture of it, and never checked whether a
+# desktop was in the picture.
+#
+# It was not. Measured on the captures this harness had already been producing:
+# 640x384, THREE distinct colours, ZERO per cent non-black — a blank console,
+# on both the live and the installed image, while every phase reported PASS.
+#
+# A rendered browser UI has hundreds of colours and fills the frame; a text
+# console on black has two or three. The thresholds below sit far enough apart
+# that neither a dark theme nor a splash screen is mistaken for a desktop.
+#
+# Polled rather than sampled once: the compositor starts after the HTTP listener
+# and a single shot times a race it will usually lose.
 SHOT="$OUTDIR/_netboot-screen.ppm"
-qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$SHOT\"}}" >/dev/null 2>&1 \
-  && [ -f "$SHOT" ] && ok "screenshot: $SHOT" || true
+screen_metrics() {
+  python3 - "$1" <<'PYEOF'
+import sys
+d = open(sys.argv[1], 'rb').read()
+if not d.startswith(b'P6'):
+    print("0 0 0"); raise SystemExit
+vals, idx = [], 2
+while len(vals) < 3:
+    while idx < len(d) and d[idx:idx+1].isspace(): idx += 1
+    if d[idx:idx+1] == b'#':
+        while d[idx:idx+1] not in (b'\n', b''): idx += 1
+        continue
+    s = idx
+    while idx < len(d) and not d[idx:idx+1].isspace(): idx += 1
+    vals.append(int(d[s:idx]))
+idx += 1
+w, h, _ = vals
+px = d[idx:idx + w*h*3]
+step, colours, nonblack, n = 3*17, set(), 0, 0
+for i in range(0, max(len(px)-2, 0), step):
+    c = px[i:i+3]; colours.add(bytes(c)); n += 1
+    if sum(c) > 30: nonblack += 1
+print(f"{len(colours)} {100*nonblack//max(n,1)} {w}x{h}")
+PYEOF
+}
+
+say "Phase 7 — is the desktop actually rendered on the display?"
+SCREEN_OK=0; SCREEN_METRICS="(never captured)"
+i=0
+while [ "$i" -lt 40 ]; do
+  if qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$SHOT\"}}" >/dev/null 2>&1 && [ -f "$SHOT" ]; then
+    SCREEN_METRICS="$(screen_metrics "$SHOT" 2>/dev/null || echo '0 0 0x0')"
+    cols=$(echo "$SCREEN_METRICS" | cut -d' ' -f1)
+    fill=$(echo "$SCREEN_METRICS" | cut -d' ' -f2)
+    if [ "${cols:-0}" -ge 16 ] && [ "${fill:-0}" -ge 5 ]; then SCREEN_OK=1; break; fi
+  fi
+  i=$((i + 1)); sleep 3
+done
+
+if [ "$SCREEN_OK" = "1" ]; then
+  ok "PASS — the desktop is on the screen (colours/fill%/size: $SCREEN_METRICS)"
+else
+  printf "${c_r}✗ FAIL — nothing is rendered on the display.${c_n}\n" >&2
+  printf "${c_r}  colours/fill%%/size: %s (a blank console is ~3 colours, 0%% fill).${c_n}\n" "$SCREEN_METRICS" >&2
+  printf "${c_r}  vulos.kiosk=force is on the kernel cmdline, so the compositor was asked${c_n}\n" >&2
+  printf "${c_r}  to start regardless of DRM connector state. Screendump: %s${c_n}\n" "$SHOT" >&2
+  FAILED_SCREEN=1
+fi
 
 if [ "$PASS" = "1" ]; then
   ok "PASS — $PASS_MSG"
@@ -1286,7 +1349,16 @@ else
 fi
 
 echo ""
+# Phase 7's verdict decides the run's, like every other phase. Recording a
+# failure and then exiting 0 is precisely the shape this harness exists to
+# refuse — and is what it did for the screendump until now.
+if [ "${FAILED_SCREEN:-0}" = "1" ]; then
+  printf "${c_r}✗ SOME PHASES FAILED — the boot chain is sound but the DESKTOP NEVER${c_n}\n" >&2
+  printf "${c_r}  APPEARED. dm-verity, the slot flip, the unsigned-disk fallback and the${c_n}\n" >&2
+  printf "${c_r}  corrupted-signature refusal all passed; the display stayed blank.${c_n}\n" >&2
+  exit 1
+fi
 ok "ALL PHASES PASSED — dm-verity is active on the installed disk, its root hash"
 ok "is bound to the release key through the pinned anchor, an unsigned disk still"
-ok "boots, and a corrupted signature stops the boot."
+ok "boots, a corrupted signature stops the boot, and the desktop is on the screen."
 exit 0
