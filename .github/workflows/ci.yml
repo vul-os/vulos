@@ -133,10 +133,16 @@ jobs:
       # which proves go had not returned. The live `link` orphan fits: go was
       # linking one of the remaining packages.
       #
-      # webbrowser, webhooks, webhost and wifi have each been run on amd64 with
-      # xvfb, pulseaudio and chromium installed and pass. upload, vault,
-      # webproxy, wine and wltoplevel have NOT been tested that way, and are the
-      # obvious place to start.
+      # ALL NINE now run individually on amd64 with xvfb, pulseaudio and chromium
+      # installed, and all nine pass. So no single package in the tail is at
+      # fault, and the failure is CUMULATIVE — something the ~110 packages before
+      # it leave behind, which trips when go reaches that point.
+      #
+      # Memory is excluded by the cgroup's own counters. DISK is the resource
+      # never measured during this job, and building 121 test binaries plus the
+      # module and build caches is exactly the workload that exhausts it late
+      # rather than early. The "Disk after tests" step below records it at the
+      # moment the run ends, pass or fail.
       - name: Test (Vitest — frontend security contract)
         run: npm run test
 
@@ -221,6 +227,17 @@ jobs:
           echo "::notice::go test exited ${rc}"
           exit "$rc"
         timeout-minutes: 25
+
+      # Disk at the moment the Test step ends, pass or fail.
+      #
+      # if: always() because the only numbers that matter are a failing run's. A
+      # separate step rather than a background sampler: the previous sampler held
+      # the step's stdout open and became a failure of its own.
+      - name: Disk after tests
+        if: always()
+        run: |
+          df -h /
+          du -sh ~/.cache/go-build ~/go/pkg/mod 2>/dev/null || true
 
       - name: Test (e2e — real server binary over real HTTP)
         run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
