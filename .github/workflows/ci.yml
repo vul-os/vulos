@@ -337,7 +337,7 @@ jobs:
           trap 'echo "::warning::SIGINT received by the test step at $(date -u +%T)"' INT
           trap 'echo "::warning::SIGHUP received by the test step at $(date -u +%T)"' HUP
           echo "test step pid $$ starting at $(date -u +%T)"
-          go test -p 1 -timeout 120s $(go list ./services/...) 2>&1 | tee /tmp/gotest-services.log
+          go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 | tee /tmp/gotest-services.log
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
           # enumerated list silently drops a package added at the repo root, and
@@ -394,6 +394,35 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── RESULT 2026-08-12: NOT a fixed clock. Order restored to reversed.
+      #
+      #   reversed:  32.17s and 32.21s, ~20 services packages reported
+      #   forward:   166.88s,           most of the 85 reported
+      #
+      # Elapsed time depends on the work, so the fixed-timer reading is dead and
+      # the "positional" reading is not rescued either: forward dies after
+      # roughly 77 of 85 services packages, reversed after 20. Neither a fixed
+      # time, nor a fixed count, nor a fixed package.
+      #
+      # What DOES fit both: something CUMULATIVE that the heavy packages consume
+      # faster. Reversed order front-loads the expensive services (w/v/u —
+      # webbrowser, wine, wltoplevel and friends) and dies in 32s after 20 of
+      # them; forward order runs the cheap ones first and survives 167s and most
+      # of the list. A per-package resource would die at the same COUNT; a clock
+      # at the same TIME; a leak proportional to work does neither.
+      #
+      # And that reopens something recorded as closed. "Memory excluded" rests
+      # partly on MemAvailable being 15 GB of 16 — but that step runs AFTER the
+      # kill, once the dead process has released everything. It measures the
+      # aftermath, not the moment. The dmesg check (no OOM records) is the
+      # stronger half and still stands; the MemAvailable figure should not be
+      # quoted as evidence of no pressure at the time of death.
+      #
+      # Next: sample memory DURING the run, not after. Not with a background
+      # sampler holding the step's stdout — that failure is recorded above — but
+      # by having the test command itself write /proc/meminfo to a file between
+      # package groups, and reading that file in the existing if:always() step.
+      #
       # ── EXPERIMENT RUNNING 2026-08-12: services in FORWARD order.
       #
       # The `| tac` is removed for this run only. It is the experiment named in
