@@ -653,6 +653,38 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ══ SOLVED 2026-08-12 ══════════════════════════════════════════════════
+      #
+      # CAUSE: services/stream/pool.go ran `pkill -9 <binName>` with binName =
+      # filepath.Base(opts.Command). pkill's pattern is an UNANCHORED regex over
+      # the process name, so "sh" matches bash. It fired from a monitoring
+      # goroutine ~3s after an app exited quickly — constant under CI, where
+      # those apps have no display — and SIGKILLed the shell running this step.
+      #
+      # Fixed with -x (exact name) and -u (this user only). Pinned by
+      # TestPkillIsAnchored in services/stream. CONFIRMED BY FOUR CONSECUTIVE
+      # GREEN RUNS, after failing on essentially every run before it.
+      #
+      # Everything below is kept as the record of how it was found, because the
+      # investigation's lessons cost more than the fix and generalise past it:
+      #
+      #   - The most expensive error was a BAD MEASUREMENT, not a wrong
+      #     hypothesis. A "~110s" duration taken from job-wide log timestamps
+      #     fed THREE conclusions before being caught. Hypotheses were cheap to
+      #     kill because they were testable; the bad number was expensive
+      #     because it was assumed and propagated silently.
+      #   - TWO exclusions rested on measurements that could not detect what
+      #     they were cited for: a cgroup with no limit cannot report a limit
+      #     breach, and MemAvailable sampled AFTER the kill measures the
+      #     aftermath, not the moment.
+      #   - Five hypotheses were disproved by measurement. Each disproof
+      #     narrowed the space; none of them was the answer.
+      #   - Every line of evidence described the VICTIM. Nothing identified the
+      #     CALLER until a shim logged who invoked a kill — which is why that
+      #     shim is kept rather than removed now the bug is closed.
+      #
+      # ═══════════════════════════════════════════════════════════════════════
+      #
       # ── RESULT 2026-08-12: NOT a fixed clock. Order restored to reversed.
       #
       #   reversed:  32.17s and 32.21s, ~20 services packages reported
