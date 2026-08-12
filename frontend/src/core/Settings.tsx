@@ -3313,7 +3313,7 @@ function AboutSettings() {
         <img src="/vulos.png" alt="" aria-hidden="true" className="w-16 h-16 shrink-0 opacity-90" />
         <div className="min-w-0">
           <h2 className="text-[1.5rem] leading-[1.2] font-semibold tracking-[-0.015em]">Vulos OS</h2>
-          <p className="text-sm text-[var(--text-tertiary)] mt-1">Open OS — “vula” is Zulu for “open”.</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">Open OS.</p>
         </div>
       </div>
 

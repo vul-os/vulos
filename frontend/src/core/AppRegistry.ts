@@ -86,7 +86,7 @@ const builtinRegistry: App[] = [
     name: 'Assistant',
     icon: '✦',
     description: 'Private AI over your mail — runs on your own server',
-    keywords: ['assistant', 'ai', 'vula', 'mail', 'inbox', 'summarize', 'draft', 'triage', 'search', 'sovereign', 'private'],
+    keywords: ['assistant', 'ai', 'vulos', 'mail', 'inbox', 'summarize', 'draft', 'triage', 'search', 'sovereign', 'private'],
     category: 'productivity',
     builtin: true,
   },

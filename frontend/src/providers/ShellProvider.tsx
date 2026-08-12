@@ -795,7 +795,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: win.url || window.location.origin,
-          title: win.title || 'Vula',
+          title: win.title || 'Vulos',
           width: win.size?.width || 720,
           height: win.size?.height || 500,
           always_on_top: true,

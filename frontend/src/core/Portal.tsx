@@ -569,7 +569,7 @@ Only output the viewport block — no explanations outside it.`
       {/* Header */}
       {!isMobile && (
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-800/50 shrink-0">
-          <span className="text-xs text-neutral-500">vula</span>
+          <span className="text-xs text-neutral-500">vulos</span>
           <button onClick={() => setChat(false)} className="text-xs text-neutral-600 hover:text-neutral-400">✕</button>
         </div>
       )}

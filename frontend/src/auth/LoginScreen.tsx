@@ -155,8 +155,8 @@ export default function LoginScreen() {
           />
           <img src="/icon-96.png" alt="Vulos OS" className="relative w-16 h-16 drop-shadow-lg" />
         </div>
-        <h1 className="text-3xl font-light tracking-[0.18em]" style={{ color: 'var(--text-primary)' }}>vula</h1>
-        <p className="text-sm mt-1 tracking-wide" style={{ color: 'var(--text-faint)' }}>open</p>
+        <h1 className="text-3xl font-light tracking-[0.18em]" style={{ color: 'var(--text-primary)' }}>vulos</h1>
+        <p className="text-sm mt-1 tracking-wide" style={{ color: 'var(--text-faint)' }}>open OS</p>
       </div>
 
       {/* Auth card */}

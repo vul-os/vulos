@@ -171,7 +171,7 @@ def embed(model_path, text):
         # tokenizer.json; without it, prefer the lexical retrieval baseline. We
         # stay deterministic (was: per-process-randomized hash()) so retrieval
         # never silently varies across restarts.
-        sys.stderr.write("vula-embed: no tokenizer.json found next to the model; using the deterministic DEGRADED fallback tokenizer -- semantic quality is reduced, prefer lexical retrieval\n")
+        sys.stderr.write("vulos-embed: no tokenizer.json found next to the model; using the deterministic DEGRADED fallback tokenizer -- semantic quality is reduced, prefer lexical retrieval\n")
         words = text.lower().split()[:512]
         input_ids = [_fallback_token_id(w) for w in words]
         attention_mask = [1] * len(input_ids)

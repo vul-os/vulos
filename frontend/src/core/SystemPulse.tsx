@@ -409,7 +409,7 @@ function SystemDropdown({ stats, connected, profile, onLogout }: SystemDropdownP
   const charging = stats?.charging ?? false
   const temp = stats?.temp !== undefined && stats.temp > 0 ? Math.round(stats.temp) : null
   const uptime = stats?.uptime || null
-  const hostname = stats?.hostname || 'vula'
+  const hostname = stats?.hostname || 'vulos'
   // profile's fields come from the /api/auth/me response (see AuthProvider's
   // AuthProfile — an index signature of `unknown`), so narrow to string here
   // rather than trusting the network shape.
@@ -604,7 +604,7 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
       <StatusButton onClick={() => toggleDropdown('system')} active={openDropdown === 'system'} label="System menu">
         <div className="flex items-center gap-2">
           <img src="/vulos.png" alt="" className="w-4 h-4 opacity-70" />
-          <span className="text-xs font-semibold text-neutral-300 tracking-wide">vula</span>
+          <span className="text-xs font-semibold text-neutral-300 tracking-wide">vulos</span>
         </div>
       </StatusButton>
       <Dropdown open={openDropdown === 'system'} onClose={closeDropdown} align="left" containerRef={systemRef}>

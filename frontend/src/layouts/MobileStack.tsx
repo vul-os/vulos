@@ -82,7 +82,7 @@ export default function MobileStack() {
           ) : (
             <div className="flex items-center gap-2 pl-1">
               <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: 'var(--accent)' }} aria-hidden="true" />
-              <span className="text-[13px] font-semibold tracking-[-0.01em] text-[color:var(--text-secondary)]">vula</span>
+              <span className="text-[13px] font-semibold tracking-[-0.01em] text-[color:var(--text-secondary)]">vulos</span>
             </div>
           )}
           <div className="flex items-center gap-1.5 shrink-0">

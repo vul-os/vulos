@@ -527,10 +527,9 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           />
           <img src="/icon-128.png" alt="Vulos OS" className="relative w-24 h-24 drop-shadow-xl" />
         </div>
-        <div className="text-6xl font-extralight tracking-[0.22em] mb-4" style={{ color: 'var(--text-primary)' }}>vula</div>
+        <div className="text-6xl font-extralight tracking-[0.22em] mb-4" style={{ color: 'var(--text-primary)' }}>vulos</div>
         <div className="h-px w-20 mx-auto mb-4" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
         <p className="text-lg sm:text-xl font-light" style={{ color: 'var(--text-tertiary)' }}>{t('setup.welcome.tagline')}</p>
-        <p className="text-sm mt-2 italic" style={{ color: 'var(--text-faint)' }}>{t('setup.welcome.zulu')}</p>
       </div>
       <button
         onClick={onNext}
@@ -814,7 +813,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
             <input
               value={IS09_s3Bucket}
               onChange={e => IS09_setS3Bucket(e.target.value.trim())}
-              placeholder="my-vula-backup"
+              placeholder="my-vulos-backup"
               autoFocus
               className="input text-sm py-2.5"
             />
@@ -1721,7 +1720,7 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
               IS05_setHostnameEdited(true)
               update('IS05_hostname', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
             }}
-            placeholder="my-vula-node"
+            placeholder="my-vulos-node"
             className="input text-base py-3 font-mono"
           />
           <p className="text-[12px] text-neutral-600 mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
@@ -2317,7 +2316,7 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `vula-recovery-kit-${config.IS05_ulid || 'node'}.json`
+      a.download = `vulos-recovery-kit-${config.IS05_ulid || 'node'}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -2760,7 +2759,7 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
         </p>
         {deps && !deps.ready && (
           <p className="text-[12px] text-warning leading-relaxed mt-2">
-            Note: running embeddings also needs the vula-embed Python packages on the box:
+            Note: running embeddings also needs the vulos-embed Python packages on the box:
             <code className="block mt-1 font-mono text-warning bg-neutral-950/60 rounded px-2 py-1 select-all">
               {deps.install_hint || 'pip install onnxruntime tokenizers numpy'}
             </code>

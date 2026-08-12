@@ -76,7 +76,7 @@ describe('PrivateAIStep — onboarding private-AI offer', () => {
   it('warns honestly when the python embed deps are missing (never auto-installs)', async () => {
     mockModels({ deps: { ready: false, install_hint: 'pip install onnxruntime tokenizers numpy' } })
     render(<PrivateAIStep onDone={vi.fn()} />)
-    expect(await screen.findByText(/needs the vula-embed Python packages/i)).toBeTruthy()
+    expect(await screen.findByText(/needs the vulos-embed Python packages/i)).toBeTruthy()
     expect(screen.getByText(/pip install onnxruntime tokenizers numpy/)).toBeTruthy()
     expect(screen.getByText(/never installed automatically/i)).toBeTruthy()
   })

@@ -240,7 +240,7 @@ function PythonDepsNotice({ deps }: { deps: PythonDepsStatus | undefined }) {
   return (
     <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)] border border-warning-soft">
       The on-box embedding runtime is missing ({missing.join(', ') || 'dependencies'}). A model can be installed, but
-      embeddings will not run until you install the <strong>vula-embed</strong> Python deps on the box:
+      embeddings will not run until you install the <strong>vulos-embed</strong> Python deps on the box:
       <code className="block mt-1.5 font-mono text-[var(--status-warning)] bg-[var(--bg-base)] rounded px-2 py-1 select-all">{hint}</code>
       This is never installed automatically — run it yourself on the box.
     </div>

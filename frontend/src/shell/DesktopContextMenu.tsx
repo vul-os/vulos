@@ -58,7 +58,7 @@ export default function DesktopContextMenu() {
   }, [menu])
 
   const handleNewNative = useCallback(() => {
-    openNativeWindow({ title: 'Vula', url: window.location.origin, appId: 'native' })
+    openNativeWindow({ title: 'Vulos', url: window.location.origin, appId: 'native' })
     setMenu(null)
   }, [openNativeWindow])
 
