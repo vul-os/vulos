@@ -394,6 +394,29 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── POSITION CONFIRMED 2026-08-12: package 21 in the reversed list IS
+      #    services/sandbox, and the kill coincides with it STARTING.
+      #
+      #     go list ./services/... | reversed → 18 sshkey, 19 snapshot,
+      #     20 signing, 21 sandbox
+      #
+      # Exactly 20 packages report, through signing. So sandbox is the package
+      # go test moves to at the instant the shell dies — and since the whole
+      # step lives 32.2s and sandbox alone takes 10.5s when run by itself, it
+      # cannot have got far. This is sandbox STARTING UP, not sandbox running
+      # its tests, which narrows the window to compilation/link of sandbox.test
+      # plus its first moments of execution.
+      #
+      # Checked while here: services/sandbox contains no pkill, pgrep, killall
+      # or Getppid, and its only kill path (s.kill) targets scripts it tracks
+      # itself, through the guarded procgroup.Signal. Nothing in it obviously
+      # reaches outside its own children.
+      #
+      # Portability note for anyone reproducing locally: `tac` does not exist on
+      # macOS. The workflow uses it and that is fine on ubuntu, but a local
+      # reproduction needs `tail -r` or the ordering silently differs — which
+      # would move the kill point and look like a failure to reproduce.
+      #
       # ── DETERMINISTIC 2026-08-12: the kill lands at 32.2s, twice, to 40ms.
       #
       #     Finished process 11980 ... elapsed time 00:00:32.1700540
