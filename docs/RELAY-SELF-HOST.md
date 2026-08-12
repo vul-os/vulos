@@ -387,9 +387,17 @@ Then, in the box's environment:
 ```bash
 VULOS_RELAY_ENDPOINTS_FILE=/etc/vulos/relays.json
 
-# Discovery, so your boxes find each other across the internet:
+# Set this to the box's own full tunnel hostname — see "Subdomains: routing,
+# wildcard certs, and the session cookie" below for why this matters the
+# moment more than one box shares this relay's domain.
+VULOS_DOMAIN=box1.relay.example.com
+
+# Optional: only needed if you also want THIS box's siblings (boxes that
+# share VULOS_FABRIC_SECRET) to find each other across the internet for
+# same-fleet app-registry sync. Unrelated to relay reachability itself —
+# skip both if you only want box1 reachable through the tunnel.
 VULOS_RENDEZVOUS_URL=https://relay.example.com/rendezvous
-VULOS_FABRIC_SECRET=<the same value on every box>
+VULOS_FABRIC_SECRET=<the same value on every box in this fleet>
 ```
 
 Restart the box and watch for:
@@ -442,6 +450,114 @@ down costs nothing.
 > every box holds a tunnel on every relay. If some box registers with only one
 > relay, a client landing on the other gets a 404 — relays do not forward to each
 > other.
+
+---
+
+## Subdomains: routing, wildcard certs, and the session cookie
+
+### How the relay routes a hostname
+
+The relay forwards a request by matching its `Host` header against the
+**exactly one** DNS label in front of `-domain`: a request for
+`<name>.<domain>` goes to whichever live tunnel registered `<name>`.
+`box1.relay.example.com` routes; `a.box1.relay.example.com` does **not** —
+the relay refuses it outright, the same as a hostname it has never heard of
+(`backend/services/reach/tunnel/server.go`'s `routeName`, and pinned by
+`TestRouteName` in `tunnel_test.go`, which asserts exactly that case). The
+code comment explains why: "a wildcard certificate covering
+`*.relay.example.com` does not actually cover every name the relay serves"
+if a second label were allowed through unchecked.
+
+Practically: **one relay carries every name you grant, not every possible
+subdomain of one box.** If you want more than one independently-reachable
+thing behind a single relay — box1, and separately an app you want its own
+address for — mint a **separate grant and a separate tunnel registration**
+for each (`vulos relay grant app1`), giving `app1.relay.example.com` as its
+own flat name alongside `box1.relay.example.com`. There is no automatic
+nesting of an app's address under its box's name.
+
+### Where the wildcard (or per-hostname) certificate lives
+
+Whichever recipe you followed, you never handle certificate files yourself
+for the cases that matter:
+
+- **Recipe A (Caddy on-demand).** No wildcard certificate at all by
+  default — Caddy requests one certificate *per hostname*, the first time
+  that hostname is seen, and stores it in its own certificate storage
+  (`/var/lib/caddy` by default). This is why step 5's DNS only needs a
+  wildcard `A`/`AAAA` **record**, not a wildcard **certificate**. If you
+  opt into the wildcard-certificate alternative mentioned there, the
+  certificate still lives in Caddy's storage — the only difference is it
+  is requested once via a DNS-01 challenge instead of many times via
+  on-demand TLS.
+- **Recipe B (Fly).** `fly certs add "*.relay.example.com"` — the
+  certificate is issued, stored, and renewed by Fly's own edge/proxy,
+  attached to your Fly app. You never see a certificate file.
+- **In-process TLS (`-cert`/`-key`, no Caddy or Fly in front).** This is
+  the one mode where the certificate **must already be a wildcard**: the
+  relay loads exactly one certificate/key pair for the life of the process
+  (Go's `http.Server.ListenAndServeTLS`) and presents that same pair for
+  every hostname's TLS handshake — there is no per-hostname issuance
+  happening here at all, so a non-wildcard cert would only ever be valid
+  for the one name it was issued for.
+
+In every case, the certificate is selected by **SNI** during the TLS
+handshake — Caddy's on-demand `ask`, Fly's edge, or the relay's own static
+pair — and the plaintext request that follows carries the same hostname in
+its `Host` header, which is what `routeName` (above) then dispatches on.
+SNI and `Host` normally agree; `-trust-proxy-headers` and the vouched-header
+strip (see [Operations](#operations)) exist precisely because a client
+cannot be trusted to keep them in sync on its own.
+
+### The session cookie is not a subdomain boundary
+
+`cookieDomain()` in `backend/services/auth/handlers.go` decides the
+`Domain` attribute on the box's session cookie, and its behaviour is worth
+reading before you put more than one box behind the same relay:
+
+- **`VULOS_DOMAIN` set** → returns `.` + that value: a parent-domain scope
+  covering every subdomain of it.
+- **`VULOS_DOMAIN` unset**, derived from the request `Host` instead:
+  - A bare IP address (v4 or v6) → **no scope** (`""`) — the cookie is
+    pinned to that exact origin.
+  - A single-label host (`localhost`, or any name with no dot) → also
+    **no scope**.
+  - A leading label containing `--` (the `{app}--{profile}` shape used by
+    published-app subdomains) is **stripped**, so the cookie covers every
+    app of that instance: `browser--work.abc123.vulos.org` →
+    `.abc123.vulos.org`.
+  - Otherwise, one label is stripped **unless** doing so would collapse the
+    scope to the shared multi-tenant apex (`vulos.org` itself) or to a bare
+    public suffix — both of those fall back to the **full host** instead,
+    to avoid handing the cookie to every other tenant on that apex.
+
+The consequence that matters here: **the session cookie is sent to every
+subdomain sharing that scope, not just the one that set it.** With
+`VULOS_DOMAIN` unset, two *different* boxes sharing the same relay both
+derive their scope from stripping one label off their own hostname —
+`box1.relay.example.com` and `box2.relay.example.com` both land on
+`.relay.example.com`, the relay operator's own shared domain, not on
+`box1`/`box2` individually. (Confirmed by calling `cookieDomain` directly
+with each hostname.) A browser that holds box1's cookie will attach it to a
+request against box2 too, purely because both are subdomains of the scope
+the cookie was issued for — box2 will not accept a token it does not
+recognise, but the leak of the raw cookie value across box boundaries is
+already the property this repository's own comment on `cookieDomain`
+identifies as the dangerous half of this design (it is the exact shape of
+the cross-tenant `vulos.org` bug that comment documents fixing, just for a
+relay's own domain rather than the hardcoded one). **This is why
+"Configuring your boxes" above sets `VULOS_DOMAIN` to each box's own full
+tunnel hostname** — `box1.relay.example.com`, not just `relay.example.com`
+— which pins the cookie's scope to that one box.
+
+Setting `VULOS_DOMAIN` per box does not, by itself, give you subdomain
+*isolation* for apps published on that one box's own address: the
+`{app}--{profile}` stripping rule above exists specifically to **share**
+the cookie across every app of one instance, deliberately, so that a single
+sign-in covers every app on your box. If several apps on the same box
+run code you do not equally trust, the session cookie is not the control
+that keeps them apart from each other — subdomains alone are not a
+security boundary for it.
 
 ---
 
