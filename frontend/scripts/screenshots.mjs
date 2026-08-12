@@ -938,6 +938,29 @@ const SHOTS = [
     },
   },
   {
+    // The provider list is what the relay guide's figure needs, and it is not
+    // behind a disclosure control — RelayPanel renders all six options in a
+    // "Reachability provider" card that simply sits below the fold. So this
+    // shot scrolls to that card rather than clicking anything, which is the
+    // detail that made the existing settings-relay shot unusable for the guide:
+    // it frames the top of the panel, where the options are not yet visible.
+    name: 'settings-relay-providers',
+    light: true,
+    desc: 'Settings — Relay & Reachability: all six reachability providers',
+    async drive(page) {
+      await launchApp(page, 'Settings')
+      await page.getByRole('button', { name: 'Relay & Reachability' }).first().click().catch(() => {})
+      await page.waitForTimeout(900)
+      // Scroll to the LAST option, not the card heading. Framing the heading put
+      // five of the six providers on screen and cut the sixth off below the
+      // fold — which is exactly the five-versus-six mismatch this figure's
+      // caption was corrected for, reproduced in the image instead of the text.
+      const opts = page.locator('input[type="radio"]')
+      await opts.last().scrollIntoViewIfNeeded().catch(() => {})
+      await page.waitForTimeout(500)
+    },
+  },
+  {
     name: 'settings-domain',
     light: true,
     desc: 'Settings — Custom Domain: a verified custom domain with TLS active',
