@@ -1317,6 +1317,37 @@ cat > "$ROOTFS/usr/local/bin/vulos-kiosk" << 'KIOSKEOF'
 set -eu
 URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
 
+# Say what we decided and why, ALWAYS.
+#
+# The first version of this gated the whole unit on
+# ConditionPathExistsGlob=/dev/dri/card*, which meant a box that did not start
+# the kiosk said NOTHING about it: systemd skips a unit whose condition fails
+# without a message anyone sees on the console. Booting a real image, the screen
+# looked identical whether the unit was missing, skipped, or crashed — and there
+# was no way to tell which from outside the machine.
+#
+# So the detection lives here now, where it can be logged, and the unit runs
+# unconditionally. A headless box exits 0 with a reason on the journal instead of
+# being silently absent.
+have_display=no
+for node in /dev/dri/card*; do
+  [ -e "$node" ] && have_display=yes && break
+done
+if [ "$have_display" = no ]; then
+  # A DRM node can be absent while a display is still attached on some kernels;
+  # check the sysfs connector state before giving up.
+  for st in /sys/class/drm/*/status; do
+    [ -e "$st" ] || continue
+    if grep -qx connected "$st" 2>/dev/null; then have_display=yes; break; fi
+  done
+fi
+
+if [ "$have_display" = no ]; then
+  echo "vulos-kiosk: no display found (no /dev/dri/card* and no connected DRM connector) — not starting a browser" >&2
+  exit 0
+fi
+echo "vulos-kiosk: display present; starting the OS in a browser at $URL" >&2
+
 # Wait for the server to actually serve. Starting the browser first shows an
 # error page that never retries, which looks exactly like a broken box.
 i=0
@@ -1349,9 +1380,6 @@ cat > "$ROOTFS/etc/systemd/system/vulos-kiosk.service" << 'EOF'
 Description=Vulos kiosk — the OS on the local display
 After=vulos.service
 Wants=vulos.service
-# ONLY when a display exists. A headless box has no card0 and must not spend a
-# boot retrying a compositor it cannot start.
-ConditionPathExistsGlob=/dev/dri/card*
 Conflicts=getty@tty1.service vulos-console.service
 
 [Service]
@@ -1362,7 +1390,9 @@ StandardInput=tty
 StandardOutput=journal
 TTYReset=yes
 TTYVHangup=yes
-Restart=always
+# on-failure, not always: a headless box exits 0 on purpose and must not be
+# restarted forever for correctly deciding there is nothing to draw on.
+Restart=on-failure
 RestartSec=3
 
 [Install]

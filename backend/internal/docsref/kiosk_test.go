@@ -77,6 +77,23 @@ func kioskBrowsersFromShell(t *testing.T) []string {
 	return strings.Fields(m[1])
 }
 
+// unitBlock returns the heredoc body build.sh writes for a named systemd unit,
+// so an assertion about one unit cannot be satisfied by a different one.
+func unitBlock(t *testing.T, src, unit string) string {
+	t.Helper()
+	marker := "/etc/systemd/system/" + unit
+	i := strings.Index(src, marker)
+	if i < 0 {
+		t.Fatalf("build.sh no longer writes %s", unit)
+	}
+	rest := src[i:]
+	end := strings.Index(rest, "\nEOF\n")
+	if end < 0 {
+		t.Fatalf("could not find the end of the %s heredoc", unit)
+	}
+	return rest[:end]
+}
+
 func TestKioskBrowsersMatchInit(t *testing.T) {
 	goList := kioskBrowsersFromGo(t)
 	shList := kioskBrowsersFromShell(t)
@@ -97,9 +114,27 @@ func TestKioskBrowsersMatchInit(t *testing.T) {
 func TestKioskAndConsoleAreMutuallyExclusiveOnADisplay(t *testing.T) {
 	src := readRepoFile(t, "build.sh")
 
-	if !strings.Contains(src, "ConditionPathExistsGlob=/dev/dri/card*") {
-		t.Error("vulos-kiosk.service is no longer conditioned on a DRM device existing; " +
-			"a headless box would spend every boot retrying a compositor it cannot start")
+	// The kiosk decides FOR ITSELF and says so. A systemd Condition would skip
+	// the unit silently — booting a real image, the screen looked identical
+	// whether the unit was missing, skipped or crashed, and nothing outside the
+	// machine could tell which. The detection therefore has to be somewhere it
+	// can log, and the log line is what this asserts.
+	if !strings.Contains(src, "no display found") {
+		t.Error("vulos-kiosk no longer reports WHY it declined to start a browser. A box " +
+			"that shows no OS and says nothing is indistinguishable from a broken one")
+	}
+	if !strings.Contains(src, "/sys/class/drm/*/status") {
+		t.Error("the display check no longer falls back to the sysfs connector state; a " +
+			"DRM node can be absent while a display is attached")
+	}
+	// SCOPED to the kiosk unit's own block. `Restart=on-failure` appears four
+	// times in build.sh, so an unscoped Contains() passed while the kiosk itself
+	// said Restart=always — the mutation that proved this check was hollow.
+	kioskUnit := unitBlock(t, src, "vulos-kiosk.service")
+	if !strings.Contains(kioskUnit, "Restart=on-failure") {
+		t.Errorf("vulos-kiosk.service does not use Restart=on-failure — a headless box "+
+			"exits 0 deliberately and would be restarted forever for deciding correctly. "+
+			"Unit block:\n%s", kioskUnit)
 	}
 	if !strings.Contains(src, "ConditionPathExistsGlob=!/dev/dri/card*") {
 		t.Error("vulos-console.service is no longer conditioned on the ABSENCE of a DRM " +
