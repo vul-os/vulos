@@ -328,6 +328,15 @@ jobs:
           SAMPLER_PID=$!
           disown "$SAMPLER_PID" || true
 
+          # Trap what CAN be trapped. SIGKILL cannot be caught, but if whatever
+          # ends this step sends SIGTERM/SIGINT/SIGHUP first — as an orderly
+          # supervisor would — these fire and name it. Silence here means the
+          # step was SIGKILLed with no warning at all, which is itself a strong
+          # signal about the sender.
+          trap 'echo "::warning::SIGTERM received by the test step at $(date -u +%T)"' TERM
+          trap 'echo "::warning::SIGINT received by the test step at $(date -u +%T)"' INT
+          trap 'echo "::warning::SIGHUP received by the test step at $(date -u +%T)"' HUP
+          echo "test step pid $$ starting at $(date -u +%T)"
           go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 | tee /tmp/gotest-services.log
           rc1=$?
           # Everything EXCEPT services, computed rather than enumerated: an
@@ -385,6 +394,25 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── CORRECTION 2026-08-12: it is NOT Go's -timeout. Measured, not argued.
+      #
+      # With go test's output teed to a file that survives the kill, a failing
+      # run shows: /tmp/gotest-services.log holds 20 lines, and the count of
+      # "test timed out" in it is ZERO. Go's per-binary timeout never fired.
+      # /tmp/gotest-rest.log is absent entirely, so the second invocation never
+      # started and the kill lands inside the first.
+      #
+      # So the step is killed EXTERNALLY at ~110s while go test is healthy and
+      # mid-run, and the closeness of 109-118s to the 120s -timeout was
+      # coincidence. That number should stop steering this investigation; it
+      # sent me toward "sandbox has a hanging test", which the local
+      # reproduction had already contradicted by passing the entire reversed
+      # services order with EXIT=0.
+      #
+      # The note below is kept because its OTHER findings stand — sandbox is
+      # the binary in flight, it never reports, and the kill is positional
+      # rather than package-specific. Only its conclusion was wrong.
+      #
       # ── 2026-08-12: the kill lands at Go's OWN -timeout, on services/sandbox
       #
       # Three consecutive failing runs measured end-to-end on the Test step:
