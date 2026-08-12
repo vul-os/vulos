@@ -187,7 +187,25 @@ jobs:
         # With the process-group guards in place all 119 packages now report,
         # where earlier runs stopped around 105 — so the tests finish and the
         # only thing left holding the step open was the instrument.
-        run: cd backend && go test -p 1 -timeout 120s ./...
+        # Capture go test's OWN exit code, separately from the step's.
+        #
+        # Every failing run shows all 118 packages reporting ok and then exit
+        # 137, with the Go linker still alive among the orphans. Nobody has
+        # established whether `go test` itself succeeded — if it prints exit=0
+        # and the step still fails, then go finished and something else killed
+        # the shell, which rules out the test run entirely and points at the
+        # step's teardown. If it prints 137, the signal reached go itself.
+        #
+        # The explicit exit preserves failure semantics: the step still fails
+        # when go does.
+        run: |
+          cd backend
+          set +e
+          go test -p 1 -timeout 120s ./...
+          rc=$?
+          set -e
+          echo "::notice::go test exited ${rc}"
+          exit "$rc"
         timeout-minutes: 25
 
       - name: Test (e2e — real server binary over real HTTP)
