@@ -80,6 +80,30 @@ jobs:
           free -h
           df -h /
 
+      # INTERMITTENT, and a green run does not mean solved.
+      #
+      # This step failed with exit 137 on every run for most of a day, then
+      # passed on 2026-08-12 with NO functional change to backend/, build.sh or
+      # this file since the previous failure — the only commits between were a
+      # docs-citation test and a design note. Same code, different outcome.
+      #
+      # Real defects were fixed while chasing it and are worth keeping: thirteen
+      # process-group kills that could signal a recycled pid (internal/procgroup),
+      # and two tests that leaked an Xvfb into every package that ran after them
+      # (services/stream). The Xvfb orphan did disappear from the job summary
+      # after those. But the final failing run had no Xvfb orphan and died
+      # anyway, so whether any of it addressed THIS is unproven.
+      #
+      # What was ruled out by measurement, so nobody repeats it: memory (the
+      # job's cgroup reported oom 0 / oom_kill 0 / oom_group_kill 0 with peak
+      # 4.5GB against no limit), package parallelism (-p 2 and -p 1 both failed),
+      # a hung test (a 120s per-package timeout never fired), and the packages at
+      # the kill point (all pass on amd64 with xvfb, pulseaudio and chromium
+      # installed).
+      #
+      # If it returns: the surviving evidence is that all 119 packages report and
+      # pass, and the only orphans are Go's own `go` and `link` — which points at
+      # what kills the toolchain, not at anything the tests spawn.
       - name: Test (Vitest — frontend security contract)
         run: npm run test
 
