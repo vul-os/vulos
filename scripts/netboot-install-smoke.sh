@@ -383,6 +383,14 @@ qemu-system-aarch64 \
   -drive if=pflash,format=raw,file="$VARS" \
   -drive if=virtio,format=raw,file="$DISK_IMG" \
   -device virtio-net-pci,netdev=n0 \
+  `# A DISPLAY. Without one the guest has no /dev/dri/card*, the kiosk correctly
+   # declines to start a browser ("no display found"), and Phase 7 asserts
+   # something this VM cannot do. The harness sets vulos.kiosk=force to "see the
+   # desktop" and then gave the machine nothing to draw on — the force flag
+   # overrides the CONNECTOR check, not the absence of a GPU. -display none keeps
+   # the window closed; QEMU still renders internally, which is what screendump
+   # captures.` \
+  -device virtio-gpu-pci \
   -netdev user,id=n0,hostfwd=tcp:127.0.0.1:${HOSTPORT}-:8080 \
   -qmp unix:"$QMP",server,nowait \
   -serial "file:$SERIAL" \

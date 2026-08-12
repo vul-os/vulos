@@ -2,6 +2,7 @@ package docsref
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -149,5 +150,79 @@ func TestKioskAndConsoleAreMutuallyExclusiveOnADisplay(t *testing.T) {
 	}
 	if !strings.Contains(src, "systemctl enable vulos-kiosk.service") {
 		t.Error("vulos-kiosk.service is written but never enabled, so it never starts")
+	}
+}
+
+// The compositor ENVIRONMENT is duplicated for the same reason the browser list
+// is, and drifts the same way.
+//
+// backend/cmd/init/main.go's startKiosk documents why each wlroots variable is
+// required under QEMU virtio-gpu without working GL: legacy KMS modeset, no GBM
+// modifier negotiation, the pixman renderer. Its comment records the symptom of
+// getting it wrong — cage starts, opens /dev/dri/card0, and silently paints
+// nothing, with no log and no exit.
+//
+// The systemd path needs the identical set, and a missing one there is invisible
+// in exactly that way. This was not hypothetical: the first version of
+// /usr/local/bin/vulos-kiosk set none of them and cage died on every start with
+// "XDG_RUNTIME_DIR is not set in the environment", restarting every three
+// seconds behind a black screen.
+
+// scriptBlock returns the heredoc body build.sh writes to a given path, so an
+// assertion about one generated script cannot be satisfied by another file.
+func scriptBlock(t *testing.T, src, path, delim string) string {
+	t.Helper()
+	i := strings.Index(src, path)
+	if i < 0 {
+		t.Fatalf("build.sh no longer writes %s", path)
+	}
+	rest := src[i:]
+	end := strings.Index(rest, "\n"+delim+"\n")
+	if end < 0 {
+		t.Fatalf("could not find the %s heredoc terminator for %s", delim, path)
+	}
+	return rest[:end]
+}
+
+func TestKioskEnvMatchesInit(t *testing.T) {
+	initSrc := readRepoFile(t, "backend/cmd/init/main.go")
+	shSrc := readRepoFile(t, "build.sh")
+
+	start := strings.Index(initSrc, "func startKiosk()")
+	if start < 0 {
+		t.Fatal("startKiosk is gone from backend/cmd/init/main.go")
+	}
+	end := strings.Index(initSrc[start:], "\n}\n")
+	body := initSrc[start : start+end]
+
+	// Every wlroots/seat/runtime variable init sets for the software path.
+	wanted := regexp.MustCompile(`"(XDG_RUNTIME_DIR|LIBSEAT_BACKEND|WLR_[A-Z_]+|DBUS_SESSION_BUS_ADDRESS)=`)
+	names := map[string]bool{}
+	for _, m := range wanted.FindAllStringSubmatch(body, -1) {
+		names[m[1]] = true
+	}
+	if len(names) < 5 {
+		t.Fatalf("only %d compositor env names parsed from startKiosk; the matcher is "+
+			"broken and would report agreement with almost nothing", len(names))
+	}
+
+	// SCOPED to the kiosk script's own heredoc. XDG_RUNTIME_DIR= appears
+	// elsewhere in build.sh, so an unscoped search passed while the kiosk script
+	// itself set nothing — the mutation that exposed this check as hollow, and
+	// the second time the same mistake appeared in this file.
+	kioskScript := scriptBlock(t, shSrc, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+
+	var missing []string
+	for n := range names {
+		if !strings.Contains(kioskScript, n+"=") {
+			missing = append(missing, n)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("build.sh's vulos-kiosk sets none of %v, which backend/cmd/init/main.go "+
+			"sets for the same job. Under QEMU virtio-gpu a missing one of these makes cage "+
+			"open the card and paint nothing, silently — the systemd path would show a black "+
+			"screen while every test stayed green", missing)
 	}
 }

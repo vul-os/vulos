@@ -1348,6 +1348,44 @@ if [ "$have_display" = no ]; then
 fi
 echo "vulos-kiosk: display present; starting the OS in a browser at $URL" >&2
 
+# Compositor environment. cage refuses to start without XDG_RUNTIME_DIR ("[ERROR]
+# [../cage.c:299] XDG_RUNTIME_DIR is not set in the environment") and restarts
+# forever, which is exactly what a first run of this unit did.
+#
+# The wlroots software-path variables mirror backend/cmd/init/main.go's startKiosk,
+# which documents why each is required under QEMU virtio-gpu without working GL:
+# legacy KMS modeset, no GBM modifier negotiation, and the pixman renderer.
+# Without them cage starts, opens /dev/dri/card0 and silently paints nothing —
+# no log, no exit. TestKioskEnvMatchesInit keeps the two lists in step.
+mkdir -p /run/user/0 && chmod 700 /run/user/0
+export XDG_RUNTIME_DIR=/run/user/0
+export LIBSEAT_BACKEND=builtin
+# ALWAYS, per backend/cmd/init/main.go's own note: this means "do not abort the
+# compositor if libinput sees zero devices right now", NOT "disable input".
+# Unset, cage's libinput backend aborts with "Unable to start the wlroots
+# backend" whenever udev coldplug has not finished — including on machines whose
+# keyboard is about to appear. Hotplugged devices still arrive normally.
+export WLR_LIBINPUT_NO_DEVICES=1
+
+# Software rendering only when there is no real GPU. virtio_gpu is the QEMU case;
+# a machine with a hardware driver keeps the GL renderer.
+sw=yes
+for d in /sys/class/drm/card*/device/driver; do
+  [ -e "$d" ] || continue
+  case "$(basename "$(readlink -f "$d")")" in
+    virtio_gpu|"") ;;
+    *) sw=no ;;
+  esac
+done
+if [ "$sw" = yes ]; then
+  export WLR_RENDERER=pixman
+  export WLR_RENDERER_ALLOW_SOFTWARE=1
+  export WLR_DRM_NO_ATOMIC=1
+  export WLR_DRM_NO_MODIFIERS=1
+  export DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null
+  echo "vulos-kiosk: software rendering path (pixman, legacy KMS, no modifiers)" >&2
+fi
+
 # Wait for the server to actually serve. Starting the browser first shows an
 # error page that never retries, which looks exactly like a broken box.
 i=0
