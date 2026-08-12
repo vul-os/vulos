@@ -23,6 +23,7 @@ with anyone.
 9. [What a relay can and cannot do](#what-a-relay-can-and-cannot-do)
 10. [Alternatives, and when to prefer them](#alternatives-and-when-to-prefer-them)
 11. [Status and troubleshooting](#status-and-troubleshooting)
+12. [What is automatically verified](#what-is-automatically-verified)
 
 ---
 
@@ -440,6 +441,51 @@ this reason.
 | Two boxes on a LAN never sync | `VULOS_FABRIC_SECRET` differs | Make it identical on every box |
 | Two boxes in different houses never sync | No rendezvous configured | Set `VULOS_RENDEZVOUS_URL`, and `-rendezvous` on the relay |
 | A box flaps up/down every few seconds, relay logs `replacing the previous session` in a loop | **Two boxes share one `name`** — usually a config file copied between machines without editing it. Each eviction closes the other's tunnel, which it then retries. | Give each box its own `name` (and its own grant). One name = one box, always. |
+
+---
+
+## What is automatically verified
+
+This page makes strong claims. Here is exactly which of them are backed by a
+test that has been shown able to FAIL, and which are still assumption — so you
+can tell the difference without reading the suite.
+
+**Verified — a box behind NAT is reachable.** `scripts/smoke-relay-nat.sh` runs
+a box whose kernel drops every new inbound connection and permits only replies
+to connections it opened itself, and requires it to be publicly reachable
+through the relay anyway, over real TLS, addressed by domain name. The
+load-bearing assertion is negative ("the relay cannot dial the box"), so the box
+also runs a direct listener that *would* answer if it were reachable — otherwise
+the probe would pass because nothing was listening, and the NAT claim would be
+unfounded. Removing the firewall turns four assertions red; removing the
+listener turns the control red.
+
+**Verified — multiple relays, and failover.** `scripts/smoke-relay.sh` runs two
+real `vulos relay serve` processes and two box agents holding four simultaneous
+tunnels, kills one relay, and requires the other to keep serving both boxes.
+It counts DISTINCT relay links rather than log lines, so one relay flapping
+cannot masquerade as two relays being up.
+
+**Verified — ingress reports every live relay.** The status surface names every
+link that is actually up and drops relays whose tunnel has died, checked both
+against literal values and against a real agent over two real relays
+(`backend/cmd/server/reachwire_test.go`).
+
+**Verified — config hygiene.** A world-readable grants or endpoints file is
+refused, one bad entry refuses the whole set rather than silently yielding a
+partial one, and a bad token allocates no session.
+
+**Still assumption.** None of the following is exercised anywhere, and this
+page should not be read as evidence for them:
+
+- A publicly-trusted certificate, real public DNS, or a real internet path.
+  The NAT harness issues its own CA and resolves its own names.
+- CGNAT specifically. The harness models its *reachability consequence* — no
+  inbound path — not a carrier's address translation.
+- An operated cloud relay. That remains a human exercise.
+- Multiple relays *under NAT*: the NAT harness runs one relay, and the
+  multi-relay properties are covered on loopback.
+- The direct-endpoint ownership probe and the rendezvous discovery role.
 
 ---
 
