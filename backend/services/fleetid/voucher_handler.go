@@ -87,7 +87,7 @@ const VouchRequestType = "fleet-vouch-request"
 // cleared. SubjectID is a Vula ID, which *is* that public key
 // (peering.PublicKeyForVulosID), so a peer can verify the request with no prior
 // state, no session, and no shared secret — the same trick
-// /.well-known/vula-id and the prekey endpoints use to be reachable by strangers
+// /.well-known/vulos-id and the prekey endpoints use to be reachable by strangers
 // without being open to them. See VerifyVouchRequest for what that does and
 // does not buy.
 type VouchRequest struct {
@@ -284,7 +284,7 @@ type VoucherService struct {
 }
 
 // NewVoucherService builds a VoucherService that signs with signerPriv — this
-// box's OWN fleet identity key (the same key/Vula-ID space vouch.go's
+// box's OWN fleet identity key (the same key/Vulos-ID space vouch.go's
 // VouchCert and NewVouchCert use). The service's own fleet identity
 // (SelfVulosID) is DERIVED from signerPriv's public key via
 // peering.EncodeVulosID — it is never taken as a separately supplied

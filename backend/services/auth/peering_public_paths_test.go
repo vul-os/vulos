@@ -40,7 +40,7 @@ func TestPeeringS2SRoutesAreSessionless(t *testing.T) {
 		method string
 		path   string
 	}{
-		{http.MethodGet, "/.well-known/vula-id"},
+		{http.MethodGet, "/.well-known/vulos-id"},
 		{http.MethodPost, "/api/peering/inbound/message"},
 		{http.MethodPost, "/api/peering/inbound/request"},
 		{http.MethodPost, "/api/peering/inbound/signal"},

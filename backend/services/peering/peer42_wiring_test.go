@@ -59,7 +59,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	}
 	peerClient := NewPeerClient()
 
-	callerVulosID := func(r *http.Request) string { return r.Header.Get("X-Vula-ID") }
+	callerVulosID := func(r *http.Request) string { return r.Header.Get("X-Vulos-ID") }
 
 	// Contacts.
 	contactAPI := NewContactAPI(contactStore, peerClient, NewHub(), priv, vulosID, "localhost:0")

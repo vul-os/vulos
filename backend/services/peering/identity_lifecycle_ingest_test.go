@@ -38,7 +38,7 @@ func admitCode(t *testing.T, contacts *ContactStore, priv ed25519.PrivateKey, fr
 // a contact that publishes a valid self-revocation in its well-known bundle is,
 // after the REAL fetch→ingest path (FetchPeerProfile → wkIngestLifecycle →
 // IngestPeerLifecycle → RecordRevocation), rejected at admission and by
-// VerifyVulaSignatureChecked — IsRevoked is genuinely populated, not poked
+// VerifyVulosSignatureChecked — IsRevoked is genuinely populated, not poked
 // directly.
 func TestIngest_RevocationThroughFetchGatesAdmission(t *testing.T) {
 	dir := t.TempDir()
@@ -117,8 +117,8 @@ func TestIngest_RevocationThroughFetchGatesAdmission(t *testing.T) {
 	// And the cross-box capability verifier rejects it too.
 	msg := []byte("capability")
 	sig := ed25519.Sign(bobPriv, msg)
-	if err := VerifyVulaSignatureChecked(bobID, msg, sig); err == nil {
-		t.Fatal("VerifyVulaSignatureChecked must reject the revoked key")
+	if err := VerifyVulosSignatureChecked(bobID, msg, sig); err == nil {
+		t.Fatal("VerifyVulosSignatureChecked must reject the revoked key")
 	}
 }
 

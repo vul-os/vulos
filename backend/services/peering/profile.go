@@ -807,7 +807,7 @@ func (svc *profileSvc) handlePostImage(w http.ResponseWriter, r *http.Request) {
 // ─── GET /api/peering/profile/image ───────────────────────────────────────────
 
 func (svc *profileSvc) handleGetImage(w http.ResponseWriter, r *http.Request) {
-	callerID := r.Header.Get("X-Vula-ID")
+	callerID := r.Header.Get("X-Vulos-ID")
 	if !svc.store.profileCanViewImage(callerID) {
 		profileWriteErr(w, "forbidden", http.StatusForbidden)
 		return

@@ -178,7 +178,7 @@ Already implemented in `cmd/init/main.go`. Additions:
 - [ ] DHCP on wired interfaces by default (systemd-networkd)
 - [ ] WiFi: `wpa_supplicant` with saved credentials if no wired
 - [ ] Fallback: `localhost:8080` — kiosk works locally without network
-- [ ] mDNS/Avahi: advertise `vula.local` on LAN
+- [ ] mDNS/Avahi: advertise `vulos.local` on LAN
 - [ ] DNS resolution: ensure `/etc/resolv.conf` populated
 
 ---
@@ -646,7 +646,7 @@ If cage or the browser fails (and superviseKiosk cannot recover), drop to a text
 │                                     │
 │  Open in browser:                   │
 │    http://192.168.1.42:8080         │
-│    http://vula.local:8080           │
+│    http://vulos.local:8080           │
 │                                     │
 │  Press Enter for recovery shell     │
 └─────────────────────────────────────┘

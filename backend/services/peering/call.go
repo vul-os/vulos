@@ -209,15 +209,15 @@ func RegisterCallHandlers(mux *http.ServeMux, relay *CallRelay) {
 // handleCallInitiate processes POST /api/peering/call/initiate.
 //
 // The caller's browser posts { call_id, callee_id }.  The server:
-//  1. Reads the caller's Vula ID from the X-Vula-ID header.
+//  1. Reads the caller's Vula ID from the X-Vulos-ID header.
 //  2. Verifies the callee is an approved contact with PermCall.
 //  3. Records a ringing session.
 //  4. Builds and signs a TypeSignaling envelope carrying { kind:"incoming-call", call_id }.
 //  5. Delivers the envelope to the callee's server via PeerClient.
 func (cr *CallRelay) handleCallInitiate(w http.ResponseWriter, r *http.Request) {
-	callerID := r.Header.Get("X-Vula-ID")
+	callerID := r.Header.Get("X-Vulos-ID")
 	if callerID == "" {
-		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
+		writeCallErr(w, http.StatusUnauthorized, "missing X-Vulos-ID header")
 		return
 	}
 
@@ -274,9 +274,9 @@ func (cr *CallRelay) handleCallInitiate(w http.ResponseWriter, r *http.Request) 
 // The callee's browser posts { call_id }.  The server transitions the session
 // to active and notifies the caller's server via a signed "answer" envelope.
 func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
-	calleeID := r.Header.Get("X-Vula-ID")
+	calleeID := r.Header.Get("X-Vulos-ID")
 	if calleeID == "" {
-		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
+		writeCallErr(w, http.StatusUnauthorized, "missing X-Vulos-ID header")
 		return
 	}
 
@@ -326,9 +326,9 @@ func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
 // The callee declines the call.  The session is removed and the caller is
 // notified via a signed "reject" envelope.
 func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
-	calleeID := r.Header.Get("X-Vula-ID")
+	calleeID := r.Header.Get("X-Vulos-ID")
 	if calleeID == "" {
-		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
+		writeCallErr(w, http.StatusUnauthorized, "missing X-Vulos-ID header")
 		return
 	}
 
@@ -370,9 +370,9 @@ func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 // Either participant may hang up.  The session is removed and the other party
 // is notified via a signed "hangup" envelope.
 func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
-	vulosID := r.Header.Get("X-Vula-ID")
+	vulosID := r.Header.Get("X-Vulos-ID")
 	if vulosID == "" {
-		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
+		writeCallErr(w, http.StatusUnauthorized, "missing X-Vulos-ID header")
 		return
 	}
 
@@ -417,9 +417,9 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 // Relays an opaque SDP offer/answer or ICE candidate payload to the peer's
 // server via a signed TypeSignaling envelope.  The payload is never inspected.
 func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
-	vulosID := r.Header.Get("X-Vula-ID")
+	vulosID := r.Header.Get("X-Vulos-ID")
 	if vulosID == "" {
-		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
+		writeCallErr(w, http.StatusUnauthorized, "missing X-Vulos-ID header")
 		return
 	}
 

@@ -183,7 +183,7 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 	targetServer := body.TargetServer
 
 	// If the vula ID looks like a full address (<vulosID>@host:port), parse it.
-	if addr, err := ParseVulaAddress(body.TargetVulosID); err == nil {
+	if addr, err := ParseVulosAddress(body.TargetVulosID); err == nil {
 		targetVulosID = addr.VulosID
 		if targetServer == "" {
 			targetServer = fmt.Sprintf("%s:%d", addr.Host, addr.Port)

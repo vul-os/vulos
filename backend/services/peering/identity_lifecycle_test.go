@@ -262,19 +262,19 @@ func TestLifecycleStore_RecordRevocation_GatesAdmission(t *testing.T) {
 	}
 }
 
-func TestVerifyVulaSignatureChecked_RejectsRevoked(t *testing.T) {
+func TestVerifyVulosSignatureChecked_RejectsRevoked(t *testing.T) {
 	priv, id := lcKeypair(t)
 	msg := []byte("capability-proof")
 	sig := ed25519.Sign(priv, msg)
 	// Not revoked → passes.
 	SetRevocationChecker(func(v string) bool { return false })
-	if err := VerifyVulaSignatureChecked(id, msg, sig); err != nil {
+	if err := VerifyVulosSignatureChecked(id, msg, sig); err != nil {
 		t.Fatalf("unrevoked checked verify should pass: %v", err)
 	}
 	// Revoked → rejected even though signature is valid.
 	SetRevocationChecker(func(v string) bool { return v == id })
 	t.Cleanup(func() { SetRevocationChecker(nil) })
-	if err := VerifyVulaSignatureChecked(id, msg, sig); err == nil {
+	if err := VerifyVulosSignatureChecked(id, msg, sig); err == nil {
 		t.Fatal("revoked identity signature must be rejected")
 	}
 }

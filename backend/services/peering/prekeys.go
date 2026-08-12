@@ -116,14 +116,14 @@ const (
 const x3dhHKDFInfo = "vula-x3dh-content-v2"
 
 // X3DHKDFInfoLabel is the EXPORTED, authoritative HKDF `info` label for the v2
-// content KDF. A non-Go initiator (the vula-relay JS client, the cloud-home cell)
+// content KDF. A non-Go initiator (the vulos-relay JS client, the cloud-home cell)
 // MUST use this exact byte string so a JS sender and a Go responder derive an
 // identical key. See the "Cross-language X3DH wire spec" block below.
 const X3DHKDFInfoLabel = x3dhHKDFInfo
 
 // ─── Cross-language X3DH wire spec (Contract B; match BYTE-FOR-BYTE) ────────────
 //
-// This is the normative spec a JS initiator (vula-relay) and the cloud-home cell
+// This is the normative spec a JS initiator (vulos-relay) and the cloud-home cell
 // must reproduce so they interop with the Go responder (X3DHRespond) here.
 //
 // IDENTITIES. A VulosID is "vulos:ed25519:" + base58(32-byte Ed25519 pubkey)
@@ -538,7 +538,7 @@ func (s *PreKeyStore) PublicBundle() *PreKeyBundlePublic {
 }
 
 // PublicBundleSignedOnly returns the publishable bundle WITHOUT any one-time
-// prekeys — only the signed prekey. This is what /.well-known/vula-id MUST serve.
+// prekeys — only the signed prekey. This is what /.well-known/vulos-id MUST serve.
 //
 // SECURITY: the well-known endpoint is a cacheable, UNAUTHENTICATED GET with no
 // depletion. Publishing the one-time-prekey pool there lets every sender that
@@ -681,7 +681,7 @@ var (
 	prekeyPublisher   func() *PreKeyBundlePublic
 )
 
-// SetPreKeyPublisher installs the prekey-bundle source for /.well-known/vula-id.
+// SetPreKeyPublisher installs the prekey-bundle source for /.well-known/vulos-id.
 // Passing nil disables prekey publication (peers then fall back to v1/no-FS).
 func SetPreKeyPublisher(f func() *PreKeyBundlePublic) {
 	prekeyPublisherMu.Lock()

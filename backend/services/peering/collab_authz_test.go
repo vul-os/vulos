@@ -134,7 +134,7 @@ func TestAuthorizeRoom_SharedPeerAllowed_StrangerRejected(t *testing.T) {
 	const viewer = "vulos:ed25519:viewer"
 	// Multi-user box: per-user OS-user→VulosID mapping resolves the un-spoofable
 	// X-User-ID to the user's own VulosID, which is what the ACL is checked against.
-	s.WithVulaResolver(func(osUser string) (string, bool) {
+	s.WithVulosResolver(func(osUser string) (string, bool) {
 		switch osUser {
 		case "os-viewer":
 			return viewer, true
@@ -167,7 +167,7 @@ func TestAuthorizeRoom_SharedPeerAllowed_StrangerRejected(t *testing.T) {
 }
 
 // TestAuthorizeRoom_SpoofedVulaHeaderRejected pins that a client cannot escalate by
-// asserting another user's VulosID in X-Vula-ID: the header must match the
+// asserting another user's VulosID in X-Vulos-ID: the header must match the
 // server-resolved identity for the authenticated OS user, else the join is denied.
 func TestAuthorizeRoom_SpoofedVulaHeaderRejected(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
@@ -185,9 +185,9 @@ func TestAuthorizeRoom_SpoofedVulaHeaderRejected(t *testing.T) {
 	// with the victim (not with this box). MUST be rejected.
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-secret/sync", nil)
 	req.Header.Set("X-User-ID", "os-attacker")
-	req.Header.Set("X-Vula-ID", victim)
+	req.Header.Set("X-Vulos-ID", victim)
 	if _, status := s.authorizeRoom(req, "doc-secret"); status != http.StatusForbidden {
-		t.Fatalf("spoofed X-Vula-ID join status = %d, want 403", status)
+		t.Fatalf("spoofed X-Vulos-ID join status = %d, want 403", status)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestAuthorizeRoom_AmbiguousMappingFailsClosed(t *testing.T) {
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-amb/sync", nil)
 	req.Header.Set("X-User-ID", "os-user")
-	req.Header.Set("X-Vula-ID", "vulos:ed25519:peer") // unverifiable assertion
+	req.Header.Set("X-Vulos-ID", "vulos:ed25519:peer") // unverifiable assertion
 	if _, status := s.authorizeRoom(req, "doc-amb"); status != http.StatusForbidden {
 		t.Fatalf("ambiguous-mapping join status = %d, want 403 (fail closed)", status)
 	}

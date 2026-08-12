@@ -97,7 +97,7 @@ func TestDecodeVulosID_WrongLength(t *testing.T) {
 
 // ─── Address parsing ──────────────────────────────────────────────────────────
 
-func TestParseVulaAddress_RoundTrip(t *testing.T) {
+func TestParseVulosAddress_RoundTrip(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -105,9 +105,9 @@ func TestParseVulaAddress_RoundTrip(t *testing.T) {
 	id := encodeVulosID(pub)
 	original := id + "@example.vulos.org:8080"
 
-	addr, err := ParseVulaAddress(original)
+	addr, err := ParseVulosAddress(original)
 	if err != nil {
-		t.Fatalf("ParseVulaAddress(%q): %v", original, err)
+		t.Fatalf("ParseVulosAddress(%q): %v", original, err)
 	}
 	if addr.VulosID != id {
 		t.Errorf("VulosID: got %q want %q", addr.VulosID, id)
@@ -123,7 +123,7 @@ func TestParseVulaAddress_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseVulaAddress_Errors(t *testing.T) {
+func TestParseVulosAddress_Errors(t *testing.T) {
 	cases := []struct {
 		name  string
 		input string
@@ -135,7 +135,7 @@ func TestParseVulaAddress_Errors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := ParseVulaAddress(tc.input)
+			_, err := ParseVulosAddress(tc.input)
 			if err == nil {
 				t.Fatalf("expected error for input %q", tc.input)
 			}

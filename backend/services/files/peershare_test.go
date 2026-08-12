@@ -17,8 +17,8 @@ import (
 // ── test signer ──────────────────────────────────────────────────────────────
 
 // testSigner implements PeerSigner with a fixed Ed25519 keypair, encoding the
-// identity as a Vula-ID-shaped string. Verify decodes the embedded public key
-// from the ID, mirroring the production peering.VerifyVulaSignature contract.
+// identity as a Vulos-ID-shaped string. Verify decodes the embedded public key
+// from the ID, mirroring the production peering.VerifyVulosSignature contract.
 type testSigner struct {
 	id   string
 	priv ed25519.PrivateKey

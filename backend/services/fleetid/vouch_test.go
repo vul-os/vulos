@@ -496,7 +496,7 @@ func TestInvalidRequest_NotAFallback(t *testing.T) {
 	}{
 		{"unknown action", "reboot", subject.vulosID, pl, roster},
 		{"empty action", "", subject.vulosID, pl, roster},
-		{"bad subject", ActionDeviceEnroll, "not-a-vula-id", pl, roster},
+		{"bad subject", ActionDeviceEnroll, "not-a-vulos-id", pl, roster},
 		{"empty payload", ActionDeviceEnroll, subject.vulosID, nil, roster},
 		{"nil roster", ActionDeviceEnroll, subject.vulosID, pl, nil},
 	}

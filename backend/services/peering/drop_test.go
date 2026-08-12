@@ -344,7 +344,7 @@ func TestDropInboundAndDeclineHTTP(t *testing.T) {
 // TestDropInboundAutoAcceptContact verifies that transfers from approved
 // contacts are accepted automatically when auto-accept is enabled.
 func TestDropInboundAutoAcceptContact(t *testing.T) {
-	contacts := &dropFakeContacts{approved: map[string]bool{"friend-vula-id": true}}
+	contacts := &dropFakeContacts{approved: map[string]bool{"friend-vulos-id": true}}
 	media := &dropFakeMedia{}
 	svc := dropNewTestService(t, contacts, media)
 	svc.DropSetAutoAcceptContacts(true)
@@ -354,7 +354,7 @@ func TestDropInboundAutoAcceptContact(t *testing.T) {
 
 	req := dropInboundRequest{
 		TransferID:  "tx-auto-01",
-		FromVulosID: "friend-vula-id",
+		FromVulosID: "friend-vulos-id",
 		DisplayName: "Friend",
 		FileName:    "photo.jpg",
 		FileSize:    512000,
@@ -540,8 +540,8 @@ func TestDropHostname(t *testing.T) {
 		vulosID string
 		want    string
 	}{
-		{"short", "vula-short._vula-drop._tcp.local"},
-		{"vulos:ed25519:abcdefghijklmnopqrstuvwxyz", "vula-klmnopqrstuvwxyz._vula-drop._tcp.local"},
+		{"short", "vula-short._vulos-drop._tcp.local"},
+		{"vulos:ed25519:abcdefghijklmnopqrstuvwxyz", "vula-klmnopqrstuvwxyz._vulos-drop._tcp.local"},
 	}
 	for _, tc := range cases {
 		got := dropHostname(tc.vulosID)
@@ -558,7 +558,7 @@ func TestDropHostname(t *testing.T) {
 // TestDropMDNSSkipIfUnavailable attempts a real mDNS server setup and skips
 // gracefully if multicast sockets are not available (e.g., CI environment).
 func TestDropMDNSSkipIfUnavailable(t *testing.T) {
-	conn, err := dropDefaultMDNSFactory("vula-test._vula-drop._tcp.local")
+	conn, err := dropDefaultMDNSFactory("vula-test._vulos-drop._tcp.local")
 	if err != nil {
 		t.Skipf("mDNS unavailable (expected in CI): %v", err)
 	}

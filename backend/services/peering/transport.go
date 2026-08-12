@@ -111,7 +111,7 @@ func (c *PeerClient) Post(ctx context.Context, baseURL, envelopeType string, env
 		return fmt.Errorf("peering/transport: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "VulaOS/1.0 peering")
+	req.Header.Set("User-Agent", "VulosOS/1.0 peering")
 
 	resp, err := c.http.Do(req)
 	if err != nil {

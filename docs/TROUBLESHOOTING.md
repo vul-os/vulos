@@ -252,7 +252,7 @@ The embedding auto-discovery looks in `~/.vulos/models/` for, in priority order:
 **Symptom:** semantic answers are poor and the app log (or `~/.vulos/logs/`) shows on stderr:
 
 ```
-vula-embed: no tokenizer.json found next to the model; using the deterministic DEGRADED fallback tokenizer -- semantic quality is reduced, prefer lexical retrieval
+vulos-embed: no tokenizer.json found next to the model; using the deterministic DEGRADED fallback tokenizer -- semantic quality is reduced, prefer lexical retrieval
 ```
 
 **Fix:** install the model's real `tokenizer.json` beside the `.onnx` file (the Settings model manager has an import for exactly this).

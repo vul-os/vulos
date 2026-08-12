@@ -619,8 +619,8 @@ export const APP_ART_CSS = `
   .vi-art [data-a="drift"] { animation-name: vi-drift }
   .vi-art [data-a="unlock"]{ animation-name: vi-unlock }
 
-  :is(.vula-itile, .vi-plate, button, a, [role="button"]):hover .vi-art [data-a],
-  .vula-itile.is-hover .vi-art [data-a]{
+  :is(.vulos-itile, .vi-plate, button, a, [role="button"]):hover .vi-art [data-a],
+  .vulos-itile.is-hover .vi-art [data-a]{
     animation-duration: var(--vd, 1.15s);
     animation-delay: var(--vdl, 0s);
     animation-iteration-count: infinite;

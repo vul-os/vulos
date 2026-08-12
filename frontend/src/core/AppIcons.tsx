@@ -206,7 +206,7 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
   const style = document.createElement('style')
   style.id = styleId
   style.textContent = `
-    .vula-itile{
+    .vulos-itile{
       display:flex; align-items:center; justify-content:center; flex-shrink:0;
       background: linear-gradient(160deg, var(--bg-elevated), color-mix(in srgb, var(--bg-elevated) 66%, var(--bg-surface)));
       border:1px solid color-mix(in srgb, #fff 8%, var(--border-strong));
@@ -219,68 +219,68 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
         border-color var(--motion-fast,.12s) var(--ease-standard, ease),
         box-shadow var(--motion-fast,.12s) var(--ease-standard, ease);
     }
-    [data-theme="light"] .vula-itile{
+    [data-theme="light"] .vulos-itile{
       box-shadow: inset 0 1px 0 rgba(255,255,255,.85), var(--shadow-sm, 0 1px 2px rgba(15,23,42,.06));
       border-color: var(--border-strong);
     }
-    .vula-itile:hover, .vula-itile.is-hover{
+    .vulos-itile:hover, .vulos-itile.is-hover{
       color: var(--text-primary);
       transform: translateY(-3px);
       border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
       box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 10px 26px -10px color-mix(in srgb, var(--accent) 45%, transparent);
     }
-    [data-theme="light"] .vula-itile:hover, [data-theme="light"] .vula-itile.is-hover{
+    [data-theme="light"] .vulos-itile:hover, [data-theme="light"] .vulos-itile.is-hover{
       box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 10px 26px -10px color-mix(in srgb, var(--accent) 38%, transparent);
     }
-    .vula-itile:active{ transform: translateY(-1px) scale(.955); transition-duration: .06s; }
-    @media (prefers-reduced-motion: reduce){ .vula-itile:hover, .vula-itile.is-hover, .vula-itile:active{ transform:none; } }
-    .vula-itile svg{ display:block; }
-    .vula-itile-img{ object-fit:contain; }
+    .vulos-itile:active{ transform: translateY(-1px) scale(.955); transition-duration: .06s; }
+    @media (prefers-reduced-motion: reduce){ .vulos-itile:hover, .vulos-itile.is-hover, .vulos-itile:active{ transform:none; } }
+    .vulos-itile svg{ display:block; }
+    .vulos-itile-img{ object-fit:contain; }
 
     /* ── Tinted variant — a restrained wash of the app's hue. The glyph carries
           the colour; the tile stays near-neutral so a grid of them reads as one
           considered set, not a rainbow. Hue arrives via the --tile-accent var. */
-    .vula-itile[data-tint]{
+    .vulos-itile[data-tint]{
       background: linear-gradient(160deg,
         color-mix(in srgb, var(--tile-accent) 13%, var(--bg-elevated)),
         color-mix(in srgb, var(--tile-accent) 4%, var(--bg-surface)));
       border-color: color-mix(in srgb, var(--tile-accent) 24%, var(--border-strong));
       color: color-mix(in srgb, var(--tile-accent) 72%, var(--text-secondary));
     }
-    .vula-itile[data-tint]:hover, .vula-itile[data-tint].is-hover{
+    .vulos-itile[data-tint]:hover, .vulos-itile[data-tint].is-hover{
       color: color-mix(in srgb, var(--tile-accent) 90%, var(--text-primary));
       border-color: color-mix(in srgb, var(--tile-accent) 55%, var(--border-strong));
       box-shadow: inset 0 1px 0 rgba(255,255,255,.06),
                   0 12px 30px -12px color-mix(in srgb, var(--tile-accent) 60%, transparent);
     }
-    [data-theme="light"] .vula-itile[data-tint]{
+    [data-theme="light"] .vulos-itile[data-tint]{
       color: color-mix(in srgb, var(--tile-accent) 68%, var(--text-secondary));
       background: linear-gradient(160deg,
         color-mix(in srgb, var(--tile-accent) 15%, #fff),
         color-mix(in srgb, var(--tile-accent) 5%, var(--bg-surface)));
       border-color: color-mix(in srgb, var(--tile-accent) 26%, var(--border-strong));
     }
-    [data-theme="light"] .vula-itile[data-tint]:hover, [data-theme="light"] .vula-itile[data-tint].is-hover{
+    [data-theme="light"] .vulos-itile[data-tint]:hover, [data-theme="light"] .vulos-itile[data-tint].is-hover{
       box-shadow: inset 0 1px 0 rgba(255,255,255,.9),
                   0 12px 30px -12px color-mix(in srgb, var(--tile-accent) 45%, transparent);
     }
 
-    /* Launcher entrance — a gentle staggered rise. Opt-in via .vula-tile-in with
+    /* Launcher entrance — a gentle staggered rise. Opt-in via .vulos-tile-in with
        a per-item --tile-i index for the delay; honours reduced-motion. */
-    @keyframes vula-tile-rise{ from{ opacity:0; transform: translateY(10px) scale(.94); } to{ opacity:1; transform:none; } }
-    .vula-tile-in{ animation: vula-tile-rise .42s var(--ease-out, cubic-bezier(.16,1,.3,1)) both;
+    @keyframes vulos-tile-rise{ from{ opacity:0; transform: translateY(10px) scale(.94); } to{ opacity:1; transform:none; } }
+    .vulos-tile-in{ animation: vulos-tile-rise .42s var(--ease-out, cubic-bezier(.16,1,.3,1)) both;
                    animation-delay: calc(var(--tile-i, 0) * 22ms); }
-    @media (prefers-reduced-motion: reduce){ .vula-tile-in{ animation: none; } }
+    @media (prefers-reduced-motion: reduce){ .vulos-tile-in{ animation: none; } }
 
     /* ── Art variant — an app with its own colourful plate (see appArt.tsx)
           brings its whole surface, so the neutral tile chrome steps out of the
           way; only the hover lift and the glow stay, tinted by the plate. */
-    .vula-itile[data-art]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
-    .vula-itile[data-art]:hover, .vula-itile[data-art].is-hover{
+    .vulos-itile[data-art]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
+    .vulos-itile[data-art]:hover, .vulos-itile[data-art].is-hover{
       border-color:transparent;
       box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--art-a, var(--accent)) 75%, transparent);
     }
-    [data-theme="light"] .vula-itile[data-art]:hover, [data-theme="light"] .vula-itile[data-art].is-hover{
+    [data-theme="light"] .vulos-itile[data-art]:hover, [data-theme="light"] .vulos-itile[data-art].is-hover{
       box-shadow: 0 12px 30px -14px color-mix(in srgb, var(--art-b, var(--accent)) 55%, transparent);
     }
 
@@ -293,12 +293,12 @@ if (typeof document !== 'undefined' && !document.getElementById(styleId)) {
           when APP_COLORS has one. Logos in INSET_LOGOS (bare marks on
           transparency, e.g. Chrome/Firefox/LibreOffice) do NOT get this
           attribute and keep today's inset-on-neutral-tile rendering. */
-    .vula-itile[data-logo]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
-    .vula-itile[data-logo]:hover, .vula-itile[data-logo].is-hover{
+    .vulos-itile[data-logo]{ background:none; border-color:transparent; box-shadow:none; padding:0; }
+    .vulos-itile[data-logo]:hover, .vulos-itile[data-logo].is-hover{
       border-color:transparent;
       box-shadow: 0 12px 30px -12px color-mix(in srgb, var(--tile-accent, var(--accent)) 55%, transparent);
     }
-    [data-theme="light"] .vula-itile[data-logo]:hover, [data-theme="light"] .vula-itile[data-logo].is-hover{
+    [data-theme="light"] .vulos-itile[data-logo]:hover, [data-theme="light"] .vulos-itile[data-logo].is-hover{
       box-shadow: 0 12px 30px -14px color-mix(in srgb, var(--tile-accent, var(--accent)) 40%, transparent);
     }
   ` + APP_ART_CSS
@@ -935,7 +935,7 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
   const glyphSize = Math.round(size * 0.5)
 
   const tileProps: { className: string; onMouseEnter: () => void; onMouseLeave: () => void; style: TileStyle } = {
-    className: 'vula-itile' + (hover ? ' is-hover' : ''),
+    className: 'vulos-itile' + (hover ? ' is-hover' : ''),
     onMouseEnter: () => setHover(true),
     onMouseLeave: () => setHover(false),
     style: { width: size, height: size, borderRadius: radius },
@@ -972,7 +972,7 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
         <img
           src={brandLogo}
           alt=""
-          className="vula-itile-img"
+          className="vulos-itile-img"
           style={fullBleed ? { width: '100%', height: '100%' } : { width: '70%', height: '70%' }}
           onError={() => setLogoFailed(true)}
           loading="lazy"
@@ -1001,7 +1001,7 @@ export function AppIconTile({ id, size = 48, unicode }: AppIconTileProps) {
         <img
           src={`/api/desktop/icon/${id}`}
           alt=""
-          className="vula-itile-img"
+          className="vulos-itile-img"
           style={{ width: '66%', height: '66%' }}
           onError={() => setLogoFailed(true)}
           loading="lazy"

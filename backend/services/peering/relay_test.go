@@ -88,7 +88,7 @@ func relayPickupAuthHeader(t *testing.T, priv ed25519.PrivateKey, vulosID string
 	msg := []byte(vulosID + "." + tsStr)
 	sig := ed25519.Sign(priv, msg)
 	sigB64 := base64.RawURLEncoding.EncodeToString(sig)
-	return fmt.Sprintf("Vula-Relay %s.%s.%s", vulosID, tsStr, sigB64)
+	return fmt.Sprintf("Vulos-Relay %s.%s.%s", vulosID, tsStr, sigB64)
 }
 
 // relayAddApprovedContact adds a contact to the ContactStore in the Approved state.
@@ -558,7 +558,7 @@ func TestReaper_RemovesExpiredBlobs(t *testing.T) {
 // ─── parseRelayAuthHeader tests ───────────────────────────────────────────────
 
 func TestParseRelayAuthHeader_Valid(t *testing.T) {
-	header := "Vula-Relay vulos:ed25519:abc123.1700000000.sigABCDEF"
+	header := "Vulos-Relay vulos:ed25519:abc123.1700000000.sigABCDEF"
 	vulosID, ts, sig, err := parseRelayAuthHeader(header)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -582,7 +582,7 @@ func TestParseRelayAuthHeader_WrongPrefix(t *testing.T) {
 }
 
 func TestParseRelayAuthHeader_MissingFields(t *testing.T) {
-	_, _, _, err := parseRelayAuthHeader("Vula-Relay onlyone")
+	_, _, _, err := parseRelayAuthHeader("Vulos-Relay onlyone")
 	if err == nil {
 		t.Error("expected error for missing fields")
 	}

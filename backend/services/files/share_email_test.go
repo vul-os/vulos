@@ -62,9 +62,9 @@ func TestShareByEmail_Remote_MintsBoundCapabilityAndDelivers(t *testing.T) {
 	svc.WithPeer(signer, nil, t.TempDir())
 	n := seedFile(t, svc, "userOwner", "doc.txt", "hi")
 
-	const recipVula = "k:remote-recipient"
+	const recipVulos = "k:remote-recipient"
 	svc.WithShareResolver(fakeResolver{byEmail: map[string]ShareRecipient{
-		"carol@example.com": {VulosID: recipVula, Server: "carol.example.com"},
+		"carol@example.com": {VulosID: recipVulos, Server: "carol.example.com"},
 	}}, deliv)
 
 	res, err := svc.ShareByEmail(context.Background(), "userOwner", n.ID, "carol@example.com", RoleEditor, "https://owner.example", time.Hour)
@@ -81,14 +81,14 @@ func TestShareByEmail_Remote_MintsBoundCapabilityAndDelivers(t *testing.T) {
 	if res.Capability.Access != RoleEditor {
 		t.Errorf("capability Access = %q, want editor", res.Capability.Access)
 	}
-	if res.Capability.Recipient != recipVula {
-		t.Errorf("capability Recipient = %q, want %q (bound)", res.Capability.Recipient, recipVula)
+	if res.Capability.Recipient != recipVulos {
+		t.Errorf("capability Recipient = %q, want %q (bound)", res.Capability.Recipient, recipVulos)
 	}
 	// Delivered to the recipient server intake.
 	if !res.Delivered || deliv.calls != 1 || deliv.to != "carol.example.com" {
 		t.Fatalf("delivery: delivered=%v calls=%d to=%q", res.Delivered, deliv.calls, deliv.to)
 	}
-	if deliv.last.RecipientVulosID != recipVula || deliv.last.Link != res.Link {
+	if deliv.last.RecipientVulosID != recipVulos || deliv.last.Link != res.Link {
 		t.Errorf("delivery payload mismatch: %+v", deliv.last)
 	}
 }

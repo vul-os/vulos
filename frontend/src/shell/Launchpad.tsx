@@ -329,7 +329,7 @@ function AppTile({ app, onLaunch, index = 0 }: AppTileProps) {
       onClick={() => onLaunch(app)}
       aria-label={`Open ${app.name}`}
       title={app.name}
-      className="vshell-tile vula-tile-in focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
+      className="vshell-tile vulos-tile-in focus-primary group flex flex-col items-center gap-2 rounded-[13px] px-1 py-2"
       style={tileStyle}
     >
       <AppIconTile id={app.id} size={60} unicode={app.icon} />

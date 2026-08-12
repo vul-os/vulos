@@ -4,7 +4,7 @@
 //
 // OutboxQueue persists outbound messages for peers that are temporarily
 // unreachable. When delivery to a peer fails, the message is kept in
-// ~/.vulos/peering/outbox/<peer-vula-id>/<id>.json with an associated
+// ~/.vulos/peering/outbox/<peer-vulos-id>/<id>.json with an associated
 // delivery-attempt record. A background worker retries on a schedule:
 //
 //	1s → 5s → 30s → 5m → 1h → periodic (1h)
@@ -16,7 +16,7 @@
 // # Storage layout
 //
 //	~/.vulos/peering/outbox/
-//	  └── <peer-vula-id>/
+//	  └── <peer-vulos-id>/
 //	      └── <queued-at-timestamp>_<msg-id>.json   (one file per queued item)
 //
 // Each file is a JSON-encoded QueuedEnvelope containing the full signed

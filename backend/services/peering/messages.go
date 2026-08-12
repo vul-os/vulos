@@ -17,7 +17,7 @@
 //
 // Conversations are identified by a canonical ID derived from the two Vula IDs:
 //
-//	conv_id = "<lower-vula-id>_<higher-vula-id>"
+//	conv_id = "<lower-vulos-id>_<higher-vulos-id>"
 //
 // This ensures both sides of the conversation agree on a single stable folder
 // name regardless of which party initiated the conversation.
@@ -458,8 +458,8 @@ func peerFromConvID(convID, localVulosID string) (string, error) {
 	//   vulos:ed25519:<base58A>_vulos:ed25519:<base58B>
 	//
 	// We can split on "_vulos:ed25519:" to recover both halves.
-	const vulaPrefix = "vulos:ed25519:"
-	sep := "_" + vulaPrefix
+	const vulosPrefix = "vulos:ed25519:"
+	sep := "_" + vulosPrefix
 
 	idx := strings.Index(convID, sep)
 	if idx < 0 {
@@ -467,7 +467,7 @@ func peerFromConvID(convID, localVulosID string) (string, error) {
 	}
 
 	idA := convID[:idx]
-	idB := vulaPrefix + convID[idx+len(sep):]
+	idB := vulosPrefix + convID[idx+len(sep):]
 
 	switch localVulosID {
 	case idA:

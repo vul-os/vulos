@@ -151,18 +151,18 @@ func EncodeVulosID(pub ed25519.PublicKey) string {
 // Ed25519 public key it encodes. It is the exported counterpart of the internal
 // decodeVulosID, provided so other services (e.g. the Files OS peer-share
 // capability layer) can verify signatures made by a remote box's identity key
-// WITHOUT importing the base58 / Vula-ID machinery themselves. Vula-ID handling
+// WITHOUT importing the base58 / Vulos-ID machinery themselves. Vulos-ID handling
 // stays centralized in this package.
 func PublicKeyForVulosID(id string) (ed25519.PublicKey, error) {
 	return decodeVulosID(id)
 }
 
-// VerifyVulaSignature reports whether sig is a valid Ed25519 signature by the
+// VerifyVulosSignature reports whether sig is a valid Ed25519 signature by the
 // identity behind vulosID over msg. It is a small, self-contained verification
 // primitive for cross-box capability/proof checks: the verifier needs only the
 // peer's Vula ID (which embeds the public key) — no prior key exchange. Returns
 // a non-nil error when the Vula ID is malformed or the signature does not match.
-func VerifyVulaSignature(vulosID string, msg, sig []byte) error {
+func VerifyVulosSignature(vulosID string, msg, sig []byte) error {
 	pub, err := decodeVulosID(vulosID)
 	if err != nil {
 		return err
@@ -175,46 +175,46 @@ func VerifyVulaSignature(vulosID string, msg, sig []byte) error {
 
 // ─── Address parsing ──────────────────────────────────────────────────────────
 
-// VulaAddress is a Vula ID combined with a server host and port.
+// VulosAddress is a Vula ID combined with a server host and port.
 // Wire format: <vulos_id>@<host>:<port>
-type VulaAddress struct {
+type VulosAddress struct {
 	VulosID string
 	Host    string
 	Port    int
 }
 
-// ParseVulaAddress parses a Vula address string of the form
+// ParseVulosAddress parses a Vula address string of the form
 // "vulos:ed25519:<base58>@host:port".
-func ParseVulaAddress(s string) (VulaAddress, error) {
+func ParseVulosAddress(s string) (VulosAddress, error) {
 	// Split on the last '@' to allow ':' inside the Vula ID prefix.
 	at := strings.LastIndex(s, "@")
 	if at < 0 {
-		return VulaAddress{}, errors.New("vula address: missing '@'")
+		return VulosAddress{}, errors.New("vula address: missing '@'")
 	}
 	id := s[:at]
 	hostport := s[at+1:]
 
 	colon := strings.LastIndex(hostport, ":")
 	if colon < 0 {
-		return VulaAddress{}, errors.New("vula address: missing ':' in host:port")
+		return VulosAddress{}, errors.New("vula address: missing ':' in host:port")
 	}
 	host := hostport[:colon]
 	portStr := hostport[colon+1:]
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
-		return VulaAddress{}, fmt.Errorf("vula address: invalid port %q", portStr)
+		return VulosAddress{}, fmt.Errorf("vula address: invalid port %q", portStr)
 	}
 
 	// Validate the Vula ID portion.
 	if _, err := decodeVulosID(id); err != nil {
-		return VulaAddress{}, fmt.Errorf("vula address: %w", err)
+		return VulosAddress{}, fmt.Errorf("vula address: %w", err)
 	}
 
-	return VulaAddress{VulosID: id, Host: host, Port: port}, nil
+	return VulosAddress{VulosID: id, Host: host, Port: port}, nil
 }
 
 // String returns the canonical wire form of the address.
-func (a VulaAddress) String() string {
+func (a VulosAddress) String() string {
 	return fmt.Sprintf("%s@%s:%d", a.VulosID, a.Host, a.Port)
 }
 

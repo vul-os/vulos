@@ -330,7 +330,7 @@ func profileDo(mux *http.ServeMux, method, path, body, callerID string) *httptes
 	}
 	req := httptest.NewRequest(method, path, bodyR)
 	if callerID != "" {
-		req.Header.Set("X-Vula-ID", callerID)
+		req.Header.Set("X-Vulos-ID", callerID)
 	}
 	if body != "" && method != "GET" {
 		req.Header.Set("Content-Type", "application/json")

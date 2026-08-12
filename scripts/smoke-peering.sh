@@ -247,7 +247,7 @@ POST	/api/peering/collab/share	{"title":"test"}
 GET	/api/peering/collab/PLACEHOLDER_ID
 DELETE	/api/peering/collab/PLACEHOLDER_ID
 # well-known identity (PEER-12)
-GET	/.well-known/vula-id
+GET	/.well-known/vulos-id
 ROUTES
 }
 

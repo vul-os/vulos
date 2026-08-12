@@ -3,7 +3,7 @@
 // PEER-12: well-known identity endpoint + peer profile fetch/cache.
 //
 // Exported surface:
-//   - RegisterWellKnownHandlers(mux *http.ServeMux) — mounts GET /.well-known/vula-id
+//   - RegisterWellKnownHandlers(mux *http.ServeMux) — mounts GET /.well-known/vulos-id
 //     and GET /api/peering/profile/{vulos_id} on the supplied mux.
 //   - FetchPeerProfile(ctx, vulosID, serverAddr) (*WKPeerProfile, error) — fetches
 //     and caches a peer's public profile from their Vula instance.
@@ -248,7 +248,7 @@ func wkLoadOwnProfile(dataDir string, vulosID string) WKOwnProfile {
 // Well-known response (public fields only)
 // --------------------------------------------------------------------------
 
-// WKIdentityResponse is what GET /.well-known/vula-id returns to the world.
+// WKIdentityResponse is what GET /.well-known/vulos-id returns to the world.
 // Only public-visibility fields appear here; everything else is omitted.
 type WKIdentityResponse struct {
 	VulosID       string `json:"vulos_id"`
@@ -480,7 +480,7 @@ func FetchPeerProfile(ctx context.Context, vulosID, serverAddr string) (*WKPeerP
 	// chain) BEFORE building/caching the profile. This is what makes a revocation
 	// take effect through the real fetch path: a peer that has self-revoked (or
 	// been anchor-revoked) is recorded here, so the admission gate and
-	// VerifyVulaSignatureChecked subsequently reject it.
+	// VerifyVulosSignatureChecked subsequently reject it.
 	wkIngestLifecycle(wk.Lifecycle)
 
 	// Fail closed if the fetched identity is now revoked: do not hand back (or
@@ -519,7 +519,7 @@ func FetchPeerProfile(ctx context.Context, vulosID, serverAddr string) (*WKPeerP
 	return p, nil
 }
 
-// wkFetchAndVerify performs the SSRF-guarded GET of a peer's /.well-known/vula-id,
+// wkFetchAndVerify performs the SSRF-guarded GET of a peer's /.well-known/vulos-id,
 // decodes it, checks the returned Vula ID matches what we expected, and verifies
 // the response's Ed25519 signature against that key. It returns the authenticated
 // WKIdentityResponse. It is shared by FetchPeerProfile (which then builds/caches a
@@ -529,7 +529,7 @@ func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdenti
 
 	// Build the well-known URL.
 	base := wkNormaliseServerAddr(serverAddr)
-	wkURL := base + "/.well-known/vula-id"
+	wkURL := base + "/.well-known/vulos-id"
 
 	// H1 fix: validate host against the SSRF deny-list before dialling.
 	// Peers are external by definition, so allowLAN=false (strict mode).
@@ -555,7 +555,7 @@ func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdenti
 		return zero, fmt.Errorf("peering: build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "VulaOS/1.0 (+peering)")
+	req.Header.Set("User-Agent", "VulosOS/1.0 (+peering)")
 
 	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if peeringSSRFBypass {
@@ -676,7 +676,7 @@ func wkNormaliseServerAddr(addr string) string {
 
 // RegisterWellKnownHandlers mounts the following routes on mux:
 //
-//	GET /.well-known/vula-id           — unauthenticated, public fields only
+//	GET /.well-known/vulos-id           — unauthenticated, public fields only
 //	GET /api/peering/profile/{vulos_id} — fetch + cache a peer's profile
 //
 // It reads this node's identity and profile from wkPeeringDataDir().
@@ -698,7 +698,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	}
 	ownVulosID := identity.VulosID
 
-	// ── GET /.well-known/vula-id ─────────────────────────────────────────
+	// ── GET /.well-known/vulos-id ─────────────────────────────────────────
 	// Public, unauthenticated. Returns only public-visibility fields.
 	// Load this node's private key once so every well-known response can be
 	// signed (peers authenticate the profile against the Vula ID public key).
@@ -707,7 +707,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 		fmt.Fprintf(os.Stderr, "[peering] cannot load identity private key; well-known responses will be UNSIGNED and rejected by peers: %v\n", privErr)
 	}
 
-	mux.HandleFunc("GET /.well-known/vula-id", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /.well-known/vulos-id", func(w http.ResponseWriter, r *http.Request) {
 		profile := wkLoadOwnProfile(dataDir, ownVulosID)
 		resp := wkBuildPublicResponse(profile)
 		// Publish key-lifecycle data (rotation/recovery chain + revocations) so

@@ -149,7 +149,7 @@ var publicPaths = map[string]bool{
 	// (contacts/*, conversations/*, groups create, call/initiate, media/upload,
 	// identity export/import/revoke, profile PUT, collab WS /sync, discover, feeds
 	// create/publish) are deliberately OMITTED so they stay OS-session-authed.
-	"/.well-known/vula-id":               true, // PEER-12: public self-certifying identity (public fields only; signature-verifiable by the embedded key)
+	"/.well-known/vulos-id":              true, // PEER-12: public self-certifying identity (public fields only; signature-verifiable by the embedded key)
 	"/api/peering/relay/deposit":         true, // PEER-38: store-and-forward deposit (Ed25519-signed request + mutual-trust contact check in the handler)
 	"/api/peering/relay/pickup":          true, // PEER-38: store-and-forward pickup (Ed25519-signed "<vulos_id>.<ts>" Authorization header)
 	"/api/peering/relay/ack":             true, // PEER-38: store-and-forward ack (recipient-authenticated, deletes only its own blobs)

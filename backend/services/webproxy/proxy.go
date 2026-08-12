@@ -157,7 +157,7 @@ func (s *Service) Handler() http.HandlerFunc {
 				proxyReq.Header.Set(h, v)
 			}
 		}
-		proxyReq.Header.Set("User-Agent", "Mozilla/5.0 (compatible; VulaOS/1.0)")
+		proxyReq.Header.Set("User-Agent", "Mozilla/5.0 (compatible; VulosOS/1.0)")
 		proxyReq.Header.Set("Accept-Encoding", "gzip")
 
 		// Execute — uses pinned IP, no second DNS resolution occurs

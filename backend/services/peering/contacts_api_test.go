@@ -116,7 +116,7 @@ func TestHandleSendRequest_MissingTargetServer(t *testing.T) {
 	}
 }
 
-func TestHandleSendRequest_ParsesFullVulaAddress(t *testing.T) {
+func TestHandleSendRequest_ParsesFullVulosAddress(t *testing.T) {
 	api, store := newTestAPI(t)
 
 	// Stand up a fake remote server that returns 200 for the inbound/request path.
@@ -138,7 +138,7 @@ func TestHandleSendRequest_ParsesFullVulaAddress(t *testing.T) {
 	api.client = &PeerClient{http: remote.Client()}
 
 	// Full vula address: <vulosID>@host:port
-	// ParseVulaAddress requires "<vulosID>@<host>:<port>" so we need a valid port.
+	// ParseVulosAddress requires "<vulosID>@<host>:<port>" so we need a valid port.
 	// Build a valid full address.
 	fullAddress := fmt.Sprintf("%s@%s", remoteVulosID, hostport)
 

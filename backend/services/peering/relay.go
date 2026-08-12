@@ -14,7 +14,7 @@
 //	  → relay stores blob, indexed by recipient Vula ID
 //
 //	GET /api/peering/relay/pickup
-//	  Header: Authorization: Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
+//	  Header: Authorization: Vulos-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //	  → returns all pending blobs for the authenticated Vula ID
 //
 //	POST /api/peering/relay/ack
@@ -38,7 +38,7 @@
 //	~/.vulos/peering/relay/
 //	  ├── config.json
 //	  └── store/
-//	      └── <sanitised-recipient-vula-id>/
+//	      └── <sanitised-recipient-vulos-id>/
 //	          └── <blob-id>.json    (RelayBlob)
 //
 // # Limits (per relay peer)
@@ -859,7 +859,7 @@ func relayDepositCanonical(req relayDepositRequest) ([]byte, error) {
 //
 // The Authorization header value must be:
 //
-//	Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
+//	Vulos-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
 // where sig is the Ed25519 signature over "<vulos_id>.<timestamp_unix>"
 // (UTF-8 bytes, no trailing newline).
@@ -968,11 +968,11 @@ func relayAtomicWrite(dir, dst string, data []byte) error {
 //
 // Expected format:
 //
-//	Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
+//	Vulos-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
 // Returns (vulosID, timestampUnix, sigB64URL, nil) on success.
 func parseRelayAuthHeader(header string) (string, string, string, error) {
-	const prefix = "Vula-Relay "
+	const prefix = "Vulos-Relay "
 	if !strings.HasPrefix(header, prefix) {
 		return "", "", "", fmt.Errorf("peering/relay: authorization header must start with %q", prefix)
 	}
@@ -1075,7 +1075,7 @@ func (rs *RelayStore) handleRelayDeposit(w http.ResponseWriter, r *http.Request)
 //
 // Authorization header:
 //
-//	Authorization: Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
+//	Authorization: Vulos-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
 // Success: 200 OK, body: {"blobs": [...RelayBlob...]}
 // Errors:  401 Unauthorized

@@ -263,7 +263,7 @@ Shows ALL keys the user needs to save. Does not proceed until they confirm.
 │                                             │
 │   Storage Secret Key                        │
 │   ┌─────────────────────────────────────┐   │
-│   │ vula-sk-8e2f1a9c7b3d6e4f0a5b...    │   │
+│   │ vulos-sk-8e2f1a9c7b3d6e4f0a5b...    │   │
 │   │                          [ Copy ]   │   │
 │   └─────────────────────────────────────┘   │
 │                                             │
@@ -313,7 +313,7 @@ Shows ALL keys the user needs to save. Does not proceed until they confirm.
     "endpoint": "http://192.168.1.50:9000",
     "bucket": "vulos-cluster",
     "access_key": "vula-ak-7f3a9b2c1d4e",
-    "secret_key": "vula-sk-8e2f1a9c7b3d6e4f0a5b..."
+    "secret_key": "vulos-sk-8e2f1a9c7b3d6e4f0a5b..."
   },
   "encryption": {
     "method": "AES-256-GCM",

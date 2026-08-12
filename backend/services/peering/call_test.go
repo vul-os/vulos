@@ -90,7 +90,7 @@ func callApprovedContact(vulosID, server string) *Contact {
 	}
 }
 
-// callPostJSON sends a POST with a JSON body and optional X-Vula-ID header,
+// callPostJSON sends a POST with a JSON body and optional X-Vulos-ID header,
 // returning the recorder.
 func callPostJSON(t *testing.T, handler http.HandlerFunc, vulosID string, body any) *httptest.ResponseRecorder {
 	t.Helper()
@@ -101,7 +101,7 @@ func callPostJSON(t *testing.T, handler http.HandlerFunc, vulosID string, body a
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if vulosID != "" {
-		req.Header.Set("X-Vula-ID", vulosID)
+		req.Header.Set("X-Vulos-ID", vulosID)
 	}
 	rr := httptest.NewRecorder()
 	handler(rr, req)
@@ -561,7 +561,7 @@ func TestCallSignal_NonParticipant(t *testing.T) {
 	}
 }
 
-// TestCallMissingVulosIDHeader verifies 401 when X-Vula-ID is absent from
+// TestCallMissingVulosIDHeader verifies 401 when X-Vulos-ID is absent from
 // local-facing endpoints.
 func TestCallMissingVulosIDHeader(t *testing.T) {
 	contacts := newCallFakeContacts()

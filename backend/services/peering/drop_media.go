@@ -205,7 +205,7 @@ func (d *DropTransfer) notifyPeer(ctx context.Context, targetAddr string, notice
 		return fmt.Errorf("peering/drop: build notice request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "VulaOS/1.0 peering-drop")
+	req.Header.Set("User-Agent", "VulosOS/1.0 peering-drop")
 
 	client := d.notifyClient()
 	resp, err := client.Do(req)

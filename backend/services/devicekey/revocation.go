@@ -519,7 +519,7 @@ func IsDeviceKeyRevoked(fingerprint string) bool {
 
 // VerifyDeviceSignatureChecked verifies an ECDSA signature by pubKeyDER over
 // digest AND rejects it if pubKeyDER's fingerprint is revoked — the
-// device-key parallel to services/peering's VerifyVulaSignatureChecked. Any
+// device-key parallel to services/peering's VerifyVulosSignatureChecked. Any
 // remote verifier of a device-key signature (cloud enrollment, integrations
 // broker, etc.) should prefer this over a bare ecdsa.VerifyASN1 so a
 // compromised-then-revoked device key can no longer authenticate anywhere the

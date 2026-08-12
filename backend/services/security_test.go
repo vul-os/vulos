@@ -513,7 +513,7 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 		// Server-to-server peering. These are reached by REMOTE boxes with no OS
 		// session here; each authenticates with its own mechanism. Client-facing
 		// peering routes are deliberately absent so they stay session-gated.
-		"/.well-known/vula-id":               "PEER-12: self-certifying identity, public fields only, signature-verifiable",
+		"/.well-known/vulos-id":              "PEER-12: self-certifying identity, public fields only, signature-verifiable",
 		"/api/peering/relay/deposit":         "PEER-38: Ed25519-signed request + mutual-trust contact check in the handler",
 		"/api/peering/relay/pickup":          "PEER-38: Ed25519-signed Authorization header",
 		"/api/peering/relay/ack":             "PEER-38: recipient-authenticated, deletes only its own blobs",

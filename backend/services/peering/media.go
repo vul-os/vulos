@@ -841,7 +841,7 @@ func (ms *MediaStore) FetchFromPeer(ctx context.Context, ref MediaRefPayload) er
 	if err != nil {
 		return fmt.Errorf("peering/media: FetchFromPeer: build request: %w", err)
 	}
-	req.Header.Set("User-Agent", "VulaOS/1.0 peering-media")
+	req.Header.Set("User-Agent", "VulosOS/1.0 peering-media")
 
 	resp, err := ms.httpClient.Do(req)
 	if err != nil {

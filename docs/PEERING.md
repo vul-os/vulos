@@ -130,7 +130,7 @@ Drop sends files to nearby Vulos instances — LAN-first, with an internet fallb
 
 ### How discovery works
 
-Your box advertises itself over **mDNS** as `_vula-drop._tcp.local` and continuously discovers peers doing the same. Requirements for the local path: both devices on the same LAN, with multicast DNS traffic allowed (some guest Wi-Fi networks block it — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
+Your box advertises itself over **mDNS** as `_vulos-drop._tcp.local` and continuously discovers peers doing the same. Requirements for the local path: both devices on the same LAN, with multicast DNS traffic allowed (some guest Wi-Fi networks block it — see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)).
 
 Who can see you is your choice — Drop tab → discoverability setting:
 
@@ -206,7 +206,7 @@ Long-lived identities need a plan for key hygiene, compromise, and loss. Vulos i
 
 ### Rotation: planned key changes
 
-While you still hold your current key, you can rotate to a fresh one. The box signs a **rotation certificate** — "old key X authorizes new key Y" — with the *old* key, and appends it to its lifecycle chain. Peers fetching your public profile (`GET /.well-known/vula-id`) see the chain, verify each hop's signature, and follow it to your current key. Their contact entry still names your original ID; the chain maps it forward. An invalid or out-of-order link stops the chain cold — peers never guess.
+While you still hold your current key, you can rotate to a fresh one. The box signs a **rotation certificate** — "old key X authorizes new key Y" — with the *old* key, and appends it to its lifecycle chain. Peers fetching your public profile (`GET /.well-known/vulos-id`) see the chain, verify each hop's signature, and follow it to your current key. Their contact entry still names your original ID; the chain maps it forward. An invalid or out-of-order link stops the chain cold — peers never guess.
 
 ### Revocation: killing a key
 
@@ -297,7 +297,7 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 | Shared docs | `POST /api/peering/collab/share` · `GET /api/peering/collab/documents` · `GET`/`DELETE /api/peering/collab/{doc_id}` · `PUT /api/peering/collab/{doc_id}/perms` |
 | Cluster join | `POST /api/cluster/join-code` (admin) · `POST /api/setup/join-code` · `POST /api/setup/join` · `GET /api/setup/join/status` |
 | Device key | `GET /api/auth/device/identity` · `GET /api/auth/device/tpm/status` |
-| Public profile | `GET /.well-known/vula-id` (Vula ID, lifecycle chain, revocations, signed prekey — public fields only) |
+| Public profile | `GET /.well-known/vulos-id` (Vula ID, lifecycle chain, revocations, signed prekey — public fields only) |
 
 Everything under `/api/peering/inbound/*` is the box-to-box surface: it authenticates the *sending peer's signature*, not an OS login, and is not meant to be called by you directly.
 

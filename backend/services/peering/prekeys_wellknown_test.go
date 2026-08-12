@@ -35,7 +35,7 @@ func TestWellKnown_PublishesSignedPreKeyNotOPKs(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/vula-id", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/vulos-id", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

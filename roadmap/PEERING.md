@@ -111,7 +111,7 @@ Each user has a profile that travels with their Vula ID.
 
 | Level | Who sees it |
 |-------|------------|
-| `public` | Anyone who visits your `/.well-known/vula-id` or finds you in the directory |
+| `public` | Anyone who visits your `/.well-known/vulos-id` or finds you in the directory |
 | `peers` | Only approved contacts |
 | `nobody` | Hidden from everyone (still stored locally) |
 
@@ -548,7 +548,7 @@ The ID includes the server address. Scan a QR code, your Vula instance sends a c
 If Alice has `alice.vulos.org` pointing to her Vula instance:
 
 ```
-GET https://alice.vulos.org/.well-known/vula-id
+GET https://alice.vulos.org/.well-known/vulos-id
 → { "vulos_id": "vulos:ed25519:5Hb7...", "display_name": "Alice" }
 ```
 
@@ -582,7 +582,7 @@ Any Vula server on the local network advertises itself via mDNS (multicast DNS),
 
 ```
 Vula server broadcasts:
-  _vula-drop._tcp.local  →  alice-vula.local:8080
+  _vulos-drop._tcp.local  →  alice-vulos.local:8080
   TXT: vulos_id=vulos:ed25519:5Hb7... display_name=Alice img=<hash>
 ```
 
@@ -590,7 +590,7 @@ Every Vula instance on the same network sees this. No internet, no central serve
 
 - Go has `github.com/hashicorp/mdns` or `github.com/grandcat/zeroconf` — drop-in mDNS libraries
 - Advertise when Drop is enabled (user toggles "Discoverable" in quick settings)
-- Browse for other `_vula-drop._tcp` services to build the nearby list
+- Browse for other `_vulos-drop._tcp` services to build the nearby list
 - Show display name + avatar (fetched from the discovered server over LAN)
 
 #### 2. Bluetooth Low Energy (BLE) — bare metal bonus
@@ -931,7 +931,7 @@ flowchart LR
 Alice's Vula ID resolves to multiple endpoints:
 
 ```json
-GET https://alice.vulos.org/.well-known/vula-id
+GET https://alice.vulos.org/.well-known/vulos-id
 {
   "vulos_id": "vulos:ed25519:5Hb7...",
   "display_name": "Alice",

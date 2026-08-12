@@ -1,4 +1,4 @@
-// Package peering implements direct Vula-to-Vula instance communication.
+// Package peering implements direct Vulos-to-Vulos instance communication.
 // This file provides bandwidth measurement and the /api/peering/bandwidth endpoint.
 //
 // Measurement strategy:

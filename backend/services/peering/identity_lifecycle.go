@@ -9,7 +9,7 @@
 //
 // All identifiers here use the canonical base58 Vula ID encoding (encodeVulosID /
 // decodeVulosID in identity.go), which is the encoding used by the envelope
-// Verify path and VerifyVulaSignature — i.e. the identities that actually gate
+// Verify path and VerifyVulosSignature — i.e. the identities that actually gate
 // inbound traffic.
 //
 // # Operations
@@ -524,7 +524,7 @@ func (s *LifecycleStore) RecordRevocation(cert *RevocationCert) error {
 // SelfRevoke signs and records a self-revocation of THIS node's current head
 // identity, signed by priv (which must correspond to the head). After this,
 // IsRevoked(head) is true, the head appears in RevocationList() (so it is
-// published on /.well-known/vula-id), and every wired admission/verify point
+// published on /.well-known/vulos-id), and every wired admission/verify point
 // rejects the head key. This is the box side of the "I lost / am retiring this
 // key" operation, exposed over POST /api/peering/identity/revoke.
 func (s *LifecycleStore) SelfRevoke(priv ed25519.PrivateKey, reason string) (*RevocationCert, error) {
@@ -539,7 +539,7 @@ func (s *LifecycleStore) SelfRevoke(priv ed25519.PrivateKey, reason string) (*Re
 	return cert, nil
 }
 
-// recordAlias records a verified resolved-current-key → root-vula-id mapping so the
+// recordAlias records a verified resolved-current-key → root-vulos-id mapping so the
 // admission path can accept a rotated/recovered peer on its new key.
 func (s *LifecycleStore) recordAlias(currentVulosID, rootVulosID string) error {
 	s.mu.Lock()
@@ -734,7 +734,7 @@ func (s *LifecycleStore) RevocationList() []*RevocationCert {
 // ─── Global admission gate ─────────────────────────────────────────────────────
 
 // revocationChecker is the process-wide hook consulted by InboundMiddleware and
-// VerifyVulaSignatureChecked to reject revoked identities. nil ⇒ no revocation
+// VerifyVulosSignatureChecked to reject revoked identities. nil ⇒ no revocation
 // enforcement (the historical behavior; safe because absence of a checker means
 // no lifecycle subsystem is wired).
 var (
@@ -798,15 +798,15 @@ func resolvePresentedRoot(presentedVulosID string) (string, bool) {
 	return f(presentedVulosID)
 }
 
-// VerifyVulaSignatureChecked is VerifyVulaSignature plus a revocation gate: it
+// VerifyVulosSignatureChecked is VerifyVulosSignature plus a revocation gate: it
 // rejects a signature from a revoked identity even if the signature is otherwise
 // valid. Cross-box capability/proof checks should prefer this over the bare
-// VerifyVulaSignature so a compromised-then-revoked key cannot be used.
-func VerifyVulaSignatureChecked(vulosID string, msg, sig []byte) error {
+// VerifyVulosSignature so a compromised-then-revoked key cannot be used.
+func VerifyVulosSignatureChecked(vulosID string, msg, sig []byte) error {
 	if isVulosIDRevoked(vulosID) {
 		return fmt.Errorf("peering: identity %q is revoked", vulosID)
 	}
-	return VerifyVulaSignature(vulosID, msg, sig)
+	return VerifyVulosSignature(vulosID, msg, sig)
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────────────

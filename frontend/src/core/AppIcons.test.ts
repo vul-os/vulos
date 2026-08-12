@@ -115,7 +115,7 @@ describe('AppIconTile renders full-bleed logos edge-to-edge, inset logos on the 
   it('a full-bleed logo (terminal, not in INSET_LOGOS) fills the tile and drops the neutral chrome', () => {
     expect(INSET_LOGOS.has('terminal'), 'terminal.svg is full-bleed; this test assumes it is not in INSET_LOGOS').toBe(false)
     const { container } = render(createElement(AppIconTile, { id: 'terminal', size: 48 }))
-    const tile = container.querySelector('.vula-itile')
+    const tile = container.querySelector('.vulos-itile')
     const img = container.querySelector('img')
     expect(tile?.getAttribute('data-logo'), 'a full-bleed logo tile must carry data-logo so the neutral chrome CSS steps out of the way').toBe('')
     expect(img?.getAttribute('src')).toBe(APP_LOGOS.terminal)
@@ -126,7 +126,7 @@ describe('AppIconTile renders full-bleed logos edge-to-edge, inset logos on the 
   it('an inset logo (firefox, in INSET_LOGOS) keeps the neutral tile and the 70% inset mark', () => {
     expect(INSET_LOGOS.has('firefox'), 'firefox.svg is a bare mark on transparency; this test assumes it is in INSET_LOGOS').toBe(true)
     const { container } = render(createElement(AppIconTile, { id: 'firefox', size: 48 }))
-    const tile = container.querySelector('.vula-itile')
+    const tile = container.querySelector('.vulos-itile')
     const img = container.querySelector('img')
     expect(tile?.hasAttribute('data-logo'), 'a bare-mark logo must NOT get the edge-to-edge treatment — it has nothing to sit on').toBe(false)
     expect(img?.getAttribute('src')).toBe(APP_LOGOS.firefox)

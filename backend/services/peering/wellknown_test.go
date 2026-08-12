@@ -222,7 +222,7 @@ func TestWKBuildPublicResponse_NeverExposesEmail(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// /.well-known/vula-id handler
+// /.well-known/vulos-id handler
 // --------------------------------------------------------------------------
 
 func TestWKWellKnownHandler_NoAuth(t *testing.T) {
@@ -233,7 +233,7 @@ func TestWKWellKnownHandler_NoAuth(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/vula-id", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/vulos-id", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -257,7 +257,7 @@ func TestWKWellKnownHandler_CacheControl(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/vula-id", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/vulos-id", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -301,7 +301,7 @@ func TestWKWellKnownHandler_OnlyPublicFields(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/.well-known/vula-id", nil)
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/vulos-id", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -381,7 +381,7 @@ func TestWKPeerProfileHandler_LiveFetch(t *testing.T) {
 	// Spin up a fake peer server that serves a properly signed profile.
 	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/.well-known/vula-id" {
+		if r.URL.Path != "/.well-known/vulos-id" {
 			http.NotFound(w, r)
 			return
 		}
@@ -711,7 +711,7 @@ func TestWKVisibilityConstants(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// CONSOLIDATION B-3: PEER-40's endpoint advertisement in /.well-known/vula-id
+// CONSOLIDATION B-3: PEER-40's endpoint advertisement in /.well-known/vulos-id
 // was removed (the field had no production consumer — delivery uses the single
 // contact.Server via resolvePeerBaseURL). The former IncludesEndpoints /
 // NoEndpointsOmitted / CachesEndpoints tests were removed with that field.

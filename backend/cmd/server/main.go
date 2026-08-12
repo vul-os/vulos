@@ -371,7 +371,7 @@ func main() {
 	chatHistory := ai.NewHistoryStore(dbDir)
 	missionStore := ai.NewMissionStore(dbDir)
 
-	// Peering (direct Vula-to-Vula communication)
+	// Peering (direct Vulos-to-Vulos communication)
 	peeringSvc := peering.New(home)
 
 	// Peering WebSocket multiplex hub
@@ -2607,7 +2607,7 @@ func main() {
 	desktopSvc.RegisterHandlers(mux)
 	gpu.RegisterGPUInfoHandlers(mux)
 
-	// Peering — direct Vula-to-Vula communication
+	// Peering — direct Vulos-to-Vulos communication
 	peeringSvc.RegisterHandlers(mux)
 	// PEER-20b: real bandwidth meter + handlers (replaces the removed
 	// GET /api/peering/bandwidth stub; also serves /bandwidth/peer).
@@ -2645,9 +2645,9 @@ func main() {
 		// Identity key lifecycle (rotation / revocation / recovery). The store
 		// owns this node's transition chain + observed revocations and persists
 		// them under the identity dir. Wiring the global revocation checker makes
-		// every admission/verify point (InboundMiddleware, VerifyVulaSignatureChecked)
+		// every admission/verify point (InboundMiddleware, VerifyVulosSignatureChecked)
 		// reject revoked identities; the lifecycle publisher exposes the chain +
-		// revocations on /.well-known/vula-id so peers can follow rotations and
+		// revocations on /.well-known/vulos-id so peers can follow rotations and
 		// honor revocations. The recovery anchor (account-bound) is the account
 		// recovery-kit anchor: its PUBLIC id is persisted under the identity dir at
 		// recovery-kit generation/restore time (the only moments the recovery seed
@@ -2706,7 +2706,7 @@ func main() {
 		}
 
 		// Forward secrecy: publish an X3DH prekey bundle (signed prekey + one-time
-		// prekey pool) on /.well-known/vula-id so senders derive per-message keys
+		// prekey pool) on /.well-known/vulos-id so senders derive per-message keys
 		// from an ephemeral + one-time prekey rather than static-static ECDH
 		// (prekeys.go). The long-term identity key is used only to sign the bundle.
 		if pkStore, pkErr := peering.NewPreKeyStore(filepath.Join(pRoot, "identity"), pVulosID, pPriv, 64); pkErr != nil {
@@ -2744,7 +2744,7 @@ func main() {
 		// callerVulosID extracts the caller's Vula ID from an authenticated
 		// request; empty for unauthenticated callers (feeds public/link).
 		callerVulosID := func(r *http.Request) string {
-			if v := r.Header.Get("X-Vula-ID"); v != "" {
+			if v := r.Header.Get("X-Vulos-ID"); v != "" {
 				return v
 			}
 			return r.Header.Get("X-User-ID")
@@ -2952,7 +2952,7 @@ func main() {
 			collabStore.WithShareStore(shareStore)
 			// Bind authenticated OS sessions to this box's VulosID so the collab WS
 			// authorizer checks the share ACL against an un-spoofable identity rather
-			// than the client-supplied X-Vula-ID header (Contract 4, multi-user box).
+			// than the client-supplied X-Vulos-ID header (Contract 4, multi-user box).
 			collabStore.WithSelfVulosID(pVulosID)
 			peering.RegisterCollabHandlers(peeringMux, collabStore)
 			// Collab history (time-travel snapshots): GET /api/peering/collab/{doc_id}/history[/{seq}]

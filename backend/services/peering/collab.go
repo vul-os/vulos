@@ -157,16 +157,16 @@ type CollabStore struct {
 	// does not resolve to a more specific per-user identity. It is used by
 	// authorizeRoom to map an authenticated OS user (X-User-ID, set by the auth
 	// middleware and un-spoofable) to the VulosID checked against the per-document
-	// share ACL — so the client-supplied X-Vula-ID header is NEVER trusted as the
+	// share ACL — so the client-supplied X-Vulos-ID header is NEVER trusted as the
 	// authorization principal. The LIVE server wires this with the box VulosID.
 	selfVulosID string
 
-	// vulaResolver, when set, maps an authenticated OS user ID to that user's own
+	// vulosResolver, when set, maps an authenticated OS user ID to that user's own
 	// peering VulosID on boxes that maintain PER-USER identities (multi-user boxes).
 	// It takes precedence over selfVulosID. Returning ok=false means the OS user has
 	// no known VulosID; authorizeRoom then FAILS CLOSED on tracked-share documents
 	// (ambiguous mapping) rather than guessing.
-	vulaResolver func(osUserID string) (vulosID string, ok bool)
+	vulosResolver func(osUserID string) (vulosID string, ok bool)
 }
 
 // WithSelfVulosID wires this box's own peering identity as the authoritative VulosID
@@ -178,11 +178,11 @@ func (s *CollabStore) WithSelfVulosID(vulosID string) *CollabStore {
 	return s
 }
 
-// WithVulaResolver wires a per-user OS-user→VulosID resolver for multi-user boxes
-// that maintain distinct peering identities per OS user (see CollabStore.vulaResolver).
+// WithVulosResolver wires a per-user OS-user→VulosID resolver for multi-user boxes
+// that maintain distinct peering identities per OS user (see CollabStore.vulosResolver).
 // Returns s for chaining.
-func (s *CollabStore) WithVulaResolver(f func(osUserID string) (string, bool)) *CollabStore {
-	s.vulaResolver = f
+func (s *CollabStore) WithVulosResolver(f func(osUserID string) (string, bool)) *CollabStore {
+	s.vulosResolver = f
 	return s
 }
 
@@ -190,8 +190,8 @@ func (s *CollabStore) WithVulaResolver(f func(osUserID string) (string, bool)) *
 // for per-document authorization. The bool is false when no VulosID can be bound to
 // the session (ambiguous), in which case callers must fail closed on tracked shares.
 func (s *CollabStore) resolveVulosID(osUserID string) (string, bool) {
-	if s.vulaResolver != nil {
-		if v, ok := s.vulaResolver(osUserID); ok && v != "" {
+	if s.vulosResolver != nil {
+		if v, ok := s.vulosResolver(osUserID); ok && v != "" {
 			return v, true
 		}
 		return "", false
@@ -382,7 +382,7 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 //
 // Authentication. The ONLY trusted principal is X-User-ID, which the auth
 // middleware sets for a valid session after stripping any client-supplied value
-// (so it cannot be spoofed). The X-Vula-ID header is client-controlled and is
+// (so it cannot be spoofed). The X-Vulos-ID header is client-controlled and is
 // therefore NEVER trusted as the authorization principal — it is only accepted as
 // a consistency assertion that must EXACTLY match the server-resolved VulosID, else
 // the request is rejected as a spoofing attempt. A request with no authenticated
@@ -390,7 +390,7 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 //
 // OS-user ↔ VulosID mapping (multi-user boxes). The per-document share ACL is keyed
 // by VulosID, so the authenticated OS user must be mapped to a VulosID server-side:
-//   - a per-user resolver (WithVulaResolver) yields that user's own VulosID, or
+//   - a per-user resolver (WithVulosResolver) yields that user's own VulosID, or
 //   - the box identity (WithSelfVulosID) is the authoritative VulosID for the session.
 //
 // When neither yields a VulosID the mapping is AMBIGUOUS; for a tracked-share
@@ -405,7 +405,7 @@ func RegisterCollabHandlers(mux *http.ServeMux, store *CollabStore) {
 func (s *CollabStore) authorizeRoom(r *http.Request, docID string) (string, int) {
 	osUser := r.Header.Get("X-User-ID")
 	if osUser == "" {
-		// X-Vula-ID alone is NOT authentication — it is fully client-controlled.
+		// X-Vulos-ID alone is NOT authentication — it is fully client-controlled.
 		return "", http.StatusUnauthorized
 	}
 
@@ -414,7 +414,7 @@ func (s *CollabStore) authorizeRoom(r *http.Request, docID string) (string, int)
 	// If the client asserts a VulosID, it MUST match the server-resolved one. A
 	// mismatch (or an assertion we cannot verify, on a tracked share) is treated
 	// as a spoofing attempt and rejected below / here.
-	if claimed := r.Header.Get("X-Vula-ID"); claimed != "" && resolved && claimed != principal {
+	if claimed := r.Header.Get("X-Vulos-ID"); claimed != "" && resolved && claimed != principal {
 		return "", http.StatusForbidden
 	}
 

@@ -162,7 +162,7 @@ MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB cap
 def _safe_fetch(url, timeout=10):
     """Validate url then fetch it, returning response bytes (capped at MAX_RESPONSE_BYTES)."""
     _validate_url(url)
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; VulaOS)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; VulosOS)"})
     resp = _OPENER.open(req, timeout=timeout)
     return resp.read(MAX_RESPONSE_BYTES).decode("utf-8", errors="replace")
 

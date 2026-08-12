@@ -1,7 +1,7 @@
 // Package peering implements Vula OS peer-to-peer communication services.
 // drop.go implements AirDrop-style LAN discovery and file transfer ("Drop").
 //
-// mDNS service type: _vula-drop._tcp.local
+// mDNS service type: _vulos-drop._tcp.local
 // Discoverability: everyone | peers | nobody (default: peers)
 // Transfer: LAN-first via media-path HTTP, internet fallback.
 package peering
@@ -38,7 +38,7 @@ const (
 )
 
 // dropServiceType is the mDNS service name advertised for Drop.
-const dropServiceType = "_vula-drop._tcp.local"
+const dropServiceType = "_vulos-drop._tcp.local"
 
 // dropDefaultPort is the HTTP port for inbound Drop requests.
 const dropDefaultPort = 8080
@@ -293,7 +293,7 @@ func (s *DropService) dropPruneLoop(ctx context.Context) {
 
 // DropRegisterPeer registers or refreshes a discovered nearby peer.
 // Callers (e.g., a separate mDNS browse loop) invoke this when they observe
-// a _vula-drop._tcp advertisement.
+// a _vulos-drop._tcp advertisement.
 func (s *DropService) DropRegisterPeer(vulosID, displayName, addr string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

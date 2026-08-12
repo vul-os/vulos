@@ -10,8 +10,8 @@ import (
 // ---------------------------------------------------------------------------
 
 const fixtureShow = `Controller AA:BB:CC:DD:EE:FF (public)
-	Name: VulaOS-BT
-	Alias: VulaOS-BT
+	Name: VulosOS-BT
+	Alias: VulosOS-BT
 	Class: 0x001c010c
 	Powered: yes
 	Discoverable: yes
@@ -86,7 +86,7 @@ func TestParseStatus_Address(t *testing.T) {
 
 func TestParseStatus_Name(t *testing.T) {
 	st := parseStatus(fixtureShow)
-	if st.Name != "VulaOS-BT" {
+	if st.Name != "VulosOS-BT" {
 		t.Errorf("Name: got %q", st.Name)
 	}
 }
