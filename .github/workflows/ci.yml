@@ -138,11 +138,21 @@ jobs:
       # fault, and the failure is CUMULATIVE — something the ~110 packages before
       # it leave behind, which trips when go reaches that point.
       #
-      # Memory is excluded by the cgroup's own counters. DISK is the resource
-      # never measured during this job, and building 121 test binaries plus the
-      # module and build caches is exactly the workload that exhausts it late
-      # rather than early. The "Disk after tests" step below records it at the
-      # moment the run ends, pass or fail.
+      # BOTH resources are now excluded by measurement, not argument. Memory: the
+      # job's cgroup reports oom 0 / oom_kill 0 / oom_group_kill 0 with peak
+      # 4.5GB against no limit, and free showed ~1GB used of 15GB throughout.
+      # Disk, measured at the moment a failing run ended: 85G available, 42%
+      # used, with the go build cache at 802MB and the module cache at 1018MB.
+      # Nothing is running out of anything.
+      #
+      # What remains, and it is a narrow set: the failure is inside go test (the
+      # exit-code echo never printed), positional (the same nine packages never
+      # report), cumulative (all nine pass individually on amd64), and leaves
+      # `go` and `link` alive. No individual package, no resource limit, no
+      # regression anyone introduced — it passes and fails on identical code.
+      #
+      # The next thing to look at is what `go` itself is doing at that point in a
+      # 121-package run, not what the tests are doing.
       - name: Test (Vitest — frontend security contract)
         run: npm run test
 
