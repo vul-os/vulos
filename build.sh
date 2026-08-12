@@ -1387,7 +1387,13 @@ Type=simple
 ExecStart=/usr/local/bin/vulos-kiosk
 TTYPath=/dev/tty1
 StandardInput=tty
-StandardOutput=journal
+# journal+console, NOT journal alone. The whole point of the script's "display
+# present" / "no display found" lines is to be readable from OUTSIDE the box —
+# from a serial log, a screen photo, a support ticket. Sent only to the journal
+# they require already being logged in to the machine that will not show you a
+# desktop, which is the one situation where you cannot.
+StandardOutput=journal+console
+StandardError=journal+console
 TTYReset=yes
 TTYVHangup=yes
 # on-failure, not always: a headless box exits 0 on purpose and must not be
