@@ -413,7 +413,19 @@ jobs:
       # normally prints a full goroutine dump, which would name the hang
       # outright — and that output is never seen here.
       #
-      # Next step, and it is a small one: run services/sandbox alone on amd64
+      # MEASURED since: services/sandbox alone on linux/amd64 with python3
+      # present (Python 3.13.5) passes in 10.5s, exit 0. It does NOT hang on its
+      # own. So whatever stalls it is CONTEXTUAL — state left behind by packages
+      # that ran before it in the same invocation, not anything intrinsic to
+      # the package. That is consistent with all nine tail packages having
+      # passed individually earlier, and it rules out the simplest reading of
+      # the timeout theory rather than confirming it.
+      #
+      # Candidates worth checking in that light: a leaked process or a held
+      # port from an earlier package. services/stream sits before sandbox in
+      # the reversed order and is known to have leaked an Xvfb before.
+      #
+      # Superseded next step: run services/sandbox alone on amd64
       # with the runner's python3 present and a short -timeout, and read the
       # goroutine dump. Only ONE test in that package skips when python3 is
       # missing; GitHub runners HAVE python3, so the rest of it really executes
