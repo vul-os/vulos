@@ -136,6 +136,29 @@ wait_count_ge() { # wait_count_ge <logfile> <ERE-pattern> <count> <timeout_s>
   done
   return 1
 }
+
+# distinct_links_up <logfile> — the set of DISTINCT relay labels this box has
+# reported "up" for, one per line.
+#
+# This exists because counting matching log LINES is not the same claim.
+# reachbox logs "link <relay-url> -> up" on every transition, so ONE relay that
+# merely flapped (up -> backoff -> up) emits two "-> up" lines and satisfies a
+# line-count of 2 — while the second relay never connected at all. That is the
+# central multi-relay assertion of this whole script, and a line count would
+# have let exactly the regression it targets through. Measured, not theorised:
+# a synthetic flap log scores 2 by line count and 1 by distinct label.
+distinct_links_up() {
+  grep -oE 'link [^ ]+ -> up' "$1" 2>/dev/null | awk '{print $2}' | sort -u
+}
+wait_distinct_up() { # wait_distinct_up <logfile> <count> <timeout_s>
+  local deadline=$(( $(date +%s) + $3 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    n=$(distinct_links_up "$1" | wc -l | tr -d ' ')
+    [ "${n:-0}" -ge "$2" ] 2>/dev/null && return 0
+    sleep 0.2
+  done
+  return 1
+}
 http_status() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$@" 2>/dev/null || echo 000; }
 
 # ── 1. Build the real binaries ──────────────────────────────────────────────
@@ -200,13 +223,26 @@ spawn "$WORK/box2.log" env REACHBOX_LABEL=box2 VULOS_RELAY_ALLOW_INSECURE=1 \
   VULOS_RELAY_ENDPOINTS_FILE="$WORK/endpoints-box2.json" "$BIN_BOX"
 
 # Each box holds TWO links (one per relay); the two "-> up" lines arrive
-# independently and in no guaranteed order, so count them rather than
-# pattern-matching both in one grep.
+# independently and in no guaranteed order, so count DISTINCT relay labels
+# rather than pattern-matching both in one grep (and rather than counting
+# lines — see distinct_links_up for why that difference matters).
 for box in box1 box2; do
-  wait_count_ge "$WORK/$box.log" 'link .* -> up' 2 20 \
+  wait_distinct_up "$WORK/$box.log" 2 20 \
     || { cat "$WORK/$box.log" >&2; die "$box never brought both links up"; }
 done
 ok "box1 and box2 each hold two live links"
+
+# And they must be links to the TWO DIFFERENT relays, named explicitly. The
+# wait above proves "two distinct labels"; this proves they are the two relays
+# actually configured, so a box that somehow held two links to the SAME relay
+# — or to a relay this script never started — cannot satisfy it.
+for box in box1 box2; do
+  got_links=$(distinct_links_up "$WORK/$box.log" | tr '\n' ' ')
+  for want in "http://127.0.0.1:$R1_PORT" "http://127.0.0.1:$R2_PORT"; do
+    check "$box holds a live link to $want" \
+      "$(printf '%s' " $got_links" | grep -qF " $want " && echo 0 || echo 1)"
+  done
+done
 
 curl_named() { # curl_named <port> <domain> <name>
   curl -s --max-time 3 -H "Host: $3.$2" "http://127.0.0.1:$1/"
@@ -243,6 +279,14 @@ status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
   "http://127.0.0.1:$R1_PORT/_vulos-reach/v1/tunnel")
 after=$(curl -s --max-time 3 "http://127.0.0.1:$R1_ADMIN/tunnels" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo -1)
 check "unauthenticated tunnel upgrade returns 401 (got $status)" "$([ "$status" = "401" ] && echo 0 || echo 1)"
+# VACUITY GUARD, and it is not hypothetical: both readings fall back to -1 when
+# the admin endpoint is unreachable or the JSON will not parse, and "-1 = -1"
+# satisfies the before/after comparison below without a relay having been asked
+# anything at all. Pin the BEFORE reading to the real, known roster size (the
+# two tunnels box1 and box2 hold on relay1) so the comparison can only be
+# reached with genuine counts on both sides.
+check "setup: relay1's roster read a real count before the bad token ($before)" \
+  "$([ "$before" = "2" ] && echo 0 || echo 1)"
 check "the rejected attempt allocated no session ($before -> $after)" "$([ "$before" = "$after" ] && echo 0 || echo 1)"
 
 echo ""
@@ -349,7 +393,12 @@ say "Checked ${ASSERTIONS} assertions."
 
 # COVERAGE ASSERTION: a wholesale parse/orchestration failure (e.g. every
 # `spawn` silently no-op'd) must not read as "PASS — 0 checks, 0 failures".
-MIN_ASSERTIONS=20
+#
+# COUNTED, not guessed: a full green run scores exactly 29. Set to that exact
+# number rather than a comfortable margin below it, so that DELETING a check
+# fails the run instead of quietly shrinking coverage. Raise it deliberately
+# when you add one.
+MIN_ASSERTIONS=29
 if [ "$ASSERTIONS" -lt "$MIN_ASSERTIONS" ]; then
   die "only ${ASSERTIONS} assertions ran, expected at least ${MIN_ASSERTIONS} — the harness itself likely broke before reaching most scenarios"
 fi
