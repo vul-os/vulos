@@ -16,7 +16,9 @@ import (
 func TestRegisterGamingHandlers_MountsRoutes(t *testing.T) {
 	mux := http.NewServeMux()
 	adminOnly := func(r *http.Request) bool { return r.Header.Get("X-User-ID") == "admin-user" }
-	NewGamingManager(NewPool()).RegisterGamingHandlers(mux, adminOnly, nil)
+	pool := NewPool()
+	t.Cleanup(pool.StopAll)
+	NewGamingManager(pool).RegisterGamingHandlers(mux, adminOnly, nil)
 
 	// capability — public read, deterministic (reads gpu.Detect(), headless-safe).
 	rec := httptest.NewRecorder()
@@ -67,9 +69,24 @@ func TestRegisterGamingHandlers_MountsRoutes(t *testing.T) {
 func TestRegisterGamingHandlers_StartIsAdminGated(t *testing.T) {
 	body := `{"command":"/bin/sh","args":["-c","id > /tmp/pwned"]}`
 
+	// STOP anything the admin case actually launches.
+	//
+	// The comment above says the launch "fails in this test environment for
+	// unrelated reasons, e.g. no Xvfb binary". That is true on a developer's
+	// machine and FALSE on a CI runner, which ships Xvfb — so there the launch
+	// gets far enough to start it, and nothing here ever stopped it. A leaked
+	// child outlives its own package and joins every package that runs after it,
+	// which is how an orphaned Xvfb ends up in a job summary hundreds of
+	// packages later.
+	//
+	// The assertions below are about the authorization decision and are
+	// unaffected; this only cleans up after them.
+	pool := NewPool()
+	t.Cleanup(pool.StopAll)
+
 	t.Run("non-admin authenticated caller is rejected before launch", func(t *testing.T) {
 		mux := http.NewServeMux()
-		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return false }, nil)
+		NewGamingManager(pool).RegisterGamingHandlers(mux, func(r *http.Request) bool { return false }, nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
 		req.Header.Set("X-User-ID", "non-admin-user")
 		rec := httptest.NewRecorder()
@@ -82,7 +99,7 @@ func TestRegisterGamingHandlers_StartIsAdminGated(t *testing.T) {
 
 	t.Run("nil isAdmin fails closed", func(t *testing.T) {
 		mux := http.NewServeMux()
-		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, nil, nil)
+		NewGamingManager(pool).RegisterGamingHandlers(mux, nil, nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
 		req.Header.Set("X-User-ID", "some-user")
 		rec := httptest.NewRecorder()
@@ -94,7 +111,7 @@ func TestRegisterGamingHandlers_StartIsAdminGated(t *testing.T) {
 
 	t.Run("admin caller passes the gate", func(t *testing.T) {
 		mux := http.NewServeMux()
-		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true }, nil)
+		NewGamingManager(pool).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true }, nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
 		req.Header.Set("X-User-ID", "admin-user")
 		rec := httptest.NewRecorder()
@@ -106,7 +123,7 @@ func TestRegisterGamingHandlers_StartIsAdminGated(t *testing.T) {
 
 	t.Run("execDisabled kill-switch blocks start regardless of role", func(t *testing.T) {
 		mux := http.NewServeMux()
-		NewGamingManager(NewPool()).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true },
+		NewGamingManager(pool).RegisterGamingHandlers(mux, func(r *http.Request) bool { return true },
 			func() bool { return true })
 		req := httptest.NewRequest(http.MethodPost, "/api/stream/gaming/start", strings.NewReader(body))
 		req.Header.Set("X-User-ID", "admin-user")
