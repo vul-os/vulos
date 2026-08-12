@@ -134,7 +134,27 @@ jobs:
         # goroutines. A bounded timeout turns an uninformative SIGKILL into a
         # panic with a full stack, which names the test and the line it is
         # blocked on.
-        run: cd backend && go test -p 1 -timeout 120s ./...
+        # A memory sampler alongside the tests, because three rounds of reasoning
+        # about this failure produced three wrong answers: parallelism (-p 2 did
+        # not fix it), a hung test (a 120s per-package timeout never fires), and
+        # a full suite that passes in a 6GB container on this laptop.
+        #
+        # exit 137 is SIGKILL and the runner's cleanup names `go` and `link` as
+        # orphans, so the kill lands mid-compile. Whether that is the OOM killer
+        # is a question the log has never answered — nobody has looked at memory
+        # while it happens. This prints used/available every ten seconds, so the
+        # next failure either shows the ceiling being approached or rules memory
+        # out for good.
+        run: |
+          cd backend
+          ( while :; do
+              free -m | awk '/^Mem:/{printf "[mem] used=%sMB avail=%sMB\n", $3, $7}'
+              sleep 10
+            done ) &
+          SAMPLER=$!
+          trap 'kill $SAMPLER 2>/dev/null || true' EXIT
+          go test -p 1 -timeout 120s ./...
+        timeout-minutes: 25
 
       # E2E: drives the REAL compiled cmd/server binary over real HTTP — see
       # backend/e2e/realserver_test.go's package doc for what this proves that
