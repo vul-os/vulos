@@ -41,6 +41,9 @@ export default defineConfig({
 
   // Build once, then serve the static bundle. `reuseExistingServer` lets a dev
   // keep a preview running locally; CI always starts fresh.
+  // Fails fast if another app already holds the E2E port — see the file's
+  // header for the marketing-site incident that motivated it.
+  globalSetup: './e2e/assert-correct-app.js',
   webServer: {
     command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
     url: BASE_URL,
