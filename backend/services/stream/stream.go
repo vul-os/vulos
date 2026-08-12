@@ -181,15 +181,11 @@ func (s *Session) Stop() {
 	}
 	procs := []*exec.Cmd{s.gstAudio, s.gstVideo, s.app, s.wm, s.cage, s.xvfb}
 	for _, cmd := range procs {
-		if cmd != nil && cmd.Process != nil {
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		}
+		signalGroup(cmd, syscall.SIGTERM)
 	}
 	time.Sleep(500 * time.Millisecond)
 	for _, cmd := range procs {
-		if cmd != nil && cmd.Process != nil {
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
+		signalGroup(cmd, syscall.SIGKILL)
 	}
 	// Clean up X11 socket (Xvfb path)
 	os.Remove(fmt.Sprintf("/tmp/.X11-unix/X%d", s.displayNum))
@@ -868,4 +864,43 @@ func runWithBackoff(ctx context.Context, name string, makeFn func() *exec.Cmd, s
 		log.Printf("[stream] %s exited, restarting in %s...", name, backoff)
 		time.Sleep(backoff)
 	}
+}
+
+// signalGroup sends sig to a child's PROCESS GROUP, and only while that child is
+// still running.
+//
+// The liveness check is the whole point. cmd.Process.Pid keeps its value after
+// the child exits, and these children ARE waited on (Session.Close and the app
+// supervisor both call Wait), so a reaped pid can be recycled by the kernel and
+// handed to something else. syscall.Kill(-pid, SIGKILL) then does not fail — it
+// terminates whatever process group now owns that id.
+//
+// That is not theoretical. CI's backend job died with exit 137 mid-compile, no
+// test having failed, memory at 1GB of 15GB, and the runner's cleanup naming
+// `go` and `link` among the orphans: a build spawning hundreds of short-lived
+// compiler processes is exactly the workload that recycles pids fastest.
+//
+// ProcessState is non-nil only after Wait has returned, so it is the cheapest
+// available "already reaped" signal. It does not close the window entirely — a
+// concurrent Wait can still land between the check and the kill — but it removes
+// the large one, where a process reaped seconds or minutes ago is signalled by
+// number.
+func signalGroup(cmd *exec.Cmd, sig syscall.Signal) {
+	if !shouldSignal(cmd) {
+		return
+	}
+	_ = syscall.Kill(-cmd.Process.Pid, sig)
+}
+
+// shouldSignal is the decision signalGroup makes, split out so it can be tested
+// directly.
+//
+// The EFFECT — not killing a stranger who inherited a recycled pid — cannot be
+// asserted deterministically, because whether the pid has been reused is up to
+// the kernel and the machine's load. A test that waits to observe the harm
+// passes just as happily when the guard is deleted, which is what the first
+// version of signalgroup_test.go did. The decision is deterministic, so that is
+// what gets pinned.
+func shouldSignal(cmd *exec.Cmd) bool {
+	return cmd != nil && cmd.Process != nil && cmd.ProcessState == nil
 }
