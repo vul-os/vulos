@@ -1330,6 +1330,40 @@ cat > "$ROOTFS/usr/local/bin/vulos-kiosk" << 'KIOSKEOF'
 set -eu
 URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
 
+# Screen identity (see roadmap/SCREENS.md, frontend/src/providers/screenIdentity.ts).
+#
+# One browser per output is the target shape. This is the SINGLE-OUTPUT step of
+# it: name the output we are actually on and say so in the URL. The shell reads
+# these three parameters and, because screens=1, renders exactly what it renders
+# today — no chip, no peer explanations. Nothing a user sees changes.
+#
+# It is worth doing ahead of the multi-output launcher because it makes the seam
+# LIVE. Until something sets these, readScreenIdentity() returns null on every
+# real boot and the parser is reachable from no surface — tested, rendered in
+# code, and never executed.
+#
+# The name comes from the DRM connector directory, which is card0-HDMI-A-1 and
+# friends; strip the card prefix to get the name the compositor uses. If nothing
+# is readable the parameters are omitted ENTIRELY rather than guessed: the parser
+# refuses partial or inconsistent input, so a half-set identity would be
+# discarded anyway, and omitting it keeps the single-screen path byte-identical
+# to what it was before this existed.
+screen_name=""
+for st in /sys/class/drm/*/status; do
+  [ -r "$st" ] || continue
+  [ "$(cat "$st" 2>/dev/null)" = "connected" ] || continue
+  conn=$(basename "$(dirname "$st")")
+  screen_name=$(echo "$conn" | sed 's/^card[0-9]*-//')
+  break
+done
+if [ -n "$screen_name" ]; then
+  case "$URL" in
+    *\?*) URL="$URL&screen=$screen_name&screens=1&screenIndex=1" ;;
+    *)    URL="$URL?screen=$screen_name&screens=1&screenIndex=1" ;;
+  esac
+  echo "vulos-kiosk: screen identity $screen_name (1 of 1)"
+fi
+
 # Say what we decided and why, ALWAYS.
 #
 # The first version of this gated the whole unit on

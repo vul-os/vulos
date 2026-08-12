@@ -271,3 +271,45 @@ func TestImageShipsAFontCache(t *testing.T) {
 			"fontconfig still tries to cache has nowhere to go on a read-only root")
 	}
 }
+
+// The kiosk must SET the screen identity, not just parse it.
+//
+// frontend/src/providers/screenIdentity.ts reads screen/screens/screenIndex out
+// of the URL and the shell renders the output name from them. Nothing set those
+// parameters when that parser shipped, so readScreenIdentity() returned null on
+// every real boot: the feature was tested, rendered in code, and reachable from
+// no surface. A green suite over an unreachable feature is a shape this
+// repository has shipped before, and the parser's own tests cannot catch it —
+// they are honest about parsing and say nothing about whether anything calls it.
+//
+// This asserts the caller exists. It deliberately does NOT assert screens=1:
+// that is the current single-output step, and a multi-output launcher setting
+// screens=2 must not have to edit this test to stay honest.
+func TestKioskSetsScreenIdentity(t *testing.T) {
+	src := readRepoFile(t, "build.sh")
+	kiosk := scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+	body := withoutShellComments(kiosk)
+
+	for _, param := range []string{"screen=", "screens=", "screenIndex="} {
+		if !strings.Contains(body, param) {
+			t.Errorf("vulos-kiosk never sets %q in the URL it opens. The shell's screen "+
+				"identity parser then returns null on every boot and the feature is reachable "+
+				"from no surface — see roadmap/SCREENS.md", param)
+		}
+	}
+
+	// The name must come from the DRM connector, not be invented. A hardcoded
+	// name would satisfy the checks above while telling the shell the wrong
+	// output on every machine.
+	// Matched on the DERIVATION, not on "/sys/class/drm/". That was the first
+	// version of this check and it was HOLLOW: the display-detection code higher
+	// up the same script already reads that path, so the assertion passed no
+	// matter what the identity code did. Found by mutating the identity loop's
+	// glob and watching the test stay green — an assertion satisfied by
+	// unrelated code in the same file, which is the defect this suite keeps
+	// finding elsewhere and had just reproduced.
+	if !strings.Contains(body, `sed 's/^card[0-9]*-//'`) {
+		t.Error("vulos-kiosk's screen name is not derived from the DRM connector directory " +
+			"name, so the identity it reports is not the output it is actually on")
+	}
+}
