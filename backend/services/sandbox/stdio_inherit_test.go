@@ -17,6 +17,18 @@ import (
 // pass, which is why it read for a long time as "something kills the toolchain"
 // rather than "a test leaked a process".
 //
+// STATUS, recorded honestly: fixing the two spawn sites did NOT stop the exit
+// 137. The very next CI run failed with "Terminate orphan process: pid (…)
+// (sandbox.test)" still present. So the surviving process is the TEST BINARY
+// itself, not the Python children it starts — and sandbox.test inherits the
+// runner's pipe directly from go test, without help from either spawn site.
+//
+// This rule is still correct and still worth keeping: handing a long-lived
+// child this process's stdio is a real hazard and was real here. It is simply
+// not sufficient. The open question moved to: why does sandbox.test not exit?
+// It is reported as passing, so its tests complete; something keeps the process
+// alive afterwards.
+//
 // services/sandbox spawns exactly this shape: a Python script server and a
 // launcher, both with Setpgid, both previously wired to os.Stdout. This pins
 // them.
