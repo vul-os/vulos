@@ -583,6 +583,12 @@ html, body, #root {
 .anim-sheet-up { animation: sheetUp var(--motion-base) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) {
   .anim-sheet-up { animation: none; }
+  /* fadeIn too. It is the entrance animation on the sign-in and create-account
+     screens — the first thing anyone sees — and it moves content 8px while
+     fading, which is exactly what someone asking for reduced motion is asking
+     not to have. It was omitted here while .anim-sheet-up was honoured. */
+  .animate-\[fadeIn_0\.4s_ease-out\],
+  .animate-\[fadeIn_0\.5s_ease-out\] { animation: none; }
 }
 
 @keyframes fadeIn {

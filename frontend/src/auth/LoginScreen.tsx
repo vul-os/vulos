@@ -169,7 +169,7 @@ export default function LoginScreen() {
 
         {isSetup && (
           <div>
-            <label className="block text-xs text-neutral-500 mb-1">Display Name</label>
+            <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Display Name</label>
             <input
               type="text"
               value={displayName}
@@ -181,7 +181,7 @@ export default function LoginScreen() {
         )}
 
         <div>
-          <label className="block text-xs text-neutral-500 mb-1">Username</label>
+          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Username</label>
           <input
             type="text"
             value={username}
@@ -194,7 +194,7 @@ export default function LoginScreen() {
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-500 mb-1">Password</label>
+          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Password</label>
           <input
             type="password"
             value={password}
@@ -286,7 +286,12 @@ export default function LoginScreen() {
 
       {/* Bottom branding */}
       <div className="absolute bottom-6 text-center">
-        <p className="text-[12px] text-neutral-800">Vulos OS</p>
+        {/* A THEME TOKEN, not a Tailwind neutral. Measured on the real boot
+            frame, this line rendered #e5e5e5 on #fefeff — 1.26:1, against a
+            4.5:1 requirement. The class said neutral-800 (#262626) and the
+            pixels said neutral-200, so it was not being applied at all; the
+            product's own name was invisible on the first screen anyone sees. */}
+        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Vulos OS</p>
       </div>
     </div>
   )
@@ -298,7 +303,7 @@ function HelpSection({ title, items }: { title: string; items: string[] }) {
       <h3 className="text-xs font-medium text-neutral-400 mb-1.5">{title}</h3>
       <ul className="space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="text-[12px] text-neutral-500 leading-relaxed flex gap-2">
+          <li key={i} className="text-[12px] leading-relaxed flex gap-2" style={{ color: 'var(--text-muted)' }}>
             <span className="text-neutral-700 mt-0.5 shrink-0">{'\u2022'}</span>
             <span>{item}</span>
           </li>
