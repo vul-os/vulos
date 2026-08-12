@@ -127,33 +127,45 @@ now half-answered: **how do you make browser instance N appear on output N?**
 A browser cannot choose its own Wayland output. The compositor places it. So
 the launcher cannot simply start two browsers and hope.
 
-What the labwc documentation establishes (checked 2026-08-13, syntax NOT yet
-verified against the version in the image):
+**CORRECTION.** An earlier version of this section said a labwc window rule
+takes an optional `output` attribute. It does not. That came from a web search
+summary rather than the manual, and it was wrong. Read from
+`labwc-config(5)` and `labwc-actions(5)` directly, the mechanism is:
 
-- labwc supports **window rules**, and a rule takes an **optional `output`
-  attribute**. Omitted, the rule applies to all outputs. That is the placement
-  mechanism, and it is per-window rather than per-process.
-- Because rules match on window identity, each browser instance must be
-  **distinguishable** — a distinct `app_id` or title per screen — so a rule can
-  name it. cog and chromium both accept flags that affect this.
-- **`wlr-randr`** configures output position, resolution and scale, and
-  `backend/services/display/display.go` already shells out to it. Output
-  geometry is therefore a solved problem; only window-to-output binding is not.
-- labwc's default new-window placement is "center" on the ACTIVE output, which
-  is why the naive approach — start N browsers, let them land — puts them all
-  on one screen.
+```xml
+<windowRules>
+  <windowRule identifier="vulos-screen-1" matchOnce="yes">
+    <action name="MoveToOutput" output="HDMI-A-1" />
+  </windowRule>
+</windowRules>
+```
+
+- `<windowRule>` matches on **`identifier`** (app_id on Wayland, WM_CLASS on
+  X11), **`title`**, or **`type`**, with **`matchOnce`** to apply only to the
+  first instance. It carries no output attribute of its own.
+- Placement comes from the **`MoveToOutput` action**, whose exact attributes
+  are `output="<name>"`, or `direction="left|right|up|down"` with
+  `wrap="yes|no"` when `output` is omitted.
+- `FocusOutput` exists with the same attributes and is NOT what this needs — it
+  focuses the topmost window on another output rather than moving one.
+- The output name is the connector name, e.g. `HDMI-A-1` — the same string
+  `vulos-kiosk` already derives from `/sys/class/drm/*/status` and passes to the
+  shell as `screen=`. One name, one source, both sides.
+
+So each browser instance needs a distinct **app_id** for `identifier` to match.
+`wlr-randr` still handles output geometry, and `services/display` already
+shells out to it.
 
 So the remaining work is: give each instance a distinct identity, generate a
 labwc rc.xml with one rule per output binding that identity to that output, and
 pass each instance its own `screen`/`screens`/`screenIndex` parameters (the
 parser and indicator for those are built, tested and rendered — see above).
 
-**Do not write that rc.xml from memory.** The exact element and attribute names
-were not confirmed, and a wrong rule fails the way everything in this area
-fails: silently, with all the browsers on one monitor and nothing in any log
-saying why. Read `labwc-config(5)` on the image, or run labwc with two virtual
-outputs under QEMU and iterate against a screendump, which is the verification
-this whole feature needs anyway.
+The syntax above is from the manuals and is believed correct, but it has NOT
+been run. A wrong rule fails the way everything in this area fails: silently,
+with every browser on one monitor and nothing in any log saying why. Verify by
+running labwc with two virtual outputs under QEMU and reading a screendump —
+the verification this feature needs regardless.
 
 ## What is genuinely unresolved
 
