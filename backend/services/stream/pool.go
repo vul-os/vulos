@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -648,9 +649,22 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		if elapsed < 3*time.Second {
 			log.Printf("[stream] %s exited too quickly (%.1fs) — killing stale %s processes and retrying",
 				opts.Name, elapsed.Seconds(), opts.Command)
-			// Kill stale processes by command name
+			// -x: EXACT name match, and it is not optional.
+			//
+			// pkill treats its pattern as an unanchored regex over the process
+			// name, so `pkill -9 sh` matches bash, dash, ssh — anything whose
+			// name merely CONTAINS the pattern. This fired from a monitoring
+			// goroutine roughly three seconds after an app exited quickly, which
+			// under CI meant it reached out and SIGKILLed the shell running the
+			// test step: one process dead with no warning signal, its children
+			// (go, tee, the in-flight package's test binary) left as orphans,
+			// and the victim depending on wherever the run had got to by then.
+			// That is the exit 137 recorded in .github/workflows/ci.yml.
+			//
+			// Also -u: confine it to this user, so a shared machine's identically
+			// named process belonging to someone else is not collateral.
 			binName := filepath.Base(opts.Command)
-			exec.Command("pkill", "-9", binName).Run()
+			exec.Command("pkill", "-9", "-x", "-u", strconv.Itoa(os.Getuid()), binName).Run()
 			// Clean up stale lock files
 			os.RemoveAll(sessionHome)
 			os.MkdirAll(sessionHome, 0755)
