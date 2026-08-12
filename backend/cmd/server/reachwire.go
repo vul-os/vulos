@@ -156,8 +156,19 @@ func (r *reachRuntime) ingressDescriptor() relayconfig.IngressDescriptor {
 	if r == nil || r.Agent == nil {
 		return relayconfig.IngressDescriptor{}
 	}
+	return summarizeIngress(r.Agent.Status())
+}
+
+// summarizeIngress is the pure translation from a snapshot of link states to
+// the ingress summary shown in Settings and /api/network/reach. Split out
+// from ingressDescriptor so the "every live link, not just the first" claim
+// (see relayconfig/providers.go's relayTunnelIngress doc) is exercised
+// directly against literal LinkStatus values in a test, rather than only
+// reachable through a real *tunnel.Agent's network state — see
+// reachwire_test.go.
+func summarizeIngress(links []tunnel.LinkStatus) relayconfig.IngressDescriptor {
 	var up []string
-	for _, l := range r.Agent.Status() {
+	for _, l := range links {
 		if l.State == tunnel.LinkUp && l.PublicURL != "" {
 			up = append(up, l.PublicURL)
 		}
