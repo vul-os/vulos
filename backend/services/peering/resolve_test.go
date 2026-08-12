@@ -37,7 +37,7 @@ func TestResolvePeerBaseURL_PassThrough(t *testing.T) {
 		{"empty_server", "vulos:ed25519:peer", "", ""},
 		{"already_https", "vulos:ed25519:peer", "https://bob.example.org:8080", "https://bob.example.org:8080"},
 		{"already_http", "vulos:ed25519:peer", "http://bob.example.org", "http://bob.example.org"},
-		{"empty_vulaid_still_resolves", "", "bob.example.org", "https://bob.example.org"},
+		{"empty_vulosid_still_resolves", "", "bob.example.org", "https://bob.example.org"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
