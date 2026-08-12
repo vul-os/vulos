@@ -482,7 +482,7 @@ file sharing, and a deep shell polish pass.
 - **Legible-trust surface.** Visible, provable sovereignty indicators in the
   shell; forced recovery-phrase signup with client-side master-key unwrap.
 - **Tier-2 active-session password reset** that preserves zero-access.
-- **Peering key lifecycle** — VulaID rotation/revocation, account-anchored
+- **Peering key lifecycle** — VulosID rotation/revocation, account-anchored
   recovery, X3DH-style forward secrecy for message content, per-sender
   one-time-prekey claim, and real Nitro `COSE_Sign1` attestation verification.
 - **Board/whiteboard integration** — embedded board surface gated by
@@ -504,7 +504,7 @@ file sharing, and a deep shell polish pass.
 #### Security
 
 - Default-deny attestation policy with fail-closed Nitro/noop verifiers;
-  Ed25519-signed peer profiles verified against the Vula ID.
+  Ed25519-signed peer profiles verified against the Vulos ID.
 - Per-document ACL enforced on inbound CRDT and WebSocket collab join;
   fail-closed on no-envelope inbound with WS authz bound to an un-spoofable
   identity.
@@ -523,7 +523,7 @@ file sharing, and a deep shell polish pass.
 
 ### 1.0.0 — 2026-06-16
 
-Milestone release. First feature-complete, security-hardened Vula OS merged to
+Milestone release. First feature-complete, security-hardened Vulos OS merged to
 `main`: email/password + passkey/2FA auth (no third-party OAuth), GPU-accelerated
 streaming with adaptive bitrate/resolution and idle/peer-aware encoder lifecycle,
 leaderless multi-instance CRDT sync with signed quorum, P2P WebRTC mesh,

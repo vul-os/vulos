@@ -1,6 +1,6 @@
-# Contributing to Vula OS
+# Contributing to Vulos OS
 
-Thanks for being here. Vula OS is a small project with a large surface area, so we keep contributions tightly scoped: one task, one branch, one PR. This document is the practical guide for working that way.
+Thanks for being here. Vulos OS is a small project with a large surface area, so we keep contributions tightly scoped: one task, one branch, one PR. This document is the practical guide for working that way.
 
 If you just want to get the project running, that lives in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
@@ -75,7 +75,7 @@ The doc has two kinds of entries:
 
 **Please do not file security issues as public GitHub issues.**
 
-If you've found a security problem in Vula OS — anything that lets one user reach another user's data, escape the sandbox, run code as a different user, or bypass auth — email **exolutionza@gmail.com**.
+If you've found a security problem in Vulos OS — anything that lets one user reach another user's data, escape the sandbox, run code as a different user, or bypass auth — email **exolutionza@gmail.com**.
 
 Include:
 
@@ -91,7 +91,7 @@ For context, decisions `D24`–`D29` in [`docs/decisions.md`](docs/decisions.md)
 
 ## A small note on tone
 
-The project is open by design — that's literally what *vula* means in isiZulu. We try to keep PRs and issues short, specific, and friendly. If a review comment feels harsh, it's almost certainly tiredness rather than judgement; ask for clarification and we'll rephrase.
+The project is open by design — that's literally what *vulos* means in isiZulu. We try to keep PRs and issues short, specific, and friendly. If a review comment feels harsh, it's almost certainly tiredness rather than judgement; ask for clarification and we'll rephrase.
 
 Welcome aboard.
 

@@ -1,9 +1,9 @@
 /*
- * Vula OS Plymouth boot splash — vulos.script
+ * Vulos OS Plymouth boot splash — vulos.script
  *
  * Features:
  *   - Dark background (#111111)
- *   - Centred Vula OS logo (logo.png, ~128px)
+ *   - Centred Vulos OS logo (logo.png, ~128px)
  *   - Determinate progress bar with percentage label
  *     driven by real boot milestones (0–100%)
  *   - Ctrl+V verbose toggle: hides splash, reveals TTY journal output
@@ -28,7 +28,7 @@
 
 /* ── Colours ──────────────────────────────────────────────────── */
 bg_r = 0.067;  bg_g = 0.067;  bg_b = 0.067;   /* #111111 */
-fg_r = 0.788;  fg_g = 0.416;  fg_b = 1.000;   /* #C96AFF — Vula purple */
+fg_r = 0.788;  fg_g = 0.416;  fg_b = 1.000;   /* #C96AFF — Vulos purple */
 tk_r = 0.141;  tk_g = 0.141;  tk_b = 0.141;   /* #242424 — bar track   */
 tx_r = 0.600;  tx_g = 0.600;  tx_b = 0.600;   /* #999999 — status text */
 hn_r = 0.400;  hn_g = 0.400;  hn_b = 0.400;   /* #666666 — hint text   */

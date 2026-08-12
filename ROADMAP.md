@@ -35,7 +35,7 @@ The core is in place and self-hostable today:
 - **Auth** — WebAuthn passkeys, device PIN, QR/phone approval, TOTP, recovery-phrase master key. Unified sign-in (one Vulos account → cloud login → OS session).
 - **Files** — viewer/editor/owner ACL, content-blind sealed sharing, resumable chunked upload, P2P sharing.
 - **PIM** — standalone Calendar + Contacts over lilmail `/v1` via the credential-brokering box PIM proxy.
-- **Peering & sync** — per-instance Ed25519 identity, full VulaID key lifecycle, leaderless CRDT sync, AirDrop-style Drop, Yjs real-time collaboration.
+- **Peering & sync** — per-instance Ed25519 identity, full VulosID key lifecycle, leaderless CRDT sync, AirDrop-style Drop, Yjs real-time collaboration.
 - **App streaming** — native Linux GUI apps and Streaming Chrome over WebRTC with GPU-accelerated encoding; gaming mode.
 - **App store** — signed registry (apt / Flatpak / static-binary / web-native recipes); every entry Ed25519-signed against the shipped anchor.
 - **Distribution** — one embedded binary; signed immutable image with A/B slots + rollback; netboot install.

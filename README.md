@@ -32,7 +32,7 @@ Nothing here runs on someone else's servers by default. Your data sits on hardwa
 
 Run it on hardware you own two ways: deployed onto a machine you already run, so it persists like any normal computer, or booted live from a flash drive to try it with nothing touching your internal disk. See [Two ways to run it](#two-ways-to-run-it) below for which is which.
 
-> *"Vula" is isiZulu for "open."*
+> *"Vulos" is isiZulu for "open."*
 
 ### Why Vulos — and who it's for
 
