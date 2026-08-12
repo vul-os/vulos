@@ -391,8 +391,25 @@ jobs:
           echo "--- MemAvailable / MemTotal now ---"
           grep -E 'MemTotal|MemAvailable' /proc/meminfo || true
           echo "--- kernel OOM / kill records ---"
-          sudo dmesg 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process|oom_reaper' | tail -20 \
-            || echo "(no kernel OOM records, or dmesg unavailable)"
+          # Distinguish "dmesg says nothing" from "dmesg could not be read".
+          # The first version of this ended in `| tail -20 || echo ...`, and a
+          # pipeline exits with TAIL's status — zero even when grep matched
+          # nothing — so the fallback could never fire and an empty section
+          # meant either answer. That is the same shape as a guard reporting
+          # success without examining its subject, which is the defect this
+          # repository keeps finding; it is not acceptable in the instrument
+          # being used to rule a cause out.
+          if ! raw=$(sudo dmesg 2>/dev/null); then
+            echo "UNKNOWN: dmesg could not be read on this runner"
+          else
+            hits=$(printf '%s\n' "$raw" | grep -iE 'out of memory|oom-kill|killed process|oom_reaper' | tail -20)
+            if [ -n "$hits" ]; then
+              echo "OOM RECORDS FOUND:"
+              printf '%s\n' "$hits"
+            else
+              echo "NONE: dmesg readable, no OOM records ($(printf '%s\n' "$raw" | wc -l) lines scanned)"
+            fi
+          fi
 
       - name: Test (e2e — real server binary over real HTTP)
         run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
