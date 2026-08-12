@@ -52,12 +52,41 @@ func TestNoUnguardedProcessGroupKills(t *testing.T) {
 		if rerr != nil {
 			return nil
 		}
-		for i, line := range strings.Split(string(src), "\n") {
+		lines := strings.Split(string(src), "\n")
+		// A site wrapped in `if procgroup.ShouldSignal(cmd)` is guarded, and the
+		// check has to see that or it flags correct code. Detected by looking
+		// back a few lines rather than by adding the file to `exempt`: exempting
+		// a whole FILE blinds this to every future kill added to it, which is how
+		// a guard quietly stops covering its subject. A check that flags correct
+		// lines gets switched off, so the lookback matters as much as the match.
+		guarded := func(i int) bool {
+			for j := i - 1; j >= 0 && j >= i-5; j-- {
+				if strings.Contains(lines[j], "ShouldSignal(") {
+					return true
+				}
+			}
+			return false
+		}
+		for i, line := range lines {
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
 				continue // prose about the pattern is not the pattern
 			}
-			if strings.Contains(line, "syscall.Kill(-") {
+			// TWO shapes, not one. This check originally matched only
+			// syscall.Kill(-pid) — process-GROUP kills — and reported thirteen
+			// sites fixed, which read as complete. It was not: cmd.Process.Kill()
+			// is a single-process SIGKILL carrying the identical hazard, and four
+			// of those were sitting unguarded behind `if Process != nil`.
+			//
+			// That nil check is the trap. Process stays non-nil after Wait reaps
+			// the process, so it passes precisely when the pid may already have
+			// been recycled onto something else — and the SIGKILL lands on a
+			// stranger. A guard covering one shape of a two-shape bug is worse
+			// than none, because the count of fixed sites is read as coverage.
+			if strings.Contains(line, "syscall.Kill(-") || strings.Contains(line, ".Process.Kill()") {
+				if guarded(i) {
+					continue
+				}
 				offenders = append(offenders, fmt.Sprintf("%s:%d: %s", rel, i+1, trimmed))
 			}
 		}

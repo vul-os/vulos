@@ -14,6 +14,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 
+	"vulos/backend/internal/procgroup"
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/sysuser"
 )
@@ -378,7 +379,10 @@ func (s *Service) destroySession(id string) {
 		sess.mu.Unlock()
 
 		sess.ptmx.Close()
-		if sess.cmd.Process != nil {
+		// ShouldSignal, not Process != nil. Process stays non-nil after Wait
+		// reaps it, and the kernel may already have handed that pid to someone
+		// else — so the nil check permits a SIGKILL aimed at a stranger.
+		if procgroup.ShouldSignal(sess.cmd) {
 			sess.cmd.Process.Kill()
 		}
 		log.Printf("[pty] session %s destroyed", id)

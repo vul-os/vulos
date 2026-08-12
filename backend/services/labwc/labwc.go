@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+	"vulos/backend/internal/procgroup"
 )
 
 // ErrNotFound is returned by Start when the labwc binary cannot be found.
@@ -113,7 +114,9 @@ func Start(env []string, cfgPath string) (*Manager, error) {
 	}
 
 	if err := m.waitForSocket(); err != nil {
-		_ = cmd.Process.Kill()
+		if procgroup.ShouldSignal(cmd) {
+			_ = cmd.Process.Kill()
+		}
 		return nil, fmt.Errorf("labwc socket did not appear: %w", err)
 	}
 	log.Printf("[labwc] Wayland socket ready: %s", socketPath)
@@ -154,7 +157,11 @@ func (m *Manager) Stop() {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		log.Printf("[labwc] graceful stop timed out — killing pid=%d", m.cmd.Process.Pid)
-		_ = m.cmd.Process.Kill()
+		// Guarded: the graceful path above may already have reaped it, which
+		// would make this pid the kernel's to reuse.
+		if procgroup.ShouldSignal(m.cmd) {
+			_ = m.cmd.Process.Kill()
+		}
 		<-done
 	}
 	_ = os.Remove(m.socketPath)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os/exec"
 	"sync"
+	"vulos/backend/internal/procgroup"
 )
 
 // xdotoolExec runs xdotool with the given args on the specified display.
@@ -113,7 +114,7 @@ func (p *xdotoolPipe) close() {
 	if p.stdin != nil {
 		p.stdin.Close()
 	}
-	if p.cmd != nil && p.cmd.Process != nil {
+	if procgroup.ShouldSignal(p.cmd) {
 		p.cmd.Process.Kill()
 	}
 }
