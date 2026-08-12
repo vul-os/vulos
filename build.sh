@@ -1297,10 +1297,86 @@ done
 STATUSEOF
 chmod +x "$ROOTFS/usr/local/bin/vulos-console-status"
 
+# ── Kiosk: the OS on the screen ──────────────────────────────────────────────
+#
+# Vulos renders as a web app, so "the desktop" IS a browser pointed at the local
+# server. A box with a display that boots to a text console has not started.
+#
+# This was missing entirely: the image shipped vulos.service (the server) and
+# vulos-console.service (a status screen on tty1) and nothing that ever opened a
+# browser, so every machine with a monitor showed a login prompt. The kiosk
+# launch logic in backend/cmd/init is unreachable here — that is our own PID 1
+# for the initramfs path, and an installed system boots systemd instead.
+cat > "$ROOTFS/usr/local/bin/vulos-kiosk" << 'KIOSKEOF'
+#!/bin/sh
+# Launch the OS full-screen in a browser on the local display.
+#
+# Browser search order matches findKioskBrowser in backend/cmd/init/main.go and
+# is asserted to stay in sync by TestKioskBrowsersMatchInit. cog is preferred: it
+# is a WebKit kiosk shell with no chrome to hide, and the rootfs installs it.
+set -eu
+URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
+
+# Wait for the server to actually serve. Starting the browser first shows an
+# error page that never retries, which looks exactly like a broken box.
+i=0
+while [ "$i" -lt 60 ]; do
+  if curl -fsS --max-time 2 "$URL/api/setup/status" >/dev/null 2>&1; then break; fi
+  i=$((i + 1))
+  sleep 1
+done
+
+for cand in cog chromium chromium-browser; do
+  if command -v "$cand" >/dev/null 2>&1; then
+    case "$cand" in
+      cog) exec cage -- "$cand" "$URL" ;;
+      *)   exec cage -- "$cand" --kiosk --ozone-platform=wayland --no-sandbox \
+             --no-first-run --no-default-browser-check --noerrdialogs \
+             --disable-translate --disable-features=Translate "$URL" ;;
+    esac
+  fi
+done
+
+# No browser: say so ON THE SCREEN rather than exiting quietly into a blank
+# display, which is indistinguishable from a hung boot.
+echo "vulos-kiosk: no kiosk browser found (looked for: cog chromium chromium-browser)" >&2
+exit 1
+KIOSKEOF
+chmod +x "$ROOTFS/usr/local/bin/vulos-kiosk"
+
+cat > "$ROOTFS/etc/systemd/system/vulos-kiosk.service" << 'EOF'
+[Unit]
+Description=Vulos kiosk — the OS on the local display
+After=vulos.service
+Wants=vulos.service
+# ONLY when a display exists. A headless box has no card0 and must not spend a
+# boot retrying a compositor it cannot start.
+ConditionPathExistsGlob=/dev/dri/card*
+Conflicts=getty@tty1.service vulos-console.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vulos-kiosk
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+TTYReset=yes
+TTYVHangup=yes
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target multi-user.target
+EOF
+chroot "$ROOTFS" systemctl enable vulos-kiosk.service
+
 cat > "$ROOTFS/etc/systemd/system/vulos-console.service" << 'EOF'
 [Unit]
-Description=Vulos console status screen
+Description=Vulos console status screen (headless boxes only)
 After=vulos.service
+# The mirror image of vulos-kiosk's condition: a box WITH a display shows the OS
+# in a browser, a box without one shows this. Exactly one of the two runs.
+ConditionPathExistsGlob=!/dev/dri/card*
 Conflicts=getty@tty1.service
 
 [Service]
