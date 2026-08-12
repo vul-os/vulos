@@ -1349,13 +1349,18 @@ URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
 # discarded anyway, and omitting it keeps the single-screen path byte-identical
 # to what it was before this existed.
 screen_name=""
+screen_list=""
+screen_count=0
 for st in /sys/class/drm/*/status; do
   [ -r "$st" ] || continue
   [ "$(cat "$st" 2>/dev/null)" = "connected" ] || continue
   conn=$(basename "$(dirname "$st")")
-  screen_name=$(echo "$conn" | sed 's/^card[0-9]*-//')
-  break
+  nm=$(echo "$conn" | sed 's/^card[0-9]*-//')
+  screen_list="$screen_list $nm"
+  screen_count=$((screen_count + 1))
+  [ -n "$screen_name" ] || screen_name="$nm"
 done
+BASE_URL="$URL"
 if [ -n "$screen_name" ]; then
   case "$URL" in
     *\?*) URL="$URL&screen=$screen_name&screens=1&screenIndex=1" ;;
@@ -1447,6 +1452,54 @@ while [ "$i" -lt 60 ]; do
   i=$((i + 1))
   sleep 1
 done
+
+# ── Multi-output: one browser per screen, placed by labwc ────────────────────
+#
+# Only when MORE THAN ONE output is connected. A single-screen box takes the
+# path below, unchanged, because that is what every real boot uses today and a
+# regression there is a box that shows nothing.
+#
+# labwc rather than cage: cage is deliberately one-window-one-output. labwc
+# places windows with a windowRule carrying a MoveToOutput action, and a rule
+# can only name a window it can tell apart — so each instance is identified by
+# its TITLE, which the shell sets from the screen= parameter it was given
+# (frontend/src/providers/screenIdentity.ts, screenWindowTitle). The connector
+# name is the same string on both sides: read from /sys/class/drm here, passed
+# in the URL, echoed back in the title, matched by the rule.
+#
+# -S runs the session and terminates the compositor when it exits, so the
+# systemd unit sees the kiosk end rather than a compositor lingering with no
+# browsers.
+if [ "$screen_count" -gt 1 ] && command -v labwc >/dev/null 2>&1 && command -v cog >/dev/null 2>&1; then
+  cfg=/run/vulos-kiosk
+  mkdir -p "$cfg"
+  {
+    echo '<?xml version="1.0"?>'
+    echo '<labwc_config>'
+    echo '  <windowRules>'
+    for nm in $screen_list; do
+      echo "    <windowRule title=\"Vulos — $nm\" matchOnce=\"yes\">"
+      echo "      <action name=\"MoveToOutput\" output=\"$nm\" />"
+      echo '    </windowRule>'
+    done
+    echo '  </windowRules>'
+    echo '</labwc_config>'
+  } > "$cfg/rc.xml"
+
+  {
+    echo '#!/bin/sh'
+    i=0
+    for nm in $screen_list; do
+      i=$((i + 1))
+      echo "cog \"$BASE_URL?screen=$nm&screens=$screen_count&screenIndex=$i\" &"
+    done
+    echo 'wait'
+  } > "$cfg/session.sh"
+  chmod +x "$cfg/session.sh"
+
+  echo "vulos-kiosk: $screen_count screens ($screen_list ) — labwc, one browser per output"
+  exec labwc -C "$cfg" -S "$cfg/session.sh"
+fi
 
 for cand in cog chromium chromium-browser; do
   if command -v "$cand" >/dev/null 2>&1; then

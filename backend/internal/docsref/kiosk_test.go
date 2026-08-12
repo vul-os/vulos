@@ -313,3 +313,50 @@ func TestKioskSetsScreenIdentity(t *testing.T) {
 			"name, so the identity it reports is not the output it is actually on")
 	}
 }
+
+// Multi-output launch: the pieces must agree, because nothing here can be
+// checked at runtime by anything but a person with two monitors.
+//
+// labwc places a window with a windowRule carrying a MoveToOutput action
+// (labwc-config(5), labwc-actions(5) — verified against the manuals). The rule
+// matches on the window TITLE, which the shell builds from the screen=
+// parameter it was handed (screenIdentity.ts screenWindowTitle). So the same
+// connector name has to appear in four places: read from /sys/class/drm, put in
+// the URL, echoed in the title the rule matches, and given to MoveToOutput.
+//
+// If any one of those drifts, every browser lands on one monitor and nothing
+// logs a reason — the exact silent failure this file exists to prevent.
+func TestKioskMultiOutputLaunch(t *testing.T) {
+	src := readRepoFile(t, "build.sh")
+	kiosk := withoutShellComments(scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF"))
+
+	// Only on more than one screen. A single-output box must keep the old path,
+	// because that is what every real boot uses.
+	if !strings.Contains(kiosk, `"$screen_count" -gt 1`) {
+		t.Error("the multi-output path is not gated on more than one connected screen, so a " +
+			"single-screen box could take it — that box is the one every real boot is")
+	}
+	if !strings.Contains(kiosk, "MoveToOutput") {
+		t.Error("no MoveToOutput action is written, so labwc has nothing that places a window " +
+			"on a given output and every browser lands on the active one")
+	}
+	if !strings.Contains(kiosk, "windowRule title=") {
+		t.Error("the windowRule does not match on title; nothing else distinguishes two " +
+			"instances of the same shell")
+	}
+	// -S, not -s: the compositor must exit when the session does.
+	if !strings.Contains(kiosk, "labwc -C") || !strings.Contains(kiosk, "-S ") {
+		t.Error("labwc is not started with a config dir and a session command (-C and -S); " +
+			"with -s instead the compositor outlives the browsers")
+	}
+	// The title written into the rule must be the SAME shape screenWindowTitle
+	// produces, or the rule matches nothing.
+	if !strings.Contains(kiosk, `Vulos — $nm`) {
+		t.Error("the windowRule title is not \"Vulos — <connector>\", which is what " +
+			"screenWindowTitle in screenIdentity.ts actually sets — the rule would match no window")
+	}
+	if !strings.Contains(kiosk, "screenIndex=$i") || !strings.Contains(kiosk, "screens=$screen_count") {
+		t.Error("each browser is not given its own screenIndex and the true screen count, so the " +
+			"shell cannot tell the instances apart")
+	}
+}
