@@ -394,6 +394,36 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── REREAD 2026-08-12: "positional, not package-specific" may ALSO rest
+      #    on the bad ~110s measurement. A fixed 32.2s clock explains both runs.
+      #
+      # The reversal experiment concluded the kill follows POSITION because
+      # forward order lost the last ~11 of 121 packages while reversed order
+      # lost everything after ~20. That was read as "the same place in the run".
+      #
+      # A pure 32.2-second timer explains it at least as well, and more simply.
+      # Forward order runs the fast non-services packages first and can get
+      # through ~110 of them in 32 seconds; reversed order front-loads the slow
+      # services packages and only manages ~20 in the same 32 seconds. Same
+      # clock, different package counts — no positional rule needed.
+      #
+      # If that reading is right, services/sandbox being package 21 is a
+      # COINCIDENCE of pace, and the note above pointing at its startup window
+      # is chasing an artefact. Both readings are recorded because the evidence
+      # does not yet separate them.
+      #
+      # The experiment that separates them is cheap and specific: get the
+      # `Finished process ... elapsed time` figure for a FORWARD-order failing
+      # run. If it is also ~32s, the timer explanation wins outright and package
+      # identity stops mattering. That figure comes from the runner's _diag
+      # Worker log, which only started being captured a few commits ago — so it
+      # needs one forward-order run with the current instrumentation, not an
+      # archived one.
+      #
+      # Recorded rather than acted on because acting on it means changing the
+      # package order again, and the previous order change is exactly what
+      # produced the conclusion now in doubt.
+      #
       # ── POSITION CONFIRMED 2026-08-12: package 21 in the reversed list IS
       #    services/sandbox, and the kill coincides with it STARTING.
       #
