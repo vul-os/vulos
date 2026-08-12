@@ -366,6 +366,34 @@ jobs:
           df -h /
           du -sh ~/.cache/go-build ~/go/pkg/mod 2>/dev/null || true
 
+      # Did the KERNEL kill it? This is the hypothesis the earlier "memory is
+      # excluded" conclusion never actually tested.
+      #
+      # That conclusion rested on the job's CGROUP reporting oom 0 / oom_kill 0
+      # / oom_group_kill 0 with no limit set. Correct, and not the whole
+      # question: a cgroup with no limit cannot report a limit breach, but the
+      # runner VM still has finite physical RAM, and a system-wide OOM kill is
+      # a different event from a cgroup-limit kill. Peak usage was measured at
+      # 4.5 GB, which is comfortable against "no limit" and much less so
+      # against a 7 GB VM that is also running the OS and the runner agent.
+      #
+      # dmesg settles it either way. The kernel OOM killer always logs its
+      # victim ("Out of memory: Killed process ... (go)"), so a hit here names
+      # the process outright, and an empty result removes the last memory
+      # explanation for good instead of leaving it half-excluded.
+      #
+      # A separate step rather than a sampler, for the reason recorded above:
+      # the previous background sampler held the step's stdout open and became
+      # a failure of its own.
+      - name: Kernel log after tests (OOM killer?)
+        if: always()
+        run: |
+          echo "--- MemAvailable / MemTotal now ---"
+          grep -E 'MemTotal|MemAvailable' /proc/meminfo || true
+          echo "--- kernel OOM / kill records ---"
+          sudo dmesg 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process|oom_reaper' | tail -20 \
+            || echo "(no kernel OOM records, or dmesg unavailable)"
+
       - name: Test (e2e — real server binary over real HTTP)
         run: cd backend && go test -tags e2e ./e2e/ -count=1 -timeout=5m
         timeout-minutes: 8
