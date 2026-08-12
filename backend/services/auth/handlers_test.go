@@ -101,15 +101,49 @@ func TestCookieDomain(t *testing.T) {
 		},
 
 		// ── Plain subdomains (no "--") ────────────────────────────────────────
+		// These scope to the FULL host, not the parent domain.
+		//
+		// They used to strip the leftmost label. That was safe for the two hosts
+		// cookieDomain checked by name and unsafe everywhere else: on any other
+		// multi-tenant domain the parent is shared with strangers. The dev case
+		// below still lands on ".lvh.me" the moment VULOS_DOMAIN is set, which is
+		// how dev is actually configured — see "env set to lvh.me dev value"
+		// above, which pins exactly that and is unaffected by this change.
 		{
-			name: "plain subdomain scoped to parent domain",
+			name: "plain subdomain without VULOS_DOMAIN scopes to the full host",
 			host: "cockpit.lvh.me",
-			want: ".lvh.me",
+			want: ".cockpit.lvh.me",
 		},
 		{
-			name: "plain subdomain with port scoped to parent domain",
+			name: "plain subdomain with port scopes to the full host",
 			host: "cockpit.lvh.me:3000",
-			want: ".lvh.me",
+			want: ".cockpit.lvh.me",
+		},
+
+		// ── Two boxes behind ONE self-hosted relay (CROSS-TENANT-COOKIE) ──────
+		// The case this rule exists for. An operator runs two boxes under a relay
+		// they own: box1.relay.example.com and box2.relay.example.com, neither
+		// setting VULOS_DOMAIN. Stripping the leftmost label gives BOTH the scope
+		// ".relay.example.com", so box1 offers its session cookie to box2 — the
+		// same leak the vulos.org check prevents, which only ever protected the
+		// one domain someone had thought to hardcode.
+		//
+		// These two wants MUST differ. That is the whole assertion.
+		{
+			name: "box1 behind a self-hosted relay",
+			host: "box1.relay.example.com",
+			want: ".box1.relay.example.com",
+		},
+		{
+			name: "box2 behind the SAME relay gets a different scope",
+			host: "box2.relay.example.com",
+			want: ".box2.relay.example.com",
+		},
+		{
+			name:        "an operator who WANTS one session across both sets VULOS_DOMAIN",
+			vulosDomain: "relay.example.com",
+			host:        "box1.relay.example.com",
+			want:        ".relay.example.com",
 		},
 
 		// ── IP addresses — no domain scoping ─────────────────────────────────

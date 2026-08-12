@@ -930,11 +930,28 @@ func cookieDomain(r *http.Request) string {
 	// In both cases the correct scope is the full host: it still covers the
 	// {app}--{profile} subdomains that the branch above strips down to it,
 	// and it matches exactly what VULOS_DOMAIN would have held.
-	rest := strings.Join(parts[1:], ".")
-	if strings.EqualFold(rest, hostedApexDomain) || strings.Count(rest, ".") < 1 {
-		return "." + host
-	}
-	return "." + rest
+	// The full host, ALWAYS, on this path.
+	//
+	// This used to strip the leftmost label unless what remained was the hosted
+	// apex or a bare public suffix. Those two cases were right and the general
+	// rule was wrong: on any OTHER multi-tenant domain the strip still hands the
+	// cookie to a stranger. Two boxes behind one self-hosted relay —
+	// box1.relay.example.com and box2.relay.example.com — both reduce to
+	// .relay.example.com, so box1's session token is offered to box2. That is the
+	// same cross-tenant leak the vulos.org check exists to prevent, keyed to a
+	// hardcoded domain instead of to the actual question.
+	//
+	// There is no case left where stripping is safe. Without a "--" label the
+	// leftmost label IS the instance, and the reasoning already written for the
+	// two special cases applies to all of them: the full host still covers the
+	// {app}--{profile} subdomains that the branch above strips down to it, and it
+	// matches exactly what VULOS_DOMAIN would have held.
+	//
+	// The cost is narrow and worth naming: an operator who genuinely wants one
+	// session across two hostnames must now set VULOS_DOMAIN, which is explicit
+	// and auditable, rather than getting it as a side effect of how their DNS
+	// happens to be shaped.
+	return "." + host
 }
 
 // --- Profile management handlers ---

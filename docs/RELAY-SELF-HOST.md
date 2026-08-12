@@ -387,9 +387,10 @@ Then, in the box's environment:
 ```bash
 VULOS_RELAY_ENDPOINTS_FILE=/etc/vulos/relays.json
 
-# Set this to the box's own full tunnel hostname — see "Subdomains: routing,
-# wildcard certs, and the session cookie" below for why this matters the
-# moment more than one box shares this relay's domain.
+# Set this to the box's own full tunnel hostname. The box derives the same
+# scope on its own if you omit it, so this is about being explicit rather
+# than about safety — see "Subdomains: routing, wildcard certs, and the
+# session cookie" below.
 VULOS_DOMAIN=box1.relay.example.com
 
 # Optional: only needed if you also want THIS box's siblings (boxes that
@@ -526,29 +527,36 @@ reading before you put more than one box behind the same relay:
     published-app subdomains) is **stripped**, so the cookie covers every
     app of that instance: `browser--work.abc123.vulos.org` →
     `.abc123.vulos.org`.
-  - Otherwise, one label is stripped **unless** doing so would collapse the
-    scope to the shared multi-tenant apex (`vulos.org` itself) or to a bare
-    public suffix — both of those fall back to the **full host** instead,
-    to avoid handing the cookie to every other tenant on that apex.
+  - Otherwise → the **full host**. No label is stripped.
 
 The consequence that matters here: **the session cookie is sent to every
-subdomain sharing that scope, not just the one that set it.** With
-`VULOS_DOMAIN` unset, two *different* boxes sharing the same relay both
-derive their scope from stripping one label off their own hostname —
-`box1.relay.example.com` and `box2.relay.example.com` both land on
-`.relay.example.com`, the relay operator's own shared domain, not on
-`box1`/`box2` individually. (Confirmed by calling `cookieDomain` directly
-with each hostname.) A browser that holds box1's cookie will attach it to a
-request against box2 too, purely because both are subdomains of the scope
-the cookie was issued for — box2 will not accept a token it does not
-recognise, but the leak of the raw cookie value across box boundaries is
-already the property this repository's own comment on `cookieDomain`
-identifies as the dangerous half of this design (it is the exact shape of
-the cross-tenant `vulos.org` bug that comment documents fixing, just for a
-relay's own domain rather than the hardcoded one). **This is why
-"Configuring your boxes" above sets `VULOS_DOMAIN` to each box's own full
-tunnel hostname** — `box1.relay.example.com`, not just `relay.example.com`
-— which pins the cookie's scope to that one box.
+subdomain sharing that scope, not just the one that set it.** That is why
+the last rule above is "the full host" rather than "strip one label".
+
+It used to strip. Two different boxes behind the same relay —
+`box1.relay.example.com` and `box2.relay.example.com`, neither setting
+`VULOS_DOMAIN` — both landed on `.relay.example.com`, the relay operator's
+own shared domain, so a browser holding box1's cookie attached it to
+requests against box2. box2 would not accept a token it does not
+recognise, but the raw cookie value crossed a box boundary, which is the
+dangerous half. The code special-cased exactly two hosts (`vulos.org` and
+a bare public suffix) and was unsafe on every other shared domain — it
+protected the one apex someone had thought to hardcode.
+
+The default is now the safe one: a box's cookie is scoped to that box's own
+hostname unless an operator explicitly says otherwise. Setting
+`VULOS_DOMAIN` to each box's full tunnel hostname, as "Configuring your
+boxes" above does, remains good practice — it makes the scope explicit
+rather than derived — but it is no longer what stands between you and a
+cross-box leak. An operator who genuinely *wants* one session spanning two
+boxes can still have it by setting `VULOS_DOMAIN=relay.example.com` on
+both, which is now a deliberate, auditable choice instead of a side effect
+of how their DNS happens to be shaped.
+
+Pinned by `TestCookieDomain` in `backend/services/auth/handlers_test.go`,
+whose `box1`/`box2` cases assert the two scopes **differ** — mutation-tested
+by restoring the old strip, which fails them with both hosts reported as
+`.relay.example.com`.
 
 Setting `VULOS_DOMAIN` per box does not, by itself, give you subdomain
 *isolation* for apps published on that one box's own address: the
