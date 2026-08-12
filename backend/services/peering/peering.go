@@ -44,9 +44,9 @@ type Service struct {
 	root string
 
 	// Identity fields — populated by New() from loadOrGenerate.
-	priv   ed25519.PrivateKey
-	pub    ed25519.PublicKey
-	vulaID string
+	priv    ed25519.PrivateKey
+	pub     ed25519.PublicKey
+	vulosID string
 }
 
 // Home returns the user home directory the service was constructed with
@@ -68,8 +68,8 @@ func (s *Service) PrivateKey() ed25519.PrivateKey { return s.priv }
 // PublicKey returns the node's Ed25519 public key.
 func (s *Service) PublicKey() ed25519.PublicKey { return s.pub }
 
-// VulaID returns the node's canonical Vula ID ("vula:ed25519:<base58>").
-func (s *Service) VulaID() string { return s.vulaID }
+// VulosID returns the node's canonical Vula ID ("vulos:ed25519:<base58>").
+func (s *Service) VulosID() string { return s.vulosID }
 
 // New creates a Service and ensures the full ~/.vulos/peering/ directory tree
 // exists. The tree is created idempotently — safe to call multiple times or
@@ -106,13 +106,13 @@ func New(dataRoot string) *Service {
 
 	// Load or generate the Ed25519 identity keypair.
 	identityDir := filepath.Join(root, "identity")
-	priv, pub, vulaID, err := loadOrGenerate(identityDir)
+	priv, pub, vulosID, err := loadOrGenerate(identityDir)
 	if err != nil {
 		log.Printf("[peering] identity init error: %v", err)
 	}
 
 	log.Printf("[peering] storage root: %s", root)
-	return &Service{home: dataRoot, root: root, priv: priv, pub: pub, vulaID: vulaID}
+	return &Service{home: dataRoot, root: root, priv: priv, pub: pub, vulosID: vulosID}
 }
 
 // RegisterHandlers wires the node-identity peering routes onto mux.

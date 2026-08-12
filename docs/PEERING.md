@@ -13,13 +13,13 @@ Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](
 Your box's peering identity is an **Ed25519 keypair**. The public key, base58-encoded with a prefix, is your **Vula ID**:
 
 ```
-vula:ed25519:9pJv3kQ8tW7xY2mN4rS6uA1bC5dE8fG2hJ4kL7nP9qR3
+vulos:ed25519:9pJv3kQ8tW7xY2mN4rS6uA1bC5dE8fG2hJ4kL7nP9qR3
 ```
 
 When combined with a server address for discovery and contact requests, it forms a **Vula address**:
 
 ```
-vula:ed25519:<base58-key>@your-box.example.com:443
+vulos:ed25519:<base58-key>@your-box.example.com:443
 ```
 
 The ID *is* the public key — anyone holding your Vula ID can verify signatures you make, with no key exchange or lookup step.
@@ -32,7 +32,7 @@ The peering service owns `~/.vulos/peering/` (created on first boot, `backend/se
 |---|---|
 | `~/.vulos/peering/identity/ed25519.priv` | Private key (raw 64 bytes, mode 0600) |
 | `~/.vulos/peering/identity/ed25519.pub` | Public key (raw 32 bytes) |
-| `~/.vulos/peering/identity/vula_id` | Your Vula ID as text |
+| `~/.vulos/peering/identity/vulos_id` | Your Vula ID as text |
 | `~/.vulos/peering/contacts.json` | Approved contact list |
 | `~/.vulos/peering/inbox/`, `outbox/`, `media/`, `groups/`, `profile/` | Messages, pending deliveries, received files, groups, your profile |
 
@@ -76,7 +76,7 @@ Conversations and history live entirely on the two boxes involved (`GET /api/pee
 
 ### Worked example: Alice adds Bob
 
-1. Bob opens Peering → Identity on his box and shows his QR (or copies `vula:ed25519:...` and sends it to Alice out-of-band).
+1. Bob opens Peering → Identity on his box and shows his QR (or copies `vulos:ed25519:...` and sends it to Alice out-of-band).
 2. Alice opens Peering → Requests, pastes Bob's Vula ID (or just `bob.vulos.org` if his box has a public name), adds a note, and sends the request. Her box signs it with her identity key and delivers it to Bob's box.
 3. Bob's Requests tab shows the pending request with Alice's identity. He approves it; his box records her as an approved contact with default permissions.
 4. From now on their boxes talk directly: messages, Drop transfers, calls — each request signature-verified against the other's Vula ID, each capability gated by the contact permissions either side has granted.
@@ -289,7 +289,7 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 | Area | Endpoints |
 |---|---|
 | Identity | `GET /api/peering/identity` · `POST /api/peering/identity/export` · `POST /api/peering/identity/import` · `POST /api/peering/identity/revoke` |
-| Contacts | `POST /api/peering/contacts/request` · `GET /api/peering/contacts` · `GET /api/peering/contacts/requests` · `POST /api/peering/contacts/approve/{id}` · `POST /api/peering/contacts/block/{id}` · `DELETE /api/peering/contacts/{vula_id}` |
+| Contacts | `POST /api/peering/contacts/request` · `GET /api/peering/contacts` · `GET /api/peering/contacts/requests` · `POST /api/peering/contacts/approve/{id}` · `POST /api/peering/contacts/block/{id}` · `DELETE /api/peering/contacts/{vulos_id}` |
 | Discovery | `GET /api/peering/discover?email=…` (or `?name=…`) |
 | Messaging | `GET /api/peering/conversations` · `GET /api/peering/conversations/{conv_id}/messages` · `POST /api/peering/conversations/{conv_id}/send` |
 | Drop | `GET /api/peering/drop/nearby` · `POST /api/peering/drop/send` · `POST /api/peering/drop/decide` · `GET`/`PUT /api/peering/drop/settings` · `POST /api/peering/drop/code/generate` · `POST /api/peering/drop/code/redeem` |

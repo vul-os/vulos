@@ -9,9 +9,9 @@ package files
 //   - CO-CLOUD (recipient is a principal on the SAME control plane): use the
 //     per-node ACL grant path (Share) — no peering. This is the primary path for
 //     free cloud accounts where Alice and Bob live on the same cell.
-//   - REMOTE (recipient is a cloud-home VulaID or any cross-instance box): mint a
+//   - REMOTE (recipient is a cloud-home VulosID or any cross-instance box): mint a
 //     per-document, role-scoped, expiring, revocable peershare Capability bound to
-//     the recipient's VulaID (IssueCapability) and deliver it to the recipient's
+//     the recipient's VulosID (IssueCapability) and deliver it to the recipient's
 //     server. For an account-only user the recipient server is the cell, which
 //     redeems on the account's behalf and stages the bytes into the account's
 //     Drive.
@@ -47,12 +47,12 @@ var (
 // populated:
 //
 //   - CO-CLOUD: PrincipalID set (a local principal on the same control plane).
-//   - REMOTE:   VulaID (and usually Server) set (a cloud-home / box peering id).
+//   - REMOTE:   VulosID (and usually Server) set (a cloud-home / box peering id).
 //
-// A zero value (both PrincipalID and VulaID empty) means "not found".
+// A zero value (both PrincipalID and VulosID empty) means "not found".
 type ShareRecipient struct {
 	PrincipalID string // co-cloud local principal; "" when remote
-	VulaID      string // remote cloud-home/box VulaID; "" when co-cloud
+	VulosID     string // remote cloud-home/box VulosID; "" when co-cloud
 	Server      string // remote server address (for capability delivery)
 	DisplayName string
 	// ContentPubKey is the recipient's PUBLISHED X25519 content-encryption public
@@ -67,7 +67,7 @@ type ShareRecipient struct {
 func (r ShareRecipient) IsLocal() bool { return r.PrincipalID != "" }
 
 // IsRemote reports whether the recipient is remote (peershare capability path).
-func (r ShareRecipient) IsRemote() bool { return r.PrincipalID == "" && r.VulaID != "" }
+func (r ShareRecipient) IsRemote() bool { return r.PrincipalID == "" && r.VulosID != "" }
 
 // ShareResolver resolves a recipient email to a ShareRecipient, deciding locality
 // (Contract 2 + 3). The implementation (cmd/server) checks the local account
@@ -87,9 +87,9 @@ type CapabilityDeliverer interface {
 
 // CapabilityDelivery is the payload handed to a CapabilityDeliverer.
 type CapabilityDelivery struct {
-	RecipientVulaID string      `json:"recipient"`
-	Link            string      `json:"link"`
-	Capability      *Capability `json:"capability,omitempty"`
+	RecipientVulosID string      `json:"recipient"`
+	Link             string      `json:"link"`
+	Capability       *Capability `json:"capability,omitempty"`
 }
 
 // WithShareResolver wires the email→recipient resolver and (optionally) the
@@ -105,7 +105,7 @@ func (s *Service) WithShareResolver(resolver ShareResolver, deliverer Capability
 type ShareByEmailResult struct {
 	Mode        string      `json:"mode"` // "co-cloud" | "remote"
 	PrincipalID string      `json:"principal_id,omitempty"`
-	VulaID      string      `json:"vula_id,omitempty"`
+	VulosID     string      `json:"vulos_id,omitempty"`
 	Server      string      `json:"server,omitempty"`
 	DisplayName string      `json:"display_name,omitempty"`
 	ACL         *ACLEntry   `json:"acl,omitempty"`        // co-cloud
@@ -167,14 +167,14 @@ func (s *Service) ShareByEmail(ctx context.Context, actorID, nodeID, email strin
 		}, nil
 
 	case rec.IsRemote():
-		// REMOTE: per-document capability bound to the recipient VulaID.
-		cap, link, err := s.IssueCapability(actorID, nodeID, role, rec.VulaID, ownerAddr, ttl)
+		// REMOTE: per-document capability bound to the recipient VulosID.
+		cap, link, err := s.IssueCapability(actorID, nodeID, role, rec.VulosID, ownerAddr, ttl)
 		if err != nil {
 			return nil, err
 		}
 		res := &ShareByEmailResult{
 			Mode:        "remote",
-			VulaID:      rec.VulaID,
+			VulosID:     rec.VulosID,
 			Server:      rec.Server,
 			DisplayName: rec.DisplayName,
 			Capability:  cap,
@@ -185,16 +185,16 @@ func (s *Service) ShareByEmail(ctx context.Context, actorID, nodeID, email strin
 		// is returned so the sharer can still hand it over.
 		if s.capDeliverer != nil && rec.Server != "" {
 			if derr := s.capDeliverer.DeliverCapability(ctx, rec.Server, CapabilityDelivery{
-				RecipientVulaID: rec.VulaID,
-				Link:            link,
-				Capability:      cap,
+				RecipientVulosID: rec.VulosID,
+				Link:             link,
+				Capability:       cap,
 			}); derr != nil {
 				log.Printf("[files] capability delivery to %s failed (link returned to sharer): %v", rec.Server, derr)
 			} else {
 				res.Delivered = true
 			}
 		}
-		s.audit(actorID, "share.email.remote", nodeID, email+"="+string(role)+" recipient="+rec.VulaID)
+		s.audit(actorID, "share.email.remote", nodeID, email+"="+string(role)+" recipient="+rec.VulosID)
 		return res, nil
 
 	default:

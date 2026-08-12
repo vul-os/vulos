@@ -118,9 +118,9 @@ type AttestDoc struct {
 	// Provider identifies which TEE platform produced this document.
 	Provider AttestProvider `json:"provider"`
 
-	// RelayVulaID is the Vula ID of the relay instance that produced this
+	// RelayVulosID is the Vula ID of the relay instance that produced this
 	// document.  Senders MUST check that it matches the relay they intend to use.
-	RelayVulaID string `json:"relay_vula_id"`
+	RelayVulosID string `json:"relay_vulos_id"`
 
 	// IssuedAt is when the attestation was produced (RFC 3339 UTC).
 	// Senders reject documents older than [AttestPolicy.MaxAge].
@@ -253,7 +253,7 @@ func attestLookupVerifier(provider AttestProvider) (AttestVerifier, bool) {
 // Checks performed (in order):
 //  1. doc.Provider must be non-empty.
 //  2. policy.Provider must be set (default-deny) AND doc.Provider must match it.
-//  3. doc.RelayVulaID must be non-empty.
+//  3. doc.RelayVulosID must be non-empty.
 //  4. doc.IssuedAt must not be zero.
 //  5. If policy.MaxAge > 0, doc.IssuedAt must be within MaxAge of now.
 //  6. The registered AttestVerifier for doc.Provider must return nil.
@@ -276,10 +276,10 @@ func AttestVerifyRelay(doc AttestDoc, policy AttestPolicy) error {
 			fmt.Sprintf("expected provider %q, got %q", policy.Provider, doc.Provider), nil)
 	}
 
-	// 3. RelayVulaID must be present.
-	if doc.RelayVulaID == "" {
+	// 3. RelayVulosID must be present.
+	if doc.RelayVulosID == "" {
 		return attestErr("missing-relay-id",
-			"attestation document does not contain relay_vula_id", nil)
+			"attestation document does not contain relay_vulos_id", nil)
 	}
 
 	// 4. IssuedAt must not be zero.
@@ -335,7 +335,7 @@ func AttestVerifyRelay(doc AttestDoc, policy AttestPolicy) error {
 //     AWS's hardware root of trust.
 //  5. reads the PCRs FROM THE SIGNED PAYLOAD (never from the unsigned doc.PCRs)
 //     and checks them against policy.ExpectedPCRs.
-//  6. binds doc.RelayVulaID to the signed NSM user_data so the document cannot be
+//  6. binds doc.RelayVulosID to the signed NSM user_data so the document cannot be
 //     replayed for a different relay identity.
 //
 // It still FAILS CLOSED on every error path and when doc.RawDocument is absent
@@ -601,11 +601,11 @@ func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 	//    to vouch for a different relay.
 	if len(nsm.UserData) == 0 {
 		return attestErr("missing-identity-binding",
-			"NSM user_data is empty: cannot bind attestation to relay_vula_id (fail-closed)", nil)
+			"NSM user_data is empty: cannot bind attestation to relay_vulos_id (fail-closed)", nil)
 	}
-	if string(nsm.UserData) != doc.RelayVulaID {
+	if string(nsm.UserData) != doc.RelayVulosID {
 		return attestErr("identity-mismatch",
-			fmt.Sprintf("signed user_data does not match relay_vula_id %q", doc.RelayVulaID), nil)
+			fmt.Sprintf("signed user_data does not match relay_vulos_id %q", doc.RelayVulosID), nil)
 	}
 
 	// 7. Bind a caller-supplied challenge nonce (anti-replay). When the policy pins
@@ -668,8 +668,8 @@ func (as *AttestStore) Set(doc AttestDoc) error {
 	if doc.Provider == "" {
 		return errors.New("peering/relay/attest: provider must not be empty")
 	}
-	if doc.RelayVulaID == "" {
-		return errors.New("peering/relay/attest: relay_vula_id must not be empty")
+	if doc.RelayVulosID == "" {
+		return errors.New("peering/relay/attest: relay_vulos_id must not be empty")
 	}
 	if doc.IssuedAt.IsZero() {
 		return errors.New("peering/relay/attest: issued_at must not be zero")

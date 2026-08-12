@@ -38,8 +38,8 @@ func TestAttestError_WithCause(t *testing.T) {
 
 func TestAttestVerifyRelay_MissingProvider(t *testing.T) {
 	doc := AttestDoc{
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{})
 	assertAttestCode(t, err, "missing-provider")
@@ -47,9 +47,9 @@ func TestAttestVerifyRelay_MissingProvider(t *testing.T) {
 
 func TestAttestVerifyRelay_ProviderMismatch(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNitro})
 	assertAttestCode(t, err, "provider-mismatch")
@@ -66,8 +66,8 @@ func TestAttestVerifyRelay_MissingRelayID(t *testing.T) {
 
 func TestAttestVerifyRelay_MissingIssuedAt(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNoop})
 	assertAttestCode(t, err, "missing-issued-at")
@@ -75,9 +75,9 @@ func TestAttestVerifyRelay_MissingIssuedAt(t *testing.T) {
 
 func TestAttestVerifyRelay_DocExpired(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now().Add(-2 * time.Hour),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now().Add(-2 * time.Hour),
 	}
 	policy := AttestPolicy{Provider: AttestProviderNoop, MaxAge: time.Hour}
 	err := AttestVerifyRelay(doc, policy)
@@ -86,9 +86,9 @@ func TestAttestVerifyRelay_DocExpired(t *testing.T) {
 
 func TestAttestVerifyRelay_DocFutureDated(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now().Add(2 * time.Hour),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now().Add(2 * time.Hour),
 	}
 	policy := AttestPolicy{Provider: AttestProviderNoop, MaxAge: time.Hour}
 	err := AttestVerifyRelay(doc, policy)
@@ -97,9 +97,9 @@ func TestAttestVerifyRelay_DocFutureDated(t *testing.T) {
 
 func TestAttestVerifyRelay_UnknownProvider(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    "unknown-provider",
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     "unknown-provider",
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	// Pin the (unregistered) provider so we reach the verifier-lookup step.
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: "unknown-provider"})
@@ -110,9 +110,9 @@ func TestAttestVerifyRelay_EmptyPolicyRejected(t *testing.T) {
 	// DEFAULT-DENY: an empty policy (no pinned provider) must be rejected even
 	// for a structurally complete document.
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{})
 	assertAttestCode(t, err, "empty-policy")
@@ -122,9 +122,9 @@ func TestAttestVerifyRelay_NoopVerifierRejected(t *testing.T) {
 	// Even with the provider pinned, the (now fail-closed, unregistered) noop
 	// provider must not yield a pass: it is not in the default registry.
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNoop})
 	assertAttestCode(t, err, "unknown-provider")
@@ -138,9 +138,9 @@ func TestAttestVerifyRelay_NoMaxAge_OldDocAccepted(t *testing.T) {
 		return nil
 	}))
 	doc := AttestDoc{
-		Provider:    okProvider,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now().Add(-365 * 24 * time.Hour),
+		Provider:     okProvider,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now().Add(-365 * 24 * time.Hour),
 	}
 	if err := AttestVerifyRelay(doc, AttestPolicy{Provider: okProvider}); err != nil {
 		t.Fatalf("expected old doc to be accepted when MaxAge=0, got: %v", err)
@@ -159,9 +159,9 @@ func TestAttestRegisterVerifier_Custom(t *testing.T) {
 	}))
 
 	doc := AttestDoc{
-		Provider:    customProvider,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     customProvider,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	if err := AttestVerifyRelay(doc, AttestPolicy{Provider: customProvider}); err != nil {
 		t.Fatalf("custom verifier: unexpected error: %v", err)
@@ -179,9 +179,9 @@ func TestAttestRegisterVerifier_CustomReject(t *testing.T) {
 	}))
 
 	doc := AttestDoc{
-		Provider:    badProvider,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     badProvider,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: badProvider})
 	assertAttestCode(t, err, "custom-reject")
@@ -202,9 +202,9 @@ func TestAttestNitroVerifier_FailsClosedEvenWithMatchingPCRs(t *testing.T) {
 	// policy — otherwise a malicious relay simply sets matching PCRs.
 	v := AttestNitroVerifier{}
 	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNitro,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 		PCRs: map[string]string{
 			"0": "aabbccdd",
 			"1": "11223344",
@@ -225,9 +225,9 @@ func TestAttestNitroVerifier_FailsClosed_NoPCRsNoCertChain(t *testing.T) {
 	// returns nil until COSE_Sign1 verification is implemented.
 	v := AttestNitroVerifier{}
 	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: "vula:ed25519:test",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNitro,
+		RelayVulosID: "vulos:ed25519:test",
+		IssuedAt:     time.Now(),
 	}
 	err := v.Verify(doc, AttestPolicy{})
 	assertAttestCode(t, err, "cose-unverified")
@@ -274,9 +274,9 @@ func TestAttestStore_EmptyOnNew(t *testing.T) {
 func TestAttestStore_SetAndGet(t *testing.T) {
 	as := NewAttestStore()
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:relay1",
-		IssuedAt:    time.Now().UTC().Truncate(time.Second),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:relay1",
+		IssuedAt:     time.Now().UTC().Truncate(time.Second),
 	}
 	if err := as.Set(doc); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -285,8 +285,8 @@ func TestAttestStore_SetAndGet(t *testing.T) {
 	if !ok {
 		t.Fatal("expected document after Set")
 	}
-	if got.RelayVulaID != doc.RelayVulaID {
-		t.Errorf("RelayVulaID: got %q want %q", got.RelayVulaID, doc.RelayVulaID)
+	if got.RelayVulosID != doc.RelayVulosID {
+		t.Errorf("RelayVulosID: got %q want %q", got.RelayVulosID, doc.RelayVulosID)
 	}
 	if got.Provider != doc.Provider {
 		t.Errorf("Provider: got %q want %q", got.Provider, doc.Provider)
@@ -296,8 +296,8 @@ func TestAttestStore_SetAndGet(t *testing.T) {
 func TestAttestStore_Set_MissingProvider(t *testing.T) {
 	as := NewAttestStore()
 	err := as.Set(AttestDoc{
-		RelayVulaID: "vula:ed25519:relay1",
-		IssuedAt:    time.Now(),
+		RelayVulosID: "vulos:ed25519:relay1",
+		IssuedAt:     time.Now(),
 	})
 	if err == nil {
 		t.Fatal("expected error for missing provider")
@@ -311,15 +311,15 @@ func TestAttestStore_Set_MissingRelayID(t *testing.T) {
 		IssuedAt: time.Now(),
 	})
 	if err == nil {
-		t.Fatal("expected error for missing relay_vula_id")
+		t.Fatal("expected error for missing relay_vulos_id")
 	}
 }
 
 func TestAttestStore_Set_MissingIssuedAt(t *testing.T) {
 	as := NewAttestStore()
 	err := as.Set(AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:relay1",
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:relay1",
 	})
 	if err == nil {
 		t.Fatal("expected error for zero issued_at")
@@ -329,17 +329,17 @@ func TestAttestStore_Set_MissingIssuedAt(t *testing.T) {
 func TestAttestStore_ImmutableOnGet(t *testing.T) {
 	as := NewAttestStore()
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:relay1",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:relay1",
+		IssuedAt:     time.Now(),
 	}
 	if err := as.Set(doc); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 	got1, _ := as.Get()
-	got1.RelayVulaID = "mutated"
+	got1.RelayVulosID = "mutated"
 	got2, _ := as.Get()
-	if got2.RelayVulaID == "mutated" {
+	if got2.RelayVulosID == "mutated" {
 		t.Fatal("Get returned a mutable reference to internal state")
 	}
 }
@@ -363,9 +363,9 @@ func TestHandleGetAttest_NoDocYet(t *testing.T) {
 func TestHandleGetAttest_ReturnsDoc(t *testing.T) {
 	as := NewAttestStore()
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:relay-http-test",
-		IssuedAt:    time.Now().UTC(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:relay-http-test",
+		IssuedAt:     time.Now().UTC(),
 	}
 	if err := as.Set(doc); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -386,8 +386,8 @@ func TestHandleGetAttest_ReturnsDoc(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.RelayVulaID != doc.RelayVulaID {
-		t.Errorf("RelayVulaID: got %q want %q", got.RelayVulaID, doc.RelayVulaID)
+	if got.RelayVulosID != doc.RelayVulosID {
+		t.Errorf("RelayVulosID: got %q want %q", got.RelayVulosID, doc.RelayVulosID)
 	}
 	if got.Provider != doc.Provider {
 		t.Errorf("Provider: got %q want %q", got.Provider, doc.Provider)
@@ -423,9 +423,9 @@ func TestAttestFetchAndVerifyWithClient_Success(t *testing.T) {
 		return nil
 	}))
 	doc := AttestDoc{
-		Provider:    fetchProvider,
-		RelayVulaID: "vula:ed25519:fetch-test-relay",
-		IssuedAt:    time.Now().UTC(),
+		Provider:     fetchProvider,
+		RelayVulosID: "vulos:ed25519:fetch-test-relay",
+		IssuedAt:     time.Now().UTC(),
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -437,8 +437,8 @@ func TestAttestFetchAndVerifyWithClient_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.RelayVulaID != doc.RelayVulaID {
-		t.Errorf("RelayVulaID: got %q want %q", got.RelayVulaID, doc.RelayVulaID)
+	if got.RelayVulosID != doc.RelayVulosID {
+		t.Errorf("RelayVulosID: got %q want %q", got.RelayVulosID, doc.RelayVulosID)
 	}
 }
 
@@ -471,9 +471,9 @@ func TestAttestFetchAndVerifyWithClient_NilClient(t *testing.T) {
 func TestAttestFetchAndVerifyWithClient_PolicyEnforced(t *testing.T) {
 	// Server returns a doc with wrong provider — policy should reject it.
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:fetch-test-relay",
-		IssuedAt:    time.Now().UTC(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:fetch-test-relay",
+		IssuedAt:     time.Now().UTC(),
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -536,9 +536,9 @@ func TestAttestSenderRejectsAbsent(t *testing.T) {
 // document fails policy (wrong provider) is rejected.
 func TestAttestSenderRejectsFailed(t *testing.T) {
 	doc := AttestDoc{
-		Provider:    AttestProviderNoop,
-		RelayVulaID: "vula:ed25519:relay",
-		IssuedAt:    time.Now(),
+		Provider:     AttestProviderNoop,
+		RelayVulosID: "vulos:ed25519:relay",
+		IssuedAt:     time.Now(),
 	}
 	// Inline verification without HTTP.
 	err := AttestVerifyRelay(doc, AttestPolicy{Provider: AttestProviderNitro})

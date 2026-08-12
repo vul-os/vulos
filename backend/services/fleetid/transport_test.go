@@ -62,12 +62,12 @@ func TestGatherQuorum_ApprovedBundle_PassesVerifyQuorum(t *testing.T) {
 
 	// The out-of-band operator approval at EACH peer, matching the exact
 	// request that will be sent.
-	p1.policy.Approve(action, subject.vulaID, pl, requestID, time.Minute)
-	p2.policy.Approve(action, subject.vulaID, pl, requestID, time.Minute)
+	p1.policy.Approve(action, subject.vulosID, pl, requestID, time.Minute)
+	p2.policy.Approve(action, subject.vulosID, pl, requestID, time.Minute)
 
 	greq := GatherRequest{
 		Action:      action,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: pl,
 		SubjectKey:  subject.priv,
 		RequestID:   requestID,
@@ -84,7 +84,7 @@ func TestGatherQuorum_ApprovedBundle_PassesVerifyQuorum(t *testing.T) {
 
 	roster := newRoster(v1, v2)
 	now := time.Now().UTC()
-	qres, qerr := VerifyQuorum(action, subject.vulaID, pl, res.Certs, roster, 2, now)
+	qres, qerr := VerifyQuorum(action, subject.vulosID, pl, res.Certs, roster, 2, now)
 	if qerr != nil {
 		t.Fatalf("gathered bundle must pass VerifyQuorum, got err=%v dropped=%v", qerr, qres.Dropped)
 	}
@@ -106,13 +106,13 @@ func TestVoucherService_RefusesSelfVouch_EvenIfPreApproved(t *testing.T) {
 	// Even if an operator mistakenly (or maliciously) pre-approves a request
 	// where the subject IS this peer itself, the handler must refuse before
 	// ever consulting the policy.
-	peer.policy.Approve(action, self.vulaID, pl, requestID, time.Minute)
+	peer.policy.Approve(action, self.vulosID, pl, requestID, time.Minute)
 
 	// Signed with the subject's OWN key, so the request authenticates and the
 	// self-vouch refusal — not the auth check — is what is being exercised.
 	cert, err := HTTPTransport{}.RequestVouch(context.Background(), peer.srv.URL, signedRequest(t, self, VouchRequest{
 		Action:      action,
-		SubjectID:   self.vulaID, // the peer vouching for itself
+		SubjectID:   self.vulosID, // the peer vouching for itself
 		PayloadHash: b64(pl),
 		RequestID:   requestID,
 	}))
@@ -149,7 +149,7 @@ func TestVoucherService_UnapprovedRequest_YieldsNoCert(t *testing.T) {
 
 	cert, err := HTTPTransport{}.RequestVouch(context.Background(), p1.srv.URL, signedRequest(t, subject, VouchRequest{
 		Action:      action,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: b64(pl),
 		RequestID:   "req-unapproved",
 	}))
@@ -173,7 +173,7 @@ func TestGatherQuorum_NoPeerApproves_InsufficientAndEmpty(t *testing.T) {
 
 	greq := GatherRequest{
 		Action:      ActionIdentityRecovery,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: hash("p"),
 		SubjectKey:  subject.priv,
 		RequestID:   "req-none-approved",
@@ -201,12 +201,12 @@ func TestGatherQuorum_BelowThreshold_RejectedByVerifyQuorum(t *testing.T) {
 	pl := hash("below-threshold-payload")
 	requestID := "req-below-threshold"
 
-	p1.policy.Approve(action, subject.vulaID, pl, requestID, time.Minute)
+	p1.policy.Approve(action, subject.vulosID, pl, requestID, time.Minute)
 	// p2 never approves.
 
 	greq := GatherRequest{
 		Action:      action,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: pl,
 		SubjectKey:  subject.priv,
 		RequestID:   requestID,
@@ -225,7 +225,7 @@ func TestGatherQuorum_BelowThreshold_RejectedByVerifyQuorum(t *testing.T) {
 	// chokepoint is VerifyQuorum — confirm IT independently rejects the
 	// under-threshold bundle too (the caller must never bypass it).
 	roster := newRoster(v1, v2)
-	qres, qerr := VerifyQuorum(action, subject.vulaID, pl, res.Certs, roster, 2, time.Now().UTC())
+	qres, qerr := VerifyQuorum(action, subject.vulosID, pl, res.Certs, roster, 2, time.Now().UTC())
 	if qerr == nil || qres.OK {
 		t.Fatalf("under-threshold bundle must be rejected by VerifyQuorum; OK=%v err=%v", qres.OK, qerr)
 	}
@@ -250,7 +250,7 @@ func TestApproveEndpoint_GateRefused_NoGrant(t *testing.T) {
 
 	subject := newBox(t)
 	resp, err := http.Post(srv.URL+DefaultApprovePath, "application/json", jsonBody(t, approveRequest{
-		Action: ActionDeviceEnroll, SubjectID: subject.vulaID, PayloadHash: b64(hash("p")), RequestID: "r",
+		Action: ActionDeviceEnroll, SubjectID: subject.vulosID, PayloadHash: b64(hash("p")), RequestID: "r",
 	}))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -260,7 +260,7 @@ func TestApproveEndpoint_GateRefused_NoGrant(t *testing.T) {
 		t.Fatalf("expected 403 when approve gate refuses, got %d", resp.StatusCode)
 	}
 	// Confirm nothing was actually granted.
-	d := policy.Decide(ApprovalRequest{Action: ActionDeviceEnroll, SubjectID: subject.vulaID, PayloadHash: hash("p"), RequestID: "r"})
+	d := policy.Decide(ApprovalRequest{Action: ActionDeviceEnroll, SubjectID: subject.vulosID, PayloadHash: hash("p"), RequestID: "r"})
 	if d != ApprovalPending {
 		t.Fatalf("gate-refused approve call must not have granted anything, got %v", d)
 	}
@@ -279,7 +279,7 @@ func TestVerifyVouchRequest_Properties(t *testing.T) {
 	valid := func() VouchRequest {
 		req := VouchRequest{
 			Action:      ActionIdentityRecovery,
-			SubjectID:   subject.vulaID,
+			SubjectID:   subject.vulosID,
 			PayloadHash: b64(hash("payload")),
 			RequestID:   "req-verify-props",
 		}
@@ -316,7 +316,7 @@ func TestVerifyVouchRequest_Properties(t *testing.T) {
 		other := newBox(t)
 		req := VouchRequest{
 			Action:      ActionIdentityRecovery,
-			SubjectID:   other.vulaID,
+			SubjectID:   other.vulosID,
 			PayloadHash: b64(hash("payload")),
 			RequestID:   "req-verify-props",
 		}
@@ -324,7 +324,7 @@ func TestVerifyVouchRequest_Properties(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Paste the other box's signature onto the victim's identity.
-		req.SubjectID = subject.vulaID
+		req.SubjectID = subject.vulosID
 		if err := VerifyVouchRequest(req, now); err == nil {
 			t.Fatal("a signature by an unrelated key verified against subject_id")
 		}
@@ -355,7 +355,7 @@ func TestVerifyVouchRequest_Properties(t *testing.T) {
 
 	t.Run("cannot sign for another identity", func(t *testing.T) {
 		other := newBox(t)
-		req := VouchRequest{Action: ActionIdentityRecovery, SubjectID: other.vulaID, RequestID: "r"}
+		req := VouchRequest{Action: ActionIdentityRecovery, SubjectID: other.vulosID, RequestID: "r"}
 		if err := SignVouchRequest(subject.priv, &req, now); err == nil {
 			t.Fatal("SignVouchRequest produced a signature for someone else's subject_id")
 		}

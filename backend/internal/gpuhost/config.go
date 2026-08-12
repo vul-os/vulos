@@ -22,7 +22,7 @@ import (
 // (backend/services/peering/). gpuhost does NOT generate it; it is supplied by
 // the caller so a single box has exactly one fabric identity across slices.
 //
-// Concretely the caller derives HostID from peering.Service.VulaID() (or, on
+// Concretely the caller derives HostID from peering.Service.VulosID() (or, on
 // older boxes, the lan instance ULID) and PublicKeyB64 from the same Ed25519
 // public key. Domain follows the existing fabric convention
 // (e.g. <ulid>.vulos.org or the configured authority domain).

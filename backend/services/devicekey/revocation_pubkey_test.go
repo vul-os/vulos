@@ -39,11 +39,11 @@ func TestBreakGlassRevokePubKey_ValidQuorumRevokesEnforcesPropagates(t *testing.
 	requestID := "remove-stolen-phone"
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
 	certs := []fleetid.VouchCert{
-		vouchFor(t, v1, subject.vulaID, payloadHash, now),
-		vouchFor(t, v2, subject.vulaID, payloadHash, now),
+		vouchFor(t, v1, subject.vulosID, payloadHash, now),
+		vouchFor(t, v2, subject.vulosID, payloadHash, now),
 	}
 
-	cert, err := BreakGlassRevokePubKey(store, targetDER, "phone stolen", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	cert, err := BreakGlassRevokePubKey(store, targetDER, "phone stolen", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err != nil {
 		t.Fatalf("BreakGlassRevokePubKey: %v", err)
 	}
@@ -88,10 +88,10 @@ func TestBreakGlassRevokePubKey_InsufficientQuorumRejected(t *testing.T) {
 	requestID := "remove-attempt"
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
 	certs := []fleetid.VouchCert{
-		vouchFor(t, v1, subject.vulaID, payloadHash, now), // only ONE voucher
+		vouchFor(t, v1, subject.vulosID, payloadHash, now), // only ONE voucher
 	}
 
-	if _, err := BreakGlassRevokePubKey(store, targetDER, "reason", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now); err == nil {
+	if _, err := BreakGlassRevokePubKey(store, targetDER, "reason", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now); err == nil {
 		t.Fatal("expected removal to fail with insufficient quorum")
 	}
 	if store.IsRevoked(fp) {
@@ -110,10 +110,10 @@ func TestBreakGlassRevokePubKey_SelfVouchNeverCounts(t *testing.T) {
 	now := time.Now()
 	requestID := "self-authorise-attempt"
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
-	selfVouch := vouchFor(t, subject, subject.vulaID, payloadHash, now)
+	selfVouch := vouchFor(t, subject, subject.vulosID, payloadHash, now)
 	certs := []fleetid.VouchCert{selfVouch, selfVouch}
 
-	if _, err := BreakGlassRevokePubKey(store, targetDER, "reason", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now); err == nil {
+	if _, err := BreakGlassRevokePubKey(store, targetDER, "reason", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now); err == nil {
 		t.Fatal("expected removal to reject a self-vouched 'quorum'")
 	}
 	if store.IsRevoked(fp) {
@@ -127,13 +127,13 @@ func TestBreakGlassRevokePubKey_MalformedInputsRejected(t *testing.T) {
 	roster := newTestRoster(subject)
 	now := time.Now()
 
-	if _, err := BreakGlassRevokePubKey(nil, targetDeviceKey(t), "r", subject.vulaID, "req", nil, roster, 2, now); err == nil {
+	if _, err := BreakGlassRevokePubKey(nil, targetDeviceKey(t), "r", subject.vulosID, "req", nil, roster, 2, now); err == nil {
 		t.Fatal("nil store must be rejected")
 	}
-	if _, err := BreakGlassRevokePubKey(store, nil, "r", subject.vulaID, "req", nil, roster, 2, now); err == nil {
+	if _, err := BreakGlassRevokePubKey(store, nil, "r", subject.vulosID, "req", nil, roster, 2, now); err == nil {
 		t.Fatal("empty target pubkey must be rejected")
 	}
-	if _, err := BreakGlassRevokePubKey(store, []byte("not a pkix key"), "r", subject.vulaID, "req", nil, roster, 2, now); err == nil {
+	if _, err := BreakGlassRevokePubKey(store, []byte("not a pkix key"), "r", subject.vulosID, "req", nil, roster, 2, now); err == nil {
 		t.Fatal("un-parseable target pubkey must be rejected")
 	}
 }

@@ -112,7 +112,7 @@ func TestCapabilityIssueAndVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueCapability: %v", err)
 	}
-	if cap.Signature == "" || cap.OwnerVulaID != owner.signer.SelfID() {
+	if cap.Signature == "" || cap.OwnerVulosID != owner.signer.SelfID() {
 		t.Fatalf("capability not properly signed: %+v", cap)
 	}
 	if err := owner.VerifyCapability(cap); err != nil {

@@ -70,7 +70,7 @@ func newSessionStackServer(t *testing.T) (*sessionStackPeer, *httptest.Server) {
 	}
 
 	msgAPI := peering.NewMessageAPI(
-		contacts, inbox, peering.NewPeerClient(), nil, svc.PrivateKey(), svc.VulaID(),
+		contacts, inbox, peering.NewPeerClient(), nil, svc.PrivateKey(), svc.VulosID(),
 	)
 
 	// Inner inbound mux: the message handler behind InboundMiddleware.
@@ -102,13 +102,13 @@ func newSenderPeer(t *testing.T) *peering.Service {
 
 // signedMessageEnvelope builds and signs a TypeMessage envelope from sender to
 // recipient.
-func signedMessageEnvelope(t *testing.T, sender *peering.Service, toVulaID, body string) *peering.Envelope {
+func signedMessageEnvelope(t *testing.T, sender *peering.Service, toVulosID, body string) *peering.Envelope {
 	t.Helper()
 	payload, err := json.Marshal(peering.MessagePayload{Type: "text", Body: body})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	env, err := peering.NewEnvelope("msg-"+body, sender.VulaID(), toVulaID, peering.TypeMessage, payload)
+	env, err := peering.NewEnvelope("msg-"+body, sender.VulosID(), toVulosID, peering.TypeMessage, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -146,14 +146,14 @@ func TestE2E_FullStack_SignedEnvelopeDeliversThroughSessionGate(t *testing.T) {
 	sender := newSenderPeer(t)
 
 	// Recipient approves the sender as a contact (mutual-trust precondition).
-	if err := recv.contacts.Add(sender.VulaID(), "sender", "sender.example:443"); err != nil {
+	if err := recv.contacts.Add(sender.VulosID(), "sender", "sender.example:443"); err != nil {
 		t.Fatalf("contacts.Add: %v", err)
 	}
-	if err := recv.contacts.Approve(sender.VulaID(), peering.DefaultPerms()); err != nil {
+	if err := recv.contacts.Approve(sender.VulosID(), peering.DefaultPerms()); err != nil {
 		t.Fatalf("contacts.Approve: %v", err)
 	}
 
-	env := signedMessageEnvelope(t, sender, recv.svc.VulaID(), "hello-fullstack")
+	env := signedMessageEnvelope(t, sender, recv.svc.VulosID(), "hello-fullstack")
 	resp := postEnvelope(t, srv.URL, "message", env)
 	defer resp.Body.Close()
 
@@ -169,16 +169,16 @@ func TestE2E_FullStack_SignedEnvelopeDeliversThroughSessionGate(t *testing.T) {
 func TestE2E_FullStack_UnsignedEnvelopeRejectedByInbound(t *testing.T) {
 	recv, srv := newSessionStackServer(t)
 	sender := newSenderPeer(t)
-	if err := recv.contacts.Add(sender.VulaID(), "sender", "sender.example:443"); err != nil {
+	if err := recv.contacts.Add(sender.VulosID(), "sender", "sender.example:443"); err != nil {
 		t.Fatalf("contacts.Add: %v", err)
 	}
-	if err := recv.contacts.Approve(sender.VulaID(), peering.DefaultPerms()); err != nil {
+	if err := recv.contacts.Approve(sender.VulosID(), peering.DefaultPerms()); err != nil {
 		t.Fatalf("contacts.Approve: %v", err)
 	}
 
 	// Build the envelope but do NOT sign it.
 	payload, _ := json.Marshal(peering.MessagePayload{Type: "text", Body: "unsigned"})
-	env, _ := peering.NewEnvelope("msg-unsigned", sender.VulaID(), recv.svc.VulaID(), peering.TypeMessage, payload)
+	env, _ := peering.NewEnvelope("msg-unsigned", sender.VulosID(), recv.svc.VulosID(), peering.TypeMessage, payload)
 	resp := postEnvelope(t, srv.URL, "message", env)
 	defer resp.Body.Close()
 
@@ -202,7 +202,7 @@ func TestE2E_FullStack_UnapprovedSenderRejectedByInbound(t *testing.T) {
 	recv, srv := newSessionStackServer(t)
 	stranger := newSenderPeer(t) // never approved on recv
 
-	env := signedMessageEnvelope(t, stranger, recv.svc.VulaID(), "stranger")
+	env := signedMessageEnvelope(t, stranger, recv.svc.VulosID(), "stranger")
 	resp := postEnvelope(t, srv.URL, "message", env)
 	defer resp.Body.Close()
 

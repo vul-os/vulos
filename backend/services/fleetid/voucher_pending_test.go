@@ -69,7 +69,7 @@ func askOnce(t *testing.T, o *operatorPeer, subject box, action, requestID strin
 	t.Helper()
 	req := VouchRequest{
 		Action:      action,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: b64(payload),
 		RequestID:   requestID,
 	}
@@ -125,7 +125,7 @@ func TestBreakGlassApprovalPath_EndToEnd(t *testing.T) {
 
 	// Everything the operator needs to JUDGE it must be there. An approve button
 	// on a row that does not say who/what/when has moved the gate, not kept it.
-	if item.SubjectID != subject.vulaID {
+	if item.SubjectID != subject.vulosID {
 		t.Errorf("subject_id = %q, want the asking box's identity", item.SubjectID)
 	}
 	if item.Action != ActionIdentityRecovery {
@@ -143,8 +143,8 @@ func TestBreakGlassApprovalPath_EndToEnd(t *testing.T) {
 	if item.RequesterEndpoint == "" {
 		t.Error("no claimed origin shown")
 	}
-	if list.SelfVulaID != voucher.svc.SelfVulaID() {
-		t.Errorf("self_vula_id = %q, want this box's own identity", list.SelfVulaID)
+	if list.SelfVulosID != voucher.svc.SelfVulosID() {
+		t.Errorf("self_vulos_id = %q, want this box's own identity", list.SelfVulosID)
 	}
 
 	// 3. The operator approves — using ONLY the tuple the list gave them.
@@ -168,10 +168,10 @@ func TestBreakGlassApprovalPath_EndToEnd(t *testing.T) {
 		t.Fatal("granted with no cert")
 	}
 	cert := *wire.Cert
-	if cert.VoucherVulaID != voucher.svc.SelfVulaID() {
-		t.Errorf("cert signed by %q, want this box", cert.VoucherVulaID)
+	if cert.VoucherVulosID != voucher.svc.SelfVulosID() {
+		t.Errorf("cert signed by %q, want this box", cert.VoucherVulosID)
 	}
-	if cert.SubjectID != subject.vulaID || cert.Action != ActionIdentityRecovery || cert.PayloadHash != b64(payload) {
+	if cert.SubjectID != subject.vulosID || cert.Action != ActionIdentityRecovery || cert.PayloadHash != b64(payload) {
 		t.Errorf("the issued cert is not bound to what the operator approved: %+v", cert)
 	}
 	// The cert must actually verify under the voucher's own rostered key — a
@@ -218,7 +218,7 @@ func TestBreakGlassApprovalPath_ReachesVerifyQuorum(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(list.Pending) != 1 {
-			t.Fatalf("queue at %s: %s", v.svc.SelfVulaID(), body)
+			t.Fatalf("queue at %s: %s", v.svc.SelfVulosID(), body)
 		}
 		it := list.Pending[0]
 		if code, b := v.post(t, DefaultApprovePath, approveRequest{
@@ -234,7 +234,7 @@ func TestBreakGlassApprovalPath_ReachesVerifyQuorum(t *testing.T) {
 	}
 
 	roster := newRoster(v1.box, v2.box)
-	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, payload, certs, roster, 2, time.Now())
+	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, payload, certs, roster, 2, time.Now())
 	if err != nil {
 		t.Fatalf("certs produced by the operator approval path do NOT satisfy VerifyQuorum: %v (result=%+v)", err, res)
 	}
@@ -244,7 +244,7 @@ func TestBreakGlassApprovalPath_ReachesVerifyQuorum(t *testing.T) {
 
 	// Control: the same bundle must still fail for a DIFFERENT payload, or the
 	// success above would say nothing about binding.
-	if _, err := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, hash("some other payload"), certs, roster, 2, time.Now()); err == nil {
+	if _, err := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, hash("some other payload"), certs, roster, 2, time.Now()); err == nil {
 		t.Error("the gathered bundle authorized a payload nobody approved")
 	}
 }
@@ -262,7 +262,7 @@ func TestPendingQueue_GateRefused(t *testing.T) {
 		t.Errorf("GET %s with the gate refusing: %d, want 403. body=%s", DefaultPendingPath, code, body)
 	}
 	if code, body := voucher.post(t, DefaultDismissPath, approveRequest{
-		Action: ActionDeviceEnroll, SubjectID: subject.vulaID, PayloadHash: b64(payload), RequestID: "req-gate",
+		Action: ActionDeviceEnroll, SubjectID: subject.vulosID, PayloadHash: b64(payload), RequestID: "req-gate",
 	}); code != http.StatusForbidden {
 		t.Errorf("POST %s with the gate refusing: %d, want 403. body=%s", DefaultDismissPath, code, body)
 	}
@@ -282,7 +282,7 @@ func TestPendingQueue_DismissGrantsNothing(t *testing.T) {
 	askOnce(t, voucher, subject, ActionSSHRecovery, requestID, payload)
 
 	code, body := voucher.post(t, DefaultDismissPath, approveRequest{
-		Action: ActionSSHRecovery, SubjectID: subject.vulaID, PayloadHash: b64(payload), RequestID: requestID,
+		Action: ActionSSHRecovery, SubjectID: subject.vulosID, PayloadHash: b64(payload), RequestID: requestID,
 	})
 	if code != http.StatusOK {
 		t.Fatalf("dismiss: %d body=%s", code, body)
@@ -338,7 +338,7 @@ func TestPendingQueue_RosterAnnotation(t *testing.T) {
 	t.Run("annotated carries the roster verdict", func(t *testing.T) {
 		voucher := newOperatorPeer(t, newBox(t))
 		voucher.svc.SetPeerAnnotator(func(id string) PeerAnnotation {
-			if id == subject.vulaID {
+			if id == subject.vulosID {
 				return PeerAnnotation{Known: true, DisplayName: "workshop-box", Revoked: true}
 			}
 			return PeerAnnotation{}
@@ -413,7 +413,7 @@ func TestPendingQueue_UnauthenticatedNeverQueued(t *testing.T) {
 	code, _ := voucher.post(t, DefaultVouchPath, VouchRequest{
 		Type:        VouchRequestType,
 		Action:      ActionIdentityRecovery,
-		SubjectID:   subject.vulaID,
+		SubjectID:   subject.vulosID,
 		PayloadHash: b64(hash("p")),
 		RequestID:   "req-unsigned",
 		IssuedAt:    time.Now().UTC().Format(time.RFC3339),

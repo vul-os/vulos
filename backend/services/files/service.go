@@ -94,7 +94,7 @@ type Service struct {
 	// ACCOUNT-SHARE seam (wired via WithShareResolver; nil ⇒ ShareByEmail returns
 	// ErrShareResolveUnavailable). shareResolver maps a recipient EMAIL to a
 	// ShareRecipient and decides locality (Contract 2 + 3): a co-cloud principal
-	// uses the ACL grant path, a remote VulaID uses the peershare capability path.
+	// uses the ACL grant path, a remote VulosID uses the peershare capability path.
 	// capDeliverer (optional) delivers a minted capability to the remote
 	// recipient's server intake; nil ⇒ the capability is returned but not
 	// auto-delivered.

@@ -473,7 +473,7 @@ SFU option for Element Call). What remains first-party is the sovereign P2P
 within the small mesh cap, with **no** opt-in to advertise a box as a
 dedicated big-call SFU host the way the retired Meet host registry did.
 
-A BYO opt-in still exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GPU_ADVERTISE_HOST`, `VULOS_STREAMER_BINARY`; status at `/api/gpuhost/status`) — an unrelated role that uses the box's single fabric identity, the same Ed25519 keypair (VulaID) the box advertises for peering.
+A BYO opt-in still exists for GPU streaming hosts (`VULOS_GPU_HOST=1`, `VULOS_GPU_ADVERTISE_HOST`, `VULOS_STREAMER_BINARY`; status at `/api/gpuhost/status`) — an unrelated role that uses the box's single fabric identity, the same Ed25519 keypair (VulosID) the box advertises for peering.
 
 ---
 

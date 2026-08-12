@@ -63,8 +63,8 @@ const (
 
 // SharePeerEntry records a single peer's access level for a shared document.
 type SharePeerEntry struct {
-	VulaID string    `json:"vula_id"`
-	Perm   SharePerm `json:"perm"` // SharePermEdit | SharePermView
+	VulosID string    `json:"vulos_id"`
+	Perm    SharePerm `json:"perm"` // SharePermEdit | SharePermView
 }
 
 // ShareDocEntry is the in-memory + on-wire record for one shared document.
@@ -99,8 +99,8 @@ type shareUpdateBody struct {
 
 // sharePermRequest is the body for PUT /api/peering/collab/{doc_id}/perms.
 type sharePermRequest struct {
-	TargetVulaID string    `json:"target_vula_id"`
-	Perm         SharePerm `json:"perm"`
+	TargetVulosID string    `json:"target_vulos_id"`
+	Perm          SharePerm `json:"perm"`
 }
 
 // ---------------------------------------------------------------------------
@@ -173,9 +173,9 @@ func (s *ShareStore) Remove(docID string) error {
 	return nil
 }
 
-// SetPerm changes the permission for targetVulaID on docID.
-// callerVulaID must be the document owner.
-func (s *ShareStore) SetPerm(docID, callerVulaID, targetVulaID string, perm SharePerm) error {
+// SetPerm changes the permission for targetVulosID on docID.
+// callerVulosID must be the document owner.
+func (s *ShareStore) SetPerm(docID, callerVulosID, targetVulosID string, perm SharePerm) error {
 	if err := shareValidatePerm(perm); err != nil {
 		return err
 	}
@@ -185,31 +185,31 @@ func (s *ShareStore) SetPerm(docID, callerVulaID, targetVulaID string, perm Shar
 	if !ok {
 		return errors.New("share: document not found")
 	}
-	if e.OwnerID != callerVulaID {
+	if e.OwnerID != callerVulosID {
 		return errors.New("share: only the owner may change permissions")
 	}
 	for i, p := range e.Peers {
-		if p.VulaID == targetVulaID {
+		if p.VulosID == targetVulosID {
 			e.Peers[i].Perm = perm
 			e.UpdatedAt = time.Now().UTC()
 			return nil
 		}
 	}
-	e.Peers = append(e.Peers, SharePeerEntry{VulaID: targetVulaID, Perm: perm})
+	e.Peers = append(e.Peers, SharePeerEntry{VulosID: targetVulosID, Perm: perm})
 	e.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
 // Revoke marks a document as revoked. Only the owner may revoke.
 // After revocation, PeerPerm returns an error indicating the document is gone.
-func (s *ShareStore) Revoke(docID, callerVulaID string) error {
+func (s *ShareStore) Revoke(docID, callerVulosID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.docs[docID]
 	if !ok {
 		return errors.New("share: document not found")
 	}
-	if e.OwnerID != callerVulaID {
+	if e.OwnerID != callerVulosID {
 		return errors.New("share: only the owner may revoke")
 	}
 	e.Revoked = true
@@ -217,10 +217,10 @@ func (s *ShareStore) Revoke(docID, callerVulaID string) error {
 	return nil
 }
 
-// PeerPerm returns the permission for vulaID on docID.
+// PeerPerm returns the permission for vulosID on docID.
 // Returns an error if the document is not found, the peer has no entry, or
 // the document has been revoked.
-func (s *ShareStore) PeerPerm(docID, vulaID string) (SharePerm, error) {
+func (s *ShareStore) PeerPerm(docID, vulosID string) (SharePerm, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	e, ok := s.docs[docID]
@@ -231,11 +231,11 @@ func (s *ShareStore) PeerPerm(docID, vulaID string) (SharePerm, error) {
 		return "", errors.New("share: document has been revoked")
 	}
 	// Owner always has edit permission.
-	if e.OwnerID == vulaID {
+	if e.OwnerID == vulosID {
 		return SharePermEdit, nil
 	}
 	for _, p := range e.Peers {
-		if p.VulaID == vulaID {
+		if p.VulosID == vulosID {
 			return p.Perm, nil
 		}
 	}
@@ -248,19 +248,19 @@ func (s *ShareStore) PeerPerm(docID, vulaID string) (SharePerm, error) {
 
 // CollabShareService wires the ShareStore to the HTTP mux.
 type CollabShareService struct {
-	store       *ShareStore
-	localVulaID string // this instance's Vula ID (populated from env/identity)
+	store        *ShareStore
+	localVulosID string // this instance's Vula ID (populated from env/identity)
 }
 
 // newCollabShareService creates a service backed by store.
-func newCollabShareService(store *ShareStore, localVulaID string) *CollabShareService {
-	return &CollabShareService{store: store, localVulaID: localVulaID}
+func newCollabShareService(store *ShareStore, localVulosID string) *CollabShareService {
+	return &CollabShareService{store: store, localVulosID: localVulosID}
 }
 
 // localID returns the best available local Vula ID.
 func (svc *CollabShareService) localID() string {
-	if svc.localVulaID != "" {
-		return svc.localVulaID
+	if svc.localVulosID != "" {
+		return svc.localVulosID
 	}
 	return "local"
 }
@@ -291,7 +291,7 @@ func RegisterCollabShareHandlers(mux *http.ServeMux) {
 }
 
 // registerCollabShareHandlersWithService is the testable inner registration.
-// Tests inject a pre-configured service (with a known localVulaID).
+// Tests inject a pre-configured service (with a known localVulosID).
 func registerCollabShareHandlersWithService(mux *http.ServeMux, svc *CollabShareService) {
 	// Client-facing
 	mux.HandleFunc("POST /api/peering/collab/share", svc.handleShareDoc)
@@ -343,7 +343,7 @@ func (svc *CollabShareService) handleShareDoc(w http.ResponseWriter, r *http.Req
 		Title:     inv.Title,
 		OwnerID:   inv.FromID,
 		Badge:     ShareBadgeOwned,
-		Peers:     []SharePeerEntry{{VulaID: inv.PeerID, Perm: inv.Perm}},
+		Peers:     []SharePeerEntry{{VulosID: inv.PeerID, Perm: inv.Perm}},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -394,7 +394,7 @@ func (svc *CollabShareService) handleGetDoc(w http.ResponseWriter, r *http.Reque
 //   - If the caller is the owner, the document is marked Revoked before removal.
 //   - Peers (non-owners) simply leave (remove their local record).
 //
-// Query param ?caller=<vula_id> identifies the caller; falls back to localID.
+// Query param ?caller=<vulos_id> identifies the caller; falls back to localID.
 func (svc *CollabShareService) handleLeaveOrRevoke(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
 	if docID == "" {
@@ -440,7 +440,7 @@ func (svc *CollabShareService) handleLeaveOrRevoke(w http.ResponseWriter, r *htt
 
 // handleSetPerms updates the permission for a specific peer on a document.
 // The caller must be the document owner.
-// Query param ?caller=<vula_id> identifies the owner; falls back to localID.
+// Query param ?caller=<vulos_id> identifies the owner; falls back to localID.
 func (svc *CollabShareService) handleSetPerms(w http.ResponseWriter, r *http.Request) {
 	docID := r.PathValue("doc_id")
 	if docID == "" {
@@ -458,8 +458,8 @@ func (svc *CollabShareService) handleSetPerms(w http.ResponseWriter, r *http.Req
 		shareWriteErr(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.TargetVulaID == "" {
-		shareWriteErr(w, "target_vula_id is required", http.StatusBadRequest)
+	if req.TargetVulosID == "" {
+		shareWriteErr(w, "target_vulos_id is required", http.StatusBadRequest)
 		return
 	}
 	if err := shareValidatePerm(req.Perm); err != nil {
@@ -467,7 +467,7 @@ func (svc *CollabShareService) handleSetPerms(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := svc.store.SetPerm(docID, callerID, req.TargetVulaID, req.Perm); err != nil {
+	if err := svc.store.SetPerm(docID, callerID, req.TargetVulosID, req.Perm); err != nil {
 		switch {
 		case err.Error() == "share: document not found":
 			shareWriteErr(w, err.Error(), http.StatusNotFound)
@@ -480,7 +480,7 @@ func (svc *CollabShareService) handleSetPerms(w http.ResponseWriter, r *http.Req
 	}
 
 	entry, _ := svc.store.Get(docID)
-	log.Printf("[peering/share] perm updated for peer %s on doc %s: %s", req.TargetVulaID, docID, req.Perm)
+	log.Printf("[peering/share] perm updated for peer %s on doc %s: %s", req.TargetVulosID, docID, req.Perm)
 	shareWriteJSON(w, entry)
 }
 
@@ -521,7 +521,7 @@ func (svc *CollabShareService) handleInboundInvite(w http.ResponseWriter, r *htt
 		Title:     inv.Title,
 		OwnerID:   inv.FromID,
 		Badge:     ShareBadgeShared, // this instance is a recipient
-		Peers:     []SharePeerEntry{{VulaID: inv.FromID, Perm: SharePermEdit}},
+		Peers:     []SharePeerEntry{{VulosID: inv.FromID, Perm: SharePermEdit}},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -596,7 +596,7 @@ func (svc *CollabShareService) handleInboundUpdate(w http.ResponseWriter, r *htt
 // ---------------------------------------------------------------------------
 
 // handleInboundSync responds to a catch-up state request from a peer.
-// The caller passes ?doc_id=<id>&sender_id=<vula_id>.
+// The caller passes ?doc_id=<id>&sender_id=<vulos_id>.
 // Permission is verified before returning state.
 func (svc *CollabShareService) handleInboundSync(w http.ResponseWriter, r *http.Request) {
 	docID := r.URL.Query().Get("doc_id")

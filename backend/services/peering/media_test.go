@@ -561,10 +561,10 @@ func TestHandleInboundMedia_InvalidPayload(t *testing.T) {
 	ms, _ := newTestMediaStore(t)
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 
-	vulaID := "vula:ed25519:" + strings.Repeat("A", 44)
+	vulosID := "vulos:ed25519:" + strings.Repeat("A", 44)
 	env := &Envelope{
 		ID:        "test-bad-payload",
-		From:      vulaID,
+		From:      vulosID,
 		Type:      TypeMessage,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Payload:   json.RawMessage("not-json-object"),
@@ -586,13 +586,13 @@ func TestHandleInboundMedia_InvalidPayload(t *testing.T) {
 func TestHandleInboundMedia_MissingHash(t *testing.T) {
 	ms, _ := newTestMediaStore(t)
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
-	vulaID := "vula:ed25519:" + strings.Repeat("B", 44)
+	vulosID := "vulos:ed25519:" + strings.Repeat("B", 44)
 
 	payload, _ := json.Marshal(MediaRefPayload{
 		SignedURL: "http://example.com/blob",
 		MIMEType:  "image/jpeg",
 	})
-	env, _ := NewEnvelope("test-no-hash", vulaID, "to", TypeMessage, json.RawMessage(payload))
+	env, _ := NewEnvelope("test-no-hash", vulosID, "to", TypeMessage, json.RawMessage(payload))
 	env.Sign(priv)
 
 	ctx := contextWithEnvelope(env)
@@ -612,7 +612,7 @@ func TestHandleInboundMedia_AcceptsValidPayload(t *testing.T) {
 	// (the actual fetch happens in a goroutine).
 	ms, _ := newTestMediaStore(t)
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
-	vulaID := "vula:ed25519:" + strings.Repeat("C", 44)
+	vulosID := "vulos:ed25519:" + strings.Repeat("C", 44)
 
 	hexHash := strings.Repeat("2", 64)
 	payload, _ := json.Marshal(MediaRefPayload{
@@ -620,7 +620,7 @@ func TestHandleInboundMedia_AcceptsValidPayload(t *testing.T) {
 		SignedURL: "http://127.0.0.1:1/does-not-exist", // unreachable — fetch will fail in bg
 		MIMEType:  "image/jpeg",
 	})
-	env, _ := NewEnvelope("test-valid-media", vulaID, "to", TypeMessage, json.RawMessage(payload))
+	env, _ := NewEnvelope("test-valid-media", vulosID, "to", TypeMessage, json.RawMessage(payload))
 	env.Sign(priv)
 
 	ctx := contextWithEnvelope(env)

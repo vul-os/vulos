@@ -56,7 +56,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
 }
 
 /** A roster entry from GET /api/peering/drop/nearby — the same list the
- *  (retired) Drop panel showed. Only `vula_id` is guaranteed; it satisfies
+ *  (retired) Drop panel showed. Only `vulos_id` is guaranteed; it satisfies
  *  {@link SharePeer} so a roster entry can be handed straight to
  *  buildSendBody(). */
 export interface DropPeer extends SharePeer {
@@ -65,7 +65,7 @@ export interface DropPeer extends SharePeer {
 }
 
 function isDropPeer(x: unknown): x is DropPeer {
-  return isRecord(x) && typeof x.vula_id === 'string'
+  return isRecord(x) && typeof x.vulos_id === 'string'
 }
 
 /** Message from a thrown value — network/API errors here are `unknown` in
@@ -106,7 +106,7 @@ export default function SharePeerModal({ target, home, exec, onClose }: SharePee
   const [peers, setPeers] = useState<DropPeer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // sending: vula_id currently in flight; sent: vula_id -> true; failed: vula_id -> msg
+  // sending: vulos_id currently in flight; sent: vulos_id -> true; failed: vulos_id -> msg
   const [sending, setSending] = useState<string | null>(null)
   const [sent, setSent] = useState<Record<string, boolean>>({})
   const [failed, setFailed] = useState<Record<string, string>>({})
@@ -135,8 +135,8 @@ export default function SharePeerModal({ target, home, exec, onClose }: SharePee
 
   const share = useCallback(async (peer: DropPeer) => {
     if (sending) return
-    setSending(peer.vula_id)
-    setFailed(prev => { const n = { ...prev }; delete n[peer.vula_id]; return n })
+    setSending(peer.vulos_id)
+    setFailed(prev => { const n = { ...prev }; delete n[peer.vulos_id]; return n })
     try {
       const absPath = resolveAbsPath(target.path, home)
       let mediaPath = absPath
@@ -160,9 +160,9 @@ export default function SharePeerModal({ target, home, exec, onClose }: SharePee
         method: 'POST',
         body: JSON.stringify(buildSendBody(peer, mediaPath, mime)),
       })
-      setSent(prev => ({ ...prev, [peer.vula_id]: true }))
+      setSent(prev => ({ ...prev, [peer.vulos_id]: true }))
     } catch (err) {
-      setFailed(prev => ({ ...prev, [peer.vula_id]: errMessage(err) }))
+      setFailed(prev => ({ ...prev, [peer.vulos_id]: errMessage(err) }))
     } finally {
       setSending(null)
     }
@@ -229,12 +229,12 @@ export default function SharePeerModal({ target, home, exec, onClose }: SharePee
           ) : (
             <ul className="space-y-1.5">
               {peers.map(peer => {
-                const isSent = sent[peer.vula_id]
-                const isSending = sending === peer.vula_id
-                const fail = failed[peer.vula_id]
-                const initial = (peer.display_name || peer.vula_id || '?')[0].toUpperCase()
+                const isSent = sent[peer.vulos_id]
+                const isSending = sending === peer.vulos_id
+                const fail = failed[peer.vulos_id]
+                const initial = (peer.display_name || peer.vulos_id || '?')[0].toUpperCase()
                 return (
-                  <li key={peer.vula_id}>
+                  <li key={peer.vulos_id}>
                     <button
                       onClick={() => share(peer)}
                       disabled={isSending || isSent || !!sending}
@@ -255,7 +255,7 @@ export default function SharePeerModal({ target, home, exec, onClose }: SharePee
                           ? <span className="block text-[12px] text-danger truncate">{fail}</span>
                           : peer.is_contact
                             ? <span className="block text-[12px] accent-text">Contact</span>
-                            : <span className="block text-[12px] text-neutral-600 truncate">{peer.vula_id}</span>}
+                            : <span className="block text-[12px] text-neutral-600 truncate">{peer.vulos_id}</span>}
                       </span>
                       <span className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg accent-text">
                         {isSending

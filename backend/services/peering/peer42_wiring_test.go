@@ -44,8 +44,8 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	if err != nil {
 		t.Fatalf("keygen: %v", err)
 	}
-	// Use a fixed test VulaID — no real base58 encoder needed for wiring tests.
-	vulaID := "vula:test:deadbeef"
+	// Use a fixed test VulosID — no real base58 encoder needed for wiring tests.
+	vulosID := "vula:test:deadbeef"
 
 	peeringMux := http.NewServeMux()
 
@@ -59,15 +59,15 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	}
 	peerClient := NewPeerClient()
 
-	callerVulaID := func(r *http.Request) string { return r.Header.Get("X-Vula-ID") }
+	callerVulosID := func(r *http.Request) string { return r.Header.Get("X-Vula-ID") }
 
 	// Contacts.
-	contactAPI := NewContactAPI(contactStore, peerClient, NewHub(), priv, vulaID, "localhost:0")
+	contactAPI := NewContactAPI(contactStore, peerClient, NewHub(), priv, vulosID, "localhost:0")
 	contactAPI.OnApprove = FetchPeerProfileAsync
 	contactAPI.RegisterContactHandlers(peeringMux)
 
 	// Messages.
-	msgAPI := NewMessageAPI(contactStore, inboxStore, peerClient, NewHub(), priv, vulaID)
+	msgAPI := NewMessageAPI(contactStore, inboxStore, peerClient, NewHub(), priv, vulosID)
 	msgAPI.RegisterMessageHandlers(peeringMux)
 
 	// Groups.
@@ -75,7 +75,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	if gErr != nil {
 		t.Fatalf("GroupStore: %v", gErr)
 	}
-	groupAPI := NewGroupAPI(groupStore, contactStore, inboxStore, peerClient, NewHub(), priv, vulaID)
+	groupAPI := NewGroupAPI(groupStore, contactStore, inboxStore, peerClient, NewHub(), priv, vulosID)
 	RegisterGroupHandlers(peeringMux, groupAPI)
 
 	// Relay.
@@ -86,14 +86,14 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	RegisterRelayHandlers(peeringMux, relayStore)
 
 	// Feeds.
-	feedStore, fErr := NewFeedStore(pRoot, priv, vulaID, contactStore)
+	feedStore, fErr := NewFeedStore(pRoot, priv, vulosID, contactStore)
 	if fErr != nil {
 		t.Fatalf("FeedStore: %v", fErr)
 	}
-	RegisterFeedHandlers(peeringMux, feedStore, callerVulaID)
+	RegisterFeedHandlers(peeringMux, feedStore, callerVulosID)
 
 	// Drop.
-	dropSvc := NewDropService(vulaID, "", contactStore, nil)
+	dropSvc := NewDropService(vulosID, "", contactStore, nil)
 	RegisterDropHandlers(peeringMux, dropSvc)
 
 	// Media.
@@ -104,7 +104,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	mediaStore.RegisterMediaHandlers(peeringMux)
 
 	// Calls.
-	callRelay := NewCallRelay(vulaID, contactStore, NewHub(), peerClient, priv)
+	callRelay := NewCallRelay(vulosID, contactStore, NewHub(), peerClient, priv)
 	RegisterCallHandlers(peeringMux, callRelay)
 
 	// Mesh call.
@@ -119,7 +119,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	RegisterLobbyHandlers(peeringMux, lobbySvc)
 
 	// Profile.
-	RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), vulaID, contactStore)
+	RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), vulosID, contactStore)
 
 	// Verify.
 	vfySvc, vErr := VerifyNewService(filepath.Join(pRoot, "identity"))
@@ -138,7 +138,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	RegisterAttestHandlers(peeringMux, NewAttestStore())
 
 	// Proximity drop.
-	RegisterProximityHandlers(peeringMux, NewProxService(vulaID, "localhost:0"))
+	RegisterProximityHandlers(peeringMux, NewProxService(vulosID, "localhost:0"))
 
 	// Collab + history.
 	collabStore, cErr := NewCollabStore(filepath.Join(pRoot, "collab"))
@@ -152,7 +152,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 	RegisterPresenceHandlers(peeringMux, NewPresenceService())
 
 	// Collab-invite inbound.
-	sharesSvc := NewSharesService(contactStore, NewShareStore(), peerClient, priv, vulaID)
+	sharesSvc := NewSharesService(contactStore, NewShareStore(), peerClient, priv, vulosID)
 	peeringMux.HandleFunc("POST /api/peering/inbound/collab-invite", sharesSvc.HandleInboundShare)
 
 	return peeringMux
@@ -164,7 +164,7 @@ var peer42RouteTable = []struct{ method, path, body string }{
 	// contacts
 	{"GET", "/api/peering/contacts", ""},
 	{"GET", "/api/peering/contacts/requests", ""},
-	{"POST", "/api/peering/contacts/request", `{"vula_id":"x","server":"localhost"}`},
+	{"POST", "/api/peering/contacts/request", `{"vulos_id":"x","server":"localhost"}`},
 	{"POST", "/api/peering/contacts/approve/test-id", "{}"},
 	{"POST", "/api/peering/contacts/block/test-id", "{}"},
 	{"DELETE", "/api/peering/contacts/test-id", ""},
@@ -176,7 +176,7 @@ var peer42RouteTable = []struct{ method, path, body string }{
 	{"GET", "/api/peering/groups", ""},
 	{"POST", "/api/peering/groups", `{"name":"test"}`},
 	{"GET", "/api/peering/groups/test-id", ""},
-	{"POST", "/api/peering/groups/test-id/members", `{"vula_id":"x"}`},
+	{"POST", "/api/peering/groups/test-id/members", `{"vulos_id":"x"}`},
 	{"POST", "/api/peering/groups/test-id/send", `{"text":"hi"}`},
 	// relay
 	{"POST", "/api/peering/relay/deposit", `{"envelope":""}`},

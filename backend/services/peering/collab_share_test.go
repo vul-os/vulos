@@ -14,8 +14,8 @@ import (
 // ---------------------------------------------------------------------------
 
 // newShareTestService creates a CollabShareService with a known local ID.
-func newShareTestService(localVulaID string) *CollabShareService {
-	return newCollabShareService(NewShareStore(), localVulaID)
+func newShareTestService(localVulosID string) *CollabShareService {
+	return newCollabShareService(NewShareStore(), localVulosID)
 }
 
 // shareMux registers handlers on a fresh mux and returns it.
@@ -55,7 +55,7 @@ func TestShareStore_AddAndGet(t *testing.T) {
 		Title:   "Test Doc",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	}
 	if err := s.Add(doc); err != nil {
 		t.Fatalf("Add: %v", err)
@@ -140,7 +140,7 @@ func TestShareStore_SetPerm(t *testing.T) {
 		DocID:   "doc-1",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	if err := s.SetPerm("doc-1", "alice", "bob", SharePermView); err != nil {
 		t.Fatalf("SetPerm: %v", err)
@@ -160,7 +160,7 @@ func TestShareStore_SetPerm_OnlyOwner(t *testing.T) {
 		DocID:   "doc-1",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	if err := s.SetPerm("doc-1", "bob", "alice", SharePermView); err == nil {
 		t.Error("SetPerm by non-owner should return error")
@@ -181,7 +181,7 @@ func TestShareStore_Revoke(t *testing.T) {
 		DocID:   "doc-1",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	if err := s.Revoke("doc-1", "alice"); err != nil {
 		t.Fatalf("Revoke: %v", err)
@@ -198,7 +198,7 @@ func TestShareStore_Revoke_OnlyOwner(t *testing.T) {
 		DocID:   "doc-1",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	if err := s.Revoke("doc-1", "bob"); err == nil {
 		t.Error("Revoke by non-owner should return error")
@@ -324,7 +324,7 @@ func TestHandleLeaveOrRevoke_Owner(t *testing.T) {
 	svc := newShareTestService("alice")
 	_ = svc.store.Add(&ShareDocEntry{
 		DocID: "doc-r", OwnerID: "alice", Badge: ShareBadgeOwned,
-		Peers: []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers: []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	mux := shareMux(svc)
 	rr := doShareRequest(t, mux, http.MethodDelete, "/api/peering/collab/doc-r?caller=alice", nil)
@@ -346,7 +346,7 @@ func TestHandleLeaveOrRevoke_Peer(t *testing.T) {
 	svc := newShareTestService("alice")
 	_ = svc.store.Add(&ShareDocEntry{
 		DocID: "doc-l", OwnerID: "alice", Badge: ShareBadgeOwned,
-		Peers: []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers: []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	mux := shareMux(svc)
 	rr := doShareRequest(t, mux, http.MethodDelete, "/api/peering/collab/doc-l?caller=bob", nil)
@@ -364,10 +364,10 @@ func TestHandleSetPerms_OwnerCanChange(t *testing.T) {
 	svc := newShareTestService("alice")
 	_ = svc.store.Add(&ShareDocEntry{
 		DocID: "doc-p", OwnerID: "alice", Badge: ShareBadgeOwned,
-		Peers: []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers: []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	mux := shareMux(svc)
-	body := sharePermRequest{TargetVulaID: "bob", Perm: SharePermView}
+	body := sharePermRequest{TargetVulosID: "bob", Perm: SharePermView}
 	rr := doShareRequest(t, mux, http.MethodPut, "/api/peering/collab/doc-p/perms?caller=alice", body)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rr.Code, rr.Body.String())
@@ -383,10 +383,10 @@ func TestHandleSetPerms_NonOwnerForbidden(t *testing.T) {
 	svc := newShareTestService("alice")
 	_ = svc.store.Add(&ShareDocEntry{
 		DocID: "doc-p", OwnerID: "alice", Badge: ShareBadgeOwned,
-		Peers: []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers: []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	mux := shareMux(svc)
-	body := sharePermRequest{TargetVulaID: "alice", Perm: SharePermView}
+	body := sharePermRequest{TargetVulosID: "alice", Perm: SharePermView}
 	rr := doShareRequest(t, mux, http.MethodPut, "/api/peering/collab/doc-p/perms?caller=bob", body)
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", rr.Code)
@@ -475,7 +475,7 @@ func TestHandleInboundUpdate_EditAllowed(t *testing.T) {
 		DocID:   "doc-upd",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	mux := shareMux(svc)
 	body := map[string]string{"doc_id": "doc-upd", "sender_id": "bob"}
@@ -492,7 +492,7 @@ func TestHandleInboundUpdate_ViewOnly_Returns403(t *testing.T) {
 		DocID:   "doc-view",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "carol", Perm: SharePermView}},
+		Peers:   []SharePeerEntry{{VulosID: "carol", Perm: SharePermView}},
 	})
 	mux := shareMux(svc)
 	body := map[string]string{"doc_id": "doc-view", "sender_id": "carol"}
@@ -509,7 +509,7 @@ func TestHandleInboundUpdate_Revoked_Returns410(t *testing.T) {
 		DocID:   "doc-rev",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermEdit}},
 	})
 	_ = svc.store.Revoke("doc-rev", "alice")
 	// Even though Revoke succeeded, Remove is called separately in the HTTP layer.
@@ -537,7 +537,7 @@ func TestHandleInboundSync_AllowedPeer(t *testing.T) {
 		DocID:   "doc-sync",
 		OwnerID: "alice",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "bob", Perm: SharePermView}},
+		Peers:   []SharePeerEntry{{VulosID: "bob", Perm: SharePermView}},
 	})
 	mux := shareMux(svc)
 	rr := doShareRequest(t, mux, http.MethodGet, "/api/peering/inbound/collab-sync?doc_id=doc-sync&sender_id=bob", nil)

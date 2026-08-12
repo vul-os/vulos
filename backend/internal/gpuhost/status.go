@@ -11,7 +11,7 @@
 //	{
 //	  "ready": true,
 //	  "state": "ready",            // see gpuhost.State constants
-//	  "host_id": "vula:ed25519:..",
+//	  "host_id": "vulos:ed25519:..",
 //	  "domain": "abc123.vulos.org",
 //	  "advertise": "1.2.3.4:47989",
 //	  "codec": "h264",

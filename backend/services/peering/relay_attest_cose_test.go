@@ -10,7 +10,7 @@
 //   - a document whose signed payload is TAMPERED after signing is REJECTED;
 //   - a document with FORGED PCRs (re-signed but not matching the policy) is
 //     REJECTED;
-//   - the relay-identity binding (signed user_data ↔ relay_vula_id) is enforced.
+//   - the relay-identity binding (signed user_data ↔ relay_vulos_id) is enforced.
 package peering
 
 import (
@@ -155,7 +155,7 @@ func nitroChain(t *testing.T) (*testCert, [][]byte, string) {
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-const relayID = "vula:ed25519:relay-cose-test"
+const relayID = "vulos:ed25519:relay-cose-test"
 
 func TestNitroCOSE_KnownGoodAccepted(t *testing.T) {
 	leaf, cabundle, rootPEM := nitroChain(t)
@@ -163,10 +163,10 @@ func TestNitroCOSE_KnownGoodAccepted(t *testing.T) {
 	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM(pcr0, relayID), nil)
 
 	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: relayID,
-		IssuedAt:    time.Now(),
-		RawDocument: raw,
+		Provider:     AttestProviderNitro,
+		RelayVulosID: relayID,
+		IssuedAt:     time.Now(),
+		RawDocument:  raw,
 	}
 	policy := AttestPolicy{
 		Provider:       AttestProviderNitro,
@@ -188,7 +188,7 @@ func TestNitroCOSE_TamperedPayloadRejected(t *testing.T) {
 		p[len(p)-1] ^= 0xff
 		return p
 	})
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
 	err := AttestVerifyRelay(doc, policy)
 	if err == nil {
@@ -212,7 +212,7 @@ func TestNitroCOSE_ForgedPCRRejected(t *testing.T) {
 	forged := []byte{0x00, 0x00, 0x00, 0x00} // not the expected deadbeef
 	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM(forged, relayID), nil)
 
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
 	err := AttestVerifyRelay(doc, policy)
 	assertAttestCode(t, err, "pcr-mismatch")
@@ -223,7 +223,7 @@ func TestNitroCOSE_UntrustedRootRejected(t *testing.T) {
 	// trusted root (here the default AWS Nitro root, since policy pins no override).
 	leaf, cabundle, _ := nitroChain(t)
 	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, relayID), nil)
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	// No TrustedRootPEM override → built-in AWS Nitro root is used → attacker
 	// chain cannot anchor → reject.
 	policy := AttestPolicy{Provider: AttestProviderNitro, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
@@ -234,8 +234,8 @@ func TestNitroCOSE_UntrustedRootRejected(t *testing.T) {
 func TestNitroCOSE_IdentityBindingEnforced(t *testing.T) {
 	leaf, cabundle, rootPEM := nitroChain(t)
 	// Document is validly signed but user_data binds a DIFFERENT relay identity.
-	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, "vula:ed25519:someone-else"), nil)
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, "vulos:ed25519:someone-else"), nil)
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
 	err := AttestVerifyRelay(doc, policy)
 	assertAttestCode(t, err, "identity-mismatch")
@@ -244,7 +244,7 @@ func TestNitroCOSE_IdentityBindingEnforced(t *testing.T) {
 func TestNitroCOSE_NoExpectedPCRsRejected(t *testing.T) {
 	leaf, cabundle, rootPEM := nitroChain(t)
 	raw := buildSignedNitroDoc(t, leaf, cabundle, goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, relayID), nil)
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	// Policy pins the provider + trusted root but NO PCRs → default-deny.
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM}
 	err := AttestVerifyRelay(doc, policy)
@@ -256,7 +256,7 @@ func TestNitroCOSE_MissingIdentityBindingRejected(t *testing.T) {
 	nsm := goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, "")
 	nsm.UserData = nil
 	raw := buildSignedNitroDoc(t, leaf, cabundle, nsm, nil)
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
 	err := AttestVerifyRelay(doc, policy)
 	assertAttestCode(t, err, "missing-identity-binding")

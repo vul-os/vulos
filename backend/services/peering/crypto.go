@@ -59,10 +59,10 @@
 //	x25519Pub, err             := Ed25519PubToX25519(ed25519PubKey)
 //
 //	// Shared secret
-//	sharedKey, err := PeerSharedSecret(localX25519Priv, remoteX25519Pub, localVulaID, remoteVulaID)
+//	sharedKey, err := PeerSharedSecret(localX25519Priv, remoteX25519Pub, localVulosID, remoteVulosID)
 //
 //	// Per-conversation key (convenience — takes raw Ed25519 keys)
-//	convKey, err := ConversationKey(localEd25519Priv, remoteEd25519Pub, localVulaID, remoteVulaID)
+//	convKey, err := ConversationKey(localEd25519Priv, remoteEd25519Pub, localVulosID, remoteVulosID)
 //
 //	// Encrypt / decrypt
 //	ciphertext, err := EncryptForPeer(sharedKey, plaintext, additionalData)
@@ -227,7 +227,7 @@ func Ed25519PubToX25519(edPub ed25519.PublicKey) (X25519PublicKey, error) {
 // The HKDF salt is the concatenation of the two Vula IDs in lexicographic
 // order (guaranteed to be the same on both sides of the conversation):
 //
-//	salt = sort(localVulaID, remoteVulaID)[0] + ":" + sort(...)[1]
+//	salt = sort(localVulosID, remoteVulosID)[0] + ":" + sort(...)[1]
 //
 // The HKDF info string is the package-level hkdfLabel constant.
 //
@@ -238,7 +238,7 @@ func Ed25519PubToX25519(edPub ed25519.PublicKey) (X25519PublicKey, error) {
 func PeerSharedSecret(
 	localPriv X25519PrivateKey,
 	remotePub X25519PublicKey,
-	localVulaID, remoteVulaID string,
+	localVulosID, remoteVulosID string,
 ) (SharedKey, error) {
 	// ECDH.
 	rawSecret, err := curve25519.X25519(localPriv[:], remotePub[:])
@@ -247,7 +247,7 @@ func PeerSharedSecret(
 	}
 
 	// Sort the Vula IDs to produce a deterministic salt.
-	idA, idB := localVulaID, remoteVulaID
+	idA, idB := localVulosID, remoteVulosID
 	if idA > idB {
 		idA, idB = idB, idA
 	}
@@ -271,13 +271,13 @@ func PeerSharedSecret(
 // public key and independently arrive at the same SharedKey.
 //
 // The additionalData parameter is included in the HKDF salt via
-// PeerSharedSecret's vulaID pair, so callers should pass the relevant
+// PeerSharedSecret's vulosID pair, so callers should pass the relevant
 // conversation/context identifier through EncryptForPeer / DecryptFromPeer
 // rather than here.
 func ConversationKey(
 	localEdPriv ed25519.PrivateKey,
 	remoteEdPub ed25519.PublicKey,
-	localVulaID, remoteVulaID string,
+	localVulosID, remoteVulosID string,
 ) (SharedKey, error) {
 	localX25519Priv, _, err := DeriveX25519FromEd25519(localEdPriv)
 	if err != nil {
@@ -289,7 +289,7 @@ func ConversationKey(
 		return SharedKey{}, fmt.Errorf("peering/crypto: convert remote ed25519 pub to x25519: %w", err)
 	}
 
-	return PeerSharedSecret(localX25519Priv, remoteX25519Pub, localVulaID, remoteVulaID)
+	return PeerSharedSecret(localX25519Priv, remoteX25519Pub, localVulosID, remoteVulosID)
 }
 
 // ─── Encrypt / Decrypt ────────────────────────────────────────────────────────

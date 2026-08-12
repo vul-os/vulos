@@ -46,13 +46,13 @@ func inboundUpdateReq(from, docID string, ops []byte) *http.Request {
 
 func TestInboundCollabUpdate_ViewOnlyPeerRejected(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const peer = "vula:ed25519:viewer"
+	const peer = "vulos:ed25519:viewer"
 	// Owner shared doc with the peer as VIEW only.
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-v",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: peer, Perm: SharePermView}},
+		Peers:   []SharePeerEntry{{VulosID: peer, Perm: SharePermView}},
 	})
 
 	rr := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func TestInboundCollabUpdate_ViewOnlyPeerRejected(t *testing.T) {
 func TestInboundCollabUpdate_NonSharedDocRejected(t *testing.T) {
 	s, _ := collabStoreWithShares(t) // empty share store
 	rr := httptest.NewRecorder()
-	s.HandleInboundCollabUpdate(rr, inboundUpdateReq("vula:ed25519:stranger", "ghost-doc", []byte("ops")))
+	s.HandleInboundCollabUpdate(rr, inboundUpdateReq("vulos:ed25519:stranger", "ghost-doc", []byte("ops")))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("non-shared doc write status = %d, want 403; body: %s", rr.Code, rr.Body.String())
@@ -82,12 +82,12 @@ func TestInboundCollabUpdate_NonSharedDocRejected(t *testing.T) {
 
 func TestInboundCollabUpdate_EditorAccepted(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const peer = "vula:ed25519:editor"
+	const peer = "vulos:ed25519:editor"
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-e",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: peer, Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: peer, Perm: SharePermEdit}},
 	})
 
 	ops := []byte("legit-crdt-ops")
@@ -104,13 +104,13 @@ func TestInboundCollabUpdate_EditorAccepted(t *testing.T) {
 
 func TestInboundCollabUpdate_RevokedDocGone(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const owner = "vula:ed25519:owner"
-	const peer = "vula:ed25519:editor"
+	const owner = "vulos:ed25519:owner"
+	const peer = "vulos:ed25519:editor"
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-r",
 		OwnerID: owner,
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: peer, Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: peer, Perm: SharePermEdit}},
 	})
 	_ = shares.Revoke("doc-r", owner)
 
@@ -131,34 +131,34 @@ func TestAuthorizeRoom_UnauthenticatedRejected(t *testing.T) {
 
 func TestAuthorizeRoom_SharedPeerAllowed_StrangerRejected(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const viewer = "vula:ed25519:viewer"
-	// Multi-user box: per-user OS-user→VulaID mapping resolves the un-spoofable
-	// X-User-ID to the user's own VulaID, which is what the ACL is checked against.
+	const viewer = "vulos:ed25519:viewer"
+	// Multi-user box: per-user OS-user→VulosID mapping resolves the un-spoofable
+	// X-User-ID to the user's own VulosID, which is what the ACL is checked against.
 	s.WithVulaResolver(func(osUser string) (string, bool) {
 		switch osUser {
 		case "os-viewer":
 			return viewer, true
 		case "os-stranger":
-			return "vula:ed25519:stranger", true
+			return "vulos:ed25519:stranger", true
 		}
 		return "", false
 	})
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-room",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: viewer, Perm: SharePermView}},
+		Peers:   []SharePeerEntry{{VulosID: viewer, Perm: SharePermView}},
 	})
 
 	// A viewer may JOIN the room (to receive ops); status 0 = authorized. The
-	// authorizer returns the SERVER-resolved VulaID, not any client header.
+	// authorizer returns the SERVER-resolved VulosID, not any client header.
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-room/sync", nil)
 	req.Header.Set("X-User-ID", "os-viewer")
 	if id, status := s.authorizeRoom(req, "doc-room"); status != 0 || id != viewer {
 		t.Fatalf("viewer room join = (%q,%d), want (%q,0)", id, status, viewer)
 	}
 
-	// A stranger whose resolved VulaID has no entry on the tracked doc is rejected.
+	// A stranger whose resolved VulosID has no entry on the tracked doc is rejected.
 	req2 := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-room/sync", nil)
 	req2.Header.Set("X-User-ID", "os-stranger")
 	if _, status := s.authorizeRoom(req2, "doc-room"); status != http.StatusForbidden {
@@ -167,21 +167,21 @@ func TestAuthorizeRoom_SharedPeerAllowed_StrangerRejected(t *testing.T) {
 }
 
 // TestAuthorizeRoom_SpoofedVulaHeaderRejected pins that a client cannot escalate by
-// asserting another user's VulaID in X-Vula-ID: the header must match the
+// asserting another user's VulosID in X-Vula-ID: the header must match the
 // server-resolved identity for the authenticated OS user, else the join is denied.
 func TestAuthorizeRoom_SpoofedVulaHeaderRejected(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const victim = "vula:ed25519:victim"
-	const boxSelf = "vula:ed25519:thisbox"
-	s.WithSelfVulaID(boxSelf) // authenticated sessions map to the box identity
+	const victim = "vulos:ed25519:victim"
+	const boxSelf = "vulos:ed25519:thisbox"
+	s.WithSelfVulosID(boxSelf) // authenticated sessions map to the box identity
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-secret",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: victim, Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: victim, Perm: SharePermEdit}},
 	})
 
-	// Authenticated local user spoofs the victim's VulaID to reach a doc shared
+	// Authenticated local user spoofs the victim's VulosID to reach a doc shared
 	// with the victim (not with this box). MUST be rejected.
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-secret/sync", nil)
 	req.Header.Set("X-User-ID", "os-attacker")
@@ -192,35 +192,35 @@ func TestAuthorizeRoom_SpoofedVulaHeaderRejected(t *testing.T) {
 }
 
 // TestAuthorizeRoom_AmbiguousMappingFailsClosed pins that when no server-side
-// OS-user→VulaID mapping is available, a tracked-share document cannot be joined
+// OS-user→VulosID mapping is available, a tracked-share document cannot be joined
 // (the unauthenticated header is never trusted) — it fails closed.
 func TestAuthorizeRoom_AmbiguousMappingFailsClosed(t *testing.T) {
-	s, shares := collabStoreWithShares(t) // no resolver, no selfVulaID
+	s, shares := collabStoreWithShares(t) // no resolver, no selfVulosID
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-amb",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeOwned,
-		Peers:   []SharePeerEntry{{VulaID: "vula:ed25519:peer", Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: "vulos:ed25519:peer", Perm: SharePermEdit}},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-amb/sync", nil)
 	req.Header.Set("X-User-ID", "os-user")
-	req.Header.Set("X-Vula-ID", "vula:ed25519:peer") // unverifiable assertion
+	req.Header.Set("X-Vula-ID", "vulos:ed25519:peer") // unverifiable assertion
 	if _, status := s.authorizeRoom(req, "doc-amb"); status != http.StatusForbidden {
 		t.Fatalf("ambiguous-mapping join status = %d, want 403 (fail closed)", status)
 	}
 }
 
-// TestAuthorizeRoom_SelfVulaIDSharedAllowed pins that the box identity is accepted
+// TestAuthorizeRoom_SelfVulosIDSharedAllowed pins that the box identity is accepted
 // as the session principal when the document is shared with this box.
-func TestAuthorizeRoom_SelfVulaIDSharedAllowed(t *testing.T) {
+func TestAuthorizeRoom_SelfVulosIDSharedAllowed(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
-	const boxSelf = "vula:ed25519:thisbox"
-	s.WithSelfVulaID(boxSelf)
+	const boxSelf = "vulos:ed25519:thisbox"
+	s.WithSelfVulosID(boxSelf)
 	_ = shares.Add(&ShareDocEntry{
 		DocID:   "doc-box",
-		OwnerID: "vula:ed25519:owner",
+		OwnerID: "vulos:ed25519:owner",
 		Badge:   ShareBadgeShared,
-		Peers:   []SharePeerEntry{{VulaID: boxSelf, Perm: SharePermEdit}},
+		Peers:   []SharePeerEntry{{VulosID: boxSelf, Perm: SharePermEdit}},
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/collab/doc-box/sync", nil)
 	req.Header.Set("X-User-ID", "os-anyone")

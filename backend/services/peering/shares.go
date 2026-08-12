@@ -32,7 +32,7 @@
 //
 // Instantiate SharesService and call RegisterSharesHandlers:
 //
-//	svc := peering.NewSharesService(contactStore, shareStore, peerClient, priv, vulaID)
+//	svc := peering.NewSharesService(contactStore, shareStore, peerClient, priv, vulosID)
 //	svc.RegisterSharesHandlers(mux)
 //
 // The /api/peering/inbound/* handlers must be wrapped with InboundMiddleware
@@ -67,11 +67,11 @@ const (
 // SharesService wires the [ShareStore] to the envelope-signed transport layer.
 // Obtain one via [NewSharesService]; the zero value is not usable.
 type SharesService struct {
-	contacts    *ContactStore
-	store       *ShareStore
-	client      *PeerClient
-	priv        ed25519.PrivateKey
-	localVulaID string
+	contacts     *ContactStore
+	store        *ShareStore
+	client       *PeerClient
+	priv         ed25519.PrivateKey
+	localVulosID string
 }
 
 // NewSharesService creates a SharesService.
@@ -80,27 +80,27 @@ type SharesService struct {
 //   - store      — shared-document registry (see collab_share.go)
 //   - client     — outbound HTTP client for server-to-server envelope delivery
 //   - priv       — local Ed25519 private key used to sign outbound envelopes
-//   - localVulaID — canonical Vula ID of the local node ("vula:ed25519:<base58>")
+//   - localVulosID — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
 func NewSharesService(
 	contacts *ContactStore,
 	store *ShareStore,
 	client *PeerClient,
 	priv ed25519.PrivateKey,
-	localVulaID string,
+	localVulosID string,
 ) *SharesService {
 	return &SharesService{
-		contacts:    contacts,
-		store:       store,
-		client:      client,
-		priv:        priv,
-		localVulaID: localVulaID,
+		contacts:     contacts,
+		store:        store,
+		client:       client,
+		priv:         priv,
+		localVulosID: localVulosID,
 	}
 }
 
 // localID returns the best available local Vula ID.
 func (s *SharesService) localID() string {
-	if s.localVulaID != "" {
-		return s.localVulaID
+	if s.localVulosID != "" {
+		return s.localVulosID
 	}
 	return "local"
 }
@@ -183,7 +183,7 @@ func (s *SharesService) handleShareDoc(w http.ResponseWriter, r *http.Request) {
 		Title:     req.Title,
 		OwnerID:   req.FromID,
 		Badge:     ShareBadgeOwned,
-		Peers:     []SharePeerEntry{{VulaID: req.PeerID, Perm: req.Perm}},
+		Peers:     []SharePeerEntry{{VulosID: req.PeerID, Perm: req.Perm}},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -292,7 +292,7 @@ func (s *SharesService) HandleInboundShare(w http.ResponseWriter, r *http.Reques
 		Title:     inv.Title,
 		OwnerID:   inv.FromID,
 		Badge:     ShareBadgeShared,
-		Peers:     []SharePeerEntry{{VulaID: inv.FromID, Perm: SharePermEdit}},
+		Peers:     []SharePeerEntry{{VulosID: inv.FromID, Perm: SharePermEdit}},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -338,7 +338,7 @@ func (s *SharesService) handleInboundShareDirect(w http.ResponseWriter, r *http.
 		Title:     inv.Title,
 		OwnerID:   inv.FromID,
 		Badge:     ShareBadgeShared,
-		Peers:     []SharePeerEntry{{VulaID: inv.FromID, Perm: SharePermEdit}},
+		Peers:     []SharePeerEntry{{VulosID: inv.FromID, Perm: SharePermEdit}},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
@@ -531,8 +531,8 @@ func (s *SharesService) handleLeaveOrRevoke(w http.ResponseWriter, r *http.Reque
 
 // sharesPermRequest is the body for PUT /api/peering/collab/{doc_id}/perms.
 type sharesPermRequest struct {
-	TargetVulaID string    `json:"target_vula_id"`
-	Perm         SharePerm `json:"perm"`
+	TargetVulosID string    `json:"target_vulos_id"`
+	Perm          SharePerm `json:"perm"`
 }
 
 func (s *SharesService) handleSetPerms(w http.ResponseWriter, r *http.Request) {
@@ -551,8 +551,8 @@ func (s *SharesService) handleSetPerms(w http.ResponseWriter, r *http.Request) {
 		sharesWriteErr(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.TargetVulaID == "" {
-		sharesWriteErr(w, "target_vula_id is required", http.StatusBadRequest)
+	if req.TargetVulosID == "" {
+		sharesWriteErr(w, "target_vulos_id is required", http.StatusBadRequest)
 		return
 	}
 	if err := shareValidatePerm(req.Perm); err != nil {
@@ -560,7 +560,7 @@ func (s *SharesService) handleSetPerms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SetPerm(docID, callerID, req.TargetVulaID, req.Perm); err != nil {
+	if err := s.store.SetPerm(docID, callerID, req.TargetVulosID, req.Perm); err != nil {
 		switch err.Error() {
 		case "share: document not found":
 			sharesWriteErr(w, err.Error(), http.StatusNotFound)
@@ -573,7 +573,7 @@ func (s *SharesService) handleSetPerms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entry, _ := s.store.Get(docID)
-	log.Printf("[peering/shares] perm updated: peer %s on doc %s → %s", req.TargetVulaID, docID, req.Perm)
+	log.Printf("[peering/shares] perm updated: peer %s on doc %s → %s", req.TargetVulosID, docID, req.Perm)
 	sharesWriteJSON(w, entry)
 }
 

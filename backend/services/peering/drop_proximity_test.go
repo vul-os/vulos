@@ -55,7 +55,7 @@ func proxErrResponse(status int) *http.Response {
 // real outbound calls) and a deterministic base URL for rendezvous.
 func proxNewTestService(t *testing.T) *ProxService {
 	t.Helper()
-	svc := NewProxService("vula:ed25519:testprox", "127.0.0.1:8080")
+	svc := NewProxService("vulos:ed25519:testprox", "127.0.0.1:8080")
 	// Replace HTTP client with a stub that returns 404 for every call
 	// (rendezvous not reachable in unit tests; overridden per-test as needed).
 	svc.httpClient = &proxFakeHTTPClient{
@@ -131,8 +131,8 @@ func TestProxGenerateReturnsCode(t *testing.T) {
 	if len(entry.Code) != proxCodeDigits {
 		t.Fatalf("want %d-digit code, got %q", proxCodeDigits, entry.Code)
 	}
-	if entry.VulaID != svc.selfVulaID {
-		t.Fatalf("want vula_id %q, got %q", svc.selfVulaID, entry.VulaID)
+	if entry.VulosID != svc.selfVulosID {
+		t.Fatalf("want vulos_id %q, got %q", svc.selfVulosID, entry.VulosID)
 	}
 }
 
@@ -204,8 +204,8 @@ func TestProxRedeemLocalSuccess(t *testing.T) {
 	if result.OwnerAddr != "10.0.0.5:8080" {
 		t.Fatalf("want 10.0.0.5:8080, got %q", result.OwnerAddr)
 	}
-	if result.VulaID != svc.selfVulaID {
-		t.Fatalf("want vula_id %q, got %q", svc.selfVulaID, result.VulaID)
+	if result.VulosID != svc.selfVulosID {
+		t.Fatalf("want vulos_id %q, got %q", svc.selfVulosID, result.VulosID)
 	}
 }
 
@@ -266,7 +266,7 @@ func TestProxRedeemRemoteFallback(t *testing.T) {
 	svc := proxNewTestService(t)
 
 	wantAddr := "remote.vulos.org:8080"
-	wantVulaID := "vula:ed25519:remoteid"
+	wantVulosID := "vulos:ed25519:remoteid"
 
 	svc.httpClient = &proxFakeHTTPClient{
 		handler: func(req *http.Request) (*http.Response, error) {
@@ -279,7 +279,7 @@ func TestProxRedeemRemoteFallback(t *testing.T) {
 			return proxJSONResponse(http.StatusOK, proxRendezvousPayload{
 				Code:      "123456",
 				OwnerAddr: wantAddr,
-				VulaID:    wantVulaID,
+				VulosID:   wantVulosID,
 				ExpiresAt: time.Now().Add(proxCodeTTL),
 			}), nil
 		},
@@ -292,8 +292,8 @@ func TestProxRedeemRemoteFallback(t *testing.T) {
 	if result.OwnerAddr != wantAddr {
 		t.Fatalf("want %q, got %q", wantAddr, result.OwnerAddr)
 	}
-	if result.VulaID != wantVulaID {
-		t.Fatalf("want %q, got %q", wantVulaID, result.VulaID)
+	if result.VulosID != wantVulosID {
+		t.Fatalf("want %q, got %q", wantVulosID, result.VulosID)
 	}
 }
 
@@ -344,7 +344,7 @@ func TestProxPublishToRendezvousSuccess(t *testing.T) {
 	entry := &proxCode{
 		Code:      "847291",
 		OwnerAddr: "my.vulos.org:8080",
-		VulaID:    svc.selfVulaID,
+		VulosID:   svc.selfVulosID,
 		ExpiresAt: time.Now().Add(proxCodeTTL),
 	}
 	err := svc.ProxPublishToRendezvous(context.Background(), entry)
@@ -545,12 +545,12 @@ func TestProxCrossNetworkViaRendezvousMock(t *testing.T) {
 	defer rendezvousServer.Close()
 
 	// Alice's service — will publish to the mock rendezvous.
-	alice := NewProxService("vula:ed25519:alice", "alice.local:8080")
+	alice := NewProxService("vulos:ed25519:alice", "alice.local:8080")
 	alice.rendezvousBase = rendezvousServer.URL
 	// Alice uses the real http.Client so it can hit the httptest server.
 
 	// Bob's service — will NOT have the code locally; redeems from rendezvous.
-	bob := NewProxService("vula:ed25519:bob", "bob.local:8080")
+	bob := NewProxService("vulos:ed25519:bob", "bob.local:8080")
 	bob.rendezvousBase = rendezvousServer.URL
 
 	// Alice generates a code.
@@ -572,12 +572,12 @@ func TestProxCrossNetworkViaRendezvousMock(t *testing.T) {
 	if result.OwnerAddr != "alice.local:8080" {
 		t.Fatalf("want alice.local:8080, got %q", result.OwnerAddr)
 	}
-	if result.VulaID != "vula:ed25519:alice" {
-		t.Fatalf("want alice vula_id, got %q", result.VulaID)
+	if result.VulosID != "vulos:ed25519:alice" {
+		t.Fatalf("want alice vulos_id, got %q", result.VulosID)
 	}
 
 	// Third actor (Charlie) tries to redeem the same code — must fail (single-use).
-	charlie := NewProxService("vula:ed25519:charlie", "charlie.local:8080")
+	charlie := NewProxService("vulos:ed25519:charlie", "charlie.local:8080")
 	charlie.rendezvousBase = rendezvousServer.URL
 	_, err = charlie.ProxRedeem(context.Background(), entry.Code)
 	if err == nil {
@@ -623,7 +623,7 @@ func TestProxRendezvousBaseOverride(t *testing.T) {
 
 func TestProxNewServiceEnvOverride(t *testing.T) {
 	t.Setenv(proxRendezvousEnvKey, "https://env-override.vulos.org")
-	svc := NewProxService("vula:ed25519:test", "")
+	svc := NewProxService("vulos:ed25519:test", "")
 	if svc.rendezvousBase != "https://env-override.vulos.org" {
 		t.Fatalf("want env-override URL, got %q", svc.rendezvousBase)
 	}
@@ -632,7 +632,7 @@ func TestProxNewServiceEnvOverride(t *testing.T) {
 func TestProxNewServiceDefaultRendezvous(t *testing.T) {
 	// Unset the env var to ensure default is used.
 	t.Setenv(proxRendezvousEnvKey, "")
-	svc := NewProxService("vula:ed25519:test", "")
+	svc := NewProxService("vulos:ed25519:test", "")
 	if svc.rendezvousBase != proxDefaultRendezvousBase {
 		t.Fatalf("want default rendezvous base, got %q", svc.rendezvousBase)
 	}

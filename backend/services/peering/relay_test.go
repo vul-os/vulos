@@ -52,8 +52,8 @@ func genKeyPair(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	if err != nil {
 		t.Fatalf("ed25519.GenerateKey: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
-	return priv, pub, vulaID
+	vulosID := encodeVulosID(pub)
+	return priv, pub, vulosID
 }
 
 // relayTestDeposit builds and signs a deposit request.
@@ -63,12 +63,12 @@ func relayTestDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	req := relayDepositRequest{
-		To:           recipientID,
-		BlobID:       blobID,
-		BlobB64:      blobB64,
-		TTLHours:     ttlHours,
-		SenderVulaID: senderID,
-		Nonce:        nonce,
+		To:            recipientID,
+		BlobID:        blobID,
+		BlobB64:       blobB64,
+		TTLHours:      ttlHours,
+		SenderVulosID: senderID,
+		Nonce:         nonce,
 	}
 
 	// Sign the canonical request (minus signature field).
@@ -82,22 +82,22 @@ func relayTestDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 }
 
 // relayPickupAuthHeader builds the Authorization header for pickup/ack.
-func relayPickupAuthHeader(t *testing.T, priv ed25519.PrivateKey, vulaID string) string {
+func relayPickupAuthHeader(t *testing.T, priv ed25519.PrivateKey, vulosID string) string {
 	t.Helper()
 	tsStr := fmt.Sprintf("%d", time.Now().Unix())
-	msg := []byte(vulaID + "." + tsStr)
+	msg := []byte(vulosID + "." + tsStr)
 	sig := ed25519.Sign(priv, msg)
 	sigB64 := base64.RawURLEncoding.EncodeToString(sig)
-	return fmt.Sprintf("Vula-Relay %s.%s.%s", vulaID, tsStr, sigB64)
+	return fmt.Sprintf("Vula-Relay %s.%s.%s", vulosID, tsStr, sigB64)
 }
 
 // relayAddApprovedContact adds a contact to the ContactStore in the Approved state.
-func relayAddApprovedContact(t *testing.T, cs *ContactStore, vulaID, displayName string) {
+func relayAddApprovedContact(t *testing.T, cs *ContactStore, vulosID, displayName string) {
 	t.Helper()
-	if err := cs.Add(vulaID, displayName, "test-server:8080"); err != nil {
+	if err := cs.Add(vulosID, displayName, "test-server:8080"); err != nil {
 		t.Fatalf("cs.Add: %v", err)
 	}
-	if err := cs.Approve(vulaID, DefaultPerms()); err != nil {
+	if err := cs.Approve(vulosID, DefaultPerms()); err != nil {
 		t.Fatalf("cs.Approve: %v", err)
 	}
 }
@@ -558,13 +558,13 @@ func TestReaper_RemovesExpiredBlobs(t *testing.T) {
 // ─── parseRelayAuthHeader tests ───────────────────────────────────────────────
 
 func TestParseRelayAuthHeader_Valid(t *testing.T) {
-	header := "Vula-Relay vula:ed25519:abc123.1700000000.sigABCDEF"
-	vulaID, ts, sig, err := parseRelayAuthHeader(header)
+	header := "Vula-Relay vulos:ed25519:abc123.1700000000.sigABCDEF"
+	vulosID, ts, sig, err := parseRelayAuthHeader(header)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vulaID != "vula:ed25519:abc123" {
-		t.Errorf("vulaID: got %q, want %q", vulaID, "vula:ed25519:abc123")
+	if vulosID != "vulos:ed25519:abc123" {
+		t.Errorf("vulosID: got %q, want %q", vulosID, "vulos:ed25519:abc123")
 	}
 	if ts != "1700000000" {
 		t.Errorf("ts: got %q, want %q", ts, "1700000000")

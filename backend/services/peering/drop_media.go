@@ -43,7 +43,7 @@ import (
 type DropTransfer struct {
 	store       *MediaStore
 	peerClient  *PeerClient
-	selfVulaID  string
+	selfVulosID string
 	selfName    string
 	selfBaseURL string
 	downloadDir string
@@ -55,11 +55,11 @@ type DropTransfer struct {
 // node's externally reachable base URL used to build signed fetch URLs; it may
 // be empty (send will then return a descriptive error). downloadDir is where
 // accepted inbound files are landed (e.g. ~/Downloads).
-func NewDropTransfer(store *MediaStore, peerClient *PeerClient, selfVulaID, selfName, selfBaseURL, downloadDir string) *DropTransfer {
+func NewDropTransfer(store *MediaStore, peerClient *PeerClient, selfVulosID, selfName, selfBaseURL, downloadDir string) *DropTransfer {
 	return &DropTransfer{
 		store:       store,
 		peerClient:  peerClient,
-		selfVulaID:  selfVulaID,
+		selfVulosID: selfVulosID,
 		selfName:    selfName,
 		selfBaseURL: strings.TrimRight(selfBaseURL, "/"),
 		downloadDir: downloadDir,
@@ -109,7 +109,7 @@ func (d *DropTransfer) SendFile(ctx context.Context, targetAddr, mediaPath, mime
 
 	notice := dropInboundRequest{
 		TransferID:  transferID,
-		FromVulaID:  d.selfVulaID,
+		FromVulosID: d.selfVulosID,
 		DisplayName: d.selfName,
 		FileName:    fileName,
 		FileSize:    size,

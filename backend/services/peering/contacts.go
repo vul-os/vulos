@@ -42,14 +42,14 @@
 //	if err != nil { ... }
 //
 //	// Receive a contact request from another peer.
-//	if err := cs.Add("vula:ed25519:5Hb7...", "Bob", "bob.vulos.org:8080"); err != nil { ... }
+//	if err := cs.Add("vulos:ed25519:5Hb7...", "Bob", "bob.vulos.org:8080"); err != nil { ... }
 //
 //	// Accept.
-//	if err := cs.Approve("vula:ed25519:5Hb7...", peering.DefaultPerms()); err != nil { ... }
+//	if err := cs.Approve("vulos:ed25519:5Hb7...", peering.DefaultPerms()); err != nil { ... }
 //
 //	// Gate an inbound message.
-//	if !cs.IsApproved("vula:ed25519:5Hb7...") { return } // drop
-//	if !cs.Can("vula:ed25519:5Hb7...", peering.PermMessage) { return } // no message perm
+//	if !cs.IsApproved("vulos:ed25519:5Hb7...") { return } // drop
+//	if !cs.Can("vulos:ed25519:5Hb7...", peering.PermMessage) { return } // no message perm
 package peering
 
 import (
@@ -126,8 +126,8 @@ const (
 
 // Contact is a single entry in the contacts store.
 type Contact struct {
-	// VulaID is the peer's canonical Vula ID ("vula:ed25519:<base58>").
-	VulaID string `json:"vula_id"`
+	// VulosID is the peer's canonical Vula ID ("vulos:ed25519:<base58>").
+	VulosID string `json:"vulos_id"`
 
 	// DisplayName is the peer's self-reported display name.
 	DisplayName string `json:"display_name"`
@@ -187,7 +187,7 @@ type diskStore struct {
 // The zero value is not usable; obtain one via NewContactStore.
 type ContactStore struct {
 	mu       sync.RWMutex
-	byID     map[string]*Contact // VulaID → *Contact
+	byID     map[string]*Contact // VulosID → *Contact
 	filePath string              // absolute path to contacts.json
 }
 
@@ -235,12 +235,12 @@ func (cs *ContactStore) load() error {
 	}
 
 	for _, c := range ds.Contacts {
-		if c.VulaID == "" {
+		if c.VulosID == "" {
 			continue // skip corrupt entries
 		}
 		// Deep-copy so the map owns the pointer.
 		dup := *c
-		cs.byID[c.VulaID] = &dup
+		cs.byID[c.VulosID] = &dup
 	}
 
 	return nil
@@ -290,30 +290,30 @@ func (cs *ContactStore) persist() error {
 
 // ─── Mutation API ─────────────────────────────────────────────────────────────
 
-// Add inserts a new contact in StatePending.  If a contact with vulaID already
+// Add inserts a new contact in StatePending.  If a contact with vulosID already
 // exists Add returns an error; use Update to change existing contacts.
 //
-// vulaID must be non-empty.  displayName and server may be empty strings.
-func (cs *ContactStore) Add(vulaID, displayName, server string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: Add: vulaID must not be empty")
+// vulosID must be non-empty.  displayName and server may be empty strings.
+func (cs *ContactStore) Add(vulosID, displayName, server string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: Add: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	if _, exists := cs.byID[vulaID]; exists {
-		return fmt.Errorf("peering/contacts: Add: contact %q already exists", vulaID)
+	if _, exists := cs.byID[vulosID]; exists {
+		return fmt.Errorf("peering/contacts: Add: contact %q already exists", vulosID)
 	}
 
 	c := &Contact{
-		VulaID:      vulaID,
+		VulosID:     vulosID,
 		DisplayName: displayName,
 		Server:      server,
 		State:       StatePending,
 		AddedAt:     time.Now().UTC(),
 	}
-	cs.byID[vulaID] = c
+	cs.byID[vulosID] = c
 
 	return cs.persist()
 }
@@ -324,9 +324,9 @@ func (cs *ContactStore) Add(vulaID, displayName, server string) error {
 //
 // perms must be non-nil and contain only recognised permission constants.
 // Use DefaultPerms() to grant all permissions.
-func (cs *ContactStore) Approve(vulaID string, perms []Perm) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: Approve: vulaID must not be empty")
+func (cs *ContactStore) Approve(vulosID string, perms []Perm) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: Approve: vulosID must not be empty")
 	}
 	if len(perms) == 0 {
 		return errors.New("peering/contacts: Approve: perms must not be empty")
@@ -340,16 +340,16 @@ func (cs *ContactStore) Approve(vulaID string, perms []Perm) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: Approve: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: Approve: contact %q not found", vulosID)
 	}
 
 	switch c.State {
 	case StatePending, StateApproved:
 		// allowed
 	case StateBlocked:
-		return fmt.Errorf("peering/contacts: Approve: contact %q is blocked; unblock first", vulaID)
+		return fmt.Errorf("peering/contacts: Approve: contact %q is blocked; unblock first", vulosID)
 	default:
 		return fmt.Errorf("peering/contacts: Approve: unexpected state %q", c.State)
 	}
@@ -373,17 +373,17 @@ func (cs *ContactStore) Approve(vulaID string, perms []Perm) error {
 
 // Block transitions a contact to StateBlocked.  The contact must exist.
 // Blocked contacts may be in any prior state (pending or approved).
-func (cs *ContactStore) Block(vulaID string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: Block: vulaID must not be empty")
+func (cs *ContactStore) Block(vulosID string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: Block: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: Block: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: Block: contact %q not found", vulosID)
 	}
 
 	if c.State == StateBlocked {
@@ -400,21 +400,21 @@ func (cs *ContactStore) Block(vulaID string) error {
 // Unblock transitions a blocked contact back to StatePending so the local user
 // can decide whether to approve them again.  Returns an error if the contact
 // is not in StateBlocked.
-func (cs *ContactStore) Unblock(vulaID string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: Unblock: vulaID must not be empty")
+func (cs *ContactStore) Unblock(vulosID string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: Unblock: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: Unblock: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: Unblock: contact %q not found", vulosID)
 	}
 
 	if c.State != StateBlocked {
-		return fmt.Errorf("peering/contacts: Unblock: contact %q is not blocked (state=%q)", vulaID, c.State)
+		return fmt.Errorf("peering/contacts: Unblock: contact %q is not blocked (state=%q)", vulosID, c.State)
 	}
 
 	c.State = StatePending
@@ -425,19 +425,19 @@ func (cs *ContactStore) Unblock(vulaID string) error {
 
 // Remove permanently deletes a contact from the store.  The contact must exist.
 // Any state (pending, approved, blocked) can be removed.
-func (cs *ContactStore) Remove(vulaID string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: Remove: vulaID must not be empty")
+func (cs *ContactStore) Remove(vulosID string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: Remove: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	if _, exists := cs.byID[vulaID]; !exists {
-		return fmt.Errorf("peering/contacts: Remove: contact %q not found", vulaID)
+	if _, exists := cs.byID[vulosID]; !exists {
+		return fmt.Errorf("peering/contacts: Remove: contact %q not found", vulosID)
 	}
 
-	delete(cs.byID, vulaID)
+	delete(cs.byID, vulosID)
 
 	return cs.persist()
 }
@@ -445,17 +445,17 @@ func (cs *ContactStore) Remove(vulaID string) error {
 // UpdateServer sets or updates the server address for an existing contact.
 // This is used when we learn a peer's current server address from an inbound
 // envelope or a discovery lookup.
-func (cs *ContactStore) UpdateServer(vulaID, server string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: UpdateServer: vulaID must not be empty")
+func (cs *ContactStore) UpdateServer(vulosID, server string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: UpdateServer: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: UpdateServer: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: UpdateServer: contact %q not found", vulosID)
 	}
 
 	c.Server = server
@@ -468,17 +468,17 @@ func (cs *ContactStore) UpdateServer(vulaID, server string) error {
 // This is called when a peering invitation card arrives carrying a
 // vulos_address field, or when a relay key-directory lookup populates the
 // address retroactively.
-func (cs *ContactStore) UpdateVulosAddress(vulaID, address string) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: UpdateVulosAddress: vulaID must not be empty")
+func (cs *ContactStore) UpdateVulosAddress(vulosID, address string) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: UpdateVulosAddress: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: UpdateVulosAddress: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: UpdateVulosAddress: contact %q not found", vulosID)
 	}
 
 	c.VulosAddress = address
@@ -531,21 +531,21 @@ func toLower(s string) string {
 
 // UpdatePermissions replaces the permission set for an approved contact.
 // Returns an error if the contact is not in StateApproved.
-func (cs *ContactStore) UpdatePermissions(vulaID string, perms []Perm) error {
-	if vulaID == "" {
-		return errors.New("peering/contacts: UpdatePermissions: vulaID must not be empty")
+func (cs *ContactStore) UpdatePermissions(vulosID string, perms []Perm) error {
+	if vulosID == "" {
+		return errors.New("peering/contacts: UpdatePermissions: vulosID must not be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	c, exists := cs.byID[vulaID]
+	c, exists := cs.byID[vulosID]
 	if !exists {
-		return fmt.Errorf("peering/contacts: UpdatePermissions: contact %q not found", vulaID)
+		return fmt.Errorf("peering/contacts: UpdatePermissions: contact %q not found", vulosID)
 	}
 
 	if c.State != StateApproved {
-		return fmt.Errorf("peering/contacts: UpdatePermissions: contact %q is not approved (state=%q)", vulaID, c.State)
+		return fmt.Errorf("peering/contacts: UpdatePermissions: contact %q is not approved (state=%q)", vulosID, c.State)
 	}
 
 	for _, p := range perms {
@@ -573,11 +573,11 @@ func (cs *ContactStore) UpdatePermissions(vulaID string, perms []Perm) error {
 
 // Get returns a snapshot of the contact with the given Vula ID, or
 // (nil, false) if the contact does not exist.
-func (cs *ContactStore) Get(vulaID string) (*Contact, bool) {
+func (cs *ContactStore) Get(vulosID string) (*Contact, bool) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	c, ok := cs.byID[vulaID]
+	c, ok := cs.byID[vulosID]
 	if !ok {
 		return nil, false
 	}
@@ -633,22 +633,22 @@ func (cs *ContactStore) ListByState(state State) []*Contact {
 
 // IsApproved reports whether the contact with the given Vula ID exists and is
 // in StateApproved.  This is the primary gate check for inbound traffic.
-func (cs *ContactStore) IsApproved(vulaID string) bool {
+func (cs *ContactStore) IsApproved(vulosID string) bool {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	c, ok := cs.byID[vulaID]
+	c, ok := cs.byID[vulosID]
 	return ok && c.State == StateApproved
 }
 
 // Can reports whether the contact is approved AND has been granted the given
 // permission.  Returns false for any non-approved contact regardless of
 // permissions.
-func (cs *ContactStore) Can(vulaID string, p Perm) bool {
+func (cs *ContactStore) Can(vulosID string, p Perm) bool {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	c, ok := cs.byID[vulaID]
+	c, ok := cs.byID[vulosID]
 	if !ok || c.State != StateApproved {
 		return false
 	}

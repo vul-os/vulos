@@ -95,8 +95,8 @@ type PeerSigner interface {
 	SelfID() string
 	// Sign returns an Ed25519 signature by this box's key over msg.
 	Sign(msg []byte) []byte
-	// Verify reports whether sig is a valid signature by vulaID over msg.
-	Verify(vulaID string, msg, sig []byte) error
+	// Verify reports whether sig is a valid signature by vulosID over msg.
+	Verify(vulosID string, msg, sig []byte) error
 }
 
 // PeerTransport streams the bytes for a capability from a remote owner box. The
@@ -123,18 +123,18 @@ func (s *Service) WithPeer(signer PeerSigner, transport PeerTransport, stagingDi
 // Capability is the signed, scoped, expiring grant the owner box issues over a
 // node. Its canonical JSON (signature field excluded) is what gets signed.
 type Capability struct {
-	ID          string    `json:"id"`
-	NodeID      string    `json:"node_id"`
-	Name        string    `json:"name"`
-	IsDir       bool      `json:"is_dir"`
-	Size        int64     `json:"size"`
-	ContentType string    `json:"content_type,omitempty"`
-	Access      Role      `json:"access"`
-	OwnerVulaID string    `json:"owner_vula_id"`
-	OwnerAddr   string    `json:"owner_addr"`
-	Recipient   string    `json:"recipient,omitempty"`
-	IssuedAt    time.Time `json:"issued_at"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	ID           string    `json:"id"`
+	NodeID       string    `json:"node_id"`
+	Name         string    `json:"name"`
+	IsDir        bool      `json:"is_dir"`
+	Size         int64     `json:"size"`
+	ContentType  string    `json:"content_type,omitempty"`
+	Access       Role      `json:"access"`
+	OwnerVulosID string    `json:"owner_vulos_id"`
+	OwnerAddr    string    `json:"owner_addr"`
+	Recipient    string    `json:"recipient,omitempty"`
+	IssuedAt     time.Time `json:"issued_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
 	// Sealed marks a WAVE-3 CONTENT-BLIND capability: the served bytes are a VSEAL1
 	// sealed envelope (see contentseal.go) staged as an opaque artifact at issue
 	// time, NOT the live plaintext node content. Used when sharing to an
@@ -160,16 +160,16 @@ type PeerShare struct {
 
 // ReceivedItem is the recipient-side record of a redeemed capability.
 type ReceivedItem struct {
-	ID          string    `json:"id"`
-	RecipientID string    `json:"recipient_id"`
-	CapID       string    `json:"cap_id"`
-	Name        string    `json:"name"`
-	IsDir       bool      `json:"is_dir"`
-	Size        int64     `json:"size"`
-	ContentType string    `json:"content_type,omitempty"`
-	OwnerVulaID string    `json:"owner_vula_id"`
-	SavedNodeID string    `json:"saved_node_id,omitempty"`
-	ReceivedAt  time.Time `json:"received_at"`
+	ID           string    `json:"id"`
+	RecipientID  string    `json:"recipient_id"`
+	CapID        string    `json:"cap_id"`
+	Name         string    `json:"name"`
+	IsDir        bool      `json:"is_dir"`
+	Size         int64     `json:"size"`
+	ContentType  string    `json:"content_type,omitempty"`
+	OwnerVulosID string    `json:"owner_vulos_id"`
+	SavedNodeID  string    `json:"saved_node_id,omitempty"`
+	ReceivedAt   time.Time `json:"received_at"`
 
 	stagingPath string // not serialized
 }
@@ -239,7 +239,7 @@ func (s *Service) VerifyCapability(c *Capability) error {
 	if s.signer == nil {
 		return ErrPeerUnavailable
 	}
-	if c == nil || c.ID == "" || c.NodeID == "" || c.OwnerVulaID == "" || c.Signature == "" {
+	if c == nil || c.ID == "" || c.NodeID == "" || c.OwnerVulosID == "" || c.Signature == "" {
 		return ErrCapability
 	}
 	if !validShareRole(c.Access) {
@@ -256,7 +256,7 @@ func (s *Service) VerifyCapability(c *Capability) error {
 	if err != nil {
 		return ErrCapability
 	}
-	if err := s.signer.Verify(c.OwnerVulaID, msg, sig); err != nil {
+	if err := s.signer.Verify(c.OwnerVulosID, msg, sig); err != nil {
 		return ErrCapability
 	}
 	return nil
@@ -297,18 +297,18 @@ func (s *Service) IssueCapability(actorID, nodeID string, access Role, recipient
 	}
 	now := time.Now()
 	cap := &Capability{
-		ID:          ulid.NewULID(),
-		NodeID:      n.ID,
-		Name:        n.Name,
-		IsDir:       n.IsDir,
-		Size:        n.Size,
-		ContentType: n.ContentType,
-		Access:      access,
-		OwnerVulaID: s.signer.SelfID(),
-		OwnerAddr:   strings.TrimRight(ownerAddr, "/"),
-		Recipient:   recipient,
-		IssuedAt:    now.UTC(),
-		ExpiresAt:   now.Add(ttl).UTC(),
+		ID:           ulid.NewULID(),
+		NodeID:       n.ID,
+		Name:         n.Name,
+		IsDir:        n.IsDir,
+		Size:         n.Size,
+		ContentType:  n.ContentType,
+		Access:       access,
+		OwnerVulosID: s.signer.SelfID(),
+		OwnerAddr:    strings.TrimRight(ownerAddr, "/"),
+		Recipient:    recipient,
+		IssuedAt:     now.UTC(),
+		ExpiresAt:    now.Add(ttl).UTC(),
 	}
 	msg, err := cap.signingBytes()
 	if err != nil {
@@ -395,7 +395,7 @@ func (s *Service) ServeCapability(ctx context.Context, req PeerFetchRequest) (io
 		return nil, 0, nil, ErrCapability
 	}
 	// The token must have been signed by THIS box (we are the owner serving it).
-	if c.OwnerVulaID != s.signer.SelfID() {
+	if c.OwnerVulosID != s.signer.SelfID() {
 		return nil, 0, nil, ErrCapability
 	}
 	// Fresh, recipient-signed proof — binds the requester identity to this fetch.
@@ -571,22 +571,22 @@ func (s *Service) RedeemCapability(ctx context.Context, recipientUserID, link st
 		return nil, err
 	}
 	item := ReceivedItem{
-		ID:          recvID,
-		RecipientID: recipientUserID,
-		CapID:       c.ID,
-		Name:        c.Name,
-		IsDir:       c.IsDir,
-		Size:        n,
-		ContentType: c.ContentType,
-		OwnerVulaID: c.OwnerVulaID,
-		ReceivedAt:  time.Now(),
-		stagingPath: stagePath,
+		ID:           recvID,
+		RecipientID:  recipientUserID,
+		CapID:        c.ID,
+		Name:         c.Name,
+		IsDir:        c.IsDir,
+		Size:         n,
+		ContentType:  c.ContentType,
+		OwnerVulosID: c.OwnerVulosID,
+		ReceivedAt:   time.Now(),
+		stagingPath:  stagePath,
 	}
 	if err := s.insertReceived(item); err != nil {
 		_ = os.Remove(stagePath)
 		return nil, err
 	}
-	s.audit(recipientUserID, "peer.redeem", "", c.ID+" from="+c.OwnerVulaID)
+	s.audit(recipientUserID, "peer.redeem", "", c.ID+" from="+c.OwnerVulosID)
 	return &item, nil
 }
 

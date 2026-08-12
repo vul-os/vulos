@@ -19,8 +19,8 @@ import (
 // relies on (quorum is about the FLEET identity, not the device key being
 // replaced).
 type fleetBox struct {
-	priv   ed25519.PrivateKey
-	vulaID string
+	priv    ed25519.PrivateKey
+	vulosID string
 }
 
 func newFleetBox(t *testing.T) fleetBox {
@@ -29,7 +29,7 @@ func newFleetBox(t *testing.T) fleetBox {
 	if err != nil {
 		t.Fatalf("keygen: %v", err)
 	}
-	return fleetBox{priv: priv, vulaID: peering.EncodeVulaID(pub)}
+	return fleetBox{priv: priv, vulosID: peering.EncodeVulosID(pub)}
 }
 
 type testRoster struct {
@@ -39,13 +39,13 @@ type testRoster struct {
 func newTestRoster(boxes ...fleetBox) *testRoster {
 	r := &testRoster{members: map[string]ed25519.PublicKey{}}
 	for _, b := range boxes {
-		r.members[b.vulaID] = b.priv.Public().(ed25519.PublicKey)
+		r.members[b.vulosID] = b.priv.Public().(ed25519.PublicKey)
 	}
 	return r
 }
 
-func (r *testRoster) IsRostered(vulaID string) (ed25519.PublicKey, bool) {
-	pub, ok := r.members[vulaID]
+func (r *testRoster) IsRostered(vulosID string) (ed25519.PublicKey, bool) {
+	pub, ok := r.members[vulosID]
 	return pub, ok
 }
 
@@ -135,11 +135,11 @@ func TestBreakGlassRotate_ValidQuorumSucceeds(t *testing.T) {
 	payloadHash := BreakGlassPayloadHash(requestID, oldPub, candidateDER)
 
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
-		vouchFor(t, voucher2, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher1, subject.vulosID, payloadHash, now),
+		vouchFor(t, voucher2, subject.vulosID, payloadHash, now),
 	}
 
-	cert, err := BreakGlassRotate(ks, candidate, "compromised key", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	cert, err := BreakGlassRotate(ks, candidate, "compromised key", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err != nil {
 		t.Fatalf("BreakGlassRotate: %v", err)
 	}
@@ -180,10 +180,10 @@ func TestBreakGlassRotate_InsufficientQuorumRejected(t *testing.T) {
 
 	// Only ONE vouch — below the hard floor of 2.
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher1, subject.vulosID, payloadHash, now),
 	}
 
-	_, err = BreakGlassRotate(ks, candidate, "compromised key", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	_, err = BreakGlassRotate(ks, candidate, "compromised key", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err == nil {
 		t.Fatal("expected BreakGlassRotate to fail with insufficient quorum")
 	}
@@ -219,10 +219,10 @@ func TestBreakGlassRotate_SelfVouchNeverCounts(t *testing.T) {
 
 	// The subject signs its OWN vouch for itself, twice (to also rule out
 	// "just submit the same vouch N times").
-	selfVouch := vouchFor(t, subject, subject.vulaID, payloadHash, now)
+	selfVouch := vouchFor(t, subject, subject.vulosID, payloadHash, now)
 	certs := []fleetid.VouchCert{selfVouch, selfVouch}
 
-	_, err = BreakGlassRotate(ks, candidate, "attempted self-authorization", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	_, err = BreakGlassRotate(ks, candidate, "attempted self-authorization", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err == nil {
 		t.Fatal("expected BreakGlassRotate to reject a self-vouched quorum")
 	}
@@ -249,11 +249,11 @@ func TestBreakGlassRotate_WrongPayloadRejected(t *testing.T) {
 	// Vouches signed over a DIFFERENT request id than the one submitted.
 	wrongHash := BreakGlassPayloadHash("a-different-request", oldPub, candidateDER)
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, wrongHash, now),
-		vouchFor(t, voucher2, subject.vulaID, wrongHash, now),
+		vouchFor(t, voucher1, subject.vulosID, wrongHash, now),
+		vouchFor(t, voucher2, subject.vulosID, wrongHash, now),
 	}
 
-	_, err := BreakGlassRotate(ks, candidate, "reason", subject.vulaID, "the-real-request", certs, roster, fleetid.MinThreshold, now)
+	_, err := BreakGlassRotate(ks, candidate, "reason", subject.vulosID, "the-real-request", certs, roster, fleetid.MinThreshold, now)
 	if err == nil {
 		t.Fatal("expected rejection: vouches bound to a different request id")
 	}

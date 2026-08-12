@@ -85,7 +85,7 @@ const VouchRequestType = "fleet-vouch-request"
 // The request is SELF-AUTHENTICATING: Sig is an Ed25519 signature by the
 // SUBJECT's own fleet key over the canonical bytes of the request with Sig
 // cleared. SubjectID is a Vula ID, which *is* that public key
-// (peering.PublicKeyForVulaID), so a peer can verify the request with no prior
+// (peering.PublicKeyForVulosID), so a peer can verify the request with no prior
 // state, no session, and no shared secret — the same trick
 // /.well-known/vula-id and the prekey endpoints use to be reachable by strangers
 // without being open to them. See VerifyVouchRequest for what that does and
@@ -121,7 +121,7 @@ func SignVouchRequest(subjectPriv ed25519.PrivateKey, req *VouchRequest, now tim
 	if len(subjectPriv) != ed25519.PrivateKeySize {
 		return errors.New("fleetid: SignVouchRequest: subject private key wrong size")
 	}
-	self := peering.EncodeVulaID(subjectPriv.Public().(ed25519.PublicKey))
+	self := peering.EncodeVulosID(subjectPriv.Public().(ed25519.PublicKey))
 	if req.SubjectID == "" {
 		req.SubjectID = self
 	}
@@ -162,7 +162,7 @@ func VerifyVouchRequest(req VouchRequest, now time.Time) error {
 	if req.Type != VouchRequestType {
 		return fmt.Errorf("fleetid: vouch request: wrong type %q (want %q)", req.Type, VouchRequestType)
 	}
-	pub, err := peering.PublicKeyForVulaID(req.SubjectID)
+	pub, err := peering.PublicKeyForVulosID(req.SubjectID)
 	if err != nil {
 		return fmt.Errorf("fleetid: vouch request: subject id: %w", err)
 	}
@@ -251,7 +251,7 @@ type PeerAnnotation struct {
 }
 
 // PeerAnnotator resolves a Vula ID against this box's own roster.
-type PeerAnnotator func(vulaID string) PeerAnnotation
+type PeerAnnotator func(vulosID string) PeerAnnotation
 
 // ApproveGate authorizes a call to the operator-facing approve endpoint. It
 // receives the raw *http.Request so the caller composes whatever this
@@ -276,18 +276,18 @@ type approveRequest struct {
 // break-glass request. Construct with NewVoucherService; the zero value is
 // not usable (a signing key is required).
 type VoucherService struct {
-	priv       ed25519.PrivateKey
-	selfVulaID string
-	policy     ApprovalPolicy
-	now        func() time.Time
-	annotate   PeerAnnotator
+	priv        ed25519.PrivateKey
+	selfVulosID string
+	policy      ApprovalPolicy
+	now         func() time.Time
+	annotate    PeerAnnotator
 }
 
 // NewVoucherService builds a VoucherService that signs with signerPriv — this
 // box's OWN fleet identity key (the same key/Vula-ID space vouch.go's
 // VouchCert and NewVouchCert use). The service's own fleet identity
-// (SelfVulaID) is DERIVED from signerPriv's public key via
-// peering.EncodeVulaID — it is never taken as a separately supplied
+// (SelfVulosID) is DERIVED from signerPriv's public key via
+// peering.EncodeVulosID — it is never taken as a separately supplied
 // parameter, so there is no way to construct a service whose self-identity
 // disagrees with the key it actually signs with.
 //
@@ -305,16 +305,16 @@ func NewVoucherService(signerPriv ed25519.PrivateKey, policy ApprovalPolicy) (*V
 	}
 	pub := signerPriv.Public().(ed25519.PublicKey)
 	return &VoucherService{
-		priv:       signerPriv,
-		selfVulaID: peering.EncodeVulaID(pub),
-		policy:     policy,
-		now:        time.Now,
+		priv:        signerPriv,
+		selfVulosID: peering.EncodeVulosID(pub),
+		policy:      policy,
+		now:         time.Now,
 	}, nil
 }
 
-// SelfVulaID returns this voucher's own fleet identity — the value a request
+// SelfVulosID returns this voucher's own fleet identity — the value a request
 // whose SubjectID matches will always be refused as a self-vouch.
-func (s *VoucherService) SelfVulaID() string { return s.selfVulaID }
+func (s *VoucherService) SelfVulosID() string { return s.selfVulosID }
 
 // SetClock overrides the clock used to timestamp minted certs (test seam).
 func (s *VoucherService) SetClock(now func() time.Time) {
@@ -369,7 +369,7 @@ func (s *VoucherService) handleVouchRequest(w http.ResponseWriter, r *http.Reque
 		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "missing subject_id or request_id"})
 		return
 	}
-	if _, err := peering.PublicKeyForVulaID(req.SubjectID); err != nil {
+	if _, err := peering.PublicKeyForVulosID(req.SubjectID); err != nil {
 		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "malformed subject_id"})
 		return
 	}
@@ -400,7 +400,7 @@ func (s *VoucherService) handleVouchRequest(w http.ResponseWriter, r *http.Reque
 	// not even be ABLE to produce one — refusing before the approval gate is
 	// even consulted means no policy misconfiguration can accidentally grant
 	// a self-vouch either.
-	if req.SubjectID == s.selfVulaID {
+	if req.SubjectID == s.selfVulosID {
 		writeVoucherJSON(w, http.StatusForbidden, vouchWireResponse{Status: "denied", Reason: "self-vouch refused"})
 		return
 	}
@@ -458,7 +458,7 @@ func (s *VoucherService) handleApprove(w http.ResponseWriter, r *http.Request, a
 		writeVoucherJSON(w, http.StatusBadRequest, vouchWireResponse{Status: "error", Reason: "malformed payload_hash"})
 		return
 	}
-	if req.SubjectID == s.selfVulaID {
+	if req.SubjectID == s.selfVulosID {
 		// An operator cannot approve a self-vouch into existence either — the
 		// handler above would refuse to sign it regardless, but reject the
 		// approval itself too so the pending-request UI never even offers it.
@@ -494,10 +494,10 @@ type pendingVouchWire struct {
 
 // pendingListResponse is the operator-facing queue.
 type pendingListResponse struct {
-	Status     string             `json:"status"`
-	SelfVulaID string             `json:"self_vula_id"`
-	Now        string             `json:"now"`
-	Pending    []pendingVouchWire `json:"pending"`
+	Status      string             `json:"status"`
+	SelfVulosID string             `json:"self_vulos_id"`
+	Now         string             `json:"now"`
+	Pending     []pendingVouchWire `json:"pending"`
 
 	// Evicted is how many records were dropped at the cap. Non-zero means this
 	// list is INCOMPLETE and the box is being flooded — a UI must show it.
@@ -523,12 +523,12 @@ func (s *VoucherService) handlePending(w http.ResponseWriter, r *http.Request, a
 	}
 	now := s.clock()
 	resp := pendingListResponse{
-		Status:     "ok",
-		SelfVulaID: s.selfVulaID,
-		Now:        now.UTC().Format(time.RFC3339),
-		Pending:    []pendingVouchWire{},
-		Evicted:    lister.PendingEvicted(),
-		Annotated:  s.annotate != nil,
+		Status:      "ok",
+		SelfVulosID: s.selfVulosID,
+		Now:         now.UTC().Format(time.RFC3339),
+		Pending:     []pendingVouchWire{},
+		Evicted:     lister.PendingEvicted(),
+		Annotated:   s.annotate != nil,
 	}
 	for _, p := range lister.Pending() {
 		item := pendingVouchWire{

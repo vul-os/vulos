@@ -59,37 +59,37 @@ func TestBase58KnownVector(t *testing.T) {
 
 // ─── Vula ID encode / decode ──────────────────────────────────────────────────
 
-func TestEncodeDecodeVulaID(t *testing.T) {
+func TestEncodeDecodeVulosID(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	id := encodeVulaID(pub)
-	if !strings.HasPrefix(id, "vula:ed25519:") {
+	id := encodeVulosID(pub)
+	if !strings.HasPrefix(id, "vulos:ed25519:") {
 		t.Fatalf("Vula ID missing prefix: %q", id)
 	}
 
-	decoded, err := decodeVulaID(id)
+	decoded, err := decodeVulosID(id)
 	if err != nil {
-		t.Fatalf("decodeVulaID error: %v", err)
+		t.Fatalf("decodeVulosID error: %v", err)
 	}
 	if !bytes.Equal(pub, decoded) {
 		t.Fatalf("pub key mismatch after decode")
 	}
 }
 
-func TestDecodeVulaID_BadPrefix(t *testing.T) {
-	_, err := decodeVulaID("bad:prefix:abc")
+func TestDecodeVulosID_BadPrefix(t *testing.T) {
+	_, err := decodeVulosID("bad:prefix:abc")
 	if err == nil {
 		t.Fatal("expected error for bad prefix")
 	}
 }
 
-func TestDecodeVulaID_WrongLength(t *testing.T) {
+func TestDecodeVulosID_WrongLength(t *testing.T) {
 	// Encode too-short key.
 	short := base58Encode([]byte{0x01, 0x02, 0x03})
-	_, err := decodeVulaID("vula:ed25519:" + short)
+	_, err := decodeVulosID("vulos:ed25519:" + short)
 	if err == nil {
 		t.Fatal("expected error for wrong key length")
 	}
@@ -102,15 +102,15 @@ func TestParseVulaAddress_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := encodeVulaID(pub)
+	id := encodeVulosID(pub)
 	original := id + "@example.vulos.org:8080"
 
 	addr, err := ParseVulaAddress(original)
 	if err != nil {
 		t.Fatalf("ParseVulaAddress(%q): %v", original, err)
 	}
-	if addr.VulaID != id {
-		t.Errorf("VulaID: got %q want %q", addr.VulaID, id)
+	if addr.VulosID != id {
+		t.Errorf("VulosID: got %q want %q", addr.VulosID, id)
 	}
 	if addr.Host != "example.vulos.org" {
 		t.Errorf("Host: got %q want %q", addr.Host, "example.vulos.org")
@@ -128,9 +128,9 @@ func TestParseVulaAddress_Errors(t *testing.T) {
 		name  string
 		input string
 	}{
-		{"missing @", "vula:ed25519:abc123:8080"},
-		{"missing port", "vula:ed25519:abc@example.com"},
-		{"invalid port", "vula:ed25519:abc@example.com:notaport"},
+		{"missing @", "vulos:ed25519:abc123:8080"},
+		{"missing port", "vulos:ed25519:abc@example.com"},
+		{"invalid port", "vulos:ed25519:abc@example.com:notaport"},
 		{"bad vula id", "badid@example.com:8080"},
 	}
 	for _, tc := range cases {
@@ -152,7 +152,7 @@ func TestLoadOrGenerate_FirstBoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	priv, pub, vulaID, err := loadOrGenerate(identityDir)
+	priv, pub, vulosID, err := loadOrGenerate(identityDir)
 	if err != nil {
 		t.Fatalf("loadOrGenerate error: %v", err)
 	}
@@ -162,14 +162,14 @@ func TestLoadOrGenerate_FirstBoot(t *testing.T) {
 	if len(pub) != ed25519.PublicKeySize {
 		t.Errorf("pub key size %d, want %d", len(pub), ed25519.PublicKeySize)
 	}
-	if !strings.HasPrefix(vulaID, "vula:ed25519:") {
-		t.Errorf("vulaID missing prefix: %q", vulaID)
+	if !strings.HasPrefix(vulosID, "vulos:ed25519:") {
+		t.Errorf("vulosID missing prefix: %q", vulosID)
 	}
 
 	// Files must exist with correct permissions.
 	checkPerm(t, filepath.Join(identityDir, privKeyFile), 0600)
 	checkPerm(t, filepath.Join(identityDir, pubKeyFile), 0644)
-	checkPerm(t, filepath.Join(identityDir, vulaIDFile), 0644)
+	checkPerm(t, filepath.Join(identityDir, vulosIDFile), 0644)
 }
 
 func TestLoadOrGenerate_Idempotent(t *testing.T) {
@@ -206,10 +206,10 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	pub := priv.Public().(ed25519.PublicKey)
-	vulaID := encodeVulaID(pub)
+	vulosID := encodeVulosID(pub)
 	passphrase := "correct horse battery staple"
 
-	bundle, err := encryptExport(priv, vulaID, passphrase)
+	bundle, err := encryptExport(priv, vulosID, passphrase)
 	if err != nil {
 		t.Fatalf("encryptExport: %v", err)
 	}
@@ -219,8 +219,8 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("decryptImport: %v", err)
 	}
 
-	if importedID != vulaID {
-		t.Errorf("Vula ID mismatch: got %q want %q", importedID, vulaID)
+	if importedID != vulosID {
+		t.Errorf("Vula ID mismatch: got %q want %q", importedID, vulosID)
 	}
 	if !bytes.Equal(importedPriv, priv) {
 		t.Error("Private key mismatch after export/import")
@@ -233,9 +233,9 @@ func TestImport_WrongPassphrase(t *testing.T) {
 		t.Fatal(err)
 	}
 	pub := priv.Public().(ed25519.PublicKey)
-	vulaID := encodeVulaID(pub)
+	vulosID := encodeVulosID(pub)
 
-	bundle, err := encryptExport(priv, vulaID, "correct-passphrase")
+	bundle, err := encryptExport(priv, vulosID, "correct-passphrase")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,11 +252,11 @@ func TestService_PersistsAndReloads(t *testing.T) {
 	home := t.TempDir()
 
 	svc1 := New(home)
-	id1 := svc1.vulaID
+	id1 := svc1.vulosID
 	pub1 := svc1.pub
 
 	svc2 := New(home)
-	id2 := svc2.vulaID
+	id2 := svc2.vulosID
 	pub2 := svc2.pub
 
 	if id1 != id2 {
@@ -284,8 +284,8 @@ func TestHandleGetIdentity(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !strings.HasPrefix(resp.VulaID, "vula:ed25519:") {
-		t.Errorf("bad VulaID: %q", resp.VulaID)
+	if !strings.HasPrefix(resp.VulosID, "vulos:ed25519:") {
+		t.Errorf("bad VulosID: %q", resp.VulosID)
 	}
 	if resp.PublicKeyB58 == "" {
 		t.Error("PublicKeyB58 is empty")
@@ -295,7 +295,7 @@ func TestHandleGetIdentity(t *testing.T) {
 func TestHandleExportImport_HTTP(t *testing.T) {
 	home := t.TempDir()
 	svc := New(home)
-	originalID := svc.vulaID
+	originalID := svc.vulosID
 	passphrase := "test-passphrase-123"
 
 	// Export.
@@ -335,19 +335,19 @@ func TestHandleExportImport_HTTP(t *testing.T) {
 	if err := json.NewDecoder(w2.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode import response: %v", err)
 	}
-	if resp.VulaID != originalID {
-		t.Errorf("imported Vula ID %q, want %q", resp.VulaID, originalID)
+	if resp.VulosID != originalID {
+		t.Errorf("imported Vula ID %q, want %q", resp.VulosID, originalID)
 	}
 
 	// The service's in-memory state should reflect the imported identity.
-	if svc2.vulaID != originalID {
-		t.Errorf("svc2.vulaID %q, want %q", svc2.vulaID, originalID)
+	if svc2.vulosID != originalID {
+		t.Errorf("svc2.vulosID %q, want %q", svc2.vulosID, originalID)
 	}
 
 	// A new service loaded from the same home2 should have the same ID.
 	svc3 := New(home2)
-	if svc3.vulaID != originalID {
-		t.Errorf("reloaded svc3.vulaID %q, want %q", svc3.vulaID, originalID)
+	if svc3.vulosID != originalID {
+		t.Errorf("reloaded svc3.vulosID %q, want %q", svc3.vulosID, originalID)
 	}
 }
 

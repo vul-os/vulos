@@ -4,8 +4,8 @@
 //
 // Exported surface:
 //   - RegisterWellKnownHandlers(mux *http.ServeMux) — mounts GET /.well-known/vula-id
-//     and GET /api/peering/profile/{vula_id} on the supplied mux.
-//   - FetchPeerProfile(ctx, vulaID, serverAddr) (*WKPeerProfile, error) — fetches
+//     and GET /api/peering/profile/{vulos_id} on the supplied mux.
+//   - FetchPeerProfile(ctx, vulosID, serverAddr) (*WKPeerProfile, error) — fetches
 //     and caches a peer's public profile from their Vula instance.
 //
 // All identifiers introduced here are prefixed wk / WellKnown to avoid conflicts
@@ -64,27 +64,27 @@ func wkPeeringDataDir() string {
 // Vula ID format
 // --------------------------------------------------------------------------
 
-// wkVulaIDPrefix is the URI scheme prefix for all Vula IDs.
-const wkVulaIDPrefix = "vula:ed25519:"
+// wkVulosIDPrefix is the URI scheme prefix for all Vula IDs.
+const wkVulosIDPrefix = "vulos:ed25519:"
 
-// wkFormatVulaID encodes a raw Ed25519 public key as a Vula ID string.
-func wkFormatVulaID(pub ed25519.PublicKey) string {
-	return wkVulaIDPrefix + base64.RawURLEncoding.EncodeToString(pub)
+// wkFormatVulosID encodes a raw Ed25519 public key as a Vula ID string.
+func wkFormatVulosID(pub ed25519.PublicKey) string {
+	return wkVulosIDPrefix + base64.RawURLEncoding.EncodeToString(pub)
 }
 
-// wkParseVulaID extracts the raw Ed25519 public key embedded in a Vula ID.
+// wkParseVulosID extracts the raw Ed25519 public key embedded in a Vula ID.
 // A Vula ID *is* a public key, so this is the key the peer's profile signature
 // must verify against. Returns an error for malformed IDs.
-func wkParseVulaID(vulaID string) (ed25519.PublicKey, error) {
-	if !strings.HasPrefix(vulaID, wkVulaIDPrefix) {
-		return nil, fmt.Errorf("peering: vula_id %q missing %q prefix", vulaID, wkVulaIDPrefix)
+func wkParseVulosID(vulosID string) (ed25519.PublicKey, error) {
+	if !strings.HasPrefix(vulosID, wkVulosIDPrefix) {
+		return nil, fmt.Errorf("peering: vulos_id %q missing %q prefix", vulosID, wkVulosIDPrefix)
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(vulaID, wkVulaIDPrefix))
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(vulosID, wkVulosIDPrefix))
 	if err != nil {
-		return nil, fmt.Errorf("peering: decode vula_id key: %w", err)
+		return nil, fmt.Errorf("peering: decode vulos_id key: %w", err)
 	}
 	if len(raw) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("peering: vula_id key is %d bytes, want %d", len(raw), ed25519.PublicKeySize)
+		return nil, fmt.Errorf("peering: vulos_id key is %d bytes, want %d", len(raw), ed25519.PublicKeySize)
 	}
 	return ed25519.PublicKey(raw), nil
 }
@@ -121,10 +121,10 @@ func wkSignResponse(resp *WKIdentityResponse, priv ed25519.PrivateKey) error {
 }
 
 // wkVerifyResponse reports whether resp carries a valid Ed25519 signature over
-// its canonical form by the key embedded in expectedVulaID. Fail-closed:
+// its canonical form by the key embedded in expectedVulosID. Fail-closed:
 // missing, malformed, or mismatched signatures all return false.
-func wkVerifyResponse(resp WKIdentityResponse, expectedVulaID string) bool {
-	pub, err := wkParseVulaID(expectedVulaID)
+func wkVerifyResponse(resp WKIdentityResponse, expectedVulosID string) bool {
+	pub, err := wkParseVulosID(expectedVulosID)
 	if err != nil {
 		return false
 	}
@@ -148,7 +148,7 @@ func wkVerifyResponse(resp WKIdentityResponse, expectedVulaID string) bool {
 
 // wkStoredIdentity is the JSON-serialisable form saved in identity.json.
 type wkStoredIdentity struct {
-	VulaID     string `json:"vula_id"`
+	VulosID    string `json:"vulos_id"`
 	PublicKey  string `json:"public_key"`  // base64url
 	PrivateKey string `json:"private_key"` // base64url (seed)
 	CreatedAt  string `json:"created_at"`
@@ -162,7 +162,7 @@ func wkLoadOrCreateIdentity(dataDir string) (*wkStoredIdentity, error) {
 	// Try to load existing identity.
 	if raw, err := os.ReadFile(path); err == nil {
 		var id wkStoredIdentity
-		if err := json.Unmarshal(raw, &id); err == nil && id.VulaID != "" {
+		if err := json.Unmarshal(raw, &id); err == nil && id.VulosID != "" {
 			return &id, nil
 		}
 	}
@@ -174,7 +174,7 @@ func wkLoadOrCreateIdentity(dataDir string) (*wkStoredIdentity, error) {
 	}
 
 	id := &wkStoredIdentity{
-		VulaID:     wkFormatVulaID(pub),
+		VulosID:    wkFormatVulosID(pub),
 		PublicKey:  base64.RawURLEncoding.EncodeToString(pub),
 		PrivateKey: base64.RawURLEncoding.EncodeToString(priv.Seed()),
 		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
@@ -213,7 +213,7 @@ type WKProfileVisibility struct {
 
 // WKOwnProfile is the full locally-stored profile (all fields + visibility).
 type WKOwnProfile struct {
-	VulaID        string              `json:"vula_id"`
+	VulosID       string              `json:"vulos_id"`
 	DisplayName   string              `json:"display_name"`
 	Bio           string              `json:"bio,omitempty"`
 	Email         string              `json:"email,omitempty"`
@@ -224,16 +224,16 @@ type WKOwnProfile struct {
 }
 
 // wkLoadOwnProfile reads the stored own profile; returns a minimal default if absent.
-func wkLoadOwnProfile(dataDir string, vulaID string) WKOwnProfile {
+func wkLoadOwnProfile(dataDir string, vulosID string) WKOwnProfile {
 	path := filepath.Join(dataDir, wkProfileFile)
 	if raw, err := os.ReadFile(path); err == nil {
 		var p WKOwnProfile
-		if json.Unmarshal(raw, &p) == nil && p.VulaID != "" {
+		if json.Unmarshal(raw, &p) == nil && p.VulosID != "" {
 			return p
 		}
 	}
 	return WKOwnProfile{
-		VulaID:      vulaID,
+		VulosID:     vulosID,
 		DisplayName: "Vula User",
 		Visibility: WKProfileVisibility{
 			Image: WKVisibilityPublic,
@@ -251,7 +251,7 @@ func wkLoadOwnProfile(dataDir string, vulaID string) WKOwnProfile {
 // WKIdentityResponse is what GET /.well-known/vula-id returns to the world.
 // Only public-visibility fields appear here; everything else is omitted.
 type WKIdentityResponse struct {
-	VulaID        string `json:"vula_id"`
+	VulosID       string `json:"vulos_id"`
 	DisplayName   string `json:"display_name"`
 	VerifiedEmail bool   `json:"verified_email"`
 	Slug          string `json:"slug,omitempty"`
@@ -283,11 +283,11 @@ type WKIdentityResponse struct {
 
 // WKLifecycle is the published key-lifecycle bundle (see identity_lifecycle.go).
 type WKLifecycle struct {
-	// RootVulaID is the original identity this chain descends from.
-	RootVulaID string `json:"root_vula_id"`
-	// AnchorVulaID is the account recovery anchor (peers TOFU-pin this to follow
+	// RootVulosID is the original identity this chain descends from.
+	RootVulosID string `json:"root_vulos_id"`
+	// AnchorVulosID is the account recovery anchor (peers TOFU-pin this to follow
 	// recovery certs).
-	AnchorVulaID string `json:"anchor_vula_id,omitempty"`
+	AnchorVulosID string `json:"anchor_vulos_id,omitempty"`
 	// Chain is the ordered rotation/recovery transition history.
 	Chain []LifecycleLink `json:"chain,omitempty"`
 	// Revocations are observed, self/anchor-signed revocation certificates.
@@ -365,7 +365,7 @@ func wkIngestLifecycle(lc *WKLifecycle) {
 // via the relay (/_vulos-direct/resolve) — not a self-claimed host:port list.
 func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 	resp := WKIdentityResponse{
-		VulaID:        p.VulaID,
+		VulosID:       p.VulosID,
 		DisplayName:   p.DisplayName,
 		VerifiedEmail: p.VerifiedEmail,
 		Slug:          p.Slug,
@@ -386,7 +386,7 @@ func wkBuildPublicResponse(p WKOwnProfile) WKIdentityResponse {
 // WKPeerProfile is a cached copy of a remote peer's profile as seen from
 // this node (may include "peers"-level fields if the peer is an approved contact).
 type WKPeerProfile struct {
-	VulaID        string `json:"vula_id"`
+	VulosID       string `json:"vulos_id"`
 	DisplayName   string `json:"display_name"`
 	Bio           string `json:"bio,omitempty"`
 	VerifiedEmail bool   `json:"verified_email"`
@@ -412,15 +412,15 @@ const wkCacheTTL = 5 * time.Minute
 // wkProfileCache is the in-process LRU-style cache (capped at wkCacheMax entries).
 var (
 	wkCacheMu  sync.RWMutex
-	wkCache    = map[string]*WKPeerProfile{} // vula_id -> profile
+	wkCache    = map[string]*WKPeerProfile{} // vulos_id -> profile
 	wkCacheMax = 1000
 )
 
 // wkCacheGet returns a cached peer profile if it is still fresh.
-func wkCacheGet(vulaID string) (*WKPeerProfile, bool) {
+func wkCacheGet(vulosID string) (*WKPeerProfile, bool) {
 	wkCacheMu.RLock()
 	defer wkCacheMu.RUnlock()
-	p, ok := wkCache[vulaID]
+	p, ok := wkCache[vulosID]
 	if !ok {
 		return nil, false
 	}
@@ -431,7 +431,7 @@ func wkCacheGet(vulaID string) (*WKPeerProfile, bool) {
 }
 
 // wkCachePut stores a peer profile in the cache.
-func wkCachePut(vulaID string, p *WKPeerProfile) {
+func wkCachePut(vulosID string, p *WKPeerProfile) {
 	wkCacheMu.Lock()
 	defer wkCacheMu.Unlock()
 	// Evict oldest entries when at capacity.
@@ -446,7 +446,7 @@ func wkCachePut(vulaID string, p *WKPeerProfile) {
 		}
 		delete(wkCache, oldest)
 	}
-	wkCache[vulaID] = p
+	wkCache[vulosID] = p
 }
 
 // --------------------------------------------------------------------------
@@ -461,17 +461,17 @@ func wkCachePut(vulaID string, p *WKPeerProfile) {
 // serverAddr may be:
 //   - a bare host:port (HTTP assumed for local dev, HTTPS for anything else)
 //   - a full https:// URL base
-func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerProfile, error) {
-	if vulaID == "" {
-		return nil, fmt.Errorf("peering: vulaID required")
+func FetchPeerProfile(ctx context.Context, vulosID, serverAddr string) (*WKPeerProfile, error) {
+	if vulosID == "" {
+		return nil, fmt.Errorf("peering: vulosID required")
 	}
 
 	// Cache hit?
-	if p, ok := wkCacheGet(vulaID); ok {
+	if p, ok := wkCacheGet(vulosID); ok {
 		return p, nil
 	}
 
-	wk, err := wkFetchAndVerify(ctx, vulaID, serverAddr)
+	wk, err := wkFetchAndVerify(ctx, vulosID, serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -485,8 +485,8 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 
 	// Fail closed if the fetched identity is now revoked: do not hand back (or
 	// cache) a usable profile for a key that has just been retired.
-	if isVulaIDRevoked(vulaID) {
-		return nil, fmt.Errorf("peering: identity %s is revoked — refusing profile", vulaID)
+	if isVulosIDRevoked(vulosID) {
+		return nil, fmt.Errorf("peering: identity %s is revoked — refusing profile", vulosID)
 	}
 
 	// Forward-secrecy prekeys: only surface a bundle whose signed prekey verifies
@@ -494,16 +494,16 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 	// is dropped so a sender never establishes a session to an unauthenticated key.
 	var preKeys *PreKeyBundlePublic
 	if wk.PreKeys != nil {
-		if wk.PreKeys.IdentityVulaID == "" {
-			wk.PreKeys.IdentityVulaID = vulaID
+		if wk.PreKeys.IdentityVulosID == "" {
+			wk.PreKeys.IdentityVulosID = vulosID
 		}
-		if wk.PreKeys.IdentityVulaID == vulaID && wk.PreKeys.VerifySignedPreKey() == nil {
+		if wk.PreKeys.IdentityVulosID == vulosID && wk.PreKeys.VerifySignedPreKey() == nil {
 			preKeys = wk.PreKeys
 		}
 	}
 
 	p := &WKPeerProfile{
-		VulaID:        vulaID, // authenticated identity (== wk.VulaID when present)
+		VulosID:       vulosID, // authenticated identity (== wk.VulosID when present)
 		DisplayName:   wk.DisplayName,
 		Bio:           wk.Bio,
 		VerifiedEmail: wk.VerifiedEmail,
@@ -515,7 +515,7 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 		ServerAddr:    serverAddr,
 	}
 
-	wkCachePut(vulaID, p)
+	wkCachePut(vulosID, p)
 	return p, nil
 }
 
@@ -524,7 +524,7 @@ func FetchPeerProfile(ctx context.Context, vulaID, serverAddr string) (*WKPeerPr
 // the response's Ed25519 signature against that key. It returns the authenticated
 // WKIdentityResponse. It is shared by FetchPeerProfile (which then builds/caches a
 // profile) and RefreshPeerLifecycle (which only ingests the lifecycle bundle).
-func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentityResponse, error) {
+func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdentityResponse, error) {
 	var zero WKIdentityResponse
 
 	// Build the well-known URL.
@@ -586,8 +586,8 @@ func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentit
 	}
 
 	// Validate that the returned Vula ID matches what we expected.
-	if wk.VulaID != "" && wk.VulaID != vulaID {
-		return zero, fmt.Errorf("peering: vula_id mismatch: expected %s got %s", vulaID, wk.VulaID)
+	if wk.VulosID != "" && wk.VulosID != vulosID {
+		return zero, fmt.Errorf("peering: vulos_id mismatch: expected %s got %s", vulosID, wk.VulosID)
 	}
 
 	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
@@ -595,8 +595,8 @@ func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentit
 	// server, enabling identity spoofing. A Vula ID IS
 	// an Ed25519 public key, so require a valid signature over the canonical
 	// response by that key. Fail closed on any missing/invalid signature.
-	if !wkVerifyResponse(wk, vulaID) {
-		return zero, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulaID)
+	if !wkVerifyResponse(wk, vulosID) {
+		return zero, fmt.Errorf("peering: profile for %s has a missing or invalid signature — rejecting (possible spoof/MITM)", vulosID)
 	}
 	return wk, nil
 }
@@ -607,8 +607,8 @@ func wkFetchAndVerify(ctx context.Context, vulaID, serverAddr string) (WKIdentit
 // published by a contact take effect on this node WITHOUT waiting for a fresh
 // profile fetch (the profile cache could otherwise serve a stale, pre-revocation
 // copy for its whole TTL). Errors are returned for logging.
-func RefreshPeerLifecycle(ctx context.Context, vulaID, serverAddr string) error {
-	wk, err := wkFetchAndVerify(ctx, vulaID, serverAddr)
+func RefreshPeerLifecycle(ctx context.Context, vulosID, serverAddr string) error {
+	wk, err := wkFetchAndVerify(ctx, vulosID, serverAddr)
 	if err != nil {
 		return err
 	}
@@ -635,12 +635,12 @@ func StartLifecycleRefresh(ctx context.Context, listContacts func() []WKApproved
 				return
 			case <-ticker.C:
 				for _, p := range listContacts() {
-					if p.VulaID == "" || p.ServerAddr == "" {
+					if p.VulosID == "" || p.ServerAddr == "" {
 						continue
 					}
 					tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-					if err := RefreshPeerLifecycle(tctx, p.VulaID, p.ServerAddr); err != nil {
-						fmt.Fprintf(os.Stderr, "[peering/wellknown] lifecycle refresh %s: %v\n", p.VulaID, err)
+					if err := RefreshPeerLifecycle(tctx, p.VulosID, p.ServerAddr); err != nil {
+						fmt.Fprintf(os.Stderr, "[peering/wellknown] lifecycle refresh %s: %v\n", p.VulosID, err)
 					}
 					cancel()
 				}
@@ -677,7 +677,7 @@ func wkNormaliseServerAddr(addr string) string {
 // RegisterWellKnownHandlers mounts the following routes on mux:
 //
 //	GET /.well-known/vula-id           — unauthenticated, public fields only
-//	GET /api/peering/profile/{vula_id} — fetch + cache a peer's profile
+//	GET /api/peering/profile/{vulos_id} — fetch + cache a peer's profile
 //
 // It reads this node's identity and profile from wkPeeringDataDir().
 // Both handlers are safe to call concurrently.
@@ -694,9 +694,9 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	if err != nil {
 		// Non-fatal — log and serve a placeholder.
 		fmt.Fprintf(os.Stderr, "[peering] identity init warning: %v\n", err)
-		identity = &wkStoredIdentity{VulaID: "vula:ed25519:unconfigured"}
+		identity = &wkStoredIdentity{VulosID: "vulos:ed25519:unconfigured"}
 	}
-	ownVulaID := identity.VulaID
+	ownVulosID := identity.VulosID
 
 	// ── GET /.well-known/vula-id ─────────────────────────────────────────
 	// Public, unauthenticated. Returns only public-visibility fields.
@@ -708,7 +708,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	}
 
 	mux.HandleFunc("GET /.well-known/vula-id", func(w http.ResponseWriter, r *http.Request) {
-		profile := wkLoadOwnProfile(dataDir, ownVulaID)
+		profile := wkLoadOwnProfile(dataDir, ownVulosID)
 		resp := wkBuildPublicResponse(profile)
 		// Publish key-lifecycle data (rotation/recovery chain + revocations) so
 		// peers can follow rotations and honor revocations (identity_lifecycle.go).
@@ -730,27 +730,27 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	// ── GET /api/peering/profile/{vula_id} ───────────────────────────────
-	// Fetch a peer's profile by Vula ID.  The vula_id path segment must be
+	// ── GET /api/peering/profile/{vulos_id} ───────────────────────────────
+	// Fetch a peer's profile by Vula ID.  The vulos_id path segment must be
 	// URL-encoded.  The caller supplies the peer's server address as the
 	// ?server= query parameter (required for a live fetch; optional if the
 	// profile is already cached).
 	//
 	// Visibility enforcement (server-side): the remote server controls what
 	// fields it exposes.  This endpoint additionally gates on whether the
-	// requested vula_id is an approved local contact (future: reads
+	// requested vulos_id is an approved local contact (future: reads
 	// contacts.json).  For now it exposes whatever the remote server returned
 	// (which itself respects visibility = "public" only for unapproved
 	// callers).
-	mux.HandleFunc("GET /api/peering/profile/{vula_id}", func(w http.ResponseWriter, r *http.Request) {
-		vulaID := r.PathValue("vula_id")
-		if vulaID == "" {
-			wkWriteErr(w, http.StatusBadRequest, "vula_id required")
+	mux.HandleFunc("GET /api/peering/profile/{vulos_id}", func(w http.ResponseWriter, r *http.Request) {
+		vulosID := r.PathValue("vulos_id")
+		if vulosID == "" {
+			wkWriteErr(w, http.StatusBadRequest, "vulos_id required")
 			return
 		}
 
 		// Check in-process cache first (no server addr needed).
-		if p, ok := wkCacheGet(vulaID); ok {
+		if p, ok := wkCacheGet(vulosID); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Cache", "HIT")
 			json.NewEncoder(w).Encode(p)
@@ -763,7 +763,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 			return
 		}
 
-		p, err := FetchPeerProfile(r.Context(), vulaID, serverAddr)
+		p, err := FetchPeerProfile(r.Context(), vulosID, serverAddr)
 		if err != nil {
 			wkWriteErr(w, http.StatusBadGateway, err.Error())
 			return
@@ -779,19 +779,19 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	// evict our cached copy so the next fetch gets fresh data.
 	mux.HandleFunc("POST /api/peering/profile/notify-change", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			VulaID string `json:"vula_id"`
+			VulosID string `json:"vulos_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.VulaID == "" {
-			wkWriteErr(w, http.StatusBadRequest, "vula_id required")
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.VulosID == "" {
+			wkWriteErr(w, http.StatusBadRequest, "vulos_id required")
 			return
 		}
 
 		wkCacheMu.Lock()
-		delete(wkCache, req.VulaID)
+		delete(wkCache, req.VulosID)
 		wkCacheMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "cache_evicted", "vula_id": req.VulaID})
+		json.NewEncoder(w).Encode(map[string]string{"status": "cache_evicted", "vulos_id": req.VulosID})
 	})
 }
 
@@ -800,10 +800,10 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 // --------------------------------------------------------------------------
 
 // WKApprovedPeer is a minimal record of an approved contact used by the
-// profile-sync loop.  Only VulaID and ServerAddr are required; everything
+// profile-sync loop.  Only VulosID and ServerAddr are required; everything
 // else is informational.
 type WKApprovedPeer struct {
-	VulaID     string
+	VulosID    string
 	ServerAddr string
 }
 
@@ -824,7 +824,7 @@ const wkSyncInterval = 15 * time.Minute
 //	    contacts := contactStore.ListByState(peering.StateApproved)
 //	    peers := make([]peering.WKApprovedPeer, 0, len(contacts))
 //	    for _, c := range contacts {
-//	        peers = append(peers, peering.WKApprovedPeer{c.VulaID, c.Server})
+//	        peers = append(peers, peering.WKApprovedPeer{c.VulosID, c.Server})
 //	    }
 //	    return peers
 //	})
@@ -847,15 +847,15 @@ func StartPeerProfileSync(ctx context.Context, listApproved func() []WKApprovedP
 // peer's profile.  It is a fire-and-forget convenience used by the approve
 // handler so that the contact's profile is cached immediately after approval
 // without blocking the HTTP response.
-func FetchPeerProfileAsync(vulaID, serverAddr string) {
-	if vulaID == "" || serverAddr == "" {
+func FetchPeerProfileAsync(vulosID, serverAddr string) {
+	if vulosID == "" || serverAddr == "" {
 		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if _, err := FetchPeerProfile(ctx, vulaID, serverAddr); err != nil {
-			fmt.Fprintf(os.Stderr, "[peering/wellknown] async profile fetch %s: %v\n", vulaID, err)
+		if _, err := FetchPeerProfile(ctx, vulosID, serverAddr); err != nil {
+			fmt.Fprintf(os.Stderr, "[peering/wellknown] async profile fetch %s: %v\n", vulosID, err)
 		}
 	}()
 }
@@ -865,18 +865,18 @@ func FetchPeerProfileAsync(vulaID, serverAddr string) {
 // and skipped so a single unreachable peer does not abort the refresh.
 func wkRefreshApprovedProfiles(ctx context.Context, peers []WKApprovedPeer) {
 	for _, p := range peers {
-		if p.VulaID == "" || p.ServerAddr == "" {
+		if p.VulosID == "" || p.ServerAddr == "" {
 			continue
 		}
 		// Skip if there is a still-fresh cache entry.
-		if _, ok := wkCacheGet(p.VulaID); ok {
+		if _, ok := wkCacheGet(p.VulosID); ok {
 			continue
 		}
 		tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_, err := FetchPeerProfile(tctx, p.VulaID, p.ServerAddr)
+		_, err := FetchPeerProfile(tctx, p.VulosID, p.ServerAddr)
 		cancel()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[peering/wellknown] refresh %s: %v\n", p.VulaID, err)
+			fmt.Fprintf(os.Stderr, "[peering/wellknown] refresh %s: %v\n", p.VulosID, err)
 		}
 	}
 }

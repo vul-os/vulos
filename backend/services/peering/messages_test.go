@@ -35,8 +35,8 @@ func makeTestIdentity(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, stri
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
-	return priv, pub, vulaID
+	vulosID := encodeVulosID(pub)
+	return priv, pub, vulosID
 }
 
 // makeInboxStore creates an InboxStore in a temporary directory.
@@ -62,12 +62,12 @@ func makeContactStore(t *testing.T) *ContactStore {
 }
 
 // addApprovedContact adds a contact in StateApproved with PermMessage to store.
-func addApprovedContact(t *testing.T, store *ContactStore, vulaID, server string) {
+func addApprovedContact(t *testing.T, store *ContactStore, vulosID, server string) {
 	t.Helper()
-	if err := store.Add(vulaID, "Test Contact", server); err != nil {
+	if err := store.Add(vulosID, "Test Contact", server); err != nil {
 		t.Fatalf("store.Add: %v", err)
 	}
-	if err := store.Approve(vulaID, DefaultPerms()); err != nil {
+	if err := store.Approve(vulosID, DefaultPerms()); err != nil {
 		t.Fatalf("store.Approve: %v", err)
 	}
 }
@@ -76,7 +76,7 @@ func addApprovedContact(t *testing.T, store *ContactStore, vulaID, server string
 func makeTestEnvelope(
 	t *testing.T,
 	priv ed25519.PrivateKey,
-	fromVulaID, toVulaID string,
+	fromVulosID, toVulosID string,
 	body string,
 ) *Envelope {
 	t.Helper()
@@ -86,7 +86,7 @@ func makeTestEnvelope(
 		t.Fatalf("marshal payload: %v", err)
 	}
 
-	env, err := NewEnvelope(uuid.New().String(), fromVulaID, toVulaID, TypeMessage, json.RawMessage(payload))
+	env, err := NewEnvelope(uuid.New().String(), fromVulosID, toVulosID, TypeMessage, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -108,8 +108,8 @@ func requestWithContextEnvelope(env *Envelope) *http.Request {
 // ─── ConversationID tests ─────────────────────────────────────────────────────
 
 func TestConversationID_Symmetric(t *testing.T) {
-	a := "vula:ed25519:AAA"
-	b := "vula:ed25519:ZZZ"
+	a := "vulos:ed25519:AAA"
+	b := "vulos:ed25519:ZZZ"
 
 	id1 := ConversationID(a, b)
 	id2 := ConversationID(b, a)
@@ -120,11 +120,11 @@ func TestConversationID_Symmetric(t *testing.T) {
 }
 
 func TestConversationID_Deterministic(t *testing.T) {
-	a := "vula:ed25519:AAA"
-	b := "vula:ed25519:BBB"
+	a := "vulos:ed25519:AAA"
+	b := "vulos:ed25519:BBB"
 
 	id := ConversationID(a, b)
-	if !strings.HasPrefix(id, "vula:ed25519:AAA") {
+	if !strings.HasPrefix(id, "vulos:ed25519:AAA") {
 		t.Errorf("expected lower ID first, got %q", id)
 	}
 }
@@ -365,21 +365,21 @@ func TestInboxStore_StoreMessage_EmptyConvID(t *testing.T) {
 func makeMessageAPI(t *testing.T) (*MessageAPI, *ContactStore, *InboxStore, ed25519.PrivateKey, string) {
 	t.Helper()
 
-	priv, _, vulaID := makeTestIdentity(t)
+	priv, _, vulosID := makeTestIdentity(t)
 	contactStore := makeContactStore(t)
 	inboxStore := makeInboxStore(t)
 
-	api := NewMessageAPI(contactStore, inboxStore, NewPeerClient(), nil, priv, vulaID)
-	return api, contactStore, inboxStore, priv, vulaID
+	api := NewMessageAPI(contactStore, inboxStore, NewPeerClient(), nil, priv, vulosID)
+	return api, contactStore, inboxStore, priv, vulosID
 }
 
 func TestHandleInboundMessage_HappyPath(t *testing.T) {
-	api, contactStore, inboxStore, _, localVulaID := makeMessageAPI(t)
+	api, contactStore, inboxStore, _, localVulosID := makeMessageAPI(t)
 
-	senderPriv, _, senderVulaID := makeTestIdentity(t)
-	addApprovedContact(t, contactStore, senderVulaID, "sender.example.com:8080")
+	senderPriv, _, senderVulosID := makeTestIdentity(t)
+	addApprovedContact(t, contactStore, senderVulosID, "sender.example.com:8080")
 
-	env := makeTestEnvelope(t, senderPriv, senderVulaID, localVulaID, "hello world")
+	env := makeTestEnvelope(t, senderPriv, senderVulosID, localVulosID, "hello world")
 	r := requestWithContextEnvelope(env)
 	w := httptest.NewRecorder()
 
@@ -389,7 +389,7 @@ func TestHandleInboundMessage_HappyPath(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	convID := ConversationID(senderVulaID, localVulaID)
+	convID := ConversationID(senderVulosID, localVulosID)
 	msgs, err := inboxStore.GetMessages(convID)
 	if err != nil {
 		t.Fatalf("GetMessages: %v", err)
@@ -419,15 +419,15 @@ func TestHandleInboundMessage_NoEnvelopeInContext(t *testing.T) {
 }
 
 func TestHandleInboundMessage_SenderNotApproved(t *testing.T) {
-	api, contactStore, _, _, localVulaID := makeMessageAPI(t)
+	api, contactStore, _, _, localVulosID := makeMessageAPI(t)
 
-	senderPriv, _, senderVulaID := makeTestIdentity(t)
+	senderPriv, _, senderVulosID := makeTestIdentity(t)
 	// Add as pending (not approved).
-	if err := contactStore.Add(senderVulaID, "not approved", ""); err != nil {
+	if err := contactStore.Add(senderVulosID, "not approved", ""); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
-	env := makeTestEnvelope(t, senderPriv, senderVulaID, localVulaID, "sneaky message")
+	env := makeTestEnvelope(t, senderPriv, senderVulosID, localVulosID, "sneaky message")
 	r := requestWithContextEnvelope(env)
 	w := httptest.NewRecorder()
 
@@ -439,18 +439,18 @@ func TestHandleInboundMessage_SenderNotApproved(t *testing.T) {
 }
 
 func TestHandleInboundMessage_SenderNoMessagePerm(t *testing.T) {
-	api, contactStore, _, _, localVulaID := makeMessageAPI(t)
+	api, contactStore, _, _, localVulosID := makeMessageAPI(t)
 
-	senderPriv, _, senderVulaID := makeTestIdentity(t)
+	senderPriv, _, senderVulosID := makeTestIdentity(t)
 	// Approve with only PermCall (no PermMessage).
-	if err := contactStore.Add(senderVulaID, "caller only", ""); err != nil {
+	if err := contactStore.Add(senderVulosID, "caller only", ""); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := contactStore.Approve(senderVulaID, []Perm{PermCall}); err != nil {
+	if err := contactStore.Approve(senderVulosID, []Perm{PermCall}); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
-	env := makeTestEnvelope(t, senderPriv, senderVulaID, localVulaID, "call me maybe")
+	env := makeTestEnvelope(t, senderPriv, senderVulosID, localVulosID, "call me maybe")
 	r := requestWithContextEnvelope(env)
 	w := httptest.NewRecorder()
 
@@ -462,18 +462,18 @@ func TestHandleInboundMessage_SenderNoMessagePerm(t *testing.T) {
 }
 
 func TestHandleInboundMessage_BadPayload(t *testing.T) {
-	api, contactStore, _, _, localVulaID := makeMessageAPI(t)
+	api, contactStore, _, _, localVulosID := makeMessageAPI(t)
 
-	_, _, senderVulaID := makeTestIdentity(t)
-	addApprovedContact(t, contactStore, senderVulaID, "")
+	_, _, senderVulosID := makeTestIdentity(t)
+	addApprovedContact(t, contactStore, senderVulosID, "")
 
 	// Directly construct an envelope with a syntactically invalid payload
 	// JSON and inject it into the request context, bypassing signature
 	// verification (InboundMiddleware already handles that).
 	env := &Envelope{
 		ID:        uuid.New().String(),
-		From:      senderVulaID,
-		To:        localVulaID,
+		From:      senderVulosID,
+		To:        localVulosID,
 		Type:      TypeMessage,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Payload:   json.RawMessage(`{invalid`), // syntactically bad JSON object
@@ -506,10 +506,10 @@ func sendRequest(t *testing.T, api *MessageAPI, convID, body string) *httptest.R
 }
 
 func TestHandleSend_PeerNotApproved(t *testing.T) {
-	api, _, _, _, localVulaID := makeMessageAPI(t)
-	_, _, peerVulaID := makeTestIdentity(t)
+	api, _, _, _, localVulosID := makeMessageAPI(t)
+	_, _, peerVulosID := makeTestIdentity(t)
 
-	convID := ConversationID(localVulaID, peerVulaID)
+	convID := ConversationID(localVulosID, peerVulosID)
 	w := sendRequest(t, api, convID, "hello")
 
 	if w.Code != http.StatusForbidden {
@@ -518,18 +518,18 @@ func TestHandleSend_PeerNotApproved(t *testing.T) {
 }
 
 func TestHandleSend_PeerNoServer(t *testing.T) {
-	api, contactStore, _, _, localVulaID := makeMessageAPI(t)
-	_, _, peerVulaID := makeTestIdentity(t)
+	api, contactStore, _, _, localVulosID := makeMessageAPI(t)
+	_, _, peerVulosID := makeTestIdentity(t)
 
 	// Approve with empty server address.
-	if err := contactStore.Add(peerVulaID, "bob", ""); err != nil {
+	if err := contactStore.Add(peerVulosID, "bob", ""); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := contactStore.Approve(peerVulaID, DefaultPerms()); err != nil {
+	if err := contactStore.Approve(peerVulosID, DefaultPerms()); err != nil {
 		t.Fatalf("Approve: %v", err)
 	}
 
-	convID := ConversationID(localVulaID, peerVulaID)
+	convID := ConversationID(localVulosID, peerVulosID)
 	w := sendRequest(t, api, convID, "hello")
 
 	if w.Code != http.StatusBadRequest {
@@ -538,11 +538,11 @@ func TestHandleSend_PeerNoServer(t *testing.T) {
 }
 
 func TestHandleSend_EmptyBody(t *testing.T) {
-	api, contactStore, _, _, localVulaID := makeMessageAPI(t)
-	_, _, peerVulaID := makeTestIdentity(t)
-	addApprovedContact(t, contactStore, peerVulaID, "peer.example.com:8080")
+	api, contactStore, _, _, localVulosID := makeMessageAPI(t)
+	_, _, peerVulosID := makeTestIdentity(t)
+	addApprovedContact(t, contactStore, peerVulosID, "peer.example.com:8080")
 
-	convID := ConversationID(localVulaID, peerVulaID)
+	convID := ConversationID(localVulosID, peerVulosID)
 	w := sendRequest(t, api, convID, "")
 
 	if w.Code != http.StatusBadRequest {
@@ -615,11 +615,11 @@ func TestHandleGetMessages_EmptyConv(t *testing.T) {
 }
 
 func TestHandleGetMessages_StoresAndReturns(t *testing.T) {
-	api, contactStore, inboxStore, _, localVulaID := makeMessageAPI(t)
-	senderPriv, _, senderVulaID := makeTestIdentity(t)
-	addApprovedContact(t, contactStore, senderVulaID, "")
+	api, contactStore, inboxStore, _, localVulosID := makeMessageAPI(t)
+	senderPriv, _, senderVulosID := makeTestIdentity(t)
+	addApprovedContact(t, contactStore, senderVulosID, "")
 
-	convID := ConversationID(senderVulaID, localVulaID)
+	convID := ConversationID(senderVulosID, localVulosID)
 
 	// Manually store a couple of messages.
 	base := time.Now().UTC().Truncate(time.Second)
@@ -627,8 +627,8 @@ func TestHandleGetMessages_StoresAndReturns(t *testing.T) {
 		msg := StoredMessage{
 			ID:        uuid.New().String(),
 			ConvID:    convID,
-			From:      senderVulaID,
-			To:        localVulaID,
+			From:      senderVulosID,
+			To:        localVulosID,
 			Type:      "text",
 			Body:      "msg",
 			Timestamp: base.Add(time.Duration(i) * time.Second),
@@ -640,7 +640,7 @@ func TestHandleGetMessages_StoresAndReturns(t *testing.T) {
 	}
 
 	// Also simulate an inbound message through the handler to verify the full path.
-	env := makeTestEnvelope(t, senderPriv, senderVulaID, localVulaID, "via handler")
+	env := makeTestEnvelope(t, senderPriv, senderVulosID, localVulosID, "via handler")
 	rIn := requestWithContextEnvelope(env)
 	wIn := httptest.NewRecorder()
 	api.HandleInboundMessage(wIn, rIn)
@@ -676,7 +676,7 @@ func TestSanitizePath(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"vula:ed25519:ABC", "vula:ed25519:ABC"},
+		{"vulos:ed25519:ABC", "vulos:ed25519:ABC"},
 		// Each character of "../etc/passwd": '.','.','/','e','t','c','/','p','a','s','s','w','d'
 		// '.', '/' both map to '-' → "---etc-passwd"
 		{"../etc/passwd", "---etc-passwd"},
@@ -760,8 +760,8 @@ func TestInboxStore_PathTraversalGuard(t *testing.T) {
 	msg := StoredMessage{
 		ID:        uuid.New().String(),
 		ConvID:    maliciousConvID,
-		From:      "vula:ed25519:AAA",
-		To:        "vula:ed25519:BBB",
+		From:      "vulos:ed25519:AAA",
+		To:        "vulos:ed25519:BBB",
 		Type:      "text",
 		Body:      "traversal attempt",
 		Timestamp: time.Now().UTC(),

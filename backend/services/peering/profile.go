@@ -90,7 +90,7 @@ func profileDefaultVisibility() ProfileFieldVisibility {
 
 // ProfileData is the persisted profile record.
 type ProfileData struct {
-	VulaID        string                 `json:"vula_id"`
+	VulosID       string                 `json:"vulos_id"`
 	DisplayName   string                 `json:"display_name"`
 	Bio           string                 `json:"bio"`
 	VerifiedEmail bool                   `json:"verified_email"`
@@ -112,7 +112,7 @@ type ProfileData struct {
 // profileContactChecker is the subset of *ContactStore that profile needs.
 // *ContactStore satisfies this interface automatically.
 type profileContactChecker interface {
-	IsApproved(vulaID string) bool
+	IsApproved(vulosID string) bool
 }
 
 // ─── Profile store ────────────────────────────────────────────────────────────
@@ -132,12 +132,12 @@ const (
 
 // NewProfileStore opens or initialises a ProfileStore at dir.
 // contacts gates peer-visibility checks; may be nil (peer fields treated as nobody).
-func NewProfileStore(dir, vulaID string, contacts profileContactChecker) (*ProfileStore, error) {
+func NewProfileStore(dir, vulosID string, contacts profileContactChecker) (*ProfileStore, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("profile: mkdir %s: %w", dir, err)
 	}
 	ps := &ProfileStore{dir: dir, contacts: contacts}
-	if err := ps.profileLoad(vulaID); err != nil {
+	if err := ps.profileLoad(vulosID); err != nil {
 		return nil, err
 	}
 	return ps, nil
@@ -148,12 +148,12 @@ func (ps *ProfileStore) profileFilePath(name string) string {
 }
 
 // profileLoad reads profile.json; creates defaults if absent.
-func (ps *ProfileStore) profileLoad(vulaID string) error {
+func (ps *ProfileStore) profileLoad(vulosID string) error {
 	path := ps.profileFilePath(profileJSONFile)
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		ps.data = ProfileData{
-			VulaID:     vulaID,
+			VulosID:    vulosID,
 			Visibility: profileDefaultVisibility(),
 			UpdatedAt:  time.Now().UTC(),
 		}
@@ -637,21 +637,21 @@ func profileWriteTree(bw *profileBW, codes []profileHCode, nsym int) error {
 
 // profileSvc bundles state for HTTP handler methods.
 type profileSvc struct {
-	store  *ProfileStore
-	vulaID string
+	store   *ProfileStore
+	vulosID string
 }
 
 // RegisterProfileHandlers wires the four profile routes onto mux.
 //
 //	dir     — storage directory, e.g. filepath.Join(home, ".vulos/peering/profile")
-//	vulaID  — local Vula ID string (e.g. "vula:ed25519:...")
+//	vulosID  — local Vula ID string (e.g. "vulos:ed25519:...")
 //	contacts — used to resolve peer-visibility checks; may be nil
 //
 // It returns the *ProfileStore (nil on init failure) so callers can reuse it for
 // adjacent seams — e.g. the internal content-key lookup the Vulos cell calls to
 // enforce recipient-targeting on content-blind shares (RegisterContentKeyLookup).
-func RegisterProfileHandlers(mux *http.ServeMux, dir, vulaID string, contacts profileContactChecker) *ProfileStore {
-	store, err := NewProfileStore(dir, vulaID, contacts)
+func RegisterProfileHandlers(mux *http.ServeMux, dir, vulosID string, contacts profileContactChecker) *ProfileStore {
+	store, err := NewProfileStore(dir, vulosID, contacts)
 	if err != nil {
 		log.Printf("[peering/profile] store init: %v", err)
 		fail := func(w http.ResponseWriter, _ *http.Request) {
@@ -663,7 +663,7 @@ func RegisterProfileHandlers(mux *http.ServeMux, dir, vulaID string, contacts pr
 		mux.HandleFunc("GET /api/peering/profile/image", fail)
 		return nil
 	}
-	svc := &profileSvc{store: store, vulaID: vulaID}
+	svc := &profileSvc{store: store, vulosID: vulosID}
 	mux.HandleFunc("GET /api/peering/profile", svc.handleGet)
 	mux.HandleFunc("PUT /api/peering/profile", svc.handlePut)
 	mux.HandleFunc("POST /api/peering/profile/image", svc.handlePostImage)
@@ -680,7 +680,7 @@ func (ps *ProfileStore) ContentPubKey() string {
 // ─── GET /api/peering/profile ─────────────────────────────────────────────────
 
 type profileGetResp struct {
-	VulaID        string                 `json:"vula_id"`
+	VulosID       string                 `json:"vulos_id"`
 	DisplayName   string                 `json:"display_name"`
 	Bio           string                 `json:"bio"`
 	VerifiedEmail bool                   `json:"verified_email"`
@@ -696,7 +696,7 @@ func (svc *profileSvc) handleGet(w http.ResponseWriter, r *http.Request) {
 	_, hasAvatar := svc.store.AvatarETag()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(profileGetResp{
-		VulaID:        d.VulaID,
+		VulosID:       d.VulosID,
 		DisplayName:   d.DisplayName,
 		Bio:           d.Bio,
 		VerifiedEmail: d.VerifiedEmail,

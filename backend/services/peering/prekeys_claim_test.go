@@ -53,7 +53,7 @@ func TestClaimOneTimePreKey_Depletion(t *testing.T) {
 	}
 	hdr := X3DHHeader{
 		Version:         ContentCryptoV2X3DH,
-		SenderVulaID:    bobID, // sender id irrelevant; the OPK lookup fails first
+		SenderVulosID:   bobID, // sender id irrelevant; the OPK lookup fails first
 		EphemeralPub:    make([]byte, 32),
 		SignedPreKeyID:  c1.SignedPreKey.ID,
 		OneTimePreKeyID: c1.OneTimePreKey.ID,
@@ -77,7 +77,7 @@ func TestClaimHandler_HTTP(t *testing.T) {
 	defer srv.Close()
 
 	claim := func(id string) (*ClaimedBundle, int) {
-		body, _ := json.Marshal(map[string]string{"identity_vula_id": id})
+		body, _ := json.Marshal(map[string]string{"identity_vulos_id": id})
 		resp, err := http.Post(srv.URL+"/api/peering/prekeys/claim", "application/json", bytes.NewReader(body))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -97,11 +97,11 @@ func TestClaimHandler_HTTP(t *testing.T) {
 	if code != http.StatusOK || c1 == nil || c1.OneTimePreKey == nil {
 		t.Fatalf("valid claim: code=%d bundle=%+v", code, c1)
 	}
-	if c1.IdentityVulaID != bobID {
-		t.Fatalf("claim identity = %q, want %q", c1.IdentityVulaID, bobID)
+	if c1.IdentityVulosID != bobID {
+		t.Fatalf("claim identity = %q, want %q", c1.IdentityVulosID, bobID)
 	}
 	// Verify the returned signed prekey actually verifies against the identity.
-	b := &PreKeyBundlePublic{IdentityVulaID: bobID, SignedPreKey: c1.SignedPreKey}
+	b := &PreKeyBundlePublic{IdentityVulosID: bobID, SignedPreKey: c1.SignedPreKey}
 	if err := b.VerifySignedPreKey(); err != nil {
 		t.Fatalf("claimed signed prekey does not verify: %v", err)
 	}

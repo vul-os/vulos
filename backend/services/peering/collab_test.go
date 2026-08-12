@@ -384,7 +384,7 @@ func TestHandleInboundCollabUpdate_WithEnvelopeContext(t *testing.T) {
 	})
 	env := &Envelope{
 		ID:      "test-id",
-		From:    "vula:ed25519:test",
+		From:    "vulos:ed25519:test",
 		Type:    TypeCollabUpdate,
 		Payload: json.RawMessage(innerPayload),
 	}
@@ -463,7 +463,7 @@ func TestRegisterCollabHandlers_InboundUsesEnvelopePath(t *testing.T) {
 	})
 	env := &Envelope{
 		ID:      "reg-test-id",
-		From:    "vula:ed25519:regtest",
+		From:    "vulos:ed25519:regtest",
 		Type:    TypeCollabUpdate,
 		Payload: json.RawMessage(innerPayload),
 	}

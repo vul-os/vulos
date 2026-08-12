@@ -87,7 +87,7 @@ func TestPeeringClientRoutesStaySessionGated(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/peering/contacts"},
 		{http.MethodPost, "/api/peering/contacts/request"},
-		{http.MethodPost, "/api/peering/contacts/approve/vula:ed25519:abc"},
+		{http.MethodPost, "/api/peering/contacts/approve/vulos:ed25519:abc"},
 		{http.MethodGet, "/api/peering/conversations"},
 		{http.MethodPost, "/api/peering/conversations/c1/send"},
 		{http.MethodPost, "/api/peering/groups"},
@@ -98,7 +98,7 @@ func TestPeeringClientRoutesStaySessionGated(t *testing.T) {
 		{http.MethodPost, "/api/peering/identity/revoke"},
 		{http.MethodPut, "/api/peering/profile"},
 		{http.MethodGet, "/api/peering/discover"},
-		{http.MethodGet, "/api/peering/profile/vula:ed25519:abc"}, // client fetch-and-cache proxy
+		{http.MethodGet, "/api/peering/profile/vulos:ed25519:abc"}, // client fetch-and-cache proxy
 	}
 
 	for _, tc := range gated {
@@ -126,7 +126,7 @@ func TestPeeringPublicPrefix_NoTraversalBypass(t *testing.T) {
 	traversals := []string{
 		"/api/peering/inbound/../conversations/c1/send",
 		"/api/peering/inbound/x/../../conversations",
-		"/api/peering/inbound/../contacts/approve/vula:ed25519:abc",
+		"/api/peering/inbound/../contacts/approve/vulos:ed25519:abc",
 	}
 	for _, p := range traversals {
 		req := httptest.NewRequest(http.MethodPost, p, nil)

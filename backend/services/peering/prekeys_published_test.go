@@ -14,14 +14,14 @@ import (
 // produce: the signed prekey public is signed by the Ed25519 identity key, and all
 // keys are PUBLIC X25519 points. It returns the bundle and, separately, the OPK
 // PRIVATE scalars so a test can assert those never appear in any host response.
-func pkPublishBundle(t *testing.T, idPriv ed25519.PrivateKey, idVulaID string, n int) (*PreKeyBundlePublic, map[string][]byte) {
+func pkPublishBundle(t *testing.T, idPriv ed25519.PrivateKey, idVulosID string, n int) (*PreKeyBundlePublic, map[string][]byte) {
 	t.Helper()
 	_, spkPub, err := genX25519()
 	if err != nil {
 		t.Fatalf("genX25519 spk: %v", err)
 	}
 	b := &PreKeyBundlePublic{
-		IdentityVulaID: idVulaID,
+		IdentityVulosID: idVulosID,
 		SignedPreKey: SignedPreKeyPublic{
 			ID:  newKeyID(),
 			Pub: spkPub,
@@ -64,7 +64,7 @@ func TestPublishedBundle_ClaimDepletesToNull(t *testing.T) {
 		t.Fatal("two claims returned the SAME OPK — no per-sender forward secrecy")
 	}
 	// Signed prekey present on both and verifies against the identity.
-	vb := &PreKeyBundlePublic{IdentityVulaID: aliceID, SignedPreKey: c1.SignedPreKey}
+	vb := &PreKeyBundlePublic{IdentityVulosID: aliceID, SignedPreKey: c1.SignedPreKey}
 	if err := vb.VerifySignedPreKey(); err != nil {
 		t.Fatalf("claimed signed prekey does not verify: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestPublishHandler_HTTP(t *testing.T) {
 	pres.Body.Close()
 
 	claim := func(id string) ([]byte, int) {
-		body, _ := json.Marshal(map[string]string{"identity_vula_id": id})
+		body, _ := json.Marshal(map[string]string{"identity_vulos_id": id})
 		resp, err := http.Post(srv.URL+"/api/peering/prekeys/claim", "application/json", bytes.NewReader(body))
 		if err != nil {
 			t.Fatalf("claim post: %v", err)
@@ -152,7 +152,7 @@ func TestPublishHandler_HTTP(t *testing.T) {
 	if err := json.Unmarshal(raw1, &cb1); err != nil {
 		t.Fatalf("decode claim1: %v", err)
 	}
-	if cb1.IdentityVulaID != aliceID || cb1.OneTimePreKey == nil {
+	if cb1.IdentityVulosID != aliceID || cb1.OneTimePreKey == nil {
 		t.Fatalf("published claim must return alice + an OPK: %+v", cb1)
 	}
 	raw2, _ := claim(aliceID)

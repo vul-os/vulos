@@ -58,14 +58,14 @@ export function guessMime(name: string): string {
 /** Minimal peer shape needed to address a Drop send — see SharePeerModal's
  *  roster entries from GET /api/peering/drop/nearby. */
 export interface SharePeer {
-  vula_id: string
+  vulos_id: string
   addr?: string
 }
 
 /** Body for POST /api/peering/drop/send — mirrors what Drop.jsx posts, so the
  *  same DropService handler serves both surfaces. */
 export interface DropSendBody {
-  target_vula_id: string
+  target_vulos_id: string
   media_path: string
   mime_type: string
   target_addr?: string
@@ -78,7 +78,7 @@ export interface DropSendBody {
  */
 export function buildSendBody(peer: SharePeer, absPath: string, mimeType: string): DropSendBody {
   const body: DropSendBody = {
-    target_vula_id: peer.vula_id,
+    target_vulos_id: peer.vulos_id,
     media_path: absPath,
     mime_type: mimeType || 'application/octet-stream',
   }

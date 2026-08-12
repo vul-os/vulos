@@ -873,18 +873,18 @@ func main() {
 			// valid peering identity; without one, peer-share endpoints return 503.
 			if priv := peeringSvc.PrivateKey(); len(priv) == ed25519.PrivateKeySize {
 				filesSvc.WithPeer(
-					peerShareSigner{selfID: peeringSvc.VulaID(), priv: priv},
+					peerShareSigner{selfID: peeringSvc.VulosID(), priv: priv},
 					files.NewHTTPPeerTransport(),
 					filepath.Join(dbDir, "peer-received"),
 				)
-				log.Printf("[files] OS peer-share active (id=%s)", peeringSvc.VulaID())
+				log.Printf("[files] OS peer-share active (id=%s)", peeringSvc.VulosID())
 			} else {
 				log.Printf("[files] OS peer-share disabled: no peering identity")
 			}
 			// ACCOUNT-SHARE: wire share-by-email resolution + locality routing
 			// (Contract 2 + 3). Co-cloud recipients (a local OS account) take the
 			// ACL grant path; remote recipients resolve via the configured directory
-			// (VULOS_VERIFY_URL; none by default) to a {VulaID, server} and take the
+			// (VULOS_VERIFY_URL; none by default) to a {VulosID, server} and take the
 			// peershare capability path, with the
 			// minted capability delivered to the recipient's server intake.
 			filesSvc.WithShareResolver(
@@ -2639,7 +2639,7 @@ func main() {
 		pHome := peeringSvc.Home()
 		pRoot := peeringSvc.Root()
 		pPriv := peeringSvc.PrivateKey()
-		pVulaID := peeringSvc.VulaID()
+		pVulosID := peeringSvc.VulosID()
 		myServer := "localhost:" + cfg.Port // best-effort self-address
 
 		// Identity key lifecycle (rotation / revocation / recovery). The store
@@ -2660,7 +2660,7 @@ func main() {
 		// (the live seed observer wired below calls SetAnchor without a restart).
 		identityDir := filepath.Join(pRoot, "identity")
 		persistedAnchor := peering.LoadRecoveryAnchorID(identityDir)
-		if lcStore, lcErr := peering.NewLifecycleStore(identityDir, pVulaID, persistedAnchor); lcErr != nil {
+		if lcStore, lcErr := peering.NewLifecycleStore(identityDir, pVulosID, persistedAnchor); lcErr != nil {
 			log.Printf("[peering] identity lifecycle store init: %v", lcErr)
 		} else {
 			peering.SetRevocationChecker(lcStore.IsRevoked)
@@ -2681,10 +2681,10 @@ func main() {
 			peering.SetLifecyclePublisher(func() *peering.WKLifecycle {
 				root, anchor, chain := lcStore.OwnChain()
 				return &peering.WKLifecycle{
-					RootVulaID:   root,
-					AnchorVulaID: anchor,
-					Chain:        chain,
-					Revocations:  lcStore.RevocationList(),
+					RootVulosID:   root,
+					AnchorVulosID: anchor,
+					Chain:         chain,
+					Revocations:   lcStore.RevocationList(),
 				}
 			})
 			// Recovery-anchor seam (Contract C, box side): when a recovery kit is
@@ -2709,7 +2709,7 @@ func main() {
 		// prekey pool) on /.well-known/vula-id so senders derive per-message keys
 		// from an ephemeral + one-time prekey rather than static-static ECDH
 		// (prekeys.go). The long-term identity key is used only to sign the bundle.
-		if pkStore, pkErr := peering.NewPreKeyStore(filepath.Join(pRoot, "identity"), pVulaID, pPriv, 64); pkErr != nil {
+		if pkStore, pkErr := peering.NewPreKeyStore(filepath.Join(pRoot, "identity"), pVulosID, pPriv, 64); pkErr != nil {
 			log.Printf("[peering] prekey store init: %v", pkErr)
 		} else {
 			// Publish ONLY the signed prekey on the cacheable, unauthenticated
@@ -2741,9 +2741,9 @@ func main() {
 		}
 		peerClient := peering.NewPeerClient()
 
-		// callerVulaID extracts the caller's Vula ID from an authenticated
+		// callerVulosID extracts the caller's Vula ID from an authenticated
 		// request; empty for unauthenticated callers (feeds public/link).
-		callerVulaID := func(r *http.Request) string {
+		callerVulosID := func(r *http.Request) string {
 			if v := r.Header.Get("X-Vula-ID"); v != "" {
 				return v
 			}
@@ -2752,7 +2752,7 @@ func main() {
 
 		if contactStore != nil {
 			// Contacts (request/approve/block/remove/list + inbound/request).
-			contactAPI := peering.NewContactAPI(contactStore, peerClient, peeringHub, pPriv, pVulaID, myServer)
+			contactAPI := peering.NewContactAPI(contactStore, peerClient, peeringHub, pPriv, pVulosID, myServer)
 			// Wire the local profile's display name into approval notifications.
 			// We read the profile.json file lazily on each call so updates are
 			// reflected without restarting the server.
@@ -2776,7 +2776,7 @@ func main() {
 				contacts := contactStore.ListByState(peering.StateApproved)
 				peers := make([]peering.WKApprovedPeer, 0, len(contacts))
 				for _, c := range contacts {
-					peers = append(peers, peering.WKApprovedPeer{VulaID: c.VulaID, ServerAddr: c.Server})
+					peers = append(peers, peering.WKApprovedPeer{VulosID: c.VulosID, ServerAddr: c.Server})
 				}
 				return peers
 			}
@@ -2798,14 +2798,14 @@ func main() {
 
 			// Messaging (conversations + inbound/message).
 			if inboxStore != nil {
-				msgAPI := peering.NewMessageAPI(contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulaID)
+				msgAPI := peering.NewMessageAPI(contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulosID)
 				msgAPI.RegisterMessageHandlers(peeringMux)
 
 				// Groups (group def/members/send + inbound group-*).
 				if groupStore, gErr := peering.NewGroupStore(pHome); gErr != nil {
 					log.Printf("[peering] PEER-42 group store init: %v", gErr)
 				} else {
-					groupAPI := peering.NewGroupAPI(groupStore, contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulaID)
+					groupAPI := peering.NewGroupAPI(groupStore, contactStore, inboxStore, peerClient, peeringHub, pPriv, pVulosID)
 					peering.RegisterGroupHandlers(peeringMux, groupAPI)
 				}
 			}
@@ -2824,10 +2824,10 @@ func main() {
 			}
 
 			// Feeds (own append-only feeds; peers-gating uses contacts).
-			if feedStore, fErr := peering.NewFeedStore(pRoot, pPriv, pVulaID, contactStore); fErr != nil {
+			if feedStore, fErr := peering.NewFeedStore(pRoot, pPriv, pVulosID, contactStore); fErr != nil {
 				log.Printf("[peering] PEER-42 feed store init: %v", fErr)
 			} else {
-				peering.RegisterFeedHandlers(peeringMux, feedStore, callerVulaID)
+				peering.RegisterFeedHandlers(peeringMux, feedStore, callerVulosID)
 			}
 
 			// Drop (LAN mDNS file drop). Wire a real media sender (DropTransfer)
@@ -2849,9 +2849,9 @@ func main() {
 					selfBaseURL = os.Getenv("VULOS_RELAY_BASE_URL")
 				}
 				downloadDir := filepath.Join(pHome, "Downloads")
-				dropSender = peering.NewDropTransfer(dms, peerClient, pVulaID, "", selfBaseURL, downloadDir)
+				dropSender = peering.NewDropTransfer(dms, peerClient, pVulosID, "", selfBaseURL, downloadDir)
 			}
-			dropSvc := peering.NewDropService(pVulaID, "", contactStore, dropSender)
+			dropSvc := peering.NewDropService(pVulosID, "", contactStore, dropSender)
 			dropSvc.Start(context.Background())
 			peering.RegisterDropHandlers(peeringMux, dropSvc)
 		}
@@ -2866,7 +2866,7 @@ func main() {
 
 		// Calls (initiate/answer/reject/signal/hangup + inbound/signal).
 		if contactStore != nil {
-			callRelay := peering.NewCallRelay(pVulaID, contactStore, peeringHub, peerClient, pPriv)
+			callRelay := peering.NewCallRelay(pVulosID, contactStore, peeringHub, peerClient, pPriv)
 			peering.RegisterCallHandlers(peeringMux, callRelay)
 		}
 
@@ -2887,7 +2887,7 @@ func main() {
 		if contactStore != nil {
 			profileContacts = contactStore
 		}
-		profStore := peering.RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), pVulaID, profileContacts)
+		profStore := peering.RegisterProfileHandlers(peeringMux, filepath.Join(pRoot, "profile"), pVulosID, profileContacts)
 
 		// WAVE-7: internal content-key lookup the Vulos cell calls to enforce
 		// recipient-targeting on content-blind shares (closes the F2 gap). Gated by
@@ -2929,7 +2929,7 @@ func main() {
 		peering.RegisterAttestHandlers(peeringMux, peering.NewAttestStore())
 
 		// Proximity drop codes (generate/redeem).
-		peering.RegisterProximityHandlers(peeringMux, peering.NewProxService(pVulaID, myServer))
+		peering.RegisterProximityHandlers(peeringMux, peering.NewProxService(pVulosID, myServer))
 
 		// Realtime collaboration: CRDT transport + REST + inbound sync + time-travel.
 		// NOTE: RegisterCollabShareHandlers (collab_share.go) is
@@ -2950,10 +2950,10 @@ func main() {
 			log.Printf("[peering] PEER-42 collab store init: %v", cErr)
 		} else {
 			collabStore.WithShareStore(shareStore)
-			// Bind authenticated OS sessions to this box's VulaID so the collab WS
+			// Bind authenticated OS sessions to this box's VulosID so the collab WS
 			// authorizer checks the share ACL against an un-spoofable identity rather
 			// than the client-supplied X-Vula-ID header (Contract 4, multi-user box).
-			collabStore.WithSelfVulaID(pVulaID)
+			collabStore.WithSelfVulosID(pVulosID)
 			peering.RegisterCollabHandlers(peeringMux, collabStore)
 			// Collab history (time-travel snapshots): GET /api/peering/collab/{doc_id}/history[/{seq}]
 			// and GET /api/peering/collab-sync-v2. Routes are non-overlapping with
@@ -2978,7 +2978,7 @@ func main() {
 				shareStore,
 				peerClient,
 				pPriv,
-				pVulaID,
+				pVulosID,
 			)
 			peeringMux.HandleFunc("POST /api/peering/inbound/collab-invite", sharesSvc.HandleInboundShare)
 		}
@@ -4809,14 +4809,14 @@ func main() {
 	//
 	// The fabric identity is the OS's existing peering identity: there is
 	// exactly one Ed25519 keypair per box across all slices (peering / LAN
-	// reachability / gpuhost), so the relay sees the same VulaID we already
+	// reachability / gpuhost), so the relay sees the same VulosID we already
 	// advertise on the peering well-known endpoint.
 	//
 	// No-op when VULOS_GPU_HOST is unset; most boxes have no GPU and never
 	// instantiate the service.
 	if gpuhost.Enabled() {
 		identity := gpuhost.FabricIdentity{
-			HostID:       peeringSvc.VulaID(),
+			HostID:       peeringSvc.VulosID(),
 			PublicKeyB64: base64.StdEncoding.EncodeToString(peeringSvc.PublicKey()),
 			Domain:       cfg.Domain,
 		}

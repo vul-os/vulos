@@ -61,7 +61,7 @@ import (
 // *ContactStore satisfies this interface.
 type callContactLookup interface {
 	// Get returns a copy of the contact, or (nil, false) if unknown.
-	Get(vulaID string) (*Contact, bool)
+	Get(vulosID string) (*Contact, bool)
 }
 
 // callWSHub is the subset of *Hub that CallRelay needs.
@@ -160,7 +160,7 @@ type CallRelay struct {
 
 // NewCallRelay constructs a CallRelay.
 //
-//   - selfID   – this node's Vula ID ("vula:ed25519:<base58>")
+//   - selfID   – this node's Vula ID ("vulos:ed25519:<base58>")
 //   - contacts – contact lookup and permission gate (pass *ContactStore)
 //   - hub      – WebSocket push (pass *Hub; may be nil in tests)
 //   - client   – outbound S2S client (pass peering.NewPeerClient())
@@ -370,8 +370,8 @@ func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 // Either participant may hang up.  The session is removed and the other party
 // is notified via a signed "hangup" envelope.
 func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
-	vulaID := r.Header.Get("X-Vula-ID")
-	if vulaID == "" {
+	vulosID := r.Header.Get("X-Vula-ID")
+	if vulosID == "" {
 		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
 		return
 	}
@@ -389,13 +389,13 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 		writeCallErr(w, http.StatusNotFound, "call not found")
 		return
 	}
-	if sess.callerID != vulaID && sess.calleeID != vulaID {
+	if sess.callerID != vulosID && sess.calleeID != vulosID {
 		cr.mu.Unlock()
 		writeCallErr(w, http.StatusForbidden, "not a participant in this call")
 		return
 	}
 	otherID := sess.calleeID
-	if vulaID == sess.calleeID {
+	if vulosID == sess.calleeID {
 		otherID = sess.callerID
 	}
 	sess.state = callStateEnded
@@ -408,7 +408,7 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("[call] %s hung up by %s", req.CallID, vulaID)
+	log.Printf("[call] %s hung up by %s", req.CallID, vulosID)
 	writeCallOK(w, map[string]string{"call_id": req.CallID, "status": "ended"})
 }
 
@@ -417,8 +417,8 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 // Relays an opaque SDP offer/answer or ICE candidate payload to the peer's
 // server via a signed TypeSignaling envelope.  The payload is never inspected.
 func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
-	vulaID := r.Header.Get("X-Vula-ID")
-	if vulaID == "" {
+	vulosID := r.Header.Get("X-Vula-ID")
+	if vulosID == "" {
 		writeCallErr(w, http.StatusUnauthorized, "missing X-Vula-ID header")
 		return
 	}
@@ -436,7 +436,7 @@ func (cr *CallRelay) handleCallSignal(w http.ResponseWriter, r *http.Request) {
 	// Sender must be a participant in the session.
 	cr.mu.RLock()
 	sess, ok := cr.sessions[req.CallID]
-	if ok && sess.callerID != vulaID && sess.calleeID != vulaID {
+	if ok && sess.callerID != vulosID && sess.calleeID != vulosID {
 		ok = false
 	}
 	cr.mu.RUnlock()
@@ -582,7 +582,7 @@ func (cr *CallRelay) sendSignal(
 	data json.RawMessage,
 ) error {
 	if contact.Server == "" {
-		return fmt.Errorf("call/sendSignal: contact %s has no server address", contact.VulaID)
+		return fmt.Errorf("call/sendSignal: contact %s has no server address", contact.VulosID)
 	}
 
 	sp := SignalingPayload{
@@ -595,7 +595,7 @@ func (cr *CallRelay) sendSignal(
 		return fmt.Errorf("call/sendSignal: marshal payload: %w", err)
 	}
 
-	env, err := NewEnvelope(uuid.New().String(), cr.selfID, contact.VulaID,
+	env, err := NewEnvelope(uuid.New().String(), cr.selfID, contact.VulosID,
 		TypeSignaling, json.RawMessage(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("call/sendSignal: create envelope: %w", err)

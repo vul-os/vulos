@@ -674,7 +674,7 @@ function toMessage(x: unknown): Message | null {
 
 function normalizeConversation(raw: unknown): Conversation | null {
   if (!isRecord(raw)) return null
-  // Extract peer vula_id from conv_id: "<lower>_<higher>" where local node is one half.
+  // Extract peer vulos_id from conv_id: "<lower>_<higher>" where local node is one half.
   // We surface the full conv_id as peer_id for display; contacts can provide display names.
   const rawId = typeof raw.id === 'string' ? raw.id : undefined
   const rawConvId = typeof raw.conv_id === 'string' ? raw.conv_id : undefined
@@ -1122,11 +1122,11 @@ type ThreadItem = { type: 'date'; date: string } | { type: 'msg'; msg: Message }
 
 interface ThreadViewProps {
   conversation: Conversation | null
-  myVulaId: string | null
+  myVulosId: string | null
   onBack?: () => void
 }
 
-function ThreadView({ conversation, myVulaId, onBack }: ThreadViewProps) {
+function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1272,7 +1272,7 @@ function ThreadView({ conversation, myVulaId, onBack }: ThreadViewProps) {
             )
           }
           const msg = item.msg
-          const isMine = Boolean(msg.from === myVulaId || msg.direction === 'out' || msg.is_mine)
+          const isMine = Boolean(msg.from === myVulosId || msg.direction === 'out' || msg.is_mine)
           return (
             <MessageBubble
               key={msg.id || i}
@@ -1297,14 +1297,14 @@ export default function Messages() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [loadingConvs, setLoadingConvs] = useState(false)
-  const [myVulaId, setMyVulaId] = useState<string | null>(null)
+  const [myVulosId, setMyVulosId] = useState<string | null>(null)
 
   // Fetch own identity
   useEffect(() => {
     fetch('/api/peering/identity')
       .then(r => (r.ok ? r.json() : null))
       .then((data: unknown) => {
-        if (isRecord(data) && typeof data.vula_id === 'string') setMyVulaId(data.vula_id)
+        if (isRecord(data) && typeof data.vulos_id === 'string') setMyVulosId(data.vulos_id)
       })
       .catch(() => {})
   }, [])
@@ -1408,7 +1408,7 @@ export default function Messages() {
         <div style={S.main}>
           <ThreadView
             conversation={activeConv}
-            myVulaId={myVulaId}
+            myVulosId={myVulosId}
             onBack={narrow ? () => setActiveConv(null) : undefined}
           />
         </div>

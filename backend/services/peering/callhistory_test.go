@@ -20,7 +20,7 @@ func TestCallHistStoreRecordAndList(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	entry := &CallHistEntry{
 		ID:          "test-001",
-		PeerID:      "vula:ed25519:abc123",
+		PeerID:      "vulos:ed25519:abc123",
 		PeerDisplay: "Alice",
 		Direction:   CallHistDirInbound,
 		Status:      CallHistStatusCompleted,
@@ -168,7 +168,7 @@ func TestCallhistRecord(t *testing.T) {
 	h := newTestHandler(t)
 
 	body, _ := json.Marshal(CallHistEntry{
-		PeerID:      "vula:ed25519:xyz",
+		PeerID:      "vulos:ed25519:xyz",
 		PeerDisplay: "Bob",
 		Direction:   CallHistDirInbound,
 		Status:      CallHistStatusCompleted,
@@ -201,7 +201,7 @@ func TestCallhistRecordThenList(t *testing.T) {
 
 	for _, status := range []callhistCallStatus{CallHistStatusCompleted, CallHistStatusMissed} {
 		body, _ := json.Marshal(CallHistEntry{
-			PeerID:    "vula:ed25519:test",
+			PeerID:    "vulos:ed25519:test",
 			Direction: CallHistDirInbound,
 			Status:    status,
 			StartedAt: time.Now(),

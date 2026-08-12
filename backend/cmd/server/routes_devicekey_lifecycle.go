@@ -56,7 +56,7 @@ import (
 // spaces (see rotation.go's QuorumSubjectID doc comment).
 type registryRoster struct{ reg *multiinstance.Registry }
 
-func (r registryRoster) IsRostered(vulaID string) (ed25519.PublicKey, bool) {
+func (r registryRoster) IsRostered(vulosID string) (ed25519.PublicKey, bool) {
 	if r.reg == nil {
 		return nil, false
 	}
@@ -69,7 +69,7 @@ func (r registryRoster) IsRostered(vulaID string) (ed25519.PublicKey, bool) {
 		if !ok {
 			continue
 		}
-		if peering.EncodeVulaID(pub) == vulaID {
+		if peering.EncodeVulosID(pub) == vulosID {
 			return pub, true
 		}
 	}
@@ -81,7 +81,7 @@ func (r registryRoster) IsRostered(vulaID string) (ed25519.PublicKey, bool) {
 // counts toward a device-key quorum either — the two revocation mechanisms are
 // independent stores but a revoked fleet member should not get to vouch for
 // anything.
-func (r registryRoster) IsRevoked(vulaID string) bool {
+func (r registryRoster) IsRevoked(vulosID string) bool {
 	if r.reg == nil {
 		return false
 	}
@@ -94,7 +94,7 @@ func (r registryRoster) IsRevoked(vulaID string) bool {
 		if !ok {
 			continue
 		}
-		if peering.EncodeVulaID(pub) == vulaID {
+		if peering.EncodeVulosID(pub) == vulosID {
 			return in.Revoked
 		}
 	}
@@ -112,13 +112,13 @@ func decodeInstancePubKey(b64 string) (ed25519.PublicKey, bool) {
 	return ed25519.PublicKey(pub), true
 }
 
-// selfFleetVulaID resolves THIS box's own fleet-fabric Vula ID — the subject a
+// selfFleetVulosID resolves THIS box's own fleet-fabric Vula ID — the subject a
 // peer quorum vouches FOR during break-glass — from the registry's owner-role
 // entry (self-registered by multiinstance.AppSync.SetIdentity with
 // Role=RoleOwner; see appsync.go). Returns "" if no such entry is found (e.g.
 // the fabric identity has not been set up yet), which the handler surfaces as
 // a clear error rather than guessing.
-func selfFleetVulaID(reg *multiinstance.Registry) string {
+func selfFleetVulosID(reg *multiinstance.Registry) string {
 	if reg == nil {
 		return ""
 	}
@@ -131,7 +131,7 @@ func selfFleetVulaID(reg *multiinstance.Registry) string {
 			continue
 		}
 		if pub, ok := decodeInstancePubKey(in.Ed25519PublicKey); ok {
-			return peering.EncodeVulaID(pub)
+			return peering.EncodeVulosID(pub)
 		}
 	}
 	return ""
@@ -195,7 +195,7 @@ func (req breakGlassQuorumRequest) resolveSubjectID(reg *multiinstance.Registry)
 	if req.QuorumSubjectID != "" {
 		return req.QuorumSubjectID, nil
 	}
-	id := selfFleetVulaID(reg)
+	id := selfFleetVulosID(reg)
 	if id == "" {
 		return "", errNoFleetIdentity
 	}

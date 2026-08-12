@@ -282,7 +282,7 @@ func TestClusterLog_PassphraseNotLeaked(t *testing.T) {
 		"[cluster] heartbeat: node=node-01 mode=server",
 		"[cluster] sync: objects=42 last_seen=2026-05-21T10:00:00Z",
 		"[cluster] peer discovered: node=node-02 stale=false",
-		"[cluster/relay] deposit: blob blob-001 from vula:ed25519:abc for vula:ed25519:def (1024 bytes, expires 2026-05-24T10:00:00Z)",
+		"[cluster/relay] deposit: blob blob-001 from vulos:ed25519:abc for vulos:ed25519:def (1024 bytes, expires 2026-05-24T10:00:00Z)",
 		"[cluster] join: node=node-03 provisioned=true",
 	}
 
@@ -661,7 +661,7 @@ func TestInboundMiddleware_SignatureRequired(t *testing.T) {
 	}
 
 	// Body with no signature field → 401.
-	body, _ := json.Marshal(map[string]string{"from": "vula:ed25519:abc", "type": "message"})
+	body, _ := json.Marshal(map[string]string{"from": "vulos:ed25519:abc", "type": "message"})
 	resp2, err := http.Post(srv.URL+"/api/peering/inbound/message", "application/json",
 		bytes.NewReader(body))
 	if err != nil {
@@ -1127,7 +1127,7 @@ func TestVouchRequest_UnauthenticatedRejectedAtHandler(t *testing.T) {
 
 	base := fleetid.VouchRequest{
 		Action:      fleetid.ActionIdentityRecovery,
-		SubjectID:   peering.EncodeVulaID(subjectPub),
+		SubjectID:   peering.EncodeVulosID(subjectPub),
 		PayloadHash: base64.RawURLEncoding.EncodeToString([]byte("break-glass-payload-hash")),
 		RequestID:   "req-sec-hard-08",
 	}
@@ -1171,7 +1171,7 @@ func TestVouchRequest_UnauthenticatedRejectedAtHandler(t *testing.T) {
 	// Take the attacker's signature over their own request and paste it onto
 	// the victim's subject_id — the actual impersonation attempt.
 	attackerReq := base
-	attackerReq.SubjectID = peering.EncodeVulaID(attackerPriv.Public().(ed25519.PublicKey))
+	attackerReq.SubjectID = peering.EncodeVulosID(attackerPriv.Public().(ed25519.PublicKey))
 	if err := fleetid.SignVouchRequest(attackerPriv, &attackerReq, time.Now()); err != nil {
 		t.Fatal(err)
 	}

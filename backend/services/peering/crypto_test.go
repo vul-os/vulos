@@ -120,17 +120,17 @@ func TestPeerSharedSecret_BothSidesDeriveTheSameKey(t *testing.T) {
 		t.Fatalf("bob DeriveX25519: %v", err)
 	}
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
 	// Alice computes the shared secret with Bob's public key.
-	aliceKey, err := PeerSharedSecret(alicePriv, bobPub, aliceVulaID, bobVulaID)
+	aliceKey, err := PeerSharedSecret(alicePriv, bobPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("alice PeerSharedSecret: %v", err)
 	}
 
 	// Bob computes the shared secret with Alice's public key.
-	bobKey, err := PeerSharedSecret(bobPriv, alicePub, bobVulaID, aliceVulaID)
+	bobKey, err := PeerSharedSecret(bobPriv, alicePub, bobVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("bob PeerSharedSecret: %v", err)
 	}
@@ -159,19 +159,19 @@ func TestPeerSharedSecret_DifferentPeersProduceDifferentKeys(t *testing.T) {
 	_ = aliceBobPub
 	_ = bobPriv
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
-	carolVulaID := encodeVulaID(carolEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
+	carolVulosID := encodeVulosID(carolEdPub)
 
 	_ = alicePubX
 	_ = bobPubX
 	_ = carolPubX
 
-	keyAliceBob, err := PeerSharedSecret(alicePriv, bobPubX, aliceVulaID, bobVulaID)
+	keyAliceBob, err := PeerSharedSecret(alicePriv, bobPubX, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("alice-bob: %v", err)
 	}
-	keyAliceCarol, err := PeerSharedSecret(alicePriv, carolPubX, aliceVulaID, carolVulaID)
+	keyAliceCarol, err := PeerSharedSecret(alicePriv, carolPubX, aliceVulosID, carolVulosID)
 	if err != nil {
 		t.Fatalf("alice-carol: %v", err)
 	}
@@ -187,15 +187,15 @@ func TestConversationKey_BothSidesAgree(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	bobEdPriv, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	aliceKey, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	aliceKey, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("alice ConversationKey: %v", err)
 	}
 
-	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulaID, aliceVulaID)
+	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("bob ConversationKey: %v", err)
 	}
@@ -210,18 +210,18 @@ func TestConversationKey_DifferentPairsProduceDifferentKeys(t *testing.T) {
 	bobEdPriv, bobEdPub := generateTestIdentity(t)
 	carolEdPriv, carolEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
-	carolVulaID := encodeVulaID(carolEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
+	carolVulosID := encodeVulosID(carolEdPub)
 
 	_ = bobEdPriv
 	_ = carolEdPriv
 
-	keyAB, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	keyAB, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey(alice,bob): %v", err)
 	}
-	keyAC, err := ConversationKey(aliceEdPriv, carolEdPub, aliceVulaID, carolVulaID)
+	keyAC, err := ConversationKey(aliceEdPriv, carolEdPub, aliceVulosID, carolVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey(alice,carol): %v", err)
 	}
@@ -237,17 +237,17 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	bobEdPriv, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey: %v", err)
 	}
 	_ = bobEdPriv
 
 	plaintext := []byte("hello, bob — this is a secret message")
-	ad := []byte("conv:" + aliceVulaID + ":" + bobVulaID)
+	ad := []byte("conv:" + aliceVulosID + ":" + bobVulosID)
 
 	ciphertext, err := EncryptForPeer(key, plaintext, ad)
 	if err != nil {
@@ -266,7 +266,7 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	}
 
 	// Bob decrypts using the same key.
-	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulaID, aliceVulaID)
+	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("bob ConversationKey: %v", err)
 	}
@@ -285,18 +285,18 @@ func TestEncryptDecrypt_WrongKeyFailsClosed(t *testing.T) {
 	_, bobEdPub := generateTestIdentity(t)
 	carolEdPriv, carolEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
-	carolVulaID := encodeVulaID(carolEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
+	carolVulosID := encodeVulosID(carolEdPub)
 
 	// Alice encrypts to Bob.
-	aliceBobKey, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	aliceBobKey, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey(alice,bob): %v", err)
 	}
 
 	plaintext := []byte("top secret")
-	ad := []byte("conv:" + aliceVulaID + ":" + bobVulaID)
+	ad := []byte("conv:" + aliceVulosID + ":" + bobVulosID)
 
 	ciphertext, err := EncryptForPeer(aliceBobKey, plaintext, ad)
 	if err != nil {
@@ -304,7 +304,7 @@ func TestEncryptDecrypt_WrongKeyFailsClosed(t *testing.T) {
 	}
 
 	// Carol tries to decrypt with the wrong key (her key with Alice).
-	carolAliceKey, err := ConversationKey(carolEdPriv, aliceEdPub, carolVulaID, aliceVulaID)
+	carolAliceKey, err := ConversationKey(carolEdPriv, aliceEdPub, carolVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey(carol,alice): %v", err)
 	}
@@ -322,10 +322,10 @@ func TestDecryptFromPeer_WrongAdditionalDataFailsClosed(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	bobEdPriv, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey: %v", err)
 	}
@@ -370,10 +370,10 @@ func TestDecryptFromPeer_BitFlipFailsClosed(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	_, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey: %v", err)
 	}
@@ -404,14 +404,14 @@ func TestEncryptDecrypt_EmptyPlaintext(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	bobEdPriv, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey: %v", err)
 	}
-	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulaID, aliceVulaID)
+	bobKey, err := ConversationKey(bobEdPriv, aliceEdPub, bobVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("bob ConversationKey: %v", err)
 	}
@@ -435,10 +435,10 @@ func TestEncryptDecrypt_NoncesAreUnique(t *testing.T) {
 	aliceEdPriv, aliceEdPub := generateTestIdentity(t)
 	_, bobEdPub := generateTestIdentity(t)
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
-	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulaID, bobVulaID)
+	key, err := ConversationKey(aliceEdPriv, bobEdPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("ConversationKey: %v", err)
 	}
@@ -483,8 +483,8 @@ func TestKeyExchange_Symmetry(t *testing.T) {
 		t.Fatalf("bob DeriveX25519: %v", err)
 	}
 
-	aliceVulaID := encodeVulaID(aliceEdPub)
-	bobVulaID := encodeVulaID(bobEdPub)
+	aliceVulosID := encodeVulosID(aliceEdPub)
+	bobVulosID := encodeVulosID(bobEdPub)
 
 	// Raw ECDH outputs must be equal.
 	rawAlice, err := curve25519.X25519(alicePriv[:], bobPub[:])
@@ -500,11 +500,11 @@ func TestKeyExchange_Symmetry(t *testing.T) {
 	}
 
 	// HKDF-derived SharedKeys must also be equal.
-	keyA, err := PeerSharedSecret(alicePriv, bobPub, aliceVulaID, bobVulaID)
+	keyA, err := PeerSharedSecret(alicePriv, bobPub, aliceVulosID, bobVulosID)
 	if err != nil {
 		t.Fatalf("PeerSharedSecret(alice): %v", err)
 	}
-	keyB, err := PeerSharedSecret(bobPriv, alicePub, bobVulaID, aliceVulaID)
+	keyB, err := PeerSharedSecret(bobPriv, alicePub, bobVulosID, aliceVulosID)
 	if err != nil {
 		t.Fatalf("PeerSharedSecret(bob): %v", err)
 	}

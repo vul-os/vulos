@@ -77,7 +77,7 @@ func newTestPeer(t *testing.T) *testPeer {
 
 	peeringRoot := svc.Root()
 
-	feeds, err := NewFeedStore(peeringRoot, svc.PrivateKey(), svc.VulaID(), contacts)
+	feeds, err := NewFeedStore(peeringRoot, svc.PrivateKey(), svc.VulosID(), contacts)
 	if err != nil {
 		t.Fatalf("NewFeedStore: %v", err)
 	}
@@ -100,7 +100,7 @@ func newTestPeer(t *testing.T) *testPeer {
 	// Build a PeerClient (no SSRF guard needed — we'll use httptest directly).
 	peerClient := &PeerClient{http: &http.Client{}}
 
-	msgAPI := NewMessageAPI(contacts, inbox, peerClient, nil, svc.PrivateKey(), svc.VulaID())
+	msgAPI := NewMessageAPI(contacts, inbox, peerClient, nil, svc.PrivateKey(), svc.VulosID())
 
 	// innerMux handles all inbound routes. After InboundMiddleware verifies the
 	// envelope, the envelope is placed in the request context. We register
@@ -148,10 +148,10 @@ func addMutualContact(t *testing.T, a, b *testPeer) {
 
 	bAddr := strings.TrimPrefix(b.server.URL, "http://")
 
-	if err := a.contacts.Add(b.svc.VulaID(), "peer-b", bAddr); err != nil {
+	if err := a.contacts.Add(b.svc.VulosID(), "peer-b", bAddr); err != nil {
 		t.Fatalf("contacts.Add: %v", err)
 	}
-	if err := a.contacts.Approve(b.svc.VulaID(), DefaultPerms()); err != nil {
+	if err := a.contacts.Approve(b.svc.VulosID(), DefaultPerms()); err != nil {
 		t.Fatalf("contacts.Approve: %v", err)
 	}
 }
@@ -165,27 +165,27 @@ func TestE2E_IdentityExchange(t *testing.T) {
 	a := newTestPeer(t)
 	b := newTestPeer(t)
 
-	idA := a.svc.VulaID()
-	idB := b.svc.VulaID()
+	idA := a.svc.VulosID()
+	idB := b.svc.VulosID()
 
 	if idA == idB {
 		t.Fatal("peers generated the same Vula ID — test fixture is broken")
 	}
 
 	for _, id := range []string{idA, idB} {
-		if !strings.HasPrefix(id, "vula:ed25519:") {
+		if !strings.HasPrefix(id, "vulos:ed25519:") {
 			t.Errorf("Vula ID missing prefix: %q", id)
 		}
 	}
 
 	// Each peer can decode the other's public key from the Vula ID.
-	pubA, err := decodeVulaID(idA)
+	pubA, err := decodeVulosID(idA)
 	if err != nil {
-		t.Fatalf("decodeVulaID(A): %v", err)
+		t.Fatalf("decodeVulosID(A): %v", err)
 	}
-	pubB, err := decodeVulaID(idB)
+	pubB, err := decodeVulosID(idB)
 	if err != nil {
-		t.Fatalf("decodeVulaID(B): %v", err)
+		t.Fatalf("decodeVulosID(B): %v", err)
 	}
 
 	if len(pubA) != ed25519.PublicKeySize {
@@ -226,11 +226,11 @@ func TestE2E_MessageSendReceive(t *testing.T) {
 	sendMsg := func(sender, recipient *testPeer, text string) {
 		t.Helper()
 
-		convID := ConversationID(sender.svc.VulaID(), recipient.svc.VulaID())
+		convID := ConversationID(sender.svc.VulosID(), recipient.svc.VulosID())
 		msgID := uuid.New().String()
 
 		payload, _ := json.Marshal(MessagePayload{Type: "text", Body: text})
-		env, err := NewEnvelope(msgID, sender.svc.VulaID(), recipient.svc.VulaID(),
+		env, err := NewEnvelope(msgID, sender.svc.VulosID(), recipient.svc.VulosID(),
 			TypeMessage, json.RawMessage(payload))
 		if err != nil {
 			t.Fatalf("NewEnvelope: %v", err)
@@ -291,10 +291,10 @@ func TestE2E_InboundMessage_RejectUnknownSender(t *testing.T) {
 		t.Fatal(err)
 	}
 	strangerPub := strangerPriv.Public().(ed25519.PublicKey)
-	strangerID := encodeVulaID(strangerPub)
+	strangerID := encodeVulosID(strangerPub)
 
 	payload, _ := json.Marshal(MessagePayload{Type: "text", Body: "attack"})
-	env, _ := NewEnvelope(uuid.New().String(), strangerID, b.svc.VulaID(),
+	env, _ := NewEnvelope(uuid.New().String(), strangerID, b.svc.VulosID(),
 		TypeMessage, json.RawMessage(payload))
 	env.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	_ = env.Sign(strangerPriv)
@@ -381,7 +381,7 @@ func TestE2E_FeedPublishSubscribe(t *testing.T) {
 	a.feeds.FeedNotifySubscribers(all[len(all)-1], func(contactID string, e *FeedEntry) {
 		pushed[contactID] = e
 	})
-	if _, ok := pushed[b.svc.VulaID()]; !ok {
+	if _, ok := pushed[b.svc.VulosID()]; !ok {
 		t.Error("FeedNotifySubscribers did not push to peer B")
 	}
 
@@ -401,14 +401,14 @@ func TestE2E_CollabDocLease(t *testing.T) {
 
 	// A acquires a collaborative-doc "lease" by creating a document.
 	docID := "e2e-collab-" + uuid.New().String()
-	owner := a.svc.VulaID()
+	owner := a.svc.VulosID()
 
 	meta := DocMeta{
 		DocID:      docID,
 		Title:      "E2E Collaboration Test",
 		DocType:    "doc",
 		Owner:      owner,
-		SharedWith: []string{b.svc.VulaID()},
+		SharedWith: []string{b.svc.VulosID()},
 		CreatedAt:  time.Now().UTC(),
 	}
 	if err := a.collab.UpsertMeta(meta); err != nil {
@@ -444,7 +444,7 @@ func TestE2E_CollabDocLease(t *testing.T) {
 	})
 
 	envID := uuid.New().String()
-	env, err := NewEnvelope(envID, b.svc.VulaID(), a.svc.VulaID(),
+	env, err := NewEnvelope(envID, b.svc.VulosID(), a.svc.VulosID(),
 		"collab-update", json.RawMessage(collabPayload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
@@ -522,12 +522,12 @@ func TestE2E_RelayOpacity(t *testing.T) {
 
 	// Sign the deposit request with Alice's key.
 	req := relayDepositRequest{
-		To:           bob.svc.VulaID(),
-		BlobID:       blobID,
-		BlobB64:      blobB64,
-		TTLHours:     1,
-		SenderVulaID: alice.svc.VulaID(),
-		Nonce:        fmt.Sprintf("%d", time.Now().UnixNano()),
+		To:            bob.svc.VulosID(),
+		BlobID:        blobID,
+		BlobB64:       blobB64,
+		TTLHours:      1,
+		SenderVulosID: alice.svc.VulosID(),
+		Nonce:         fmt.Sprintf("%d", time.Now().UnixNano()),
 	}
 
 	canonical, err := relayDepositCanonical(req)
@@ -561,11 +561,11 @@ func TestE2E_RelayOpacity(t *testing.T) {
 
 	// Bob picks up the blob using a valid signed auth token.
 	tsUnix := fmt.Sprintf("%d", time.Now().Unix())
-	pickupMsg := bob.svc.VulaID() + "." + tsUnix
+	pickupMsg := bob.svc.VulosID() + "." + tsUnix
 	pickupSig := ed25519.Sign(bob.svc.PrivateKey(), []byte(pickupMsg))
 	pickupSigB64 := base64.RawURLEncoding.EncodeToString(pickupSig)
 
-	blobs, err := relay.relay.Pickup(bob.svc.VulaID(), tsUnix, pickupSigB64)
+	blobs, err := relay.relay.Pickup(bob.svc.VulosID(), tsUnix, pickupSigB64)
 	if err != nil {
 		t.Fatalf("relay.Pickup: %v", err)
 	}
@@ -580,17 +580,17 @@ func TestE2E_RelayOpacity(t *testing.T) {
 	}
 
 	// Bob acknowledges receipt; relay deletes the blob.
-	if err := relay.relay.Ack(bob.svc.VulaID(), tsUnix, pickupSigB64, []string{blobID}); err != nil {
+	if err := relay.relay.Ack(bob.svc.VulosID(), tsUnix, pickupSigB64, []string{blobID}); err != nil {
 		t.Fatalf("relay.Ack: %v", err)
 	}
 
 	// After ACK, pickup returns no blobs for Bob.
 	tsUnix2 := fmt.Sprintf("%d", time.Now().Unix())
-	pickupMsg2 := bob.svc.VulaID() + "." + tsUnix2
+	pickupMsg2 := bob.svc.VulosID() + "." + tsUnix2
 	pickupSig2 := ed25519.Sign(bob.svc.PrivateKey(), []byte(pickupMsg2))
 	pickupSigB64_2 := base64.RawURLEncoding.EncodeToString(pickupSig2)
 
-	blobsAfterAck, err := relay.relay.Pickup(bob.svc.VulaID(), tsUnix2, pickupSigB64_2)
+	blobsAfterAck, err := relay.relay.Pickup(bob.svc.VulosID(), tsUnix2, pickupSigB64_2)
 	if err != nil {
 		t.Fatalf("relay.Pickup after Ack: %v", err)
 	}
@@ -623,9 +623,9 @@ func TestE2E_RelayAttestation(t *testing.T) {
 	// Set up attestation doc on relay.
 	attestStore := NewAttestStore()
 	doc := AttestDoc{
-		Provider:    e2eProvider,
-		RelayVulaID: relay.svc.VulaID(),
-		IssuedAt:    time.Now().UTC(),
+		Provider:     e2eProvider,
+		RelayVulosID: relay.svc.VulosID(),
+		IssuedAt:     time.Now().UTC(),
 	}
 	if err := attestStore.Set(doc); err != nil {
 		t.Fatalf("AttestStore.Set: %v", err)
@@ -647,9 +647,9 @@ func TestE2E_RelayAttestation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttestFetchAndVerifyWithClient: %v", err)
 	}
-	if fetchedDoc.RelayVulaID != relay.svc.VulaID() {
-		t.Errorf("attestation RelayVulaID mismatch: got %q want %q",
-			fetchedDoc.RelayVulaID, relay.svc.VulaID())
+	if fetchedDoc.RelayVulosID != relay.svc.VulosID() {
+		t.Errorf("attestation RelayVulosID mismatch: got %q want %q",
+			fetchedDoc.RelayVulosID, relay.svc.VulosID())
 	}
 	t.Logf("relay attestation verified for provider %q", fetchedDoc.Provider)
 }
@@ -663,8 +663,8 @@ func TestE2E_EnvelopeSignVerify(t *testing.T) {
 
 	env, err := NewEnvelope(
 		uuid.New().String(),
-		a.svc.VulaID(),
-		"vula:ed25519:target",
+		a.svc.VulosID(),
+		"vulos:ed25519:target",
 		TypeMessage,
 		json.RawMessage(`{"type":"text","body":"hello"}`),
 	)

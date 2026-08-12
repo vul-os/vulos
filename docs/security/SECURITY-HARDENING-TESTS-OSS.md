@@ -333,7 +333,7 @@ must be rejected, preventing indefinite replay of intercepted pickup tokens.
 
 **Tests:** `TestSEC_Relay_AudienceMismatchRejected`
 
-**Guards:** SECURITY-OSS.md §5 (Peering — relay.go signature over `<vulaID>.<timestamp>`)
+**Guards:** SECURITY-OSS.md §5 (Peering — relay.go signature over `<vulosID>.<timestamp>`)
 
 RecipientB attempting to authenticate as recipientA's Vula ID while signing with
 B's own key must fail: the relay derives the expected public key from the presented

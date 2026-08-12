@@ -38,7 +38,7 @@ type Status struct {
 	// cannot un-compromise itself by ignoring this flag; real enforcement happens
 	// at every REMOTE verifier via IsDeviceKeyRevoked / VerifyDeviceSignatureChecked.
 	// Always false when no checker is installed (fail-open only in the sense that
-	// an entirely unwired subsystem reports nothing — matches the isVulaIDRevoked
+	// an entirely unwired subsystem reports nothing — matches the isVulosIDRevoked
 	// convention in services/peering).
 	Revoked bool `json:"revoked"`
 }

@@ -21,7 +21,7 @@
 //
 // # Usage
 //
-//	env, err := peering.NewEnvelope(id, fromVulaID, toVulaID, peering.TypeMessage, payload)
+//	env, err := peering.NewEnvelope(id, fromVulosID, toVulosID, peering.TypeMessage, payload)
 //	if err != nil { ... }
 //	if err := env.Sign(priv); err != nil { ... }
 //	if err := client.Post(ctx, "https://peer.example.com:8080", "message", env); err != nil { ... }

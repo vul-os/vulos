@@ -33,7 +33,7 @@
 //
 // # Usage
 //
-//	api := peering.NewMessageAPI(store, inbox, client, hub, priv, vulaID)
+//	api := peering.NewMessageAPI(store, inbox, client, hub, priv, vulosID)
 //	api.RegisterMessageHandlers(mux)
 package peering
 
@@ -55,13 +55,13 @@ import (
 // MessageAPI bundles the dependencies for message send/receive HTTP handlers.
 // Obtain one via NewMessageAPI; the zero value is not usable.
 type MessageAPI struct {
-	store  *ContactStore
-	inbox  *InboxStore
-	client *PeerClient
-	hub    *Hub
-	priv   ed25519.PrivateKey
-	vulaID string       // local node's Vula ID
-	outbox *OutboxQueue // optional; if set, failed deliveries are enqueued
+	store   *ContactStore
+	inbox   *InboxStore
+	client  *PeerClient
+	hub     *Hub
+	priv    ed25519.PrivateKey
+	vulosID string       // local node's Vula ID
+	outbox  *OutboxQueue // optional; if set, failed deliveries are enqueued
 }
 
 // NewMessageAPI constructs a MessageAPI.
@@ -71,22 +71,22 @@ type MessageAPI struct {
 //   - client — outbound HTTP client for server-to-server delivery
 //   - hub    — WebSocket hub for real-time browser pushes (may be nil in tests)
 //   - priv   — local Ed25519 private key used to sign outbound envelopes
-//   - vulaID — canonical Vula ID of the local node ("vula:ed25519:<base58>")
+//   - vulosID — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
 func NewMessageAPI(
 	store *ContactStore,
 	inbox *InboxStore,
 	client *PeerClient,
 	hub *Hub,
 	priv ed25519.PrivateKey,
-	vulaID string,
+	vulosID string,
 ) *MessageAPI {
 	return &MessageAPI{
-		store:  store,
-		inbox:  inbox,
-		client: client,
-		hub:    hub,
-		priv:   priv,
-		vulaID: vulaID,
+		store:   store,
+		inbox:   inbox,
+		client:  client,
+		hub:     hub,
+		priv:    priv,
+		vulosID: vulosID,
 	}
 }
 
@@ -126,8 +126,8 @@ func (a *MessageAPI) RegisterMessageHandlers(mux *http.ServeMux) {
 //
 // The result is deterministic: the lexicographically lower Vula ID comes first,
 // separated by an underscore. This guarantees both parties produce the same ID.
-func ConversationID(vulaIDA, vulaIDB string) string {
-	ids := []string{vulaIDA, vulaIDB}
+func ConversationID(vulosIDA, vulosIDB string) string {
+	ids := []string{vulosIDA, vulosIDB}
 	sort.Strings(ids)
 	return ids[0] + "_" + ids[1]
 }
@@ -143,11 +143,11 @@ type sendMessageRequest struct {
 // handleSend implements POST /api/peering/conversations/{conv_id}/send.
 //
 // The {conv_id} path parameter must be the canonical conversation ID
-// (ConversationID(localVulaID, peerVulaID)).
+// (ConversationID(localVulosID, peerVulosID)).
 //
 // Steps:
 //  1. Parse and validate the request body.
-//  2. Derive the peer's Vula ID from conv_id and the local vulaID.
+//  2. Derive the peer's Vula ID from conv_id and the local vulosID.
 //  3. Check the peer is approved and has PermMessage.
 //  4. Build and sign a TypeMessage Envelope.
 //  5. Deliver to the peer via PeerClient.
@@ -173,7 +173,7 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Derive peer Vula ID from the conversation ID.
-	peerVulaID, err := peerFromConvID(convID, a.vulaID)
+	peerVulosID, err := peerFromConvID(convID, a.vulosID)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "cannot derive peer from conv_id: " + err.Error(),
@@ -182,23 +182,23 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Permission check — peer must be approved and have PermMessage.
-	if !a.store.IsApproved(peerVulaID) {
+	if !a.store.IsApproved(peerVulosID) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "peer is not an approved contact",
-			"peer":  peerVulaID,
+			"peer":  peerVulosID,
 		})
 		return
 	}
-	if !a.store.Can(peerVulaID, PermMessage) {
+	if !a.store.Can(peerVulosID, PermMessage) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "peer does not have message permission",
-			"peer":  peerVulaID,
+			"peer":  peerVulosID,
 		})
 		return
 	}
 
 	// Look up the peer's server address.
-	contact, exists := a.store.Get(peerVulaID)
+	contact, exists := a.store.Get(peerVulosID)
 	if !exists {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error": "contact not found in store",
@@ -227,7 +227,7 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	env, err := NewEnvelope(msgID, a.vulaID, peerVulaID, TypeMessage, json.RawMessage(payload))
+	env, err := NewEnvelope(msgID, a.vulosID, peerVulosID, TypeMessage, json.RawMessage(payload))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "create envelope: " + err.Error(),
@@ -245,16 +245,16 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	// Deliver to the remote peer. resolvePeerBaseURL is the single reachability
 	// seam (CONSOLIDATION B-0): today a pass-through to "https://<contact.Server>".
-	baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
+	baseURL := resolvePeerBaseURL(contact.VulosID, contact.Server)
 	deliveryErr := a.client.Post(r.Context(), baseURL, "message", env)
 	if deliveryErr != nil {
 		log.Printf("[peering/messages] delivery error to %s: %v", baseURL, deliveryErr)
 		if a.outbox != nil {
 			// Enqueue for persistent retry rather than failing the request.
-			if qErr := a.outbox.Enqueue(peerVulaID, baseURL, env); qErr != nil {
+			if qErr := a.outbox.Enqueue(peerVulosID, baseURL, env); qErr != nil {
 				log.Printf("[peering/messages] outbox enqueue error: %v", qErr)
 			} else {
-				log.Printf("[peering/messages] message %s queued for retry to %s", msgID, peerVulaID)
+				log.Printf("[peering/messages] message %s queued for retry to %s", msgID, peerVulosID)
 			}
 		} else {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
@@ -269,8 +269,8 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 	stored := StoredMessage{
 		ID:        msgID,
 		ConvID:    convID,
-		From:      a.vulaID,
-		To:        peerVulaID,
+		From:      a.vulosID,
+		To:        peerVulosID,
 		Type:      "text",
 		Body:      req.Body,
 		Timestamp: now,
@@ -350,13 +350,13 @@ func (a *MessageAPI) HandleInboundMessage(w http.ResponseWriter, r *http.Request
 		ts = time.Now().UTC()
 	}
 
-	convID := ConversationID(senderID, a.vulaID)
+	convID := ConversationID(senderID, a.vulosID)
 
 	stored := StoredMessage{
 		ID:        env.ID,
 		ConvID:    convID,
 		From:      senderID,
-		To:        a.vulaID,
+		To:        a.vulosID,
 		Type:      mp.Type,
 		Body:      mp.Body,
 		Timestamp: ts,
@@ -435,10 +435,10 @@ func (a *MessageAPI) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 
 // peerFromConvID extracts the peer Vula ID from a canonical conversation ID.
 //
-// conv_id has the form "<lower_vula_id>_<upper_vula_id>". Given the local
-// vulaID, the function returns the other half. Returns an error if the local
-// vulaID is not a component of the conv_id.
-func peerFromConvID(convID, localVulaID string) (string, error) {
+// conv_id has the form "<lower_vulos_id>_<upper_vulos_id>". Given the local
+// vulosID, the function returns the other half. Returns an error if the local
+// vulosID is not a component of the conv_id.
+func peerFromConvID(convID, localVulosID string) (string, error) {
 	// The separator between two Vula IDs inside a conv_id is "_" but Vula IDs
 	// themselves contain ":" characters — never "_". So we split on "_" and
 	// rejoin the two halves ("vula", "ed25519", "<base58>").
@@ -451,14 +451,14 @@ func peerFromConvID(convID, localVulaID string) (string, error) {
 	//   [4] "ed25519"
 	//   [5] "<base58-B>"
 	//
-	// A Vula ID is "vula:ed25519:<base58>". In the conv_id the ":" separator
+	// A Vula ID is "vulos:ed25519:<base58>". In the conv_id the ":" separator
 	// in each Vula ID is preserved; only the join between the two IDs uses "_".
 	// So conv_id looks like:
 	//
-	//   vula:ed25519:<base58A>_vula:ed25519:<base58B>
+	//   vulos:ed25519:<base58A>_vulos:ed25519:<base58B>
 	//
-	// We can split on "_vula:ed25519:" to recover both halves.
-	const vulaPrefix = "vula:ed25519:"
+	// We can split on "_vulos:ed25519:" to recover both halves.
+	const vulaPrefix = "vulos:ed25519:"
 	sep := "_" + vulaPrefix
 
 	idx := strings.Index(convID, sep)
@@ -469,13 +469,13 @@ func peerFromConvID(convID, localVulaID string) (string, error) {
 	idA := convID[:idx]
 	idB := vulaPrefix + convID[idx+len(sep):]
 
-	switch localVulaID {
+	switch localVulosID {
 	case idA:
 		return idB, nil
 	case idB:
 		return idA, nil
 	default:
-		return "", fmt.Errorf("local vula ID %q is not part of conv_id %q", localVulaID, convID)
+		return "", fmt.Errorf("local vula ID %q is not part of conv_id %q", localVulosID, convID)
 	}
 }
 

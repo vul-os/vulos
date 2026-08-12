@@ -9,7 +9,7 @@ import (
 
 func newContentKeyStore(t *testing.T, pub string) *ProfileStore {
 	t.Helper()
-	store, err := NewProfileStore(t.TempDir(), "vula:ed25519:test", nil)
+	store, err := NewProfileStore(t.TempDir(), "vulos:ed25519:test", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

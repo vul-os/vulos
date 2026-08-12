@@ -126,7 +126,7 @@ const X3DHKDFInfoLabel = x3dhHKDFInfo
 // This is the normative spec a JS initiator (vula-relay) and the cloud-home cell
 // must reproduce so they interop with the Go responder (X3DHRespond) here.
 //
-// IDENTITIES. A VulaID is "vula:ed25519:" + base58(32-byte Ed25519 pubkey)
+// IDENTITIES. A VulosID is "vulos:ed25519:" + base58(32-byte Ed25519 pubkey)
 // (identity.go). Ed25519 keys are mapped to X25519 exactly as libsodium /
 // Signal (crypto.go):
 //   - private: X25519_scalar = clamp(SHA512(ed25519_seed[0:32])[0:32]) where
@@ -135,7 +135,7 @@ const X3DHKDFInfoLabel = x3dhHKDFInfo
 //     top sign bit cleared; encode u as 32-byte little-endian.
 //
 // PER-MESSAGE HEADER (sent alongside ciphertext; JSON field names are stable):
-//   { "v": 2, "from": "<sender VulaID>", "ek": "<b64 32-byte X25519 EK pub>",
+//   { "v": 2, "from": "<sender VulosID>", "ek": "<b64 32-byte X25519 EK pub>",
 //     "spk_id": "<recipient signed-prekey id>", "opk_id": "<claimed OPK id|omitted>" }
 // `ek` is Go []byte → JSON standard-base64 (encoding/json). `opk_id` is omitted
 // (or "") when no one-time prekey was claimed (signed-prekey-only fallback).
@@ -151,7 +151,7 @@ const X3DHKDFInfoLabel = x3dhHKDFInfo
 //
 // KDF (x3dhKDF / X3DHDeriveSharedKey — the byte-exact reference):
 //   IKM   = (0xFF repeated 32 times) || DH1 || DH2 || DH3 [|| DH4]
-//   salt  = utf8( lo + ":" + hi )  where {lo,hi} = the two VulaIDs sorted by Go
+//   salt  = utf8( lo + ":" + hi )  where {lo,hi} = the two VulosIDs sorted by Go
 //           string comparison (lexicographic over UTF-8 bytes); lo is the smaller.
 //   info  = utf8(X3DHKDFInfoLabel)   // "vula-x3dh-content-v2"
 //   SK    = HKDF-SHA256(ikm=IKM, salt=salt, info=info), first 32 bytes.
@@ -181,16 +181,16 @@ type OneTimePreKeyPublic struct {
 // PreKeyBundlePublic is what an identity publishes (via wellknown/directory) so
 // senders can establish a forward-secret session.
 type PreKeyBundlePublic struct {
-	IdentityVulaID string                `json:"identity_vula_id"`
-	SignedPreKey   SignedPreKeyPublic    `json:"signed_prekey"`
-	OneTimePreKeys []OneTimePreKeyPublic `json:"one_time_prekeys,omitempty"`
-	UpdatedAt      string                `json:"updated_at"`
+	IdentityVulosID string                `json:"identity_vulos_id"`
+	SignedPreKey    SignedPreKeyPublic    `json:"signed_prekey"`
+	OneTimePreKeys  []OneTimePreKeyPublic `json:"one_time_prekeys,omitempty"`
+	UpdatedAt       string                `json:"updated_at"`
 }
 
 // VerifySignedPreKey checks that the bundle's signed prekey carries a valid
-// signature by the identity key embedded in IdentityVulaID. Fails closed.
+// signature by the identity key embedded in IdentityVulosID. Fails closed.
 func (b *PreKeyBundlePublic) VerifySignedPreKey() error {
-	pub, err := decodeVulaID(b.IdentityVulaID)
+	pub, err := decodeVulosID(b.IdentityVulosID)
 	if err != nil {
 		return fmt.Errorf("prekeys: bundle identity: %w", err)
 	}
@@ -207,11 +207,11 @@ func (b *PreKeyBundlePublic) VerifySignedPreKey() error {
 
 // X3DHHeader travels alongside the ciphertext. It tells the recipient which of
 // their prekeys to use and carries the sender's ephemeral public key. It contains
-// no secrets and may be sent in the clear (sealed-sender compatible: SenderVulaID
+// no secrets and may be sent in the clear (sealed-sender compatible: SenderVulosID
 // can itself be carried inside an encrypted sender-cert layer by the caller).
 type X3DHHeader struct {
 	Version         ContentCryptoVersion `json:"v"`
-	SenderVulaID    string               `json:"from"`
+	SenderVulosID   string               `json:"from"`
 	EphemeralPub    []byte               `json:"ek"`               // 32-byte X25519
 	SignedPreKeyID  string               `json:"spk_id"`           // which SPK was used
 	OneTimePreKeyID string               `json:"opk_id,omitempty"` // which OPK, if any
@@ -220,11 +220,11 @@ type X3DHHeader struct {
 // ─── Sender side ───────────────────────────────────────────────────────────────
 
 // X3DHInitiate derives a forward-secret content key SK for sending to the bundle's
-// identity. senderEdPriv/senderVulaID are the sender's long-term identity (used
+// identity. senderEdPriv/senderVulosID are the sender's long-term identity (used
 // for authentication only). It returns the per-message header (to transmit) and
 // the derived SK (to feed EncryptForPeer). The signed prekey signature is verified
 // before use; a one-time prekey is consumed when the bundle offers one.
-func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulaID string, bundle *PreKeyBundlePublic) (X3DHHeader, SharedKey, error) {
+func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulosID string, bundle *PreKeyBundlePublic) (X3DHHeader, SharedKey, error) {
 	var zero SharedKey
 	if bundle == nil {
 		return X3DHHeader{}, zero, errors.New("prekeys: nil bundle")
@@ -238,7 +238,7 @@ func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulaID string, bundle *
 	if err != nil {
 		return X3DHHeader{}, zero, err
 	}
-	recvEdPub, err := decodeVulaID(bundle.IdentityVulaID)
+	recvEdPub, err := decodeVulosID(bundle.IdentityVulosID)
 	if err != nil {
 		return X3DHHeader{}, zero, err
 	}
@@ -271,7 +271,7 @@ func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulaID string, bundle *
 
 	hdr := X3DHHeader{
 		Version:        ContentCryptoV2X3DH,
-		SenderVulaID:   senderVulaID,
+		SenderVulosID:  senderVulosID,
 		EphemeralPub:   ekPub,
 		SignedPreKeyID: bundle.SignedPreKey.ID,
 	}
@@ -291,7 +291,7 @@ func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulaID string, bundle *
 		}
 	}
 
-	sk, err := x3dhKDF(concat, senderVulaID, bundle.IdentityVulaID)
+	sk, err := x3dhKDF(concat, senderVulosID, bundle.IdentityVulosID)
 	if err != nil {
 		return X3DHHeader{}, zero, err
 	}
@@ -305,7 +305,7 @@ func X3DHInitiate(senderEdPriv ed25519.PrivateKey, senderVulaID string, bundle *
 // private signed/one-time prekeys; the consumed one-time prekey is DELETED before
 // return (this is what provides forward secrecy). Fails closed if the referenced
 // prekeys are unknown (e.g. a replayed one-time prekey that was already deleted).
-func X3DHRespond(store *PreKeyStore, recipientEdPriv ed25519.PrivateKey, recipientVulaID string, hdr X3DHHeader) (SharedKey, error) {
+func X3DHRespond(store *PreKeyStore, recipientEdPriv ed25519.PrivateKey, recipientVulosID string, hdr X3DHHeader) (SharedKey, error) {
 	var zero SharedKey
 	if hdr.Version != ContentCryptoV2X3DH {
 		return zero, fmt.Errorf("prekeys: unsupported header version %d", hdr.Version)
@@ -326,7 +326,7 @@ func X3DHRespond(store *PreKeyStore, recipientEdPriv ed25519.PrivateKey, recipie
 	if err != nil {
 		return zero, err
 	}
-	senderEdPub, err := decodeVulaID(hdr.SenderVulaID)
+	senderEdPub, err := decodeVulosID(hdr.SenderVulosID)
 	if err != nil {
 		return zero, err
 	}
@@ -369,13 +369,13 @@ func X3DHRespond(store *PreKeyStore, recipientEdPriv ed25519.PrivateKey, recipie
 		}
 	}
 
-	return x3dhKDF(concat, hdr.SenderVulaID, recipientVulaID)
+	return x3dhKDF(concat, hdr.SenderVulosID, recipientVulosID)
 }
 
 // ─── KDF ───────────────────────────────────────────────────────────────────────
 
 // X3DHDeriveSharedKey is the EXPORTED, byte-exact content-key KDF. dhConcat is
-// DH1||DH2||DH3 (||DH4 when an OPK was used), idA/idB are the two VulaIDs in any
+// DH1||DH2||DH3 (||DH4 when an OPK was used), idA/idB are the two VulosIDs in any
 // order (sorted internally). It returns the 32-byte SK used as the AEAD key. This
 // is the reference a JS/cell initiator reproduces (see the cross-language spec
 // above); the deterministic test vector in prekeys_test.go pins its output.
@@ -434,7 +434,7 @@ func x25519(priv, pub []byte) ([]byte, error) {
 // prekeyState is the JSON persisted to disk: the signed prekey + remaining
 // one-time prekeys, all PRIVATE scalars. Consumed one-time prekeys are removed.
 type prekeyState struct {
-	IdentityVulaID  string            `json:"identity_vula_id"`
+	IdentityVulosID string            `json:"identity_vulos_id"`
 	SignedPreKeyID  string            `json:"signed_prekey_id"`
 	SignedPreKeyPub []byte            `json:"signed_prekey_pub"`
 	SignedPreKeySig []byte            `json:"signed_prekey_sig"`
@@ -452,12 +452,12 @@ type PreKeyStore struct {
 	state prekeyState
 }
 
-// NewPreKeyStore opens (or initializes) the prekey store for identityVulaID under
+// NewPreKeyStore opens (or initializes) the prekey store for identityVulosID under
 // dir. On first use it generates a signed prekey (signed by idPriv) and a pool of
-// oneTimeCount one-time prekeys. idPriv must correspond to identityVulaID.
-func NewPreKeyStore(dir, identityVulaID string, idPriv ed25519.PrivateKey, oneTimeCount int) (*PreKeyStore, error) {
-	if !ed25519PrivMatchesVulaID(idPriv, identityVulaID) {
-		return nil, errors.New("prekeys: identity private key does not match identity_vula_id")
+// oneTimeCount one-time prekeys. idPriv must correspond to identityVulosID.
+func NewPreKeyStore(dir, identityVulosID string, idPriv ed25519.PrivateKey, oneTimeCount int) (*PreKeyStore, error) {
+	if !ed25519PrivMatchesVulosID(idPriv, identityVulosID) {
+		return nil, errors.New("prekeys: identity private key does not match identity_vulos_id")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("prekeys: mkdir: %w", err)
@@ -465,25 +465,25 @@ func NewPreKeyStore(dir, identityVulaID string, idPriv ed25519.PrivateKey, oneTi
 	s := &PreKeyStore{path: filepath.Join(dir, "prekeys.json")}
 	if raw, err := os.ReadFile(s.path); err == nil {
 		var st prekeyState
-		if json.Unmarshal(raw, &st) == nil && st.IdentityVulaID == identityVulaID && len(st.SignedPreKeyPrv) == curve25519.ScalarSize {
+		if json.Unmarshal(raw, &st) == nil && st.IdentityVulosID == identityVulosID && len(st.SignedPreKeyPrv) == curve25519.ScalarSize {
 			s.state = st
 			return s, nil
 		}
 	}
 	// Fresh init.
-	if err := s.initFresh(identityVulaID, idPriv, oneTimeCount); err != nil {
+	if err := s.initFresh(identityVulosID, idPriv, oneTimeCount); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-func (s *PreKeyStore) initFresh(identityVulaID string, idPriv ed25519.PrivateKey, oneTimeCount int) error {
+func (s *PreKeyStore) initFresh(identityVulosID string, idPriv ed25519.PrivateKey, oneTimeCount int) error {
 	spkPriv, spkPub, err := genX25519()
 	if err != nil {
 		return err
 	}
 	st := prekeyState{
-		IdentityVulaID:  identityVulaID,
+		IdentityVulosID: identityVulosID,
 		SignedPreKeyID:  newKeyID(),
 		SignedPreKeyPub: spkPub,
 		SignedPreKeySig: ed25519.Sign(idPriv, spkPub),
@@ -523,7 +523,7 @@ func (s *PreKeyStore) PublicBundle() *PreKeyBundlePublic {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b := &PreKeyBundlePublic{
-		IdentityVulaID: s.state.IdentityVulaID,
+		IdentityVulosID: s.state.IdentityVulosID,
 		SignedPreKey: SignedPreKeyPublic{
 			ID:  s.state.SignedPreKeyID,
 			Pub: append([]byte(nil), s.state.SignedPreKeyPub...),
@@ -560,11 +560,11 @@ func (s *PreKeyStore) OneTimePreKeyCount() int {
 	return len(s.state.OneTimePriv)
 }
 
-// IdentityVulaID returns the identity this store holds prekeys for.
-func (s *PreKeyStore) IdentityVulaID() string {
+// IdentityVulosID returns the identity this store holds prekeys for.
+func (s *PreKeyStore) IdentityVulosID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state.IdentityVulaID
+	return s.state.IdentityVulosID
 }
 
 // ClaimedBundle is the result of a single OPK CLAIM (Contract A): the always-
@@ -572,9 +572,9 @@ func (s *PreKeyStore) IdentityVulaID() string {
 // the pool. OneTimePreKey is nil when the pool is exhausted (the sender then falls
 // back to signed-prekey-only — weaker FS, but it MUST NOT reuse an OPK).
 type ClaimedBundle struct {
-	IdentityVulaID string               `json:"identity_vula_id"`
-	SignedPreKey   SignedPreKeyPublic   `json:"signed_prekey"`
-	OneTimePreKey  *OneTimePreKeyPublic `json:"one_time_prekey"`
+	IdentityVulosID string               `json:"identity_vulos_id"`
+	SignedPreKey    SignedPreKeyPublic   `json:"signed_prekey"`
+	OneTimePreKey   *OneTimePreKeyPublic `json:"one_time_prekey"`
 }
 
 // ClaimOneTimePreKey atomically hands out a single one-time prekey and DELETES it
@@ -587,7 +587,7 @@ func (s *PreKeyStore) ClaimOneTimePreKey() (*ClaimedBundle, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := &ClaimedBundle{
-		IdentityVulaID: s.state.IdentityVulaID,
+		IdentityVulosID: s.state.IdentityVulosID,
 		SignedPreKey: SignedPreKeyPublic{
 			ID:  s.state.SignedPreKeyID,
 			Pub: append([]byte(nil), s.state.SignedPreKeyPub...),

@@ -402,10 +402,10 @@ func (s *Service) insertReceived(it ReceivedItem) error {
 	if it.IsDir {
 		isDir = 1
 	}
-	_, err := s.db.Exec(`INSERT INTO files_received(id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vula_id, staging_path, saved_node_id, received_at)
+	_, err := s.db.Exec(`INSERT INTO files_received(id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vulos_id, staging_path, saved_node_id, received_at)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 		it.ID, it.RecipientID, it.CapID, it.Name, isDir, it.Size, it.ContentType,
-		it.OwnerVulaID, it.stagingPath, it.SavedNodeID, it.ReceivedAt.Format(rfc))
+		it.OwnerVulosID, it.stagingPath, it.SavedNodeID, it.ReceivedAt.Format(rfc))
 	return err
 }
 
@@ -414,7 +414,7 @@ func scanReceived(sc interface{ Scan(...any) error }) (*ReceivedItem, error) {
 	var isDir int
 	var received string
 	if err := sc.Scan(&it.ID, &it.RecipientID, &it.CapID, &it.Name, &isDir, &it.Size,
-		&it.ContentType, &it.OwnerVulaID, &it.stagingPath, &it.SavedNodeID, &received); err != nil {
+		&it.ContentType, &it.OwnerVulosID, &it.stagingPath, &it.SavedNodeID, &received); err != nil {
 		return nil, err
 	}
 	it.IsDir = isDir == 1
@@ -422,7 +422,7 @@ func scanReceived(sc interface{ Scan(...any) error }) (*ReceivedItem, error) {
 	return &it, nil
 }
 
-const receivedCols = `id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vula_id, staging_path, saved_node_id, received_at`
+const receivedCols = `id, recipient_id, cap_id, name, is_dir, size, content_type, owner_vulos_id, staging_path, saved_node_id, received_at`
 
 func (s *Service) getReceived(id string) (*ReceivedItem, error) {
 	row := s.db.QueryRow(`SELECT `+receivedCols+` FROM files_received WHERE id=?`, id)

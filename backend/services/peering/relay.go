@@ -14,7 +14,7 @@
 //	  → relay stores blob, indexed by recipient Vula ID
 //
 //	GET /api/peering/relay/pickup
-//	  Header: Authorization: Vula-Relay <vula_id>.<timestamp_unix>.<base64url_sig>
+//	  Header: Authorization: Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //	  → returns all pending blobs for the authenticated Vula ID
 //
 //	POST /api/peering/relay/ack
@@ -30,7 +30,7 @@
 //	  "enabled":      true,
 //	  "capacity_mb":  500,   (total storage cap for all recipients)
 //	  "ttl_hours":    72,    (default TTL; capped at 168 h / 7 days)
-//	  "allowed":      ["vula:ed25519:..."]  (empty = mutual-trust check only)
+//	  "allowed":      ["vulos:ed25519:..."]  (empty = mutual-trust check only)
 //	}
 //
 // # Storage
@@ -53,7 +53,7 @@
 // Deposits are accepted only from senders whose Ed25519 signature over the
 // canonical deposit request is valid AND who are approved in the local
 // contacts store (mutual trust).  Pickup is authenticated by an Ed25519
-// signature over "<vula_id>.<timestamp_unix>".
+// signature over "<vulos_id>.<timestamp_unix>".
 //
 // The relay NEVER calls DecryptFromPeer or touches the crypto layer — all
 // blobs remain opaque.
@@ -122,7 +122,7 @@ const (
 	relayPickupBodyLimit int64 = 1 << 20
 
 	// nonceDedupeWindow is the time window within which a repeated
-	// (senderVulaID, nonce) pair is rejected as a replay.  Matches the rate
+	// (senderVulosID, nonce) pair is rejected as a replay.  Matches the rate
 	// limit window so the nonce map stays bounded by the same time horizon.
 	nonceDedupeWindow = time.Hour
 
@@ -199,11 +199,11 @@ type RelayBlob struct {
 	// validated to be non-empty and filesystem-safe by the relay).
 	ID string `json:"id"`
 
-	// RecipientVulaID is the intended recipient's Vula ID.
-	RecipientVulaID string `json:"recipient_vula_id"`
+	// RecipientVulosID is the intended recipient's Vula ID.
+	RecipientVulosID string `json:"recipient_vulos_id"`
 
-	// SenderVulaID is the depositor's Vula ID (verified by signature).
-	SenderVulaID string `json:"sender_vula_id"`
+	// SenderVulosID is the depositor's Vula ID (verified by signature).
+	SenderVulosID string `json:"sender_vulos_id"`
 
 	// BlobB64 is the base64-standard-encoded ciphertext.  The relay treats
 	// this as an opaque byte string and never decrypts it.
@@ -237,14 +237,14 @@ type RelayStore struct {
 	senderDeposits map[string][]time.Time // sender → timestamps of deposits in last hour
 
 	// seenNonces is a bounded TTL map for nonce deduplication.  Key is
-	// "<senderVulaID>\x00<nonce>"; value is the time the nonce was first seen.
+	// "<senderVulosID>\x00<nonce>"; value is the time the nonce was first seen.
 	// Entries are evicted lazily when older than nonceDedupeWindow.  The map
 	// is guarded by rateMu.
 	seenNonces map[string]time.Time
 
 	// billing GATES relay deposits on suspension and METERS relayed bytes
 	// against cp. Nil or disabled (CP_URL unset) = standalone OS: the relay is
-	// ungated/unmetered. The account key is the sender's VulaID (cp maps it).
+	// ungated/unmetered. The account key is the sender's VulosID (cp maps it).
 	// cp does not yet return relay-specific per-tier caps, so this enforces
 	// suspension only (see WithBilling doc).
 	billing *cpbilling.Client
@@ -371,8 +371,8 @@ type relayDepositRequest struct {
 	// Capped to relayMaxTTLHours by the relay.
 	TTLHours int `json:"ttl_hours,omitempty"`
 
-	// SenderVulaID is the depositor's Vula ID (must match the envelope From).
-	SenderVulaID string `json:"sender_vula_id"`
+	// SenderVulosID is the depositor's Vula ID (must match the envelope From).
+	SenderVulosID string `json:"sender_vulos_id"`
 
 	// Nonce is a hex-encoded random nonce (16 bytes minimum) included in the
 	// signed payload to prevent replay attacks.
@@ -381,7 +381,7 @@ type relayDepositRequest struct {
 	// Signature is the base64url (no-padding) Ed25519 signature over the
 	// canonical bytes of this object with the "signature" field absent, signed
 	// with the sender's private key.  Verification uses the public key derived
-	// from SenderVulaID.
+	// from SenderVulosID.
 	Signature string `json:"signature"`
 }
 
@@ -415,8 +415,8 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 	if !relayIsSafeID(req.BlobID) {
 		return errors.New("peering/relay: deposit: 'blob_id' contains unsafe characters")
 	}
-	if req.SenderVulaID == "" {
-		return errors.New("peering/relay: deposit: 'sender_vula_id' must not be empty")
+	if req.SenderVulosID == "" {
+		return errors.New("peering/relay: deposit: 'sender_vulos_id' must not be empty")
 	}
 	if req.Nonce == "" {
 		return errors.New("peering/relay: deposit: 'nonce' must not be empty")
@@ -431,36 +431,36 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 	}
 
 	// 3. Mutual-trust check.
-	if !rs.contacts.IsApproved(req.SenderVulaID) {
-		return fmt.Errorf("peering/relay: deposit: sender %q is not approved", req.SenderVulaID)
+	if !rs.contacts.IsApproved(req.SenderVulosID) {
+		return fmt.Errorf("peering/relay: deposit: sender %q is not approved", req.SenderVulosID)
 	}
 
 	// 4. Allowed-list check (if configured).
-	if len(cfg.Allowed) > 0 && !relayInAllowedList(req.SenderVulaID, cfg.Allowed) {
-		return fmt.Errorf("peering/relay: deposit: sender %q is not in the allowed list", req.SenderVulaID)
+	if len(cfg.Allowed) > 0 && !relayInAllowedList(req.SenderVulosID, cfg.Allowed) {
+		return fmt.Errorf("peering/relay: deposit: sender %q is not in the allowed list", req.SenderVulosID)
 	}
 
 	// 5. Nonce deduplication — reject a replayed (sender, nonce) pair within
 	// the dedup window.  Checked before rate-limiting so replays don't consume
 	// a rate-limit slot.
-	if err := rs.checkNonceDedup(req.SenderVulaID, req.Nonce); err != nil {
+	if err := rs.checkNonceDedup(req.SenderVulosID, req.Nonce); err != nil {
 		return err
 	}
 
 	// 6. Rate limit.
-	if err := rs.checkRateLimit(req.SenderVulaID); err != nil {
+	if err := rs.checkRateLimit(req.SenderVulosID); err != nil {
 		return err
 	}
 
 	// 5b. BILLING GATE (surface 3: relay). Enforces relay_enabled, suspended,
 	// and relay_bytes_budget=0 (hard-zero = no budget at all). Fail-open /
 	// degraded on a cold cp outage. No-op when billing is disabled (standalone
-	// OS). Account key = sender VulaID.
+	// OS). Account key = sender VulosID.
 	//
 	// NOTE: relay_bytes_budget > 0 is treated as "budget available" — precise
 	// remaining-balance enforcement needs cp to expose relay_bytes_remaining.
 	if rs.billing.Enabled() {
-		if d := rs.billing.GateRelay(context.Background(), req.SenderVulaID); !d.Allowed {
+		if d := rs.billing.GateRelay(context.Background(), req.SenderVulosID); !d.Allowed {
 			return fmt.Errorf("peering/relay: deposit: refused: %s", d.Reason)
 		}
 	}
@@ -502,13 +502,13 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 	ttl := cfg.effectiveTTL(req.TTLHours)
 	now := time.Now().UTC()
 	blob := RelayBlob{
-		ID:              req.BlobID,
-		RecipientVulaID: req.To,
-		SenderVulaID:    req.SenderVulaID,
-		BlobB64:         req.BlobB64,
-		BlobSize:        blobSize,
-		DepositedAt:     now,
-		ExpiresAt:       now.Add(ttl),
+		ID:               req.BlobID,
+		RecipientVulosID: req.To,
+		SenderVulosID:    req.SenderVulosID,
+		BlobB64:          req.BlobB64,
+		BlobSize:         blobSize,
+		DepositedAt:      now,
+		ExpiresAt:        now.Add(ttl),
 	}
 
 	blobData, err := json.Marshal(blob)
@@ -526,36 +526,36 @@ func (rs *RelayStore) Deposit(req relayDepositRequest) error {
 	// when billing is disabled.
 	rs.billing.MeterAsync(cpbilling.UsageEvent{
 		Product:   cpbilling.ProductRelay,
-		AccountID: req.SenderVulaID,
+		AccountID: req.SenderVulosID,
 		Kind:      cpbilling.KindRelayBytes,
 		Count:     1,
 		Bytes:     blobSize,
 	})
 
 	// Record for rate limiting.
-	rs.recordDeposit(req.SenderVulaID, now)
+	rs.recordDeposit(req.SenderVulosID, now)
 	log.Printf("[peering/relay] deposit: blob %q from %s for %s (%d bytes, expires %s)",
-		req.BlobID, req.SenderVulaID, req.To, blobSize, blob.ExpiresAt.Format(time.RFC3339))
+		req.BlobID, req.SenderVulosID, req.To, blobSize, blob.ExpiresAt.Format(time.RFC3339))
 	return nil
 }
 
 // ─── Pickup ───────────────────────────────────────────────────────────────────
 
-// Pickup returns all pending blobs for recipientVulaID.
+// Pickup returns all pending blobs for recipientVulosID.
 //
 // authTimestampUnix is the Unix timestamp string from the Authorization header.
 // sigB64URL is the base64url (no-padding) Ed25519 signature over the string
-// "<recipientVulaID>.<authTimestampUnix>" signed by the recipient's private key.
+// "<recipientVulosID>.<authTimestampUnix>" signed by the recipient's private key.
 //
 // The relay verifies the signature and enforces the timestamp tolerance window.
 // It does NOT delete the blobs — deletion is deferred until Ack is called.
-func (rs *RelayStore) Pickup(recipientVulaID, authTimestampUnix, sigB64URL string) ([]RelayBlob, error) {
+func (rs *RelayStore) Pickup(recipientVulosID, authTimestampUnix, sigB64URL string) ([]RelayBlob, error) {
 	// Authenticate the pickup request.
-	if err := relayVerifyPickupAuth(recipientVulaID, authTimestampUnix, sigB64URL); err != nil {
+	if err := relayVerifyPickupAuth(recipientVulosID, authTimestampUnix, sigB64URL); err != nil {
 		return nil, fmt.Errorf("peering/relay: pickup: %w", err)
 	}
 
-	recipientDir := rs.recipientDir(recipientVulaID)
+	recipientDir := rs.recipientDir(recipientVulosID)
 	entries, err := os.ReadDir(recipientDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil // no blobs — return empty (not an error)
@@ -587,16 +587,16 @@ func (rs *RelayStore) Pickup(recipientVulaID, authTimestampUnix, sigB64URL strin
 // ─── Ack ──────────────────────────────────────────────────────────────────────
 
 // Ack removes the blobs identified by blobIDs from the relay store for
-// recipientVulaID.
+// recipientVulosID.
 //
 // The same authentication scheme as Pickup is used (timestamp + signature).
 // Blob IDs that are not found are silently skipped (idempotent).
-func (rs *RelayStore) Ack(recipientVulaID, authTimestampUnix, sigB64URL string, blobIDs []string) error {
-	if err := relayVerifyPickupAuth(recipientVulaID, authTimestampUnix, sigB64URL); err != nil {
+func (rs *RelayStore) Ack(recipientVulosID, authTimestampUnix, sigB64URL string, blobIDs []string) error {
+	if err := relayVerifyPickupAuth(recipientVulosID, authTimestampUnix, sigB64URL); err != nil {
 		return fmt.Errorf("peering/relay: ack: %w", err)
 	}
 
-	recipientDir := rs.recipientDir(recipientVulaID)
+	recipientDir := rs.recipientDir(recipientVulosID)
 	for _, id := range blobIDs {
 		if id == "" {
 			continue
@@ -606,7 +606,7 @@ func (rs *RelayStore) Ack(recipientVulaID, authTimestampUnix, sigB64URL string, 
 			log.Printf("[peering/relay] ack: remove blob %s: %v", path, err)
 		}
 	}
-	log.Printf("[peering/relay] ack: %d blob(s) deleted for %s", len(blobIDs), recipientVulaID)
+	log.Printf("[peering/relay] ack: %d blob(s) deleted for %s", len(blobIDs), recipientVulosID)
 	return nil
 }
 
@@ -672,21 +672,21 @@ func (rs *RelayStore) reapExpired() {
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 
-// checkRateLimit returns an error if senderVulaID has exceeded
+// checkRateLimit returns an error if senderVulosID has exceeded
 // relayMaxDepositsPerHour deposits in the past hour.
-func (rs *RelayStore) checkRateLimit(senderVulaID string) error {
+func (rs *RelayStore) checkRateLimit(senderVulosID string) error {
 	rs.rateMu.Lock()
 	defer rs.rateMu.Unlock()
 
 	cutoff := time.Now().UTC().Add(-time.Hour)
-	prev := rs.senderDeposits[senderVulaID]
+	prev := rs.senderDeposits[senderVulosID]
 	var recent []time.Time
 	for _, t := range prev {
 		if t.After(cutoff) {
 			recent = append(recent, t)
 		}
 	}
-	rs.senderDeposits[senderVulaID] = recent
+	rs.senderDeposits[senderVulosID] = recent
 
 	if len(recent) >= relayMaxDepositsPerHour {
 		return fmt.Errorf("peering/relay: deposit: rate limit exceeded (%d/h)", relayMaxDepositsPerHour)
@@ -695,13 +695,13 @@ func (rs *RelayStore) checkRateLimit(senderVulaID string) error {
 }
 
 // recordDeposit records a successful deposit for rate-limiting purposes.
-func (rs *RelayStore) recordDeposit(senderVulaID string, at time.Time) {
+func (rs *RelayStore) recordDeposit(senderVulosID string, at time.Time) {
 	rs.rateMu.Lock()
 	defer rs.rateMu.Unlock()
-	rs.senderDeposits[senderVulaID] = append(rs.senderDeposits[senderVulaID], at)
+	rs.senderDeposits[senderVulosID] = append(rs.senderDeposits[senderVulosID], at)
 }
 
-// checkNonceDedup returns an error if (senderVulaID, nonce) was already seen
+// checkNonceDedup returns an error if (senderVulosID, nonce) was already seen
 // within the nonceDedupeWindow.  If it is a fresh nonce it is recorded and
 // nil is returned.
 //
@@ -713,11 +713,11 @@ func (rs *RelayStore) recordDeposit(senderVulaID string, at time.Time) {
 //
 // Both strategies keep memory use proportional to (rate_limit × senders), not
 // to total historical traffic.
-func (rs *RelayStore) checkNonceDedup(senderVulaID, nonce string) error {
+func (rs *RelayStore) checkNonceDedup(senderVulosID, nonce string) error {
 	rs.rateMu.Lock()
 	defer rs.rateMu.Unlock()
 
-	key := senderVulaID + "\x00" + nonce
+	key := senderVulosID + "\x00" + nonce
 	now := time.Now().UTC()
 	cutoff := now.Add(-nonceDedupeWindow)
 
@@ -730,7 +730,7 @@ func (rs *RelayStore) checkNonceDedup(senderVulaID, nonce string) error {
 
 	// Check for duplicate before recording.
 	if _, seen := rs.seenNonces[key]; seen {
-		return fmt.Errorf("peering/relay: deposit: duplicate nonce %q from %s (replay rejected)", nonce, senderVulaID)
+		return fmt.Errorf("peering/relay: deposit: duplicate nonce %q from %s (replay rejected)", nonce, senderVulosID)
 	}
 
 	// Hard-cap eviction: if the map is full, remove the single oldest entry.
@@ -757,8 +757,8 @@ func (rs *RelayStore) checkNonceDedup(senderVulaID, nonce string) error {
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
 // recipientDir returns the directory path for a recipient's blobs.
-func (rs *RelayStore) recipientDir(recipientVulaID string) string {
-	return filepath.Join(rs.storeDir, sanitizePath(recipientVulaID))
+func (rs *RelayStore) recipientDir(recipientVulosID string) string {
+	return filepath.Join(rs.storeDir, sanitizePath(recipientVulosID))
 }
 
 // readBlob reads and unmarshals a RelayBlob from path.
@@ -813,9 +813,9 @@ func (rs *RelayStore) dirStoredBytes(dir string) (int64, error) {
 // relayVerifyDepositSig verifies the Ed25519 signature on a deposit request.
 //
 // The signed message is the canonical JSON of the request object with the
-// "signature" field removed.  The public key is derived from req.SenderVulaID.
+// "signature" field removed.  The public key is derived from req.SenderVulosID.
 func relayVerifyDepositSig(req relayDepositRequest) error {
-	pub, err := decodeVulaID(req.SenderVulaID)
+	pub, err := decodeVulosID(req.SenderVulosID)
 	if err != nil {
 		return fmt.Errorf("deposit sig: decode sender vula id: %w", err)
 	}
@@ -859,14 +859,14 @@ func relayDepositCanonical(req relayDepositRequest) ([]byte, error) {
 //
 // The Authorization header value must be:
 //
-//	Vula-Relay <vula_id>.<timestamp_unix>.<base64url_sig>
+//	Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
-// where sig is the Ed25519 signature over "<vula_id>.<timestamp_unix>"
+// where sig is the Ed25519 signature over "<vulos_id>.<timestamp_unix>"
 // (UTF-8 bytes, no trailing newline).
 //
 // The timestamp must be within ±relayPickupTimestampTolerance of now.
-func relayVerifyPickupAuth(recipientVulaID, tsUnixStr, sigB64URL string) error {
-	if recipientVulaID == "" {
+func relayVerifyPickupAuth(recipientVulosID, tsUnixStr, sigB64URL string) error {
+	if recipientVulosID == "" {
 		return errors.New("pickup auth: recipient vula id must not be empty")
 	}
 	if tsUnixStr == "" {
@@ -892,7 +892,7 @@ func relayVerifyPickupAuth(recipientVulaID, tsUnixStr, sigB64URL string) error {
 	}
 
 	// Decode public key from Vula ID.
-	pub, err := decodeVulaID(recipientVulaID)
+	pub, err := decodeVulosID(recipientVulosID)
 	if err != nil {
 		return fmt.Errorf("pickup auth: decode vula id: %w", err)
 	}
@@ -906,8 +906,8 @@ func relayVerifyPickupAuth(recipientVulaID, tsUnixStr, sigB64URL string) error {
 		return fmt.Errorf("pickup auth: signature length %d, want %d", len(sigBytes), ed25519.SignatureSize)
 	}
 
-	// Verify over "<vula_id>.<timestamp_unix>".
-	msg := []byte(recipientVulaID + "." + tsUnixStr)
+	// Verify over "<vulos_id>.<timestamp_unix>".
+	msg := []byte(recipientVulosID + "." + tsUnixStr)
 	if !ed25519.Verify(pub, msg, sigBytes) {
 		return errors.New("pickup auth: signature mismatch")
 	}
@@ -931,10 +931,10 @@ func relayIsSafeID(s string) bool {
 	return true
 }
 
-// relayInAllowedList reports whether vulaID is in the list.
-func relayInAllowedList(vulaID string, list []string) bool {
+// relayInAllowedList reports whether vulosID is in the list.
+func relayInAllowedList(vulosID string, list []string) bool {
 	for _, id := range list {
-		if id == vulaID {
+		if id == vulosID {
 			return true
 		}
 	}
@@ -968,9 +968,9 @@ func relayAtomicWrite(dir, dst string, data []byte) error {
 //
 // Expected format:
 //
-//	Vula-Relay <vula_id>.<timestamp_unix>.<base64url_sig>
+//	Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
-// Returns (vulaID, timestampUnix, sigB64URL, nil) on success.
+// Returns (vulosID, timestampUnix, sigB64URL, nil) on success.
 func parseRelayAuthHeader(header string) (string, string, string, error) {
 	const prefix = "Vula-Relay "
 	if !strings.HasPrefix(header, prefix) {
@@ -978,8 +978,8 @@ func parseRelayAuthHeader(header string) (string, string, string, error) {
 	}
 	rest := strings.TrimPrefix(header, prefix)
 
-	// Format: <vula_id>.<timestamp_unix>.<sig>
-	// vula_id contains ':' and base58 chars; sig is base64url; timestamp is numeric.
+	// Format: <vulos_id>.<timestamp_unix>.<sig>
+	// vulos_id contains ':' and base58 chars; sig is base64url; timestamp is numeric.
 	// We split from the right: last two '.' delimit timestamp and sig.
 	lastDot := strings.LastIndex(rest, ".")
 	if lastDot < 0 {
@@ -993,12 +993,12 @@ func parseRelayAuthHeader(header string) (string, string, string, error) {
 		return "", "", "", errors.New("peering/relay: authorization header: missing timestamp field")
 	}
 	tsPart := remaining[secondLastDot+1:]
-	vulaIDPart := remaining[:secondLastDot]
+	vulosIDPart := remaining[:secondLastDot]
 
-	if vulaIDPart == "" || tsPart == "" || sigPart == "" {
+	if vulosIDPart == "" || tsPart == "" || sigPart == "" {
 		return "", "", "", errors.New("peering/relay: authorization header: malformed")
 	}
-	return vulaIDPart, tsPart, sigPart, nil
+	return vulosIDPart, tsPart, sigPart, nil
 }
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
@@ -1029,11 +1029,11 @@ func RegisterRelayHandlers(mux *http.ServeMux, store *RelayStore) {
 // Request body (JSON):
 //
 //	{
-//	  "to":             "<recipient_vula_id>",
+//	  "to":             "<recipient_vulos_id>",
 //	  "blob_id":        "<unique_blob_id>",
 //	  "blob_b64":       "<base64std_ciphertext>",
 //	  "ttl_hours":      72,
-//	  "sender_vula_id": "<sender_vula_id>",
+//	  "sender_vulos_id": "<sender_vulos_id>",
 //	  "nonce":          "<hex_random_nonce>",
 //	  "signature":      "<base64url_ed25519_sig>"
 //	}
@@ -1075,19 +1075,19 @@ func (rs *RelayStore) handleRelayDeposit(w http.ResponseWriter, r *http.Request)
 //
 // Authorization header:
 //
-//	Authorization: Vula-Relay <vula_id>.<timestamp_unix>.<base64url_sig>
+//	Authorization: Vula-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
 //
 // Success: 200 OK, body: {"blobs": [...RelayBlob...]}
 // Errors:  401 Unauthorized
 func (rs *RelayStore) handleRelayPickup(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
-	vulaID, tsStr, sigStr, err := parseRelayAuthHeader(authHeader)
+	vulosID, tsStr, sigStr, err := parseRelayAuthHeader(authHeader)
 	if err != nil {
 		relayWriteError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	blobs, err := rs.Pickup(vulaID, tsStr, sigStr)
+	blobs, err := rs.Pickup(vulosID, tsStr, sigStr)
 	if err != nil {
 		relayWriteError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -1114,7 +1114,7 @@ func (rs *RelayStore) handleRelayPickup(w http.ResponseWriter, r *http.Request) 
 // Errors:  400 Bad Request, 401 Unauthorized
 func (rs *RelayStore) handleRelayAck(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
-	vulaID, tsStr, sigStr, err := parseRelayAuthHeader(authHeader)
+	vulosID, tsStr, sigStr, err := parseRelayAuthHeader(authHeader)
 	if err != nil {
 		relayWriteError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -1139,7 +1139,7 @@ func (rs *RelayStore) handleRelayAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := rs.Ack(vulaID, tsStr, sigStr, req.BlobIDs); err != nil {
+	if err := rs.Ack(vulosID, tsStr, sigStr, req.BlobIDs); err != nil {
 		relayWriteError(w, http.StatusUnauthorized, err.Error())
 		return
 	}

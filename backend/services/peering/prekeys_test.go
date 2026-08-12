@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// pkIdentity returns a fresh identity (Ed25519 priv + base58 VulaID).
+// pkIdentity returns a fresh identity (Ed25519 priv + base58 VulosID).
 func pkIdentity(t *testing.T) (ed25519.PrivateKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("genkey: %v", err)
 	}
-	return priv, encodeVulaID(pub)
+	return priv, encodeVulosID(pub)
 }
 
 // TestX3DH_BothSidesDeriveSameKey is the core correctness check: the sender and
@@ -188,6 +188,6 @@ func TestNewPreKeyStore_RejectsMismatchedKey(t *testing.T) {
 	_, bobID := pkIdentity(t)
 	otherPriv, _ := pkIdentity(t)
 	if _, err := NewPreKeyStore(t.TempDir(), bobID, otherPriv, 1); err == nil {
-		t.Fatal("prekey store must reject an identity key that does not match the VulaID")
+		t.Fatal("prekey store must reject an identity key that does not match the VulosID")
 	}
 }

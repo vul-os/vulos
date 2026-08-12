@@ -36,7 +36,7 @@ func secGenKey(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	if err != nil {
 		t.Fatalf("secGenKey: %v", err)
 	}
-	return priv, pub, encodeVulaID(pub)
+	return priv, pub, encodeVulosID(pub)
 }
 
 // secMakeRelayStore creates a RelayStore backed by a temp dir with relay enabled.
@@ -58,13 +58,13 @@ func secMakeRelayStore(t *testing.T) (*RelayStore, *ContactStore) {
 }
 
 // secAddApproved adds a contact to cs in the Approved state.
-func secAddApproved(t *testing.T, cs *ContactStore, vulaID, name string) {
+func secAddApproved(t *testing.T, cs *ContactStore, vulosID, name string) {
 	t.Helper()
-	if err := cs.Add(vulaID, name, "server:8080"); err != nil {
-		t.Fatalf("secAddApproved Add(%s): %v", vulaID, err)
+	if err := cs.Add(vulosID, name, "server:8080"); err != nil {
+		t.Fatalf("secAddApproved Add(%s): %v", vulosID, err)
 	}
-	if err := cs.Approve(vulaID, DefaultPerms()); err != nil {
-		t.Fatalf("secAddApproved Approve(%s): %v", vulaID, err)
+	if err := cs.Approve(vulosID, DefaultPerms()); err != nil {
+		t.Fatalf("secAddApproved Approve(%s): %v", vulosID, err)
 	}
 }
 
@@ -74,12 +74,12 @@ func secSignedDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 	blobB64 := base64.StdEncoding.EncodeToString(blob)
 	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
 	req := relayDepositRequest{
-		To:           recipientID,
-		BlobID:       blobID,
-		BlobB64:      blobB64,
-		TTLHours:     24,
-		SenderVulaID: senderID,
-		Nonce:        nonce,
+		To:            recipientID,
+		BlobID:        blobID,
+		BlobB64:       blobB64,
+		TTLHours:      24,
+		SenderVulosID: senderID,
+		Nonce:         nonce,
 	}
 	canonical, err := relayDepositCanonical(req)
 	if err != nil {
@@ -96,9 +96,9 @@ func secSignedDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 // Verify to return a non-nil error.
 // Guards: SECURITY-OSS.md §5 — Ed25519 sig verified before forwarding.
 func TestSEC_Envelope_BadSigRejected(t *testing.T) {
-	priv, _, vulaID := secGenKey(t)
+	priv, _, vulosID := secGenKey(t)
 
-	env, err := NewEnvelope("sec-bad-sig-01", vulaID, "vula:other", TypeMessage,
+	env, err := NewEnvelope("sec-bad-sig-01", vulosID, "vula:other", TypeMessage,
 		json.RawMessage(`{"type":"text","body":"hello"}`))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
@@ -123,9 +123,9 @@ func TestSEC_Envelope_BadSigRejected(t *testing.T) {
 // Signature field fails Verify.
 // Guards: SECURITY-OSS.md §5 — absent signature is not treated as valid.
 func TestSEC_Envelope_AbsentSignatureRejected(t *testing.T) {
-	_, _, vulaID := secGenKey(t)
+	_, _, vulosID := secGenKey(t)
 
-	env, err := NewEnvelope("sec-no-sig-01", vulaID, "", TypeMessage, json.RawMessage(`null`))
+	env, err := NewEnvelope("sec-no-sig-01", vulosID, "", TypeMessage, json.RawMessage(`null`))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -142,9 +142,9 @@ func TestSEC_Envelope_AbsentSignatureRejected(t *testing.T) {
 // after signing invalidates the signature.
 // Guards: SECURITY-OSS.md §5 — canonical-JSON covers all fields incl. payload.
 func TestSEC_Envelope_TamperedPayloadRejected(t *testing.T) {
-	priv, _, vulaID := secGenKey(t)
+	priv, _, vulosID := secGenKey(t)
 
-	env, _ := NewEnvelope("sec-tamper-payload", vulaID, "", TypeMessage,
+	env, _ := NewEnvelope("sec-tamper-payload", vulosID, "", TypeMessage,
 		json.RawMessage(`{"type":"text","body":"original"}`))
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
@@ -164,9 +164,9 @@ func TestSEC_Envelope_TamperedPayloadRejected(t *testing.T) {
 // after signing invalidates the signature.
 // Guards: SECURITY-OSS.md §5 — type escalation (e.g. message → signaling) blocked.
 func TestSEC_Envelope_TamperedTypeRejected(t *testing.T) {
-	priv, _, vulaID := secGenKey(t)
+	priv, _, vulosID := secGenKey(t)
 
-	env, _ := NewEnvelope("sec-tamper-type", vulaID, "", TypeMessage, json.RawMessage(`null`))
+	env, _ := NewEnvelope("sec-tamper-type", vulosID, "", TypeMessage, json.RawMessage(`null`))
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -230,14 +230,14 @@ func TestSEC_Relay_UnknownSenderRejected(t *testing.T) {
 func TestSEC_Relay_StalePickupTimestampRejected(t *testing.T) {
 	rs, _ := secMakeRelayStore(t)
 
-	priv, _, vulaID := secGenKey(t)
+	priv, _, vulosID := secGenKey(t)
 
 	// Build a pickup auth with a timestamp 10 minutes in the past.
 	staleTS := fmt.Sprintf("%d", time.Now().Add(-10*time.Minute).Unix())
-	msg := []byte(vulaID + "." + staleTS)
+	msg := []byte(vulosID + "." + staleTS)
 	staleSig := base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, msg))
 
-	_, err := rs.Pickup(vulaID, staleTS, staleSig)
+	_, err := rs.Pickup(vulosID, staleTS, staleSig)
 	if err == nil {
 		t.Fatal("PEER-SEC-03 REGRESSION: relay accepted pickup with 10-minute stale timestamp — indefinite replay possible")
 	}
@@ -248,13 +248,13 @@ func TestSEC_Relay_StalePickupTimestampRejected(t *testing.T) {
 func TestSEC_Relay_FutureTimestampRejected(t *testing.T) {
 	rs, _ := secMakeRelayStore(t)
 
-	priv, _, vulaID := secGenKey(t)
+	priv, _, vulosID := secGenKey(t)
 
 	futureTS := fmt.Sprintf("%d", time.Now().Add(10*time.Minute).Unix())
-	msg := []byte(vulaID + "." + futureTS)
+	msg := []byte(vulosID + "." + futureTS)
 	futureSig := base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, msg))
 
-	_, err := rs.Pickup(vulaID, futureTS, futureSig)
+	_, err := rs.Pickup(vulosID, futureTS, futureSig)
 	if err == nil {
 		t.Fatal("PEER-SEC-03 REGRESSION: relay accepted pickup with 10-minute future timestamp — pre-issued replay tokens possible")
 	}
@@ -317,7 +317,7 @@ func TestSEC_InboundMiddleware_UnapprovedSenderReturns403(t *testing.T) {
 	defer srv.Close()
 
 	priv, _, senderID := secGenKey(t)
-	env, err := NewEnvelope("inbound-sec-01", senderID, "vula:ed25519:recipient",
+	env, err := NewEnvelope("inbound-sec-01", senderID, "vulos:ed25519:recipient",
 		TypeMessage, json.RawMessage(`{"type":"text","body":"attack"}`))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
@@ -363,7 +363,7 @@ func TestSEC_InboundMiddleware_MissingSignatureReturns401(t *testing.T) {
 	env := &Envelope{
 		ID:        "inbound-nosig-01",
 		From:      senderID,
-		To:        "vula:ed25519:recipient",
+		To:        "vulos:ed25519:recipient",
 		Type:      TypeMessage,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Payload:   json.RawMessage(`{"type":"text","body":"test"}`),
@@ -403,7 +403,7 @@ func TestSEC_InboundMiddleware_ApprovedSenderPasses(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	env, _ := NewEnvelope("inbound-ok-01", senderID, "vula:ed25519:me",
+	env, _ := NewEnvelope("inbound-ok-01", senderID, "vulos:ed25519:me",
 		TypeMessage, json.RawMessage(`{"type":"text","body":"hello"}`))
 	env.Sign(priv) //nolint:errcheck
 

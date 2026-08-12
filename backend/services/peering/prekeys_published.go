@@ -48,7 +48,7 @@ type publishedEntry struct {
 }
 
 // PublishedBundleStore is a bounded, in-memory, PUBLIC-ONLY prekey directory keyed
-// by peer identity VulaID. Goroutine-safe.
+// by peer identity VulosID. Goroutine-safe.
 type PublishedBundleStore struct {
 	mu            sync.Mutex
 	byIdentity    map[string]*publishedEntry
@@ -74,7 +74,7 @@ func NewPublishedBundleStore(maxIdentities, maxOPKsPerIdentity int) *PublishedBu
 
 // Publish stores (or refreshes) a peer's PUBLIC bundle. It FAILS CLOSED:
 //   - the signed prekey signature MUST verify against the identity embedded in
-//     IdentityVulaID (VerifySignedPreKey) — an unsigned/forged bundle is rejected
+//     IdentityVulosID (VerifySignedPreKey) — an unsigned/forged bundle is rejected
 //     and NOTHING is stored,
 //   - every one-time prekey must be a well-formed 32-byte X25519 public key.
 //
@@ -89,8 +89,8 @@ func (s *PublishedBundleStore) Publish(bundle *PreKeyBundlePublic) error {
 	if bundle == nil {
 		return errors.New("prekeys: nil bundle")
 	}
-	if bundle.IdentityVulaID == "" {
-		return errors.New("prekeys: bundle missing identity_vula_id")
+	if bundle.IdentityVulosID == "" {
+		return errors.New("prekeys: bundle missing identity_vulos_id")
 	}
 	// Signature check binds the signed prekey to the claimed identity: only the
 	// holder of that identity's Ed25519 private key can produce it. This is what
@@ -111,13 +111,13 @@ func (s *PublishedBundleStore) Publish(bundle *PreKeyBundlePublic) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entry, ok := s.byIdentity[bundle.IdentityVulaID]
+	entry, ok := s.byIdentity[bundle.IdentityVulosID]
 	if !ok {
 		if len(s.byIdentity) >= s.maxIdentities {
 			return errors.New("prekeys: published directory full")
 		}
 		entry = &publishedEntry{opks: make(map[string]OneTimePreKeyPublic)}
-		s.byIdentity[bundle.IdentityVulaID] = entry
+		s.byIdentity[bundle.IdentityVulosID] = entry
 	}
 
 	// Refresh the signed prekey (copy public bytes; no private material exists).
@@ -154,24 +154,24 @@ func (e *publishedEntry) trimLocked(max int) {
 	}
 }
 
-// Claim serves a PUBLISHED bundle for vulaID: the signed prekey plus AT MOST ONE
+// Claim serves a PUBLISHED bundle for vulosID: the signed prekey plus AT MOST ONE
 // one-time prekey, atomically DELETED from the pool (single-use → per-sender
 // forward secrecy). The bool is false when the identity has not published (caller
 // → 404). OneTimePreKey is nil when the pool is exhausted (signed-prekey-only
 // fallback). Never returns any private key (the store holds none).
-func (s *PublishedBundleStore) Claim(vulaID string) (*ClaimedBundle, bool) {
+func (s *PublishedBundleStore) Claim(vulosID string) (*ClaimedBundle, bool) {
 	if s == nil {
 		return nil, false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entry, ok := s.byIdentity[vulaID]
+	entry, ok := s.byIdentity[vulosID]
 	if !ok {
 		return nil, false
 	}
 	out := &ClaimedBundle{
-		IdentityVulaID: vulaID,
+		IdentityVulosID: vulosID,
 		SignedPreKey: SignedPreKeyPublic{
 			ID:  entry.signedPreKey.ID,
 			Pub: append([]byte(nil), entry.signedPreKey.Pub...),
@@ -194,24 +194,24 @@ func (s *PublishedBundleStore) Claim(vulaID string) (*ClaimedBundle, bool) {
 }
 
 // Has reports whether an identity has a published bundle (test/introspection).
-func (s *PublishedBundleStore) Has(vulaID string) bool {
+func (s *PublishedBundleStore) Has(vulosID string) bool {
 	if s == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, ok := s.byIdentity[vulaID]
+	_, ok := s.byIdentity[vulosID]
 	return ok
 }
 
 // OneTimePreKeyCount reports remaining published OPKs for an identity (test/metrics).
-func (s *PublishedBundleStore) OneTimePreKeyCount(vulaID string) int {
+func (s *PublishedBundleStore) OneTimePreKeyCount(vulosID string) int {
 	if s == nil {
 		return 0
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if e, ok := s.byIdentity[vulaID]; ok {
+	if e, ok := s.byIdentity[vulosID]; ok {
 		return len(e.opks)
 	}
 	return 0

@@ -22,12 +22,12 @@ func feedTestStore(t *testing.T) (*FeedStore, ed25519.PrivateKey, string) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
-	fs, err := NewFeedStore(dir, priv, vulaID, nil)
+	vulosID := encodeVulosID(pub)
+	fs, err := NewFeedStore(dir, priv, vulosID, nil)
 	if err != nil {
 		t.Fatalf("NewFeedStore: %v", err)
 	}
-	return fs, priv, vulaID
+	return fs, priv, vulosID
 }
 
 // feedTestStoreWithContacts creates a FeedStore backed by a ContactStore.
@@ -38,7 +38,7 @@ func feedTestStoreWithContacts(t *testing.T) (*FeedStore, *ContactStore, string)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
+	vulosID := encodeVulosID(pub)
 
 	cs, err := NewContactStore(home)
 	if err != nil {
@@ -46,11 +46,11 @@ func feedTestStoreWithContacts(t *testing.T) (*FeedStore, *ContactStore, string)
 	}
 
 	peeringDir := home // FeedStore is rooted at the given dir
-	fs, err := NewFeedStore(peeringDir, priv, vulaID, cs)
+	fs, err := NewFeedStore(peeringDir, priv, vulosID, cs)
 	if err != nil {
 		t.Fatalf("NewFeedStore: %v", err)
 	}
-	return fs, cs, vulaID
+	return fs, cs, vulosID
 }
 
 // ─── FeedCreate ───────────────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ func TestFeedAccess_PublicAndLinkNoAuth(t *testing.T) {
 	pubMeta, _ := fs.FeedCreate("Public Feed", "", FeedAccessPublic)
 	linkMeta, _ := fs.FeedCreate("Link Feed", "", FeedAccessLink)
 
-	// Empty callerVulaID means unauthenticated.
+	// Empty callerVulosID means unauthenticated.
 	if err := fs.feedCheckAccess(pubMeta, ""); err != nil {
 		t.Errorf("public feed should allow unauthenticated access: %v", err)
 	}
@@ -350,14 +350,14 @@ func TestFeedAccess_PeersGated(t *testing.T) {
 	}
 
 	// Unknown caller: denied.
-	unknownID := "vula:ed25519:unknownpeerXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	unknownID := "vulos:ed25519:unknownpeerXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 	if err := fs.feedCheckAccess(peersMeta, unknownID); err == nil {
 		t.Error("expected access denied for unknown caller")
 	}
 
 	// Approved contact: allowed.
 	approvedPub, _, _ := ed25519.GenerateKey(nil)
-	approvedID := encodeVulaID(approvedPub)
+	approvedID := encodeVulosID(approvedPub)
 	_ = cs.Add(approvedID, "Approved Peer", "peer.local:8080")
 	_ = cs.Approve(approvedID, DefaultPerms())
 
@@ -378,9 +378,9 @@ func TestFeedNotifySubscribers_PushToApprovedContacts(t *testing.T) {
 	pub1, _, _ := ed25519.GenerateKey(nil)
 	pub2, _, _ := ed25519.GenerateKey(nil)
 	pub3, _, _ := ed25519.GenerateKey(nil)
-	id1 := encodeVulaID(pub1)
-	id2 := encodeVulaID(pub2)
-	id3 := encodeVulaID(pub3)
+	id1 := encodeVulosID(pub1)
+	id2 := encodeVulosID(pub2)
+	id3 := encodeVulosID(pub3)
 
 	_ = cs.Add(id1, "Peer1", "")
 	_ = cs.Approve(id1, DefaultPerms())
@@ -390,8 +390,8 @@ func TestFeedNotifySubscribers_PushToApprovedContacts(t *testing.T) {
 	// id3 remains pending — should NOT receive notification.
 
 	notified := map[string]bool{}
-	fs.FeedNotifySubscribers(entry, func(contactVulaID string, e *FeedEntry) {
-		notified[contactVulaID] = true
+	fs.FeedNotifySubscribers(entry, func(contactVulosID string, e *FeedEntry) {
+		notified[contactVulosID] = true
 	})
 
 	if !notified[id1] {
@@ -414,14 +414,14 @@ func feedTestHandlerSetup(t *testing.T) (*FeedStore, *ContactStore, *http.ServeM
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
+	vulosID := encodeVulosID(pub)
 
 	cs, err := NewContactStore(home)
 	if err != nil {
 		t.Fatalf("NewContactStore: %v", err)
 	}
 
-	store, err := NewFeedStore(home, priv, vulaID, cs)
+	store, err := NewFeedStore(home, priv, vulosID, cs)
 	if err != nil {
 		t.Fatalf("NewFeedStore: %v", err)
 	}
@@ -432,7 +432,7 @@ func feedTestHandlerSetup(t *testing.T) (*FeedStore, *ContactStore, *http.ServeM
 		return r.Header.Get("X-Test-Caller")
 	})
 
-	return store, cs, mux, vulaID
+	return store, cs, mux, vulosID
 }
 
 func TestHTTPFeedCreate(t *testing.T) {
@@ -513,7 +513,7 @@ func TestHTTPFeedEntries_PeersGated_Denied(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/feeds/"+slug+"/entries", nil)
 	req.SetPathValue("feed_id", slug)
 	// Unknown caller.
-	req.Header.Set("X-Test-Caller", "vula:ed25519:unknownXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+	req.Header.Set("X-Test-Caller", "vulos:ed25519:unknownXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -530,7 +530,7 @@ func TestHTTPFeedEntries_PeersGated_Approved(t *testing.T) {
 
 	// Add and approve a contact.
 	peerPub, _, _ := ed25519.GenerateKey(nil)
-	peerID := encodeVulaID(peerPub)
+	peerID := encodeVulosID(peerPub)
 	_ = cs.Add(peerID, "Approved", "peer:8080")
 	_ = cs.Approve(peerID, DefaultPerms())
 
@@ -616,7 +616,7 @@ func TestFeedSlugify(t *testing.T) {
 // ─── feedSafeID round-trip ────────────────────────────────────────────────────
 
 func TestFeedSafeID(t *testing.T) {
-	id := "vula:ed25519:abc123/my-blog"
+	id := "vulos:ed25519:abc123/my-blog"
 	safe := feedSafeID(id)
 	if strings.Contains(safe, "/") {
 		t.Errorf("feedSafeID result should not contain '/': %q", safe)

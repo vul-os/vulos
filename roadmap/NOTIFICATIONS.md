@@ -158,8 +158,8 @@ Every notification is a signed, structured message delivered server-to-server th
 ```json
 {
   "id": "uuid-v7",
-  "from": "vula:ed25519:5Hb7...",
-  "to": "vula:ed25519:9Kx2...",
+  "from": "vulos:ed25519:5Hb7...",
+  "to": "vulos:ed25519:9Kx2...",
   "timestamp": "2026-04-02T14:30:00Z",
   "type": "event",
   "subtype": "file_shared",
@@ -233,8 +233,8 @@ When a user acts on an `action` notification, the response is sent back:
   "id": "uuid-v7",
   "type": "notification_reply",
   "ref_id": "<original notification id>",
-  "from": "vula:ed25519:9Kx2...",
-  "to": "vula:ed25519:5Hb7...",
+  "from": "vulos:ed25519:9Kx2...",
+  "to": "vulos:ed25519:5Hb7...",
   "action": "accept",
   "signature": "<ed25519-signature>"
 }
@@ -327,7 +327,7 @@ Extend the existing contact permissions:
 
 ```json
 {
-  "vula_id": "vula:ed25519:5Hb7...",
+  "vulos_id": "vulos:ed25519:5Hb7...",
   "display_name": "Bob",
   "server": "bob.vulos.org:8080",
   "approved_at": "2026-04-01T12:00:00Z",

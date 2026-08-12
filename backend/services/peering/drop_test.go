@@ -33,8 +33,8 @@ type dropFakeContacts struct {
 	approved map[string]bool
 }
 
-func (f *dropFakeContacts) IsApproved(vulaID string) bool {
-	return f.approved[vulaID]
+func (f *dropFakeContacts) IsApproved(vulosID string) bool {
+	return f.approved[vulosID]
 }
 
 // dropFakeMedia implements DropMediaSender.
@@ -64,7 +64,7 @@ func (f *dropFakeMedia) ReceiveFile(_ context.Context, downloadURL, fileName, mi
 
 func dropNewTestService(t *testing.T, contacts DropContactChecker, media DropMediaSender) *DropService {
 	t.Helper()
-	svc := NewDropService("vula:ed25519:testkey", "Tester", contacts, media)
+	svc := NewDropService("vulos:ed25519:testkey", "Tester", contacts, media)
 	svc.mdnsNew = dropNoopMDNSFactory
 	return svc
 }
@@ -173,7 +173,7 @@ func TestDropNearbyPeersOnlyShowsContacts(t *testing.T) {
 	svc.DropRegisterPeer("peer-b", "Bob", "192.168.1.3:8080")
 
 	nearby := svc.DropNearby()
-	if len(nearby) != 1 || nearby[0].VulaID != "peer-a" {
+	if len(nearby) != 1 || nearby[0].VulosID != "peer-a" {
 		t.Fatalf("peers mode: want only peer-a, got %v", nearby)
 	}
 }
@@ -214,8 +214,8 @@ func TestDropHandleNearbyHTTP(t *testing.T) {
 	if len(peers) != 1 {
 		t.Fatalf("want 1 peer, got %d", len(peers))
 	}
-	if peers[0].VulaID != "peer-a" {
-		t.Fatalf("want peer-a, got %s", peers[0].VulaID)
+	if peers[0].VulosID != "peer-a" {
+		t.Fatalf("want peer-a, got %s", peers[0].VulosID)
 	}
 }
 
@@ -309,7 +309,7 @@ func TestDropInboundAndDeclineHTTP(t *testing.T) {
 
 	req := dropInboundRequest{
 		TransferID:  "tx-decline-01",
-		FromVulaID:  "stranger",
+		FromVulosID: "stranger",
 		DisplayName: "Stranger",
 		FileName:    "malware.exe",
 		FileSize:    1024,
@@ -354,7 +354,7 @@ func TestDropInboundAutoAcceptContact(t *testing.T) {
 
 	req := dropInboundRequest{
 		TransferID:  "tx-auto-01",
-		FromVulaID:  "friend-vula-id",
+		FromVulosID: "friend-vula-id",
 		DisplayName: "Friend",
 		FileName:    "photo.jpg",
 		FileSize:    512000,
@@ -396,7 +396,7 @@ func TestDropInboundMissingFields(t *testing.T) {
 	RegisterDropHandlers(mux, svc)
 
 	rr := dropPost(t, mux, "/api/peering/inbound/drop", dropInboundRequest{
-		// TransferID and FromVulaID deliberately omitted
+		// TransferID and FromVulosID deliberately omitted
 		FileName: "test.txt",
 	})
 	if rr.Code != http.StatusBadRequest {
@@ -416,8 +416,8 @@ func TestDropHandleSendPeerNotFound(t *testing.T) {
 	RegisterDropHandlers(mux, svc)
 
 	rr := dropPost(t, mux, "/api/peering/drop/send", dropSendRequest{
-		TargetVulaID: "ghost-peer",
-		MediaPath:    "/tmp/file.txt",
+		TargetVulosID: "ghost-peer",
+		MediaPath:     "/tmp/file.txt",
 	})
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("want 404, got %d", rr.Code)
@@ -431,7 +431,7 @@ func TestDropHandleSendMediaPathMissing(t *testing.T) {
 	RegisterDropHandlers(mux, svc)
 
 	rr := dropPost(t, mux, "/api/peering/drop/send", dropSendRequest{
-		TargetVulaID: "peer-a",
+		TargetVulosID: "peer-a",
 	})
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d: %s", rr.Code, rr.Body.String())
@@ -448,9 +448,9 @@ func TestDropHandleSendWithExplicitAddrNoMedia(t *testing.T) {
 	RegisterDropHandlers(mux, svc)
 
 	rr := dropPost(t, mux, "/api/peering/drop/send", dropSendRequest{
-		TargetVulaID: "peer-x",
-		TargetAddr:   "http://10.0.0.2:8080",
-		MediaPath:    "/nonexistent/path/file.txt",
+		TargetVulosID: "peer-x",
+		TargetAddr:    "http://10.0.0.2:8080",
+		MediaPath:     "/nonexistent/path/file.txt",
 	})
 	// Expect 400 (os.Stat fails on missing file) not 404 (peer not found)
 	if rr.Code != http.StatusBadRequest {
@@ -473,7 +473,7 @@ func TestDropRegisterPeerSetsIsContact(t *testing.T) {
 	nearby := svc.DropNearby()
 	m := make(map[string]bool)
 	for _, p := range nearby {
-		m[p.VulaID] = p.IsContact
+		m[p.VulosID] = p.IsContact
 	}
 	if !m["known-peer"] {
 		t.Error("known-peer should be marked IsContact=true")
@@ -494,7 +494,7 @@ func TestDropStalePeerPruning(t *testing.T) {
 	// Inject a peer with a far-past discovery time.
 	svc.mu.Lock()
 	svc.peers["stale-peer"] = &DropPeer{
-		VulaID:       "stale-peer",
+		VulosID:      "stale-peer",
 		DisplayName:  "Stale",
 		Addr:         "10.0.0.99:8080",
 		DiscoveredAt: time.Now().Add(-10 * time.Minute),
@@ -537,16 +537,16 @@ func TestDropAutoAcceptToggle(t *testing.T) {
 
 func TestDropHostname(t *testing.T) {
 	cases := []struct {
-		vulaID string
-		want   string
+		vulosID string
+		want    string
 	}{
 		{"short", "vula-short._vula-drop._tcp.local"},
-		{"vula:ed25519:abcdefghijklmnopqrstuvwxyz", "vula-klmnopqrstuvwxyz._vula-drop._tcp.local"},
+		{"vulos:ed25519:abcdefghijklmnopqrstuvwxyz", "vula-klmnopqrstuvwxyz._vula-drop._tcp.local"},
 	}
 	for _, tc := range cases {
-		got := dropHostname(tc.vulaID)
+		got := dropHostname(tc.vulosID)
 		if got != tc.want {
-			t.Errorf("dropHostname(%q) = %q, want %q", tc.vulaID, got, tc.want)
+			t.Errorf("dropHostname(%q) = %q, want %q", tc.vulosID, got, tc.want)
 		}
 	}
 }

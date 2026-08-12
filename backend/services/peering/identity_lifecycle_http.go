@@ -46,7 +46,7 @@ func RegisterIdentityLifecycleHandlers(mux *http.ServeMux, store *LifecycleStore
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":     "revoked",
-			"vula_id":    cert.VulaID,
+			"vulos_id":   cert.VulosID,
 			"reason":     cert.Reason,
 			"issued_at":  cert.IssuedAt,
 			"revocation": cert,

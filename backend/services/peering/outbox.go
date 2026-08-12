@@ -35,14 +35,14 @@
 //
 //	// Enqueue after a delivery failure:
 //	if err := client.Post(ctx, baseURL, "message", env); err != nil {
-//	    q.Enqueue(peerVulaID, env)
+//	    q.Enqueue(peerVulosID, env)
 //	}
 //
 //	// ACK on confirmed delivery:
-//	q.Acknowledge(peerVulaID, msgID)
+//	q.Acknowledge(peerVulosID, msgID)
 //
 //	// Reconnect sync — pull all messages not yet ACKed since lastSeen:
-//	items := q.PullMissed(peerVulaID, lastSeen)
+//	items := q.PullMissed(peerVulosID, lastSeen)
 //	for _, item := range items {
 //	    client.Post(ctx, peerBaseURL, item.Envelope.Type, item.Envelope)
 //	}
@@ -88,8 +88,8 @@ const outboxWorkerInterval = 5 * time.Second
 // message. The Envelope field holds the complete, already-signed envelope ready
 // to be delivered verbatim.
 type QueuedEnvelope struct {
-	// PeerVulaID is the recipient's Vula ID.
-	PeerVulaID string `json:"peer_vula_id"`
+	// PeerVulosID is the recipient's Vula ID.
+	PeerVulosID string `json:"peer_vulos_id"`
 
 	// PeerServer is the last-known base URL of the recipient, e.g.
 	// "https://bob.vulos.org:8080". May be updated by the caller between
@@ -151,7 +151,7 @@ func (q *OutboxQueue) Start(ctx context.Context) {
 
 // ─── Enqueue ──────────────────────────────────────────────────────────────────
 
-// Enqueue persists a signed envelope in the outbox for peerVulaID, scheduling
+// Enqueue persists a signed envelope in the outbox for peerVulosID, scheduling
 // it for delivery. The first delivery attempt will be made after the first
 // outboxRetrySchedule interval (1 s).
 //
@@ -160,9 +160,9 @@ func (q *OutboxQueue) Start(ctx context.Context) {
 //
 // Enqueue is idempotent for the same env.ID — a second call with the same
 // message ID is a no-op.
-func (q *OutboxQueue) Enqueue(peerVulaID, peerServer string, env *Envelope) error {
-	if peerVulaID == "" {
-		return fmt.Errorf("peering/outbox: Enqueue: peerVulaID must not be empty")
+func (q *OutboxQueue) Enqueue(peerVulosID, peerServer string, env *Envelope) error {
+	if peerVulosID == "" {
+		return fmt.Errorf("peering/outbox: Enqueue: peerVulosID must not be empty")
 	}
 	if env == nil {
 		return fmt.Errorf("peering/outbox: Enqueue: envelope must not be nil")
@@ -176,7 +176,7 @@ func (q *OutboxQueue) Enqueue(peerVulaID, peerServer string, env *Envelope) erro
 
 	now := time.Now().UTC()
 	item := QueuedEnvelope{
-		PeerVulaID:  peerVulaID,
+		PeerVulosID: peerVulosID,
 		PeerServer:  peerServer,
 		Envelope:    env,
 		QueuedAt:    now,
@@ -189,11 +189,11 @@ func (q *OutboxQueue) Enqueue(peerVulaID, peerServer string, env *Envelope) erro
 // ─── Acknowledge ──────────────────────────────────────────────────────────────
 
 // Acknowledge removes the message identified by msgID from the outbox for
-// peerVulaID. Called after the remote peer has confirmed receipt (ACK). If
+// peerVulosID. Called after the remote peer has confirmed receipt (ACK). If
 // the message is not in the queue (already removed or never queued),
 // Acknowledge is a no-op.
-func (q *OutboxQueue) Acknowledge(peerVulaID, msgID string) {
-	peerDir := filepath.Join(q.root, sanitizePath(peerVulaID))
+func (q *OutboxQueue) Acknowledge(peerVulosID, msgID string) {
+	peerDir := filepath.Join(q.root, sanitizePath(peerVulosID))
 	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return // directory absent — nothing to remove
@@ -218,7 +218,7 @@ func (q *OutboxQueue) Acknowledge(peerVulaID, msgID string) {
 
 // ─── PullMissed ───────────────────────────────────────────────────────────────
 
-// PullMissed returns all queued messages for peerVulaID that were queued after
+// PullMissed returns all queued messages for peerVulosID that were queued after
 // lastSeen. This implements the reconnect-sync ("pull since last-seen") step:
 // when a peer comes online, the local server calls PullMissed to get all
 // messages that must be re-delivered.
@@ -228,8 +228,8 @@ func (q *OutboxQueue) Acknowledge(peerVulaID, msgID string) {
 //
 // The caller is responsible for actually delivering the returned envelopes
 // and calling Acknowledge on success.
-func (q *OutboxQueue) PullMissed(peerVulaID string, lastSeen time.Time) []QueuedEnvelope {
-	peerDir := filepath.Join(q.root, sanitizePath(peerVulaID))
+func (q *OutboxQueue) PullMissed(peerVulosID string, lastSeen time.Time) []QueuedEnvelope {
+	peerDir := filepath.Join(q.root, sanitizePath(peerVulosID))
 	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return nil
@@ -259,10 +259,10 @@ func (q *OutboxQueue) PullMissed(peerVulaID string, lastSeen time.Time) []Queued
 // ─── UpdatePeerServer ─────────────────────────────────────────────────────────
 
 // UpdatePeerServer updates the PeerServer field on all queued items for
-// peerVulaID. Call this when the peer's server address changes so the next
+// peerVulosID. Call this when the peer's server address changes so the next
 // retry attempt uses the correct URL.
-func (q *OutboxQueue) UpdatePeerServer(peerVulaID, newServer string) {
-	peerDir := filepath.Join(q.root, sanitizePath(peerVulaID))
+func (q *OutboxQueue) UpdatePeerServer(peerVulosID, newServer string) {
+	peerDir := filepath.Join(q.root, sanitizePath(peerVulosID))
 	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return
@@ -291,10 +291,10 @@ func (q *OutboxQueue) UpdatePeerServer(peerVulaID, newServer string) {
 
 // ─── QueueDepth ───────────────────────────────────────────────────────────────
 
-// QueueDepth returns the number of messages currently queued for peerVulaID.
+// QueueDepth returns the number of messages currently queued for peerVulosID.
 // Returns 0 if no outbox directory exists for that peer.
-func (q *OutboxQueue) QueueDepth(peerVulaID string) int {
-	peerDir := filepath.Join(q.root, sanitizePath(peerVulaID))
+func (q *OutboxQueue) QueueDepth(peerVulosID string) int {
+	peerDir := filepath.Join(q.root, sanitizePath(peerVulosID))
 	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return 0
@@ -417,7 +417,7 @@ func (q *OutboxQueue) retryPeerDir(ctx context.Context, peerDir string) {
 		// is stored already-resolved (a full https:// base URL from the enqueue
 		// site), so resolvePeerBaseURL is a pass-through here; keeping the call keeps
 		// the retry path on the same primitive as first-attempt delivery.
-		baseURL := resolvePeerBaseURL(item.PeerVulaID, item.PeerServer)
+		baseURL := resolvePeerBaseURL(item.PeerVulosID, item.PeerServer)
 		deliverErr := q.client.Post(ctx, baseURL, item.Envelope.Type, item.Envelope)
 		if deliverErr == nil {
 			// Delivered successfully — remove the processing file.
@@ -425,7 +425,7 @@ func (q *OutboxQueue) retryPeerDir(ctx context.Context, peerDir string) {
 				log.Printf("[peering/outbox] remove delivered item %s: %v", processingPath, rerr)
 			}
 			log.Printf("[peering/outbox] delivered %s to %s (after %d attempt(s))",
-				item.Envelope.ID, item.PeerVulaID, item.Attempts+1)
+				item.Envelope.ID, item.PeerVulosID, item.Attempts+1)
 			continue
 		}
 
@@ -459,7 +459,7 @@ func (q *OutboxQueue) bumpAttempt(item QueuedEnvelope) QueuedEnvelope {
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 
-// writeItem writes a new item file for item.PeerVulaID. The filename encodes
+// writeItem writes a new item file for item.PeerVulosID. The filename encodes
 // QueuedAt and envelope ID so directory listings are ordered chronologically
 // and items are identifiable by message ID.
 //
@@ -467,7 +467,7 @@ func (q *OutboxQueue) bumpAttempt(item QueuedEnvelope) QueuedEnvelope {
 // If a file for the same message ID already exists, writeItem is a no-op
 // (idempotent).
 func (q *OutboxQueue) writeItem(item QueuedEnvelope) error {
-	peerDir := filepath.Join(q.root, sanitizePath(item.PeerVulaID))
+	peerDir := filepath.Join(q.root, sanitizePath(item.PeerVulosID))
 	if err := os.MkdirAll(peerDir, 0700); err != nil {
 		return fmt.Errorf("peering/outbox: mkdir peer dir %s: %w", peerDir, err)
 	}

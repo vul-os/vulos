@@ -175,7 +175,7 @@ GET	/api/peering/bandwidth/peer
 # contacts (PEER-08)
 GET	/api/peering/contacts
 GET	/api/peering/contacts/requests
-POST	/api/peering/contacts/request	{"vula_id":"test","server":"localhost"}
+POST	/api/peering/contacts/request	{"vulos_id":"test","server":"localhost"}
 POST	/api/peering/contacts/approve/PLACEHOLDER_ID	{}
 POST	/api/peering/contacts/block/PLACEHOLDER_ID	{}
 DELETE	/api/peering/contacts/PLACEHOLDER_ID
@@ -187,7 +187,7 @@ POST	/api/peering/conversations/PLACEHOLDER_ID/send	{"text":"hi"}
 GET	/api/peering/groups
 POST	/api/peering/groups	{"name":"test"}
 GET	/api/peering/groups/PLACEHOLDER_ID
-POST	/api/peering/groups/PLACEHOLDER_ID/members	{"vula_id":"x"}
+POST	/api/peering/groups/PLACEHOLDER_ID/members	{"vulos_id":"x"}
 POST	/api/peering/groups/PLACEHOLDER_ID/send	{"text":"hi"}
 # calls (PEER-13 / PEER-14)
 POST	/api/peering/call/initiate	{"peer_id":"x","sdp":""}

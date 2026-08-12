@@ -15,8 +15,8 @@
 // Wire shape (identical on the box host AND the cell, per Contract A):
 //
 //	POST /api/peering/prekeys/claim
-//	  request : { "identity_vula_id": "<base58 VulaID>" }
-//	  200     : { "identity_vula_id": "...",
+//	  request : { "identity_vulos_id": "<base58 VulosID>" }
+//	  200     : { "identity_vulos_id": "...",
 //	              "signed_prekey":   { "id": "...", "pub": "<b64>", "sig": "<b64>" },
 //	              "one_time_prekey": { "id": "...", "pub": "<b64>" } | null }
 //
@@ -29,7 +29,7 @@
 // well-known bundle and profile fetch) — unauthenticated. Claiming is by design
 // open to any sender (including remote boxes) so they can establish a forward-
 // secret session; OPKs are public, single-use, and pool depletion is covered by
-// background replenishment (StartPreKeyReplenish). The request's identity_vula_id
+// background replenishment (StartPreKeyReplenish). The request's identity_vulos_id
 // must match the identity this host actually holds prekeys for, else 404.
 package peering
 
@@ -68,16 +68,16 @@ func RegisterPreKeyHandlers(mux *http.ServeMux, store *PreKeyStore, published *P
 				wkWriteErr(w, http.StatusBadRequest, "invalid prekey bundle")
 				return
 			}
-			if bundle.IdentityVulaID == "" {
-				wkWriteErr(w, http.StatusBadRequest, "identity_vula_id required")
+			if bundle.IdentityVulosID == "" {
+				wkWriteErr(w, http.StatusBadRequest, "identity_vulos_id required")
 				return
 			}
 			// Never accept a bundle for a revoked identity (fail closed).
-			if isVulaIDRevoked(bundle.IdentityVulaID) {
+			if isVulosIDRevoked(bundle.IdentityVulosID) {
 				wkWriteErr(w, http.StatusForbidden, "identity is revoked")
 				return
 			}
-			// Publish verifies the signed-prekey signature against IdentityVulaID and
+			// Publish verifies the signed-prekey signature against IdentityVulosID and
 			// rejects malformed/forged bundles without storing anything.
 			if err := published.Publish(&bundle); err != nil {
 				wkWriteErr(w, http.StatusBadRequest, "bundle rejected: "+err.Error())
@@ -87,22 +87,22 @@ func RegisterPreKeyHandlers(mux *http.ServeMux, store *PreKeyStore, published *P
 			w.Header().Set("Cache-Control", "no-store")
 			json.NewEncoder(w).Encode(map[string]any{
 				"stored":           true,
-				"one_time_prekeys": published.OneTimePreKeyCount(bundle.IdentityVulaID),
+				"one_time_prekeys": published.OneTimePreKeyCount(bundle.IdentityVulosID),
 			})
 		})
 	}
 
 	mux.HandleFunc("POST /api/peering/prekeys/claim", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			IdentityVulaID string `json:"identity_vula_id"`
+			IdentityVulosID string `json:"identity_vulos_id"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IdentityVulaID == "" {
-			wkWriteErr(w, http.StatusBadRequest, "identity_vula_id required")
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.IdentityVulosID == "" {
+			wkWriteErr(w, http.StatusBadRequest, "identity_vulos_id required")
 			return
 		}
 		// Reject claims against a revoked identity (fail closed): a sender must not
 		// open a forward-secret session to a retired key.
-		if isVulaIDRevoked(req.IdentityVulaID) {
+		if isVulosIDRevoked(req.IdentityVulosID) {
 			wkWriteErr(w, http.StatusForbidden, "identity is revoked")
 			return
 		}
@@ -110,7 +110,7 @@ func RegisterPreKeyHandlers(mux *http.ServeMux, store *PreKeyStore, published *P
 		var claimed *ClaimedBundle
 
 		// 1) This host's OWN identity: serve from the private PreKeyStore.
-		if store != nil && req.IdentityVulaID == store.IdentityVulaID() {
+		if store != nil && req.IdentityVulosID == store.IdentityVulosID() {
 			c, err := store.ClaimOneTimePreKey()
 			if err != nil {
 				wkWriteErr(w, http.StatusInternalServerError, "claim failed")
@@ -119,7 +119,7 @@ func RegisterPreKeyHandlers(mux *http.ServeMux, store *PreKeyStore, published *P
 			claimed = c
 		} else if published != nil {
 			// 2) A REMOTE (browser) peer that PUBLISHED its public bundle here.
-			c, ok := published.Claim(req.IdentityVulaID)
+			c, ok := published.Claim(req.IdentityVulosID)
 			if !ok {
 				wkWriteErr(w, http.StatusNotFound, "no prekeys for that identity on this host")
 				return

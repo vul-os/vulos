@@ -2,18 +2,18 @@
 //
 // Vula ID format:
 //
-//	vula:ed25519:<base58-encoded-32-byte-public-key>
+//	vulos:ed25519:<base58-encoded-32-byte-public-key>
 //
 // Address format (used for discovery / contact requests):
 //
-//	<vula_id>@<host>:<port>
+//	<vulos_id>@<host>:<port>
 //
 // First-boot behaviour:
 //
 //	New() calls loadOrGenerate() which looks for
 //	  ~/.vulos/peering/identity/ed25519.priv  (raw 64-byte seed+pub key, 0600)
 //	  ~/.vulos/peering/identity/ed25519.pub   (raw 32-byte public key, 0644)
-//	  ~/.vulos/peering/identity/vula_id       (text, 0644)
+//	  ~/.vulos/peering/identity/vulos_id       (text, 0644)
 //	If any file is absent the full keypair is re-generated and all three are
 //	written atomically (temp-file + rename).
 package peering
@@ -117,19 +117,19 @@ func base58Decode(s string) ([]byte, error) {
 
 // ─── Vula ID ──────────────────────────────────────────────────────────────────
 
-const vulaIDPrefix = "vula:ed25519:"
+const vulosIDPrefix = "vulos:ed25519:"
 
-// encodeVulaID encodes a 32-byte Ed25519 public key as a Vula ID string.
-func encodeVulaID(pub ed25519.PublicKey) string {
-	return vulaIDPrefix + base58Encode(pub)
+// encodeVulosID encodes a 32-byte Ed25519 public key as a Vula ID string.
+func encodeVulosID(pub ed25519.PublicKey) string {
+	return vulosIDPrefix + base58Encode(pub)
 }
 
-// decodeVulaID decodes a Vula ID string and returns the raw public key.
-func decodeVulaID(id string) (ed25519.PublicKey, error) {
-	if !strings.HasPrefix(id, vulaIDPrefix) {
-		return nil, fmt.Errorf("vula id: expected prefix %q, got %q", vulaIDPrefix, id)
+// decodeVulosID decodes a Vula ID string and returns the raw public key.
+func decodeVulosID(id string) (ed25519.PublicKey, error) {
+	if !strings.HasPrefix(id, vulosIDPrefix) {
+		return nil, fmt.Errorf("vula id: expected prefix %q, got %q", vulosIDPrefix, id)
 	}
-	raw, err := base58Decode(strings.TrimPrefix(id, vulaIDPrefix))
+	raw, err := base58Decode(strings.TrimPrefix(id, vulosIDPrefix))
 	if err != nil {
 		return nil, fmt.Errorf("vula id: %w", err)
 	}
@@ -139,31 +139,31 @@ func decodeVulaID(id string) (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(raw), nil
 }
 
-// EncodeVulaID encodes a raw Ed25519 public key as its canonical Vula ID
-// ("vula:ed25519:<base58>"). It is the exported counterpart of PublicKeyForVulaID
+// EncodeVulosID encodes a raw Ed25519 public key as its canonical Vula ID
+// ("vulos:ed25519:<base58>"). It is the exported counterpart of PublicKeyForVulosID
 // so other services (and cross-package tests) can construct a Vula ID from a key
 // without reimplementing the base58 / prefix machinery.
-func EncodeVulaID(pub ed25519.PublicKey) string {
-	return encodeVulaID(pub)
+func EncodeVulosID(pub ed25519.PublicKey) string {
+	return encodeVulosID(pub)
 }
 
-// PublicKeyForVulaID decodes a Vula ID ("vula:ed25519:<base58>") into the raw
+// PublicKeyForVulosID decodes a Vula ID ("vulos:ed25519:<base58>") into the raw
 // Ed25519 public key it encodes. It is the exported counterpart of the internal
-// decodeVulaID, provided so other services (e.g. the Files OS peer-share
+// decodeVulosID, provided so other services (e.g. the Files OS peer-share
 // capability layer) can verify signatures made by a remote box's identity key
 // WITHOUT importing the base58 / Vula-ID machinery themselves. Vula-ID handling
 // stays centralized in this package.
-func PublicKeyForVulaID(id string) (ed25519.PublicKey, error) {
-	return decodeVulaID(id)
+func PublicKeyForVulosID(id string) (ed25519.PublicKey, error) {
+	return decodeVulosID(id)
 }
 
 // VerifyVulaSignature reports whether sig is a valid Ed25519 signature by the
-// identity behind vulaID over msg. It is a small, self-contained verification
+// identity behind vulosID over msg. It is a small, self-contained verification
 // primitive for cross-box capability/proof checks: the verifier needs only the
 // peer's Vula ID (which embeds the public key) — no prior key exchange. Returns
 // a non-nil error when the Vula ID is malformed or the signature does not match.
-func VerifyVulaSignature(vulaID string, msg, sig []byte) error {
-	pub, err := decodeVulaID(vulaID)
+func VerifyVulaSignature(vulosID string, msg, sig []byte) error {
+	pub, err := decodeVulosID(vulosID)
 	if err != nil {
 		return err
 	}
@@ -176,15 +176,15 @@ func VerifyVulaSignature(vulaID string, msg, sig []byte) error {
 // ─── Address parsing ──────────────────────────────────────────────────────────
 
 // VulaAddress is a Vula ID combined with a server host and port.
-// Wire format: <vula_id>@<host>:<port>
+// Wire format: <vulos_id>@<host>:<port>
 type VulaAddress struct {
-	VulaID string
-	Host   string
-	Port   int
+	VulosID string
+	Host    string
+	Port    int
 }
 
 // ParseVulaAddress parses a Vula address string of the form
-// "vula:ed25519:<base58>@host:port".
+// "vulos:ed25519:<base58>@host:port".
 func ParseVulaAddress(s string) (VulaAddress, error) {
 	// Split on the last '@' to allow ':' inside the Vula ID prefix.
 	at := strings.LastIndex(s, "@")
@@ -206,16 +206,16 @@ func ParseVulaAddress(s string) (VulaAddress, error) {
 	}
 
 	// Validate the Vula ID portion.
-	if _, err := decodeVulaID(id); err != nil {
+	if _, err := decodeVulosID(id); err != nil {
 		return VulaAddress{}, fmt.Errorf("vula address: %w", err)
 	}
 
-	return VulaAddress{VulaID: id, Host: host, Port: port}, nil
+	return VulaAddress{VulosID: id, Host: host, Port: port}, nil
 }
 
 // String returns the canonical wire form of the address.
 func (a VulaAddress) String() string {
-	return fmt.Sprintf("%s@%s:%d", a.VulaID, a.Host, a.Port)
+	return fmt.Sprintf("%s@%s:%d", a.VulosID, a.Host, a.Port)
 }
 
 // ─── Keypair persistence ──────────────────────────────────────────────────────
@@ -223,7 +223,7 @@ func (a VulaAddress) String() string {
 const (
 	privKeyFile = "ed25519.priv" // 64 bytes: 32-byte seed || 32-byte public key
 	pubKeyFile  = "ed25519.pub"  // 32 bytes
-	vulaIDFile  = "vula_id"      // text, e.g. "vula:ed25519:..."
+	vulosIDFile = "vulos_id"     // text, e.g. "vulos:ed25519:..."
 )
 
 // loadOrGenerate loads the Ed25519 keypair from the identity directory, or
@@ -232,7 +232,7 @@ const (
 func loadOrGenerate(identityDir string) (ed25519.PrivateKey, ed25519.PublicKey, string, error) {
 	privPath := filepath.Join(identityDir, privKeyFile)
 	pubPath := filepath.Join(identityDir, pubKeyFile)
-	idPath := filepath.Join(identityDir, vulaIDFile)
+	idPath := filepath.Join(identityDir, vulosIDFile)
 
 	// Try to load existing keypair.
 	privBytes, privErr := os.ReadFile(privPath)
@@ -244,15 +244,15 @@ func loadOrGenerate(identityDir string) (ed25519.PrivateKey, ed25519.PublicKey, 
 
 		priv := ed25519.PrivateKey(privBytes)
 		pub := ed25519.PublicKey(pubBytes)
-		vulaID := encodeVulaID(pub)
+		vulosID := encodeVulosID(pub)
 
-		// Re-write vula_id if absent (idempotent).
+		// Re-write vulos_id if absent (idempotent).
 		if _, err := os.Stat(idPath); os.IsNotExist(err) {
-			_ = writeFile(idPath, []byte(vulaID), 0644)
+			_ = writeFile(idPath, []byte(vulosID), 0644)
 		}
 
-		log.Printf("[peering/identity] loaded existing keypair: %s", vulaID)
-		return priv, pub, vulaID, nil
+		log.Printf("[peering/identity] loaded existing keypair: %s", vulosID)
+		return priv, pub, vulosID, nil
 	}
 
 	// Generate a new keypair.
@@ -260,7 +260,7 @@ func loadOrGenerate(identityDir string) (ed25519.PrivateKey, ed25519.PublicKey, 
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("identity: generate key: %w", err)
 	}
-	vulaID := encodeVulaID(pub)
+	vulosID := encodeVulosID(pub)
 
 	if err := writeFile(privPath, []byte(priv), 0600); err != nil {
 		return nil, nil, "", fmt.Errorf("identity: write priv key: %w", err)
@@ -268,12 +268,12 @@ func loadOrGenerate(identityDir string) (ed25519.PrivateKey, ed25519.PublicKey, 
 	if err := writeFile(pubPath, []byte(pub), 0644); err != nil {
 		return nil, nil, "", fmt.Errorf("identity: write pub key: %w", err)
 	}
-	if err := writeFile(idPath, []byte(vulaID), 0644); err != nil {
-		return nil, nil, "", fmt.Errorf("identity: write vula_id: %w", err)
+	if err := writeFile(idPath, []byte(vulosID), 0644); err != nil {
+		return nil, nil, "", fmt.Errorf("identity: write vulos_id: %w", err)
 	}
 
-	log.Printf("[peering/identity] generated new keypair: %s", vulaID)
-	return priv, pub, vulaID, nil
+	log.Printf("[peering/identity] generated new keypair: %s", vulosID)
+	return priv, pub, vulosID, nil
 }
 
 // writeFile writes data to path via a sibling temp file + atomic rename, then
@@ -314,7 +314,7 @@ type exportPayload struct {
 	Threads    uint8  `json:"threads"`
 	Nonce      []byte `json:"nonce"`      // 12 bytes (XChaCha20-Poly1305 uses 24; we use chacha20poly1305 IETF = 12)
 	Ciphertext []byte `json:"ciphertext"` // encrypted 64-byte private key
-	VulaID     string `json:"vula_id"`
+	VulosID    string `json:"vulos_id"`
 }
 
 const (
@@ -326,7 +326,7 @@ const (
 
 // encryptExport encrypts the private key with a passphrase using
 // Argon2id → ChaCha20-Poly1305. Returns a JSON byte slice.
-func encryptExport(priv ed25519.PrivateKey, vulaID, passphrase string) ([]byte, error) {
+func encryptExport(priv ed25519.PrivateKey, vulosID, passphrase string) ([]byte, error) {
 	salt := make([]byte, 16)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
 		return nil, err
@@ -344,7 +344,7 @@ func encryptExport(priv ed25519.PrivateKey, vulaID, passphrase string) ([]byte, 
 		return nil, err
 	}
 
-	ciphertext := aead.Seal(nil, nonce, []byte(priv), []byte(vulaID))
+	ciphertext := aead.Seal(nil, nonce, []byte(priv), []byte(vulosID))
 
 	payload := exportPayload{
 		Version:    1,
@@ -355,7 +355,7 @@ func encryptExport(priv ed25519.PrivateKey, vulaID, passphrase string) ([]byte, 
 		Threads:    argon2Threads,
 		Nonce:      nonce,
 		Ciphertext: ciphertext,
-		VulaID:     vulaID,
+		VulosID:    vulosID,
 	}
 	return json.Marshal(payload)
 }
@@ -378,21 +378,21 @@ func decryptImport(data []byte, passphrase string) (ed25519.PrivateKey, string, 
 		return nil, "", err
 	}
 
-	plain, err := aead.Open(nil, p.Nonce, p.Ciphertext, []byte(p.VulaID))
+	plain, err := aead.Open(nil, p.Nonce, p.Ciphertext, []byte(p.VulosID))
 	if err != nil {
 		return nil, "", errors.New("import: decryption failed (wrong passphrase?)")
 	}
 	if len(plain) != ed25519.PrivateKeySize {
 		return nil, "", fmt.Errorf("import: unexpected key length %d", len(plain))
 	}
-	return ed25519.PrivateKey(plain), p.VulaID, nil
+	return ed25519.PrivateKey(plain), p.VulosID, nil
 }
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
 
 // identityResponse is the JSON shape returned by GET /api/peering/identity.
 type identityResponse struct {
-	VulaID       string `json:"vula_id"`
+	VulosID      string `json:"vulos_id"`
 	PublicKeyB58 string `json:"public_key_b58"`
 	StorageRoot  string `json:"storage_root"`
 }
@@ -402,7 +402,7 @@ func (s *Service) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	pub := s.pub
 	resp := identityResponse{
-		VulaID:       s.vulaID,
+		VulosID:      s.vulosID,
 		PublicKeyB58: base58Encode(pub),
 		StorageRoot:  s.root,
 	}
@@ -426,7 +426,7 @@ func (s *Service) handleExportIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bundle, err := encryptExport(s.priv, s.vulaID, req.Passphrase)
+	bundle, err := encryptExport(s.priv, s.vulosID, req.Passphrase)
 	if err != nil {
 		log.Printf("[peering/identity] export error: %v", err)
 		http.Error(w, `{"error":"export failed"}`, http.StatusInternalServerError)
@@ -458,7 +458,7 @@ func (s *Service) handleImportIdentity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	priv, vulaID, err := decryptImport(body, meta.Passphrase)
+	priv, vulosID, err := decryptImport(body, meta.Passphrase)
 	if err != nil {
 		log.Printf("[peering/identity] import error: %v", err)
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
@@ -479,22 +479,22 @@ func (s *Service) handleImportIdentity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"failed to persist keypair"}`, http.StatusInternalServerError)
 		return
 	}
-	if err := writeFile(filepath.Join(identityDir, vulaIDFile), []byte(vulaID), 0644); err != nil {
-		log.Printf("[peering/identity] import persist vula_id: %v", err)
-		http.Error(w, `{"error":"failed to persist vula_id"}`, http.StatusInternalServerError)
+	if err := writeFile(filepath.Join(identityDir, vulosIDFile), []byte(vulosID), 0644); err != nil {
+		log.Printf("[peering/identity] import persist vulos_id: %v", err)
+		http.Error(w, `{"error":"failed to persist vulos_id"}`, http.StatusInternalServerError)
 		return
 	}
 
 	// Update in-memory state.
 	s.priv = priv
 	s.pub = pub
-	s.vulaID = vulaID
+	s.vulosID = vulosID
 
-	log.Printf("[peering/identity] imported keypair: %s", vulaID)
+	log.Printf("[peering/identity] imported keypair: %s", vulosID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(identityResponse{
-		VulaID:       vulaID,
+		VulosID:      vulosID,
 		PublicKeyB58: base58Encode(pub),
 		StorageRoot:  s.root,
 	})

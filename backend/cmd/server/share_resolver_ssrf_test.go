@@ -57,8 +57,8 @@ func TestDeliverCapability_DialTimeGuardBlocksInternalIP(t *testing.T) {
 	d.addrValidator = func(string) error { return nil }
 
 	err := d.DeliverCapability(context.Background(), srv.URL, files.CapabilityDelivery{
-		RecipientVulaID: "vula1",
-		Link:            "tok",
+		RecipientVulosID: "vula1",
+		Link:             "tok",
 	})
 	if err == nil {
 		t.Fatal("SSRF REGRESSION: DeliverCapability to an internal (loopback) IP succeeded — dial-time guard missing; the client must fail closed even when the pre-dial check is bypassed (DNS rebinding)")

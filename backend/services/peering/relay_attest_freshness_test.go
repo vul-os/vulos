@@ -31,10 +31,10 @@ func TestNitroCOSE_BackdatedSignedTimestampRejected(t *testing.T) {
 	raw := buildSignedNitroDoc(t, leaf, cabundle, freshNSM(pcr0, relayID, staleSigned, nil), nil)
 
 	doc := AttestDoc{
-		Provider:    AttestProviderNitro,
-		RelayVulaID: relayID,
-		IssuedAt:    time.Now(), // attacker presents a FRESH unsigned issued_at
-		RawDocument: raw,
+		Provider:     AttestProviderNitro,
+		RelayVulosID: relayID,
+		IssuedAt:     time.Now(), // attacker presents a FRESH unsigned issued_at
+		RawDocument:  raw,
 	}
 	// No MaxAge pinned → strict default (attestDefaultMaxAge) applies.
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
@@ -48,7 +48,7 @@ func TestNitroCOSE_MissingSignedTimestampRejected(t *testing.T) {
 	nsm := goodNSM([]byte{0xde, 0xad, 0xbe, 0xef}, relayID)
 	nsm.Timestamp = 0
 	raw := buildSignedNitroDoc(t, leaf, cabundle, nsm, nil)
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{Provider: AttestProviderNitro, TrustedRootPEM: rootPEM, ExpectedPCRs: map[string]string{"0": "deadbeef"}}
 	assertAttestCode(t, AttestVerifyRelay(doc, policy), "missing-timestamp")
 }
@@ -62,7 +62,7 @@ func TestNitroCOSE_ReplayedNonceRejected(t *testing.T) {
 	captured := []byte("challenge-A")
 	raw := buildSignedNitroDoc(t, leaf, cabundle, freshNSM(pcr0, relayID, time.Now(), captured), nil)
 
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{
 		Provider:       AttestProviderNitro,
 		TrustedRootPEM: rootPEM,
@@ -80,7 +80,7 @@ func TestNitroCOSE_FreshNonceBoundAccepted(t *testing.T) {
 	challenge := []byte("challenge-XYZ")
 	raw := buildSignedNitroDoc(t, leaf, cabundle, freshNSM(pcr0, relayID, time.Now(), challenge), nil)
 
-	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulaID: relayID, IssuedAt: time.Now(), RawDocument: raw}
+	doc := AttestDoc{Provider: AttestProviderNitro, RelayVulosID: relayID, IssuedAt: time.Now(), RawDocument: raw}
 	policy := AttestPolicy{
 		Provider:       AttestProviderNitro,
 		TrustedRootPEM: rootPEM,

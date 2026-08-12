@@ -40,7 +40,7 @@ func discoveryMockServer(t *testing.T,
 
 func TestDiscoveryLookupByEmail_Found(t *testing.T) {
 	want := DiscoveryResult{
-		VulaID:      "vula:ed25519:5Hb7abcdefghijklmnop",
+		VulosID:     "vulos:ed25519:5Hb7abcdefghijklmnop",
 		Server:      "alice.vulos.org",
 		DisplayName: "Alice",
 	}
@@ -62,8 +62,8 @@ func TestDiscoveryLookupByEmail_Found(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected a result, got nil")
 	}
-	if got.VulaID != want.VulaID {
-		t.Errorf("VulaID: got %q, want %q", got.VulaID, want.VulaID)
+	if got.VulosID != want.VulosID {
+		t.Errorf("VulosID: got %q, want %q", got.VulosID, want.VulosID)
 	}
 	if got.Server != want.Server {
 		t.Errorf("Server: got %q, want %q", got.Server, want.Server)
@@ -90,7 +90,7 @@ func TestDiscoveryLookupByEmail_NotFound(t *testing.T) {
 }
 
 func TestDiscoveryLookupByEmail_OptedOut(t *testing.T) {
-	// Server returns 200 with empty vula_id — treated as not found.
+	// Server returns 200 with empty vulos_id — treated as not found.
 	_, svc := discoveryMockServer(t,
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -134,8 +134,8 @@ func TestDiscoveryLookupByEmail_ServerError(t *testing.T) {
 
 func TestDiscoverySearchByName_MultipleResults(t *testing.T) {
 	want := []DiscoveryResult{
-		{VulaID: "vula:ed25519:AAA", Server: "alice.vulos.org", DisplayName: "Alice"},
-		{VulaID: "vula:ed25519:BBB", Server: "al.vulos.org", DisplayName: "Al"},
+		{VulosID: "vulos:ed25519:AAA", Server: "alice.vulos.org", DisplayName: "Alice"},
+		{VulosID: "vulos:ed25519:BBB", Server: "al.vulos.org", DisplayName: "Al"},
 	}
 	_, svc := discoveryMockServer(t, nil,
 		func(w http.ResponseWriter, r *http.Request) {
@@ -156,8 +156,8 @@ func TestDiscoverySearchByName_MultipleResults(t *testing.T) {
 		t.Fatalf("expected %d results, got %d", len(want), len(got))
 	}
 	for i, w := range want {
-		if got[i].VulaID != w.VulaID {
-			t.Errorf("result[%d] VulaID: got %q, want %q", i, got[i].VulaID, w.VulaID)
+		if got[i].VulosID != w.VulosID {
+			t.Errorf("result[%d] VulosID: got %q, want %q", i, got[i].VulosID, w.VulosID)
 		}
 	}
 }
@@ -212,7 +212,7 @@ func TestDiscoverySearchByName_EmptyName(t *testing.T) {
 
 func TestDiscoveryHandler_EmailParam(t *testing.T) {
 	want := DiscoveryResult{
-		VulaID:      "vula:ed25519:TestKey",
+		VulosID:     "vulos:ed25519:TestKey",
 		Server:      "bob.vulos.org",
 		DisplayName: "Bob",
 	}
@@ -244,8 +244,8 @@ func TestDiscoveryHandler_EmailParam(t *testing.T) {
 	if !body.Found {
 		t.Error("expected found=true")
 	}
-	if body.Result.VulaID != want.VulaID {
-		t.Errorf("VulaID: got %q, want %q", body.Result.VulaID, want.VulaID)
+	if body.Result.VulosID != want.VulosID {
+		t.Errorf("VulosID: got %q, want %q", body.Result.VulosID, want.VulosID)
 	}
 }
 
@@ -275,7 +275,7 @@ func TestDiscoveryHandler_EmailNotFound(t *testing.T) {
 
 func TestDiscoveryHandler_NameParam(t *testing.T) {
 	results := []DiscoveryResult{
-		{VulaID: "vula:ed25519:ZZZ", Server: "carol.vulos.org", DisplayName: "Carol"},
+		{VulosID: "vulos:ed25519:ZZZ", Server: "carol.vulos.org", DisplayName: "Carol"},
 	}
 	_, upstream := discoveryMockServer(t, nil,
 		func(w http.ResponseWriter, _ *http.Request) {

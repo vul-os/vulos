@@ -28,7 +28,7 @@
 //
 // # Usage
 //
-//	api := peering.NewContactAPI(store, client, hub, priv, vulaID, myServer)
+//	api := peering.NewContactAPI(store, client, hub, priv, vulosID, myServer)
 //	api.RegisterContactHandlers(mux)
 //
 //	// Wire the inbound subtree through InboundMiddleware separately:
@@ -57,7 +57,7 @@ type ContactAPI struct {
 	client   *PeerClient
 	hub      *Hub
 	priv     ed25519.PrivateKey
-	vulaID   string // local node's Vula ID
+	vulosID  string // local node's Vula ID
 	myServer string // local node's publicly reachable "host:port"
 
 	// SelfDisplayName returns the local user's display name for inclusion in
@@ -71,7 +71,7 @@ type ContactAPI struct {
 	// server address stored in the contact record.  The hook is invoked
 	// synchronously before the HTTP response is written, but implementations
 	// should be non-blocking (e.g. use FetchPeerProfileAsync).
-	OnApprove func(vulaID, serverAddr string)
+	OnApprove func(vulosID, serverAddr string)
 }
 
 // NewContactAPI constructs a ContactAPI.
@@ -80,7 +80,7 @@ type ContactAPI struct {
 //   - client    — outbound HTTP client for server-to-server delivery
 //   - hub       — WebSocket hub for real-time browser notifications (may be nil in tests)
 //   - priv      — local Ed25519 private key used to sign outbound envelopes
-//   - vulaID    — canonical Vula ID of the local node ("vula:ed25519:<base58>")
+//   - vulosID    — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
 //   - myServer  — publicly reachable address of this node ("host:port"), sent in contact
 //     requests so the recipient can reply
 func NewContactAPI(
@@ -88,7 +88,7 @@ func NewContactAPI(
 	client *PeerClient,
 	hub *Hub,
 	priv ed25519.PrivateKey,
-	vulaID string,
+	vulosID string,
 	myServer string,
 ) *ContactAPI {
 	return &ContactAPI{
@@ -96,7 +96,7 @@ func NewContactAPI(
 		client:   client,
 		hub:      hub,
 		priv:     priv,
-		vulaID:   vulaID,
+		vulosID:  vulosID,
 		myServer: myServer,
 	}
 }
@@ -136,13 +136,13 @@ func (a *ContactAPI) RegisterContactHandlers(mux *http.ServeMux) {
 
 // sendContactRequest body.
 type sendRequestBody struct {
-	// TargetServer is the peer's "host:port".  Required if TargetVulaID is
-	// bare (no @host:port suffix).  May be omitted when TargetVulaID is a full
-	// Vula address ("vula:ed25519:...@host:port").
+	// TargetServer is the peer's "host:port".  Required if TargetVulosID is
+	// bare (no @host:port suffix).  May be omitted when TargetVulosID is a full
+	// Vula address ("vulos:ed25519:...@host:port").
 	TargetServer string `json:"target_server"`
 
-	// TargetVulaID is the recipient's Vula ID or full Vula address.
-	TargetVulaID string `json:"target_vula_id"`
+	// TargetVulosID is the recipient's Vula ID or full Vula address.
+	TargetVulosID string `json:"target_vulos_id"`
 
 	// DisplayName is our own display name, sent to the peer.
 	DisplayName string `json:"display_name"`
@@ -171,20 +171,20 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if body.TargetVulaID == "" {
+	if body.TargetVulosID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "target_vula_id is required",
+			"error": "target_vulos_id is required",
 		})
 		return
 	}
 
 	// Resolve target server address.
-	targetVulaID := body.TargetVulaID
+	targetVulosID := body.TargetVulosID
 	targetServer := body.TargetServer
 
-	// If the vula ID looks like a full address (<vulaID>@host:port), parse it.
-	if addr, err := ParseVulaAddress(body.TargetVulaID); err == nil {
-		targetVulaID = addr.VulaID
+	// If the vula ID looks like a full address (<vulosID>@host:port), parse it.
+	if addr, err := ParseVulaAddress(body.TargetVulosID); err == nil {
+		targetVulosID = addr.VulosID
 		if targetServer == "" {
 			targetServer = fmt.Sprintf("%s:%d", addr.Host, addr.Port)
 		}
@@ -198,19 +198,19 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build the inbound base URL via the single reachability seam (B-0 pass-through).
-	baseURL := resolvePeerBaseURL(targetVulaID, targetServer)
+	baseURL := resolvePeerBaseURL(targetVulosID, targetServer)
 
 	// Add target to local store as pending (idempotent: ignore already-exists error).
-	if err := a.store.Add(targetVulaID, body.DisplayName, targetServer); err != nil {
+	if err := a.store.Add(targetVulosID, body.DisplayName, targetServer); err != nil {
 		// Contact might already exist — check.
-		if _, exists := a.store.Get(targetVulaID); !exists {
+		if _, exists := a.store.Get(targetVulosID); !exists {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{
 				"error": "failed to add contact: " + err.Error(),
 			})
 			return
 		}
 		// Already exists — just update server address if needed.
-		_ = a.store.UpdateServer(targetVulaID, targetServer)
+		_ = a.store.UpdateServer(targetVulosID, targetServer)
 	}
 
 	// Build the signed envelope.
@@ -229,8 +229,8 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 
 	env, err := NewEnvelope(
 		uuid.New().String(),
-		a.vulaID,
-		targetVulaID,
+		a.vulosID,
+		targetVulosID,
 		TypeContactRequest,
 		json.RawMessage(payload),
 	)
@@ -257,12 +257,12 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[peering/contacts] contact request sent to %s (%s)", targetVulaID, targetServer)
+	log.Printf("[peering/contacts] contact request sent to %s (%s)", targetVulosID, targetServer)
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"status":         "sent",
-		"target_vula_id": targetVulaID,
-		"target_server":  targetServer,
+		"status":          "sent",
+		"target_vulos_id": targetVulosID,
+		"target_server":   targetServer,
 	})
 }
 
@@ -274,7 +274,7 @@ func (a *ContactAPI) handleListRequests(w http.ResponseWriter, r *http.Request) 
 	pending := a.store.ListByState(StatePending)
 
 	type requestItem struct {
-		VulaID      string `json:"vula_id"`
+		VulosID     string `json:"vulos_id"`
 		DisplayName string `json:"display_name"`
 		Server      string `json:"server,omitempty"`
 		AddedAt     string `json:"added_at"`
@@ -283,7 +283,7 @@ func (a *ContactAPI) handleListRequests(w http.ResponseWriter, r *http.Request) 
 	items := make([]requestItem, 0, len(pending))
 	for _, c := range pending {
 		items = append(items, requestItem{
-			VulaID:      c.VulaID,
+			VulosID:     c.VulosID,
 			DisplayName: c.DisplayName,
 			Server:      c.Server,
 			AddedAt:     c.AddedAt.Format("2006-01-02T15:04:05Z"),
@@ -302,15 +302,15 @@ func (a *ContactAPI) handleListRequests(w http.ResponseWriter, r *http.Request) 
 // Sends a "contact-approved" notification to the peer so they know
 // they've been accepted (best-effort; delivery failure is logged, not fatal).
 func (a *ContactAPI) handleApprove(w http.ResponseWriter, r *http.Request) {
-	vulaID := r.PathValue("id")
-	if vulaID == "" {
+	vulosID := r.PathValue("id")
+	if vulosID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "contact id is required",
 		})
 		return
 	}
 
-	c, exists := a.store.Get(vulaID)
+	c, exists := a.store.Get(vulosID)
 	if !exists {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error": "contact not found",
@@ -318,32 +318,32 @@ func (a *ContactAPI) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.Approve(vulaID, DefaultPerms()); err != nil {
+	if err := a.store.Approve(vulosID, DefaultPerms()); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 		})
 		return
 	}
 
-	log.Printf("[peering/contacts] approved contact %s", vulaID)
+	log.Printf("[peering/contacts] approved contact %s", vulosID)
 
 	// Trigger a profile fetch for the newly-approved peer so our cache is
 	// warm before the UI asks for it (PEER-12 AC: "approve triggers fetch").
 	if a.OnApprove != nil {
-		a.OnApprove(vulaID, c.Server)
+		a.OnApprove(vulosID, c.Server)
 	}
 
 	// Push a real-time notification to browser tabs so the UI can update.
 	a.pushNotification("contact_approved", map[string]any{
-		"vula_id":      vulaID,
+		"vulos_id":     vulosID,
 		"display_name": c.DisplayName,
 	})
 
 	// Best-effort: notify the peer that their request was approved.
 	// We don't block on this; a failure here is not critical.
-	go a.notifyPeerApproved(c.Server, vulaID)
+	go a.notifyPeerApproved(c.Server, vulosID)
 
-	c2, _ := a.store.Get(vulaID)
+	c2, _ := a.store.Get(vulosID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":  "approved",
 		"contact": c2,
@@ -355,38 +355,38 @@ func (a *ContactAPI) handleApprove(w http.ResponseWriter, r *http.Request) {
 // Silently transitions the contact to StateBlocked.
 // No notification is sent to the blocked peer — they receive no confirmation.
 func (a *ContactAPI) handleBlock(w http.ResponseWriter, r *http.Request) {
-	vulaID := r.PathValue("id")
-	if vulaID == "" {
+	vulosID := r.PathValue("id")
+	if vulosID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "contact id is required",
 		})
 		return
 	}
 
-	if _, exists := a.store.Get(vulaID); !exists {
+	if _, exists := a.store.Get(vulosID); !exists {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error": "contact not found",
 		})
 		return
 	}
 
-	if err := a.store.Block(vulaID); err != nil {
+	if err := a.store.Block(vulosID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
 		return
 	}
 
-	log.Printf("[peering/contacts] blocked contact %s (silent)", vulaID)
+	log.Printf("[peering/contacts] blocked contact %s (silent)", vulosID)
 
 	// Push browser notification.
 	a.pushNotification("contact_blocked", map[string]any{
-		"vula_id": vulaID,
+		"vulos_id": vulosID,
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":  "blocked",
-		"vula_id": vulaID,
+		"status":   "blocked",
+		"vulos_id": vulosID,
 	})
 }
 
@@ -394,33 +394,33 @@ func (a *ContactAPI) handleBlock(w http.ResponseWriter, r *http.Request) {
 //
 // Permanently removes the contact from the local store.
 func (a *ContactAPI) handleRemove(w http.ResponseWriter, r *http.Request) {
-	vulaID := r.PathValue("id")
-	if vulaID == "" {
+	vulosID := r.PathValue("id")
+	if vulosID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "contact id is required",
 		})
 		return
 	}
 
-	if _, exists := a.store.Get(vulaID); !exists {
+	if _, exists := a.store.Get(vulosID); !exists {
 		writeJSON(w, http.StatusNotFound, map[string]string{
 			"error": "contact not found",
 		})
 		return
 	}
 
-	if err := a.store.Remove(vulaID); err != nil {
+	if err := a.store.Remove(vulosID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
 		return
 	}
 
-	log.Printf("[peering/contacts] removed contact %s", vulaID)
+	log.Printf("[peering/contacts] removed contact %s", vulosID)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":  "removed",
-		"vula_id": vulaID,
+		"status":   "removed",
+		"vulos_id": vulosID,
 	})
 }
 
@@ -521,7 +521,7 @@ func (a *ContactAPI) HandleInboundRequest(w http.ResponseWriter, r *http.Request
 
 	// Push a real-time notification to connected browser tabs.
 	a.pushNotification("contact_request", map[string]any{
-		"vula_id":       senderID,
+		"vulos_id":      senderID,
 		"display_name":  displayName,
 		"message":       payload.Message,
 		"server":        payload.ServerAddr,
@@ -560,12 +560,12 @@ func (a *ContactAPI) pushNotification(event string, data map[string]any) {
 // notifyPeerApproved sends a best-effort notification to the peer that their
 // contact request was approved, allowing them to update their local store.
 // Runs in its own goroutine; errors are only logged.
-func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulaID string) {
+func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulosID string) {
 	if peerServer == "" || a.priv == nil {
 		return
 	}
 
-	baseURL := resolvePeerBaseURL(peerVulaID, peerServer)
+	baseURL := resolvePeerBaseURL(peerVulosID, peerServer)
 
 	selfName := ""
 	if a.SelfDisplayName != nil {
@@ -573,7 +573,7 @@ func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulaID string) {
 	}
 	approvalPayload, err := json.Marshal(map[string]string{
 		"status":       "approved",
-		"approved_by":  a.vulaID,
+		"approved_by":  a.vulosID,
 		"display_name": selfName, // populated when SelfDisplayName callback is set
 	})
 	if err != nil {
@@ -583,8 +583,8 @@ func (a *ContactAPI) notifyPeerApproved(peerServer, peerVulaID string) {
 
 	env, err := NewEnvelope(
 		uuid.New().String(),
-		a.vulaID,
-		peerVulaID,
+		a.vulosID,
+		peerVulosID,
 		TypeContactRequest, // reuse contact-request type for the approval notification
 		json.RawMessage(approvalPayload),
 	)

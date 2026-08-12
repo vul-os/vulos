@@ -83,7 +83,7 @@ func feedValidAccess(a FeedAccess) bool {
 
 // FeedMeta holds the descriptor for a feed persisted to meta.json.
 type FeedMeta struct {
-	// FeedID is the unique identifier for this feed (format: "<vula_id>/<slug>").
+	// FeedID is the unique identifier for this feed (format: "<vulos_id>/<slug>").
 	FeedID string `json:"feed_id"`
 
 	// Author is the owner's Vula ID.
@@ -152,7 +152,7 @@ type FeedStore struct {
 	mu       sync.RWMutex
 	root     string // ~/.vulos/peering/feeds/own
 	priv     ed25519.PrivateKey
-	vulaID   string
+	vulosID  string
 	contacts *ContactStore // for IsApproved gating on peers-access feeds
 }
 
@@ -162,10 +162,10 @@ const feedSubDirName = "own"
 // NewFeedStore creates a FeedStore rooted at <peeringDir>/feeds/own.
 //
 // priv is the node's Ed25519 private key used to sign new entries.
-// vulaID is the node's own Vula ID (the author identity for published entries).
+// vulosID is the node's own Vula ID (the author identity for published entries).
 // contacts is used to gate access to peers-level feeds; may be nil (all peers
 // access checks will fail as if no contacts are approved).
-func NewFeedStore(peeringDir string, priv ed25519.PrivateKey, vulaID string, contacts *ContactStore) (*FeedStore, error) {
+func NewFeedStore(peeringDir string, priv ed25519.PrivateKey, vulosID string, contacts *ContactStore) (*FeedStore, error) {
 	if len(priv) != ed25519.PrivateKeySize {
 		return nil, errors.New("feeds: invalid private key")
 	}
@@ -176,7 +176,7 @@ func NewFeedStore(peeringDir string, priv ed25519.PrivateKey, vulaID string, con
 	return &FeedStore{
 		root:     root,
 		priv:     priv,
-		vulaID:   vulaID,
+		vulosID:  vulosID,
 		contacts: contacts,
 	}, nil
 }
@@ -184,7 +184,7 @@ func NewFeedStore(peeringDir string, priv ed25519.PrivateKey, vulaID string, con
 // ─── Feed CRUD ────────────────────────────────────────────────────────────────
 
 // FeedCreate creates a new feed with the given metadata.  feedID is generated
-// as "<vulaID>/<slug>" where slug is derived from the title.
+// as "<vulosID>/<slug>" where slug is derived from the title.
 func (fs *FeedStore) FeedCreate(title, description string, access FeedAccess) (*FeedMeta, error) {
 	if title == "" {
 		return nil, errors.New("feeds: title must not be empty")
@@ -194,7 +194,7 @@ func (fs *FeedStore) FeedCreate(title, description string, access FeedAccess) (*
 	}
 
 	slug := feedSlugify(title)
-	feedID := fs.vulaID + "/" + slug
+	feedID := fs.vulosID + "/" + slug
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -207,12 +207,12 @@ func (fs *FeedStore) FeedCreate(title, description string, access FeedAccess) (*
 			break
 		}
 		slug = fmt.Sprintf("%s-%d", base, i)
-		feedID = fs.vulaID + "/" + slug
+		feedID = fs.vulosID + "/" + slug
 	}
 
 	meta := &FeedMeta{
 		FeedID:      feedID,
-		Author:      fs.vulaID,
+		Author:      fs.vulosID,
 		Title:       title,
 		Description: description,
 		Access:      access,
@@ -317,7 +317,7 @@ func (fs *FeedStore) FeedPublish(feedID, entryType string, body json.RawMessage)
 	entry := &FeedEntry{
 		ID:        feedNewID(),
 		FeedID:    feedID,
-		Author:    fs.vulaID,
+		Author:    fs.vulosID,
 		Sequence:  nextSeq,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		EntryType: entryType,
@@ -403,16 +403,16 @@ func (fs *FeedStore) FeedVerifyChain(feedID string) error {
 
 // ─── Access gating ────────────────────────────────────────────────────────────
 
-// feedCheckAccess returns nil if callerVulaID may read the feed.
+// feedCheckAccess returns nil if callerVulosID may read the feed.
 //
-// public/link feeds: always allowed (callerVulaID may be empty).
-// peers feeds: callerVulaID must be an approved contact.
-func (fs *FeedStore) feedCheckAccess(meta *FeedMeta, callerVulaID string) error {
+// public/link feeds: always allowed (callerVulosID may be empty).
+// peers feeds: callerVulosID must be an approved contact.
+func (fs *FeedStore) feedCheckAccess(meta *FeedMeta, callerVulosID string) error {
 	switch meta.Access {
 	case FeedAccessPublic, FeedAccessLink:
 		return nil
 	case FeedAccessPeers:
-		if fs.contacts == nil || !fs.contacts.IsApproved(callerVulaID) {
+		if fs.contacts == nil || !fs.contacts.IsApproved(callerVulosID) {
 			return fmt.Errorf("feeds: access denied: peers-only feed")
 		}
 		return nil
@@ -428,13 +428,13 @@ func (fs *FeedStore) feedCheckAccess(meta *FeedMeta, callerVulaID string) error 
 // Non-contact subscribers poll via the HTTP entries endpoint.
 //
 // pushFn may be nil (no-op) — this function is safe to call in either case.
-func (fs *FeedStore) FeedNotifySubscribers(entry *FeedEntry, pushFn func(contactVulaID string, e *FeedEntry)) {
+func (fs *FeedStore) FeedNotifySubscribers(entry *FeedEntry, pushFn func(contactVulosID string, e *FeedEntry)) {
 	if pushFn == nil || fs.contacts == nil {
 		return
 	}
 	approved := fs.contacts.ListByState(StateApproved)
 	for _, c := range approved {
-		pushFn(c.VulaID, entry)
+		pushFn(c.VulosID, entry)
 	}
 }
 
@@ -456,26 +456,26 @@ type feedHandler struct {
 //	POST   /api/feeds/{feed_id}/publish       → publish a new entry
 //	GET    /api/feeds/{feed_id}/entries       → list entries (?since=<seq>)
 //
-// callerVulaID is a function that extracts the caller's Vula ID from an
+// callerVulosID is a function that extracts the caller's Vula ID from an
 // authenticated request.  It may return an empty string for unauthenticated
 // callers (public/link feeds do not require authentication).
-func RegisterFeedHandlers(mux *http.ServeMux, store *FeedStore, callerVulaID func(*http.Request) string) {
+func RegisterFeedHandlers(mux *http.ServeMux, store *FeedStore, callerVulosID func(*http.Request) string) {
 	h := &feedHandler{store: store}
 
 	mux.HandleFunc("POST /api/feeds", func(w http.ResponseWriter, r *http.Request) {
 		h.handleFeedCreate(w, r)
 	})
 	mux.HandleFunc("GET /api/feeds", func(w http.ResponseWriter, r *http.Request) {
-		h.handleFeedList(w, r, callerVulaID(r))
+		h.handleFeedList(w, r, callerVulosID(r))
 	})
 	mux.HandleFunc("GET /api/feeds/{feed_id}", func(w http.ResponseWriter, r *http.Request) {
-		h.handleFeedGet(w, r, callerVulaID(r))
+		h.handleFeedGet(w, r, callerVulosID(r))
 	})
 	mux.HandleFunc("POST /api/feeds/{feed_id}/publish", func(w http.ResponseWriter, r *http.Request) {
 		h.handleFeedPublish(w, r)
 	})
 	mux.HandleFunc("GET /api/feeds/{feed_id}/entries", func(w http.ResponseWriter, r *http.Request) {
-		h.handleFeedEntries(w, r, callerVulaID(r))
+		h.handleFeedEntries(w, r, callerVulosID(r))
 	})
 }
 
@@ -622,14 +622,14 @@ func (h *feedHandler) handleFeedEntries(w http.ResponseWriter, r *http.Request, 
 // ─── Disk helpers ─────────────────────────────────────────────────────────────
 
 // feedDir returns the absolute directory for a feed given its feedID.
-// feedID format: "<vula_id>/<slug>" — we store only the slug portion as the
+// feedID format: "<vulos_id>/<slug>" — we store only the slug portion as the
 // directory name to keep paths filesystem-safe (no colons, short names).
 func (fs *FeedStore) feedDir(feedID string) string {
 	return filepath.Join(fs.root, feedSafeID(feedID))
 }
 
 // feedSafeID converts a feedID to a filesystem-safe directory name.
-// For feedIDs of the form "<vula_id>/<slug>", only the slug portion after the
+// For feedIDs of the form "<vulos_id>/<slug>", only the slug portion after the
 // last "/" is used.  If there is no "/" the whole feedID is returned.
 func feedSafeID(feedID string) string {
 	if idx := strings.LastIndex(feedID, "/"); idx >= 0 {
@@ -794,9 +794,9 @@ func feedVerifyEntry(entry *FeedEntry) error {
 	if entry.Signature == "" {
 		return errors.New("feeds: signature absent")
 	}
-	pub, err := decodeVulaID(entry.Author)
+	pub, err := decodeVulosID(entry.Author)
 	if err != nil {
-		return fmt.Errorf("feeds: decode author vula_id: %w", err)
+		return fmt.Errorf("feeds: decode author vulos_id: %w", err)
 	}
 	sigBytes, err := base64.RawURLEncoding.DecodeString(entry.Signature)
 	if err != nil {
@@ -853,17 +853,17 @@ func feedNewID() string {
 }
 
 // feedIDFromPath extracts the feed_id path segment from the request and
-// returns the full feedID by prepending the store owner's vulaID.
+// returns the full feedID by prepending the store owner's vulosID.
 //
 // Feed URLs use only the slug (last segment of the feedID) to avoid "/" in
 // URL path segments.  The handler reconstructs the full feedID as
-// "<vulaID>/<slug>".
+// "<vulosID>/<slug>".
 func (fs *FeedStore) feedIDFromPath(r *http.Request) string {
 	slug := r.PathValue("feed_id")
 	if slug == "" {
 		return ""
 	}
-	return fs.vulaID + "/" + slug
+	return fs.vulosID + "/" + slug
 }
 
 // feedWriteErr writes a JSON error response for the feeds API.

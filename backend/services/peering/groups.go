@@ -36,7 +36,7 @@
 // # Usage
 //
 //	store, _ := peering.NewGroupStore(home)
-//	api := peering.NewGroupAPI(store, contacts, inbox, client, hub, priv, vulaID)
+//	api := peering.NewGroupAPI(store, contacts, inbox, client, hub, priv, vulosID)
 //	api.RegisterGroupHandlers(mux)
 package peering
 
@@ -90,8 +90,8 @@ type GroupDef struct {
 	// Name is the human-readable group name.
 	Name string `json:"name"`
 
-	// CreatorVulaID is the Vula ID of the member who created the group.
-	CreatorVulaID string `json:"creator_vula_id"`
+	// CreatorVulosID is the Vula ID of the member who created the group.
+	CreatorVulosID string `json:"creator_vulos_id"`
 
 	// Members is the ordered list of member Vula IDs.
 	// The creator is always the first entry.
@@ -107,10 +107,10 @@ type GroupDef struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// hasMember reports whether vulaID is in the group's member list.
-func (g *GroupDef) hasMember(vulaID string) bool {
+// hasMember reports whether vulosID is in the group's member list.
+func (g *GroupDef) hasMember(vulosID string) bool {
 	for _, m := range g.Members {
-		if m == vulaID {
+		if m == vulosID {
 			return true
 		}
 	}
@@ -254,13 +254,13 @@ func groupAtomicWrite(dir, dst string, data []byte) error {
 // GroupAPI bundles the dependencies for group HTTP handlers.
 // Obtain one via NewGroupAPI; the zero value is not usable.
 type GroupAPI struct {
-	groups *GroupStore
-	store  *ContactStore
-	inbox  *InboxStore
-	client *PeerClient
-	hub    *Hub
-	priv   ed25519.PrivateKey
-	vulaID string // local node's Vula ID
+	groups  *GroupStore
+	store   *ContactStore
+	inbox   *InboxStore
+	client  *PeerClient
+	hub     *Hub
+	priv    ed25519.PrivateKey
+	vulosID string // local node's Vula ID
 }
 
 // NewGroupAPI constructs a GroupAPI.
@@ -271,7 +271,7 @@ type GroupAPI struct {
 //   - client  — outbound HTTP client for server-to-server delivery
 //   - hub     — WebSocket hub for real-time browser pushes (may be nil in tests)
 //   - priv    — local Ed25519 private key used to sign outbound envelopes
-//   - vulaID  — canonical Vula ID of the local node
+//   - vulosID  — canonical Vula ID of the local node
 func NewGroupAPI(
 	groups *GroupStore,
 	store *ContactStore,
@@ -279,16 +279,16 @@ func NewGroupAPI(
 	client *PeerClient,
 	hub *Hub,
 	priv ed25519.PrivateKey,
-	vulaID string,
+	vulosID string,
 ) *GroupAPI {
 	return &GroupAPI{
-		groups: groups,
-		store:  store,
-		inbox:  inbox,
-		client: client,
-		hub:    hub,
-		priv:   priv,
-		vulaID: vulaID,
+		groups:  groups,
+		store:   store,
+		inbox:   inbox,
+		client:  client,
+		hub:     hub,
+		priv:    priv,
+		vulosID: vulosID,
 	}
 }
 
@@ -365,9 +365,9 @@ func (a *GroupAPI) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Validate and deduplicate members; creator is added automatically.
 	memberSet := make(map[string]struct{})
-	memberSet[a.vulaID] = struct{}{} // creator is always a member
+	memberSet[a.vulosID] = struct{}{} // creator is always a member
 	for _, m := range req.Members {
-		if m == "" || m == a.vulaID {
+		if m == "" || m == a.vulosID {
 			continue
 		}
 		if !a.store.IsApproved(m) {
@@ -381,9 +381,9 @@ func (a *GroupAPI) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build ordered member list: creator first, then the rest.
-	members := []string{a.vulaID}
+	members := []string{a.vulosID}
 	for _, m := range req.Members {
-		if m == "" || m == a.vulaID {
+		if m == "" || m == a.vulosID {
 			continue
 		}
 		if _, seen := memberSet[m]; seen {
@@ -414,13 +414,13 @@ func (a *GroupAPI) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          req.Name,
-		CreatorVulaID: a.vulaID,
-		Members:       members,
-		Policy:        policy,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:             uuid.New().String(),
+		Name:           req.Name,
+		CreatorVulosID: a.vulosID,
+		Members:        members,
+		Policy:         policy,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	// Persist locally before distributing.
@@ -481,8 +481,8 @@ func (a *GroupAPI) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 
 // addMemberRequest is the JSON body for POST /api/peering/groups/{group_id}/members.
 type addMemberRequest struct {
-	// VulaID is the Vula ID of the member to add.
-	VulaID string `json:"vula_id"`
+	// VulosID is the Vula ID of the member to add.
+	VulosID string `json:"vulos_id"`
 }
 
 // handleAddMember implements POST /api/peering/groups/{group_id}/members.
@@ -504,7 +504,7 @@ func (a *GroupAPI) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Local node must be a member to add someone.
-	if !def.hasMember(a.vulaID) {
+	if !def.hasMember(a.vulosID) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "local node is not a member of this group",
 		})
@@ -512,7 +512,7 @@ func (a *GroupAPI) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Policy gate.
-	if def.Policy == PolicyAdminOnly && def.CreatorVulaID != a.vulaID {
+	if def.Policy == PolicyAdminOnly && def.CreatorVulosID != a.vulosID {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "group policy is admin_only; only the creator may add members",
 		})
@@ -526,11 +526,11 @@ func (a *GroupAPI) handleAddMember(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if req.VulaID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "vula_id is required"})
+	if req.VulosID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "vulos_id is required"})
 		return
 	}
-	if def.hasMember(req.VulaID) {
+	if def.hasMember(req.VulosID) {
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error": "member already in group",
 		})
@@ -538,16 +538,16 @@ func (a *GroupAPI) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The new member must be an approved contact of the local node.
-	if req.VulaID != a.vulaID && !a.store.IsApproved(req.VulaID) {
+	if req.VulosID != a.vulosID && !a.store.IsApproved(req.VulosID) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "target is not an approved contact",
-			"peer":  req.VulaID,
+			"peer":  req.VulosID,
 		})
 		return
 	}
 
 	// Update the group definition.
-	def.Members = append(def.Members, req.VulaID)
+	def.Members = append(def.Members, req.VulosID)
 	def.UpdatedAt = time.Now().UTC()
 
 	if err := a.groups.Save(def); err != nil {
@@ -591,7 +591,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if !def.hasMember(a.vulaID) {
+	if !def.hasMember(a.vulosID) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "local node is not a member of this group",
 		})
@@ -628,7 +628,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 	// Fan-out: one signed envelope per recipient (not the sender).
 	var deliveryErrors []string
 	for _, memberID := range def.Members {
-		if memberID == a.vulaID {
+		if memberID == a.vulosID {
 			continue // don't send to ourselves
 		}
 
@@ -640,7 +640,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 			continue
 		}
 
-		env, err := NewEnvelope(msgID+"-"+sanitizePath(memberID), a.vulaID, memberID, TypeGroupMessage, json.RawMessage(payload))
+		env, err := NewEnvelope(msgID+"-"+sanitizePath(memberID), a.vulosID, memberID, TypeGroupMessage, json.RawMessage(payload))
 		if err != nil {
 			log.Printf("[peering/groups] build envelope for %s: %v", memberID, err)
 			continue
@@ -652,7 +652,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 			continue
 		}
 
-		baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
+		baseURL := resolvePeerBaseURL(contact.VulosID, contact.Server)
 		if err := a.client.Post(r.Context(), baseURL, TypeGroupMessage, env); err != nil {
 			log.Printf("[peering/groups] delivery to %s failed: %v", baseURL, err)
 			deliveryErrors = append(deliveryErrors,
@@ -665,7 +665,7 @@ func (a *GroupAPI) handleSendGroupMessage(w http.ResponseWriter, r *http.Request
 	stored := StoredMessage{
 		ID:        msgID,
 		ConvID:    convID,
-		From:      a.vulaID,
+		From:      a.vulosID,
 		To:        groupID,
 		Type:      "text",
 		Body:      req.Body,
@@ -725,7 +725,7 @@ func (a *GroupAPI) HandleInboundGroupDef(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Validate: the sender must be the group creator or an existing member.
-	if def.CreatorVulaID != env.From && !def.hasMember(env.From) {
+	if def.CreatorVulosID != env.From && !def.hasMember(env.From) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": "sender is not a member or creator of the group",
 		})
@@ -840,7 +840,7 @@ func (a *GroupAPI) distributeGroupDef(ctx context.Context, def GroupDef) {
 	}
 
 	for _, memberID := range def.Members {
-		if memberID == a.vulaID {
+		if memberID == a.vulosID {
 			continue
 		}
 
@@ -851,7 +851,7 @@ func (a *GroupAPI) distributeGroupDef(ctx context.Context, def GroupDef) {
 		}
 
 		envID := uuid.New().String()
-		env, err := NewEnvelope(envID, a.vulaID, memberID, TypeGroupDef, json.RawMessage(payload))
+		env, err := NewEnvelope(envID, a.vulosID, memberID, TypeGroupDef, json.RawMessage(payload))
 		if err != nil {
 			log.Printf("[peering/groups] distributeGroupDef build envelope for %s: %v", memberID, err)
 			continue
@@ -862,7 +862,7 @@ func (a *GroupAPI) distributeGroupDef(ctx context.Context, def GroupDef) {
 			continue
 		}
 
-		baseURL := resolvePeerBaseURL(contact.VulaID, contact.Server)
+		baseURL := resolvePeerBaseURL(contact.VulosID, contact.Server)
 
 		// Use a background goroutine so one slow peer doesn't stall the others.
 		go func(url, mID string, e *Envelope) {
@@ -875,14 +875,14 @@ func (a *GroupAPI) distributeGroupDef(ctx context.Context, def GroupDef) {
 
 // groupConversationID returns the inbox conversation directory name for a group.
 // Format: "group:<group_id>" so it cannot collide with peer-to-peer conv IDs
-// (which have the form "vula:ed25519:<b58>_vula:ed25519:<b58>").
+// (which have the form "vulos:ed25519:<b58>_vulos:ed25519:<b58>").
 func groupConversationID(groupID string) string {
 	return "group:" + groupID
 }
 
 // groupBaseMessageID extracts the base message ID from a per-recipient fan-out
 // envelope ID. During fan-out the envelope ID is set to "<uuidv4>-<sanitizedMemberID>"
-// where sanitizedMemberID is the output of sanitizePath(memberVulaID).
+// where sanitizedMemberID is the output of sanitizePath(memberVulosID).
 //
 // A UUIDv4 is exactly 36 characters (32 hex + 4 dashes). A fan-out ID is always
 // longer than 36 characters because the sanitized member suffix is appended.

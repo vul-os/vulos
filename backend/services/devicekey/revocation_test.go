@@ -156,11 +156,11 @@ func TestBreakGlassRotate_SucceedsEvenWhenActiveKeyRevoked(t *testing.T) {
 	requestID := "recover-revoked-box"
 	payloadHash := BreakGlassPayloadHash(requestID, oldPub, candidateDER)
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
-		vouchFor(t, voucher2, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher1, subject.vulosID, payloadHash, now),
+		vouchFor(t, voucher2, subject.vulosID, payloadHash, now),
 	}
 
-	cert, err := BreakGlassRotate(ks, candidate, "recovering from revoked key", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	cert, err := BreakGlassRotate(ks, candidate, "recovering from revoked key", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err != nil {
 		t.Fatalf("BreakGlassRotate should succeed despite the active key being revoked: %v", err)
 	}
@@ -273,11 +273,11 @@ func TestBreakGlassRevoke_ValidQuorumSucceeds(t *testing.T) {
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
 
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
-		vouchFor(t, voucher2, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher1, subject.vulosID, payloadHash, now),
+		vouchFor(t, voucher2, subject.vulosID, payloadHash, now),
 	}
 
-	cert, err := BreakGlassRevoke(ks, store, "lost device", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	cert, err := BreakGlassRevoke(ks, store, "lost device", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err != nil {
 		t.Fatalf("BreakGlassRevoke: %v", err)
 	}
@@ -304,10 +304,10 @@ func TestBreakGlassRevoke_InsufficientQuorumRejected(t *testing.T) {
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
 
 	certs := []fleetid.VouchCert{
-		vouchFor(t, voucher1, subject.vulaID, payloadHash, now),
+		vouchFor(t, voucher1, subject.vulosID, payloadHash, now),
 	}
 
-	_, err := BreakGlassRevoke(ks, store, "reason", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	_, err := BreakGlassRevoke(ks, store, "reason", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err == nil {
 		t.Fatal("expected BreakGlassRevoke to fail with insufficient quorum")
 	}
@@ -329,10 +329,10 @@ func TestBreakGlassRevoke_SelfVouchNeverCounts(t *testing.T) {
 	fp := Fingerprint(pubDER)
 	payloadHash := revocationBreakGlassPayloadHash(requestID, fp)
 
-	selfVouch := vouchFor(t, subject, subject.vulaID, payloadHash, now)
+	selfVouch := vouchFor(t, subject, subject.vulosID, payloadHash, now)
 	certs := []fleetid.VouchCert{selfVouch, selfVouch}
 
-	_, err := BreakGlassRevoke(ks, store, "reason", subject.vulaID, requestID, certs, roster, fleetid.MinThreshold, now)
+	_, err := BreakGlassRevoke(ks, store, "reason", subject.vulosID, requestID, certs, roster, fleetid.MinThreshold, now)
 	if err == nil {
 		t.Fatal("expected BreakGlassRevoke to reject a self-vouched quorum")
 	}

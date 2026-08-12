@@ -314,7 +314,7 @@ func TestHandleInboundPresence_WithEnvelope(t *testing.T) {
 
 	env := &Envelope{
 		ID:      "test-id",
-		From:    "vula:ed25519:relay-peer",
+		From:    "vulos:ed25519:relay-peer",
 		Type:    "presence",
 		Payload: json.RawMessage(innerPayload),
 	}
@@ -336,8 +336,8 @@ func TestHandleInboundPresence_WithEnvelope(t *testing.T) {
 	if len(peers) != 1 {
 		t.Fatalf("expected 1 peer, got %d", len(peers))
 	}
-	if peers[0].PeerID != "vula:ed25519:relay-peer" {
-		t.Errorf("peerID = %q, want %q", peers[0].PeerID, "vula:ed25519:relay-peer")
+	if peers[0].PeerID != "vulos:ed25519:relay-peer" {
+		t.Errorf("peerID = %q, want %q", peers[0].PeerID, "vulos:ed25519:relay-peer")
 	}
 }
 

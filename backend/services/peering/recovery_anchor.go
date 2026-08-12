@@ -20,7 +20,7 @@
 //     kit is GENERATED and when an account is RESTORED from a mnemonic. At those
 //     moments internal/auth notifies an observer (SetRecoverySeedObserver). The
 //     live server's observer derives the anchor and calls PersistRecoveryAnchor.
-//   - PersistRecoveryAnchor writes ONLY the anchor's PUBLIC VulaID to disk
+//   - PersistRecoveryAnchor writes ONLY the anchor's PUBLIC VulosID to disk
 //     (recovery_anchor.json). The anchor PRIVATE key — the actual power to sign a
 //     RecoveryCert — is discarded immediately and only ever re-derivable from the
 //     off-box recovery kit. A box compromise thus yields the public anchor id
@@ -42,15 +42,15 @@ import (
 )
 
 // recoveryAnchorFile is the on-disk record (under the peering identity dir)
-// holding ONLY the public recovery anchor VulaID. No private material.
+// holding ONLY the public recovery anchor VulosID. No private material.
 const recoveryAnchorFile = "recovery_anchor.json"
 
 type recoveryAnchorRecord struct {
-	AnchorVulaID string `json:"anchor_vula_id"`
+	AnchorVulosID string `json:"anchor_vulos_id"`
 }
 
 // PersistRecoveryAnchor derives the account recovery anchor from recoverySeed and
-// persists ONLY its public VulaID under identityDir, returning that public id.
+// persists ONLY its public VulosID under identityDir, returning that public id.
 //
 // The anchor PRIVATE key is derived, used to compute the public id, and then
 // dropped — it is never written to disk (see the trust-boundary note above). Call
@@ -58,7 +58,7 @@ type recoveryAnchorRecord struct {
 // available. Idempotent: re-persisting the same anchor is fine; attempting to
 // overwrite an existing record with a DIFFERENT anchor fails closed.
 func PersistRecoveryAnchor(identityDir string, recoverySeed []byte) (string, error) {
-	anchorPriv, anchorVulaID, err := DeriveRecoveryAnchor(recoverySeed)
+	anchorPriv, anchorVulosID, err := DeriveRecoveryAnchor(recoverySeed)
 	if err != nil {
 		return "", err
 	}
@@ -73,11 +73,11 @@ func PersistRecoveryAnchor(identityDir string, recoverySeed []byte) (string, err
 	path := filepath.Join(identityDir, recoveryAnchorFile)
 
 	// Takeover guard: never silently replace an already-recorded anchor.
-	if existing := LoadRecoveryAnchorID(identityDir); existing != "" && existing != anchorVulaID {
+	if existing := LoadRecoveryAnchorID(identityDir); existing != "" && existing != anchorVulosID {
 		return "", errors.New("lifecycle: a different recovery anchor is already persisted; refusing to overwrite")
 	}
 
-	rec := recoveryAnchorRecord{AnchorVulaID: anchorVulaID}
+	rec := recoveryAnchorRecord{AnchorVulosID: anchorVulosID}
 	raw, err := json.MarshalIndent(&rec, "", "  ")
 	if err != nil {
 		return "", err
@@ -89,10 +89,10 @@ func PersistRecoveryAnchor(identityDir string, recoverySeed []byte) (string, err
 	if err := os.Rename(tmp, path); err != nil {
 		return "", fmt.Errorf("lifecycle: persist anchor: %w", err)
 	}
-	return anchorVulaID, nil
+	return anchorVulosID, nil
 }
 
-// LoadRecoveryAnchorID reads the persisted public recovery anchor VulaID from
+// LoadRecoveryAnchorID reads the persisted public recovery anchor VulosID from
 // identityDir, returning "" when none is recorded (recovery not yet enabled —
 // rotation and self-revocation still function in that state).
 func LoadRecoveryAnchorID(identityDir string) string {
@@ -104,10 +104,10 @@ func LoadRecoveryAnchorID(identityDir string) string {
 	if json.Unmarshal(raw, &rec) != nil {
 		return ""
 	}
-	if _, err := decodeVulaID(rec.AnchorVulaID); err != nil {
+	if _, err := decodeVulosID(rec.AnchorVulosID); err != nil {
 		return ""
 	}
-	return rec.AnchorVulaID
+	return rec.AnchorVulosID
 }
 
 // AnchorFromRecoverySeed is a convenience used by the live observer: it persists
@@ -115,14 +115,14 @@ func LoadRecoveryAnchorID(identityDir string) string {
 // becomes active immediately, without a restart). Either step failing returns an
 // error; both are no-ops when the anchor is already configured identically.
 func AnchorFromRecoverySeed(store *LifecycleStore, identityDir string, recoverySeed []byte) (string, error) {
-	anchorVulaID, err := PersistRecoveryAnchor(identityDir, recoverySeed)
+	anchorVulosID, err := PersistRecoveryAnchor(identityDir, recoverySeed)
 	if err != nil {
 		return "", err
 	}
 	if store != nil {
-		if err := store.SetAnchor(anchorVulaID); err != nil {
-			return anchorVulaID, err
+		if err := store.SetAnchor(anchorVulosID); err != nil {
+			return anchorVulosID, err
 		}
 	}
-	return anchorVulaID, nil
+	return anchorVulosID, nil
 }

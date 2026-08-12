@@ -32,14 +32,14 @@ import (
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// newTestKeypair generates a fresh Ed25519 keypair and returns (priv, vulaID).
+// newTestKeypair generates a fresh Ed25519 keypair and returns (priv, vulosID).
 func newTestKeypair(t *testing.T) (ed25519.PrivateKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate keypair: %v", err)
 	}
-	return priv, encodeVulaID(pub)
+	return priv, encodeVulosID(pub)
 }
 
 // newTestStore creates a temporary ContactStore for use in tests. The
@@ -54,11 +54,11 @@ func newTestStore(t *testing.T) *ContactStore {
 	return cs
 }
 
-// signedEnvelope builds and signs an Envelope using priv/fromVulaID.
-func signedEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulaID, toVulaID, msgType string) *Envelope {
+// signedEnvelope builds and signs an Envelope using priv/fromVulosID.
+func signedEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulosID, toVulosID, msgType string) *Envelope {
 	t.Helper()
 	payload, _ := json.Marshal(map[string]string{"text": "hello"})
-	env, err := NewEnvelope("test-id-1", fromVulaID, toVulaID, msgType, payload)
+	env, err := NewEnvelope("test-id-1", fromVulosID, toVulosID, msgType, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestInboundMiddleware(t *testing.T) {
 				// But wait — idUnknown was generated with a random key; we don't have the
 				// priv key for it.  Use a different approach: sign with a new key that has
 				// the same public key as idUnknown would have (impossible by construction).
-				// Instead, create a fresh keypair whose vulaID is genuinely unknown.
+				// Instead, create a fresh keypair whose vulosID is genuinely unknown.
 				privUnk, idUnk := newTestKeypair(t)
 				// Ensure not in store (it won't be — fresh key).
 				env := signedEnvelope(t, privUnk, idUnk, localID, TypeMessage)

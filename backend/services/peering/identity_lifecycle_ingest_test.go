@@ -70,10 +70,10 @@ func TestIngest_RevocationThroughFetchGatesAdmission(t *testing.T) {
 	bobWkID, sign := wkTestSignedPeer(t)
 	fakeBob := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := WKIdentityResponse{
-			VulaID:      bobWkID,
+			VulosID:     bobWkID,
 			DisplayName: "Bob",
 			Lifecycle: &WKLifecycle{
-				RootVulaID:  bobID,
+				RootVulosID: bobID,
 				Revocations: []*RevocationCert{revCert},
 			},
 		}
@@ -142,7 +142,7 @@ func TestIngest_RotationFollowedAtAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRotationCert: %v", err)
 	}
-	lc := &WKLifecycle{RootVulaID: bobRootID, Chain: []LifecycleLink{{Rotation: rot}}}
+	lc := &WKLifecycle{RootVulosID: bobRootID, Chain: []LifecycleLink{{Rotation: rot}}}
 	current, err := store.IngestPeerLifecycle(lc)
 	if err != nil {
 		t.Fatalf("IngestPeerLifecycle: %v", err)
@@ -182,8 +182,8 @@ func TestIngest_ForgedRotationRejected(t *testing.T) {
 		t.Fatalf("NewRotationCert: %v", err)
 	}
 	// Forge: redirect the rotation to the attacker's key (invalidates the signature).
-	rot.NewVulaID = attackerID
-	lc := &WKLifecycle{RootVulaID: bobRootID, Chain: []LifecycleLink{{Rotation: rot}}}
+	rot.NewVulosID = attackerID
+	lc := &WKLifecycle{RootVulosID: bobRootID, Chain: []LifecycleLink{{Rotation: rot}}}
 	if _, err := store.IngestPeerLifecycle(lc); err == nil {
 		t.Fatal("forged rotation chain must fail closed (return error)")
 	}
@@ -236,7 +236,7 @@ func TestSelfRevokeHandler(t *testing.T) {
 		t.Fatal("self-revoke did not record the revocation")
 	}
 	// Published for peers to ingest.
-	if got := store.RevocationList(); len(got) != 1 || got[0].VulaID != id {
+	if got := store.RevocationList(); len(got) != 1 || got[0].VulosID != id {
 		t.Fatalf("self-revocation not published in RevocationList: %+v", got)
 	}
 }

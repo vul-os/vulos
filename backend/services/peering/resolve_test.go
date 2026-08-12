@@ -30,20 +30,20 @@ func resetReachabilityCache(t *testing.T) {
 func TestResolvePeerBaseURL_PassThrough(t *testing.T) {
 	resetReachabilityCache(t)
 	cases := []struct {
-		name, vulaID, server, want string
+		name, vulosID, server, want string
 	}{
-		{"host_port", "vula:ed25519:peer", "bob.example.org:8080", "https://bob.example.org:8080"},
-		{"bare_host", "vula:ed25519:peer", "bob.example.org", "https://bob.example.org"},
-		{"empty_server", "vula:ed25519:peer", "", ""},
-		{"already_https", "vula:ed25519:peer", "https://bob.example.org:8080", "https://bob.example.org:8080"},
-		{"already_http", "vula:ed25519:peer", "http://bob.example.org", "http://bob.example.org"},
+		{"host_port", "vulos:ed25519:peer", "bob.example.org:8080", "https://bob.example.org:8080"},
+		{"bare_host", "vulos:ed25519:peer", "bob.example.org", "https://bob.example.org"},
+		{"empty_server", "vulos:ed25519:peer", "", ""},
+		{"already_https", "vulos:ed25519:peer", "https://bob.example.org:8080", "https://bob.example.org:8080"},
+		{"already_http", "vulos:ed25519:peer", "http://bob.example.org", "http://bob.example.org"},
 		{"empty_vulaid_still_resolves", "", "bob.example.org", "https://bob.example.org"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := resolvePeerBaseURL(tc.vulaID, tc.server)
+			got := resolvePeerBaseURL(tc.vulosID, tc.server)
 			if got != tc.want {
-				t.Fatalf("resolvePeerBaseURL(%q, %q) = %q, want %q", tc.vulaID, tc.server, got, tc.want)
+				t.Fatalf("resolvePeerBaseURL(%q, %q) = %q, want %q", tc.vulosID, tc.server, got, tc.want)
 			}
 		})
 	}
@@ -54,8 +54,8 @@ func TestResolvePeerBaseURL_PassThrough(t *testing.T) {
 // contact.Server fallback.
 func TestResolvePeerBaseURL_PrefersVerifiedDirect(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:alice", "https://alice-direct.example.net", "https://alice.relay.example.com")
-	got := resolvePeerBaseURL("vula:ed25519:alice", "stale.example.org:8080")
+	reachabilityCachePut("vulos:ed25519:alice", "https://alice-direct.example.net", "https://alice.relay.example.com")
+	got := resolvePeerBaseURL("vulos:ed25519:alice", "stale.example.org:8080")
 	if got != "https://alice-direct.example.net" {
 		t.Fatalf("got %q, want the cached verified-direct endpoint", got)
 	}
@@ -66,8 +66,8 @@ func TestResolvePeerBaseURL_PrefersVerifiedDirect(t *testing.T) {
 // over contact.Server.
 func TestResolvePeerBaseURL_FallsBackToRelayTunnel(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:bob", "", "https://bob.relay.example.com")
-	got := resolvePeerBaseURL("vula:ed25519:bob", "stale.example.org:8080")
+	reachabilityCachePut("vulos:ed25519:bob", "", "https://bob.relay.example.com")
+	got := resolvePeerBaseURL("vulos:ed25519:bob", "stale.example.org:8080")
 	if got != "https://bob.relay.example.com" {
 		t.Fatalf("got %q, want the cached relay-tunnel endpoint", got)
 	}
@@ -78,8 +78,8 @@ func TestResolvePeerBaseURL_FallsBackToRelayTunnel(t *testing.T) {
 // the contact.Server fallback rather than an empty/broken URL.
 func TestResolvePeerBaseURL_NegativeCacheFallsThrough(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:carol", "", "")
-	got := resolvePeerBaseURL("vula:ed25519:carol", "carol.example.org")
+	reachabilityCachePut("vulos:ed25519:carol", "", "")
+	got := resolvePeerBaseURL("vulos:ed25519:carol", "carol.example.org")
 	if got != "https://carol.example.org" {
 		t.Fatalf("got %q, want the contact.Server fallback", got)
 	}
@@ -90,12 +90,12 @@ func TestResolvePeerBaseURL_NegativeCacheFallsThrough(t *testing.T) {
 func TestResolvePeerBaseURL_ExpiredCacheFallsThrough(t *testing.T) {
 	resetReachabilityCache(t)
 	reachMu.Lock()
-	reachCache["vula:ed25519:dave"] = reachabilityEntry{
+	reachCache["vulos:ed25519:dave"] = reachabilityEntry{
 		direct:    "https://dave-direct.example.net",
 		fetchedAt: time.Now().Add(-2 * reachabilityCacheTTL),
 	}
 	reachMu.Unlock()
-	got := resolvePeerBaseURL("vula:ed25519:dave", "dave.example.org")
+	got := resolvePeerBaseURL("vulos:ed25519:dave", "dave.example.org")
 	if got != "https://dave.example.org" {
 		t.Fatalf("got %q, want the contact.Server fallback (expired cache must be ignored)", got)
 	}
@@ -110,18 +110,18 @@ func TestRefreshPeerReachability_PopulatesCache(t *testing.T) {
 		if r.URL.Path != relayResolvePath {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("vula_id"); got != "vula:ed25519:erin" {
-			t.Fatalf("vula_id query = %q", got)
+		if got := r.URL.Query().Get("vulos_id"); got != "vulos:ed25519:erin" {
+			t.Fatalf("vulos_id query = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(relayResolveResponse{Relay: "https://erin.relay.example.com"}) //nolint:errcheck
 	}))
 	defer srv.Close()
 
-	if err := RefreshPeerReachability(context.Background(), srv.URL, "vula:ed25519:erin"); err != nil {
+	if err := RefreshPeerReachability(context.Background(), srv.URL, "vulos:ed25519:erin"); err != nil {
 		t.Fatalf("RefreshPeerReachability: %v", err)
 	}
-	got := resolvePeerBaseURL("vula:ed25519:erin", "erin.example.org")
+	got := resolvePeerBaseURL("vulos:ed25519:erin", "erin.example.org")
 	if got != "https://erin.relay.example.com" {
 		t.Fatalf("got %q, want the relay-resolved endpoint", got)
 	}
@@ -136,19 +136,19 @@ func TestRefreshPeerReachability_404IsNegativeCache(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := RefreshPeerReachability(context.Background(), srv.URL, "vula:ed25519:frank"); err != nil {
+	if err := RefreshPeerReachability(context.Background(), srv.URL, "vulos:ed25519:frank"); err != nil {
 		t.Fatalf("RefreshPeerReachability on 404 should not error: %v", err)
 	}
-	got := resolvePeerBaseURL("vula:ed25519:frank", "frank.example.org")
+	got := resolvePeerBaseURL("vulos:ed25519:frank", "frank.example.org")
 	if got != "https://frank.example.org" {
 		t.Fatalf("got %q, want the contact.Server fallback after a 404 resolve", got)
 	}
 }
 
-// TestRefreshPeerReachability_RequiresRelayBaseURLAndVulaID verifies input
+// TestRefreshPeerReachability_RequiresRelayBaseURLAndVulosID verifies input
 // validation.
-func TestRefreshPeerReachability_RequiresRelayBaseURLAndVulaID(t *testing.T) {
-	if err := RefreshPeerReachability(context.Background(), "", "vula:ed25519:x"); err == nil {
+func TestRefreshPeerReachability_RequiresRelayBaseURLAndVulosID(t *testing.T) {
+	if err := RefreshPeerReachability(context.Background(), "", "vulos:ed25519:x"); err == nil {
 		t.Fatal("expected error with empty relay base URL")
 	}
 	if err := RefreshPeerReachability(context.Background(), "https://relay.example.org", ""); err == nil {
@@ -195,12 +195,12 @@ func TestStartReachabilityRefresh_WarmsCacheImmediately(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	StartReachabilityRefresh(ctx, []string{srv.URL}, func() []WKApprovedPeer {
-		return []WKApprovedPeer{{VulaID: "vula:ed25519:grace", ServerAddr: "grace.example.org"}}
+		return []WKApprovedPeer{{VulosID: "vulos:ed25519:grace", ServerAddr: "grace.example.org"}}
 	})
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if got := resolvePeerBaseURL("vula:ed25519:grace", "grace.example.org"); got == "https://grace-direct.example.net" {
+		if got := resolvePeerBaseURL("vulos:ed25519:grace", "grace.example.org"); got == "https://grace-direct.example.net" {
 			return // success
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -223,10 +223,10 @@ func TestCrossCheck_AgreeingRelaysTrustDirect(t *testing.T) {
 	b := mk("https://hank-direct.example.net")
 	defer b.Close()
 
-	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{a.URL, b.URL}, "vula:ed25519:hank"); err != nil {
+	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{a.URL, b.URL}, "vulos:ed25519:hank"); err != nil {
 		t.Fatalf("cross-check: %v", err)
 	}
-	if got := resolvePeerBaseURL("vula:ed25519:hank", "hank.example.org"); got != "https://hank-direct.example.net" {
+	if got := resolvePeerBaseURL("vulos:ed25519:hank", "hank.example.org"); got != "https://hank-direct.example.net" {
 		t.Fatalf("got %q, want the agreed verified-direct endpoint", got)
 	}
 }
@@ -248,10 +248,10 @@ func TestCrossCheck_EquivocatingRelaysDropDirect(t *testing.T) {
 	}))
 	defer liar.Close()
 
-	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{honest.URL, liar.URL}, "vula:ed25519:ivy"); err != nil {
+	if err := refreshPeerReachabilityCrossChecked(context.Background(), []string{honest.URL, liar.URL}, "vulos:ed25519:ivy"); err != nil {
 		t.Fatalf("cross-check: %v", err)
 	}
-	got := resolvePeerBaseURL("vula:ed25519:ivy", "ivy.example.org")
+	got := resolvePeerBaseURL("vulos:ed25519:ivy", "ivy.example.org")
 	if got == "https://ivy-attacker.evil.example" || got == "https://ivy-real.example.net" {
 		t.Fatalf("cross-check followed a CONTESTED direct endpoint: %q", got)
 	}
@@ -265,18 +265,18 @@ func TestCrossCheck_EquivocatingRelaysDropDirect(t *testing.T) {
 // beats a transient blip), and the error is surfaced.
 func TestCrossCheck_AllRelaysDownLeavesCacheUntouched(t *testing.T) {
 	resetReachabilityCache(t)
-	reachabilityCachePut("vula:ed25519:jack", "https://jack-direct.example.net", "")
+	reachabilityCachePut("vulos:ed25519:jack", "https://jack-direct.example.net", "")
 
 	// Two relays that are refused/unreachable: point at a closed server.
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL
 	dead.Close() // now nothing is listening
 
-	err := refreshPeerReachabilityCrossChecked(context.Background(), []string{deadURL}, "vula:ed25519:jack")
+	err := refreshPeerReachabilityCrossChecked(context.Background(), []string{deadURL}, "vulos:ed25519:jack")
 	if err == nil {
 		t.Fatal("expected an error when every relay is unreachable")
 	}
-	if got := resolvePeerBaseURL("vula:ed25519:jack", "jack.example.org"); got != "https://jack-direct.example.net" {
+	if got := resolvePeerBaseURL("vulos:ed25519:jack", "jack.example.org"); got != "https://jack-direct.example.net" {
 		t.Fatalf("got %q, want the pre-existing cached direct endpoint left untouched", got)
 	}
 }

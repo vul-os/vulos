@@ -221,7 +221,7 @@ type GatherResult struct {
 // distinct signed VouchCerts until it has gathered at least
 // max(greq.Threshold, MinThreshold) of them or has tried every peer.
 //
-// Deduplication is by VoucherVulaID (a peer that somehow appears at two
+// Deduplication is by VoucherVulosID (a peer that somehow appears at two
 // endpoints, or double-answers, counts once) and the subject's own identity
 // is NEVER counted even if some peer's response were to (incorrectly) claim
 // it — this mirrors, defense-in-depth, the self-exclusion VerifyQuorum
@@ -254,7 +254,7 @@ func GatherQuorum(ctx context.Context, transport Transport, greq GatherRequest, 
 	if len(greq.SubjectKey) != ed25519.PrivateKeySize {
 		return GatherResult{}, errors.New("fleetid: GatherQuorum: SubjectKey is required (peers authenticate the request by its signature)")
 	}
-	if peering.EncodeVulaID(greq.SubjectKey.Public().(ed25519.PublicKey)) != greq.SubjectID {
+	if peering.EncodeVulosID(greq.SubjectKey.Public().(ed25519.PublicKey)) != greq.SubjectID {
 		return GatherResult{}, errors.New("fleetid: GatherQuorum: SubjectKey does not match SubjectID")
 	}
 
@@ -286,19 +286,19 @@ func GatherQuorum(ctx context.Context, transport Transport, greq GatherRequest, 
 
 		// Defense in depth: never trust the peer's own framing blindly, even
 		// though the wire response already came back "granted".
-		if cert.VoucherVulaID == "" {
+		if cert.VoucherVulosID == "" {
 			res.Outcomes = append(res.Outcomes, PeerOutcome{Endpoint: endpoint, Counted: false, Reason: "malformed cert: empty voucher id"})
 			continue
 		}
-		if cert.VoucherVulaID == greq.SubjectID {
+		if cert.VoucherVulosID == greq.SubjectID {
 			res.Outcomes = append(res.Outcomes, PeerOutcome{Endpoint: endpoint, Counted: false, Reason: "refused: cert vouches for the subject itself"})
 			continue
 		}
-		if seen[cert.VoucherVulaID] {
+		if seen[cert.VoucherVulosID] {
 			res.Outcomes = append(res.Outcomes, PeerOutcome{Endpoint: endpoint, Counted: false, Reason: "duplicate of an already-counted voucher"})
 			continue
 		}
-		seen[cert.VoucherVulaID] = true
+		seen[cert.VoucherVulosID] = true
 		res.Certs = append(res.Certs, *cert)
 		res.Outcomes = append(res.Outcomes, PeerOutcome{Endpoint: endpoint, Counted: true})
 	}

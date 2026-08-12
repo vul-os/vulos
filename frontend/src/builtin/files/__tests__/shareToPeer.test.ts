@@ -32,18 +32,18 @@ describe('guessMime', () => {
 describe('buildSendBody', () => {
   it('matches the drop/send contract and includes target_addr when known', () => {
     const body = buildSendBody(
-      { vula_id: 'vula:abc', addr: '192.168.1.5:8080' },
+      { vulos_id: 'vula:abc', addr: '192.168.1.5:8080' },
       '/home/vula/a.txt', 'text/plain',
     )
     expect(body).toEqual({
-      target_vula_id: 'vula:abc',
+      target_vulos_id: 'vula:abc',
       media_path: '/home/vula/a.txt',
       mime_type: 'text/plain',
       target_addr: 'http://192.168.1.5:8080',
     })
   })
   it('omits target_addr when the peer has no advertised address', () => {
-    const body = buildSendBody({ vula_id: 'vula:abc' }, '/x', '')
+    const body = buildSendBody({ vulos_id: 'vula:abc' }, '/x', '')
     expect(body.target_addr).toBeUndefined()
     expect(body.mime_type).toBe('application/octet-stream')
   })

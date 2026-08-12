@@ -4,7 +4,7 @@
  * Shell-wide modal that surfaces when a remote peer initiates a call.
  *
  * Signal framing (received via the /api/peering/stream WebSocket hub):
- *   Outer frame:  { channel: "signal", from: "<peerVulaId>", payload: <SignalPayload> }
+ *   Outer frame:  { channel: "signal", from: "<peerVulosId>", payload: <SignalPayload> }
  *   SignalPayload: { channel: "signal", type: "incoming-call", call_id, from_id, payload? }
  *   Cancellation:  type === "hangup" | "reject"
  *

@@ -16,7 +16,7 @@ func lcKeypair(t *testing.T) (ed25519.PrivateKey, string) {
 	if err != nil {
 		t.Fatalf("genkey: %v", err)
 	}
-	return priv, encodeVulaID(pub)
+	return priv, encodeVulosID(pub)
 }
 
 // ── Rotation ──────────────────────────────────────────────────────────────────
@@ -32,10 +32,10 @@ func TestRotationCert_RoundTripVerify(t *testing.T) {
 	if err := cert.Verify(); err != nil {
 		t.Fatalf("rotation cert should verify: %v", err)
 	}
-	// Tamper: changing NewVulaID must break the signature.
+	// Tamper: changing NewVulosID must break the signature.
 	bad := *cert
 	_, otherID := lcKeypair(t)
-	bad.NewVulaID = otherID
+	bad.NewVulosID = otherID
 	if err := bad.Verify(); err == nil {
 		t.Fatal("tampered rotation cert verified; must fail")
 	}
@@ -234,7 +234,7 @@ func TestLifecycleStore_RecordRevocation_GatesAdmission(t *testing.T) {
 	SetRevocationChecker(s.IsRevoked)
 	t.Cleanup(func() { SetRevocationChecker(nil) })
 
-	if !isVulaIDRevoked(id) {
+	if !isVulosIDRevoked(id) {
 		t.Fatal("global gate should report revoked")
 	}
 
@@ -243,7 +243,7 @@ func TestLifecycleStore_RecordRevocation_GatesAdmission(t *testing.T) {
 	// APPROVED contact, so only the revocation gate can be the cause of the 403.
 	cs := makeContactStore(t)
 	addApprovedContact(t, cs, id, "host:1")
-	env, _ := NewEnvelope("m1", id, "vula:ed25519:dest", TypeMessage, nil)
+	env, _ := NewEnvelope("m1", id, "vulos:ed25519:dest", TypeMessage, nil)
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("sign env: %v", err)
 	}

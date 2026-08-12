@@ -101,13 +101,13 @@ func (s *Service) ShareSealedByEmail(ctx context.Context, actorID, nodeID, email
 		return nil, fmt.Errorf("%w: sealed bytes are not addressed to the recipient's content key", ErrInvalid)
 	}
 
-	cap, link, err := s.IssueSealedCapability(actorID, nodeID, role, rec.VulaID, ownerAddr, ttl, bytes.NewReader(data))
+	cap, link, err := s.IssueSealedCapability(actorID, nodeID, role, rec.VulosID, ownerAddr, ttl, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	res := &ShareByEmailResult{
 		Mode:        "remote",
-		VulaID:      rec.VulaID,
+		VulosID:     rec.VulosID,
 		Server:      rec.Server,
 		DisplayName: rec.DisplayName,
 		Capability:  cap,
@@ -115,16 +115,16 @@ func (s *Service) ShareSealedByEmail(ctx context.Context, actorID, nodeID, email
 	}
 	if s.capDeliverer != nil && rec.Server != "" {
 		if derr := s.capDeliverer.DeliverCapability(ctx, rec.Server, CapabilityDelivery{
-			RecipientVulaID: rec.VulaID,
-			Link:            link,
-			Capability:      cap,
+			RecipientVulosID: rec.VulosID,
+			Link:             link,
+			Capability:       cap,
 		}); derr != nil {
 			log.Printf("[files] sealed capability delivery to %s failed (link returned to sharer): %v", rec.Server, derr)
 		} else {
 			res.Delivered = true
 		}
 	}
-	s.audit(actorID, "share.email.sealed", nodeID, email+"="+string(role)+" recipient="+rec.VulaID)
+	s.audit(actorID, "share.email.sealed", nodeID, email+"="+string(role)+" recipient="+rec.VulosID)
 	return res, nil
 }
 
@@ -196,7 +196,7 @@ func (s *Service) removeSealedArtifact(capID string) {
 // IssueSealedCapability mints a CONTENT-BLIND peer-share capability over nodeID
 // whose served bytes are the caller-supplied pre-sealed VSEAL1 artifact (sealed by
 // the sharer's client and wrapped to the recipient's published content key). Only
-// the node's owner may issue. recipient is the bound peer's VulaID (required for a
+// the node's owner may issue. recipient is the bound peer's VulosID (required for a
 // sealed share — a content-blind share must name who can open it). ownerAddr is
 // THIS box's reachable base URL. ttl is clamped like IssueCapability.
 //
@@ -242,17 +242,17 @@ func (s *Service) IssueSealedCapability(actorID, nodeID string, access Role, rec
 		NodeID: n.ID,
 		// Content-blind metadata (WAVE-7): the real Name/ContentType/IsDir are sealed
 		// inside the VMETA1 envelope; the capability leaks only an opaque placeholder.
-		Name:        SealedCapPlaceholderName,
-		IsDir:       false, // sealed payload is a single opaque artifact (file OR tar)
-		Size:        sealedSize,
-		ContentType: "",
-		Access:      access,
-		OwnerVulaID: s.signer.SelfID(),
-		OwnerAddr:   strings.TrimRight(ownerAddr, "/"),
-		Recipient:   recipient,
-		IssuedAt:    now.UTC(),
-		ExpiresAt:   now.Add(ttl).UTC(),
-		Sealed:      true,
+		Name:         SealedCapPlaceholderName,
+		IsDir:        false, // sealed payload is a single opaque artifact (file OR tar)
+		Size:         sealedSize,
+		ContentType:  "",
+		Access:       access,
+		OwnerVulosID: s.signer.SelfID(),
+		OwnerAddr:    strings.TrimRight(ownerAddr, "/"),
+		Recipient:    recipient,
+		IssuedAt:     now.UTC(),
+		ExpiresAt:    now.Add(ttl).UTC(),
+		Sealed:       true,
 	}
 	msg, err := cap.signingBytes()
 	if err != nil {

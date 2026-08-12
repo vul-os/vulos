@@ -20,7 +20,7 @@ beforeEach(() => {
   fetchMock = vi.fn<FetchImpl>(async (url) => {
     if (String(url).endsWith('/api/peering/drop/nearby')) {
       return new Response(JSON.stringify([
-        { vula_id: 'vula:bob', display_name: 'Bob', addr: '10.0.0.5:8080', is_contact: true },
+        { vulos_id: 'vula:bob', display_name: 'Bob', addr: '10.0.0.5:8080', is_contact: true },
       ]), { status: 200 })
     }
     if (String(url).endsWith('/api/peering/drop/send')) {
@@ -55,7 +55,7 @@ it('lists nearby peers and sends a file with a resolved absolute path', async ()
     if (typeof opts?.body !== 'string') throw new Error('expected a JSON string body')
     const body: unknown = JSON.parse(opts.body)
     expect(body).toMatchObject({
-      target_vula_id: 'vula:bob',
+      target_vulos_id: 'vula:bob',
       media_path: '/home/vula/Documents/report.pdf',
       mime_type: 'application/pdf',
       target_addr: 'http://10.0.0.5:8080',

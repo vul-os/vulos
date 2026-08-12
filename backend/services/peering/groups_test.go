@@ -43,22 +43,22 @@ func makeGroupStore(t *testing.T) *GroupStore {
 }
 
 // makeGroupDef builds a GroupDef for testing with the given creator and members.
-func makeGroupDef(creatorVulaID string, members []string, policy GroupPolicy) GroupDef {
+func makeGroupDef(creatorVulosID string, members []string, policy GroupPolicy) GroupDef {
 	now := time.Now().UTC()
-	all := append([]string{creatorVulaID}, members...)
+	all := append([]string{creatorVulosID}, members...)
 	return GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Test Group",
-		CreatorVulaID: creatorVulaID,
-		Members:       all,
-		Policy:        policy,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:             uuid.New().String(),
+		Name:           "Test Group",
+		CreatorVulosID: creatorVulosID,
+		Members:        all,
+		Policy:         policy,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 }
 
 // makeGroupAPIWithIdentity builds a GroupAPI with a known identity.
-func makeGroupAPIWithIdentity(t *testing.T, priv ed25519.PrivateKey, vulaID string) (
+func makeGroupAPIWithIdentity(t *testing.T, priv ed25519.PrivateKey, vulosID string) (
 	api *GroupAPI, groups *GroupStore, contacts *ContactStore, inbox *InboxStore,
 ) {
 	t.Helper()
@@ -77,7 +77,7 @@ func makeGroupAPIWithIdentity(t *testing.T, priv ed25519.PrivateKey, vulaID stri
 		t.Fatalf("NewInboxStore: %v", err)
 	}
 	client := &PeerClient{http: nil}
-	api = NewGroupAPI(groups, contacts, inbox, nil, nil, priv, vulaID)
+	api = NewGroupAPI(groups, contacts, inbox, nil, nil, priv, vulosID)
 	api.client = client
 	return
 }
@@ -91,13 +91,13 @@ func inboundGroupReq(env *Envelope) *http.Request {
 }
 
 // buildSignedGroupDefEnvelope creates a TypeGroupDef envelope signed by priv.
-func buildSignedGroupDefEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulaID, toVulaID string, def GroupDef) *Envelope {
+func buildSignedGroupDefEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulosID, toVulosID string, def GroupDef) *Envelope {
 	t.Helper()
 	payload, err := json.Marshal(def)
 	if err != nil {
 		t.Fatalf("marshal GroupDef: %v", err)
 	}
-	env, err := NewEnvelope(uuid.New().String(), fromVulaID, toVulaID, TypeGroupDef, json.RawMessage(payload))
+	env, err := NewEnvelope(uuid.New().String(), fromVulosID, toVulosID, TypeGroupDef, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -108,7 +108,7 @@ func buildSignedGroupDefEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVula
 }
 
 // buildSignedGroupMsgEnvelope creates a TypeGroupMessage envelope signed by priv.
-func buildSignedGroupMsgEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulaID, toVulaID, groupID, body string) *Envelope {
+func buildSignedGroupMsgEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVulosID, toVulosID, groupID, body string) *Envelope {
 	t.Helper()
 	msgID := uuid.New().String()
 	payload, err := json.Marshal(GroupMessagePayload{
@@ -119,7 +119,7 @@ func buildSignedGroupMsgEnvelope(t *testing.T, priv ed25519.PrivateKey, fromVula
 	if err != nil {
 		t.Fatalf("marshal GroupMessagePayload: %v", err)
 	}
-	env, err := NewEnvelope(msgID+"-"+sanitizePath(toVulaID), fromVulaID, toVulaID, TypeGroupMessage, json.RawMessage(payload))
+	env, err := NewEnvelope(msgID+"-"+sanitizePath(toVulosID), fromVulosID, toVulosID, TypeGroupMessage, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -239,14 +239,14 @@ func TestGroupConversationID_NoCollision(t *testing.T) {
 	groupID := uuid.New().String()
 	convID := groupConversationID(groupID)
 
-	// Peer-to-peer conv IDs have the form "vula:ed25519:<b58>_vula:ed25519:<b58>".
+	// Peer-to-peer conv IDs have the form "vulos:ed25519:<b58>_vulos:ed25519:<b58>".
 	// Group conv IDs must use a prefix that cannot appear in peer-to-peer IDs.
 	if !strings.HasPrefix(convID, "group:") {
 		t.Errorf("group conv_id must start with 'group:'; got %q", convID)
 	}
 
 	// Must not look like a peer-to-peer conv_id.
-	if strings.Contains(convID, "_vula:ed25519:") {
+	if strings.Contains(convID, "_vulos:ed25519:") {
 		t.Errorf("group conv_id should not contain peer-to-peer separator; got %q", convID)
 	}
 }
@@ -255,7 +255,7 @@ func TestGroupConversationID_NoCollision(t *testing.T) {
 
 func TestGroupBaseMessageID(t *testing.T) {
 	baseUUID := uuid.New().String() // e.g. "a1b2c3d4-e5f6-..."
-	memberID := sanitizePath("vula:ed25519:abc")
+	memberID := sanitizePath("vulos:ed25519:abc")
 	fanoutID := baseUUID + "-" + memberID
 
 	got := groupBaseMessageID(fanoutID)
@@ -275,8 +275,8 @@ func TestGroupBaseMessageID(t *testing.T) {
 // ── Create group ──────────────────────────────────────────────────────────────
 
 func TestHandleCreateGroup_HappyPath(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, _, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, _, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, peerID := makeTestIdentity(t)
 	addApprovedContact(t, contacts, peerID, "") // no server = delivery skipped but approval is valid
@@ -309,8 +309,8 @@ func TestHandleCreateGroup_HappyPath(t *testing.T) {
 }
 
 func TestHandleCreateGroup_EmptyName(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	body, _ := json.Marshal(createGroupRequest{Name: "  "})
 	w := httptest.NewRecorder()
@@ -323,8 +323,8 @@ func TestHandleCreateGroup_EmptyName(t *testing.T) {
 }
 
 func TestHandleCreateGroup_NonApprovedMember(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, unknownPeer := makeTestIdentity(t)
 	body, _ := json.Marshal(createGroupRequest{
@@ -342,8 +342,8 @@ func TestHandleCreateGroup_NonApprovedMember(t *testing.T) {
 }
 
 func TestHandleCreateGroup_UnknownPolicy(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	body, _ := json.Marshal(map[string]any{
 		"name":   "Test",
@@ -361,10 +361,10 @@ func TestHandleCreateGroup_UnknownPolicy(t *testing.T) {
 // ── List / Get group ──────────────────────────────────────────────────────────
 
 func TestHandleListGroups(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -387,10 +387,10 @@ func TestHandleListGroups(t *testing.T) {
 }
 
 func TestHandleGetGroup_Found(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -406,8 +406,8 @@ func TestHandleGetGroup_Found(t *testing.T) {
 }
 
 func TestHandleGetGroup_NotFound(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, _, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/api/peering/groups/no-such-id", nil)
@@ -422,18 +422,18 @@ func TestHandleGetGroup_NotFound(t *testing.T) {
 // ── Add member ────────────────────────────────────────────────────────────────
 
 func TestHandleAddMember_OpenPolicy(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, bob := makeTestIdentity(t)
 	addApprovedContact(t, contacts, bob, "")
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	body, _ := json.Marshal(addMemberRequest{VulaID: bob})
+	body, _ := json.Marshal(addMemberRequest{VulosID: bob})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/peering/groups/"+def.ID+"/members", bytes.NewReader(body))
 	r.SetPathValue("group_id", def.ID)
@@ -453,18 +453,18 @@ func TestHandleAddMember_OpenPolicy(t *testing.T) {
 }
 
 func TestHandleAddMember_AdminOnly_ByCreator(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, bob := makeTestIdentity(t)
 	addApprovedContact(t, contacts, bob, "")
 
-	def := makeGroupDef(vulaID, nil, PolicyAdminOnly)
+	def := makeGroupDef(vulosID, nil, PolicyAdminOnly)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	body, _ := json.Marshal(addMemberRequest{VulaID: bob})
+	body, _ := json.Marshal(addMemberRequest{VulosID: bob})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/peering/groups/"+def.ID+"/members", bytes.NewReader(body))
 	r.SetPathValue("group_id", def.ID)
@@ -488,19 +488,19 @@ func TestHandleAddMember_AdminOnly_ByNonCreator(t *testing.T) {
 	// alice is creator; bob is a member.
 	now := time.Now().UTC()
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Admin Group",
-		CreatorVulaID: alice,
-		Members:       []string{alice, bob},
-		Policy:        PolicyAdminOnly,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:             uuid.New().String(),
+		Name:           "Admin Group",
+		CreatorVulosID: alice,
+		Members:        []string{alice, bob},
+		Policy:         PolicyAdminOnly,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	body, _ := json.Marshal(addMemberRequest{VulaID: carol})
+	body, _ := json.Marshal(addMemberRequest{VulosID: carol})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/peering/groups/"+def.ID+"/members", bytes.NewReader(body))
 	r.SetPathValue("group_id", def.ID)
@@ -512,18 +512,18 @@ func TestHandleAddMember_AdminOnly_ByNonCreator(t *testing.T) {
 }
 
 func TestHandleAddMember_AlreadyMember(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, bob := makeTestIdentity(t)
 	addApprovedContact(t, contacts, bob, "")
 
-	def := makeGroupDef(vulaID, []string{bob}, PolicyOpen)
+	def := makeGroupDef(vulosID, []string{bob}, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	body, _ := json.Marshal(addMemberRequest{VulaID: bob})
+	body, _ := json.Marshal(addMemberRequest{VulosID: bob})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/peering/groups/"+def.ID+"/members", bytes.NewReader(body))
 	r.SetPathValue("group_id", def.ID)
@@ -535,17 +535,17 @@ func TestHandleAddMember_AlreadyMember(t *testing.T) {
 }
 
 func TestHandleAddMember_NonApprovedTarget(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, stranger := makeTestIdentity(t)
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	body, _ := json.Marshal(addMemberRequest{VulaID: stranger})
+	body, _ := json.Marshal(addMemberRequest{VulosID: stranger})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/api/peering/groups/"+def.ID+"/members", bytes.NewReader(body))
 	r.SetPathValue("group_id", def.ID)
@@ -559,10 +559,10 @@ func TestHandleAddMember_NonApprovedTarget(t *testing.T) {
 // ── Send group message ────────────────────────────────────────────────────────
 
 func TestHandleSendGroupMessage_LocalStorageAndWebSocket(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, inbox := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, inbox := makeGroupAPIWithIdentity(t, priv, vulosID)
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -595,10 +595,10 @@ func TestHandleSendGroupMessage_LocalStorageAndWebSocket(t *testing.T) {
 }
 
 func TestHandleSendGroupMessage_EmptyBody(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
-	def := makeGroupDef(vulaID, nil, PolicyOpen)
+	def := makeGroupDef(vulosID, nil, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -615,8 +615,8 @@ func TestHandleSendGroupMessage_EmptyBody(t *testing.T) {
 }
 
 func TestHandleSendGroupMessage_NonMember(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, _, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	_, _, otherCreator := makeTestIdentity(t)
 	def := makeGroupDef(otherCreator, nil, PolicyOpen) // local node NOT a member
@@ -638,7 +638,7 @@ func TestHandleSendGroupMessage_NonMember(t *testing.T) {
 func TestHandleSendGroupMessage_FanOut_DeliversToEachMember(t *testing.T) {
 	// This test verifies that a fan-out envelope is built for each non-local member.
 	// We use an httptest.Server per member to capture inbound POSTs.
-	priv, _, vulaID := makeTestIdentity(t)
+	priv, _, vulosID := makeTestIdentity(t)
 
 	_, _, member1ID := makeTestIdentity(t)
 	_, _, member2ID := makeTestIdentity(t)
@@ -671,13 +671,13 @@ func TestHandleSendGroupMessage_FanOut_DeliversToEachMember(t *testing.T) {
 	addApprovedContact(t, contacts, member2ID, server2Addr)
 
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Fan-out Test",
-		CreatorVulaID: vulaID,
-		Members:       []string{vulaID, member1ID, member2ID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Fan-out Test",
+		CreatorVulosID: vulosID,
+		Members:        []string{vulosID, member1ID, member2ID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -685,7 +685,7 @@ func TestHandleSendGroupMessage_FanOut_DeliversToEachMember(t *testing.T) {
 
 	// Use the TLS test client from the test server.
 	realClient := &PeerClient{http: srv1.Client()}
-	api := NewGroupAPI(groups, contacts, inbox, nil, nil, priv, vulaID)
+	api := NewGroupAPI(groups, contacts, inbox, nil, nil, priv, vulosID)
 	api.client = realClient
 
 	body, _ := json.Marshal(sendGroupMessageRequest{Body: "fan-out test"})
@@ -724,13 +724,13 @@ func TestHandleInboundGroupDef_HappyPath(t *testing.T) {
 	addApprovedContact(t, contacts, senderID, "")
 
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Inbound Group",
-		CreatorVulaID: senderID,
-		Members:       []string{senderID, localID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Inbound Group",
+		CreatorVulosID: senderID,
+		Members:        []string{senderID, localID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	env := buildSignedGroupDefEnvelope(t, senderPriv, senderID, localID, def)
 
@@ -761,13 +761,13 @@ func TestHandleInboundGroupDef_NonMemberSenderRejected(t *testing.T) {
 	// Intruder is NOT in the group's member list or as creator.
 	_, _, realCreator := makeTestIdentity(t)
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Hijacked Group",
-		CreatorVulaID: realCreator,
-		Members:       []string{realCreator, localID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Hijacked Group",
+		CreatorVulosID: realCreator,
+		Members:        []string{realCreator, localID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	env := buildSignedGroupDefEnvelope(t, intruderPriv, intruderID, localID, def)
 
@@ -804,13 +804,13 @@ func TestHandleInboundGroupMessage_HappyPath(t *testing.T) {
 	addApprovedContact(t, contacts, senderID, "")
 
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Chat Room",
-		CreatorVulaID: senderID,
-		Members:       []string{senderID, localID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Chat Room",
+		CreatorVulosID: senderID,
+		Members:        []string{senderID, localID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -856,13 +856,13 @@ func TestHandleInboundGroupMessage_NonMemberRejected(t *testing.T) {
 	// Group exists but intruder is not a member.
 	_, _, realCreator := makeTestIdentity(t)
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Exclusive Group",
-		CreatorVulaID: realCreator,
-		Members:       []string{realCreator, localID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Exclusive Group",
+		CreatorVulosID: realCreator,
+		Members:        []string{realCreator, localID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -886,13 +886,13 @@ func TestHandleInboundGroupMessage_DeduplicationViaSameBaseID(t *testing.T) {
 	addApprovedContact(t, contacts, senderID, "")
 
 	def := GroupDef{
-		ID:            uuid.New().String(),
-		Name:          "Dedup Test",
-		CreatorVulaID: senderID,
-		Members:       []string{senderID, localID},
-		Policy:        PolicyOpen,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		ID:             uuid.New().String(),
+		Name:           "Dedup Test",
+		CreatorVulosID: senderID,
+		Members:        []string{senderID, localID},
+		Policy:         PolicyOpen,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -931,13 +931,13 @@ func inboundGroupMsgReq(env *Envelope) *http.Request {
 // ─── RegisterGroupHandlers smoke test ─────────────────────────────────────────
 
 func TestRegisterGroupHandlers_RoutesExist(t *testing.T) {
-	priv, _, vulaID := makeTestIdentity(t)
-	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulaID)
+	priv, _, vulosID := makeTestIdentity(t)
+	api, groups, contacts, _ := makeGroupAPIWithIdentity(t, priv, vulosID)
 
 	// Pre-create a group so GET/POST /{group_id} routes resolve to real resources.
 	_, _, peerID := makeTestIdentity(t)
 	addApprovedContact(t, contacts, peerID, "")
-	def := makeGroupDef(vulaID, []string{peerID}, PolicyOpen)
+	def := makeGroupDef(vulosID, []string{peerID}, PolicyOpen)
 	if err := groups.Save(def); err != nil {
 		t.Fatalf("Save: %v", err)
 	}

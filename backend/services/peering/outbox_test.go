@@ -74,13 +74,13 @@ func TestNewOutboxQueue_NilClientError(t *testing.T) {
 
 func TestEnqueue_PersistsToFile(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	env := newTestEnv(t, "msg-001", "vula:ed25519:AAAA", "vula:ed25519:BBBB")
+	env := newTestEnv(t, "msg-001", "vulos:ed25519:AAAA", "vulos:ed25519:BBBB")
 
-	if err := q.Enqueue("vula:ed25519:BBBB", "https://bob.example.com:8080", env); err != nil {
+	if err := q.Enqueue("vulos:ed25519:BBBB", "https://bob.example.com:8080", env); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 
-	depth := q.QueueDepth("vula:ed25519:BBBB")
+	depth := q.QueueDepth("vulos:ed25519:BBBB")
 	if depth != 1 {
 		t.Errorf("QueueDepth = %d, want 1", depth)
 	}
@@ -88,15 +88,15 @@ func TestEnqueue_PersistsToFile(t *testing.T) {
 
 func TestEnqueue_Idempotent(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	env := newTestEnv(t, "msg-002", "vula:ed25519:AAAA", "vula:ed25519:BBBB")
+	env := newTestEnv(t, "msg-002", "vulos:ed25519:AAAA", "vulos:ed25519:BBBB")
 
 	for i := 0; i < 3; i++ {
-		if err := q.Enqueue("vula:ed25519:BBBB", "https://bob.example.com:8080", env); err != nil {
+		if err := q.Enqueue("vulos:ed25519:BBBB", "https://bob.example.com:8080", env); err != nil {
 			t.Fatalf("Enqueue iteration %d: %v", i, err)
 		}
 	}
 
-	depth := q.QueueDepth("vula:ed25519:BBBB")
+	depth := q.QueueDepth("vulos:ed25519:BBBB")
 	if depth != 1 {
 		t.Errorf("QueueDepth = %d, want 1 (idempotent)", depth)
 	}
@@ -105,30 +105,30 @@ func TestEnqueue_Idempotent(t *testing.T) {
 func TestEnqueue_UnsignedEnvelopeError(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
 	payload, _ := json.Marshal(MessagePayload{Type: "text", Body: "hi"})
-	env, _ := NewEnvelope("msg-003", "vula:ed25519:AAAA", "vula:ed25519:BBBB", TypeMessage, json.RawMessage(payload))
+	env, _ := NewEnvelope("msg-003", "vulos:ed25519:AAAA", "vulos:ed25519:BBBB", TypeMessage, json.RawMessage(payload))
 	// env is not signed
 
-	err := q.Enqueue("vula:ed25519:BBBB", "https://bob.example.com:8080", env)
+	err := q.Enqueue("vulos:ed25519:BBBB", "https://bob.example.com:8080", env)
 	if err == nil {
 		t.Error("expected error for unsigned envelope, got nil")
 	}
 }
 
-func TestEnqueue_EmptyPeerVulaIDError(t *testing.T) {
+func TestEnqueue_EmptyPeerVulosIDError(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	env := newTestEnv(t, "msg-004", "vula:ed25519:AAAA", "vula:ed25519:BBBB")
+	env := newTestEnv(t, "msg-004", "vulos:ed25519:AAAA", "vulos:ed25519:BBBB")
 
 	err := q.Enqueue("", "https://bob.example.com:8080", env)
 	if err == nil {
-		t.Error("expected error for empty peerVulaID, got nil")
+		t.Error("expected error for empty peerVulosID, got nil")
 	}
 }
 
 func TestEnqueue_MultipleItems(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:CCCC"
+	peer := "vulos:ed25519:CCCC"
 	for i := 0; i < 5; i++ {
-		env := newTestEnv(t, fmt.Sprintf("msg-%03d", i), "vula:ed25519:AAAA", peer)
+		env := newTestEnv(t, fmt.Sprintf("msg-%03d", i), "vulos:ed25519:AAAA", peer)
 		if err := q.Enqueue(peer, "https://carol.example.com:8080", env); err != nil {
 			t.Fatalf("Enqueue %d: %v", i, err)
 		}
@@ -143,8 +143,8 @@ func TestEnqueue_MultipleItems(t *testing.T) {
 
 func TestAcknowledge_RemovesItem(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:DDDD"
-	env := newTestEnv(t, "msg-ack-01", "vula:ed25519:AAAA", peer)
+	peer := "vulos:ed25519:DDDD"
+	env := newTestEnv(t, "msg-ack-01", "vulos:ed25519:AAAA", peer)
 
 	if err := q.Enqueue(peer, "https://dave.example.com:8080", env); err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -160,8 +160,8 @@ func TestAcknowledge_RemovesItem(t *testing.T) {
 
 func TestAcknowledge_UnknownIDIsNoOp(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:EEEE"
-	env := newTestEnv(t, "msg-ack-02", "vula:ed25519:AAAA", peer)
+	peer := "vulos:ed25519:EEEE"
+	env := newTestEnv(t, "msg-ack-02", "vulos:ed25519:AAAA", peer)
 
 	if err := q.Enqueue(peer, "https://eve.example.com:8080", env); err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -179,15 +179,15 @@ func TestAcknowledge_UnknownIDIsNoOp(t *testing.T) {
 func TestAcknowledge_NonexistentPeerIsNoOp(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
 	// Should not panic or error.
-	q.Acknowledge("vula:ed25519:FFFF", "any-id")
+	q.Acknowledge("vulos:ed25519:FFFF", "any-id")
 }
 
 func TestAcknowledge_OnlyRemovesTargetMessage(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:GGGG"
+	peer := "vulos:ed25519:GGGG"
 
-	env1 := newTestEnv(t, "msg-multi-01", "vula:ed25519:AAAA", peer)
-	env2 := newTestEnv(t, "msg-multi-02", "vula:ed25519:AAAA", peer)
+	env1 := newTestEnv(t, "msg-multi-01", "vulos:ed25519:AAAA", peer)
+	env2 := newTestEnv(t, "msg-multi-02", "vulos:ed25519:AAAA", peer)
 
 	if err := q.Enqueue(peer, "https://greg.example.com:8080", env1); err != nil {
 		t.Fatalf("Enqueue env1: %v", err)
@@ -208,14 +208,14 @@ func TestAcknowledge_OnlyRemovesTargetMessage(t *testing.T) {
 
 func TestPullMissed_ReturnsItemsAfterLastSeen(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:HHHH"
+	peer := "vulos:ed25519:HHHH"
 	baseline := time.Now().UTC()
 
 	// Enqueue before baseline — should not appear.
-	envOld := newTestEnv(t, "msg-old", "vula:ed25519:AAAA", peer)
+	envOld := newTestEnv(t, "msg-old", "vulos:ed25519:AAAA", peer)
 	// Manually create an item with a QueuedAt in the past.
 	oldItem := QueuedEnvelope{
-		PeerVulaID:  peer,
+		PeerVulosID: peer,
 		PeerServer:  "https://hank.example.com:8080",
 		Envelope:    envOld,
 		QueuedAt:    baseline.Add(-2 * time.Second),
@@ -228,7 +228,7 @@ func TestPullMissed_ReturnsItemsAfterLastSeen(t *testing.T) {
 
 	// Enqueue after baseline — should appear.
 	time.Sleep(5 * time.Millisecond) // ensure QueuedAt is after baseline
-	envNew := newTestEnv(t, "msg-new", "vula:ed25519:AAAA", peer)
+	envNew := newTestEnv(t, "msg-new", "vulos:ed25519:AAAA", peer)
 	if err := q.Enqueue(peer, "https://hank.example.com:8080", envNew); err != nil {
 		t.Fatalf("Enqueue new: %v", err)
 	}
@@ -244,7 +244,7 @@ func TestPullMissed_ReturnsItemsAfterLastSeen(t *testing.T) {
 
 func TestPullMissed_EmptyQueueReturnsNil(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	missed := q.PullMissed("vula:ed25519:IIII", time.Now().Add(-1*time.Hour))
+	missed := q.PullMissed("vulos:ed25519:IIII", time.Now().Add(-1*time.Hour))
 	if len(missed) != 0 {
 		t.Errorf("expected nil/empty, got %d items", len(missed))
 	}
@@ -252,15 +252,15 @@ func TestPullMissed_EmptyQueueReturnsNil(t *testing.T) {
 
 func TestPullMissed_OrderedOldestFirst(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:JJJJ"
+	peer := "vulos:ed25519:JJJJ"
 	base := time.Now().UTC().Add(-10 * time.Second)
 
 	// Insert 3 items with known QueuedAt values.
 	for i := 0; i < 3; i++ {
 		id := fmt.Sprintf("msg-ord-%02d", i)
-		env := newTestEnv(t, id, "vula:ed25519:AAAA", peer)
+		env := newTestEnv(t, id, "vulos:ed25519:AAAA", peer)
 		item := QueuedEnvelope{
-			PeerVulaID:  peer,
+			PeerVulosID: peer,
 			PeerServer:  "https://jane.example.com:8080",
 			Envelope:    env,
 			QueuedAt:    base.Add(time.Duration(i) * time.Second),
@@ -288,11 +288,11 @@ func TestPullMissed_OrderedOldestFirst(t *testing.T) {
 
 func TestUpdatePeerServer_UpdatesStoredItems(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	peer := "vula:ed25519:KKKK"
+	peer := "vulos:ed25519:KKKK"
 	oldServer := "https://old.example.com:8080"
 	newServer := "https://new.example.com:8080"
 
-	env := newTestEnv(t, "msg-server-01", "vula:ed25519:AAAA", peer)
+	env := newTestEnv(t, "msg-server-01", "vulos:ed25519:AAAA", peer)
 	if err := q.Enqueue(peer, oldServer, env); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestUpdatePeerServer_UpdatesStoredItems(t *testing.T) {
 
 func TestQueueDepth_ZeroForUnknownPeer(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	d := q.QueueDepth("vula:ed25519:ZZZZ")
+	d := q.QueueDepth("vulos:ed25519:ZZZZ")
 	if d != 0 {
 		t.Errorf("QueueDepth = %d, want 0", d)
 	}
@@ -331,9 +331,9 @@ func TestQueueDepth_ZeroForUnknownPeer(t *testing.T) {
 
 func TestBumpAttempt_ScheduleProgression(t *testing.T) {
 	q, _ := newTestOutboxQueue(t)
-	env := newTestEnv(t, "msg-bump", "vula:ed25519:AAAA", "vula:ed25519:BBBB")
+	env := newTestEnv(t, "msg-bump", "vulos:ed25519:AAAA", "vulos:ed25519:BBBB")
 	item := QueuedEnvelope{
-		PeerVulaID:  "vula:ed25519:BBBB",
+		PeerVulosID: "vulos:ed25519:BBBB",
 		PeerServer:  "https://bob.example.com:8080",
 		Envelope:    env,
 		QueuedAt:    time.Now().UTC(),
@@ -401,13 +401,13 @@ func TestWorkerDeliversOnRetry_Integration(t *testing.T) {
 		t.Fatalf("NewOutboxQueue: %v", err)
 	}
 
-	peer := "vula:ed25519:LLLL"
+	peer := "vulos:ed25519:LLLL"
 
 	// We write an item with NextAttempt in the past but PeerServer empty
 	// so the worker bumps it without crashing.
-	env := newTestEnv(t, "msg-worker-01", "vula:ed25519:AAAA", peer)
+	env := newTestEnv(t, "msg-worker-01", "vulos:ed25519:AAAA", peer)
 	item := QueuedEnvelope{
-		PeerVulaID:  peer,
+		PeerVulosID: peer,
 		PeerServer:  "", // no server — worker bumps, doesn't crash
 		Envelope:    env,
 		QueuedAt:    time.Now().UTC().Add(-5 * time.Second),
@@ -502,12 +502,12 @@ func TestConcurrentWorkers_NoDoubleDelivery(t *testing.T) {
 		t.Fatalf("NewOutboxQueue: %v", err)
 	}
 
-	peer := "vula:ed25519:CONC"
+	peer := "vulos:ed25519:CONC"
 	// Enqueue 10 items all immediately due.
 	for i := 0; i < 10; i++ {
-		env := newTestEnv(t, fmt.Sprintf("conc-%03d", i), "vula:ed25519:AAAA", peer)
+		env := newTestEnv(t, fmt.Sprintf("conc-%03d", i), "vulos:ed25519:AAAA", peer)
 		item := QueuedEnvelope{
-			PeerVulaID:  peer,
+			PeerVulosID: peer,
 			PeerServer:  "", // empty → bumped without delivery
 			Envelope:    env,
 			QueuedAt:    time.Now().UTC().Add(-5 * time.Second),
@@ -555,8 +555,8 @@ func TestCrashMidProcess_Recovers(t *testing.T) {
 		t.Fatalf("NewOutboxQueue: %v", err)
 	}
 
-	peer := "vula:ed25519:CRASH"
-	env := newTestEnv(t, "crash-msg-01", "vula:ed25519:AAAA", peer)
+	peer := "vulos:ed25519:CRASH"
+	env := newTestEnv(t, "crash-msg-01", "vulos:ed25519:AAAA", peer)
 
 	// Write a normal item.
 	if err := q.Enqueue(peer, "", env); err != nil {

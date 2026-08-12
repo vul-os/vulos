@@ -2,7 +2,7 @@
 
 Direct communication between Vulos instances. Every Vula instance is a server — if you're running Vula, you can receive. No relay infrastructure, no third-party accounts, no federation bureaucracy. Your OS is your inbox.
 
-> **Goal.** Make instances first-class peers. Ed25519 identity (`vula:ed25519:<base58>`), signed canonical-JSON envelopes, server-to-server HTTP, WebSocket fan-out to the user's browser. On top of that primitive: contacts + trust, messaging, media, voice/video (WebRTC, optional Pion SFU), Yjs collaboration, AirDrop-style Drop, and optional encrypted relays for offline delivery.
+> **Goal.** Make instances first-class peers. Ed25519 identity (`vulos:ed25519:<base58>`), signed canonical-JSON envelopes, server-to-server HTTP, WebSocket fan-out to the user's browser. On top of that primitive: contacts + trust, messaging, media, voice/video (WebRTC, optional Pion SFU), Yjs collaboration, AirDrop-style Drop, and optional encrypted relays for offline delivery.
 > **Non-goals.** Federation (no shared global namespace). Anonymous messaging. Hosting other people's data without their key.
 > **Status.** Everything in the 41-task PEER- track is done. The design here is the implementation that shipped, not a forward plan. Cross-references to it from other areas (notifications, files, presence) are still being wired up.
 
@@ -39,7 +39,7 @@ No open inboxes. You don't receive anything from anyone until you approve them.
 Every Vula instance generates a keypair on first boot. The public key is the cryptographic identity. Email verification through vulos.org makes it human-readable and trustworthy.
 
 ```
-Vula ID: vula:ed25519:<base58-encoded-public-key>
+Vula ID: vulos:ed25519:<base58-encoded-public-key>
 Display name: "Alice" (user-chosen, not unique)
 Verified email: alice@gmail.com (verified via vulos.org, optional but recommended)
 Slug: alice.vulos.org (from LANDING.md registration, if registered)
@@ -76,8 +76,8 @@ POST /api/peering/identity/confirm   → submit 6-digit code, receive verificati
 
 vulos.org API addition:
 ```
-POST /api/verify/send     → { email, vula_id } → sends 6-digit code
-POST /api/verify/confirm  → { email, code, vula_id } → returns signed verification token
+POST /api/verify/send     → { email, vulos_id } → sends 6-digit code
+POST /api/verify/confirm  → { email, code, vulos_id } → returns signed verification token
 GET  /api/verify/lookup   → { email } → returns Vula ID + server (if user opted into discovery)
 ```
 
@@ -87,7 +87,7 @@ Each user has a profile that travels with their Vula ID.
 
 ```json
 {
-  "vula_id": "vula:ed25519:5Hb7...",
+  "vulos_id": "vulos:ed25519:5Hb7...",
   "display_name": "Alice",
   "image": "sha256:abc123...",
   "bio": "Building things",
@@ -126,7 +126,7 @@ GET  /api/peering/profile              → own profile
 PUT  /api/peering/profile              → update profile fields
 POST /api/peering/profile/image        → upload/update avatar
 GET  /api/peering/profile/image        → serve avatar (respects visibility)
-GET  /api/peering/profile/:vula_id     → fetch a peer's profile (they control what you see)
+GET  /api/peering/profile/:vulos_id     → fetch a peer's profile (they control what you see)
 ```
 
 ### Trust Model
@@ -148,7 +148,7 @@ flowchart LR
 {
   "contacts": [
     {
-      "vula_id": "vula:ed25519:5Hb7...",
+      "vulos_id": "vulos:ed25519:5Hb7...",
       "display_name": "Bob",
       "server": "bob.vulos.org:8080",
       "approved_at": "2026-04-01T12:00:00Z",
@@ -191,8 +191,8 @@ flowchart TD
 ```json
 {
   "id": "uuid-v7",
-  "from": "vula:ed25519:5Hb7...",
-  "to": "vula:ed25519:9Kx2...",
+  "from": "vulos:ed25519:5Hb7...",
+  "to": "vulos:ed25519:9Kx2...",
   "timestamp": "2026-04-02T14:30:00Z",
   "type": "text",
   "body": "hey, check this out",
@@ -538,7 +538,7 @@ How do you find someone's Vula server to send them a contact request?
 Simplest. Share your Vula ID out-of-band (in person, text message, email, QR code).
 
 ```
-vula:ed25519:5Hb7...@alice.vulos.org:8080
+vulos:ed25519:5Hb7...@alice.vulos.org:8080
 ```
 
 The ID includes the server address. Scan a QR code, your Vula instance sends a contact request to that address.
@@ -549,7 +549,7 @@ If Alice has `alice.vulos.org` pointing to her Vula instance:
 
 ```
 GET https://alice.vulos.org/.well-known/vula-id
-→ { "vula_id": "vula:ed25519:5Hb7...", "display_name": "Alice" }
+→ { "vulos_id": "vulos:ed25519:5Hb7...", "display_name": "Alice" }
 ```
 
 Standard well-known URI. Type a domain, discover the identity.
@@ -583,7 +583,7 @@ Any Vula server on the local network advertises itself via mDNS (multicast DNS),
 ```
 Vula server broadcasts:
   _vula-drop._tcp.local  →  alice-vula.local:8080
-  TXT: vula_id=vula:ed25519:5Hb7... display_name=Alice img=<hash>
+  TXT: vulos_id=vulos:ed25519:5Hb7... display_name=Alice img=<hash>
 ```
 
 Every Vula instance on the same network sees this. No internet, no central server, no pairing. Works in offices, homes, coffee shops — anywhere devices share a network.
@@ -827,11 +827,11 @@ Automatic, not manual. Each contact relationship can designate relay peers:
 
 ```json
 {
-  "vula_id": "vula:ed25519:5Hb7...",
+  "vulos_id": "vulos:ed25519:5Hb7...",
   "display_name": "Bob",
   "relay_peers": [
     {
-      "vula_id": "vula:ed25519:7Cx3...",
+      "vulos_id": "vulos:ed25519:7Cx3...",
       "display_name": "Carol",
       "server": "carol.vulos.org:8080",
       "capacity_mb": 100,
@@ -877,7 +877,7 @@ The relay operator can't tamper even if they want to. The sender verifies the TE
 
 ```
 POST /api/peering/relay/deposit
-  Body: { to: <vula_id>, blob: <encrypted>, ttl: 72h, signature: <sender_sig> }
+  Body: { to: <vulos_id>, blob: <encrypted>, ttl: 72h, signature: <sender_sig> }
   → Relay stores blob, indexed by recipient Vula ID
 
 GET /api/peering/relay/pickup
@@ -933,7 +933,7 @@ Alice's Vula ID resolves to multiple endpoints:
 ```json
 GET https://alice.vulos.org/.well-known/vula-id
 {
-  "vula_id": "vula:ed25519:5Hb7...",
+  "vulos_id": "vulos:ed25519:5Hb7...",
   "display_name": "Alice",
   "endpoints": [
     { "server": "home.alice.vulos.org:8080", "priority": 1 },
@@ -994,8 +994,8 @@ Each entry is signed with Alice's Ed25519 key — verifiable by anyone who knows
 ```json
 {
   "id": "uuid-v7",
-  "feed_id": "vula:ed25519:5Hb7.../blog",
-  "author": "vula:ed25519:5Hb7...",
+  "feed_id": "vulos:ed25519:5Hb7.../blog",
+  "author": "vulos:ed25519:5Hb7...",
   "sequence": 42,
   "timestamp": "2026-04-02T14:30:00Z",
   "type": "post",
@@ -1108,9 +1108,9 @@ Each group member maintains a short list of "gossip peers" — other members the
 {
   "group_id": "uuid-v7",
   "gossip_peers": [
-    { "vula_id": "vula:ed25519:5Hb7...", "last_seen_seq": 1042 },
-    { "vula_id": "vula:ed25519:9Kx2...", "last_seen_seq": 1041 },
-    { "vula_id": "vula:ed25519:3Mn8...", "last_seen_seq": 1042 }
+    { "vulos_id": "vulos:ed25519:5Hb7...", "last_seen_seq": 1042 },
+    { "vulos_id": "vulos:ed25519:9Kx2...", "last_seen_seq": 1041 },
+    { "vulos_id": "vulos:ed25519:3Mn8...", "last_seen_seq": 1042 }
   ]
 }
 ```
@@ -1221,7 +1221,7 @@ Each Vula instance publishes an MLS key package (a bundle of public keys for joi
 
 ```json
 {
-  "vula_id": "vula:ed25519:5Hb7...",
+  "vulos_id": "vulos:ed25519:5Hb7...",
   "mls_key_package": "<base64-encoded-mls-key-package>",
   "cipher_suite": "MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519",
   "created_at": "2026-04-02T00:00:00Z"
@@ -1232,7 +1232,7 @@ Key packages are pre-published so you can be added to a group even while offline
 
 ```
 POST /api/peering/mls/key-packages          → upload new key packages (batch)
-GET  /api/peering/mls/key-packages/:vula_id → fetch a peer's key package (consumes one)
+GET  /api/peering/mls/key-packages/:vulos_id → fetch a peer's key package (consumes one)
 ```
 
 ### Group Lifecycle
@@ -1304,7 +1304,7 @@ An opt-in mode for group conversations. The group creator or members can enable 
   "type": "text",
   "body": "I think we should reconsider this approach",
   "ring_signature": "<ring-signature-over-group-members>",
-  "ring_members": ["vula:ed25519:5Hb7...", "vula:ed25519:9Kx2...", ...],
+  "ring_members": ["vulos:ed25519:5Hb7...", "vulos:ed25519:9Kx2...", ...],
   "signature": null
 }
 ```

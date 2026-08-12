@@ -9,13 +9,13 @@
 // self-authorize. VerifyQuorum is the single chokepoint that structurally
 // guarantees this. It enforces, in order of importance:
 //
-//  1. SELF-EXCLUSION — any voucher cert whose VoucherVulaID == SubjectID is
+//  1. SELF-EXCLUSION — any voucher cert whose VoucherVulosID == SubjectID is
 //     rejected, even when its signature is perfectly valid. A compromised box
 //     cannot vouch for itself, so it can never reach quorum on its own.
 //  2. DISTINCT, VERIFIED, ROSTERED counting — only vouchers that (a) are members
 //     of THIS box's own verified roster, (b) verify against that roster's key for
 //     the voucher, (c) are not revoked, and (d) are DISTINCT (deduped by
-//     VoucherVulaID) count toward quorum.
+//     VoucherVulosID) count toward quorum.
 //  3. THRESHOLD FLOOR — distinct_valid must be >= max(threshold, 2). At least two
 //     OTHER boxes must vouch; a threshold below 2 is silently raised to 2.
 //
@@ -116,14 +116,14 @@ type VouchCert struct {
 	// authorized (e.g. the new device pubkey, the ssh CA request, the recovery
 	// target key). Binding to it stops a cert for one payload authorizing another.
 	PayloadHash string `json:"payload_hash"`
-	// VoucherVulaID is the identity of the vouching box (the signer).
-	VoucherVulaID string `json:"voucher_vula_id"`
+	// VoucherVulosID is the identity of the vouching box (the signer).
+	VoucherVulosID string `json:"voucher_vulos_id"`
 	// IssuedAt is the RFC3339 UTC issue time, checked against the freshness window.
 	IssuedAt string `json:"issued_at"`
 	// Nonce is random per cert; it defends against cross-protocol confusion and
 	// makes otherwise-identical certs distinguishable on the wire.
 	Nonce string `json:"nonce"`
-	// Sig is the base64url (raw) Ed25519 signature by VoucherVulaID's key over the
+	// Sig is the base64url (raw) Ed25519 signature by VoucherVulosID's key over the
 	// canonical bytes of this cert with Sig empty.
 	Sig string `json:"sig"`
 }
@@ -135,22 +135,22 @@ type VouchCert struct {
 // real multiinstance.Registry and so VerifyQuorum reuses the box's OWN roster (a
 // compromised peer cannot fabricate members of someone else's roster).
 //
-// IsRostered returns the roster's recorded Ed25519 public key for vulaID and
+// IsRostered returns the roster's recorded Ed25519 public key for vulosID and
 // whether it is a member. VerifyQuorum verifies the cert signature against THIS
 // key — never the key self-asserted by the cert — which is the CRDT-QUORUM-01
 // discipline: the roster, not the observation, is the source of truth.
 type Roster interface {
-	IsRostered(vulaID string) (pubKey ed25519.PublicKey, ok bool)
+	IsRostered(vulosID string) (pubKey ed25519.PublicKey, ok bool)
 }
 
 // RevocationOracle is an OPTIONAL capability a Roster may also implement to
-// exclude revoked voucher identities (mirroring peering's isVulaIDRevoked /
+// exclude revoked voucher identities (mirroring peering's isVulosIDRevoked /
 // LifecycleStore.IsRevoked). When the Roster passed to VerifyQuorum implements
 // it, a voucher for which IsRevoked reports true is dropped and does not count.
 // When the Roster does not implement it, revocation exclusion is skipped (the
 // roster is assumed to already omit revoked members).
 type RevocationOracle interface {
-	IsRevoked(vulaID string) bool
+	IsRevoked(vulosID string) bool
 }
 
 // ─── Result / audit ────────────────────────────────────────────────────────────
@@ -175,9 +175,9 @@ const (
 
 // DroppedVouch records why one cert did not count toward quorum.
 type DroppedVouch struct {
-	Index         int    // position in the input certs slice
-	VoucherVulaID string // as claimed by the cert (may be untrusted)
-	Reason        string // one of the Drop* constants
+	Index          int    // position in the input certs slice
+	VoucherVulosID string // as claimed by the cert (may be untrusted)
+	Reason         string // one of the Drop* constants
 }
 
 // Result is the full, auditable outcome of a VerifyQuorum evaluation.
@@ -219,7 +219,7 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 	if !validAction(action) {
 		return Result{}, fmt.Errorf("%w: unknown action %q", ErrInvalidRequest, action)
 	}
-	if _, err := peering.PublicKeyForVulaID(subjectID); err != nil {
+	if _, err := peering.PublicKeyForVulosID(subjectID); err != nil {
 		return Result{}, fmt.Errorf("%w: subject id: %v", ErrInvalidRequest, err)
 	}
 	if len(payloadHash) == 0 {
@@ -247,7 +247,7 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 
 	for i, c := range certs {
 		drop := func(reason string) {
-			res.Dropped = append(res.Dropped, DroppedVouch{Index: i, VoucherVulaID: c.VoucherVulaID, Reason: reason})
+			res.Dropped = append(res.Dropped, DroppedVouch{Index: i, VoucherVulosID: c.VoucherVulosID, Reason: reason})
 		}
 
 		// Structural / binding checks first. These are cheap and their reasons are
@@ -257,14 +257,14 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 			drop(DropWrongType)
 			continue
 		}
-		if c.VoucherVulaID == "" || c.SubjectID == "" {
+		if c.VoucherVulosID == "" || c.SubjectID == "" {
 			drop(DropMalformed)
 			continue
 		}
 		// HARD RULE #1 — SELF-EXCLUSION. A voucher may never be the subject, even
 		// with a perfectly valid signature. Checked BEFORE roster/sig so that a
 		// compromised box holding its own valid key can never self-authorize.
-		if c.VoucherVulaID == subjectID {
+		if c.VoucherVulosID == subjectID {
 			drop(DropSelfVouch)
 			continue
 		}
@@ -303,7 +303,7 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 		// ROSTER MEMBERSHIP (CRDT-QUORUM-01): the voucher must be a member of THIS
 		// box's own verified roster. A self-asserted identity that is not rostered
 		// cannot count — a compromised peer cannot fabricate roster members.
-		pub, ok := roster.IsRostered(c.VoucherVulaID)
+		pub, ok := roster.IsRostered(c.VoucherVulosID)
 		if !ok {
 			drop(DropUnrostered)
 			continue
@@ -311,14 +311,14 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 		// The roster's key for the voucher must match the key embedded in the
 		// voucher's Vula ID; otherwise the roster and the claimed identity disagree
 		// and we cannot safely attribute the cert. Fail closed.
-		embedded, err := peering.PublicKeyForVulaID(c.VoucherVulaID)
+		embedded, err := peering.PublicKeyForVulosID(c.VoucherVulosID)
 		if err != nil || !bytes.Equal(embedded, pub) {
 			drop(DropRosterKeyMismatch)
 			continue
 		}
 
 		// Revocation exclusion (optional oracle). A revoked voucher never counts.
-		if revoker != nil && revoker.IsRevoked(c.VoucherVulaID) {
+		if revoker != nil && revoker.IsRevoked(c.VoucherVulosID) {
 			drop(DropRevoked)
 			continue
 		}
@@ -334,12 +334,12 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 		// DISTINCT counting: N certs from the SAME voucher count as one. Only the
 		// first fully-valid cert from a given voucher is counted; the rest are
 		// dropped as duplicates.
-		if seen[c.VoucherVulaID] {
+		if seen[c.VoucherVulosID] {
 			drop(DropDuplicate)
 			continue
 		}
-		seen[c.VoucherVulaID] = true
-		res.Counted = append(res.Counted, c.VoucherVulaID)
+		seen[c.VoucherVulosID] = true
+		res.Counted = append(res.Counted, c.VoucherVulosID)
 	}
 
 	res.DistinctValid = len(res.Counted)
@@ -353,7 +353,7 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 // ─── Signer helper ─────────────────────────────────────────────────────────────
 
 // NewVouchCert builds and signs a fleet-vouch cert with voucherPriv, for
-// subjectID over payloadHash. voucherPriv's public key becomes VoucherVulaID.
+// subjectID over payloadHash. voucherPriv's public key becomes VoucherVulosID.
 //
 // NewVouchCert does NOT itself refuse a self-vouch (voucher == subject): the hard
 // rule is enforced at the chokepoint (VerifyQuorum), which rejects a self-vouch
@@ -367,21 +367,21 @@ func NewVouchCert(voucherPriv ed25519.PrivateKey, action, subjectID string, payl
 	if !validAction(action) {
 		return nil, fmt.Errorf("fleetid: unknown action %q", action)
 	}
-	if _, err := peering.PublicKeyForVulaID(subjectID); err != nil {
+	if _, err := peering.PublicKeyForVulosID(subjectID); err != nil {
 		return nil, fmt.Errorf("fleetid: subject id: %w", err)
 	}
 	if len(payloadHash) == 0 {
 		return nil, errors.New("fleetid: empty payload hash")
 	}
-	voucherVulaID := peering.EncodeVulaID(voucherPriv.Public().(ed25519.PublicKey))
+	voucherVulosID := peering.EncodeVulosID(voucherPriv.Public().(ed25519.PublicKey))
 	c := &VouchCert{
-		Type:          VouchCertType,
-		Action:        action,
-		SubjectID:     subjectID,
-		PayloadHash:   base64.RawURLEncoding.EncodeToString(payloadHash),
-		VoucherVulaID: voucherVulaID,
-		IssuedAt:      now.UTC().Format(time.RFC3339),
-		Nonce:         nonce(),
+		Type:           VouchCertType,
+		Action:         action,
+		SubjectID:      subjectID,
+		PayloadHash:    base64.RawURLEncoding.EncodeToString(payloadHash),
+		VoucherVulosID: voucherVulosID,
+		IssuedAt:       now.UTC().Format(time.RFC3339),
+		Nonce:          nonce(),
 	}
 	sig, err := signCanonical(c, voucherPriv)
 	if err != nil {

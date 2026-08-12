@@ -18,8 +18,8 @@
 //
 //	{
 //	  "id":        "<string>",         // UUIDv7 or similar
-//	  "from":      "<vula_id>",        // sender's Vula ID
-//	  "to":        "<vula_id>",        // recipient Vula ID (empty for feed entries)
+//	  "from":      "<vulos_id>",        // sender's Vula ID
+//	  "to":        "<vulos_id>",        // recipient Vula ID (empty for feed entries)
 //	  "type":      "<string>",         // message|contact-request|signaling|feed
 //	  "timestamp": "<RFC3339>",
 //	  "payload":   <JSON object>,      // type-specific body
@@ -29,7 +29,7 @@
 // Usage
 //
 //	// Sign
-//	env, err := peering.NewEnvelope("msg-id", fromVulaID, toVulaID, peering.TypeMessage, body)
+//	env, err := peering.NewEnvelope("msg-id", fromVulosID, toVulosID, peering.TypeMessage, body)
 //	if err != nil { ... }
 //	if err := env.Sign(priv); err != nil { ... }
 //	wire, _ := json.Marshal(env)
@@ -75,7 +75,7 @@ type Envelope struct {
 	// ID uniquely identifies this message (UUIDv7 recommended).
 	ID string `json:"id"`
 
-	// From is the sender's Vula ID ("vula:ed25519:<base58>").
+	// From is the sender's Vula ID ("vulos:ed25519:<base58>").
 	From string `json:"from"`
 
 	// To is the recipient's Vula ID. Empty for feed entries or broadcasts.
@@ -260,7 +260,7 @@ func (e *Envelope) Sign(priv ed25519.PrivateKey) error {
 // Verify checks the envelope's signature.
 //
 // It derives the sender's public key from e.From (a Vula ID of the form
-// "vula:ed25519:<base58>"), recomputes the canonical bytes (signature field
+// "vulos:ed25519:<base58>"), recomputes the canonical bytes (signature field
 // excluded), and confirms that e.Signature is a valid Ed25519 signature over
 // those bytes.
 //
@@ -271,7 +271,7 @@ func (e *Envelope) Verify() error {
 		return errors.New("envelope verify: signature is absent")
 	}
 
-	pub, err := decodeVulaID(e.From)
+	pub, err := decodeVulosID(e.From)
 	if err != nil {
 		return fmt.Errorf("envelope verify: %w", err)
 	}

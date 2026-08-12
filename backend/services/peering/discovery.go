@@ -37,8 +37,8 @@ const discoveryHTTPTimeout = 10 * time.Second
 // discovery endpoints. Both fields are always populated when a match is
 // found; an empty slice or nil pointer signals "no matches" / "not found".
 type DiscoveryResult struct {
-	// VulaID is the cryptographic identity string ("vula:ed25519:<base58-pubkey>").
-	VulaID string `json:"vula_id"`
+	// VulosID is the cryptographic identity string ("vulos:ed25519:<base58-pubkey>").
+	VulosID string `json:"vulos_id"`
 	// Server is the reachable address of the peer's Vula instance,
 	// e.g. "alice.vulos.org" or "192.0.2.1:8080".
 	Server string `json:"server"`
@@ -128,7 +128,7 @@ func (ds *DiscoveryService) DiscoveryLookupByEmail(ctx context.Context, email st
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("discovery: decode lookup response: %w", err)
 	}
-	if result.VulaID == "" {
+	if result.VulosID == "" {
 		// Server returned 200 with no usable data — treat as not found.
 		return nil, nil
 	}

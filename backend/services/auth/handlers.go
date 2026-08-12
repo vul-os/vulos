@@ -151,7 +151,7 @@ var publicPaths = map[string]bool{
 	// create/publish) are deliberately OMITTED so they stay OS-session-authed.
 	"/.well-known/vula-id":               true, // PEER-12: public self-certifying identity (public fields only; signature-verifiable by the embedded key)
 	"/api/peering/relay/deposit":         true, // PEER-38: store-and-forward deposit (Ed25519-signed request + mutual-trust contact check in the handler)
-	"/api/peering/relay/pickup":          true, // PEER-38: store-and-forward pickup (Ed25519-signed "<vula_id>.<ts>" Authorization header)
+	"/api/peering/relay/pickup":          true, // PEER-38: store-and-forward pickup (Ed25519-signed "<vulos_id>.<ts>" Authorization header)
 	"/api/peering/relay/ack":             true, // PEER-38: store-and-forward ack (recipient-authenticated, deletes only its own blobs)
 	"/api/peering/relay/attest":          true, // relay attestation evidence document (public, read-only)
 	"/api/peering/prekeys/claim":         true, // X3DH forward secrecy: OPK claim (public by design — the signed prekey signature is the authorization; revoked identities fail closed)

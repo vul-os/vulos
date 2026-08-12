@@ -16,22 +16,22 @@ func TestPeerShareSigner_RejectsRevoked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("genkey: %v", err)
 	}
-	vulaID := peering.EncodeVulaID(pub)
+	vulosID := peering.EncodeVulosID(pub)
 
-	signer := peerShareSigner{selfID: vulaID, priv: priv}
+	signer := peerShareSigner{selfID: vulosID, priv: priv}
 	msg := []byte("files-capability-proof")
 	sig := signer.Sign(msg)
 
 	// Not revoked → accepted.
 	peering.SetRevocationChecker(func(string) bool { return false })
 	t.Cleanup(func() { peering.SetRevocationChecker(nil) })
-	if err := signer.Verify(vulaID, msg, sig); err != nil {
+	if err := signer.Verify(vulosID, msg, sig); err != nil {
 		t.Fatalf("unrevoked capability proof should verify: %v", err)
 	}
 
 	// Revoked → rejected even though the Ed25519 signature is still valid.
-	peering.SetRevocationChecker(func(v string) bool { return v == vulaID })
-	if err := signer.Verify(vulaID, msg, sig); err == nil {
+	peering.SetRevocationChecker(func(v string) bool { return v == vulosID })
+	if err := signer.Verify(vulosID, msg, sig); err == nil {
 		t.Fatal("revoked signer's capability proof must be rejected")
 	}
 }

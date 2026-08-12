@@ -29,7 +29,7 @@ import (
 //   - A LOCAL OS user (same box / control plane) → CO-CLOUD ACL grant path.
 //   - Anyone else resolvable via the vulos.org directory (Contract 2) → REMOTE
 //     peershare. For an account-only user the directory returns the cell's
-//     cloud-home VulaID + the cell server.
+//     cloud-home VulosID + the cell server.
 type osShareResolver struct {
 	auth      *auth.Store
 	directory *peering.DiscoveryService
@@ -48,15 +48,15 @@ func (r *osShareResolver) ResolveRecipient(ctx context.Context, email string) (f
 			return files.ShareRecipient{PrincipalID: u.ID, DisplayName: name}, nil
 		}
 	}
-	// 2) Remote: resolve {VulaID, Server} via the directory.
+	// 2) Remote: resolve {VulosID, Server} via the directory.
 	if r.directory != nil {
 		res, err := r.directory.DiscoveryLookupByEmail(ctx, email)
 		if err != nil {
 			return files.ShareRecipient{}, err
 		}
-		if res != nil && res.VulaID != "" {
+		if res != nil && res.VulosID != "" {
 			return files.ShareRecipient{
-				VulaID:        res.VulaID,
+				VulosID:       res.VulosID,
 				Server:        res.Server,
 				DisplayName:   res.DisplayName,
 				ContentPubKey: res.ContentPubKey,
@@ -74,14 +74,14 @@ func (r *osShareResolver) ResolveRecipient(ctx context.Context, email string) (f
 //
 //	POST <server>/api/files/peer/inbound
 //	Content-Type: application/json
-//	{ "recipient": "<recipient VulaID>", "link": "<base64url capability token>",
+//	{ "recipient": "<recipient VulosID>", "link": "<base64url capability token>",
 //	  "capability": { …signed Capability… } }
 //
 // A 2xx response means the intake accepted the capability for redemption.
 //
 // SSRF-SHARE-01 / same class as SSRF-FILES-01: `server` is directory-resolved
 // (or poisoned) and attacker-influenceable — the directory only vouches for
-// email→{VulaID,server}, not that the server is a benign public host. A bare
+// email→{VulosID,server}, not that the server is a benign public host. A bare
 // http.Client would re-resolve the hostname at dial time (so a rebinding DNS
 // name that looked public a moment earlier reaches an internal/metadata IP at
 // connect) and would follow HTTP 3xx to an unvalidated target. This is a

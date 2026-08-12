@@ -24,7 +24,7 @@ func TestRecoveryAnchor_LiveSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewLifecycleStore: %v", err)
 	}
-	if store.AnchorVulaID() != "" {
+	if store.AnchorVulosID() != "" {
 		t.Fatal("anchor should start empty (recovery not yet enabled)")
 	}
 
@@ -36,8 +36,8 @@ func TestRecoveryAnchor_LiveSeam(t *testing.T) {
 	if anchorID == "" {
 		t.Fatal("anchor id must be non-empty after install (recovery ACTIVE)")
 	}
-	if store.AnchorVulaID() != anchorID {
-		t.Fatalf("store anchor = %q, want %q", store.AnchorVulaID(), anchorID)
+	if store.AnchorVulosID() != anchorID {
+		t.Fatalf("store anchor = %q, want %q", store.AnchorVulosID(), anchorID)
 	}
 
 	// Persisted to disk and reloadable on next boot.
@@ -51,23 +51,23 @@ func TestRecoveryAnchor_LiveSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen store: %v", err)
 	}
-	if reloaded.AnchorVulaID() != anchorID {
-		t.Fatalf("reloaded anchor = %q, want %q", reloaded.AnchorVulaID(), anchorID)
+	if reloaded.AnchorVulosID() != anchorID {
+		t.Fatalf("reloaded anchor = %q, want %q", reloaded.AnchorVulosID(), anchorID)
 	}
 
 	// ── Peer side: follow recovery after key loss ───────────────────────────
 	// Re-derive the anchor PRIVATE key from the seed (this is what the user does
 	// off-box from their recovery kit) and mint a recovery cert onto a new key.
-	anchorPriv, anchorVulaID, err := DeriveRecoveryAnchor(seed)
+	anchorPriv, anchorVulosID, err := DeriveRecoveryAnchor(seed)
 	if err != nil {
 		t.Fatalf("DeriveRecoveryAnchor: %v", err)
 	}
-	if anchorVulaID != anchorID {
-		t.Fatalf("anchor id mismatch: derived %q vs persisted %q", anchorVulaID, anchorID)
+	if anchorVulosID != anchorID {
+		t.Fatalf("anchor id mismatch: derived %q vs persisted %q", anchorVulosID, anchorID)
 	}
 
 	_, newID := pkIdentity(t) // the recovered identity's brand-new key
-	rec, err := NewRecoveryCert(anchorPriv, rootID, newID, anchorVulaID)
+	rec, err := NewRecoveryCert(anchorPriv, rootID, newID, anchorVulosID)
 	if err != nil {
 		t.Fatalf("NewRecoveryCert: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRecoveryAnchor_LiveSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("peer store: %v", err)
 	}
-	if err := peer.PinAnchor(rootID, anchorVulaID); err != nil {
+	if err := peer.PinAnchor(rootID, anchorVulosID); err != nil {
 		t.Fatalf("PinAnchor: %v", err)
 	}
 	chain := []LifecycleLink{{Recovery: rec}}

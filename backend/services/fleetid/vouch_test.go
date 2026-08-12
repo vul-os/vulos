@@ -16,8 +16,8 @@ import (
 
 // box is a test identity: an Ed25519 keypair and its Vula ID.
 type box struct {
-	priv   ed25519.PrivateKey
-	vulaID string
+	priv    ed25519.PrivateKey
+	vulosID string
 }
 
 func newBox(t *testing.T) box {
@@ -26,7 +26,7 @@ func newBox(t *testing.T) box {
 	if err != nil {
 		t.Fatalf("keygen: %v", err)
 	}
-	return box{priv: priv, vulaID: peering.EncodeVulaID(pub)}
+	return box{priv: priv, vulosID: peering.EncodeVulosID(pub)}
 }
 
 // testRoster is THIS box's own verified roster. It maps Vula ID → rostered key
@@ -39,17 +39,17 @@ type testRoster struct {
 func newRoster(boxes ...box) *testRoster {
 	r := &testRoster{members: map[string]ed25519.PublicKey{}, revoked: map[string]bool{}}
 	for _, b := range boxes {
-		r.members[b.vulaID] = b.priv.Public().(ed25519.PublicKey)
+		r.members[b.vulosID] = b.priv.Public().(ed25519.PublicKey)
 	}
 	return r
 }
 
-func (r *testRoster) IsRostered(vulaID string) (ed25519.PublicKey, bool) {
-	k, ok := r.members[vulaID]
+func (r *testRoster) IsRostered(vulosID string) (ed25519.PublicKey, bool) {
+	k, ok := r.members[vulosID]
 	return k, ok
 }
 
-func (r *testRoster) IsRevoked(vulaID string) bool { return r.revoked[vulaID] }
+func (r *testRoster) IsRevoked(vulosID string) bool { return r.revoked[vulosID] }
 
 func hash(s string) []byte {
 	h := sha256.Sum256([]byte(s))
@@ -76,12 +76,12 @@ func TestHappyPath_ThreeDistinctVouchers_Pass(t *testing.T) {
 	pl := hash("enroll-device-XYZ")
 
 	certs := []VouchCert{
-		vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now),
-		vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now),
-		vouch(t, v3, ActionDeviceEnroll, subject.vulaID, pl, now),
+		vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now),
+		vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now),
+		vouch(t, v3, ActionDeviceEnroll, subject.vulosID, pl, now),
 	}
 
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, certs, roster, 2, now)
 	if err != nil {
 		t.Fatalf("expected pass, got err: %v", err)
 	}
@@ -106,13 +106,13 @@ func TestSelfVouch_RejectedEvenWithValidSignature(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("ssh-backdoor-request")
 
-	selfCert := vouch(t, subject, ActionSSHRecovery, subject.vulaID, pl, now)
+	selfCert := vouch(t, subject, ActionSSHRecovery, subject.vulosID, pl, now)
 	// Sanity: the signature really is valid against the subject's own key.
 	if err := verifyCanonical(selfCert, selfCert.Sig, subject.priv.Public().(ed25519.PublicKey)); err != nil {
 		t.Fatalf("precondition: self-cert signature should be valid: %v", err)
 	}
 
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl, []VouchCert{selfCert}, roster, 2, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl, []VouchCert{selfCert}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("self-vouch must not reach quorum; got err=%v", err)
 	}
@@ -133,10 +133,10 @@ func TestSelfVouch_CannotTipQuorum(t *testing.T) {
 	pl := hash("identity-recovery")
 
 	certs := []VouchCert{
-		vouch(t, v1, ActionIdentityRecovery, subject.vulaID, pl, now),
-		vouch(t, subject, ActionIdentityRecovery, subject.vulaID, pl, now), // self
+		vouch(t, v1, ActionIdentityRecovery, subject.vulosID, pl, now),
+		vouch(t, subject, ActionIdentityRecovery, subject.vulosID, pl, now), // self
 	}
-	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, pl, certs, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("self-vouch must not tip quorum; got err=%v", err)
 	}
@@ -154,10 +154,10 @@ func TestIdenticalCertsFromOneVoucher_CountAsOne(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("payload")
 
-	c1 := vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now)
+	c1 := vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now)
 	certs := []VouchCert{c1, c1, c1, c1, c1} // five identical from v1
 
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, certs, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("5 identical from ONE voucher must count as 1 (< threshold 2); got err=%v", err)
 	}
@@ -175,8 +175,8 @@ func TestIdenticalCertsFromOneVoucher_CountAsOne(t *testing.T) {
 	}
 
 	// Distinct second voucher then tips it to 2.
-	certs = append(certs, vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now))
-	res, err = VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, certs, roster, 2, now)
+	certs = append(certs, vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now))
+	res, err = VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, certs, roster, 2, now)
 	if err != nil || !res.OK || res.DistinctValid != 2 {
 		t.Fatalf("two distinct vouchers should pass; OK=%v distinct=%d err=%v", res.OK, res.DistinctValid, err)
 	}
@@ -193,10 +193,10 @@ func TestUnrosteredVoucher_Dropped(t *testing.T) {
 	pl := hash("p")
 
 	certs := []VouchCert{
-		vouch(t, v1, ActionSSHRecovery, subject.vulaID, pl, now),
-		vouch(t, outsider, ActionSSHRecovery, subject.vulaID, pl, now),
+		vouch(t, v1, ActionSSHRecovery, subject.vulosID, pl, now),
+		vouch(t, outsider, ActionSSHRecovery, subject.vulosID, pl, now),
 	}
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl, certs, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("unrostered voucher must not count; got err=%v", err)
 	}
@@ -212,15 +212,15 @@ func TestRevokedVoucher_Dropped(t *testing.T) {
 	subject := newBox(t)
 	v1, v2 := newBox(t), newBox(t)
 	roster := newRoster(v1, v2)
-	roster.revoked[v2.vulaID] = true // v2 revoked
+	roster.revoked[v2.vulosID] = true // v2 revoked
 	now := time.Now().UTC()
 	pl := hash("p")
 
 	certs := []VouchCert{
-		vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now),
-		vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now),
+		vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now),
+		vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now),
 	}
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, certs, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("revoked voucher must not count; got err=%v", err)
 	}
@@ -236,14 +236,14 @@ func TestBadSignature_Dropped(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("p")
 
-	c1 := vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now)
-	tampered := vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now)
+	c1 := vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now)
+	tampered := vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now)
 	// Flip the signature bytes.
 	raw, _ := base64.RawURLEncoding.DecodeString(tampered.Sig)
 	raw[0] ^= 0xFF
 	tampered.Sig = base64.RawURLEncoding.EncodeToString(raw)
 
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, []VouchCert{c1, tampered}, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, []VouchCert{c1, tampered}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("bad signature must not count; got err=%v", err)
 	}
@@ -261,14 +261,14 @@ func TestForgedRosterKeyMismatch_Dropped(t *testing.T) {
 	// Roster maps v1's Vula ID to a totally different public key.
 	other := newBox(t)
 	roster := &testRoster{
-		members: map[string]ed25519.PublicKey{v1.vulaID: other.priv.Public().(ed25519.PublicKey)},
+		members: map[string]ed25519.PublicKey{v1.vulosID: other.priv.Public().(ed25519.PublicKey)},
 		revoked: map[string]bool{},
 	}
 	now := time.Now().UTC()
 	pl := hash("p")
-	c := vouch(t, v1, ActionSSHRecovery, subject.vulaID, pl, now)
+	c := vouch(t, v1, ActionSSHRecovery, subject.vulosID, pl, now)
 
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl, []VouchCert{c}, roster, 2, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl, []VouchCert{c}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("roster-key mismatch must not count; got err=%v", err)
 	}
@@ -288,10 +288,10 @@ func TestWrongAction_Dropped(t *testing.T) {
 
 	// v2's cert is for a DIFFERENT action than the request.
 	certs := []VouchCert{
-		vouch(t, v1, ActionIdentityRecovery, subject.vulaID, pl, now),
-		vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now),
+		vouch(t, v1, ActionIdentityRecovery, subject.vulosID, pl, now),
+		vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now),
 	}
-	res, _ := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, pl, certs, roster, 2, now)
+	res, _ := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, pl, certs, roster, 2, now)
 	if res.DistinctValid != 1 || !hasDrop(res, DropWrongAction) {
 		t.Fatalf("wrong-action cert must not count; distinct=%d dropped=%v", res.DistinctValid, res.Dropped)
 	}
@@ -309,10 +309,10 @@ func TestWrongSubject_Dropped_ReplayForDifferentSubjectFails(t *testing.T) {
 	// Both certs were legitimately issued for subjectB; attacker replays them to
 	// authorize subjectA.
 	replayed := []VouchCert{
-		vouch(t, v1, ActionSSHRecovery, subjectB.vulaID, pl, now),
-		vouch(t, v2, ActionSSHRecovery, subjectB.vulaID, pl, now),
+		vouch(t, v1, ActionSSHRecovery, subjectB.vulosID, pl, now),
+		vouch(t, v2, ActionSSHRecovery, subjectB.vulosID, pl, now),
 	}
-	res, err := VerifyQuorum(ActionSSHRecovery, subjectA.vulaID, pl, replayed, roster, 2, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subjectA.vulosID, pl, replayed, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("replay for different subject must fail; got err=%v", err)
 	}
@@ -333,10 +333,10 @@ func TestWrongPayloadHash_Dropped(t *testing.T) {
 	plOther := hash("attacker-payload")
 
 	certs := []VouchCert{
-		vouch(t, v1, ActionDeviceEnroll, subject.vulaID, plWant, now),
-		vouch(t, v2, ActionDeviceEnroll, subject.vulaID, plOther, now), // bound to other payload
+		vouch(t, v1, ActionDeviceEnroll, subject.vulosID, plWant, now),
+		vouch(t, v2, ActionDeviceEnroll, subject.vulosID, plOther, now), // bound to other payload
 	}
-	res, _ := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, plWant, certs, roster, 2, now)
+	res, _ := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, plWant, certs, roster, 2, now)
 	if res.DistinctValid != 1 || !hasDrop(res, DropWrongPayload) {
 		t.Fatalf("wrong-payload cert must not count; distinct=%d dropped=%v", res.DistinctValid, res.Dropped)
 	}
@@ -351,10 +351,10 @@ func TestExpiredVouch_Dropped(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("p")
 
-	stale := vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now.Add(-VouchMaxAge-time.Minute))
-	fresh := vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now)
+	stale := vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now.Add(-VouchMaxAge-time.Minute))
+	fresh := vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now)
 
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, []VouchCert{stale, fresh}, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, []VouchCert{stale, fresh}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("expired vouch must not count; got err=%v", err)
 	}
@@ -370,8 +370,8 @@ func TestFutureVouch_Dropped(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("p")
 
-	future := vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now.Add(ClockSkew+time.Minute))
-	res, _ := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, []VouchCert{future}, roster, 2, now)
+	future := vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now.Add(ClockSkew+time.Minute))
+	res, _ := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, []VouchCert{future}, roster, 2, now)
 	if !hasDrop(res, DropNotYetValid) {
 		t.Fatalf("future-dated vouch must be dropped as not-yet-valid; got %v", res.Dropped)
 	}
@@ -387,16 +387,16 @@ func TestThresholdEnforced_TwoPassesOneFails(t *testing.T) {
 	pl := hash("p")
 
 	// One valid voucher at threshold 2 → fail.
-	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl,
-		[]VouchCert{vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now)}, roster, 2, now)
+	res, err := VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl,
+		[]VouchCert{vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now)}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) || res.OK {
 		t.Fatalf("1 valid at threshold 2 must fail; OK=%v err=%v", res.OK, err)
 	}
 
 	// Two valid distinct vouchers at threshold 2 → pass.
-	res, err = VerifyQuorum(ActionDeviceEnroll, subject.vulaID, pl, []VouchCert{
-		vouch(t, v1, ActionDeviceEnroll, subject.vulaID, pl, now),
-		vouch(t, v2, ActionDeviceEnroll, subject.vulaID, pl, now),
+	res, err = VerifyQuorum(ActionDeviceEnroll, subject.vulosID, pl, []VouchCert{
+		vouch(t, v1, ActionDeviceEnroll, subject.vulosID, pl, now),
+		vouch(t, v2, ActionDeviceEnroll, subject.vulosID, pl, now),
 	}, roster, 2, now)
 	if err != nil || !res.OK {
 		t.Fatalf("2 valid at threshold 2 must pass; OK=%v err=%v", res.OK, err)
@@ -411,8 +411,8 @@ func TestThresholdFloor_CallerPassingOneIsRaisedToTwo(t *testing.T) {
 	pl := hash("p")
 
 	// Caller passes threshold 1 — must be raised to 2. One valid voucher fails.
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl,
-		[]VouchCert{vouch(t, v1, ActionSSHRecovery, subject.vulaID, pl, now)}, roster, 1, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl,
+		[]VouchCert{vouch(t, v1, ActionSSHRecovery, subject.vulosID, pl, now)}, roster, 1, now)
 	if res.Threshold != MinThreshold {
 		t.Fatalf("threshold floor not applied; effective threshold=%d", res.Threshold)
 	}
@@ -421,9 +421,9 @@ func TestThresholdFloor_CallerPassingOneIsRaisedToTwo(t *testing.T) {
 	}
 
 	// And two distinct valid pass despite caller passing 1.
-	res, err = VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl, []VouchCert{
-		vouch(t, v1, ActionSSHRecovery, subject.vulaID, pl, now),
-		vouch(t, v2, ActionSSHRecovery, subject.vulaID, pl, now),
+	res, err = VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl, []VouchCert{
+		vouch(t, v1, ActionSSHRecovery, subject.vulosID, pl, now),
+		vouch(t, v2, ActionSSHRecovery, subject.vulosID, pl, now),
 	}, roster, 1, now)
 	if err != nil || !res.OK || res.Threshold != 2 {
 		t.Fatalf("2 distinct valid at floored threshold 2 must pass; OK=%v threshold=%d err=%v", res.OK, res.Threshold, err)
@@ -436,8 +436,8 @@ func TestThresholdFloor_ZeroAlsoRaisedToTwo(t *testing.T) {
 	roster := newRoster(v1)
 	now := time.Now().UTC()
 	pl := hash("p")
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl,
-		[]VouchCert{vouch(t, v1, ActionSSHRecovery, subject.vulaID, pl, now)}, roster, 0, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl,
+		[]VouchCert{vouch(t, v1, ActionSSHRecovery, subject.vulosID, pl, now)}, roster, 0, now)
 	if res.Threshold != 2 || !errors.Is(err, ErrInsufficientQuorum) {
 		t.Fatalf("threshold 0 must be raised to 2 and 1 voucher must fail; threshold=%d err=%v", res.Threshold, err)
 	}
@@ -451,7 +451,7 @@ func TestSmallFleet_ZeroOtherBoxes_InsufficientQuorum(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("p")
 
-	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, pl, nil, roster, 2, now)
+	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, pl, nil, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) || res.OK {
 		t.Fatalf("1-box fleet must return insufficient-quorum; OK=%v err=%v", res.OK, err)
 	}
@@ -469,8 +469,8 @@ func TestSmallFleet_OneOtherBox_CannotMeetQuorum(t *testing.T) {
 	now := time.Now().UTC()
 	pl := hash("p")
 
-	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulaID, pl,
-		[]VouchCert{vouch(t, v1, ActionIdentityRecovery, subject.vulaID, pl, now)}, roster, 2, now)
+	res, err := VerifyQuorum(ActionIdentityRecovery, subject.vulosID, pl,
+		[]VouchCert{vouch(t, v1, ActionIdentityRecovery, subject.vulosID, pl, now)}, roster, 2, now)
 	if !errors.Is(err, ErrInsufficientQuorum) || res.OK {
 		t.Fatalf("2-box fleet cannot meet quorum; OK=%v err=%v", res.OK, err)
 	}
@@ -494,11 +494,11 @@ func TestInvalidRequest_NotAFallback(t *testing.T) {
 		payload []byte
 		roster  Roster
 	}{
-		{"unknown action", "reboot", subject.vulaID, pl, roster},
-		{"empty action", "", subject.vulaID, pl, roster},
+		{"unknown action", "reboot", subject.vulosID, pl, roster},
+		{"empty action", "", subject.vulosID, pl, roster},
 		{"bad subject", ActionDeviceEnroll, "not-a-vula-id", pl, roster},
-		{"empty payload", ActionDeviceEnroll, subject.vulaID, nil, roster},
-		{"nil roster", ActionDeviceEnroll, subject.vulaID, pl, nil},
+		{"empty payload", ActionDeviceEnroll, subject.vulosID, nil, roster},
+		{"nil roster", ActionDeviceEnroll, subject.vulosID, pl, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -529,27 +529,27 @@ func TestMixedAdversarial_OnlyGenuineDistinctCount(t *testing.T) {
 	pl := hash("payload")
 
 	roster := newRoster(good1, good2, revokedBox)
-	roster.revoked[revokedBox.vulaID] = true
+	roster.revoked[revokedBox.vulosID] = true
 
-	bad := vouch(t, good2, ActionSSHRecovery, subject.vulaID, pl, now)
+	bad := vouch(t, good2, ActionSSHRecovery, subject.vulosID, pl, now)
 	raw, _ := base64.RawURLEncoding.DecodeString(bad.Sig)
 	raw[5] ^= 0xFF
 	bad.Sig = base64.RawURLEncoding.EncodeToString(raw)
 
 	certs := []VouchCert{
-		vouch(t, subject, ActionSSHRecovery, subject.vulaID, pl, now),                             // self → drop
-		vouch(t, outsider, ActionSSHRecovery, subject.vulaID, pl, now),                            // unrostered → drop
-		vouch(t, revokedBox, ActionSSHRecovery, subject.vulaID, pl, now),                          // revoked → drop
-		vouch(t, good1, ActionDeviceEnroll, subject.vulaID, pl, now),                              // wrong action → drop
-		vouch(t, good1, ActionSSHRecovery, subject.vulaID, pl, now.Add(-VouchMaxAge-time.Minute)), // expired → drop
+		vouch(t, subject, ActionSSHRecovery, subject.vulosID, pl, now),                             // self → drop
+		vouch(t, outsider, ActionSSHRecovery, subject.vulosID, pl, now),                            // unrostered → drop
+		vouch(t, revokedBox, ActionSSHRecovery, subject.vulosID, pl, now),                          // revoked → drop
+		vouch(t, good1, ActionDeviceEnroll, subject.vulosID, pl, now),                              // wrong action → drop
+		vouch(t, good1, ActionSSHRecovery, subject.vulosID, pl, now.Add(-VouchMaxAge-time.Minute)), // expired → drop
 		bad, // bad signature → drop
-		vouch(t, good1, ActionSSHRecovery, subject.vulaID, pl, now), // GENUINE good1
-		vouch(t, good1, ActionSSHRecovery, subject.vulaID, pl, now), // dup of good1 → drop
-		vouch(t, good1, ActionSSHRecovery, subject.vulaID, pl, now), // dup of good1 → drop
-		vouch(t, good2, ActionSSHRecovery, subject.vulaID, pl, now), // GENUINE good2
+		vouch(t, good1, ActionSSHRecovery, subject.vulosID, pl, now), // GENUINE good1
+		vouch(t, good1, ActionSSHRecovery, subject.vulosID, pl, now), // dup of good1 → drop
+		vouch(t, good1, ActionSSHRecovery, subject.vulosID, pl, now), // dup of good1 → drop
+		vouch(t, good2, ActionSSHRecovery, subject.vulosID, pl, now), // GENUINE good2
 	}
 
-	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulaID, pl, certs, roster, 2, now)
+	res, err := VerifyQuorum(ActionSSHRecovery, subject.vulosID, pl, certs, roster, 2, now)
 	if err != nil || !res.OK {
 		t.Fatalf("two genuine distinct vouchers should pass; OK=%v err=%v dropped=%v", res.OK, err, res.Dropped)
 	}

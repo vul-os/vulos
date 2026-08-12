@@ -76,8 +76,8 @@ func TestDropTransferSend(t *testing.T) {
 	if got.FileSize != int64(len(content)) {
 		t.Fatalf("notice file size: want %d, got %d", len(content), got.FileSize)
 	}
-	if got.FromVulaID != "vula:self" {
-		t.Fatalf("notice from: want vula:self, got %q", got.FromVulaID)
+	if got.FromVulosID != "vula:self" {
+		t.Fatalf("notice from: want vula:self, got %q", got.FromVulosID)
 	}
 	if !strings.HasPrefix(got.DownloadURL, "https://self.example.org/api/peering/media/fetch/sha256:") {
 		t.Fatalf("notice download url unexpected: %q", got.DownloadURL)

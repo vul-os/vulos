@@ -83,7 +83,7 @@ func TestRelayDeposit_AllowedWhenEntitled_AndMeters(t *testing.T) {
 		t.Errorf("relay usage bytes = %d, want %d", ev.Bytes, len(blobData))
 	}
 	if ev.AccountID != senderID {
-		t.Errorf("relay usage account = %q, want sender VulaID", ev.AccountID)
+		t.Errorf("relay usage account = %q, want sender VulosID", ev.AccountID)
 	}
 }
 

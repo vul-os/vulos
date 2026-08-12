@@ -326,7 +326,7 @@ func (s *CollabStore) handleInboundSyncV2(w http.ResponseWriter, r *http.Request
 	// box (or, if this route were ever made publicly reachable, any caller) could
 	// read the full state of ANY document just by knowing its ID — bypassing the
 	// share ACL. authorizeRoom fails closed: no session → 401; a tracked share with
-	// no permission for the resolved VulaID → 403.
+	// no permission for the resolved VulosID → 403.
 	if _, status := s.authorizeRoom(r, docID); status != 0 {
 		writeCollabErr(w, status, "unauthorized: no permission to read this document")
 		return

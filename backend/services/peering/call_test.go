@@ -37,15 +37,15 @@ func newCallFakeContacts() *callFakeContacts {
 // add inserts or replaces a contact.
 func (f *callFakeContacts) add(c *Contact) {
 	f.mu.Lock()
-	f.data[c.VulaID] = c
+	f.data[c.VulosID] = c
 	f.mu.Unlock()
 }
 
 // Get implements callContactLookup.
-func (f *callFakeContacts) Get(vulaID string) (*Contact, bool) {
+func (f *callFakeContacts) Get(vulosID string) (*Contact, bool) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	c, ok := f.data[vulaID]
+	c, ok := f.data[vulosID]
 	if !ok {
 		return nil, false
 	}
@@ -79,9 +79,9 @@ func (h *callFakeHub) lastFrame() (Frame, bool) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // callApprovedContact returns a Contact with PermCall granted.
-func callApprovedContact(vulaID, server string) *Contact {
+func callApprovedContact(vulosID, server string) *Contact {
 	return &Contact{
-		VulaID:      vulaID,
+		VulosID:     vulosID,
 		DisplayName: "Test User",
 		Server:      server,
 		State:       StateApproved,
@@ -92,7 +92,7 @@ func callApprovedContact(vulaID, server string) *Contact {
 
 // callPostJSON sends a POST with a JSON body and optional X-Vula-ID header,
 // returning the recorder.
-func callPostJSON(t *testing.T, handler http.HandlerFunc, vulaID string, body any) *httptest.ResponseRecorder {
+func callPostJSON(t *testing.T, handler http.HandlerFunc, vulosID string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -100,8 +100,8 @@ func callPostJSON(t *testing.T, handler http.HandlerFunc, vulaID string, body an
 	}
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
-	if vulaID != "" {
-		req.Header.Set("X-Vula-ID", vulaID)
+	if vulosID != "" {
+		req.Header.Set("X-Vula-ID", vulosID)
 	}
 	rr := httptest.NewRecorder()
 	handler(rr, req)
@@ -128,7 +128,7 @@ func callTestIdentity(t *testing.T) (ed25519.PrivateKey, string) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	return priv, encodeVulaID(pub)
+	return priv, encodeVulosID(pub)
 }
 
 // newCallRelay builds a CallRelay with a fake outbound HTTP server that
@@ -186,9 +186,9 @@ func callInboundRequest(env *Envelope) *http.Request {
 }
 
 // callMakeSignalingEnvelope builds an *Envelope carrying a SignalingPayload.
-// fromVulaID can be any string in tests that do not verify the signature.
+// fromVulosID can be any string in tests that do not verify the signature.
 func callMakeSignalingEnvelope(
-	fromVulaID, toVulaID, kind, callID string,
+	fromVulosID, toVulosID, kind, callID string,
 	data json.RawMessage,
 ) *Envelope {
 	sp := SignalingPayload{
@@ -197,7 +197,7 @@ func callMakeSignalingEnvelope(
 		Data:   data,
 	}
 	payload, _ := json.Marshal(sp)
-	env, _ := NewEnvelope("test-id", fromVulaID, toVulaID, TypeSignaling, json.RawMessage(payload))
+	env, _ := NewEnvelope("test-id", fromVulosID, toVulosID, TypeSignaling, json.RawMessage(payload))
 	return env
 }
 
@@ -250,7 +250,7 @@ func TestCallInitiate_NoCallPermission(t *testing.T) {
 
 	// Only PermMessage — no PermCall.
 	contacts.add(&Contact{
-		VulaID:      "vula:bob",
+		VulosID:     "vula:bob",
 		Server:      remoteAddr,
 		State:       StateApproved,
 		ApprovedAt:  time.Now().UTC(),
@@ -437,13 +437,13 @@ func TestCallSDPICERelay_EndToEnd(t *testing.T) {
 func TestCallInbound_PushesFrameToHub(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	_, selfVulaID := callTestIdentity(t)
-	relay, _, _ := newCallRelay(t, selfVulaID, contacts, hub)
+	_, selfVulosID := callTestIdentity(t)
+	relay, _, _ := newCallRelay(t, selfVulosID, contacts, hub)
 
 	// Alice is an approved contact with call permission.
 	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
 
-	env := callMakeSignalingEnvelope("vula:alice", selfVulaID, sigKindIncomingCall, "call-040", nil)
+	env := callMakeSignalingEnvelope("vula:alice", selfVulosID, sigKindIncomingCall, "call-040", nil)
 	req := callInboundRequest(env)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, req)
@@ -498,7 +498,7 @@ func TestCallInbound_NoCallPermission(t *testing.T) {
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	contacts.add(&Contact{
-		VulaID:      "vula:charlie",
+		VulosID:     "vula:charlie",
 		Server:      "charlie.vulos.org:8080",
 		State:       StateApproved,
 		ApprovedAt:  time.Now().UTC(),
@@ -561,9 +561,9 @@ func TestCallSignal_NonParticipant(t *testing.T) {
 	}
 }
 
-// TestCallMissingVulaIDHeader verifies 401 when X-Vula-ID is absent from
+// TestCallMissingVulosIDHeader verifies 401 when X-Vula-ID is absent from
 // local-facing endpoints.
-func TestCallMissingVulaIDHeader(t *testing.T) {
+func TestCallMissingVulosIDHeader(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
 	relay, _, _ := newCallRelay(t, "vula:self", contacts, hub)

@@ -59,7 +59,7 @@ func (m *mockRelay) recordBody(r *http.Request) {
 
 func sampleIdentity() FabricIdentity {
 	return FabricIdentity{
-		HostID:       "vula:ed25519:testhost",
+		HostID:       "vulos:ed25519:testhost",
 		PublicKeyB64: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=", // 32 bytes b64
 		Domain:       "host.testbox.vulos.org",
 	}
@@ -67,7 +67,7 @@ func sampleIdentity() FabricIdentity {
 
 func sampleRegistration() HostRegistration {
 	return HostRegistration{
-		HostID:       "vula:ed25519:testhost",
+		HostID:       "vulos:ed25519:testhost",
 		PublicKeyB64: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		Domain:       "host.testbox.vulos.org",
 		Hostname:     "host.testbox.vulos.org",
@@ -97,7 +97,7 @@ func TestFabric_Register_PostsJSON(t *testing.T) {
 	if body == nil {
 		t.Fatal("relay never received a body")
 	}
-	if body.HostID != "vula:ed25519:testhost" {
+	if body.HostID != "vulos:ed25519:testhost" {
 		t.Errorf("HostID = %q", body.HostID)
 	}
 	if body.Capabilities.Codec != "h264" {
@@ -122,7 +122,7 @@ func TestFabric_Heartbeat(t *testing.T) {
 func TestFabric_Deregister(t *testing.T) {
 	relay := newMockRelay(t)
 	cli := newHTTPFabricClient(relay.server.URL, sampleIdentity(), nil)
-	if err := cli.Deregister(context.Background(), "vula:ed25519:testhost"); err != nil {
+	if err := cli.Deregister(context.Background(), "vulos:ed25519:testhost"); err != nil {
 		t.Fatalf("Deregister: %v", err)
 	}
 	if got := relay.deregN.Load(); got != 1 {

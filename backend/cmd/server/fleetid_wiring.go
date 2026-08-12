@@ -54,8 +54,8 @@ import (
 // returns an annotator that knows nothing, so main.go can decide whether to
 // wire it at all rather than have this quietly report every peer as unknown.
 func fleetVouchAnnotator(reg *multiinstance.Registry) fleetid.PeerAnnotator {
-	return func(vulaID string) fleetid.PeerAnnotation {
-		if reg == nil || vulaID == "" {
+	return func(vulosID string) fleetid.PeerAnnotation {
+		if reg == nil || vulosID == "" {
 			return fleetid.PeerAnnotation{}
 		}
 		insts, err := reg.List()
@@ -67,7 +67,7 @@ func fleetVouchAnnotator(reg *multiinstance.Registry) fleetid.PeerAnnotator {
 			if !ok {
 				continue
 			}
-			if peering.EncodeVulaID(pub) != vulaID {
+			if peering.EncodeVulosID(pub) != vulosID {
 				continue
 			}
 			return fleetid.PeerAnnotation{
@@ -134,7 +134,7 @@ type fleetGatherResponse struct {
 // it at three separate layers — so asking would only waste the window), as are
 // revoked peers (VerifyQuorum will not count their certs) and members with no
 // endpoint URL to reach.
-func fleetPeerEndpoints(reg *multiinstance.Registry, selfVulaID string) []string {
+func fleetPeerEndpoints(reg *multiinstance.Registry, selfVulosID string) []string {
 	if reg == nil {
 		return nil
 	}
@@ -151,7 +151,7 @@ func fleetPeerEndpoints(reg *multiinstance.Registry, selfVulaID string) []string
 		if !ok {
 			continue
 		}
-		if peering.EncodeVulaID(pub) == selfVulaID {
+		if peering.EncodeVulosID(pub) == selfVulosID {
 			continue
 		}
 		out = append(out, strings.TrimSuffix(in.EndpointURL, "/"))
@@ -190,7 +190,7 @@ func registerFleetGatherRoute(mux *http.ServeMux, deps fleetGatherDeps) {
 		// The subject is ALWAYS this box. GatherQuorum refuses a SubjectKey that
 		// does not match SubjectID, so there is no way to spend this endpoint
 		// gathering vouches for somebody else even if a caller asked.
-		selfID := peering.EncodeVulaID(deps.SubjectKey.Public().(ed25519.PublicKey))
+		selfID := peering.EncodeVulosID(deps.SubjectKey.Public().(ed25519.PublicKey))
 		peers := fleetPeerEndpoints(deps.Registry, selfID)
 		if len(peers) == 0 {
 			w.WriteHeader(http.StatusOK)

@@ -50,7 +50,7 @@ const dropDefaultPort = 8080
 // DropContactChecker allows drop.go to ask whether a given Vula ID is an
 // approved contact. Satisfied by the contacts sub-service.
 type DropContactChecker interface {
-	IsApproved(vulaID string) bool
+	IsApproved(vulosID string) bool
 }
 
 // DropMediaSender allows drop.go to initiate server-to-server media transfers.
@@ -75,7 +75,7 @@ type DropMediaSender interface {
 
 // DropPeer is a discovered nearby Vula peer on the local network.
 type DropPeer struct {
-	VulaID       string    `json:"vula_id"`
+	VulosID      string    `json:"vulos_id"`
 	DisplayName  string    `json:"display_name"`
 	Addr         string    `json:"addr"` // host:port
 	DiscoveredAt time.Time `json:"discovered_at"`
@@ -92,7 +92,7 @@ type dropSettings struct {
 // dropInboundRequest is the payload sent by a peer initiating a Drop.
 type dropInboundRequest struct {
 	TransferID  string `json:"transfer_id"`
-	FromVulaID  string `json:"from_vula_id"`
+	FromVulosID string `json:"from_vulos_id"`
 	DisplayName string `json:"display_name"`
 	FileName    string `json:"file_name"`
 	FileSize    int64  `json:"file_size"`
@@ -109,8 +109,8 @@ type dropDecision struct {
 
 // dropSendRequest is the payload for POST /api/peering/drop/send.
 type dropSendRequest struct {
-	// TargetVulaID is the recipient's Vula ID.
-	TargetVulaID string `json:"target_vula_id"`
+	// TargetVulosID is the recipient's Vula ID.
+	TargetVulosID string `json:"target_vulos_id"`
 	// TargetAddr is the peer's HTTP base URL; if empty, resolved from nearby list.
 	TargetAddr string `json:"target_addr,omitempty"`
 	// MediaPath is the absolute local path of the file to send.
@@ -167,7 +167,7 @@ type DropService struct {
 	mu sync.RWMutex
 
 	// configuration
-	selfVulaID  string
+	selfVulosID string
 	selfDisplay string
 	settings    dropSettings
 
@@ -179,7 +179,7 @@ type DropService struct {
 	// mDNS server (nil when discoverability == nobody)
 	mdnsConn dropMDNSConn
 
-	// discovered peers — keyed by VulaID
+	// discovered peers — keyed by VulosID
 	peers map[string]*DropPeer
 
 	// pending inbound transfers — keyed by TransferID
@@ -189,16 +189,16 @@ type DropService struct {
 	autoAcceptContacts bool
 }
 
-// NewDropService creates a DropService. selfVulaID and selfDisplay are this
+// NewDropService creates a DropService. selfVulosID and selfDisplay are this
 // instance's identity. contacts and media may be nil (functionality degrades
 // gracefully).
 func NewDropService(
-	selfVulaID, selfDisplay string,
+	selfVulosID, selfDisplay string,
 	contacts DropContactChecker,
 	media DropMediaSender,
 ) *DropService {
 	s := &DropService{
-		selfVulaID:  selfVulaID,
+		selfVulosID: selfVulosID,
 		selfDisplay: selfDisplay,
 		settings: dropSettings{
 			Discoverability: dropDiscoverPeers,
@@ -236,7 +236,7 @@ func (s *DropService) dropStartAdvertising() {
 	if s.settings.Discoverability == dropDiscoverNobody {
 		return
 	}
-	hostname := dropHostname(s.selfVulaID)
+	hostname := dropHostname(s.selfVulosID)
 	conn, err := s.mdnsNew(hostname)
 	if err != nil {
 		log.Printf("[drop] mDNS start: %v", err)
@@ -258,8 +258,8 @@ func (s *DropService) dropStopAdvertising() {
 
 // dropHostname derives the mDNS local hostname from a Vula ID.
 // Uses the last 16 chars of the ID to keep names short.
-func dropHostname(vulaID string) string {
-	suffix := vulaID
+func dropHostname(vulosID string) string {
+	suffix := vulosID
 	if len(suffix) > 16 {
 		suffix = suffix[len(suffix)-16:]
 	}
@@ -294,19 +294,19 @@ func (s *DropService) dropPruneLoop(ctx context.Context) {
 // DropRegisterPeer registers or refreshes a discovered nearby peer.
 // Callers (e.g., a separate mDNS browse loop) invoke this when they observe
 // a _vula-drop._tcp advertisement.
-func (s *DropService) DropRegisterPeer(vulaID, displayName, addr string) {
+func (s *DropService) DropRegisterPeer(vulosID, displayName, addr string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	isContact := false
 	if s.contacts != nil {
-		isContact = s.contacts.IsApproved(vulaID)
+		isContact = s.contacts.IsApproved(vulosID)
 	}
 
 	// Filter: if discoverability is "peers", only show contacts in our list.
 	// (We still record everyone so that "everyone" mode works correctly on reload.)
-	s.peers[vulaID] = &DropPeer{
-		VulaID:       vulaID,
+	s.peers[vulosID] = &DropPeer{
+		VulosID:      vulosID,
 		DisplayName:  displayName,
 		Addr:         addr,
 		DiscoveredAt: time.Now(),
@@ -374,8 +374,8 @@ func (s *DropService) dropHandleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.TargetVulaID == "" {
-		http.Error(w, "target_vula_id required", http.StatusBadRequest)
+	if req.TargetVulosID == "" {
+		http.Error(w, "target_vulos_id required", http.StatusBadRequest)
 		return
 	}
 	if req.MediaPath == "" {
@@ -387,7 +387,7 @@ func (s *DropService) dropHandleSend(w http.ResponseWriter, r *http.Request) {
 	targetAddr := req.TargetAddr
 	if targetAddr == "" {
 		s.mu.RLock()
-		p, ok := s.peers[req.TargetVulaID]
+		p, ok := s.peers[req.TargetVulosID]
 		if ok {
 			targetAddr = "http://" + p.Addr
 		}
@@ -470,14 +470,14 @@ func (s *DropService) dropHandleInbound(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.TransferID == "" || req.FromVulaID == "" {
-		http.Error(w, "transfer_id and from_vula_id required", http.StatusBadRequest)
+	if req.TransferID == "" || req.FromVulosID == "" {
+		http.Error(w, "transfer_id and from_vulos_id required", http.StatusBadRequest)
 		return
 	}
 
 	isContact := false
 	if s.contacts != nil {
-		isContact = s.contacts.IsApproved(req.FromVulaID)
+		isContact = s.contacts.IsApproved(req.FromVulosID)
 	}
 
 	s.mu.Lock()
@@ -486,7 +486,7 @@ func (s *DropService) dropHandleInbound(w http.ResponseWriter, r *http.Request) 
 	s.mu.Unlock()
 
 	if autoAccept {
-		log.Printf("[drop] auto-accepting transfer %s from contact %s", req.TransferID, req.FromVulaID)
+		log.Printf("[drop] auto-accepting transfer %s from contact %s", req.TransferID, req.FromVulosID)
 		s.dropExecuteAccept(&req)
 	} else {
 		log.Printf("[drop] pending transfer %s from %s (%s, %.1f KB)",

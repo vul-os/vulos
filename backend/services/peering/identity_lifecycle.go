@@ -1,4 +1,4 @@
-// identity_lifecycle.go — VulaID key lifecycle: rotation, revocation, recovery.
+// identity_lifecycle.go — VulosID key lifecycle: rotation, revocation, recovery.
 //
 // # Problem
 //
@@ -7,8 +7,8 @@
 // compromised key could never be retired. This file adds the three missing
 // lifecycle operations and the verification/admission plumbing that honors them.
 //
-// All identifiers here use the canonical base58 Vula ID encoding (encodeVulaID /
-// decodeVulaID in identity.go), which is the encoding used by the envelope
+// All identifiers here use the canonical base58 Vula ID encoding (encodeVulosID /
+// decodeVulosID in identity.go), which is the encoding used by the envelope
 // Verify path and VerifyVulaSignature — i.e. the identities that actually gate
 // inbound traffic.
 //
@@ -79,33 +79,33 @@ const (
 // key, proving the holder of the old key authorized the new key.
 type RotationCert struct {
 	Type LifecycleCertType `json:"type"` // CertTypeRotation
-	// PrevVulaID is the identity being rotated away from (the signer).
-	PrevVulaID string `json:"prev_vula_id"`
-	// NewVulaID is the identity being rotated to.
-	NewVulaID string `json:"new_vula_id"`
+	// PrevVulosID is the identity being rotated away from (the signer).
+	PrevVulosID string `json:"prev_vulos_id"`
+	// NewVulosID is the identity being rotated to.
+	NewVulosID string `json:"new_vulos_id"`
 	// IssuedAt is the issue time (RFC3339 UTC).
 	IssuedAt string `json:"issued_at"`
 	// Nonce defends against any future cross-protocol confusion; random per cert.
 	Nonce string `json:"nonce"`
-	// Sig is the base64url Ed25519 signature by PrevVulaID's key over the
+	// Sig is the base64url Ed25519 signature by PrevVulosID's key over the
 	// canonical bytes of this cert with Sig empty.
 	Sig string `json:"sig"`
 }
 
 // RevocationCert retires an identity. Signer is either the identity itself
-// (SignerVulaID == VulaID) or the recovery anchor (SignerVulaID == anchor id).
+// (SignerVulosID == VulosID) or the recovery anchor (SignerVulosID == anchor id).
 type RevocationCert struct {
 	Type LifecycleCertType `json:"type"` // CertTypeRevocation
-	// VulaID is the identity being revoked.
-	VulaID string `json:"vula_id"`
-	// SignerVulaID is the key that signed this revocation: the identity itself
+	// VulosID is the identity being revoked.
+	VulosID string `json:"vulos_id"`
+	// SignerVulosID is the key that signed this revocation: the identity itself
 	// (self-revocation) or the account recovery anchor.
-	SignerVulaID string `json:"signer_vula_id"`
+	SignerVulosID string `json:"signer_vulos_id"`
 	// Reason is a short human-readable reason (e.g. "compromised", "rotated").
 	Reason string `json:"reason,omitempty"`
 	// IssuedAt is the issue time (RFC3339 UTC).
 	IssuedAt string `json:"issued_at"`
-	// Sig is the base64url Ed25519 signature by SignerVulaID's key.
+	// Sig is the base64url Ed25519 signature by SignerVulosID's key.
 	Sig string `json:"sig"`
 }
 
@@ -114,16 +114,16 @@ type RevocationCert struct {
 // (which may be lost/compromised) — only the anchor.
 type RecoveryCert struct {
 	Type LifecycleCertType `json:"type"` // CertTypeRecovery
-	// PrevVulaID is the identity being recovered (whose key was lost/compromised).
-	PrevVulaID string `json:"prev_vula_id"`
-	// NewVulaID is the freshly generated replacement identity.
-	NewVulaID string `json:"new_vula_id"`
-	// AnchorVulaID is the account recovery anchor that signs this cert. A peer
+	// PrevVulosID is the identity being recovered (whose key was lost/compromised).
+	PrevVulosID string `json:"prev_vulos_id"`
+	// NewVulosID is the freshly generated replacement identity.
+	NewVulosID string `json:"new_vulos_id"`
+	// AnchorVulosID is the account recovery anchor that signs this cert. A peer
 	// must already trust this anchor for this identity to follow the recovery.
-	AnchorVulaID string `json:"anchor_vula_id"`
+	AnchorVulosID string `json:"anchor_vulos_id"`
 	// IssuedAt is the issue time (RFC3339 UTC).
 	IssuedAt string `json:"issued_at"`
-	// Sig is the base64url Ed25519 signature by AnchorVulaID's key.
+	// Sig is the base64url Ed25519 signature by AnchorVulosID's key.
 	Sig string `json:"sig"`
 }
 
@@ -141,9 +141,9 @@ func lcSignCanonical(v any, priv ed25519.PrivateKey) (string, error) {
 }
 
 // lcVerifyCanonical verifies sigB64 over the canonical bytes of v using the key
-// embedded in signerVulaID. Fails closed on any malformed input.
-func lcVerifyCanonical(v any, sigB64, signerVulaID string) error {
-	pub, err := decodeVulaID(signerVulaID)
+// embedded in signerVulosID. Fails closed on any malformed input.
+func lcVerifyCanonical(v any, sigB64, signerVulosID string) error {
+	pub, err := decodeVulosID(signerVulosID)
 	if err != nil {
 		return fmt.Errorf("lifecycle: bad signer vula id: %w", err)
 	}
@@ -170,23 +170,23 @@ func lcNonce() string {
 // ─── Build certificates ────────────────────────────────────────────────────────
 
 // NewRotationCert builds a rotation certificate signed by the OLD identity key.
-// prevPriv must correspond to prevVulaID; newVulaID is the replacement identity.
-func NewRotationCert(prevPriv ed25519.PrivateKey, prevVulaID, newVulaID string) (*RotationCert, error) {
-	if _, err := decodeVulaID(prevVulaID); err != nil {
+// prevPriv must correspond to prevVulosID; newVulosID is the replacement identity.
+func NewRotationCert(prevPriv ed25519.PrivateKey, prevVulosID, newVulosID string) (*RotationCert, error) {
+	if _, err := decodeVulosID(prevVulosID); err != nil {
 		return nil, fmt.Errorf("lifecycle: prev vula id: %w", err)
 	}
-	if _, err := decodeVulaID(newVulaID); err != nil {
+	if _, err := decodeVulosID(newVulosID); err != nil {
 		return nil, fmt.Errorf("lifecycle: new vula id: %w", err)
 	}
-	if !ed25519PrivMatchesVulaID(prevPriv, prevVulaID) {
-		return nil, errors.New("lifecycle: prev private key does not match prev_vula_id")
+	if !ed25519PrivMatchesVulosID(prevPriv, prevVulosID) {
+		return nil, errors.New("lifecycle: prev private key does not match prev_vulos_id")
 	}
 	c := &RotationCert{
-		Type:       CertTypeRotation,
-		PrevVulaID: prevVulaID,
-		NewVulaID:  newVulaID,
-		IssuedAt:   time.Now().UTC().Format(time.RFC3339),
-		Nonce:      lcNonce(),
+		Type:        CertTypeRotation,
+		PrevVulosID: prevVulosID,
+		NewVulosID:  newVulosID,
+		IssuedAt:    time.Now().UTC().Format(time.RFC3339),
+		Nonce:       lcNonce(),
 	}
 	sig, err := lcSignCanonical(c, prevPriv)
 	if err != nil {
@@ -196,35 +196,35 @@ func NewRotationCert(prevPriv ed25519.PrivateKey, prevVulaID, newVulaID string) 
 	return c, nil
 }
 
-// Verify checks the rotation cert's structure and signature (by PrevVulaID).
+// Verify checks the rotation cert's structure and signature (by PrevVulosID).
 func (c *RotationCert) Verify() error {
 	if c.Type != CertTypeRotation {
 		return fmt.Errorf("lifecycle: rotation cert wrong type %q", c.Type)
 	}
-	if c.PrevVulaID == "" || c.NewVulaID == "" || c.PrevVulaID == c.NewVulaID {
+	if c.PrevVulosID == "" || c.NewVulosID == "" || c.PrevVulosID == c.NewVulosID {
 		return errors.New("lifecycle: rotation cert prev/new ids invalid")
 	}
 	unsigned := *c
 	unsigned.Sig = ""
-	return lcVerifyCanonical(unsigned, c.Sig, c.PrevVulaID)
+	return lcVerifyCanonical(unsigned, c.Sig, c.PrevVulosID)
 }
 
 // NewRevocationCert builds a revocation signed by signerPriv. When
-// signerVulaID == vulaID this is a self-revocation; otherwise signerVulaID is the
+// signerVulosID == vulosID this is a self-revocation; otherwise signerVulosID is the
 // recovery anchor.
-func NewRevocationCert(signerPriv ed25519.PrivateKey, vulaID, signerVulaID, reason string) (*RevocationCert, error) {
-	if _, err := decodeVulaID(vulaID); err != nil {
+func NewRevocationCert(signerPriv ed25519.PrivateKey, vulosID, signerVulosID, reason string) (*RevocationCert, error) {
+	if _, err := decodeVulosID(vulosID); err != nil {
 		return nil, fmt.Errorf("lifecycle: revoked vula id: %w", err)
 	}
-	if !ed25519PrivMatchesVulaID(signerPriv, signerVulaID) {
-		return nil, errors.New("lifecycle: signer private key does not match signer_vula_id")
+	if !ed25519PrivMatchesVulosID(signerPriv, signerVulosID) {
+		return nil, errors.New("lifecycle: signer private key does not match signer_vulos_id")
 	}
 	c := &RevocationCert{
-		Type:         CertTypeRevocation,
-		VulaID:       vulaID,
-		SignerVulaID: signerVulaID,
-		Reason:       reason,
-		IssuedAt:     time.Now().UTC().Format(time.RFC3339),
+		Type:          CertTypeRevocation,
+		VulosID:       vulosID,
+		SignerVulosID: signerVulosID,
+		Reason:        reason,
+		IssuedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	sig, err := lcSignCanonical(c, signerPriv)
 	if err != nil {
@@ -242,34 +242,34 @@ func (c *RevocationCert) Verify(validAnchors map[string]bool) error {
 	if c.Type != CertTypeRevocation {
 		return fmt.Errorf("lifecycle: revocation cert wrong type %q", c.Type)
 	}
-	if c.VulaID == "" || c.SignerVulaID == "" {
+	if c.VulosID == "" || c.SignerVulosID == "" {
 		return errors.New("lifecycle: revocation cert missing ids")
 	}
 	// Authorization: signer must be the identity itself or a trusted anchor.
-	if c.SignerVulaID != c.VulaID && !validAnchors[c.SignerVulaID] {
-		return fmt.Errorf("lifecycle: revocation signer %q is neither the identity nor a trusted anchor", c.SignerVulaID)
+	if c.SignerVulosID != c.VulosID && !validAnchors[c.SignerVulosID] {
+		return fmt.Errorf("lifecycle: revocation signer %q is neither the identity nor a trusted anchor", c.SignerVulosID)
 	}
 	unsigned := *c
 	unsigned.Sig = ""
-	return lcVerifyCanonical(unsigned, c.Sig, c.SignerVulaID)
+	return lcVerifyCanonical(unsigned, c.Sig, c.SignerVulosID)
 }
 
 // NewRecoveryCert builds an account-anchored recovery cert signed by anchorPriv.
-func NewRecoveryCert(anchorPriv ed25519.PrivateKey, prevVulaID, newVulaID, anchorVulaID string) (*RecoveryCert, error) {
-	for _, id := range []string{prevVulaID, newVulaID, anchorVulaID} {
-		if _, err := decodeVulaID(id); err != nil {
+func NewRecoveryCert(anchorPriv ed25519.PrivateKey, prevVulosID, newVulosID, anchorVulosID string) (*RecoveryCert, error) {
+	for _, id := range []string{prevVulosID, newVulosID, anchorVulosID} {
+		if _, err := decodeVulosID(id); err != nil {
 			return nil, fmt.Errorf("lifecycle: recovery cert id %q: %w", id, err)
 		}
 	}
-	if !ed25519PrivMatchesVulaID(anchorPriv, anchorVulaID) {
-		return nil, errors.New("lifecycle: anchor private key does not match anchor_vula_id")
+	if !ed25519PrivMatchesVulosID(anchorPriv, anchorVulosID) {
+		return nil, errors.New("lifecycle: anchor private key does not match anchor_vulos_id")
 	}
 	c := &RecoveryCert{
-		Type:         CertTypeRecovery,
-		PrevVulaID:   prevVulaID,
-		NewVulaID:    newVulaID,
-		AnchorVulaID: anchorVulaID,
-		IssuedAt:     time.Now().UTC().Format(time.RFC3339),
+		Type:          CertTypeRecovery,
+		PrevVulosID:   prevVulosID,
+		NewVulosID:    newVulosID,
+		AnchorVulosID: anchorVulosID,
+		IssuedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	sig, err := lcSignCanonical(c, anchorPriv)
 	if err != nil {
@@ -279,18 +279,18 @@ func NewRecoveryCert(anchorPriv ed25519.PrivateKey, prevVulaID, newVulaID, ancho
 	return c, nil
 }
 
-// Verify checks the recovery cert signature (by AnchorVulaID). The caller must
-// SEPARATELY confirm it trusts AnchorVulaID for PrevVulaID (see ResolveCurrentKey).
+// Verify checks the recovery cert signature (by AnchorVulosID). The caller must
+// SEPARATELY confirm it trusts AnchorVulosID for PrevVulosID (see ResolveCurrentKey).
 func (c *RecoveryCert) Verify() error {
 	if c.Type != CertTypeRecovery {
 		return fmt.Errorf("lifecycle: recovery cert wrong type %q", c.Type)
 	}
-	if c.PrevVulaID == "" || c.NewVulaID == "" || c.AnchorVulaID == "" {
+	if c.PrevVulosID == "" || c.NewVulosID == "" || c.AnchorVulosID == "" {
 		return errors.New("lifecycle: recovery cert missing ids")
 	}
 	unsigned := *c
 	unsigned.Sig = ""
-	return lcVerifyCanonical(unsigned, c.Sig, c.AnchorVulaID)
+	return lcVerifyCanonical(unsigned, c.Sig, c.AnchorVulosID)
 }
 
 // ─── Chain resolution ──────────────────────────────────────────────────────────
@@ -302,48 +302,48 @@ type LifecycleLink struct {
 	Recovery *RecoveryCert `json:"recovery,omitempty"`
 }
 
-// ResolveCurrentKey follows an ordered chain of links starting from rootVulaID and
+// ResolveCurrentKey follows an ordered chain of links starting from rootVulosID and
 // returns the current (latest) Vula ID. It FAILS CLOSED:
 //
 //   - a rotation link must be signed by the current head key (the predecessor).
-//   - a recovery link must be signed by trustedAnchor AND its PrevVulaID must be
+//   - a recovery link must be signed by trustedAnchor AND its PrevVulosID must be
 //     the current head (so an anchor can only recover an identity it is bound to).
 //   - trustedAnchor may be "" when the caller pinned no anchor; recovery links are
 //     then un-followable and rejected.
 //   - any structurally invalid or out-of-order link aborts resolution with error.
-func ResolveCurrentKey(rootVulaID, trustedAnchor string, chain []LifecycleLink) (string, error) {
-	if _, err := decodeVulaID(rootVulaID); err != nil {
+func ResolveCurrentKey(rootVulosID, trustedAnchor string, chain []LifecycleLink) (string, error) {
+	if _, err := decodeVulosID(rootVulosID); err != nil {
 		return "", fmt.Errorf("lifecycle: root vula id: %w", err)
 	}
-	head := rootVulaID
+	head := rootVulosID
 	for i, link := range chain {
 		switch {
 		case link.Rotation != nil && link.Recovery != nil:
 			return "", fmt.Errorf("lifecycle: link %d sets both rotation and recovery", i)
 		case link.Rotation != nil:
 			rc := link.Rotation
-			if rc.PrevVulaID != head {
-				return "", fmt.Errorf("lifecycle: rotation link %d prev %q does not chain from head %q", i, rc.PrevVulaID, head)
+			if rc.PrevVulosID != head {
+				return "", fmt.Errorf("lifecycle: rotation link %d prev %q does not chain from head %q", i, rc.PrevVulosID, head)
 			}
 			if err := rc.Verify(); err != nil {
 				return "", fmt.Errorf("lifecycle: rotation link %d: %w", i, err)
 			}
-			head = rc.NewVulaID
+			head = rc.NewVulosID
 		case link.Recovery != nil:
 			rec := link.Recovery
 			if trustedAnchor == "" {
 				return "", fmt.Errorf("lifecycle: recovery link %d but no trusted anchor pinned", i)
 			}
-			if rec.AnchorVulaID != trustedAnchor {
-				return "", fmt.Errorf("lifecycle: recovery link %d anchor %q != trusted anchor %q", i, rec.AnchorVulaID, trustedAnchor)
+			if rec.AnchorVulosID != trustedAnchor {
+				return "", fmt.Errorf("lifecycle: recovery link %d anchor %q != trusted anchor %q", i, rec.AnchorVulosID, trustedAnchor)
 			}
-			if rec.PrevVulaID != head {
-				return "", fmt.Errorf("lifecycle: recovery link %d prev %q does not chain from head %q", i, rec.PrevVulaID, head)
+			if rec.PrevVulosID != head {
+				return "", fmt.Errorf("lifecycle: recovery link %d prev %q does not chain from head %q", i, rec.PrevVulosID, head)
 			}
 			if err := rec.Verify(); err != nil {
 				return "", fmt.Errorf("lifecycle: recovery link %d: %w", i, err)
 			}
-			head = rec.NewVulaID
+			head = rec.NewVulosID
 		default:
 			return "", fmt.Errorf("lifecycle: link %d is empty", i)
 		}
@@ -380,7 +380,7 @@ func DeriveRecoveryAnchor(recoverySeed []byte) (ed25519.PrivateKey, string, erro
 	}
 	priv := ed25519.NewKeyFromSeed(seed)
 	pub := priv.Public().(ed25519.PublicKey)
-	return priv, encodeVulaID(pub), nil
+	return priv, encodeVulosID(pub), nil
 }
 
 // ─── Persistent lifecycle state ────────────────────────────────────────────────
@@ -388,10 +388,10 @@ func DeriveRecoveryAnchor(recoverySeed []byte) (ed25519.PrivateKey, string, erro
 // lifecycleState is the JSON persisted to disk for THIS node's identity history
 // and the revocations it has observed.
 type lifecycleState struct {
-	// RootVulaID is the original identity this node first published.
-	RootVulaID string `json:"root_vula_id"`
-	// AnchorVulaID is this node's account recovery anchor (public id only).
-	AnchorVulaID string `json:"anchor_vula_id,omitempty"`
+	// RootVulosID is the original identity this node first published.
+	RootVulosID string `json:"root_vulos_id"`
+	// AnchorVulosID is this node's account recovery anchor (public id only).
+	AnchorVulosID string `json:"anchor_vulos_id,omitempty"`
 	// Chain is this node's own published transition history (rotation/recovery).
 	Chain []LifecycleLink `json:"chain,omitempty"`
 	// Revoked maps a revoked Vula ID → the verified revocation cert that retired
@@ -418,17 +418,17 @@ type LifecycleStore struct {
 }
 
 // NewLifecycleStore opens (or creates) the lifecycle store under dir
-// (e.g. ~/.vulos/peering/identity). rootVulaID and anchorVulaID seed a fresh
+// (e.g. ~/.vulos/peering/identity). rootVulosID and anchorVulosID seed a fresh
 // state; an existing state on disk takes precedence for those fields.
-func NewLifecycleStore(dir, rootVulaID, anchorVulaID string) (*LifecycleStore, error) {
+func NewLifecycleStore(dir, rootVulosID, anchorVulosID string) (*LifecycleStore, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("lifecycle: mkdir: %w", err)
 	}
 	s := &LifecycleStore{
 		path: filepath.Join(dir, "lifecycle.json"),
 		state: lifecycleState{
-			RootVulaID:    rootVulaID,
-			AnchorVulaID:  anchorVulaID,
+			RootVulosID:   rootVulosID,
+			AnchorVulosID: anchorVulosID,
 			Revoked:       map[string]*RevocationCert{},
 			PinnedAnchors: map[string]string{},
 			Aliases:       map[string]string{},
@@ -436,7 +436,7 @@ func NewLifecycleStore(dir, rootVulaID, anchorVulaID string) (*LifecycleStore, e
 	}
 	if raw, err := os.ReadFile(s.path); err == nil {
 		var st lifecycleState
-		if json.Unmarshal(raw, &st) == nil && st.RootVulaID != "" {
+		if json.Unmarshal(raw, &st) == nil && st.RootVulosID != "" {
 			if st.Revoked == nil {
 				st.Revoked = map[string]*RevocationCert{}
 			}
@@ -465,42 +465,42 @@ func (s *LifecycleStore) saveLocked() error {
 	return os.Rename(tmp, s.path)
 }
 
-// IsRevoked reports whether vulaID has an observed, verified revocation.
-func (s *LifecycleStore) IsRevoked(vulaID string) bool {
+// IsRevoked reports whether vulosID has an observed, verified revocation.
+func (s *LifecycleStore) IsRevoked(vulosID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.state.Revoked[vulaID]
+	_, ok := s.state.Revoked[vulosID]
 	return ok
 }
 
 // PinAnchor records (TOFU) the anchor trusted to recover a contact's root id.
 // It will not overwrite an already-pinned, differing anchor (which would be a
 // downgrade/takeover attempt) — that returns an error.
-func (s *LifecycleStore) PinAnchor(rootVulaID, anchorVulaID string) error {
-	if _, err := decodeVulaID(rootVulaID); err != nil {
+func (s *LifecycleStore) PinAnchor(rootVulosID, anchorVulosID string) error {
+	if _, err := decodeVulosID(rootVulosID); err != nil {
 		return err
 	}
-	if _, err := decodeVulaID(anchorVulaID); err != nil {
+	if _, err := decodeVulosID(anchorVulosID); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.state.PinnedAnchors[rootVulaID]; ok && existing != anchorVulaID {
-		return fmt.Errorf("lifecycle: anchor for %q already pinned to a different key", rootVulaID)
+	if existing, ok := s.state.PinnedAnchors[rootVulosID]; ok && existing != anchorVulosID {
+		return fmt.Errorf("lifecycle: anchor for %q already pinned to a different key", rootVulosID)
 	}
-	s.state.PinnedAnchors[rootVulaID] = anchorVulaID
+	s.state.PinnedAnchors[rootVulosID] = anchorVulosID
 	return s.saveLocked()
 }
 
 // TrustedAnchorFor returns the pinned anchor for a contact's root id, or "".
-func (s *LifecycleStore) TrustedAnchorFor(rootVulaID string) string {
+func (s *LifecycleStore) TrustedAnchorFor(rootVulosID string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.state.PinnedAnchors[rootVulaID]
+	return s.state.PinnedAnchors[rootVulosID]
 }
 
-// RecordRevocation verifies cert against the anchors trusted for cert.VulaID and,
-// if valid, records it. After this, IsRevoked(cert.VulaID) is true and the global
+// RecordRevocation verifies cert against the anchors trusted for cert.VulosID and,
+// if valid, records it. After this, IsRevoked(cert.VulosID) is true and the global
 // admission gate (when this store is wired via SetRevocationChecker) rejects it.
 func (s *LifecycleStore) RecordRevocation(cert *RevocationCert) error {
 	s.mu.Lock()
@@ -508,16 +508,16 @@ func (s *LifecycleStore) RecordRevocation(cert *RevocationCert) error {
 	// Build the set of anchors trusted for this identity: the pinned anchor for
 	// the identity's root, plus this node's own anchor when revoking self.
 	anchors := map[string]bool{}
-	if a := s.state.PinnedAnchors[cert.VulaID]; a != "" {
+	if a := s.state.PinnedAnchors[cert.VulosID]; a != "" {
 		anchors[a] = true
 	}
-	if s.state.AnchorVulaID != "" && (cert.VulaID == s.state.RootVulaID || s.headLocked() == cert.VulaID) {
-		anchors[s.state.AnchorVulaID] = true
+	if s.state.AnchorVulosID != "" && (cert.VulosID == s.state.RootVulosID || s.headLocked() == cert.VulosID) {
+		anchors[s.state.AnchorVulosID] = true
 	}
 	if err := cert.Verify(anchors); err != nil {
 		return err
 	}
-	s.state.Revoked[cert.VulaID] = cert
+	s.state.Revoked[cert.VulosID] = cert
 	return s.saveLocked()
 }
 
@@ -541,16 +541,16 @@ func (s *LifecycleStore) SelfRevoke(priv ed25519.PrivateKey, reason string) (*Re
 
 // recordAlias records a verified resolved-current-key → root-vula-id mapping so the
 // admission path can accept a rotated/recovered peer on its new key.
-func (s *LifecycleStore) recordAlias(currentVulaID, rootVulaID string) error {
+func (s *LifecycleStore) recordAlias(currentVulosID, rootVulosID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.state.Aliases == nil {
 		s.state.Aliases = map[string]string{}
 	}
-	if s.state.Aliases[currentVulaID] == rootVulaID {
+	if s.state.Aliases[currentVulosID] == rootVulosID {
 		return nil
 	}
-	s.state.Aliases[currentVulaID] = rootVulaID
+	s.state.Aliases[currentVulosID] = rootVulosID
 	return s.saveLocked()
 }
 
@@ -558,10 +558,10 @@ func (s *LifecycleStore) recordAlias(currentVulaID, rootVulaID string) error {
 // (recorded by IngestPeerLifecycle), or ("", false). The admission path uses this
 // to follow a peer that rotated/recovered: an envelope from the new key is gated on
 // whether its ROOT is an approved contact.
-func (s *LifecycleStore) RootForResolvedKey(currentVulaID string) (string, bool) {
+func (s *LifecycleStore) RootForResolvedKey(currentVulosID string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	root, ok := s.state.Aliases[currentVulaID]
+	root, ok := s.state.Aliases[currentVulosID]
 	return root, ok
 }
 
@@ -577,16 +577,16 @@ func (s *LifecycleStore) RootForResolvedKey(currentVulaID string) (string, bool)
 //
 // Returns the resolved current key for the peer (== root when there is no chain).
 func (s *LifecycleStore) IngestPeerLifecycle(lc *WKLifecycle) (string, error) {
-	if lc == nil || lc.RootVulaID == "" {
+	if lc == nil || lc.RootVulosID == "" {
 		return "", nil
 	}
 	// TOFU-pin the peer's recovery anchor so anchor-signed revocations/recoveries
 	// for this peer verify. A conflicting anchor (takeover attempt) is refused by
 	// PinAnchor; we then keep the already-trusted anchor.
-	if lc.AnchorVulaID != "" {
-		_ = s.PinAnchor(lc.RootVulaID, lc.AnchorVulaID)
+	if lc.AnchorVulosID != "" {
+		_ = s.PinAnchor(lc.RootVulosID, lc.AnchorVulosID)
 	}
-	trustedAnchor := s.TrustedAnchorFor(lc.RootVulaID)
+	trustedAnchor := s.TrustedAnchorFor(lc.RootVulosID)
 
 	// Record every verified revocation. RecordRevocation enforces that the signer
 	// is the identity itself or a trusted anchor, so a peer cannot revoke a third
@@ -600,12 +600,12 @@ func (s *LifecycleStore) IngestPeerLifecycle(lc *WKLifecycle) (string, error) {
 
 	// Follow the chain to the current key. Fail closed: a forged/broken chain
 	// records no alias.
-	current, err := ResolveCurrentKey(lc.RootVulaID, trustedAnchor, lc.Chain)
+	current, err := ResolveCurrentKey(lc.RootVulosID, trustedAnchor, lc.Chain)
 	if err != nil {
 		return "", err
 	}
-	if current != lc.RootVulaID {
-		if aerr := s.recordAlias(current, lc.RootVulaID); aerr != nil {
+	if current != lc.RootVulosID {
+		if aerr := s.recordAlias(current, lc.RootVulosID); aerr != nil {
 			return current, aerr
 		}
 	}
@@ -613,7 +613,7 @@ func (s *LifecycleStore) IngestPeerLifecycle(lc *WKLifecycle) (string, error) {
 }
 
 // SetAnchor installs (or confirms) this node's account recovery anchor public
-// VulaID. It is the LIVE seam that turns recovery on after boot: the box derives
+// VulosID. It is the LIVE seam that turns recovery on after boot: the box derives
 // the anchor public id from the account recovery seed only when that seed is
 // transiently in hand (recovery-kit generation / restore), then calls SetAnchor
 // so subsequent well-known publications carry the anchor and peers can TOFU-pin
@@ -623,41 +623,41 @@ func (s *LifecycleStore) IngestPeerLifecycle(lc *WKLifecycle) (string, error) {
 // Fails closed on a takeover attempt: once an anchor is set, SetAnchor refuses to
 // replace it with a DIFFERENT id (which would let a box compromise swap the
 // recovery anchor). Setting the same id, or setting from empty, is allowed.
-func (s *LifecycleStore) SetAnchor(anchorVulaID string) error {
-	if anchorVulaID == "" {
+func (s *LifecycleStore) SetAnchor(anchorVulosID string) error {
+	if anchorVulosID == "" {
 		return errors.New("lifecycle: empty anchor id")
 	}
-	if _, err := decodeVulaID(anchorVulaID); err != nil {
+	if _, err := decodeVulosID(anchorVulosID); err != nil {
 		return fmt.Errorf("lifecycle: anchor vula id: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state.AnchorVulaID == anchorVulaID {
+	if s.state.AnchorVulosID == anchorVulosID {
 		return nil
 	}
-	if s.state.AnchorVulaID != "" {
+	if s.state.AnchorVulosID != "" {
 		return fmt.Errorf("lifecycle: recovery anchor already set to a different key; refusing to replace")
 	}
-	s.state.AnchorVulaID = anchorVulaID
+	s.state.AnchorVulosID = anchorVulosID
 	return s.saveLocked()
 }
 
-// AnchorVulaID returns this node's configured recovery anchor public id, or "".
-func (s *LifecycleStore) AnchorVulaID() string {
+// AnchorVulosID returns this node's configured recovery anchor public id, or "".
+func (s *LifecycleStore) AnchorVulosID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.state.AnchorVulaID
+	return s.state.AnchorVulosID
 }
 
 // headLocked returns this node's current identity id (end of its own chain).
 func (s *LifecycleStore) headLocked() string {
-	head := s.state.RootVulaID
+	head := s.state.RootVulosID
 	for _, l := range s.state.Chain {
 		switch {
 		case l.Rotation != nil:
-			head = l.Rotation.NewVulaID
+			head = l.Rotation.NewVulosID
 		case l.Recovery != nil:
-			head = l.Recovery.NewVulaID
+			head = l.Recovery.NewVulosID
 		}
 	}
 	return head
@@ -670,14 +670,14 @@ func (s *LifecycleStore) Head() string {
 	return s.headLocked()
 }
 
-// AppendOwnRotation rotates THIS node's identity to newVulaID, signing the link
+// AppendOwnRotation rotates THIS node's identity to newVulosID, signing the link
 // with the current head key (oldPriv). The new link is appended to the published
 // chain so peers can follow it.
-func (s *LifecycleStore) AppendOwnRotation(oldPriv ed25519.PrivateKey, newVulaID string) (*RotationCert, error) {
+func (s *LifecycleStore) AppendOwnRotation(oldPriv ed25519.PrivateKey, newVulosID string) (*RotationCert, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	head := s.headLocked()
-	cert, err := NewRotationCert(oldPriv, head, newVulaID)
+	cert, err := NewRotationCert(oldPriv, head, newVulosID)
 	if err != nil {
 		return nil, err
 	}
@@ -688,16 +688,16 @@ func (s *LifecycleStore) AppendOwnRotation(oldPriv ed25519.PrivateKey, newVulaID
 	return cert, nil
 }
 
-// AppendOwnRecovery re-establishes THIS node's identity on newVulaID via the
+// AppendOwnRecovery re-establishes THIS node's identity on newVulosID via the
 // account anchor (anchorPriv), without needing the lost identity key.
-func (s *LifecycleStore) AppendOwnRecovery(anchorPriv ed25519.PrivateKey, newVulaID string) (*RecoveryCert, error) {
+func (s *LifecycleStore) AppendOwnRecovery(anchorPriv ed25519.PrivateKey, newVulosID string) (*RecoveryCert, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state.AnchorVulaID == "" {
+	if s.state.AnchorVulosID == "" {
 		return nil, errors.New("lifecycle: no recovery anchor configured")
 	}
 	head := s.headLocked()
-	cert, err := NewRecoveryCert(anchorPriv, head, newVulaID, s.state.AnchorVulaID)
+	cert, err := NewRecoveryCert(anchorPriv, head, newVulosID, s.state.AnchorVulosID)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +715,7 @@ func (s *LifecycleStore) OwnChain() (root, anchor string, chain []LifecycleLink)
 	defer s.mu.RUnlock()
 	cp := make([]LifecycleLink, len(s.state.Chain))
 	copy(cp, s.state.Chain)
-	return s.state.RootVulaID, s.state.AnchorVulaID, cp
+	return s.state.RootVulosID, s.state.AnchorVulosID, cp
 }
 
 // RevocationList returns a snapshot of observed revocations (for publishing /
@@ -727,7 +727,7 @@ func (s *LifecycleStore) RevocationList() []*RevocationCert {
 	for _, c := range s.state.Revoked {
 		out = append(out, c)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].VulaID < out[j].VulaID })
+	sort.Slice(out, func(i, j int) bool { return out[i].VulosID < out[j].VulosID })
 	return out
 }
 
@@ -739,29 +739,29 @@ func (s *LifecycleStore) RevocationList() []*RevocationCert {
 // no lifecycle subsystem is wired).
 var (
 	revocationCheckerMu sync.RWMutex
-	revocationChecker   func(vulaID string) bool
+	revocationChecker   func(vulosID string) bool
 )
 
 // SetRevocationChecker installs the process-wide revocation gate. The LIVE server
 // wires this to a LifecycleStore.IsRevoked so every admission/verify point honors
 // revocations. Passing nil disables the gate.
-func SetRevocationChecker(f func(vulaID string) bool) {
+func SetRevocationChecker(f func(vulosID string) bool) {
 	revocationCheckerMu.Lock()
 	revocationChecker = f
 	revocationCheckerMu.Unlock()
 }
 
-// isVulaIDRevoked reports whether the installed checker (if any) marks vulaID
+// isVulosIDRevoked reports whether the installed checker (if any) marks vulosID
 // revoked. With no checker installed it returns false (fail-open ONLY when the
 // subsystem is entirely absent; once wired, every revoked id is rejected).
-func isVulaIDRevoked(vulaID string) bool {
+func isVulosIDRevoked(vulosID string) bool {
 	revocationCheckerMu.RLock()
 	f := revocationChecker
 	revocationCheckerMu.RUnlock()
 	if f == nil {
 		return false
 	}
-	return f(vulaID)
+	return f(vulosID)
 }
 
 // identityRootResolver is the process-wide hook consulted by InboundMiddleware to
@@ -772,14 +772,14 @@ func isVulaIDRevoked(vulaID string) bool {
 // behavior).
 var (
 	identityRootResolverMu sync.RWMutex
-	identityRootResolver   func(presentedVulaID string) (string, bool)
+	identityRootResolver   func(presentedVulosID string) (string, bool)
 )
 
 // SetIdentityRootResolver installs the process-wide rotation/recovery resolver.
 // The live server wires it to a LifecycleStore.RootForResolvedKey so a peer that
 // has rotated/recovered is admitted on its new key when its ROOT is approved.
 // Passing nil disables rotation following.
-func SetIdentityRootResolver(f func(presentedVulaID string) (string, bool)) {
+func SetIdentityRootResolver(f func(presentedVulosID string) (string, bool)) {
 	identityRootResolverMu.Lock()
 	identityRootResolver = f
 	identityRootResolverMu.Unlock()
@@ -788,36 +788,36 @@ func SetIdentityRootResolver(f func(presentedVulaID string) (string, bool)) {
 // resolvePresentedRoot maps a presented current key back to its peer ROOT via the
 // installed resolver (if any). The mapping is only ever populated from a VERIFIED,
 // fail-closed chain (IngestPeerLifecycle), so a forged rotation produces no mapping.
-func resolvePresentedRoot(presentedVulaID string) (string, bool) {
+func resolvePresentedRoot(presentedVulosID string) (string, bool) {
 	identityRootResolverMu.RLock()
 	f := identityRootResolver
 	identityRootResolverMu.RUnlock()
 	if f == nil {
 		return "", false
 	}
-	return f(presentedVulaID)
+	return f(presentedVulosID)
 }
 
 // VerifyVulaSignatureChecked is VerifyVulaSignature plus a revocation gate: it
 // rejects a signature from a revoked identity even if the signature is otherwise
 // valid. Cross-box capability/proof checks should prefer this over the bare
 // VerifyVulaSignature so a compromised-then-revoked key cannot be used.
-func VerifyVulaSignatureChecked(vulaID string, msg, sig []byte) error {
-	if isVulaIDRevoked(vulaID) {
-		return fmt.Errorf("peering: identity %q is revoked", vulaID)
+func VerifyVulaSignatureChecked(vulosID string, msg, sig []byte) error {
+	if isVulosIDRevoked(vulosID) {
+		return fmt.Errorf("peering: identity %q is revoked", vulosID)
 	}
-	return VerifyVulaSignature(vulaID, msg, sig)
+	return VerifyVulaSignature(vulosID, msg, sig)
 }
 
 // ─── Small helpers ─────────────────────────────────────────────────────────────
 
-// ed25519PrivMatchesVulaID reports whether priv's public key equals the key
-// embedded in vulaID.
-func ed25519PrivMatchesVulaID(priv ed25519.PrivateKey, vulaID string) bool {
+// ed25519PrivMatchesVulosID reports whether priv's public key equals the key
+// embedded in vulosID.
+func ed25519PrivMatchesVulosID(priv ed25519.PrivateKey, vulosID string) bool {
 	if len(priv) != ed25519.PrivateKeySize {
 		return false
 	}
-	want, err := decodeVulaID(vulaID)
+	want, err := decodeVulosID(vulosID)
 	if err != nil {
 		return false
 	}

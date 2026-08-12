@@ -68,7 +68,7 @@ var proxRendezvousDisabledLogOnce sync.Once
 type proxCode struct {
 	Code      string    `json:"code"`
 	OwnerAddr string    `json:"owner_addr"` // "host:port" of the generating server
-	VulaID    string    `json:"vula_id"`    // Vula ID of the generating user
+	VulosID   string    `json:"vulos_id"`   // Vula ID of the generating user
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -93,15 +93,15 @@ type proxRedeemRequest struct {
 type proxRedeemResponse struct {
 	// OwnerAddr is the HTTP base address ("host:port") of the code generator.
 	OwnerAddr string `json:"owner_addr"`
-	// VulaID is the Vula ID of the code generator.
-	VulaID string `json:"vula_id"`
+	// VulosID is the Vula ID of the code generator.
+	VulosID string `json:"vulos_id"`
 }
 
 // proxRendezvousPayload is sent to / received from the remote rendezvous.
 type proxRendezvousPayload struct {
 	Code      string    `json:"code"`
 	OwnerAddr string    `json:"owner_addr"`
-	VulaID    string    `json:"vula_id"`
+	VulosID   string    `json:"vulos_id"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -114,8 +114,8 @@ type proxRendezvousPayload struct {
 type ProxService struct {
 	mu sync.Mutex
 
-	selfVulaID string
-	selfAddr   string // default self addr (may be overridden per-request)
+	selfVulosID string
+	selfAddr    string // default self addr (may be overridden per-request)
 
 	// codes maps a 6-digit string to its entry (only unexpired/unredeemed ones).
 	codes map[string]*proxCode
@@ -136,7 +136,7 @@ type proxHTTPClient interface {
 // NewProxService creates a ProxService for the given Vula ID.
 // selfAddr is the default address ("host:port") advertised in generated codes.
 // If empty, it is left to the caller to supply per-request.
-func NewProxService(selfVulaID, selfAddr string) *ProxService {
+func NewProxService(selfVulosID, selfAddr string) *ProxService {
 	base := os.Getenv(proxRendezvousEnvKey)
 	if base == "" {
 		base = proxDefaultRendezvousBase
@@ -147,7 +147,7 @@ func NewProxService(selfVulaID, selfAddr string) *ProxService {
 		})
 	}
 	return &ProxService{
-		selfVulaID:     selfVulaID,
+		selfVulosID:    selfVulosID,
 		selfAddr:       selfAddr,
 		codes:          make(map[string]*proxCode),
 		rendezvousBase: base,
@@ -173,7 +173,7 @@ func (s *ProxService) ProxGenerate(selfAddr string) (*proxCode, error) {
 	entry := &proxCode{
 		Code:      code,
 		OwnerAddr: selfAddr,
-		VulaID:    s.selfVulaID,
+		VulosID:   s.selfVulosID,
 		ExpiresAt: time.Now().Add(proxCodeTTL),
 	}
 
@@ -237,7 +237,7 @@ func (s *ProxService) ProxRedeem(ctx context.Context, code string) (*proxRedeemR
 		log.Printf("[prox] redeemed local code %s → %s", code, entry.OwnerAddr)
 		return &proxRedeemResponse{
 			OwnerAddr: entry.OwnerAddr,
-			VulaID:    entry.VulaID,
+			VulosID:   entry.VulosID,
 		}, nil
 	}
 
@@ -280,7 +280,7 @@ func (s *ProxService) proxRedeemRemote(ctx context.Context, code string) (*proxR
 	log.Printf("[prox] redeemed remote code %s → %s", code, payload.OwnerAddr)
 	return &proxRedeemResponse{
 		OwnerAddr: payload.OwnerAddr,
-		VulaID:    payload.VulaID,
+		VulosID:   payload.VulosID,
 	}, nil
 }
 
@@ -301,7 +301,7 @@ func (s *ProxService) ProxPublishToRendezvous(ctx context.Context, entry *proxCo
 	payload := proxRendezvousPayload{
 		Code:      entry.Code,
 		OwnerAddr: entry.OwnerAddr,
-		VulaID:    entry.VulaID,
+		VulosID:   entry.VulosID,
 		ExpiresAt: entry.ExpiresAt,
 	}
 	body, err := json.Marshal(payload)

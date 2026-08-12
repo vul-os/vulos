@@ -33,8 +33,8 @@ func generateTestKeyPair(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, s
 	if err != nil {
 		t.Fatalf("generateTestKeyPair: %v", err)
 	}
-	vulaID := encodeVulaID(pub)
-	return priv, pub, vulaID
+	vulosID := encodeVulosID(pub)
+	return priv, pub, vulosID
 }
 
 // newTestAPI builds a ContactAPI with an in-memory temp store, a nil hub (no WS
@@ -46,8 +46,8 @@ func newTestAPI(t *testing.T) (*ContactAPI, *ContactStore) {
 	if err != nil {
 		t.Fatalf("NewContactStore: %v", err)
 	}
-	priv, _, vulaID := generateTestKeyPair(t)
-	api := NewContactAPI(store, NewPeerClient(), nil, priv, vulaID, "localhost:0")
+	priv, _, vulosID := generateTestKeyPair(t)
+	api := NewContactAPI(store, NewPeerClient(), nil, priv, vulosID, "localhost:0")
 	return api, store
 }
 
@@ -94,7 +94,7 @@ func newEnvelopeRequest(env *Envelope) *http.Request {
 
 // ─── POST /api/peering/contacts/request ──────────────────────────────────────
 
-func TestHandleSendRequest_MissingTargetVulaID(t *testing.T) {
+func TestHandleSendRequest_MissingTargetVulosID(t *testing.T) {
 	api, _ := newTestAPI(t)
 	rr := postJSON(t, api.handleSendRequest, "/api/peering/contacts/request", map[string]string{
 		"display_name": "Alice",
@@ -106,10 +106,10 @@ func TestHandleSendRequest_MissingTargetVulaID(t *testing.T) {
 
 func TestHandleSendRequest_MissingTargetServer(t *testing.T) {
 	api, _ := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 	rr := postJSON(t, api.handleSendRequest, "/api/peering/contacts/request", map[string]string{
-		"target_vula_id": remoteVulaID,
-		"display_name":   "Me",
+		"target_vulos_id": remoteVulosID,
+		"display_name":    "Me",
 	})
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d (body=%s)", rr.Code, rr.Body.String())
@@ -131,20 +131,20 @@ func TestHandleSendRequest_ParsesFullVulaAddress(t *testing.T) {
 	// Strip scheme.
 	hostport := strings.TrimPrefix(rawURL, "https://")
 
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Use the test TLS server's client so it trusts the self-signed cert.
 	// We need to swap out the PeerClient's http.Client.
 	api.client = &PeerClient{http: remote.Client()}
 
-	// Full vula address: <vulaID>@host:port
-	// ParseVulaAddress requires "<vulaID>@<host>:<port>" so we need a valid port.
+	// Full vula address: <vulosID>@host:port
+	// ParseVulaAddress requires "<vulosID>@<host>:<port>" so we need a valid port.
 	// Build a valid full address.
-	fullAddress := fmt.Sprintf("%s@%s", remoteVulaID, hostport)
+	fullAddress := fmt.Sprintf("%s@%s", remoteVulosID, hostport)
 
 	rr := postJSON(t, api.handleSendRequest, "/api/peering/contacts/request", map[string]string{
-		"target_vula_id": fullAddress,
-		"display_name":   "Me",
+		"target_vulos_id": fullAddress,
+		"display_name":    "Me",
 	})
 
 	// We expect 202 Accepted (delivered) or 502 (SSRF guard for 127.0.0.1).
@@ -152,7 +152,7 @@ func TestHandleSendRequest_ParsesFullVulaAddress(t *testing.T) {
 	// but the contact should still have been added to the local store.
 	_ = rr // any status is acceptable here; we only check the store.
 
-	_, exists := store.Get(remoteVulaID)
+	_, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Error("contact was not added to store after sendRequest")
 	}
@@ -160,17 +160,17 @@ func TestHandleSendRequest_ParsesFullVulaAddress(t *testing.T) {
 
 func TestHandleSendRequest_AddsContactPending(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	// The delivery will fail (SSRF guard blocks 127.0.0.1) but the contact
 	// should be added as pending before the delivery attempt.
 	postJSON(t, api.handleSendRequest, "/api/peering/contacts/request", map[string]string{
-		"target_vula_id": remoteVulaID,
-		"target_server":  "127.0.0.1:9999", // SSRF-blocked but added before delivery
-		"display_name":   "Bob",
+		"target_vulos_id": remoteVulosID,
+		"target_server":   "127.0.0.1:9999", // SSRF-blocked but added before delivery
+		"display_name":    "Bob",
 	})
 
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not added to store")
 	}
@@ -183,13 +183,13 @@ func TestHandleSendRequest_AddsContactPending(t *testing.T) {
 
 // buildInboundRequest builds a valid signed Envelope and an http.Request with
 // the envelope in context, simulating InboundMiddleware verification.
-func buildInboundRequest(t *testing.T, priv ed25519.PrivateKey, fromVulaID, toVulaID string, payload ContactRequestPayload) (*Envelope, *http.Request) {
+func buildInboundRequest(t *testing.T, priv ed25519.PrivateKey, fromVulosID, toVulosID string, payload ContactRequestPayload) (*Envelope, *http.Request) {
 	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	env, err := NewEnvelope("test-id-"+fromVulaID, fromVulaID, toVulaID, TypeContactRequest, json.RawMessage(raw))
+	env, err := NewEnvelope("test-id-"+fromVulosID, fromVulosID, toVulosID, TypeContactRequest, json.RawMessage(raw))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -202,14 +202,14 @@ func buildInboundRequest(t *testing.T, priv ed25519.PrivateKey, fromVulaID, toVu
 
 func TestHandleInboundRequest_StoresPending(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName: "Alice",
 		Message:     "Hey, add me!",
 		ServerAddr:  "alice.vulos.org:8080",
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
@@ -218,7 +218,7 @@ func TestHandleInboundRequest_StoresPending(t *testing.T) {
 		t.Errorf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not added to store after inbound request")
 	}
@@ -235,17 +235,17 @@ func TestHandleInboundRequest_StoresPending(t *testing.T) {
 
 func TestHandleInboundRequest_BlockedSenderSilentDrop(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Pre-add the sender in blocked state.
-	store.Add(remoteVulaID, "Blocked", "") //nolint:errcheck
-	store.Block(remoteVulaID)              //nolint:errcheck
+	store.Add(remoteVulosID, "Blocked", "") //nolint:errcheck
+	store.Block(remoteVulosID)              //nolint:errcheck
 
 	payload := ContactRequestPayload{
 		DisplayName: "I'm blocked",
 		ServerAddr:  "blocked.example.com:8080",
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
@@ -256,7 +256,7 @@ func TestHandleInboundRequest_BlockedSenderSilentDrop(t *testing.T) {
 	}
 
 	// State must remain blocked.
-	c, _ := store.Get(remoteVulaID)
+	c, _ := store.Get(remoteVulosID)
 	if c.State != StateBlocked {
 		t.Errorf("expected state to remain blocked, got %q", c.State)
 	}
@@ -264,7 +264,7 @@ func TestHandleInboundRequest_BlockedSenderSilentDrop(t *testing.T) {
 
 func TestHandleInboundRequest_Idempotent(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName: "Alice",
@@ -273,7 +273,7 @@ func TestHandleInboundRequest_Idempotent(t *testing.T) {
 
 	// Send the same request twice.
 	for i := 0; i < 2; i++ {
-		_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+		_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 		rr := httptest.NewRecorder()
 		api.HandleInboundRequest(rr, req)
 		if rr.Code != http.StatusOK {
@@ -295,14 +295,14 @@ func TestHandleInboundRequest_Idempotent(t *testing.T) {
 // updated with that address so the contact is immediately reachable by mail.
 func TestHandleInboundRequest_VulosAddressPopulated(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName:  "Alice",
 		ServerAddr:   "alice.vulos.org:8080",
 		VulosAddress: "alice@vulos.org",
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
@@ -311,7 +311,7 @@ func TestHandleInboundRequest_VulosAddressPopulated(t *testing.T) {
 		t.Fatalf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not added to store after inbound request")
 	}
@@ -325,14 +325,14 @@ func TestHandleInboundRequest_VulosAddressPopulated(t *testing.T) {
 // field is truly optional and backwards-compatible.
 func TestHandleInboundRequest_VulosAddressAbsent(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	payload := ContactRequestPayload{
 		DisplayName: "Bob",
 		ServerAddr:  "bob.vulos.org:8080",
 		// VulosAddress deliberately omitted.
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
@@ -341,7 +341,7 @@ func TestHandleInboundRequest_VulosAddressAbsent(t *testing.T) {
 		t.Fatalf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not found")
 	}
@@ -357,17 +357,17 @@ func TestHandleInboundRequest_VulosAddressAbsent(t *testing.T) {
 // wire, since the PeerClient is SSRF-blocked in the test environment.
 func TestHandleSendRequest_IncludesVulosAddress(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	postJSON(t, api.handleSendRequest, "/api/peering/contacts/request", map[string]string{
-		"target_vula_id": remoteVulaID,
-		"target_server":  "127.0.0.1:9999", // SSRF-blocked but contact added first
-		"display_name":   "Me",
-		"vulos_address":  "me@vulos.org",
+		"target_vulos_id": remoteVulosID,
+		"target_server":   "127.0.0.1:9999", // SSRF-blocked but contact added first
+		"display_name":    "Me",
+		"vulos_address":   "me@vulos.org",
 	})
 
 	// The contact should have been added before the (failing) delivery attempt.
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not added to local store")
 	}
@@ -407,14 +407,14 @@ func TestInboundMiddleware_ExemptsContactRequest(t *testing.T) {
 		t.Fatalf("NewContactStore: %v", err)
 	}
 
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Build a signed contact-request envelope.
 	payload, _ := json.Marshal(ContactRequestPayload{
 		DisplayName: "Stranger",
 		ServerAddr:  "stranger.vulos.org:8080",
 	})
-	env, err := NewEnvelope("mid-exempt", remoteVulaID, "any", TypeContactRequest, json.RawMessage(payload))
+	env, err := NewEnvelope("mid-exempt", remoteVulosID, "any", TypeContactRequest, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -455,11 +455,11 @@ func TestInboundMiddleware_BlocksUnapproved(t *testing.T) {
 		t.Fatalf("NewContactStore: %v", err)
 	}
 
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// The sender is NOT in the contacts store (unknown).
 	payload, _ := json.Marshal(map[string]string{"body": "hello"})
-	env, err := NewEnvelope("mid-block", remoteVulaID, "any", TypeMessage, json.RawMessage(payload))
+	env, err := NewEnvelope("mid-block", remoteVulosID, "any", TypeMessage, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -494,14 +494,14 @@ func TestInboundMiddleware_AllowsApproved(t *testing.T) {
 		t.Fatalf("NewContactStore: %v", err)
 	}
 
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Add + approve the remote sender.
-	store.Add(remoteVulaID, "Bob", "bob.vulos.org:8080") //nolint:errcheck
-	store.Approve(remoteVulaID, DefaultPerms())          //nolint:errcheck
+	store.Add(remoteVulosID, "Bob", "bob.vulos.org:8080") //nolint:errcheck
+	store.Approve(remoteVulosID, DefaultPerms())          //nolint:errcheck
 
 	payload, _ := json.Marshal(map[string]string{"body": "hello"})
-	env, err := NewEnvelope("mid-allow", remoteVulaID, "any", TypeMessage, json.RawMessage(payload))
+	env, err := NewEnvelope("mid-allow", remoteVulosID, "any", TypeMessage, json.RawMessage(payload))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -572,8 +572,8 @@ func TestHandleListRequests_ShowsPending(t *testing.T) {
 
 	requests := resp["requests"].([]any)
 	req0 := requests[0].(map[string]any)
-	if req0["vula_id"] != alice {
-		t.Errorf("expected alice in pending, got %v", req0["vula_id"])
+	if req0["vulos_id"] != alice {
+		t.Errorf("expected alice in pending, got %v", req0["vulos_id"])
 	}
 }
 
@@ -581,13 +581,13 @@ func TestHandleListRequests_ShowsPending(t *testing.T) {
 
 func TestHandleApprove_Happy(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
-	store.Add(remoteVulaID, "Alice", "alice.vulos.org:8080") //nolint:errcheck
+	_, _, remoteVulosID := generateTestKeyPair(t)
+	store.Add(remoteVulosID, "Alice", "alice.vulos.org:8080") //nolint:errcheck
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -595,19 +595,19 @@ func TestHandleApprove_Happy(t *testing.T) {
 		t.Errorf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	if !store.IsApproved(remoteVulaID) {
+	if !store.IsApproved(remoteVulosID) {
 		t.Error("contact should be approved after handler")
 	}
 }
 
 func TestHandleApprove_NotFound(t *testing.T) {
 	api, _ := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -618,14 +618,14 @@ func TestHandleApprove_NotFound(t *testing.T) {
 
 func TestHandleApprove_BlockedContact(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
-	store.Add(remoteVulaID, "Alice", "") //nolint:errcheck
-	store.Block(remoteVulaID)            //nolint:errcheck
+	_, _, remoteVulosID := generateTestKeyPair(t)
+	store.Add(remoteVulosID, "Alice", "") //nolint:errcheck
+	store.Block(remoteVulosID)            //nolint:errcheck
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -639,13 +639,13 @@ func TestHandleApprove_BlockedContact(t *testing.T) {
 
 func TestHandleBlock_Happy(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
-	store.Add(remoteVulaID, "Eve", "eve.vulos.org:8080") //nolint:errcheck
+	_, _, remoteVulosID := generateTestKeyPair(t)
+	store.Add(remoteVulosID, "Eve", "eve.vulos.org:8080") //nolint:errcheck
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -653,7 +653,7 @@ func TestHandleBlock_Happy(t *testing.T) {
 		t.Errorf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	c, _ := store.Get(remoteVulaID)
+	c, _ := store.Get(remoteVulosID)
 	if c.State != StateBlocked {
 		t.Errorf("expected blocked state, got %q", c.State)
 	}
@@ -661,12 +661,12 @@ func TestHandleBlock_Happy(t *testing.T) {
 
 func TestHandleBlock_NotFound(t *testing.T) {
 	api, _ := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -680,8 +680,8 @@ func TestHandleBlock_SilentNoPeerNotification(t *testing.T) {
 	// We verify this by ensuring no outbound delivery is attempted —
 	// the test PeerClient would fail on any real delivery attempt.
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
-	store.Add(remoteVulaID, "Eve", "eve.vulos.org:8080") //nolint:errcheck
+	_, _, remoteVulosID := generateTestKeyPair(t)
+	store.Add(remoteVulosID, "Eve", "eve.vulos.org:8080") //nolint:errcheck
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
@@ -692,7 +692,7 @@ func TestHandleBlock_SilentNoPeerNotification(t *testing.T) {
 	// (The default PeerClient would SSRF-block anyway; this test verifies the
 	// handler itself never calls client.Post for block.)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -705,13 +705,13 @@ func TestHandleBlock_SilentNoPeerNotification(t *testing.T) {
 
 func TestHandleRemove_Happy(t *testing.T) {
 	api, store := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
-	store.Add(remoteVulaID, "Old Contact", "") //nolint:errcheck
+	_, _, remoteVulosID := generateTestKeyPair(t)
+	store.Add(remoteVulosID, "Old Contact", "") //nolint:errcheck
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/peering/contacts/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/peering/contacts/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -719,19 +719,19 @@ func TestHandleRemove_Happy(t *testing.T) {
 		t.Errorf("expected 200, got %d (body=%s)", rr.Code, rr.Body.String())
 	}
 
-	if _, exists := store.Get(remoteVulaID); exists {
+	if _, exists := store.Get(remoteVulosID); exists {
 		t.Error("contact still exists after remove")
 	}
 }
 
 func TestHandleRemove_NotFound(t *testing.T) {
 	api, _ := newTestAPI(t)
-	_, _, remoteVulaID := generateTestKeyPair(t)
+	_, _, remoteVulosID := generateTestKeyPair(t)
 
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/peering/contacts/"+remoteVulaID, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/peering/contacts/"+remoteVulosID, nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -771,8 +771,8 @@ func TestHandleListContacts_OnlyApproved(t *testing.T) {
 
 	contacts := resp["contacts"].([]any)
 	c0 := contacts[0].(map[string]any)
-	if c0["vula_id"] != alice {
-		t.Errorf("expected alice in approved list, got %v", c0["vula_id"])
+	if c0["vulos_id"] != alice {
+		t.Errorf("expected alice in approved list, got %v", c0["vulos_id"])
 	}
 }
 
@@ -799,7 +799,7 @@ func TestHandleListContacts_Empty(t *testing.T) {
 // lifecycle: receive request → store pending → approve → verify approved.
 func TestFullFlow_RequestApprove(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Step 1: inbound contact request arrives.
 	payload := ContactRequestPayload{
@@ -807,7 +807,7 @@ func TestFullFlow_RequestApprove(t *testing.T) {
 		Message:     "Hey, I'd like to connect",
 		ServerAddr:  "bob.vulos.org:8080",
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
 
@@ -816,7 +816,7 @@ func TestFullFlow_RequestApprove(t *testing.T) {
 	}
 
 	// Contact must be pending.
-	c, exists := store.Get(remoteVulaID)
+	c, exists := store.Get(remoteVulosID)
 	if !exists {
 		t.Fatal("contact not found after inbound request")
 	}
@@ -828,7 +828,7 @@ func TestFullFlow_RequestApprove(t *testing.T) {
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	approveReq := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulaID, nil)
+	approveReq := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/approve/"+remoteVulosID, nil)
 	approveRR := httptest.NewRecorder()
 	mux.ServeHTTP(approveRR, approveReq)
 
@@ -837,7 +837,7 @@ func TestFullFlow_RequestApprove(t *testing.T) {
 	}
 
 	// Contact must now be approved.
-	if !store.IsApproved(remoteVulaID) {
+	if !store.IsApproved(remoteVulosID) {
 		t.Error("contact should be approved after approve step")
 	}
 }
@@ -845,14 +845,14 @@ func TestFullFlow_RequestApprove(t *testing.T) {
 // TestFullFlow_RequestBlock exercises: receive request → pending → block → silent.
 func TestFullFlow_RequestBlock(t *testing.T) {
 	api, store := newTestAPI(t)
-	remotePriv, _, remoteVulaID := generateTestKeyPair(t)
+	remotePriv, _, remoteVulosID := generateTestKeyPair(t)
 
 	// Inbound request.
 	payload := ContactRequestPayload{
 		DisplayName: "Spammer",
 		ServerAddr:  "spam.example.com:8080",
 	}
-	_, req := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 	rr := httptest.NewRecorder()
 	api.HandleInboundRequest(rr, req)
 	if rr.Code != http.StatusOK {
@@ -863,7 +863,7 @@ func TestFullFlow_RequestBlock(t *testing.T) {
 	mux := http.NewServeMux()
 	api.RegisterContactHandlers(mux)
 
-	blockReq := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulaID, nil)
+	blockReq := httptest.NewRequest(http.MethodPost, "/api/peering/contacts/block/"+remoteVulosID, nil)
 	blockRR := httptest.NewRecorder()
 	mux.ServeHTTP(blockRR, blockReq)
 
@@ -871,13 +871,13 @@ func TestFullFlow_RequestBlock(t *testing.T) {
 		t.Fatalf("block: expected 200, got %d (body=%s)", blockRR.Code, blockRR.Body.String())
 	}
 
-	c, _ := store.Get(remoteVulaID)
+	c, _ := store.Get(remoteVulosID)
 	if c.State != StateBlocked {
 		t.Errorf("expected blocked state, got %q", c.State)
 	}
 
 	// A second inbound request from the same sender should be silently dropped.
-	_, req2 := buildInboundRequest(t, remotePriv, remoteVulaID, api.vulaID, payload)
+	_, req2 := buildInboundRequest(t, remotePriv, remoteVulosID, api.vulosID, payload)
 	rr2 := httptest.NewRecorder()
 	api.HandleInboundRequest(rr2, req2)
 
@@ -885,7 +885,7 @@ func TestFullFlow_RequestBlock(t *testing.T) {
 		t.Errorf("silent drop: expected 200, got %d", rr2.Code)
 	}
 	// State still blocked.
-	c2, _ := store.Get(remoteVulaID)
+	c2, _ := store.Get(remoteVulosID)
 	if c2.State != StateBlocked {
 		t.Errorf("state after silent drop: got %q want blocked", c2.State)
 	}

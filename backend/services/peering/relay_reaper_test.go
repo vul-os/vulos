@@ -24,13 +24,13 @@ func writeRelayBlobAt(t *testing.T, rs *RelayStore, recipient, blobID string, ex
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	blob := RelayBlob{
-		ID:              blobID,
-		RecipientVulaID: recipient,
-		SenderVulaID:    "sender",
-		BlobB64:         base64.StdEncoding.EncodeToString([]byte("ciphertext")),
-		BlobSize:        int64(len("ciphertext")),
-		DepositedAt:     expiresAt.Add(-time.Hour),
-		ExpiresAt:       expiresAt,
+		ID:               blobID,
+		RecipientVulosID: recipient,
+		SenderVulosID:    "sender",
+		BlobB64:          base64.StdEncoding.EncodeToString([]byte("ciphertext")),
+		BlobSize:         int64(len("ciphertext")),
+		DepositedAt:      expiresAt.Add(-time.Hour),
+		ExpiresAt:        expiresAt,
 	}
 	data, err := json.Marshal(blob)
 	if err != nil {

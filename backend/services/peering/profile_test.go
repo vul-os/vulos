@@ -29,10 +29,10 @@ import (
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // profileNewTmpStore creates a ProfileStore backed by a temp directory.
-func profileNewTmpStore(t *testing.T, vulaID string, contacts profileContactChecker) *ProfileStore {
+func profileNewTmpStore(t *testing.T, vulosID string, contacts profileContactChecker) *ProfileStore {
 	t.Helper()
 	dir := t.TempDir()
-	ps, err := NewProfileStore(dir, vulaID, contacts)
+	ps, err := NewProfileStore(dir, vulosID, contacts)
 	if err != nil {
 		t.Fatalf("NewProfileStore: %v", err)
 	}
@@ -60,8 +60,8 @@ type profileFakeContacts struct {
 	approved map[string]bool
 }
 
-func (f *profileFakeContacts) IsApproved(vulaID string) bool {
-	return f.approved[vulaID]
+func (f *profileFakeContacts) IsApproved(vulosID string) bool {
+	return f.approved[vulosID]
 }
 
 func newProfileFakeContacts(ids ...string) *profileFakeContacts {
@@ -75,12 +75,12 @@ func newProfileFakeContacts(ids ...string) *profileFakeContacts {
 // ─── ProfileStore tests ───────────────────────────────────────────────────────
 
 func TestProfileStore_NewCreatesDefaults(t *testing.T) {
-	const vulaID = "vula:ed25519:testid"
-	ps := profileNewTmpStore(t, vulaID, nil)
+	const vulosID = "vulos:ed25519:testid"
+	ps := profileNewTmpStore(t, vulosID, nil)
 
 	d := ps.Get()
-	if d.VulaID != vulaID {
-		t.Errorf("VulaID = %q, want %q", d.VulaID, vulaID)
+	if d.VulosID != vulosID {
+		t.Errorf("VulosID = %q, want %q", d.VulosID, vulosID)
 	}
 	if d.Visibility.Image != ProfileVisPublic {
 		t.Errorf("default Image visibility = %q, want %q", d.Visibility.Image, ProfileVisPublic)
@@ -94,7 +94,7 @@ func TestProfileStore_NewCreatesDefaults(t *testing.T) {
 }
 
 func TestProfileStore_UpdatePersists(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:abc", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:abc", nil)
 
 	if err := ps.Update(func(d *ProfileData) {
 		d.DisplayName = "Alice"
@@ -104,7 +104,7 @@ func TestProfileStore_UpdatePersists(t *testing.T) {
 	}
 
 	// Reload from disk.
-	ps2, err := NewProfileStore(ps.dir, "vula:ed25519:abc", nil)
+	ps2, err := NewProfileStore(ps.dir, "vulos:ed25519:abc", nil)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestProfileStore_UpdatePersists(t *testing.T) {
 }
 
 func TestProfileStore_VisibilityPersists(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:vis", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:vis", nil)
 	if err := ps.Update(func(d *ProfileData) {
 		d.Visibility.Image = ProfileVisNobody
 		d.Visibility.Bio = ProfileVisPublic
@@ -126,7 +126,7 @@ func TestProfileStore_VisibilityPersists(t *testing.T) {
 		t.Fatalf("Update: %v", err)
 	}
 
-	ps2, err := NewProfileStore(ps.dir, "vula:ed25519:vis", nil)
+	ps2, err := NewProfileStore(ps.dir, "vulos:ed25519:vis", nil)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestProfileStore_VisibilityPersists(t *testing.T) {
 // ─── AvatarETag tests ─────────────────────────────────────────────────────────
 
 func TestAvatarETag_AbsentReturnsFalse(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:etag", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:etag", nil)
 	_, ok := ps.AvatarETag()
 	if ok {
 		t.Error("AvatarETag: want false when no avatar")
@@ -150,7 +150,7 @@ func TestAvatarETag_AbsentReturnsFalse(t *testing.T) {
 }
 
 func TestAvatarETag_StableForSameContent(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:etag2", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:etag2", nil)
 	pngBytes := profileMakePNG(t, 64, 64, color.RGBA{R: 200, G: 100, B: 50, A: 255})
 
 	if err := ps.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
@@ -164,7 +164,7 @@ func TestAvatarETag_StableForSameContent(t *testing.T) {
 }
 
 func TestAvatarETag_ChangesWithContent(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:etag3", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:etag3", nil)
 
 	if err := ps.profileSaveAvatar(bytes.NewReader(
 		profileMakePNG(t, 64, 64, color.RGBA{R: 1, G: 2, B: 3, A: 255}),
@@ -193,13 +193,13 @@ func TestProfileCanViewImage_Public(t *testing.T) {
 	if !ps.profileCanViewImage("") {
 		t.Error("public image: anonymous should be allowed")
 	}
-	if !ps.profileCanViewImage("vula:ed25519:stranger") {
+	if !ps.profileCanViewImage("vulos:ed25519:stranger") {
 		t.Error("public image: stranger should be allowed")
 	}
 }
 
 func TestProfileCanViewImage_Peers(t *testing.T) {
-	contacts := newProfileFakeContacts("vula:ed25519:bob")
+	contacts := newProfileFakeContacts("vulos:ed25519:bob")
 	ps := profileNewTmpStore(t, "id", contacts)
 	if err := ps.Update(func(d *ProfileData) {
 		d.Visibility.Image = ProfileVisPeers
@@ -210,16 +210,16 @@ func TestProfileCanViewImage_Peers(t *testing.T) {
 	if ps.profileCanViewImage("") {
 		t.Error("peers-only: anonymous should be blocked")
 	}
-	if ps.profileCanViewImage("vula:ed25519:stranger") {
+	if ps.profileCanViewImage("vulos:ed25519:stranger") {
 		t.Error("peers-only: unapproved stranger should be blocked")
 	}
-	if !ps.profileCanViewImage("vula:ed25519:bob") {
+	if !ps.profileCanViewImage("vulos:ed25519:bob") {
 		t.Error("peers-only: approved peer should be allowed")
 	}
 }
 
 func TestProfileCanViewImage_Nobody(t *testing.T) {
-	contacts := newProfileFakeContacts("vula:ed25519:bob")
+	contacts := newProfileFakeContacts("vulos:ed25519:bob")
 	ps := profileNewTmpStore(t, "id", contacts)
 	if err := ps.Update(func(d *ProfileData) {
 		d.Visibility.Image = ProfileVisNobody
@@ -227,7 +227,7 @@ func TestProfileCanViewImage_Nobody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ps.profileCanViewImage("vula:ed25519:bob") {
+	if ps.profileCanViewImage("vulos:ed25519:bob") {
 		t.Error("nobody: even approved peer should be blocked")
 	}
 }
@@ -284,7 +284,7 @@ func TestProfileEncodeVP8L_ValidRIFFHeader(t *testing.T) {
 }
 
 func TestProfileSaveAvatar_WritesWebPAtPath(t *testing.T) {
-	ps := profileNewTmpStore(t, "vula:ed25519:avatartest", nil)
+	ps := profileNewTmpStore(t, "vulos:ed25519:avatartest", nil)
 	pngBytes := profileMakePNG(t, 128, 128, color.RGBA{R: 100, G: 150, B: 200, A: 255})
 
 	if err := ps.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
@@ -305,14 +305,14 @@ func TestProfileSaveAvatar_WritesWebPAtPath(t *testing.T) {
 
 // ─── HTTP handler tests ───────────────────────────────────────────────────────
 
-func profileNewMux(t *testing.T, vulaID string, contacts profileContactChecker) (*http.ServeMux, *ProfileStore) {
+func profileNewMux(t *testing.T, vulosID string, contacts profileContactChecker) (*http.ServeMux, *ProfileStore) {
 	t.Helper()
 	dir := t.TempDir()
-	store, err := NewProfileStore(dir, vulaID, contacts)
+	store, err := NewProfileStore(dir, vulosID, contacts)
 	if err != nil {
 		t.Fatalf("NewProfileStore: %v", err)
 	}
-	svc := &profileSvc{store: store, vulaID: vulaID}
+	svc := &profileSvc{store: store, vulosID: vulosID}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/peering/profile", svc.handleGet)
 	mux.HandleFunc("PUT /api/peering/profile", svc.handlePut)
@@ -341,8 +341,8 @@ func profileDo(mux *http.ServeMux, method, path, body, callerID string) *httptes
 }
 
 func TestHandleGetProfile_Returns200(t *testing.T) {
-	const vulaID = "vula:ed25519:gettest"
-	mux, _ := profileNewMux(t, vulaID, nil)
+	const vulosID = "vulos:ed25519:gettest"
+	mux, _ := profileNewMux(t, vulosID, nil)
 	rr := profileDo(mux, http.MethodGet, "/api/peering/profile", "", "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -351,8 +351,8 @@ func TestHandleGetProfile_Returns200(t *testing.T) {
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.VulaID != vulaID {
-		t.Errorf("VulaID = %q, want %q", resp.VulaID, vulaID)
+	if resp.VulosID != vulosID {
+		t.Errorf("VulosID = %q, want %q", resp.VulosID, vulosID)
 	}
 	if resp.Visibility.Image != ProfileVisPublic {
 		t.Errorf("Visibility.Image = %q, want public", resp.Visibility.Image)
@@ -360,7 +360,7 @@ func TestHandleGetProfile_Returns200(t *testing.T) {
 }
 
 func TestHandlePutProfile_UpdatesFields(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:puttest", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:puttest", nil)
 	body := `{"display_name":"Bob","bio":"hello"}`
 	rr := profileDo(mux, http.MethodPut, "/api/peering/profile", body, "")
 	if rr.Code != http.StatusOK {
@@ -376,7 +376,7 @@ func TestHandlePutProfile_UpdatesFields(t *testing.T) {
 }
 
 func TestHandlePutProfile_UpdatesVisibility(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:vistest", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:vistest", nil)
 	body := `{"visibility":{"image":"nobody","bio":"public","email":"peers"}}`
 	rr := profileDo(mux, http.MethodPut, "/api/peering/profile", body, "")
 	if rr.Code != http.StatusOK {
@@ -395,7 +395,7 @@ func TestHandlePutProfile_UpdatesVisibility(t *testing.T) {
 }
 
 func TestHandlePostImage_CreatesWebP(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:imgtest", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:imgtest", nil)
 
 	pngBytes := profileMakePNG(t, 200, 200, color.RGBA{R: 50, G: 100, B: 150, A: 255})
 	req := httptest.NewRequest(http.MethodPost, "/api/peering/profile/image", bytes.NewReader(pngBytes))
@@ -423,7 +423,7 @@ func TestHandlePostImage_CreatesWebP(t *testing.T) {
 }
 
 func TestHandleGetImage_PublicNoCallerAllowed(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:imgget", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:imgget", nil)
 	pngBytes := profileMakePNG(t, 64, 64, color.RGBA{R: 255, A: 255})
 	if err := store.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
 		t.Fatal(err)
@@ -442,8 +442,8 @@ func TestHandleGetImage_PublicNoCallerAllowed(t *testing.T) {
 }
 
 func TestHandleGetImage_PeersOnlyBlocked(t *testing.T) {
-	contacts := newProfileFakeContacts("vula:ed25519:alice")
-	mux, store := profileNewMux(t, "vula:ed25519:imgvis", contacts)
+	contacts := newProfileFakeContacts("vulos:ed25519:alice")
+	mux, store := profileNewMux(t, "vulos:ed25519:imgvis", contacts)
 
 	pngBytes := profileMakePNG(t, 64, 64, color.RGBA{G: 255, A: 255})
 	if err := store.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
@@ -462,20 +462,20 @@ func TestHandleGetImage_PeersOnlyBlocked(t *testing.T) {
 	}
 
 	// Unapproved peer → 403.
-	rr = profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vula:ed25519:stranger")
+	rr = profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vulos:ed25519:stranger")
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("stranger: status = %d, want 403", rr.Code)
 	}
 
 	// Approved peer → 200.
-	rr = profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vula:ed25519:alice")
+	rr = profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vulos:ed25519:alice")
 	if rr.Code != http.StatusOK {
 		t.Errorf("alice: status = %d, want 200", rr.Code)
 	}
 }
 
 func TestHandleGetImage_ETagConditional304(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:etag304", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:etag304", nil)
 	pngBytes := profileMakePNG(t, 64, 64, color.RGBA{B: 255, A: 255})
 	if err := store.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
 		t.Fatal(err)
@@ -493,7 +493,7 @@ func TestHandleGetImage_ETagConditional304(t *testing.T) {
 }
 
 func TestHandleGetImage_NoAvatar404(t *testing.T) {
-	mux, _ := profileNewMux(t, "vula:ed25519:noimg", nil)
+	mux, _ := profileNewMux(t, "vulos:ed25519:noimg", nil)
 	rr := profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "")
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("no avatar: status = %d, want 404", rr.Code)
@@ -501,7 +501,7 @@ func TestHandleGetImage_NoAvatar404(t *testing.T) {
 }
 
 func TestHandleGetImage_NobodyVisibility403(t *testing.T) {
-	mux, store := profileNewMux(t, "vula:ed25519:nobody", nil)
+	mux, store := profileNewMux(t, "vulos:ed25519:nobody", nil)
 	pngBytes := profileMakePNG(t, 64, 64, color.RGBA{R: 255, A: 255})
 	if err := store.profileSaveAvatar(bytes.NewReader(pngBytes)); err != nil {
 		t.Fatal(err)
@@ -512,7 +512,7 @@ func TestHandleGetImage_NobodyVisibility403(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rr := profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vula:ed25519:anyone")
+	rr := profileDo(mux, http.MethodGet, "/api/peering/profile/image", "", "vulos:ed25519:anyone")
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("nobody visibility: status = %d, want 403", rr.Code)
 	}
@@ -521,7 +521,7 @@ func TestHandleGetImage_NobodyVisibility403(t *testing.T) {
 func TestRegisterProfileHandlers_Smoke(t *testing.T) {
 	dir := t.TempDir()
 	mux := http.NewServeMux()
-	RegisterProfileHandlers(mux, dir, "vula:ed25519:smoke", nil)
+	RegisterProfileHandlers(mux, dir, "vulos:ed25519:smoke", nil)
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/peering/profile", nil)

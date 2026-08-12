@@ -18,7 +18,7 @@ func genKey(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	if err != nil {
 		t.Fatalf("genKey: %v", err)
 	}
-	return priv, pub, encodeVulaID(pub)
+	return priv, pub, encodeVulosID(pub)
 }
 
 // makePayload returns a json.RawMessage from a Go value for use in tests.
@@ -34,14 +34,14 @@ func makePayload(t *testing.T, v any) json.RawMessage {
 // ─── Sign + Verify round-trip ─────────────────────────────────────────────────
 
 func TestSignVerifyRoundTrip(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	payload := makePayload(t, MessagePayload{
 		Type: "text",
 		Body: "hello, peering",
 	})
 
-	env, err := NewEnvelope("test-id-1", vulaID, "vula:ed25519:somerecipient", TypeMessage, payload)
+	env, err := NewEnvelope("test-id-1", vulosID, "vulos:ed25519:somerecipient", TypeMessage, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -62,10 +62,10 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 // ─── Tamper detection ─────────────────────────────────────────────────────────
 
 func TestVerifyRejectsTamperedPayload(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	payload := makePayload(t, MessagePayload{Type: "text", Body: "original"})
-	env, _ := NewEnvelope("test-id-2", vulaID, "", TypeMessage, payload)
+	env, _ := NewEnvelope("test-id-2", vulosID, "", TypeMessage, payload)
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -79,9 +79,9 @@ func TestVerifyRejectsTamperedPayload(t *testing.T) {
 }
 
 func TestVerifyRejectsTamperedID(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
-	env, _ := NewEnvelope("test-id-3", vulaID, "", TypeMessage, makePayload(t, map[string]any{"x": 1}))
+	env, _ := NewEnvelope("test-id-3", vulosID, "", TypeMessage, makePayload(t, map[string]any{"x": 1}))
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -94,9 +94,9 @@ func TestVerifyRejectsTamperedID(t *testing.T) {
 }
 
 func TestVerifyRejectsTamperedType(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
-	env, _ := NewEnvelope("test-id-4", vulaID, "", TypeMessage, makePayload(t, map[string]any{}))
+	env, _ := NewEnvelope("test-id-4", vulosID, "", TypeMessage, makePayload(t, map[string]any{}))
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
@@ -112,24 +112,24 @@ func TestVerifyRejectsTamperedType(t *testing.T) {
 
 func TestVerifyRejectsWrongKey(t *testing.T) {
 	priv1, _, _ := genKey(t)
-	_, _, vulaID2 := genKey(t)
+	_, _, vulosID2 := genKey(t)
 
-	// Sign with key1 but set From = vulaID2 so Verify uses key2.
-	env, _ := NewEnvelope("test-id-5", vulaID2, "", TypeMessage, makePayload(t, map[string]any{"k": "v"}))
+	// Sign with key1 but set From = vulosID2 so Verify uses key2.
+	env, _ := NewEnvelope("test-id-5", vulosID2, "", TypeMessage, makePayload(t, map[string]any{"k": "v"}))
 	if err := env.Sign(priv1); err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
 
-	// Verify should decode vulaID2 as the public key, which doesn't match priv1.
+	// Verify should decode vulosID2 as the public key, which doesn't match priv1.
 	if err := env.Verify(); err == nil {
 		t.Fatal("expected Verify to fail when signed by a different key")
 	}
 }
 
 func TestVerifyRejectsMissingSignature(t *testing.T) {
-	_, _, vulaID := genKey(t)
+	_, _, vulosID := genKey(t)
 
-	env, _ := NewEnvelope("test-id-6", vulaID, "", TypeMessage, makePayload(t, map[string]any{}))
+	env, _ := NewEnvelope("test-id-6", vulosID, "", TypeMessage, makePayload(t, map[string]any{}))
 	// Do NOT call Sign.
 
 	if err := env.Verify(); err == nil {
@@ -144,10 +144,10 @@ func TestVerifyRejectsMissingSignature(t *testing.T) {
 // to build the payload.  Because Go map iteration is intentionally random, we
 // build the same logical payload two different ways and compare.
 func TestCanonicalBytesStableAcrossMapOrderings(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	buildEnv := func(payload json.RawMessage) *Envelope {
-		env, err := NewEnvelope("stable-id", vulaID, "recipient", TypeMessage, payload)
+		env, err := NewEnvelope("stable-id", vulosID, "recipient", TypeMessage, payload)
 		if err != nil {
 			t.Fatalf("NewEnvelope: %v", err)
 		}
@@ -201,9 +201,9 @@ func TestCanonicalBytesStableAcrossMapOrderings(t *testing.T) {
 // TestCanonicalBytesSignatureFieldExcluded ensures that changing Signature does
 // not change the canonical bytes (since "signature" is excluded from signing).
 func TestCanonicalBytesSignatureFieldExcluded(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
-	env, _ := NewEnvelope("sig-excl-id", vulaID, "", TypeMessage, makePayload(t, map[string]any{"msg": "hi"}))
+	env, _ := NewEnvelope("sig-excl-id", vulosID, "", TypeMessage, makePayload(t, map[string]any{"msg": "hi"}))
 	env.Timestamp = "2026-01-01T00:00:00Z"
 
 	cb1, _ := env.canonicalBytes()
@@ -227,8 +227,8 @@ func TestCanonicalBytesSignatureFieldExcluded(t *testing.T) {
 // ─── Payload shape tests ──────────────────────────────────────────────────────
 
 func TestContactRequestEnvelope(t *testing.T) {
-	priv, _, vulaID := genKey(t)
-	_, _, toVulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
+	_, _, toVulosID := genKey(t)
 
 	body := ContactRequestPayload{
 		DisplayName: "Alice",
@@ -237,7 +237,7 @@ func TestContactRequestEnvelope(t *testing.T) {
 	}
 	payload := makePayload(t, body)
 
-	env, err := NewEnvelope("cr-id-1", vulaID, toVulaID, TypeContactRequest, payload)
+	env, err := NewEnvelope("cr-id-1", vulosID, toVulosID, TypeContactRequest, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestContactRequestEnvelope(t *testing.T) {
 }
 
 func TestSignalingEnvelope(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	sdp := makePayload(t, map[string]string{"sdp": "v=0\r\no=..."})
 	body := SignalingPayload{
@@ -269,7 +269,7 @@ func TestSignalingEnvelope(t *testing.T) {
 	}
 	payload := makePayload(t, body)
 
-	env, err := NewEnvelope("sig-id-1", vulaID, "", TypeSignaling, payload)
+	env, err := NewEnvelope("sig-id-1", vulosID, "", TypeSignaling, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -282,17 +282,17 @@ func TestSignalingEnvelope(t *testing.T) {
 }
 
 func TestFeedEnvelope(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	body := FeedPayload{
-		FeedID:    vulaID + "/blog",
+		FeedID:    vulosID + "/blog",
 		Sequence:  1,
 		EntryType: "post",
 		Body:      makePayload(t, map[string]string{"title": "Hello World", "content": "First post"}),
 	}
 	payload := makePayload(t, body)
 
-	env, err := NewEnvelope("feed-id-1", vulaID, "", TypeFeed, payload)
+	env, err := NewEnvelope("feed-id-1", vulosID, "", TypeFeed, payload)
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
 	}
@@ -307,17 +307,17 @@ func TestFeedEnvelope(t *testing.T) {
 // ─── NewEnvelope validation ───────────────────────────────────────────────────
 
 func TestNewEnvelopeValidation(t *testing.T) {
-	_, _, vulaID := genKey(t)
+	_, _, vulosID := genKey(t)
 	payload := makePayload(t, map[string]any{})
 
 	cases := []struct {
 		id, from, to, typ string
 		wantErr           bool
 	}{
-		{"id", vulaID, "", TypeMessage, false},
-		{"", vulaID, "", TypeMessage, true}, // empty id
-		{"id", "", "", TypeMessage, true},   // empty from
-		{"id", vulaID, "", "", true},        // empty type
+		{"id", vulosID, "", TypeMessage, false},
+		{"", vulosID, "", TypeMessage, true}, // empty id
+		{"id", "", "", TypeMessage, true},    // empty from
+		{"id", vulosID, "", "", true},        // empty type
 	}
 
 	for _, tc := range cases {
@@ -336,9 +336,9 @@ func TestNewEnvelopeValidation(t *testing.T) {
 // TestWireFormatRoundTrip confirms that an Envelope survives JSON
 // marshal/unmarshal and still verifies correctly.
 func TestWireFormatRoundTrip(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
-	env, _ := NewEnvelope("wire-id", vulaID, "", TypeMessage, makePayload(t, MessagePayload{
+	env, _ := NewEnvelope("wire-id", vulosID, "", TypeMessage, makePayload(t, MessagePayload{
 		Type: "text",
 		Body: "wire format test",
 	}))
@@ -372,7 +372,7 @@ func TestWireFormatRoundTrip(t *testing.T) {
 // TestNestedObjectCanonicalisation verifies that deeply nested objects are
 // also key-sorted correctly.
 func TestNestedObjectCanonicalisation(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	nested := makePayload(t, map[string]any{
 		"z_outer": map[string]any{
@@ -384,7 +384,7 @@ func TestNestedObjectCanonicalisation(t *testing.T) {
 		"m_outer": []any{3, 1, 2}, // arrays preserve order
 	})
 
-	env, _ := NewEnvelope("nested-id", vulaID, "", TypeMessage, nested)
+	env, _ := NewEnvelope("nested-id", vulosID, "", TypeMessage, nested)
 	env.Timestamp = "2026-01-01T00:00:00Z"
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)
@@ -427,13 +427,13 @@ func TestNestedObjectCanonicalisation(t *testing.T) {
 // TestArrayOrderPreserved ensures that array element order is NOT sorted
 // (only object keys are sorted).
 func TestArrayOrderPreserved(t *testing.T) {
-	priv, _, vulaID := genKey(t)
+	priv, _, vulosID := genKey(t)
 
 	payload := makePayload(t, map[string]any{
 		"items": []any{3, 1, 4, 1, 5, 9, 2, 6},
 	})
 
-	env, _ := NewEnvelope("arr-id", vulaID, "", TypeMessage, payload)
+	env, _ := NewEnvelope("arr-id", vulosID, "", TypeMessage, payload)
 	env.Timestamp = "2026-01-01T00:00:00Z"
 	if err := env.Sign(priv); err != nil {
 		t.Fatalf("Sign: %v", err)

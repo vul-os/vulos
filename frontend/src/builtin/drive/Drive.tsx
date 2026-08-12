@@ -65,7 +65,7 @@ interface DriveNode {
   size: number
   content_type: string
   updated_at: string
-  owner_vula_id?: string
+  owner_vulos_id?: string
   received_at?: string
   saved_node_id?: string
 }
@@ -79,7 +79,7 @@ function normalizeNode(x: unknown): DriveNode {
     content_type: str(r.content_type),
     updated_at: str(r.updated_at),
   }
-  if (typeof r.owner_vula_id === 'string') out.owner_vula_id = r.owner_vula_id
+  if (typeof r.owner_vulos_id === 'string') out.owner_vulos_id = r.owner_vulos_id
   if (typeof r.received_at === 'string') out.received_at = r.received_at
   if (typeof r.saved_node_id === 'string') out.saved_node_id = r.saved_node_id
   return out
@@ -2225,7 +2225,7 @@ export default function Drive() {
                   <span style={{ flex: 1, overflow: 'hidden', minWidth: 120 }}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>{item.name}</span>
                     <span style={{ display: 'block', color: T.textFaint, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      from {String(item.owner_vula_id || '').slice(0, 22)}… · {fmtDate(item.received_at || '')}
+                      from {String(item.owner_vulos_id || '').slice(0, 22)}… · {fmtDate(item.received_at || '')}
                     </span>
                   </span>
                   <span style={{ color: T.textFaint, fontSize: 12, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>

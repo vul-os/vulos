@@ -19,14 +19,14 @@ import (
 // WKIdentityResponse with that identity's key. Used to exercise the
 // signature-authenticated fetch path (PEER-12 hardening): a Vula ID IS an
 // Ed25519 public key, so a profile must be signed by it to be trusted.
-func wkTestSignedPeer(t *testing.T) (vulaID string, sign func(*WKIdentityResponse)) {
+func wkTestSignedPeer(t *testing.T) (vulosID string, sign func(*WKIdentityResponse)) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	vulaID = wkFormatVulaID(pub)
-	return vulaID, func(resp *WKIdentityResponse) {
+	vulosID = wkFormatVulosID(pub)
+	return vulosID, func(resp *WKIdentityResponse) {
 		if err := wkSignResponse(resp, priv); err != nil {
 			t.Fatalf("sign response: %v", err)
 		}
@@ -51,17 +51,17 @@ func wkTempDir(t *testing.T) string {
 }
 
 // --------------------------------------------------------------------------
-// wkFormatVulaID
+// wkFormatVulosID
 // --------------------------------------------------------------------------
 
-func TestWKFormatVulaID(t *testing.T) {
+func TestWKFormatVulosID(t *testing.T) {
 	dir := wkTempDir(t)
 	id, err := wkLoadOrCreateIdentity(dir)
 	if err != nil {
 		t.Fatalf("wkLoadOrCreateIdentity: %v", err)
 	}
-	if !strings.HasPrefix(id.VulaID, wkVulaIDPrefix) {
-		t.Errorf("VulaID %q does not start with %q", id.VulaID, wkVulaIDPrefix)
+	if !strings.HasPrefix(id.VulosID, wkVulosIDPrefix) {
+		t.Errorf("VulosID %q does not start with %q", id.VulosID, wkVulosIDPrefix)
 	}
 }
 
@@ -75,11 +75,11 @@ func TestWKLoadOrCreateIdentity_CreatesFreshKeypair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	if id.VulaID == "" || id.PublicKey == "" || id.PrivateKey == "" {
+	if id.VulosID == "" || id.PublicKey == "" || id.PrivateKey == "" {
 		t.Fatalf("identity fields empty: %+v", id)
 	}
-	if !strings.HasPrefix(id.VulaID, wkVulaIDPrefix) {
-		t.Errorf("unexpected VulaID prefix: %s", id.VulaID)
+	if !strings.HasPrefix(id.VulosID, wkVulosIDPrefix) {
+		t.Errorf("unexpected VulosID prefix: %s", id.VulosID)
 	}
 }
 
@@ -93,8 +93,8 @@ func TestWKLoadOrCreateIdentity_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	if id1.VulaID != id2.VulaID {
-		t.Errorf("identity not idempotent: %s != %s", id1.VulaID, id2.VulaID)
+	if id1.VulosID != id2.VulosID {
+		t.Errorf("identity not idempotent: %s != %s", id1.VulosID, id2.VulosID)
 	}
 }
 
@@ -116,9 +116,9 @@ func TestWKLoadOrCreateIdentity_WrittenToDisk(t *testing.T) {
 
 func TestWKLoadOwnProfile_DefaultsWhenMissing(t *testing.T) {
 	dir := wkTempDir(t)
-	p := wkLoadOwnProfile(dir, "vula:ed25519:test")
-	if p.VulaID != "vula:ed25519:test" {
-		t.Errorf("VulaID: got %q", p.VulaID)
+	p := wkLoadOwnProfile(dir, "vulos:ed25519:test")
+	if p.VulosID != "vulos:ed25519:test" {
+		t.Errorf("VulosID: got %q", p.VulosID)
 	}
 	if p.Visibility.Image != WKVisibilityPublic {
 		t.Errorf("default image visibility should be public, got %q", p.Visibility.Image)
@@ -134,7 +134,7 @@ func TestWKLoadOwnProfile_DefaultsWhenMissing(t *testing.T) {
 func TestWKLoadOwnProfile_LoadsFromDisk(t *testing.T) {
 	dir := wkTempDir(t)
 	stored := WKOwnProfile{
-		VulaID:        "vula:ed25519:abc",
+		VulosID:       "vulos:ed25519:abc",
 		DisplayName:   "Alice",
 		Bio:           "Building things",
 		VerifiedEmail: true,
@@ -149,7 +149,7 @@ func TestWKLoadOwnProfile_LoadsFromDisk(t *testing.T) {
 	raw, _ := json.MarshalIndent(stored, "", "  ")
 	os.WriteFile(filepath.Join(dir, wkProfileFile), raw, 0600)
 
-	p := wkLoadOwnProfile(dir, "vula:ed25519:abc")
+	p := wkLoadOwnProfile(dir, "vulos:ed25519:abc")
 	if p.DisplayName != "Alice" {
 		t.Errorf("DisplayName: got %q", p.DisplayName)
 	}
@@ -164,7 +164,7 @@ func TestWKLoadOwnProfile_LoadsFromDisk(t *testing.T) {
 
 func TestWKBuildPublicResponse_PublicBio(t *testing.T) {
 	p := WKOwnProfile{
-		VulaID:        "vula:ed25519:xyz",
+		VulosID:       "vulos:ed25519:xyz",
 		DisplayName:   "Bob",
 		Bio:           "My public bio",
 		VerifiedEmail: true,
@@ -185,7 +185,7 @@ func TestWKBuildPublicResponse_PublicBio(t *testing.T) {
 
 func TestWKBuildPublicResponse_PrivateBio(t *testing.T) {
 	p := WKOwnProfile{
-		VulaID:      "vula:ed25519:xyz",
+		VulosID:     "vulos:ed25519:xyz",
 		DisplayName: "Carol",
 		Bio:         "Secret bio",
 		Visibility: WKProfileVisibility{
@@ -205,7 +205,7 @@ func TestWKBuildPublicResponse_PrivateBio(t *testing.T) {
 
 func TestWKBuildPublicResponse_NeverExposesEmail(t *testing.T) {
 	p := WKOwnProfile{
-		VulaID:      "vula:ed25519:xyz",
+		VulosID:     "vulos:ed25519:xyz",
 		DisplayName: "Dave",
 		Email:       "dave@example.com",
 		Visibility: WKProfileVisibility{
@@ -244,8 +244,8 @@ func TestWKWellKnownHandler_NoAuth(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !strings.HasPrefix(resp.VulaID, wkVulaIDPrefix) {
-		t.Errorf("VulaID %q does not start with prefix", resp.VulaID)
+	if !strings.HasPrefix(resp.VulosID, wkVulosIDPrefix) {
+		t.Errorf("VulosID %q does not start with prefix", resp.VulosID)
 	}
 }
 
@@ -274,7 +274,7 @@ func TestWKWellKnownHandler_OnlyPublicFields(t *testing.T) {
 
 	// Write a profile where bio is peers-only and email is nobody.
 	stored := WKOwnProfile{
-		VulaID:      "vula:ed25519:testhidden",
+		VulosID:     "vulos:ed25519:testhidden",
 		DisplayName: "HiddenUser",
 		Bio:         "secret bio",
 		Email:       "hidden@example.com",
@@ -288,9 +288,9 @@ func TestWKWellKnownHandler_OnlyPublicFields(t *testing.T) {
 	raw, _ := json.MarshalIndent(stored, "", "  ")
 	os.WriteFile(filepath.Join(dir, wkProfileFile), raw, 0600)
 
-	// Also write identity so VulaID matches.
+	// Also write identity so VulosID matches.
 	idStored := wkStoredIdentity{
-		VulaID:     "vula:ed25519:testhidden",
+		VulosID:    "vulos:ed25519:testhidden",
 		PublicKey:  "dGVzdA",
 		PrivateKey: "dGVzdA",
 		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
@@ -315,7 +315,7 @@ func TestWKWellKnownHandler_OnlyPublicFields(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// /api/peering/profile/{vula_id} handler
+// /api/peering/profile/{vulos_id} handler
 // --------------------------------------------------------------------------
 
 func TestWKPeerProfileHandler_CacheHit(t *testing.T) {
@@ -324,10 +324,10 @@ func TestWKPeerProfileHandler_CacheHit(t *testing.T) {
 	defer os.Unsetenv("VULOS_PEERING_DIR")
 
 	// Pre-populate cache.
-	const testID = "vula:ed25519:cached"
+	const testID = "vulos:ed25519:cached"
 	wkCacheMu.Lock()
 	wkCache[testID] = &WKPeerProfile{
-		VulaID:      testID,
+		VulosID:     testID,
 		DisplayName: "CachedUser",
 		CachedAt:    time.Now(),
 	}
@@ -368,7 +368,7 @@ func TestWKPeerProfileHandler_MissingServer(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/peering/profile/vula:ed25519:xyz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/peering/profile/vulos:ed25519:xyz", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -386,7 +386,7 @@ func TestWKPeerProfileHandler_LiveFetch(t *testing.T) {
 			return
 		}
 		resp := WKIdentityResponse{
-			VulaID:        fakeID,
+			VulosID:       fakeID,
 			DisplayName:   "FakePeer",
 			VerifiedEmail: true,
 		}
@@ -452,7 +452,7 @@ func TestFetchPeerProfile_ReturnsPublicFields(t *testing.T) {
 	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := WKIdentityResponse{
-			VulaID:        fakeID,
+			VulosID:       fakeID,
 			DisplayName:   "FetchUser",
 			VerifiedEmail: false,
 		}
@@ -471,8 +471,8 @@ func TestFetchPeerProfile_ReturnsPublicFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchPeerProfile: %v", err)
 	}
-	if p.VulaID != fakeID {
-		t.Errorf("VulaID: got %q", p.VulaID)
+	if p.VulosID != fakeID {
+		t.Errorf("VulosID: got %q", p.VulosID)
 	}
 	if p.DisplayName != "FetchUser" {
 		t.Errorf("DisplayName: got %q", p.DisplayName)
@@ -487,7 +487,7 @@ func TestFetchPeerProfile_ReturnsPublicFields(t *testing.T) {
 func TestFetchPeerProfile_IDMismatchRejected(t *testing.T) {
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := WKIdentityResponse{
-			VulaID:      "vula:ed25519:DIFFERENT",
+			VulosID:     "vulos:ed25519:DIFFERENT",
 			DisplayName: "Impersonator",
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -495,7 +495,7 @@ func TestFetchPeerProfile_IDMismatchRejected(t *testing.T) {
 	}))
 	defer fakePeer.Close()
 
-	const expected = "vula:ed25519:EXPECTED"
+	const expected = "vulos:ed25519:EXPECTED"
 	wkCacheMu.Lock()
 	delete(wkCache, expected)
 	wkCacheMu.Unlock()
@@ -510,7 +510,7 @@ func TestFetchPeerProfile_UnsignedRejected(t *testing.T) {
 	// A profile with NO signature must be rejected (fail-closed authenticity).
 	fakeID, _ := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "NoSig", VerifiedEmail: true}
+		resp := WKIdentityResponse{VulosID: fakeID, DisplayName: "NoSig", VerifiedEmail: true}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp) // unsigned
 	}))
@@ -530,7 +530,7 @@ func TestFetchPeerProfile_TamperedRejected(t *testing.T) {
 	// (prevents identity spoofing / endpoint redirection by a malicious server).
 	fakeID, sign := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "Honest", VerifiedEmail: false}
+		resp := WKIdentityResponse{VulosID: fakeID, DisplayName: "Honest", VerifiedEmail: false}
 		sign(&resp)
 		resp.VerifiedEmail = true // tamper after signing
 		resp.DisplayName = "Spoofed"
@@ -553,7 +553,7 @@ func TestFetchPeerProfile_WrongKeySignatureRejected(t *testing.T) {
 	requestedID, _ := wkTestSignedPeer(t)
 	_, signWithOther := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := WKIdentityResponse{VulaID: requestedID, DisplayName: "Imposter"}
+		resp := WKIdentityResponse{VulosID: requestedID, DisplayName: "Imposter"}
 		signWithOther(&resp) // signed by the wrong identity
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -578,7 +578,7 @@ func TestFetchPeerProfile_CachesResult(t *testing.T) {
 		mu.Lock()
 		calls++
 		mu.Unlock()
-		resp := WKIdentityResponse{VulaID: fakeID, DisplayName: "CacheMe"}
+		resp := WKIdentityResponse{VulosID: fakeID, DisplayName: "CacheMe"}
 		sign(&resp)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -616,9 +616,9 @@ func TestFetchPeerProfile_CachesResult(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestWKNotifyChange_EvictsCache(t *testing.T) {
-	const evictID = "vula:ed25519:evict_me"
+	const evictID = "vulos:ed25519:evict_me"
 	wkCacheMu.Lock()
-	wkCache[evictID] = &WKPeerProfile{VulaID: evictID, CachedAt: time.Now()}
+	wkCache[evictID] = &WKPeerProfile{VulosID: evictID, CachedAt: time.Now()}
 	wkCacheMu.Unlock()
 
 	dir := wkTempDir(t)
@@ -628,7 +628,7 @@ func TestWKNotifyChange_EvictsCache(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterWellKnownHandlers(mux)
 
-	body := `{"vula_id":"` + evictID + `"}`
+	body := `{"vulos_id":"` + evictID + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/peering/profile/notify-change", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -676,10 +676,10 @@ func TestWKNormaliseServerAddr(t *testing.T) {
 // --------------------------------------------------------------------------
 
 func TestWKCacheGet_StaleReturnsNil(t *testing.T) {
-	const staleID = "vula:ed25519:stale"
+	const staleID = "vulos:ed25519:stale"
 	wkCacheMu.Lock()
 	wkCache[staleID] = &WKPeerProfile{
-		VulaID:   staleID,
+		VulosID:  staleID,
 		CachedAt: time.Now().Add(-10 * time.Minute), // older than wkCacheTTL
 	}
 	wkCacheMu.Unlock()

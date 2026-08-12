@@ -37,7 +37,7 @@ package main
 //     operator uses the off-box recovery anchor.
 //
 // Owner + step-up gating reuses dkRequireOwnerAndStepup / registryRoster /
-// selfFleetVulaID / breakGlassQuorumRequest from routes_devicekey_lifecycle.go,
+// selfFleetVulosID / breakGlassQuorumRequest from routes_devicekey_lifecycle.go,
 // so the fail-closed behaviour (nil authStore, no session, non-owner, missing
 // step-up) is identical to the existing device-key lifecycle routes.
 

@@ -53,9 +53,9 @@ const (
 
 // seedPeerIDs are the three seeded peer contacts.
 var seedPeerIDs = [3]string{
-	"vula:ed25519:charlie0000000000000000000000000000000000000000000",
-	"vula:ed25519:diana00000000000000000000000000000000000000000000",
-	"vula:ed25519:eve000000000000000000000000000000000000000000000000",
+	"vulos:ed25519:charlie0000000000000000000000000000000000000000000",
+	"vulos:ed25519:diana00000000000000000000000000000000000000000000",
+	"vulos:ed25519:eve000000000000000000000000000000000000000000000000",
 }
 
 // ─── Mock cluster backend ─────────────────────────────────────────────────────
@@ -506,7 +506,7 @@ func TestE2E_PeerContacts_ThreeSeeded(t *testing.T) {
 
 	byID := make(map[string]*peering.Contact)
 	for _, c := range list {
-		byID[c.VulaID] = c
+		byID[c.VulosID] = c
 	}
 
 	// charlie approved

@@ -18,7 +18,7 @@
 // # Admission gate
 //
 // IsDeviceKeyRevoked / SetRevocationChecker mirror services/peering's
-// isVulaIDRevoked / SetRevocationChecker EXACTLY: a nil checker means the
+// isVulosIDRevoked / SetRevocationChecker EXACTLY: a nil checker means the
 // subsystem is entirely unwired (fail-open only in that narrow sense); once a
 // checker is installed, every revoked fingerprint is rejected everywhere it is
 // consulted. Wiring the process-wide checker to a live RevocationStore is a
@@ -485,7 +485,7 @@ func BreakGlassRevokePubKey(store *RevocationStore, targetPubDER []byte, reason,
 	return cert, nil
 }
 
-// ─── Global admission gate (mirrors services/peering's isVulaIDRevoked) ─────────
+// ─── Global admission gate (mirrors services/peering's isVulosIDRevoked) ─────────
 
 var (
 	deviceRevocationCheckerMu sync.RWMutex
@@ -505,7 +505,7 @@ func SetRevocationChecker(f func(fingerprint string) bool) {
 // IsDeviceKeyRevoked reports whether the installed checker (if any) marks
 // fingerprint revoked. With no checker installed it returns false — fail-open
 // ONLY when the subsystem is entirely absent, matching services/peering's
-// isVulaIDRevoked convention exactly. Once wired, every revoked fingerprint is
+// isVulosIDRevoked convention exactly. Once wired, every revoked fingerprint is
 // rejected.
 func IsDeviceKeyRevoked(fingerprint string) bool {
 	deviceRevocationCheckerMu.RLock()

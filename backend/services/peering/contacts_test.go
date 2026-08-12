@@ -33,9 +33,9 @@ func newTempStore(t *testing.T) *ContactStore {
 }
 
 const (
-	aliceID = "vula:ed25519:AliceAliceAliceAlice"
-	bobID   = "vula:ed25519:BobBobBobBobBobBobBo"
-	carolID = "vula:ed25519:CarolCarolCarolCarol"
+	aliceID = "vulos:ed25519:AliceAliceAliceAlice"
+	bobID   = "vulos:ed25519:BobBobBobBobBobBobBo"
+	carolID = "vulos:ed25519:CarolCarolCarolCarol"
 )
 
 // ─── NewContactStore ──────────────────────────────────────────────────────────
@@ -105,8 +105,8 @@ func TestAdd_Happy(t *testing.T) {
 	if c.State != StatePending {
 		t.Errorf("state: got %q want %q", c.State, StatePending)
 	}
-	if c.VulaID != aliceID {
-		t.Errorf("VulaID mismatch")
+	if c.VulosID != aliceID {
+		t.Errorf("VulosID mismatch")
 	}
 	if c.DisplayName != "Alice" {
 		t.Errorf("DisplayName: got %q want %q", c.DisplayName, "Alice")
@@ -410,7 +410,7 @@ func TestUpdateVulosAddress_NotFound(t *testing.T) {
 func TestUpdateVulosAddress_EmptyID(t *testing.T) {
 	cs := newTempStore(t)
 	if err := cs.UpdateVulosAddress("", "alice@vulos.org"); err == nil {
-		t.Fatal("expected error for empty vulaID")
+		t.Fatal("expected error for empty vulosID")
 	}
 }
 
@@ -444,8 +444,8 @@ func TestLookupByVulosAddress_Found(t *testing.T) {
 	if !ok {
 		t.Fatal("LookupByVulosAddress: expected to find alice")
 	}
-	if c.VulaID != aliceID {
-		t.Errorf("VulaID: got %q want %q", c.VulaID, aliceID)
+	if c.VulosID != aliceID {
+		t.Errorf("VulosID: got %q want %q", c.VulosID, aliceID)
 	}
 }
 
@@ -458,8 +458,8 @@ func TestLookupByVulosAddress_CaseInsensitive(t *testing.T) {
 	if !ok {
 		t.Fatal("LookupByVulosAddress: case-insensitive lookup failed")
 	}
-	if c.VulaID != aliceID {
-		t.Errorf("VulaID: got %q want %q", c.VulaID, aliceID)
+	if c.VulosID != aliceID {
+		t.Errorf("VulosID: got %q want %q", c.VulosID, aliceID)
 	}
 }
 
@@ -571,13 +571,13 @@ func TestListByState(t *testing.T) {
 	cs.Block(bobID)                     //nolint:errcheck
 	// Carol stays pending.
 
-	if got := cs.ListByState(StatePending); len(got) != 1 || got[0].VulaID != carolID {
+	if got := cs.ListByState(StatePending); len(got) != 1 || got[0].VulosID != carolID {
 		t.Errorf("pending list: got %v", got)
 	}
-	if got := cs.ListByState(StateApproved); len(got) != 1 || got[0].VulaID != aliceID {
+	if got := cs.ListByState(StateApproved); len(got) != 1 || got[0].VulosID != aliceID {
 		t.Errorf("approved list: got %v", got)
 	}
-	if got := cs.ListByState(StateBlocked); len(got) != 1 || got[0].VulaID != bobID {
+	if got := cs.ListByState(StateBlocked); len(got) != 1 || got[0].VulosID != bobID {
 		t.Errorf("blocked list: got %v", got)
 	}
 }
@@ -829,7 +829,7 @@ func TestConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			id := fmt.Sprintf("vula:ed25519:concurrent%04d", i)
+			id := fmt.Sprintf("vulos:ed25519:concurrent%04d", i)
 			cs.Add(id, "Peer", "")              //nolint:errcheck
 			cs.Approve(id, []Perm{PermMessage}) //nolint:errcheck
 			cs.Can(id, PermMessage)

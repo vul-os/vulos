@@ -114,7 +114,7 @@ func InboundMiddleware(contacts *ContactStore, next http.Handler) http.Handler {
 		// has been revoked (self- or recovery-anchor-signed) can still produce
 		// structurally valid envelopes. When no lifecycle subsystem is wired the
 		// checker is absent and this is a no-op; once wired it fails closed.
-		if isVulaIDRevoked(env.From) {
+		if isVulosIDRevoked(env.From) {
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error": "sender identity has been revoked",
 				"from":  env.From,

@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS files_received (
     is_dir        INTEGER NOT NULL DEFAULT 0,
     size          INTEGER NOT NULL DEFAULT 0,
     content_type  TEXT NOT NULL DEFAULT '',
-    owner_vula_id TEXT NOT NULL DEFAULT '',  -- issuing box identity
+    owner_vulos_id TEXT NOT NULL DEFAULT '',  -- issuing box identity
     staging_path  TEXT NOT NULL DEFAULT '',  -- local staged bytes (tar for folders)
     saved_node_id TEXT NOT NULL DEFAULT '',  -- set when promoted into recipient's Drive
     received_at   TEXT NOT NULL
