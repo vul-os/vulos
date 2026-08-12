@@ -37,6 +37,19 @@ func TestLaunchConcurrentSameIDNoOrphan(t *testing.T) {
 	results := make([]*Session, callers)
 	errs := make([]error, callers)
 
+	// STOP whatever actually started. This test asserts on Launch's reservation
+	// behaviour and used to walk away from any session that got as far as
+	// starting Xvfb — leaving it running for the remainder of `go test ./...`,
+	// which is where the orphaned Xvfb in CI's job summary comes from. A test
+	// that leaks a process leaks it into every package that runs after it.
+	t.Cleanup(func() {
+		for _, sess := range results {
+			if sess != nil {
+				sess.Stop()
+			}
+		}
+	})
+
 	for i := 0; i < callers; i++ {
 		go func(idx int) {
 			defer wg.Done()
