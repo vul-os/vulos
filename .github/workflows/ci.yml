@@ -385,6 +385,44 @@ jobs:
       # A separate step rather than a sampler, for the reason recorded above:
       # the previous background sampler held the step's stdout open and became
       # a failure of its own.
+      # ── 2026-08-12: the kill lands at Go's OWN -timeout, on services/sandbox
+      #
+      # Three consecutive failing runs measured end-to-end on the Test step:
+      #   31618922430  109s      31616598278  112s      31615886755  118s
+      # This step runs `go test -p 1 -timeout 120s`. The step dies just under
+      # that figure every time, which is not a coincidence to be explained away.
+      #
+      # The cleanup list names the process still alive: sandbox.test. And
+      # services/sandbox is NOT in the reported package list of those runs — it
+      # never printed ok or FAIL. So sandbox.test is the binary IN FLIGHT when
+      # the kill lands, not a leak that survived its own tests.
+      #
+      # That reverses the causality this investigation ran on for a long time.
+      # It was read as "something kills the toolchain and leaves orphans". It
+      # is better read as "services/sandbox hangs for two minutes, and
+      # everything else follows from that". The orphaned `go` is simply the
+      # parent of a binary that would not exit.
+      #
+      # It also explains the property that made this look mysterious: the kill
+      # is POSITIONAL rather than tied to particular packages, because position
+      # is just where the clock runs out. Reversing the package order moved the
+      # kill from ~110 packages in to ~20, and the wall time barely changed.
+      #
+      # What is NOT yet explained: why the step reports exit 137 (SIGKILL)
+      # rather than go test's ordinary timeout panic and exit 1. The timeout
+      # normally prints a full goroutine dump, which would name the hang
+      # outright — and that output is never seen here.
+      #
+      # Next step, and it is a small one: run services/sandbox alone on amd64
+      # with the runner's python3 present and a short -timeout, and read the
+      # goroutine dump. Only ONE test in that package skips when python3 is
+      # missing; GitHub runners HAVE python3, so the rest of it really executes
+      # and really spawns processes.
+      #
+      # Excluded by measurement, so do not re-litigate: physical memory (15 GB
+      # free of 16 GB at failure, no kernel OOM records), cgroup memory, disk
+      # (85 GB free), the 25-minute step budget, and every individual package
+      # run on its own.
       - name: Kernel log after tests (OOM killer?)
         if: always()
         run: |
