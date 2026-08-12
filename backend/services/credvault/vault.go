@@ -1,5 +1,5 @@
 // Package credvault implements an encrypted credential vault (password manager backend)
-// for Vula OS. Credentials are stored in AES-256-GCM encrypted files under
+// for Vulos OS. Credentials are stored in AES-256-GCM encrypted files under
 // ~/.vulos/auth/vault/. The encryption key is derived from a master password via
 // Argon2id and kept only in memory while the vault is unlocked.
 //

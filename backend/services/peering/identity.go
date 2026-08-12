@@ -1,6 +1,6 @@
-// identity.go — Ed25519 keypair, Vula ID, and identity HTTP handlers.
+// identity.go — Ed25519 keypair, Vulos ID, and identity HTTP handlers.
 //
-// Vula ID format:
+// Vulos ID format:
 //
 //	vulos:ed25519:<base58-encoded-32-byte-public-key>
 //
@@ -115,39 +115,39 @@ func base58Decode(s string) ([]byte, error) {
 	return result, nil
 }
 
-// ─── Vula ID ──────────────────────────────────────────────────────────────────
+// ─── Vulos ID ──────────────────────────────────────────────────────────────────
 
 const vulosIDPrefix = "vulos:ed25519:"
 
-// encodeVulosID encodes a 32-byte Ed25519 public key as a Vula ID string.
+// encodeVulosID encodes a 32-byte Ed25519 public key as a Vulos ID string.
 func encodeVulosID(pub ed25519.PublicKey) string {
 	return vulosIDPrefix + base58Encode(pub)
 }
 
-// decodeVulosID decodes a Vula ID string and returns the raw public key.
+// decodeVulosID decodes a Vulos ID string and returns the raw public key.
 func decodeVulosID(id string) (ed25519.PublicKey, error) {
 	if !strings.HasPrefix(id, vulosIDPrefix) {
-		return nil, fmt.Errorf("vula id: expected prefix %q, got %q", vulosIDPrefix, id)
+		return nil, fmt.Errorf("vulos id: expected prefix %q, got %q", vulosIDPrefix, id)
 	}
 	raw, err := base58Decode(strings.TrimPrefix(id, vulosIDPrefix))
 	if err != nil {
-		return nil, fmt.Errorf("vula id: %w", err)
+		return nil, fmt.Errorf("vulos id: %w", err)
 	}
 	if len(raw) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("vula id: decoded key length %d, want %d", len(raw), ed25519.PublicKeySize)
+		return nil, fmt.Errorf("vulos id: decoded key length %d, want %d", len(raw), ed25519.PublicKeySize)
 	}
 	return ed25519.PublicKey(raw), nil
 }
 
-// EncodeVulosID encodes a raw Ed25519 public key as its canonical Vula ID
+// EncodeVulosID encodes a raw Ed25519 public key as its canonical Vulos ID
 // ("vulos:ed25519:<base58>"). It is the exported counterpart of PublicKeyForVulosID
-// so other services (and cross-package tests) can construct a Vula ID from a key
+// so other services (and cross-package tests) can construct a Vulos ID from a key
 // without reimplementing the base58 / prefix machinery.
 func EncodeVulosID(pub ed25519.PublicKey) string {
 	return encodeVulosID(pub)
 }
 
-// PublicKeyForVulosID decodes a Vula ID ("vulos:ed25519:<base58>") into the raw
+// PublicKeyForVulosID decodes a Vulos ID ("vulos:ed25519:<base58>") into the raw
 // Ed25519 public key it encodes. It is the exported counterpart of the internal
 // decodeVulosID, provided so other services (e.g. the Files OS peer-share
 // capability layer) can verify signatures made by a remote box's identity key
@@ -160,22 +160,22 @@ func PublicKeyForVulosID(id string) (ed25519.PublicKey, error) {
 // VerifyVulosSignature reports whether sig is a valid Ed25519 signature by the
 // identity behind vulosID over msg. It is a small, self-contained verification
 // primitive for cross-box capability/proof checks: the verifier needs only the
-// peer's Vula ID (which embeds the public key) — no prior key exchange. Returns
-// a non-nil error when the Vula ID is malformed or the signature does not match.
+// peer's Vulos ID (which embeds the public key) — no prior key exchange. Returns
+// a non-nil error when the Vulos ID is malformed or the signature does not match.
 func VerifyVulosSignature(vulosID string, msg, sig []byte) error {
 	pub, err := decodeVulosID(vulosID)
 	if err != nil {
 		return err
 	}
 	if !ed25519.Verify(pub, msg, sig) {
-		return errors.New("peering: vula signature mismatch")
+		return errors.New("peering: vulos signature mismatch")
 	}
 	return nil
 }
 
 // ─── Address parsing ──────────────────────────────────────────────────────────
 
-// VulosAddress is a Vula ID combined with a server host and port.
+// VulosAddress is a Vulos ID combined with a server host and port.
 // Wire format: <vulos_id>@<host>:<port>
 type VulosAddress struct {
 	VulosID string
@@ -183,31 +183,31 @@ type VulosAddress struct {
 	Port    int
 }
 
-// ParseVulosAddress parses a Vula address string of the form
+// ParseVulosAddress parses a Vulos address string of the form
 // "vulos:ed25519:<base58>@host:port".
 func ParseVulosAddress(s string) (VulosAddress, error) {
-	// Split on the last '@' to allow ':' inside the Vula ID prefix.
+	// Split on the last '@' to allow ':' inside the Vulos ID prefix.
 	at := strings.LastIndex(s, "@")
 	if at < 0 {
-		return VulosAddress{}, errors.New("vula address: missing '@'")
+		return VulosAddress{}, errors.New("vulos address: missing '@'")
 	}
 	id := s[:at]
 	hostport := s[at+1:]
 
 	colon := strings.LastIndex(hostport, ":")
 	if colon < 0 {
-		return VulosAddress{}, errors.New("vula address: missing ':' in host:port")
+		return VulosAddress{}, errors.New("vulos address: missing ':' in host:port")
 	}
 	host := hostport[:colon]
 	portStr := hostport[colon+1:]
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 {
-		return VulosAddress{}, fmt.Errorf("vula address: invalid port %q", portStr)
+		return VulosAddress{}, fmt.Errorf("vulos address: invalid port %q", portStr)
 	}
 
-	// Validate the Vula ID portion.
+	// Validate the Vulos ID portion.
 	if _, err := decodeVulosID(id); err != nil {
-		return VulosAddress{}, fmt.Errorf("vula address: %w", err)
+		return VulosAddress{}, fmt.Errorf("vulos address: %w", err)
 	}
 
 	return VulosAddress{VulosID: id, Host: host, Port: port}, nil
@@ -228,7 +228,7 @@ const (
 
 // loadOrGenerate loads the Ed25519 keypair from the identity directory, or
 // generates a new one if any file is missing/corrupt. Returns private key, public
-// key, and the canonical Vula ID string.
+// key, and the canonical Vulos ID string.
 func loadOrGenerate(identityDir string) (ed25519.PrivateKey, ed25519.PublicKey, string, error) {
 	privPath := filepath.Join(identityDir, privKeyFile)
 	pubPath := filepath.Join(identityDir, pubKeyFile)
@@ -361,7 +361,7 @@ func encryptExport(priv ed25519.PrivateKey, vulosID, passphrase string) ([]byte,
 }
 
 // decryptImport decrypts a JSON export bundle produced by encryptExport.
-// Returns the private key and its Vula ID.
+// Returns the private key and its Vulos ID.
 func decryptImport(data []byte, passphrase string) (ed25519.PrivateKey, string, error) {
 	var p exportPayload
 	if err := json.Unmarshal(data, &p); err != nil {

@@ -1,4 +1,4 @@
-"""Vula OS — Screenshot & Screen Capture
+"""Vulos OS — Screenshot & Screen Capture
 Save screenshots and screen recordings to ~/.vulos/screenshots/.
 Supports: getDisplayMedia screenshots, .webm screen recording, canvas annotation,
 region crop post-capture, save to disk, clipboard copy.

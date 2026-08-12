@@ -39,7 +39,7 @@ const discoveryHTTPTimeout = 10 * time.Second
 type DiscoveryResult struct {
 	// VulosID is the cryptographic identity string ("vulos:ed25519:<base58-pubkey>").
 	VulosID string `json:"vulos_id"`
-	// Server is the reachable address of the peer's Vula instance,
+	// Server is the reachable address of the peer's Vulos instance,
 	// e.g. "alice.vulos.org" or "192.0.2.1:8080".
 	Server string `json:"server"`
 	// DisplayName is the user-chosen name registered with the directory.

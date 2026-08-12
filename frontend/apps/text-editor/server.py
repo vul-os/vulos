@@ -1,4 +1,4 @@
-"""Vula OS — Text Editor
+"""Vulos OS — Text Editor
 Code & plain text editor with syntax highlighting and live collaboration (PEER-33).
 Yjs-based co-editing over /api/peering/collab WS + remote cursors + Share button.
 """
@@ -64,7 +64,7 @@ def delete_file(name):
 # ---------------------------------------------------------------------------
 
 def collab_share(payload_bytes):
-    """Proxy POST /api/peering/collab/share to the Vula backend."""
+    """Proxy POST /api/peering/collab/share to the Vulos backend."""
     url = VULOS_API + "/api/peering/collab/share"
     req = urllib.request.Request(
         url,
@@ -131,7 +131,7 @@ class TextEditorHandler(http.server.BaseHTTPRequestHandler):
             self.send_json({"name": name})
 
         elif self.path == "/api/peering/collab/share":
-            # Proxy to Vula backend peering API
+            # Proxy to Vulos backend peering API
             status, resp_body = collab_share(body)
             self.send_response(status)
             self.send_header("Content-Type", "application/json")

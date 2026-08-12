@@ -1,5 +1,5 @@
 // Package appfs provides a sandboxed filesystem persistence API for default
-// Vula OS apps. Each (user, app) pair gets an isolated sub-directory under
+// Vulos OS apps. Each (user, app) pair gets an isolated sub-directory under
 // ~/.vulos/<userID>/<appID>/ and can read, write, delete, and list files
 // within that sandbox.
 //

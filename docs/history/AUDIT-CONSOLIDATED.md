@@ -17,7 +17,7 @@
 | PEER-42 wiring | `audit/PEER42-RETRY` | 3 missing handler-sets wired (collab history, presence, collab invite). PEER-* now 42 / 42. No peering route returns 501. |
 | Lint cleanup | `audit/OSS-LINT-AUTH` + `audit/OSS-LINT-CORE` | 5 fixes in `Setup.jsx`; 38 files cleaned in core/shell/apps; deferred report. |
 | Sanity check | `audit/SANITY-OSS` | 12 mismatches. Confirmed M1+M2 already fixed by AUDIT-FIX-OSS. Report: `SANITY-OSS.md`. |
-| Sanity fixes | `audit/SANITY-FIX-OSS` | dm-verity now actually active in initramfs; installer wired; smoke tests in CI; `services/store` migrated off mattn/go-sqlite3 to modernc.org/sqlite; "Vula OS" → "Vulos" in README + roadmap + apps + bootloader. |
+| Sanity fixes | `audit/SANITY-FIX-OSS` | dm-verity now actually active in initramfs; installer wired; smoke tests in CI; `services/store` migrated off mattn/go-sqlite3 to modernc.org/sqlite; "Vulos OS" → "Vulos" in README + roadmap + apps + bootloader. |
 | README | `audit/POLISH-README` | Rewrite reflecting image-based OS + peering + cloud-login + sync state. |
 | `--env=local/dev/prod` flag | `audit/OSS-ENV-FLAG` | New `backend/services/env` package + 14 tests. cmd/server + cmd/init accept the flag. README documents it. |
 | Comprehensive tests | `audit/OSS-TEST-SUITE` | 28 auth unit tests + 14 e2e tests (build-tag `e2e`, full first-boot lifecycle harness). `Makefile` + `scripts/test-all.sh`. Coverage report: `TEST-COVERAGE-OSS.md`. |

@@ -15,7 +15,7 @@ All implemented features were identified by scanning
 
 | Feature area | Key file(s) | PEER tag |
 |---|---|---|
-| Identity keypair + Vula ID | `identity.go`, `peering.go` | PEER-01, PEER-02 |
+| Identity keypair + Vulos ID | `identity.go`, `peering.go` | PEER-01, PEER-02 |
 | Signed envelope (canonical JSON + Ed25519) | `envelope.go` | PEER-03 |
 | Outbound S2S transport + SSRF guard | `transport.go` | PEER-04 |
 | Inbound middleware (sig verify + contact gate) | `inbound.go` | PEER-04 |
@@ -73,7 +73,7 @@ Seven test functions exercise the five required surfaces:
 
 | Test | Surface exercised | Pass |
 |---|---|---|
-| `TestE2E_IdentityExchange` | Two peers generate distinct Vula IDs; each decodes the other's public key | PASS |
+| `TestE2E_IdentityExchange` | Two peers generate distinct Vulos IDs; each decodes the other's public key | PASS |
 | `TestE2E_MessageSendReceive` | 1:1 message A→B and B→A; InboundMiddleware verifies sig + contact; inbox persists | PASS |
 | `TestE2E_InboundMessage_RejectUnknownSender` | Unknown sender gets 403 | PASS |
 | `TestE2E_FeedPublishSubscribe` | Feed created, 3 entries published (signed, chained); chain verified; subscriber fetches since-N; notify-subscribers called | PASS |

@@ -2,7 +2,7 @@
 //
 // # Overview
 //
-// A group is a named list of approved Vula IDs. No central server owns the group —
+// A group is a named list of approved Vulos IDs. No central server owns the group —
 // every member's server stores the group definition and every message is fanned
 // out server-to-server to each member individually.
 //
@@ -90,10 +90,10 @@ type GroupDef struct {
 	// Name is the human-readable group name.
 	Name string `json:"name"`
 
-	// CreatorVulosID is the Vula ID of the member who created the group.
+	// CreatorVulosID is the Vulos ID of the member who created the group.
 	CreatorVulosID string `json:"creator_vulos_id"`
 
-	// Members is the ordered list of member Vula IDs.
+	// Members is the ordered list of member Vulos IDs.
 	// The creator is always the first entry.
 	Members []string `json:"members"`
 
@@ -260,7 +260,7 @@ type GroupAPI struct {
 	client  *PeerClient
 	hub     *Hub
 	priv    ed25519.PrivateKey
-	vulosID string // local node's Vula ID
+	vulosID string // local node's Vulos ID
 }
 
 // NewGroupAPI constructs a GroupAPI.
@@ -271,7 +271,7 @@ type GroupAPI struct {
 //   - client  — outbound HTTP client for server-to-server delivery
 //   - hub     — WebSocket hub for real-time browser pushes (may be nil in tests)
 //   - priv    — local Ed25519 private key used to sign outbound envelopes
-//   - vulosID  — canonical Vula ID of the local node
+//   - vulosID  — canonical Vulos ID of the local node
 func NewGroupAPI(
 	groups *GroupStore,
 	store *ContactStore,
@@ -332,7 +332,7 @@ type createGroupRequest struct {
 	// Name is the human-readable group name.
 	Name string `json:"name"`
 
-	// Members is a list of peer Vula IDs to invite (must be approved contacts).
+	// Members is a list of peer Vulos IDs to invite (must be approved contacts).
 	Members []string `json:"members"`
 
 	// Policy controls who may add new members. Defaults to PolicyOpen.
@@ -481,7 +481,7 @@ func (a *GroupAPI) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 
 // addMemberRequest is the JSON body for POST /api/peering/groups/{group_id}/members.
 type addMemberRequest struct {
-	// VulosID is the Vula ID of the member to add.
+	// VulosID is the Vulos ID of the member to add.
 	VulosID string `json:"vulos_id"`
 }
 

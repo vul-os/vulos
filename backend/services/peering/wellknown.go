@@ -1,4 +1,4 @@
-// Package peering implements Vula OS peer-to-peer identity, profile, and discovery.
+// Package peering implements Vulos OS peer-to-peer identity, profile, and discovery.
 //
 // PEER-12: well-known identity endpoint + peer profile fetch/cache.
 //
@@ -6,7 +6,7 @@
 //   - RegisterWellKnownHandlers(mux *http.ServeMux) — mounts GET /.well-known/vulos-id
 //     and GET /api/peering/profile/{vulos_id} on the supplied mux.
 //   - FetchPeerProfile(ctx, vulosID, serverAddr) (*WKPeerProfile, error) — fetches
-//     and caches a peer's public profile from their Vula instance.
+//     and caches a peer's public profile from their Vulos instance.
 //
 // All identifiers introduced here are prefixed wk / WellKnown to avoid conflicts
 // with future files in the same package.
@@ -44,7 +44,7 @@ var peeringSSRFBypass bool
 // --------------------------------------------------------------------------
 
 // wkIdentityFile is the path (relative to the peering data dir) where the
-// node's own keypair + Vula ID are persisted.
+// node's own keypair + Vulos ID are persisted.
 const wkIdentityFile = "identity/identity.json"
 
 // wkProfileFile is the path (relative to the peering data dir) where the
@@ -61,19 +61,19 @@ func wkPeeringDataDir() string {
 }
 
 // --------------------------------------------------------------------------
-// Vula ID format
+// Vulos ID format
 // --------------------------------------------------------------------------
 
-// wkVulosIDPrefix is the URI scheme prefix for all Vula IDs.
+// wkVulosIDPrefix is the URI scheme prefix for all Vulos IDs.
 const wkVulosIDPrefix = "vulos:ed25519:"
 
-// wkFormatVulosID encodes a raw Ed25519 public key as a Vula ID string.
+// wkFormatVulosID encodes a raw Ed25519 public key as a Vulos ID string.
 func wkFormatVulosID(pub ed25519.PublicKey) string {
 	return wkVulosIDPrefix + base64.RawURLEncoding.EncodeToString(pub)
 }
 
-// wkParseVulosID extracts the raw Ed25519 public key embedded in a Vula ID.
-// A Vula ID *is* a public key, so this is the key the peer's profile signature
+// wkParseVulosID extracts the raw Ed25519 public key embedded in a Vulos ID.
+// A Vulos ID *is* a public key, so this is the key the peer's profile signature
 // must verify against. Returns an error for malformed IDs.
 func wkParseVulosID(vulosID string) (ed25519.PublicKey, error) {
 	if !strings.HasPrefix(vulosID, wkVulosIDPrefix) {
@@ -234,7 +234,7 @@ func wkLoadOwnProfile(dataDir string, vulosID string) WKOwnProfile {
 	}
 	return WKOwnProfile{
 		VulosID:     vulosID,
-		DisplayName: "Vula User",
+		DisplayName: "Vulos User",
 		Visibility: WKProfileVisibility{
 			Image: WKVisibilityPublic,
 			Bio:   WKVisibilityPeers,
@@ -275,8 +275,8 @@ type WKIdentityResponse struct {
 
 	// Signature is the base64url Ed25519 signature over the canonical form of
 	// this response (with this field empty), produced by the node's identity
-	// key. Because a Vula ID IS an Ed25519 public key, fetchers verify this
-	// against the expected Vula ID to authenticate the profile (PEER-12
+	// key. Because a Vulos ID IS an Ed25519 public key, fetchers verify this
+	// against the expected Vulos ID to authenticate the profile (PEER-12
 	// hardening). Empty only when the node could not load its private key.
 	Signature string `json:"sig,omitempty"`
 }
@@ -398,7 +398,7 @@ type WKPeerProfile struct {
 	PreKeys *PreKeyBundlePublic `json:"prekeys,omitempty"`
 	// Signature is the verified Ed25519 signature from the peer's well-known
 	// response (base64url). Retained for auditing; a cached profile is only
-	// stored after this signature has been verified against the Vula ID.
+	// stored after this signature has been verified against the Vulos ID.
 	Signature string `json:"sig,omitempty"`
 	// CachedAt records when we last fetched this profile.
 	CachedAt time.Time `json:"cached_at"`
@@ -453,7 +453,7 @@ func wkCachePut(vulosID string, p *WKPeerProfile) {
 // FetchPeerProfile — exported helper
 // --------------------------------------------------------------------------
 
-// FetchPeerProfile fetches a peer's public profile from their Vula instance at
+// FetchPeerProfile fetches a peer's public profile from their Vulos instance at
 // serverAddr (e.g. "alice.vulos.org:8080" or "https://alice.vulos.org").
 // It checks the in-process cache first and only hits the network on a cache miss
 // or when the cached entry has expired.
@@ -520,7 +520,7 @@ func FetchPeerProfile(ctx context.Context, vulosID, serverAddr string) (*WKPeerP
 }
 
 // wkFetchAndVerify performs the SSRF-guarded GET of a peer's /.well-known/vulos-id,
-// decodes it, checks the returned Vula ID matches what we expected, and verifies
+// decodes it, checks the returned Vulos ID matches what we expected, and verifies
 // the response's Ed25519 signature against that key. It returns the authenticated
 // WKIdentityResponse. It is shared by FetchPeerProfile (which then builds/caches a
 // profile) and RefreshPeerLifecycle (which only ingests the lifecycle bundle).
@@ -585,14 +585,14 @@ func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdenti
 		return zero, fmt.Errorf("peering: decode well-known: %w", err)
 	}
 
-	// Validate that the returned Vula ID matches what we expected.
+	// Validate that the returned Vulos ID matches what we expected.
 	if wk.VulosID != "" && wk.VulosID != vulosID {
 		return zero, fmt.Errorf("peering: vulos_id mismatch: expected %s got %s", vulosID, wk.VulosID)
 	}
 
 	// Authenticate the profile. The peer profile (VerifiedEmail, DisplayName,
 	// …) is otherwise attacker-mutable in transit / by a malicious
-	// server, enabling identity spoofing. A Vula ID IS
+	// server, enabling identity spoofing. A Vulos ID IS
 	// an Ed25519 public key, so require a valid signature over the canonical
 	// response by that key. Fail closed on any missing/invalid signature.
 	if !wkVerifyResponse(wk, vulosID) {
@@ -701,7 +701,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	// ── GET /.well-known/vulos-id ─────────────────────────────────────────
 	// Public, unauthenticated. Returns only public-visibility fields.
 	// Load this node's private key once so every well-known response can be
-	// signed (peers authenticate the profile against the Vula ID public key).
+	// signed (peers authenticate the profile against the Vulos ID public key).
 	ownPriv, privErr := identity.privateKey()
 	if privErr != nil {
 		fmt.Fprintf(os.Stderr, "[peering] cannot load identity private key; well-known responses will be UNSIGNED and rejected by peers: %v\n", privErr)
@@ -719,7 +719,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 		if pk := wkCurrentPreKeyBundle(); pk != nil {
 			resp.PreKeys = pk
 		}
-		// Sign so fetchers can verify authenticity against our Vula ID.
+		// Sign so fetchers can verify authenticity against our Vulos ID.
 		if privErr == nil {
 			if err := wkSignResponse(&resp, ownPriv); err != nil {
 				fmt.Fprintf(os.Stderr, "[peering] sign well-known response: %v\n", err)
@@ -731,7 +731,7 @@ func RegisterWellKnownHandlers(mux *http.ServeMux) {
 	})
 
 	// ── GET /api/peering/profile/{vulos_id} ───────────────────────────────
-	// Fetch a peer's profile by Vula ID.  The vulos_id path segment must be
+	// Fetch a peer's profile by Vulos ID.  The vulos_id path segment must be
 	// URL-encoded.  The caller supplies the peer's server address as the
 	// ?server= query parameter (required for a live fetch; optional if the
 	// profile is already cached).

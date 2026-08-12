@@ -14,7 +14,7 @@ import (
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────────
 
-// box is a test identity: an Ed25519 keypair and its Vula ID.
+// box is a test identity: an Ed25519 keypair and its Vulos ID.
 type box struct {
 	priv    ed25519.PrivateKey
 	vulosID string
@@ -29,7 +29,7 @@ func newBox(t *testing.T) box {
 	return box{priv: priv, vulosID: peering.EncodeVulosID(pub)}
 }
 
-// testRoster is THIS box's own verified roster. It maps Vula ID → rostered key
+// testRoster is THIS box's own verified roster. It maps Vulos ID → rostered key
 // and, optionally, a revoked set (exercising the RevocationOracle path).
 type testRoster struct {
 	members map[string]ed25519.PublicKey
@@ -253,12 +253,12 @@ func TestBadSignature_Dropped(t *testing.T) {
 }
 
 func TestForgedRosterKeyMismatch_Dropped(t *testing.T) {
-	// A cert claims a rostered voucher's Vula ID but the roster's key for that ID
+	// A cert claims a rostered voucher's Vulos ID but the roster's key for that ID
 	// is a DIFFERENT key (impersonation attempt). Signature would verify against
 	// the claimed/embedded key but not the roster's authoritative key → dropped.
 	subject := newBox(t)
 	v1 := newBox(t)
-	// Roster maps v1's Vula ID to a totally different public key.
+	// Roster maps v1's Vulos ID to a totally different public key.
 	other := newBox(t)
 	roster := &testRoster{
 		members: map[string]ed25519.PublicKey{v1.vulosID: other.priv.Public().(ed25519.PublicKey)},

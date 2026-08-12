@@ -6,7 +6,7 @@
 //	Browser B → GET /api/peering/call/signal?room=<roomId>&peer=<peerId>
 //	Browser C → GET /api/peering/call/signal?room=<roomId>&peer=<peerId>
 //
-//	Each browser connects its own Vula server's signaling endpoint.
+//	Each browser connects its own Vulos server's signaling endpoint.
 //	The server forms a room keyed by roomId and routes JSON frames between
 //	participants.
 //
@@ -68,7 +68,7 @@ type meshGenericFrame map[string]json.RawMessage
 
 // meshPeer represents one connected browser in a room.
 type meshPeer struct {
-	id   string // Vula peer ID (from ?peer= query param)
+	id   string // Vulos peer ID (from ?peer= query param)
 	ws   *websocket.Conn
 	send chan []byte
 	done chan struct{}

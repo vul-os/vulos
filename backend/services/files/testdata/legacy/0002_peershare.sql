@@ -8,14 +8,14 @@
 -- peer_shares: capabilities issued by THIS box (owner side). The signed
 -- capability token handed to the recipient is self-contained, but the owner
 -- keeps a row per capability so it can be REVOKED (revoked=1 → fetch denied)
--- and audited. recipient is the bound peer's Vula ID, or '' for an
+-- and audited. recipient is the bound peer's Vulos ID, or '' for an
 -- anyone-with-the-link capability. access is the granted role (viewer|editor).
 CREATE TABLE IF NOT EXISTS files_peer_shares (
     id          TEXT PRIMARY KEY,            -- capability id (also signed into the token)
     node_id     TEXT NOT NULL,               -- target node in files_nodes
     owner_id    TEXT NOT NULL,               -- OS user that issued it
     access      TEXT NOT NULL,               -- editor | viewer
-    recipient   TEXT NOT NULL DEFAULT '',    -- bound recipient Vula ID, or '' = anyone-with-link
+    recipient   TEXT NOT NULL DEFAULT '',    -- bound recipient Vulos ID, or '' = anyone-with-link
     created_by  TEXT NOT NULL,
     created_at  TEXT NOT NULL,
     expires_at  TEXT NOT NULL,

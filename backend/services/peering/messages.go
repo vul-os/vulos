@@ -2,7 +2,7 @@
 //
 // # Overview
 //
-// MessageAPI handles the full outbound message pipeline for Vula peering:
+// MessageAPI handles the full outbound message pipeline for Vulos peering:
 //
 //  1. Browser calls POST /api/peering/conversations/{conv_id}/send with a text body.
 //  2. MessageAPI creates a signed Envelope (TypeMessage) using the local private key.
@@ -15,7 +15,7 @@
 //
 // # Conversation ID
 //
-// Conversations are identified by a canonical ID derived from the two Vula IDs:
+// Conversations are identified by a canonical ID derived from the two Vulos IDs:
 //
 //	conv_id = "<lower-vulos-id>_<higher-vulos-id>"
 //
@@ -60,7 +60,7 @@ type MessageAPI struct {
 	client  *PeerClient
 	hub     *Hub
 	priv    ed25519.PrivateKey
-	vulosID string       // local node's Vula ID
+	vulosID string       // local node's Vulos ID
 	outbox  *OutboxQueue // optional; if set, failed deliveries are enqueued
 }
 
@@ -71,7 +71,7 @@ type MessageAPI struct {
 //   - client — outbound HTTP client for server-to-server delivery
 //   - hub    — WebSocket hub for real-time browser pushes (may be nil in tests)
 //   - priv   — local Ed25519 private key used to sign outbound envelopes
-//   - vulosID — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
+//   - vulosID — canonical Vulos ID of the local node ("vulos:ed25519:<base58>")
 func NewMessageAPI(
 	store *ContactStore,
 	inbox *InboxStore,
@@ -122,9 +122,9 @@ func (a *MessageAPI) RegisterMessageHandlers(mux *http.ServeMux) {
 
 // ─── Conversation ID helper ───────────────────────────────────────────────────
 
-// ConversationID computes the canonical conversation ID for two Vula IDs.
+// ConversationID computes the canonical conversation ID for two Vulos IDs.
 //
-// The result is deterministic: the lexicographically lower Vula ID comes first,
+// The result is deterministic: the lexicographically lower Vulos ID comes first,
 // separated by an underscore. This guarantees both parties produce the same ID.
 func ConversationID(vulosIDA, vulosIDB string) string {
 	ids := []string{vulosIDA, vulosIDB}
@@ -147,7 +147,7 @@ type sendMessageRequest struct {
 //
 // Steps:
 //  1. Parse and validate the request body.
-//  2. Derive the peer's Vula ID from conv_id and the local vulosID.
+//  2. Derive the peer's Vulos ID from conv_id and the local vulosID.
 //  3. Check the peer is approved and has PermMessage.
 //  4. Build and sign a TypeMessage Envelope.
 //  5. Deliver to the peer via PeerClient.
@@ -172,7 +172,7 @@ func (a *MessageAPI) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Derive peer Vula ID from the conversation ID.
+	// Derive peer Vulos ID from the conversation ID.
 	peerVulosID, err := peerFromConvID(convID, a.vulosID)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
@@ -433,26 +433,26 @@ func (a *MessageAPI) handleGetMessages(w http.ResponseWriter, r *http.Request) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// peerFromConvID extracts the peer Vula ID from a canonical conversation ID.
+// peerFromConvID extracts the peer Vulos ID from a canonical conversation ID.
 //
 // conv_id has the form "<lower_vulos_id>_<upper_vulos_id>". Given the local
 // vulosID, the function returns the other half. Returns an error if the local
 // vulosID is not a component of the conv_id.
 func peerFromConvID(convID, localVulosID string) (string, error) {
-	// The separator between two Vula IDs inside a conv_id is "_" but Vula IDs
+	// The separator between two Vulos IDs inside a conv_id is "_" but Vulos IDs
 	// themselves contain ":" characters — never "_". So we split on "_" and
-	// rejoin the two halves ("vula", "ed25519", "<base58>").
+	// rejoin the two halves ("vulos", "ed25519", "<base58>").
 	//
 	// Expected segments after split:
-	//   [0] "vula"
+	//   [0] "vulos"
 	//   [1] "ed25519"
-	//   [2] "<base58-A>"      ← first vula ID ends here (everything before second "vula")
-	//   [3] "vula"
+	//   [2] "<base58-A>"      ← first vulos ID ends here (everything before second "vulos")
+	//   [3] "vulos"
 	//   [4] "ed25519"
 	//   [5] "<base58-B>"
 	//
-	// A Vula ID is "vulos:ed25519:<base58>". In the conv_id the ":" separator
-	// in each Vula ID is preserved; only the join between the two IDs uses "_".
+	// A Vulos ID is "vulos:ed25519:<base58>". In the conv_id the ":" separator
+	// in each Vulos ID is preserved; only the join between the two IDs uses "_".
 	// So conv_id looks like:
 	//
 	//   vulos:ed25519:<base58A>_vulos:ed25519:<base58B>
@@ -475,7 +475,7 @@ func peerFromConvID(convID, localVulosID string) (string, error) {
 	case idB:
 		return idA, nil
 	default:
-		return "", fmt.Errorf("local vula ID %q is not part of conv_id %q", localVulosID, convID)
+		return "", fmt.Errorf("local vulos ID %q is not part of conv_id %q", localVulosID, convID)
 	}
 }
 

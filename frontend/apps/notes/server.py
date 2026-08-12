@@ -1,4 +1,4 @@
-"""Vula OS — Universal Memory (Notes)
+"""Vulos OS — Universal Memory (Notes)
 Every thought indexed by Recall. Markdown editor with instant search.
 """
 import http.server

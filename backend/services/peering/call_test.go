@@ -121,7 +121,7 @@ type callRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f callRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-// callTestIdentity generates an Ed25519 key pair and a valid Vula ID.
+// callTestIdentity generates an Ed25519 key pair and a valid Vulos ID.
 func callTestIdentity(t *testing.T) (ed25519.PrivateKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(nil)
@@ -159,7 +159,7 @@ func newCallRelay(
 	remoteAddr := strings.TrimPrefix(remoteServer.URL, "http://")
 
 	priv, _ := callTestIdentity(t)
-	// selfID is a synthetic ID for tests; use a real Vula ID only where needed.
+	// selfID is a synthetic ID for tests; use a real Vulos ID only where needed.
 	pc := NewPeerClient()
 	// Override transport to redirect https:// → fake test server.
 	pc.http = &http.Client{
@@ -208,13 +208,13 @@ func callMakeSignalingEnvelope(
 func TestCallInitiate_RelaysIncomingCall(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, captured, remoteAddr := newCallRelay(t, "vula:self", contacts, hub)
+	relay, captured, remoteAddr := newCallRelay(t, "vulos:self", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:bob", remoteAddr))
+	contacts.add(callApprovedContact("vulos:bob", remoteAddr))
 
-	rr := callPostJSON(t, relay.handleCallInitiate, "vula:alice", callInitiateReq{
+	rr := callPostJSON(t, relay.handleCallInitiate, "vulos:alice", callInitiateReq{
 		CallID:   "call-001",
-		CalleeID: "vula:bob",
+		CalleeID: "vulos:bob",
 	})
 
 	if rr.Code != http.StatusOK {
@@ -246,20 +246,20 @@ func TestCallInitiate_RelaysIncomingCall(t *testing.T) {
 func TestCallInitiate_NoCallPermission(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, remoteAddr := newCallRelay(t, "vula:self", contacts, hub)
+	relay, _, remoteAddr := newCallRelay(t, "vulos:self", contacts, hub)
 
 	// Only PermMessage — no PermCall.
 	contacts.add(&Contact{
-		VulosID:     "vula:bob",
+		VulosID:     "vulos:bob",
 		Server:      remoteAddr,
 		State:       StateApproved,
 		ApprovedAt:  time.Now().UTC(),
 		Permissions: []Perm{PermMessage},
 	})
 
-	rr := callPostJSON(t, relay.handleCallInitiate, "vula:alice", callInitiateReq{
+	rr := callPostJSON(t, relay.handleCallInitiate, "vulos:alice", callInitiateReq{
 		CallID:   "call-002",
-		CalleeID: "vula:bob",
+		CalleeID: "vulos:bob",
 	})
 
 	if rr.Code != http.StatusForbidden {
@@ -271,11 +271,11 @@ func TestCallInitiate_NoCallPermission(t *testing.T) {
 func TestCallInitiate_UnknownCallee(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:self", contacts, hub)
+	relay, _, _ := newCallRelay(t, "vulos:self", contacts, hub)
 
-	rr := callPostJSON(t, relay.handleCallInitiate, "vula:alice", callInitiateReq{
+	rr := callPostJSON(t, relay.handleCallInitiate, "vulos:alice", callInitiateReq{
 		CallID:   "call-003",
-		CalleeID: "vula:nobody",
+		CalleeID: "vulos:nobody",
 	})
 
 	if rr.Code != http.StatusForbidden {
@@ -288,23 +288,23 @@ func TestCallInitiate_UnknownCallee(t *testing.T) {
 func TestCallReject_TerminatesBothSides(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, captured, remoteAddr := newCallRelay(t, "vula:bob", contacts, hub)
+	relay, captured, remoteAddr := newCallRelay(t, "vulos:bob", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:alice", remoteAddr))
-	contacts.add(callApprovedContact("vula:bob", remoteAddr))
+	contacts.add(callApprovedContact("vulos:alice", remoteAddr))
+	contacts.add(callApprovedContact("vulos:bob", remoteAddr))
 
 	// Pre-seed a ringing session (as if incoming-call was received).
 	relay.mu.Lock()
 	relay.sessions["call-010"] = &callSession{
 		id:        "call-010",
-		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		callerID:  "vulos:alice",
+		calleeID:  "vulos:bob",
 		state:     callStateRinging,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	rr := callPostJSON(t, relay.handleCallReject, "vula:bob", callRejectReq{CallID: "call-010"})
+	rr := callPostJSON(t, relay.handleCallReject, "vulos:bob", callRejectReq{CallID: "call-010"})
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -341,21 +341,21 @@ func TestCallReject_TerminatesBothSides(t *testing.T) {
 func TestCallHangup_TerminatesBothSides(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, captured, remoteAddr := newCallRelay(t, "vula:alice", contacts, hub)
+	relay, captured, remoteAddr := newCallRelay(t, "vulos:alice", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:bob", remoteAddr))
+	contacts.add(callApprovedContact("vulos:bob", remoteAddr))
 
 	relay.mu.Lock()
 	relay.sessions["call-020"] = &callSession{
 		id:        "call-020",
-		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		callerID:  "vulos:alice",
+		calleeID:  "vulos:bob",
 		state:     callStateActive,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	rr := callPostJSON(t, relay.handleCallHangup, "vula:alice", callHangupReq{CallID: "call-020"})
+	rr := callPostJSON(t, relay.handleCallHangup, "vulos:alice", callHangupReq{CallID: "call-020"})
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -387,24 +387,24 @@ func TestCallHangup_TerminatesBothSides(t *testing.T) {
 func TestCallSDPICERelay_EndToEnd(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, captured, remoteAddr := newCallRelay(t, "vula:alice", contacts, hub)
+	relay, captured, remoteAddr := newCallRelay(t, "vulos:alice", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:bob", remoteAddr))
+	contacts.add(callApprovedContact("vulos:bob", remoteAddr))
 
 	relay.mu.Lock()
 	relay.sessions["call-030"] = &callSession{
 		id:        "call-030",
-		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		callerID:  "vulos:alice",
+		calleeID:  "vulos:bob",
 		state:     callStateActive,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
 	sdp := json.RawMessage(`{"type":"offer","sdp":"v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n"}`)
-	rr := callPostJSON(t, relay.handleCallSignal, "vula:alice", callSignalReq{
+	rr := callPostJSON(t, relay.handleCallSignal, "vulos:alice", callSignalReq{
 		CallID:  "call-030",
-		PeerID:  "vula:bob",
+		PeerID:  "vulos:bob",
 		Payload: sdp,
 	})
 
@@ -441,9 +441,9 @@ func TestCallInbound_PushesFrameToHub(t *testing.T) {
 	relay, _, _ := newCallRelay(t, selfVulosID, contacts, hub)
 
 	// Alice is an approved contact with call permission.
-	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
+	contacts.add(callApprovedContact("vulos:alice", "alice.vulos.org:8080"))
 
-	env := callMakeSignalingEnvelope("vula:alice", selfVulosID, sigKindIncomingCall, "call-040", nil)
+	env := callMakeSignalingEnvelope("vulos:alice", selfVulosID, sigKindIncomingCall, "call-040", nil)
 	req := callInboundRequest(env)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, req)
@@ -480,8 +480,8 @@ func TestCallInbound_UnknownSender(t *testing.T) {
 	_, selfID := callTestIdentity(t)
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
-	// "vula:stranger" is not in contacts.
-	env := callMakeSignalingEnvelope("vula:stranger", selfID, sigKindIncomingCall, "call-050", nil)
+	// "vulos:stranger" is not in contacts.
+	env := callMakeSignalingEnvelope("vulos:stranger", selfID, sigKindIncomingCall, "call-050", nil)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
@@ -498,14 +498,14 @@ func TestCallInbound_NoCallPermission(t *testing.T) {
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
 	contacts.add(&Contact{
-		VulosID:     "vula:charlie",
+		VulosID:     "vulos:charlie",
 		Server:      "charlie.vulos.org:8080",
 		State:       StateApproved,
 		ApprovedAt:  time.Now().UTC(),
 		Permissions: []Perm{PermMessage}, // no PermCall
 	})
 
-	env := callMakeSignalingEnvelope("vula:charlie", selfID, sigKindIncomingCall, "call-060", nil)
+	env := callMakeSignalingEnvelope("vulos:charlie", selfID, sigKindIncomingCall, "call-060", nil)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
@@ -535,24 +535,24 @@ func TestCallInbound_MissingEnvelopeContext(t *testing.T) {
 func TestCallSignal_NonParticipant(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, remoteAddr := newCallRelay(t, "vula:self", contacts, hub)
+	relay, _, remoteAddr := newCallRelay(t, "vulos:self", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:bob", remoteAddr))
+	contacts.add(callApprovedContact("vulos:bob", remoteAddr))
 
 	relay.mu.Lock()
 	relay.sessions["call-070"] = &callSession{
 		id:        "call-070",
-		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		callerID:  "vulos:alice",
+		calleeID:  "vulos:bob",
 		state:     callStateActive,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	// "vula:eve" is not a participant.
-	rr := callPostJSON(t, relay.handleCallSignal, "vula:eve", callSignalReq{
+	// "vulos:eve" is not a participant.
+	rr := callPostJSON(t, relay.handleCallSignal, "vulos:eve", callSignalReq{
 		CallID:  "call-070",
-		PeerID:  "vula:bob",
+		PeerID:  "vulos:bob",
 		Payload: json.RawMessage(`{}`),
 	})
 
@@ -566,7 +566,7 @@ func TestCallSignal_NonParticipant(t *testing.T) {
 func TestCallMissingVulosIDHeader(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, _, _ := newCallRelay(t, "vula:self", contacts, hub)
+	relay, _, _ := newCallRelay(t, "vulos:self", contacts, hub)
 
 	cases := []struct {
 		name    string
@@ -596,21 +596,21 @@ func TestCallMissingVulosIDHeader(t *testing.T) {
 func TestCallAnswer_TransitionsToActive(t *testing.T) {
 	contacts := newCallFakeContacts()
 	hub := &callFakeHub{}
-	relay, captured, remoteAddr := newCallRelay(t, "vula:bob", contacts, hub)
+	relay, captured, remoteAddr := newCallRelay(t, "vulos:bob", contacts, hub)
 
-	contacts.add(callApprovedContact("vula:alice", remoteAddr))
+	contacts.add(callApprovedContact("vulos:alice", remoteAddr))
 
 	relay.mu.Lock()
 	relay.sessions["call-080"] = &callSession{
 		id:        "call-080",
-		callerID:  "vula:alice",
-		calleeID:  "vula:bob",
+		callerID:  "vulos:alice",
+		calleeID:  "vulos:bob",
 		state:     callStateRinging,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	rr := callPostJSON(t, relay.handleCallAnswer, "vula:bob", callAnswerReq{CallID: "call-080"})
+	rr := callPostJSON(t, relay.handleCallAnswer, "vulos:bob", callAnswerReq{CallID: "call-080"})
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body)
@@ -650,9 +650,9 @@ func TestCallInbound_RegistersSessionOnIncomingCall(t *testing.T) {
 	_, selfID := callTestIdentity(t)
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
-	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
+	contacts.add(callApprovedContact("vulos:alice", "alice.vulos.org:8080"))
 
-	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindIncomingCall, "call-090", nil)
+	env := callMakeSignalingEnvelope("vulos:alice", selfID, sigKindIncomingCall, "call-090", nil)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
@@ -667,8 +667,8 @@ func TestCallInbound_RegistersSessionOnIncomingCall(t *testing.T) {
 	if !exists {
 		t.Fatal("session should have been created by incoming-call")
 	}
-	if sess.callerID != "vula:alice" {
-		t.Errorf("callerID: got %q, want vula:alice", sess.callerID)
+	if sess.callerID != "vulos:alice" {
+		t.Errorf("callerID: got %q, want vulos:alice", sess.callerID)
 	}
 	if sess.calleeID != selfID {
 		t.Errorf("calleeID: got %q, want %q", sess.calleeID, selfID)
@@ -686,20 +686,20 @@ func TestCallInbound_HangupRemovesSession(t *testing.T) {
 	_, selfID := callTestIdentity(t)
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
-	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
+	contacts.add(callApprovedContact("vulos:alice", "alice.vulos.org:8080"))
 
 	// Pre-seed a session.
 	relay.mu.Lock()
 	relay.sessions["call-100"] = &callSession{
 		id:        "call-100",
-		callerID:  "vula:alice",
+		callerID:  "vulos:alice",
 		calleeID:  selfID,
 		state:     callStateActive,
 		createdAt: time.Now(),
 	}
 	relay.mu.Unlock()
 
-	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindHangup, "call-100", nil)
+	env := callMakeSignalingEnvelope("vulos:alice", selfID, sigKindHangup, "call-100", nil)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 
@@ -723,10 +723,10 @@ func TestCallInbound_SDPPayloadPassthrough(t *testing.T) {
 	_, selfID := callTestIdentity(t)
 	relay, _, _ := newCallRelay(t, selfID, contacts, hub)
 
-	contacts.add(callApprovedContact("vula:alice", "alice.vulos.org:8080"))
+	contacts.add(callApprovedContact("vulos:alice", "alice.vulos.org:8080"))
 
 	sdp := json.RawMessage(`{"type":"offer","sdp":"v=0\r\n"}`)
-	env := callMakeSignalingEnvelope("vula:alice", selfID, sigKindSignal, "call-110", sdp)
+	env := callMakeSignalingEnvelope("vulos:alice", selfID, sigKindSignal, "call-110", sdp)
 	rr := httptest.NewRecorder()
 	relay.HandleInboundCallSignal(rr, callInboundRequest(env))
 

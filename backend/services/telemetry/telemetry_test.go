@@ -326,7 +326,7 @@ func TestSysInfo_JSONFieldNames(t *testing.T) {
 		MemUsedMB:      1024,
 		MemPercent:     25.0,
 		Uptime:         "1d 2h 30m",
-		OSName:         "Vula OS",
+		OSName:         "Vulos OS",
 		OSVersion:      "1.0",
 		Battery:        75,
 		Charging:       false,

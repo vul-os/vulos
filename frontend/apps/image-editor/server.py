@@ -1,4 +1,4 @@
-"""Vula OS — Image Editor
+"""Vulos OS — Image Editor
 Canvas-based image editor with crop, rotate, flip, resize, filters, and annotation.
 Saves output to ~/.vulos/pictures/.
 """

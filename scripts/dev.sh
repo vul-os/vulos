@@ -1,5 +1,5 @@
 #!/bin/sh
-# Vula OS — Development Script
+# Vulos OS — Development Script
 #
 # Usage:
 #   ./scripts/dev.sh                Local dev (Go backend + Vite HMR, no Docker)
@@ -133,7 +133,7 @@ deploy_quick() {
 # ── Local dev (no Docker) ─────────────────────────────────
 dev_local() {
   echo "${BLUE}╔══════════════════════════════╗${NC}"
-  echo "${BLUE}║   Vula OS — Dev Mode         ║${NC}"
+  echo "${BLUE}║   Vulos OS — Dev Mode         ║${NC}"
   echo "${BLUE}╚══════════════════════════════╝${NC}"
 
   # Ensure setup marker exists (skip OOBE)

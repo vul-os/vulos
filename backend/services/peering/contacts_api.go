@@ -57,7 +57,7 @@ type ContactAPI struct {
 	client   *PeerClient
 	hub      *Hub
 	priv     ed25519.PrivateKey
-	vulosID  string // local node's Vula ID
+	vulosID  string // local node's Vulos ID
 	myServer string // local node's publicly reachable "host:port"
 
 	// SelfDisplayName returns the local user's display name for inclusion in
@@ -67,7 +67,7 @@ type ContactAPI struct {
 	SelfDisplayName func() string
 
 	// OnApprove is an optional hook called after a contact transitions to
-	// StateApproved.  It receives the approved contact's Vula ID and the
+	// StateApproved.  It receives the approved contact's Vulos ID and the
 	// server address stored in the contact record.  The hook is invoked
 	// synchronously before the HTTP response is written, but implementations
 	// should be non-blocking (e.g. use FetchPeerProfileAsync).
@@ -80,7 +80,7 @@ type ContactAPI struct {
 //   - client    — outbound HTTP client for server-to-server delivery
 //   - hub       — WebSocket hub for real-time browser notifications (may be nil in tests)
 //   - priv      — local Ed25519 private key used to sign outbound envelopes
-//   - vulosID    — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
+//   - vulosID    — canonical Vulos ID of the local node ("vulos:ed25519:<base58>")
 //   - myServer  — publicly reachable address of this node ("host:port"), sent in contact
 //     requests so the recipient can reply
 func NewContactAPI(
@@ -138,10 +138,10 @@ func (a *ContactAPI) RegisterContactHandlers(mux *http.ServeMux) {
 type sendRequestBody struct {
 	// TargetServer is the peer's "host:port".  Required if TargetVulosID is
 	// bare (no @host:port suffix).  May be omitted when TargetVulosID is a full
-	// Vula address ("vulos:ed25519:...@host:port").
+	// Vulos address ("vulos:ed25519:...@host:port").
 	TargetServer string `json:"target_server"`
 
-	// TargetVulosID is the recipient's Vula ID or full Vula address.
+	// TargetVulosID is the recipient's Vulos ID or full Vulos address.
 	TargetVulosID string `json:"target_vulos_id"`
 
 	// DisplayName is our own display name, sent to the peer.
@@ -182,7 +182,7 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 	targetVulosID := body.TargetVulosID
 	targetServer := body.TargetServer
 
-	// If the vula ID looks like a full address (<vulosID>@host:port), parse it.
+	// If the vulos ID looks like a full address (<vulosID>@host:port), parse it.
 	if addr, err := ParseVulosAddress(body.TargetVulosID); err == nil {
 		targetVulosID = addr.VulosID
 		if targetServer == "" {
@@ -192,7 +192,7 @@ func (a *ContactAPI) handleSendRequest(w http.ResponseWriter, r *http.Request) {
 
 	if targetServer == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "target_server is required (or provide a full vula address with @host:port)",
+			"error": "target_server is required (or provide a full vulos address with @host:port)",
 		})
 		return
 	}
@@ -440,7 +440,7 @@ func (a *ContactAPI) handleListContacts(w http.ResponseWriter, r *http.Request) 
 
 // HandleInboundRequest implements POST /api/peering/inbound/request.
 //
-// This endpoint is called by a remote Vula peer's server when they want to add
+// This endpoint is called by a remote Vulos peer's server when they want to add
 // the local user as a contact.  InboundMiddleware has already:
 //
 //  1. Verified the envelope's Ed25519 signature (401 on failure).
@@ -548,7 +548,7 @@ func (a *ContactAPI) pushNotification(event string, data map[string]any) {
 		return
 	}
 
-	// Broadcast to all connected users — in a single-user Vula instance this
+	// Broadcast to all connected users — in a single-user Vulos instance this
 	// is equivalent to pushing to the owner's browser tabs.
 	a.hub.Broadcast(Frame{
 		Channel: ChannelNotification,

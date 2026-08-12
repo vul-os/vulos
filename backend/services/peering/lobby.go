@@ -44,7 +44,7 @@ import (
 
 // LobbyParticipant is one entry in the POST /api/peering/call/lobby request.
 type LobbyParticipant struct {
-	// ID is the participant's Vula ID (required).
+	// ID is the participant's Vulos ID (required).
 	ID string `json:"id"`
 
 	// DisplayName is shown in the bandwidth table (optional — falls back to ID).
@@ -289,7 +289,7 @@ func (s *LobbyService) handleLobbyHost(w http.ResponseWriter, r *http.Request) {
 
 // fetchBandwidth fetches bandwidth for a single participant.
 // Local participants (Server == "") are served from the BandwidthMeter;
-// remote participants are proxied from their Vula server.
+// remote participants are proxied from their Vulos server.
 func (s *LobbyService) fetchBandwidth(ctx context.Context, p LobbyParticipant) LobbyParticipantReport {
 	report := LobbyParticipantReport{
 		ID:          p.ID,

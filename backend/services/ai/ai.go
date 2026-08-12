@@ -94,7 +94,7 @@ func DefaultConfig() Config {
 		// derive from locality (loopback → local, else external), so nothing
 		// silently upgrades; sovereign/brokered are explicit declarations.
 		Tier: strings.TrimSpace(os.Getenv("VULOS_AI_TIER")),
-		System: getenv("AI_SYSTEM_PROMPT", `You are Vula, the AI assistant built into Vulos OS. You are helpful, concise, and friendly.
+		System: getenv("AI_SYSTEM_PROMPT", `You are Vulos, the AI assistant built into Vulos OS. You are helpful, concise, and friendly.
 
 You can generate visual UI by including a <viewport> block in your response. The OS opens it as a window.
 

@@ -172,7 +172,7 @@ func reachabilityCachePut(vulosID string, direct, relay string) {
 func fetchPeerReachability(ctx context.Context, relayBaseURL, vulosID string) (resp relayResolveResponse, found bool, err error) {
 	relayBaseURL = strings.TrimRight(strings.TrimSpace(relayBaseURL), "/")
 	if relayBaseURL == "" || vulosID == "" {
-		return relayResolveResponse{}, false, fmt.Errorf("peering: reachability resolve requires a relay base URL and a vula id")
+		return relayResolveResponse{}, false, fmt.Errorf("peering: reachability resolve requires a relay base URL and a vulos id")
 	}
 
 	endpoint := relayBaseURL + relayResolvePath + "?vulos_id=" + url.QueryEscape(vulosID)
@@ -278,7 +278,7 @@ func RefreshPeerReachability(ctx context.Context, relayBaseURL, vulosID string) 
 // this protection to begin with.
 func refreshPeerReachabilityCrossChecked(ctx context.Context, relays []string, vulosID string) error {
 	if strings.TrimSpace(vulosID) == "" {
-		return fmt.Errorf("peering: reachability resolve requires a vula id")
+		return fmt.Errorf("peering: reachability resolve requires a vulos id")
 	}
 
 	var (

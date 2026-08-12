@@ -348,7 +348,7 @@ func main() {
 		}
 	}()
 
-	// System user management (maps Vula profiles → Linux users)
+	// System user management (maps Vulos profiles → Linux users)
 	sysUserSvc := sysuser.New()
 
 	// Remote access config — pass cfg so identity fields are populated from config/env.
@@ -637,14 +637,14 @@ func main() {
 		log.Println("[init] created /dev/uinput")
 	}
 
-	// Set hostname to "vula" (Docker defaults to container ID)
+	// Set hostname to "vulos" (Docker defaults to container ID)
 	if os.Getuid() == 0 {
-		os.WriteFile("/etc/hostname", []byte("vula\n"), 0644)
-		exec.Command("hostname", "vula").Run()
+		os.WriteFile("/etc/hostname", []byte("vulos\n"), 0644)
+		exec.Command("hostname", "vulos").Run()
 		// Ensure hostname resolves in /etc/hosts (fixes sudo "unable to resolve host")
 		if hosts, err := os.ReadFile("/etc/hosts"); err == nil {
-			if !strings.Contains(string(hosts), "vula") {
-				os.WriteFile("/etc/hosts", append(hosts, []byte("127.0.0.1 vula\n::1 vula\n")...), 0644)
+			if !strings.Contains(string(hosts), "vulos") {
+				os.WriteFile("/etc/hosts", append(hosts, []byte("127.0.0.1 vulos\n::1 vulos\n")...), 0644)
 			}
 		}
 	}
@@ -658,7 +658,7 @@ func main() {
 		}
 	}
 
-	// PTY service — resolves Vula userID → Linux username via auth store
+	// PTY service — resolves Vulos userID → Linux username via auth store
 	ptySvc := ptyservice.NewService(sysUserSvc, func(userID string) string {
 		if u, ok := authStore.GetUser(userID); ok {
 			return u.Username
@@ -2741,7 +2741,7 @@ func main() {
 		}
 		peerClient := peering.NewPeerClient()
 
-		// callerVulosID extracts the caller's Vula ID from an authenticated
+		// callerVulosID extracts the caller's Vulos ID from an authenticated
 		// request; empty for unauthenticated callers (feeds public/link).
 		callerVulosID := func(r *http.Request) string {
 			if v := r.Header.Get("X-Vulos-ID"); v != "" {
@@ -4446,7 +4446,7 @@ func main() {
 				if voucherSvc, verr := fleetid.NewVoucherService(fabricSigner, vouchPolicy); verr != nil {
 					log.Printf("[fleetid] WARNING: voucher service unavailable (%v) — this box cannot vouch for peers' break-glass requests", verr)
 				} else {
-					// The operator's approval queue is only judgeable if a Vula
+					// The operator's approval queue is only judgeable if a Vulos
 					// ID can be turned into "one of your boxes" or "a machine
 					// this box has never heard of". fleetid holds no roster by
 					// design, so the lookup comes from here. Without it the

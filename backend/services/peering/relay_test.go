@@ -45,7 +45,7 @@ func relayTestSetup(t *testing.T) (*RelayStore, *ContactStore, string) {
 	return rs, cs, tmp
 }
 
-// genKeyPair generates a random Ed25519 keypair and a Vula ID for testing.
+// genKeyPair generates a random Ed25519 keypair and a Vulos ID for testing.
 func genKeyPair(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

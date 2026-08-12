@@ -173,7 +173,7 @@ Generate an SSH key pair for emergency access.
 │   You will NOT be able to see it again.     │
 │                                             │
 │   Usage:                                    │
-│   ssh -i vula-ssh.key root@<this-ip>        │
+│   ssh -i vulos-ssh.key root@<this-ip>        │
 │                                             │
 │              [ Next ]                       │
 │                                             │
@@ -257,7 +257,7 @@ Shows ALL keys the user needs to save. Does not proceed until they confirm.
 │                                             │
 │   Storage Access Key                        │
 │   ┌─────────────────────────────────────┐   │
-│   │ vula-ak-7f3a9b2c1d4e               │   │
+│   │ vulos-ak-7f3a9b2c1d4e               │   │
 │   │                          [ Copy ]   │   │
 │   └─────────────────────────────────────┘   │
 │                                             │
@@ -296,7 +296,7 @@ Shows ALL keys the user needs to save. Does not proceed until they confirm.
 
 ### Recovery Kit Format
 
-**JSON file** (`vula-recovery-kit.json`):
+**JSON file** (`vulos-recovery-kit.json`):
 
 ```json
 {
@@ -306,13 +306,13 @@ Shows ALL keys the user needs to save. Does not proceed until they confirm.
   "hostname": "alice-home",
   "ssh": {
     "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbn...\n-----END OPENSSH PRIVATE KEY-----",
-    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... vula@home-server",
+    "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... vulos@home-server",
     "port": 22
   },
   "storage": {
     "endpoint": "http://192.168.1.50:9000",
     "bucket": "vulos-cluster",
-    "access_key": "vula-ak-7f3a9b2c1d4e",
+    "access_key": "vulos-ak-7f3a9b2c1d4e",
     "secret_key": "vulos-sk-8e2f1a9c7b3d6e4f0a5b..."
   },
   "encryption": {

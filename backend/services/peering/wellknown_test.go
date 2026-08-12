@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-// wkTestSignedPeer returns a fresh Vula ID and a function that signs a
+// wkTestSignedPeer returns a fresh Vulos ID and a function that signs a
 // WKIdentityResponse with that identity's key. Used to exercise the
-// signature-authenticated fetch path (PEER-12 hardening): a Vula ID IS an
+// signature-authenticated fetch path (PEER-12 hardening): a Vulos ID IS an
 // Ed25519 public key, so a profile must be signed by it to be trusted.
 func wkTestSignedPeer(t *testing.T) (vulosID string, sign func(*WKIdentityResponse)) {
 	t.Helper()
@@ -502,7 +502,7 @@ func TestFetchPeerProfile_IDMismatchRejected(t *testing.T) {
 
 	_, err := FetchPeerProfile(context.Background(), expected, fakePeer.URL)
 	if err == nil {
-		t.Error("expected error on Vula ID mismatch")
+		t.Error("expected error on Vulos ID mismatch")
 	}
 }
 
@@ -549,7 +549,7 @@ func TestFetchPeerProfile_TamperedRejected(t *testing.T) {
 }
 
 func TestFetchPeerProfile_WrongKeySignatureRejected(t *testing.T) {
-	// Profile signed by a DIFFERENT key than the requested Vula ID — reject.
+	// Profile signed by a DIFFERENT key than the requested Vulos ID — reject.
 	requestedID, _ := wkTestSignedPeer(t)
 	_, signWithOther := wkTestSignedPeer(t)
 	fakePeer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

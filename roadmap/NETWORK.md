@@ -1,6 +1,6 @@
 # Network & Remote Access
 
-How users reach their Vula instances from the internet. Domain setup, TLS, subdomain routing, connection modes.
+How users reach their Vulos instances from the internet. Domain setup, TLS, subdomain routing, connection modes.
 
 > **Goal.** A clean naming scheme — `{app}--{profile}.{instance-ulid}.{domain}` — and four ways to reach it: Vulos fabric (Ziti, NAT-traversal), direct (your IP + acme-dns), own domain, or local-only. Cookies scoped per-instance so sessions don't leak between instances.
 > **Non-goals.** Running a hosted control plane for end-users. The fabric service is open-source and self-hostable; the default Vulos-operated fabric is a convenience, not a lock-in.
@@ -155,7 +155,7 @@ User brings their own domain with open ports. Caddy handles wildcard TLS via DNS
 │                                             │
 │   Domain                                    │
 │   ┌─────────────────────────────────────┐   │
-│   │ my-vula.example.com                 │   │
+│   │ my-vulos.example.com                 │   │
 │   └─────────────────────────────────────┘   │
 │                                             │
 │   DNS Provider                              │
@@ -385,7 +385,7 @@ Users can switch modes after init without reinstalling. Settings → Network →
 │   │      *.01h5t3e8...vulos.org → IP    │   │
 │   │                                     │   │
 │   │  ( ) Own domain                     │   │
-│   │      my-vula.example.com            │   │
+│   │      my-vulos.example.com            │   │
 │   │                                     │   │
 │   │  ( ) Local only                     │   │
 │   └─────────────────────────────────────┘   │

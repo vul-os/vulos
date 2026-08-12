@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vula OS — netboot-install QEMU smoke harness (NETB-05)
+# Vulos OS — netboot-install QEMU smoke harness (NETB-05)
 #
 # Netboot (NETB-01..04) had never actually been run before this: it had unit
 # tests but nothing had ever performed a real netboot-to-install-to-reboot

@@ -863,7 +863,7 @@ func importBlob(store *Store, blob *ExportBlob, passphrase string) ([]*Account, 
 // Accepts either:
 //
 //	{ "uri": "otpauth-migration://offline?data=..." }  — Google Authenticator export
-//	{ "blob": { "nonce":..., "ciphertext":..., "version":1 } } — encrypted Vula blob
+//	{ "blob": { "nonce":..., "ciphertext":..., "version":1 } } — encrypted Vulos blob
 func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 	// SERVER-DERIVED identity: the auth middleware stripped any attacker-supplied
 	// X-User-ID and re-set it from the session. No account id is read from the

@@ -1,4 +1,4 @@
-"""Vula OS — System Info app.
+"""Vulos OS — System Info app.
 Read-only dashboard: polls existing backend endpoints and /proc//sys directly.
 """
 import http.server

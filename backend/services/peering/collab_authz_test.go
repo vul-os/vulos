@@ -166,10 +166,10 @@ func TestAuthorizeRoom_SharedPeerAllowed_StrangerRejected(t *testing.T) {
 	}
 }
 
-// TestAuthorizeRoom_SpoofedVulaHeaderRejected pins that a client cannot escalate by
+// TestAuthorizeRoom_SpoofedVulosHeaderRejected pins that a client cannot escalate by
 // asserting another user's VulosID in X-Vulos-ID: the header must match the
 // server-resolved identity for the authenticated OS user, else the join is denied.
-func TestAuthorizeRoom_SpoofedVulaHeaderRejected(t *testing.T) {
+func TestAuthorizeRoom_SpoofedVulosHeaderRejected(t *testing.T) {
 	s, shares := collabStoreWithShares(t)
 	const victim = "vulos:ed25519:victim"
 	const boxSelf = "vulos:ed25519:thisbox"

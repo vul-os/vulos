@@ -7,7 +7,7 @@
 // Storage layout (created idempotently on New):
 //
 //	~/.vulos/peering/
-//	  ├── identity/    (keypair, Vula ID, verification token)
+//	  ├── identity/    (keypair, Vulos ID, verification token)
 //	  ├── profile/     (avatar.webp, profile.json, visibility settings)
 //	  ├── inbox/       (received messages, indexed by conversation)
 //	  ├── outbox/      (sent messages, pending delivery)
@@ -68,7 +68,7 @@ func (s *Service) PrivateKey() ed25519.PrivateKey { return s.priv }
 // PublicKey returns the node's Ed25519 public key.
 func (s *Service) PublicKey() ed25519.PublicKey { return s.pub }
 
-// VulosID returns the node's canonical Vula ID ("vulos:ed25519:<base58>").
+// VulosID returns the node's canonical Vulos ID ("vulos:ed25519:<base58>").
 func (s *Service) VulosID() string { return s.vulosID }
 
 // New creates a Service and ensures the full ~/.vulos/peering/ directory tree
@@ -82,7 +82,7 @@ func (s *Service) VulosID() string { return s.vulosID }
 // given and then calls loadOrGenerate on <root>/peering/identity, which MINTS A
 // NEW Ed25519 KEYPAIR when it finds none. A caller who passed a real home
 // directory would not get a misplaced file — it would get a box with a
-// different Vula ID, which is the name every peer knows it by. Nothing would
+// different Vulos ID, which is the name every peer knows it by. Nothing would
 // report an error; the identity would simply be new.
 func New(dataRoot string) *Service {
 	root := filepath.Join(dataRoot, "peering")
@@ -119,7 +119,7 @@ func New(dataRoot string) *Service {
 //
 // Implemented routes (PEER-01 + PEER-02):
 //
-//	GET  /api/peering/identity           → own Vula ID + public key (200)
+//	GET  /api/peering/identity           → own Vulos ID + public key (200)
 //	POST /api/peering/identity/export    → export encrypted keypair bundle
 //	POST /api/peering/identity/import    → import encrypted keypair bundle
 //
@@ -134,7 +134,7 @@ func New(dataRoot string) *Service {
 func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 	// --- Identity (PEER-02: implemented) ---
 
-	// GET /api/peering/identity — returns the node's Vula ID and public key.
+	// GET /api/peering/identity — returns the node's Vulos ID and public key.
 	mux.HandleFunc("GET /api/peering/identity", s.handleGetIdentity)
 
 	// POST /api/peering/identity/export — export keypair encrypted with passphrase.

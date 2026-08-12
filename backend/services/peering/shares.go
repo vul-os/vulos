@@ -80,7 +80,7 @@ type SharesService struct {
 //   - store      — shared-document registry (see collab_share.go)
 //   - client     — outbound HTTP client for server-to-server envelope delivery
 //   - priv       — local Ed25519 private key used to sign outbound envelopes
-//   - localVulosID — canonical Vula ID of the local node ("vulos:ed25519:<base58>")
+//   - localVulosID — canonical Vulos ID of the local node ("vulos:ed25519:<base58>")
 func NewSharesService(
 	contacts *ContactStore,
 	store *ShareStore,
@@ -97,7 +97,7 @@ func NewSharesService(
 	}
 }
 
-// localID returns the best available local Vula ID.
+// localID returns the best available local Vulos ID.
 func (s *SharesService) localID() string {
 	if s.localVulosID != "" {
 		return s.localVulosID
@@ -367,7 +367,7 @@ type sharesUpdateBody struct {
 
 // handleInboundUpdate receives a CRDT update from a peer.
 //
-// The sender's Vula ID is extracted from the pre-verified envelope in context
+// The sender's Vulos ID is extracted from the pre-verified envelope in context
 // (set by InboundMiddleware). If the sender has view-only permission the request
 // is rejected with 403 Forbidden. Revoked documents return 410 Gone.
 func (s *SharesService) handleInboundUpdate(w http.ResponseWriter, r *http.Request) {

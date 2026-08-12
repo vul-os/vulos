@@ -1,4 +1,4 @@
-"""Vula OS — Phone
+"""Vulos OS — Phone
 Static file server for the Phone app (Messages + Dialer UI).
 The telephony backend is the Vulos Go service at /api/telephony/*.
 """

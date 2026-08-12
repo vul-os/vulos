@@ -11,7 +11,7 @@ import (
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-// genKey generates a fresh Ed25519 keypair and its Vula ID for testing.
+// genKey generates a fresh Ed25519 keypair and its Vulos ID for testing.
 func genKey(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

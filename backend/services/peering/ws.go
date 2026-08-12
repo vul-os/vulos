@@ -1,5 +1,5 @@
 // Package peering implements the real-time WebSocket multiplex channel that
-// connects the browser to its own Vula server.  All real-time traffic that
+// connects the browser to its own Vulos server.  All real-time traffic that
 // is not time-critical (messages, presence, collab events, server-push
 // notifications and signaling hints) flows through a single connection that
 // is tagged by a "channel" discriminator so many logical sub-streams can

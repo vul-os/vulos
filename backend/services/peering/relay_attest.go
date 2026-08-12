@@ -118,7 +118,7 @@ type AttestDoc struct {
 	// Provider identifies which TEE platform produced this document.
 	Provider AttestProvider `json:"provider"`
 
-	// RelayVulosID is the Vula ID of the relay instance that produced this
+	// RelayVulosID is the Vulos ID of the relay instance that produced this
 	// document.  Senders MUST check that it matches the relay they intend to use.
 	RelayVulosID string `json:"relay_vulos_id"`
 
@@ -596,7 +596,7 @@ func (AttestNitroVerifier) Verify(doc AttestDoc, policy AttestPolicy) error {
 		return err // already an *AttestError with pcr-missing / pcr-mismatch.
 	}
 
-	// 6. Bind the document to the relay identity. The relay MUST place its Vula
+	// 6. Bind the document to the relay identity. The relay MUST place its Vulos
 	//    ID in the signed NSM user_data; otherwise the document could be replayed
 	//    to vouch for a different relay.
 	if len(nsm.UserData) == 0 {

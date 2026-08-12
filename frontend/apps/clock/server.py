@@ -1,4 +1,4 @@
-"""Vula OS - Clock
+"""Vulos OS - Clock
 Static stdlib server for the Clock web app.
 """
 import http.server

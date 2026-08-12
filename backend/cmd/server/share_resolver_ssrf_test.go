@@ -57,7 +57,7 @@ func TestDeliverCapability_DialTimeGuardBlocksInternalIP(t *testing.T) {
 	d.addrValidator = func(string) error { return nil }
 
 	err := d.DeliverCapability(context.Background(), srv.URL, files.CapabilityDelivery{
-		RecipientVulosID: "vula1",
+		RecipientVulosID: "vulos1",
 		Link:             "tok",
 	})
 	if err == nil {

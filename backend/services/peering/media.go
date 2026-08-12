@@ -34,7 +34,7 @@
 // Attachment with a non-empty Hash field, the recipient calls
 // MediaStore.FetchFromPeer, which:
 //  1. Checks whether the blob is already in the local store (dedup).
-//  2. If absent, GETs the signed URL from the sender's Vula server.
+//  2. If absent, GETs the signed URL from the sender's Vulos server.
 //  3. Verifies the downloaded blob matches the expected hash.
 //  4. Stores the blob and kicks off thumbnail generation.
 //

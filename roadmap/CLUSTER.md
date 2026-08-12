@@ -1,12 +1,12 @@
 # Multi-Node Cluster & Storage
 
-How multiple Vula instances share state. Each node is a full, independent Vula instance. There is **no primary node** — every node is equal. Nodes sync state through S3-compatible storage (MinIO).
+How multiple Vulos instances share state. Each node is a full, independent Vulos instance. There is **no primary node** — every node is equal. Nodes sync state through S3-compatible storage (MinIO).
 
 For network/domain setup see NETWORK.md. For first-boot wizard see INIT.md. For bare metal boot see BAREMETAL-INIT.md.
 
 > **See also (new design extensions).** This doc covers the foundational S3 sync model. Three follow-on docs build on it: **SYNC.md** (two-tier sync — instance↔instance hot path over the peering mesh + the existing durable bucket cold path — and bucket-side snapshot/compaction so a new instance bootstraps from a snapshot + short tail instead of an unbounded changeset log); **COORDINATION.md** (bucket-backed leases with monotonic fencing tokens — generalizing the advisory presence lease below into the cluster's one exclusion/ownership primitive, no leader election); **CONCURRENCY.md** (per-data-type conflict policy + the manifest-declared `concurrency` posture). The **data bucket** here is distinct from the public read-only **OS bucket** (OS-DISTRIBUTION.md).
 
-> **Goal.** Make N Vula instances behave like one: shared auth, profiles, settings, installed-apps, and file state. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
+> **Goal.** Make N Vulos instances behave like one: shared auth, profiles, settings, installed-apps, and file state. Backing store: any S3-compatible bucket the user controls (default: a MinIO instance one of the nodes runs).
 > **Non-goals.** Real-time clustering. A primary node. A control plane we operate. Hot-replicating the running OS. **cr-sqlite** as the merge engine — see the reality check immediately below; it conflicts with the pure-Go/no-CGO rule (D23/D94-J).
 > **Status — REALITY CHECK (2026-07-19).** The rest of this document (original text, kept below for design context) describes a **cr-sqlite CRDT** model as the multi-node merge engine. **cr-sqlite is not integrated, and cannot be under the current pure-Go/no-CGO rule** (`docs/decisions.md` D23; reaffirmed D94 item J — *"Stay Go for everything... no Rust. Consistent with the CGO-free/modernc SQLite rule"*). A former `backend/services/store/store.go` attempted to `load_extension()` a native `crsqlite.{so,dylib,dll}` at runtime, but `modernc.org/sqlite` is a pure-Go SQLite reimplementation that refuses the call outright (`load_extension` → "not authorized"), so `DB.CRSQLiteLoaded` was false on every build and `crsql_as_crr` never ran. That package and the `crsql_changes` streaming in `backend/services/sync/hotpath.go` were **deleted on 2026-07-20** as unreachable dead code (both had zero callers). a since-deleted `backend/services/cluster/reconcile.go` said so directly: the `installed_apps` CRR table "in production... lives in a cr-sqlite database; here it is persisted as JSON."
 >
@@ -61,7 +61,7 @@ Every node:
 
 ## MinIO as a Built-In App
 
-MinIO runs as a standard Vula app from the registry. Enable it on any node to make that node a storage server. Nodes without MinIO just sync to a peer that has it.
+MinIO runs as a standard Vulos app from the registry. Enable it on any node to make that node a storage server. Nodes without MinIO just sync to a peer that has it.
 
 ### Registry Entry
 
@@ -95,16 +95,16 @@ MinIO runs as a standard Vula app from the registry. Enable it on any node to ma
 
 **Single MinIO node** (simplest — start here):
 ```
-Home server: Vula + MinIO (storage node)
-Office:      Vula (syncs to home MinIO)
-Laptop:      Vula (syncs to home MinIO)
+Home server: Vulos + MinIO (storage node)
+Office:      Vulos (syncs to home MinIO)
+Laptop:      Vulos (syncs to home MinIO)
 ```
 
 **Two MinIO nodes** (redundant — recommended):
 ```
-Home server: Vula + MinIO ◄──► Office: Vula + MinIO
+Home server: Vulos + MinIO ◄──► Office: Vulos + MinIO
                                  (MinIO replication between both)
-Laptop:      Vula (syncs to nearest MinIO)
+Laptop:      Vulos (syncs to nearest MinIO)
 ```
 MinIO site replication keeps both storage nodes in sync. If home goes down, office MinIO has everything.
 

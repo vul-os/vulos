@@ -524,7 +524,7 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 
 		// Fleet-identity break-glass quorum. The peer asking has no session
 		// here by design — its identity is the thing being recovered.
-		"/api/fleetid/vouch/request": "FLEETID-VOUCH-01: box-to-box break-glass vouch request. Authenticated by the REQUEST, not a session: fleetid.VerifyVouchRequest requires a fresh Ed25519 signature by the key subject_id encodes (a Vula ID IS the public key), rejecting unsigned/forged/stale requests with 401 at the handler. Authorization is separate and stricter — no VouchCert is signed without an operator explicitly approving that exact (action, subject, payload, request id) tuple, and a self-vouch is refused outright. The operator-facing /api/fleetid/vouch/approve is deliberately NOT here and stays admin-gated. Guarded by TestVouchRequest_UnauthenticatedRejectedAtHandler.",
+		"/api/fleetid/vouch/request": "FLEETID-VOUCH-01: box-to-box break-glass vouch request. Authenticated by the REQUEST, not a session: fleetid.VerifyVouchRequest requires a fresh Ed25519 signature by the key subject_id encodes (a Vulos ID IS the public key), rejecting unsigned/forged/stale requests with 401 at the handler. Authorization is separate and stricter — no VouchCert is signed without an operator explicitly approving that exact (action, subject, payload, request id) tuple, and a self-vouch is refused outright. The operator-facing /api/fleetid/vouch/approve is deliberately NOT here and stays admin-gated. Guarded by TestVouchRequest_UnauthenticatedRejectedAtHandler.",
 	}
 
 	// The assertion this test previously only claimed to make. Both directions

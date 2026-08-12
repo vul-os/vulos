@@ -25,7 +25,7 @@
 //
 // # Contact & permission checks
 //
-// Every outbound request verifies that the target Vula ID is an approved
+// Every outbound request verifies that the target Vulos ID is an approved
 // contact with PermCall.  HandleInboundCallSignal performs the same gate on
 // inbound envelopes (the sender must have PermCall).
 //
@@ -82,11 +82,11 @@ const (
 	callStateEnded   callState = "ended"
 )
 
-// callSession tracks a live call between two Vula IDs.
+// callSession tracks a live call between two Vulos IDs.
 type callSession struct {
 	id        string // unique call ID (UUID, caller-chosen)
-	callerID  string // Vula ID of the initiating party
-	calleeID  string // Vula ID of the receiving party
+	callerID  string // Vulos ID of the initiating party
+	calleeID  string // Vulos ID of the receiving party
 	state     callState
 	createdAt time.Time
 }
@@ -107,7 +107,7 @@ const (
 // callInitiateReq is the JSON body of POST /api/peering/call/initiate.
 type callInitiateReq struct {
 	CallID   string `json:"call_id"`   // UUID chosen by the caller's browser
-	CalleeID string `json:"callee_id"` // Vula ID of the intended callee
+	CalleeID string `json:"callee_id"` // Vulos ID of the intended callee
 }
 
 // callAnswerReq is the JSON body of POST /api/peering/call/answer.
@@ -129,7 +129,7 @@ type callHangupReq struct {
 // Payload is opaque — servers never inspect SDP/ICE content.
 type callSignalReq struct {
 	CallID  string          `json:"call_id"`
-	PeerID  string          `json:"peer_id"` // Vula ID of the other party
+	PeerID  string          `json:"peer_id"` // Vulos ID of the other party
 	Payload json.RawMessage `json:"payload"` // opaque SDP offer/answer / ICE candidate
 }
 
@@ -145,7 +145,7 @@ type callWSFrame struct {
 
 // ─── CallRelay ────────────────────────────────────────────────────────────────
 
-// CallRelay handles call lifecycle and signaling for this Vula node.
+// CallRelay handles call lifecycle and signaling for this Vulos node.
 // It is safe for concurrent use.
 type CallRelay struct {
 	mu       sync.RWMutex
@@ -155,12 +155,12 @@ type CallRelay struct {
 	hub      callWSHub
 	client   *PeerClient        // outbound S2S transport (PEER-04)
 	priv     ed25519.PrivateKey // signing key for outbound envelopes (PEER-03)
-	selfID   string             // Vula ID of this node
+	selfID   string             // Vulos ID of this node
 }
 
 // NewCallRelay constructs a CallRelay.
 //
-//   - selfID   – this node's Vula ID ("vulos:ed25519:<base58>")
+//   - selfID   – this node's Vulos ID ("vulos:ed25519:<base58>")
 //   - contacts – contact lookup and permission gate (pass *ContactStore)
 //   - hub      – WebSocket push (pass *Hub; may be nil in tests)
 //   - client   – outbound S2S client (pass peering.NewPeerClient())
@@ -209,7 +209,7 @@ func RegisterCallHandlers(mux *http.ServeMux, relay *CallRelay) {
 // handleCallInitiate processes POST /api/peering/call/initiate.
 //
 // The caller's browser posts { call_id, callee_id }.  The server:
-//  1. Reads the caller's Vula ID from the X-Vulos-ID header.
+//  1. Reads the caller's Vulos ID from the X-Vulos-ID header.
 //  2. Verifies the callee is an approved contact with PermCall.
 //  3. Records a ringing session.
 //  4. Builds and signs a TypeSignaling envelope carrying { kind:"incoming-call", call_id }.
@@ -568,7 +568,7 @@ func (cr *CallRelay) HandleInboundCallSignal(w http.ResponseWriter, r *http.Requ
 // ─── S2S relay helper ─────────────────────────────────────────────────────────
 
 // sendSignal builds, signs, and delivers a TypeSignaling envelope to the
-// contact's Vula server via PeerClient (PEER-04).
+// contact's Vulos server via PeerClient (PEER-04).
 //
 //   - ctx     — request context for cancellation/timeout
 //   - contact — the recipient; contact.Server is "host:port"

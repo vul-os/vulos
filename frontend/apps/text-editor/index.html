@@ -270,7 +270,7 @@ body.light-theme #collab-bar{background:#eff6ff;border-color:#bfdbfe}
   <div id="share-box">
     <h3>Share for collaboration</h3>
     <div>
-      <label>Peer Vula ID or email</label>
+      <label>Peer Vulos ID or email</label>
       <input type="text" id="share-peer" placeholder="vulos:ed25519:… or user@example.com" autocomplete="off">
     </div>
     <div>
@@ -725,12 +725,12 @@ let peerColorIdx = 0;
 function nextPeerColor() { return PEER_COLORS[peerColorIdx++ % PEER_COLORS.length]; }
 
 function buildCollabWsUrl(docId) {
-  // The Vula backend exposes the collab WS at /api/peering/collab/<docId>/sync
+  // The Vulos backend exposes the collab WS at /api/peering/collab/<docId>/sync
   // Derive from current window location so it works both locally and proxied.
   const loc = window.location;
   const proto = loc.protocol === "https:" ? "wss:" : "ws:";
   // The app server proxies through VULOS_API; the WS endpoint is on the main
-  // Vula backend (port 8080 by default). We connect directly to the backend.
+  // Vulos backend (port 8080 by default). We connect directly to the backend.
   const backendHost = loc.hostname + ":8080";
   return `${proto}//${backendHost}/api/peering/collab/${encodeURIComponent(docId)}/sync`;
 }
@@ -846,7 +846,7 @@ async function confirmShare() {
   const perm = document.getElementById("share-perm").value;
 
   if (!peer) {
-    alert("Enter a Vula ID or email.");
+    alert("Enter a Vulos ID or email.");
     return;
   }
 

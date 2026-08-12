@@ -42,7 +42,7 @@ different jobs — a compromise of one does not hand over the other.
 ### 1. Your account identity (Ed25519)
 
 The box generates an **Ed25519** keypair that is your peering/network identity.
-Its public form is encoded as a **Vula ID**, and every box also has a **ULID**
+Its public form is encoded as a **Vulos ID**, and every box also has a **ULID**
 (a stable instance identifier shown, read-only, on the Identity step of setup).
 This is the key other boxes pin and trust when they talk to yours.
 

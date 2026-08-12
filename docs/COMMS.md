@@ -166,7 +166,7 @@ messages through a Vulos-operated chat backend, because there isn't one.
 ## The sovereign alternative: peer-to-peer Messages
 
 If you don't want a Matrix homeserver at all, the OS's own **Messages**
-builtin (Vula peering — see [PEERING.md](PEERING.md)) is first-party,
+builtin (Vulos peering — see [PEERING.md](PEERING.md)) is first-party,
 box-to-box, and requires no server: messages are signed envelopes delivered
 directly between your box and an approved contact's box (`/api/peering/inbound/message`),
 with a relay fallback only when direct delivery is unreachable, and group

@@ -1,4 +1,4 @@
-"""Vula OS — Voice Recorder
+"""Vulos OS — Voice Recorder
 Record audio from microphone, list recordings with timestamps, save via appdata API.
 """
 import http.server

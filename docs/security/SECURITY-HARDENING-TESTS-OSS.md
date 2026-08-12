@@ -335,9 +335,9 @@ must be rejected, preventing indefinite replay of intercepted pickup tokens.
 
 **Guards:** SECURITY-OSS.md §5 (Peering — relay.go signature over `<vulosID>.<timestamp>`)
 
-RecipientB attempting to authenticate as recipientA's Vula ID while signing with
+RecipientB attempting to authenticate as recipientA's Vulos ID while signing with
 B's own key must fail: the relay derives the expected public key from the presented
-Vula ID, so a key-mismatch is caught as a signature failure.
+Vulos ID, so a key-mismatch is caught as a signature failure.
 
 ---
 

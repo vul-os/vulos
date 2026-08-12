@@ -1364,7 +1364,7 @@ function PeerShareModal({ node, onClose }: PeerShareModalProps) {
       <div style={{ fontSize: 12, color: T.textDim, marginBottom: 14, lineHeight: 1.5 }}>
         Generate a signed, expiring capability link. The recipient redeems it on their own
         Vulos box — bytes stream box-to-box, no bucket or cloud required. Leave the recipient
-        blank for anyone-with-the-link, or bind it to a specific peer’s Vula ID.
+        blank for anyone-with-the-link, or bind it to a specific peer’s Vulos ID.
       </div>
 
       <div style={section}>New capability</div>
@@ -1377,7 +1377,7 @@ function PeerShareModal({ node, onClose }: PeerShareModalProps) {
           {CAP_TTLS.map((t) => <option key={t.s} value={t.s}>{t.label}</option>)}
         </select>
         <input
-          style={{ ...inputStyle, flex: 1 }} placeholder="Recipient Vula ID (optional)"
+          style={{ ...inputStyle, flex: 1 }} placeholder="Recipient Vulos ID (optional)"
           value={recipient} onChange={(e) => setRecipient(e.target.value)}
         />
       </div>

@@ -22,7 +22,7 @@ A single web app that combines microblogging, photos, video, and forums — all 
 
 ```mermaid
 flowchart TD
-    subgraph Social["Vula Social (web UI in WebKit)"]
+    subgraph Social["Vulos Social (web UI in WebKit)"]
         Feed["Feed (Twitter)"]
         Photos["Photos (Insta)"]
         Video["Video (YT)"]
@@ -106,7 +106,7 @@ Alternatively, build from scratch in React (matches our stack) using the Mastodo
 
 ### Recommendation
 
-**GoToSocial** — written in Go (matches our backend), single binary, SQLite, designed to be lightweight. Can run as a Vulos service alongside Conduit (Matrix). Users get their own Fediverse identity: `@user@their-vula-device.local`
+**GoToSocial** — written in Go (matches our backend), single binary, SQLite, designed to be lightweight. Can run as a Vulos service alongside Conduit (Matrix). Users get their own Fediverse identity: `@user@their-vulos-device.local`
 
 ---
 

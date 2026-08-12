@@ -312,7 +312,7 @@ func TestPendingQueue_DismissGrantsNothing(t *testing.T) {
 }
 
 // "Is this one of my boxes?" is the first question an operator asks and the one
-// they cannot answer by eye from a base64 Vula ID. The annotation carries it —
+// they cannot answer by eye from a base64 Vulos ID. The annotation carries it —
 // and its ABSENCE must be distinguishable from a negative answer.
 func TestPendingQueue_RosterAnnotation(t *testing.T) {
 	subject := newBox(t)

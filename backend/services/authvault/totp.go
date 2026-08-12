@@ -1,4 +1,4 @@
-// Package authvault implements OS-level authentication storage for Vula OS.
+// Package authvault implements OS-level authentication storage for Vulos OS.
 // It provides encrypted TOTP secret management per RFC 6238 using AES-256-GCM
 // at rest under ~/.vulos/auth/totp/.
 package authvault

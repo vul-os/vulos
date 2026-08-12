@@ -126,13 +126,13 @@ const (
 
 // Contact is a single entry in the contacts store.
 type Contact struct {
-	// VulosID is the peer's canonical Vula ID ("vulos:ed25519:<base58>").
+	// VulosID is the peer's canonical Vulos ID ("vulos:ed25519:<base58>").
 	VulosID string `json:"vulos_id"`
 
 	// DisplayName is the peer's self-reported display name.
 	DisplayName string `json:"display_name"`
 
-	// Server is the peer's Vula server address ("host:port").  Used to reach
+	// Server is the peer's Vulos server address ("host:port").  Used to reach
 	// the peer for outbound deliveries.  May be empty for contacts received
 	// via an inbound request before their server address is known.
 	Server string `json:"server,omitempty"`
@@ -571,7 +571,7 @@ func (cs *ContactStore) UpdatePermissions(vulosID string, perms []Perm) error {
 
 // ─── Query API ────────────────────────────────────────────────────────────────
 
-// Get returns a snapshot of the contact with the given Vula ID, or
+// Get returns a snapshot of the contact with the given Vulos ID, or
 // (nil, false) if the contact does not exist.
 func (cs *ContactStore) Get(vulosID string) (*Contact, bool) {
 	cs.mu.RLock()
@@ -631,7 +631,7 @@ func (cs *ContactStore) ListByState(state State) []*Contact {
 
 // ─── Predicate API ────────────────────────────────────────────────────────────
 
-// IsApproved reports whether the contact with the given Vula ID exists and is
+// IsApproved reports whether the contact with the given Vulos ID exists and is
 // in StateApproved.  This is the primary gate check for inbound traffic.
 func (cs *ContactStore) IsApproved(vulosID string) bool {
 	cs.mu.RLock()

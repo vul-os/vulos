@@ -1,5 +1,5 @@
 """
-Vula OS Sandbox Pool Launcher
+Vulos OS Sandbox Pool Launcher
 Trusted bootstrap script — NOT user code.
 
 Reads a single line from stdin: the path to the user script.

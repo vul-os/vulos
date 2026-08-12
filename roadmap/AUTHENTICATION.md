@@ -38,9 +38,9 @@ A built-in TOTP (Time-based One-Time Password, RFC 6238) generator that lives in
 
 ```
 1. User scans QR code or enters secret key when setting up 2FA on any site
-2. Vula stores the secret in the encrypted keychain
+2. Vulos stores the secret in the encrypted keychain
 3. System UI shows a rolling 6-digit code (30-second window)
-4. User copies code into the site, or Vula auto-fills it
+4. User copies code into the site, or Vulos auto-fills it
 ```
 
 **Implementation:**
@@ -53,7 +53,7 @@ A built-in TOTP (Time-based One-Time Password, RFC 6238) generator that lives in
 ```
 
 - Go library: `github.com/pquerna/otp` — handles TOTP generation, QR parsing, secret storage
-- Browser integration: Vula's system UI overlay shows the current code. Click to copy. Or auto-fill via a content script injected into the banking page.
+- Browser integration: Vulos's system UI overlay shows the current code. Click to copy. Or auto-fill via a content script injected into the banking page.
 - Backup: secrets sync across cluster nodes via S3/MinIO (encrypted at rest)
 - Import: support Google Authenticator export format (`otpauth-migration://`) for users migrating from a phone
 
@@ -101,8 +101,8 @@ A system-level credential store. Not a browser extension — an OS service that 
 **How it works:**
 
 ```
-1. User logs into a site in the Vula browser
-2. Vula detects the login form, offers to save credentials
+1. User logs into a site in the Vulos browser
+2. Vulos detects the login form, offers to save credentials
 3. Credentials encrypted and stored in the auth keychain
 4. Next visit: auto-fill username + password + TOTP code (if registered)
 ```
@@ -124,7 +124,7 @@ A system-level credential store. Not a browser extension — an OS service that 
 - Generator: built-in password generator (random, passphrase, configurable length/complexity)
 
 **Integration with TOTP:**
-When auto-filling a login, if the site has a registered TOTP account, Vula auto-fills the 2FA code too. One-click login with full 2FA — no phone, no typing codes.
+When auto-filling a login, if the site has a registered TOTP account, Vulos auto-fills the 2FA code too. One-click login with full 2FA — no phone, no typing codes.
 
 **API:**
 
@@ -152,23 +152,23 @@ POST   /api/auth/vault/export      → encrypted export
 
 **The problem:**
 
-The user is sitting at a local browser (their laptop/desktop). The banking session runs in a remote browser on the Vula server. When the bank sends a WebAuthn challenge, it goes to the remote browser — but the user's hardware key (YubiKey, laptop TPM, fingerprint reader) is on the local machine.
+The user is sitting at a local browser (their laptop/desktop). The banking session runs in a remote browser on the Vulos server. When the bank sends a WebAuthn challenge, it goes to the remote browser — but the user's hardware key (YubiKey, laptop TPM, fingerprint reader) is on the local machine.
 
 ```mermaid
 flowchart TD
-    Bank -->|challenge| Remote["Vula browser (remote, no hardware key)"]
+    Bank -->|challenge| Remote["Vulos browser (remote, no hardware key)"]
     Remote -. "? how does the challenge reach the local YubiKey?" .-> Local["Local browser (has the YubiKey plugged in)"]
 ```
 
 **Solution: WebAuthn proxy over WebRTC data channel**
 
 ```
-1. Bank sends WebAuthn challenge to remote Vula browser
-2. Vula browser intercepts the challenge via WebKit Web Extension
+1. Bank sends WebAuthn challenge to remote Vulos browser
+2. Vulos browser intercepts the challenge via WebKit Web Extension
 3. Challenge serialized and sent over WebRTC data channel to local browser
 4. Local browser's WebAuthn API prompts the user (touch YubiKey, fingerprint, etc.)
 5. Signed assertion sent back over WebRTC data channel
-6. Vula browser injects the assertion as if the local authenticator responded
+6. Vulos browser injects the assertion as if the local authenticator responded
 7. Bank verifies — sees a valid FIDO2 response
 ```
 
@@ -176,7 +176,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    subgraph Remote["Remote (Vula server)"]
+    subgraph Remote["Remote (Vulos server)"]
         R0["WebKit Web Extension"]
         R1["intercepts navigator.credentials.get() / .create()"]
         R2["serializes PublicKeyCredentialRequestOptions"]
@@ -214,17 +214,17 @@ Reliable + ordered. Challenges and responses are small (<4KB) and infrequent.
 
 - The challenge and assertion flow over the encrypted WebRTC data channel (DTLS-SRTP) — no MITM possible
 - The private key never leaves the local device — only the signed assertion crosses the bridge
-- The Vula server never sees the private key
+- The Vulos server never sees the private key
 - Replay protection is built into WebAuthn (challenge is one-time, signed with a nonce)
 - Origin binding: the bank sees the remote browser's origin. The local authenticator signs for that origin. This requires the local bridge to pass the correct relying party ID.
 
-**Passkey storage on the Vula instance itself:**
+**Passkey storage on the Vulos instance itself:**
 
-For users without a YubiKey or local TPM, the Vula instance can BE the authenticator:
+For users without a YubiKey or local TPM, the Vulos instance can BE the authenticator:
 
 - Generate and store passkeys in the instance's TPM (bare metal) or software keystore (cloud)
 - No bridge needed — the remote browser uses the server-side authenticator directly
-- Trade-off: the "possession factor" is the Vula instance itself, not a physical device you carry. Still better than SMS.
+- Trade-off: the "possession factor" is the Vulos instance itself, not a physical device you carry. Still better than SMS.
 
 ```
 ~/.vulos/auth/
@@ -248,7 +248,7 @@ PUT    /api/auth/passkeys/settings     → configure: prefer local bridge vs ser
 ### 2.2 USB Passthrough for Hardware Keys
 
 **Difficulty: ★★★**
-**Unblocks:** YubiKey, SoloKey, Titan Key, and any USB security key working directly with the remote Vula browser without the WebAuthn bridge.
+**Unblocks:** YubiKey, SoloKey, Titan Key, and any USB security key working directly with the remote Vulos browser without the WebAuthn bridge.
 
 Alternative to the WebAuthn proxy: forward the USB device itself to the remote server.
 
@@ -257,7 +257,7 @@ Alternative to the WebAuthn proxy: forward the USB device itself to the remote s
 ```mermaid
 flowchart TD
     A["YubiKey plugged into local machine"]
-    B["USB/IP or WebUSB forwards the device to Vula server"]
+    B["USB/IP or WebUSB forwards the device to Vulos server"]
     C["Remote browser sees a 'local' USB HID device"]
     D["WebAuthn works natively, no bridge needed"]
     A --> B --> C --> D
@@ -265,7 +265,7 @@ flowchart TD
 
 **Implementation options:**
 
-1. **USB/IP (Linux kernel module)** — forward USB devices over the network. Server sees a virtual USB device. Works for bare metal Vula instances.
+1. **USB/IP (Linux kernel module)** — forward USB devices over the network. Server sees a virtual USB device. Works for bare metal Vulos instances.
    - Client: `usbip bind --busid=1-1` (share the device)
    - Server: `usbip attach --remote=<client-ip> --busid=1-1` (mount the device)
    - Limitation: requires root on both sides, adds latency
@@ -275,7 +275,7 @@ flowchart TD
    - Works from any browser that supports WebUSB (Chrome/Edge, not Safari/Firefox yet)
    - Limitation: WebUSB doesn't expose FIDO HID devices directly (security restriction)
 
-3. **Virtual FIDO device** — create a virtual USB HID device on the Vula server that proxies to the real key on the local machine. The remote browser talks to the virtual device natively.
+3. **Virtual FIDO device** — create a virtual USB HID device on the Vulos server that proxies to the real key on the local machine. The remote browser talks to the virtual device natively.
    - Library: `github.com/AlanRMcD/usb-gadget` or Linux USB gadget API
    - Most transparent: the remote browser doesn't know it's proxied
 
@@ -385,7 +385,7 @@ Each stage measures (hashes) the next stage into TPM PCR registers before execut
 
 - Kernel: Alpine/postmarketOS with `CONFIG_IMA=y` (Integrity Measurement Architecture)
 - Root filesystem: dm-verity with signed root hash
-- Boot: UEFI Secure Boot with Vula-signed bootloader and kernel
+- Boot: UEFI Secure Boot with Vulos-signed bootloader and kernel
 - Signing key: Vulos release key (users can also enroll their own keys for custom builds)
 
 **For bare metal only.** Cloud instances rely on the cloud provider's Secure Boot (Shielded VM, Nitro). Docker dev environments skip this entirely.
@@ -411,30 +411,30 @@ Each stage measures (hashes) the next stage into TPM PCR registers before execut
 **How external services consume it:**
 
 ```
-1. Bank challenges the Vula instance: "prove your device is trusted"
-2. Vula instance generates attestation report:
+1. Bank challenges the Vulos instance: "prove your device is trusted"
+2. Vulos instance generates attestation report:
    - TPM quote (signed PCR values)
-   - Device certificate chain (TPM → Vula CA → device key)
+   - Device certificate chain (TPM → Vulos CA → device key)
    - OS version + build hash
-3. Bank verifies against Vula's published expected values
+3. Bank verifies against Vulos's published expected values
 4. If valid: device is trusted, reduce friction (skip SMS, lower auth requirements)
 ```
 
-**Vula attestation endpoint:**
+**Vulos attestation endpoint:**
 
 ```
 GET /api/auth/device/attestation
 → {
     "device_id": "<TPM-backed public key>",
-    "os_version": "vula-0.1.0",
+    "os_version": "vulos-0.1.0",
     "boot_chain_hash": "sha256:...",
     "tpm_quote": "<signed PCR values>",
-    "certificate_chain": ["<device cert>", "<vula intermediate>", "<vula root>"],
+    "certificate_chain": ["<device cert>", "<vulos intermediate>", "<vulos root>"],
     "timestamp": "2026-04-02T14:30:00Z"
   }
 ```
 
-**Vula CA:** vulos.org operates a certificate authority that signs device keys during registration. The CA's root certificate is published and can be trusted by external services. This is the same model as Apple's Device Attestation — Apple's CA signs each device's Secure Enclave key.
+**Vulos CA:** vulos.org operates a certificate authority that signs device keys during registration. The CA's root certificate is published and can be trusted by external services. This is the same model as Apple's Device Attestation — Apple's CA signs each device's Secure Enclave key.
 
 ---
 
@@ -449,7 +449,7 @@ GET /api/auth/device/attestation
 
 ```
 1. Bank/service issues a client certificate to the user
-2. Certificate + private key stored in Vula's auth keychain (TPM-backed)
+2. Certificate + private key stored in Vulos's auth keychain (TPM-backed)
 3. When connecting to the bank, WebKit presents the client certificate during TLS handshake
 4. Bank verifies: "this is the device we issued the cert to"
 5. No username, no password, no OTP needed — the certificate IS the authentication
@@ -468,7 +468,7 @@ GET /api/auth/device/attestation
 ```
 
 - WebKit configuration: set client certificate per-domain via WebKit network settings
-- Auto-selection: when a server requests client auth, Vula matches the domain and presents the right cert
+- Auto-selection: when a server requests client auth, Vulos matches the domain and presents the right cert
 - Renewal: track expiry dates, notify user, auto-renew if the issuer supports ACME or EST (RFC 7030)
 
 **API:**
@@ -490,13 +490,13 @@ POST   /api/auth/certs/generate-csr    → generate a CSR for requesting a new c
 
 **Options:**
 
-1. **VoIP number with SMS** — Twilio, MessageBird, or local telco API. Vula instance registers a virtual number, receives SMS via webhook, displays OTP in notification system.
+1. **VoIP number with SMS** — Twilio, MessageBird, or local telco API. Vulos instance registers a virtual number, receives SMS via webhook, displays OTP in notification system.
 
-2. **eSIM (bare metal)** — for devices with a cellular modem. Vula manages an eSIM, receives SMS natively. Most complete solution but hardware-dependent.
+2. **eSIM (bare metal)** — for devices with a cellular modem. Vulos manages an eSIM, receives SMS natively. Most complete solution but hardware-dependent.
 
-3. **Bluetooth SMS bridge** — pair with a phone (if you have one but don't want to depend on it for every login). Phone receives SMS, Vula reads it over Bluetooth. Reduces dependency without eliminating the phone.
+3. **Bluetooth SMS bridge** — pair with a phone (if you have one but don't want to depend on it for every login). Phone receives SMS, Vulos reads it over Bluetooth. Reduces dependency without eliminating the phone.
 
-4. **Email-to-SMS** — some services offer email as alternative to SMS. Vula routes these through the notification system.
+4. **Email-to-SMS** — some services offer email as alternative to SMS. Vulos routes these through the notification system.
 
 **Recommended: VoIP number.** Cheapest, most portable, works on cloud and bare metal.
 
@@ -504,8 +504,8 @@ POST   /api/auth/certs/generate-csr    → generate a CSR for requesting a new c
 
 ```
 1. User provisions a number: POST /api/auth/sms/provision → allocates a Twilio number
-2. Twilio webhook configured to POST incoming SMS to Vula instance
-3. Vula receives SMS, extracts OTP (regex: 4-8 digit code)
+2. Twilio webhook configured to POST incoming SMS to Vulos instance
+3. Vulos receives SMS, extracts OTP (regex: 4-8 digit code)
 4. OTP displayed as a system notification (NOTIFICATIONS.md)
 5. Auto-fill into the page that's waiting for it
 ```
@@ -583,7 +583,7 @@ With ZK: generate a proof that:
 
 - Standards: W3C Verifiable Credentials Data Model 2.0, DIF Presentation Exchange, ISO mDL 18013-5
 - ZK library: `github.com/ConsenSys/gnark` (Go-native)
-- DID method: `did:web` (domain-based, fits the Vula architecture — `did:web:alice.vulos.org`)
+- DID method: `did:web` (domain-based, fits the Vulos architecture — `did:web:alice.vulos.org`)
 - Storage: credentials encrypted in auth keychain, TPM-sealed
 
 ```
@@ -616,7 +616,7 @@ POST   /api/auth/credentials/verify            → verify a received credential/
 
 **What it captures:**
 
-Vula already streams input events over WebRTC data channels (mouse, keyboard, gamepad). These patterns are unique per person:
+Vulos already streams input events over WebRTC data channels (mouse, keyboard, gamepad). These patterns are unique per person:
 
 - **Typing cadence** — key hold duration, inter-key timing, error patterns
 - **Mouse movement** — velocity curves, acceleration, click patterns, scroll behavior
@@ -626,7 +626,7 @@ Vula already streams input events over WebRTC data channels (mouse, keyboard, ga
 **How it works:**
 
 ```
-1. During normal use, Vula builds a behavioral profile (local, never sent externally)
+1. During normal use, Vulos builds a behavioral profile (local, never sent externally)
 2. Profile is a statistical model: "this is how this user interacts"
 3. On each session, current behavior is compared against the profile
 4. Trust score: 0.0 (definitely not the user) to 1.0 (definitely the user)
@@ -642,7 +642,7 @@ Vula already streams input events over WebRTC data channels (mouse, keyboard, ga
 - Model stored encrypted, TPM-sealed
 - External services see only a trust score, not the underlying data
 - User can disable at any time
-- No data shared between Vula instances via peering
+- No data shared between Vulos instances via peering
 
 **Implementation:**
 
@@ -675,15 +675,15 @@ POST /api/auth/behavioral/reset        → reset model (re-train from scratch)
 ### 6.1 Direct Bank API Access
 
 **Difficulty: ★★★**
-**Unblocks:** native banking apps on Vula that don't need a browser, don't need SMS, authenticate via client certificates and passkeys.
+**Unblocks:** native banking apps on Vulos that don't need a browser, don't need SMS, authenticate via client certificates and passkeys.
 
 **How it works:**
 
-Instead of loading a bank's website in the browser, a Vula app talks directly to the bank's Open Banking API:
+Instead of loading a bank's website in the browser, a Vulos app talks directly to the bank's Open Banking API:
 
 ```mermaid
 flowchart TD
-    App["Vula Banking App"] -->|"OAuth 2.0 + mTLS"| BankAPI["Bank API"]
+    App["Vulos Banking App"] -->|"OAuth 2.0 + mTLS"| BankAPI["Bank API"]
     BankAPI --> Data["Account data, transactions,<br/>payments (PSD2/Open Banking)"]
 ```
 
@@ -774,7 +774,7 @@ flowchart LR
     Auth -->|"browser integration"| WebRTC["existing WebRTC streaming infrastructure"]
 ```
 
-The auth layer is horizontal — it sits below every app and above the hardware/OS. Any Vula app that needs external authentication calls the auth API instead of implementing its own credential management.
+The auth layer is horizontal — it sits below every app and above the hardware/OS. Any Vulos app that needs external authentication calls the auth API instead of implementing its own credential management.
 
 ---
 

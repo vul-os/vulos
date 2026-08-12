@@ -19,7 +19,7 @@ import (
 // The reason this is worth a test rather than a corrected sentence is what
 // happens to a caller who believes the comment. New() calls loadOrGenerate on
 // <root>/peering/identity, which MINTS A NEW Ed25519 KEYPAIR when it finds
-// none. The failure is not a misplaced file — it is a box with a different Vula
+// none. The failure is not a misplaced file — it is a box with a different Vulos
 // ID, the name every peer knows it by, generated silently and reported by
 // nothing. The identical mistake in identity.Load minted a new instance ULID.
 //

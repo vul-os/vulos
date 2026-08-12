@@ -86,9 +86,9 @@ type ShareInvitePayload struct {
 	DocID   string    `json:"doc_id"`
 	DocType string    `json:"doc_type"`
 	Title   string    `json:"title"`
-	PeerID  string    `json:"peer_id"` // recipient's Vula ID
+	PeerID  string    `json:"peer_id"` // recipient's Vulos ID
 	Perm    SharePerm `json:"perm"`    // SharePermEdit | SharePermView
-	FromID  string    `json:"from_id"` // sender's Vula ID
+	FromID  string    `json:"from_id"` // sender's Vulos ID
 }
 
 // shareUpdateBody is the body expected by POST /api/peering/inbound/collab-update.
@@ -249,7 +249,7 @@ func (s *ShareStore) PeerPerm(docID, vulosID string) (SharePerm, error) {
 // CollabShareService wires the ShareStore to the HTTP mux.
 type CollabShareService struct {
 	store        *ShareStore
-	localVulosID string // this instance's Vula ID (populated from env/identity)
+	localVulosID string // this instance's Vulos ID (populated from env/identity)
 }
 
 // newCollabShareService creates a service backed by store.
@@ -257,7 +257,7 @@ func newCollabShareService(store *ShareStore, localVulosID string) *CollabShareS
 	return &CollabShareService{store: store, localVulosID: localVulosID}
 }
 
-// localID returns the best available local Vula ID.
+// localID returns the best available local Vulos ID.
 func (svc *CollabShareService) localID() string {
 	if svc.localVulosID != "" {
 		return svc.localVulosID
@@ -549,7 +549,7 @@ func (svc *CollabShareService) handleInboundInvite(w http.ResponseWriter, r *htt
 // Body fields used:
 //
 //	doc_id     — document identifier
-//	sender_id  — Vula ID of the sending peer
+//	sender_id  — Vulos ID of the sending peer
 func (svc *CollabShareService) handleInboundUpdate(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 	if err != nil {

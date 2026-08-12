@@ -379,7 +379,7 @@ func (m *BandwidthMeter) handleOwnBandwidth() http.HandlerFunc {
 // and safedial.ValidateHost pre-dial checks. See transport.go and the
 // handlePeerBandwidth function below.
 
-// handlePeerBandwidth fetches bandwidth info from a peer's Vula server.
+// handlePeerBandwidth fetches bandwidth info from a peer's Vulos server.
 // Query params:
 //
 //	server — required — peer's base URL, e.g. "https://bob.vulos.org:8080"

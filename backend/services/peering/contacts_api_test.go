@@ -137,7 +137,7 @@ func TestHandleSendRequest_ParsesFullVulosAddress(t *testing.T) {
 	// We need to swap out the PeerClient's http.Client.
 	api.client = &PeerClient{http: remote.Client()}
 
-	// Full vula address: <vulosID>@host:port
+	// Full vulos address: <vulosID>@host:port
 	// ParseVulosAddress requires "<vulosID>@<host>:<port>" so we need a valid port.
 	// Build a valid full address.
 	fullAddress := fmt.Sprintf("%s@%s", remoteVulosID, hostport)

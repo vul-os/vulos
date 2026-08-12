@@ -1,6 +1,6 @@
 // transport.go — outbound server-to-server HTTP client (PEER-04).
 //
-// PeerClient makes signed POST requests to a remote Vula peer's
+// PeerClient makes signed POST requests to a remote Vulos peer's
 // /api/peering/inbound/* endpoints. Every request carries a signed Envelope
 // in the JSON body. The client refuses to connect to private / loopback
 // addresses (SSRF guard via safedial) and enforces a hard timeout.

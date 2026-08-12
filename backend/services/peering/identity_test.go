@@ -57,7 +57,7 @@ func TestBase58KnownVector(t *testing.T) {
 	}
 }
 
-// ─── Vula ID encode / decode ──────────────────────────────────────────────────
+// ─── Vulos ID encode / decode ──────────────────────────────────────────────────
 
 func TestEncodeDecodeVulosID(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
@@ -67,7 +67,7 @@ func TestEncodeDecodeVulosID(t *testing.T) {
 
 	id := encodeVulosID(pub)
 	if !strings.HasPrefix(id, "vulos:ed25519:") {
-		t.Fatalf("Vula ID missing prefix: %q", id)
+		t.Fatalf("Vulos ID missing prefix: %q", id)
 	}
 
 	decoded, err := decodeVulosID(id)
@@ -131,7 +131,7 @@ func TestParseVulosAddress_Errors(t *testing.T) {
 		{"missing @", "vulos:ed25519:abc123:8080"},
 		{"missing port", "vulos:ed25519:abc@example.com"},
 		{"invalid port", "vulos:ed25519:abc@example.com:notaport"},
-		{"bad vula id", "badid@example.com:8080"},
+		{"bad vulos id", "badid@example.com:8080"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -191,7 +191,7 @@ func TestLoadOrGenerate_Idempotent(t *testing.T) {
 	}
 
 	if id1 != id2 {
-		t.Errorf("Vula ID changed across loads: %q → %q", id1, id2)
+		t.Errorf("Vulos ID changed across loads: %q → %q", id1, id2)
 	}
 	if !bytes.Equal(pub1, pub2) {
 		t.Error("Public key changed across loads")
@@ -220,7 +220,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 
 	if importedID != vulosID {
-		t.Errorf("Vula ID mismatch: got %q want %q", importedID, vulosID)
+		t.Errorf("Vulos ID mismatch: got %q want %q", importedID, vulosID)
 	}
 	if !bytes.Equal(importedPriv, priv) {
 		t.Error("Private key mismatch after export/import")
@@ -246,7 +246,7 @@ func TestImport_WrongPassphrase(t *testing.T) {
 	}
 }
 
-// ─── Service integration: same Vula ID on reload ──────────────────────────────
+// ─── Service integration: same Vulos ID on reload ──────────────────────────────
 
 func TestService_PersistsAndReloads(t *testing.T) {
 	home := t.TempDir()
@@ -260,7 +260,7 @@ func TestService_PersistsAndReloads(t *testing.T) {
 	pub2 := svc2.pub
 
 	if id1 != id2 {
-		t.Errorf("Vula ID changed on reload: %q → %q", id1, id2)
+		t.Errorf("Vulos ID changed on reload: %q → %q", id1, id2)
 	}
 	if !bytes.Equal(pub1, pub2) {
 		t.Error("Public key changed on reload")
@@ -336,7 +336,7 @@ func TestHandleExportImport_HTTP(t *testing.T) {
 		t.Fatalf("decode import response: %v", err)
 	}
 	if resp.VulosID != originalID {
-		t.Errorf("imported Vula ID %q, want %q", resp.VulosID, originalID)
+		t.Errorf("imported Vulos ID %q, want %q", resp.VulosID, originalID)
 	}
 
 	// The service's in-memory state should reflect the imported identity.

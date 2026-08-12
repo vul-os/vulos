@@ -56,7 +56,7 @@ func TestDropTransferSend(t *testing.T) {
 	}))
 	defer peer.Close()
 
-	dt := NewDropTransfer(ms, nil, "vula:self", "Self", "https://self.example.org", filepath.Join(home, "Downloads"))
+	dt := NewDropTransfer(ms, nil, "vulos:self", "Self", "https://self.example.org", filepath.Join(home, "Downloads"))
 	txID, err := dt.SendFile(context.Background(), peer.URL, src, "text/plain")
 	if err != nil {
 		t.Fatalf("SendFile: %v", err)
@@ -76,8 +76,8 @@ func TestDropTransferSend(t *testing.T) {
 	if got.FileSize != int64(len(content)) {
 		t.Fatalf("notice file size: want %d, got %d", len(content), got.FileSize)
 	}
-	if got.FromVulosID != "vula:self" {
-		t.Fatalf("notice from: want vula:self, got %q", got.FromVulosID)
+	if got.FromVulosID != "vulos:self" {
+		t.Fatalf("notice from: want vulos:self, got %q", got.FromVulosID)
 	}
 	if !strings.HasPrefix(got.DownloadURL, "https://self.example.org/api/peering/media/fetch/sha256:") {
 		t.Fatalf("notice download url unexpected: %q", got.DownloadURL)
@@ -102,7 +102,7 @@ func TestDropTransferSendNoBaseURL(t *testing.T) {
 	ms, home := newTestDropMediaStore(t)
 	src := filepath.Join(home, "x.txt")
 	os.WriteFile(src, []byte("x"), 0o644) //nolint:errcheck
-	dt := NewDropTransfer(ms, nil, "vula:self", "Self", "", "")
+	dt := NewDropTransfer(ms, nil, "vulos:self", "Self", "", "")
 	if _, err := dt.SendFile(context.Background(), "http://peer.invalid", src, "text/plain"); err == nil {
 		t.Fatalf("expected error when selfBaseURL is empty")
 	}
@@ -130,7 +130,7 @@ func TestDropTransferReceive(t *testing.T) {
 	// Receiver side.
 	recvMS, recvHome := newTestDropMediaStore(t)
 	downloadDir := filepath.Join(recvHome, "Downloads")
-	dt := NewDropTransfer(recvMS, nil, "vula:recv", "Recv", "https://recv.example.org", downloadDir)
+	dt := NewDropTransfer(recvMS, nil, "vulos:recv", "Recv", "https://recv.example.org", downloadDir)
 
 	if err := dt.ReceiveFile(context.Background(), signedURL, "photo.jpg", "image/jpeg"); err != nil {
 		t.Fatalf("ReceiveFile: %v", err)

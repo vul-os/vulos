@@ -55,7 +55,7 @@ var errHandoffNoParticipants = errors.New("sfu/handoff: no participants availabl
 // HandoffNotifyFunc is called by HandoffManager when a new host is elected.
 // newHostID is the Participant.ID of the newly promoted host.  Callers should
 // relay this to all browsers so they can reconnect WebRTC streams to the new
-// SFU process (hosted by newHostID's Vula instance).
+// SFU process (hosted by newHostID's Vulos instance).
 //
 // The function is called once per handoff, on a dedicated goroutine; it must
 // not block indefinitely.
@@ -71,7 +71,7 @@ type handoffBandwidthEntry struct {
 	// participantID matches Participant.ID.
 	participantID string
 	// uploadMbps is the participant's self-reported upload throughput in Mbit/s.
-	// Sourced from GET /api/peering/bandwidth on the participant's Vula instance.
+	// Sourced from GET /api/peering/bandwidth on the participant's Vulos instance.
 	uploadMbps float64
 	// reportedAt is when the entry was last updated.
 	reportedAt time.Time

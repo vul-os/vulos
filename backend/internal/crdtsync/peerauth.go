@@ -40,7 +40,7 @@ package crdtsync
 // rendezvous layer encodes it (base64url, unpadded), because that string is
 // LITERALLY the relay address: "the peer whose key I resolved" and "the peer
 // who signed this response" are then the same bytes with no conversion step to
-// get wrong. services/peering's Vula ID is the same idea in a different
+// get wrong. services/peering's Vulos ID is the same idea in a different
 // encoding over a DIFFERENT key (peering's own identity key, not the fabric
 // one); mixing them here would introduce a second identity for the same box.
 //

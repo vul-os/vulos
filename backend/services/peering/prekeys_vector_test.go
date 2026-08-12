@@ -6,7 +6,7 @@ import (
 )
 
 // CHANGED 2026-08-12 with the VulaID → VulosID rename. The peer identifier
-// prefix "vula:ed25519:" became "vulos:ed25519:", and the identifiers are
+// prefix "vulos:ed25519:" became "vulos:ed25519:", and the identifiers are
 // concatenated into the HKDF SALT — so the derived key necessarily moved. The
 // new value was recomputed INDEPENDENTLY (a standalone HKDF-SHA256 in Python)
 // and only then compared against this implementation; both agree. Pasting the

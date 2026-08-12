@@ -7,7 +7,7 @@
 //	      └── <timestamp>_<msg_id>.json   (one file per message, sorted by name)
 //
 // The conv_id directory name is produced by ConversationID() in messages.go,
-// which sorts two Vula IDs lexicographically and joins them with "_".
+// which sorts two Vulos IDs lexicographically and joins them with "_".
 //
 // Each message file contains a JSON-encoded StoredMessage.  Files are named
 // with an RFC3339 prefix (using '!' instead of ':' for cross-platform
@@ -71,10 +71,10 @@ type StoredMessage struct {
 	// ConvID is the canonical conversation ID (ConversationID(a, b)).
 	ConvID string `json:"conv_id"`
 
-	// From is the sender's Vula ID.
+	// From is the sender's Vulos ID.
 	From string `json:"from"`
 
-	// To is the recipient's Vula ID.
+	// To is the recipient's Vulos ID.
 	To string `json:"to"`
 
 	// Type is the message type ("text", "image", etc.).
@@ -306,7 +306,7 @@ func (s *InboxStore) ListConversations() ([]ConversationSummary, error) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // sanitizePath replaces characters that are unsafe in file/directory names with
-// a safe equivalent.  This prevents path traversal via crafted Vula IDs or
+// a safe equivalent.  This prevents path traversal via crafted Vulos IDs or
 // conversation IDs.
 //
 // Allowed characters: letters, digits, '-', '_', ':'.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vula OS — bare-metal boot smoke harness
+# Vulos OS — bare-metal boot smoke harness
 #
 # ⚠ THIS HARNESS CANNOT CURRENTLY PASS. Read this before spending time on it.
 #
@@ -124,7 +124,7 @@ if [ "$NO_BUILD" = "0" ]; then
 
   REUSE="--reuse-rootfs"
   [ "$REBUILD" = "1" ] && REUSE=""
-  say "Building Vula OS bootable image (build.sh --arm64 --disk ${REUSE:-(full rebuild)})…"
+  say "Building Vulos OS bootable image (build.sh --arm64 --disk ${REUSE:-(full rebuild)})…"
   # The rootfs/image MUST be built on a container-native filesystem: debootstrap
   # tar-extracts device nodes / ownership / xattrs that OrbStack's virtiofs
   # bind mount can't represent ("tar failed"). So build into the vulos-bm-work
@@ -223,7 +223,7 @@ qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$SHOT\"}}" >/dev/
   && [ -f "$SHOT" ] && ok "screenshot: $SHOT" || true
 
 if [ "$PASS" = "1" ]; then
-  ok "PASS — Vula OS booted and is serving the desktop"
+  ok "PASS — Vulos OS booted and is serving the desktop"
   echo "  health:  $(curl -fsS "$URL" 2>/dev/null)"
   if [ "$SHOW" = "1" ]; then
     echo ""

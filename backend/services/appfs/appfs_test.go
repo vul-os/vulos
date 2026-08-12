@@ -162,7 +162,7 @@ func TestHandlePut_Get_Roundtrip(t *testing.T) {
 	mux := http.NewServeMux()
 	svc.Register(mux)
 
-	content := []byte("hello vula appfs")
+	content := []byte("hello vulos appfs")
 	app := "test-app"
 
 	// PUT

@@ -28,7 +28,7 @@ import (
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
-// makeTestIdentity generates an ephemeral Ed25519 keypair and Vula ID for tests.
+// makeTestIdentity generates an ephemeral Ed25519 keypair and Vulos ID for tests.
 func makeTestIdentity(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(nil)

@@ -57,7 +57,7 @@ A **New system** setup walks through these steps, most skippable:
 
 | Step | What happens |
 |---|---|
-| Welcome | "Get Started". *Vula* is isiZulu for "open". |
+| Welcome | "Get Started". *Vulos* is isiZulu for "open". |
 | Device type | PC / Tablet / Mobile, TV, Car, or Watch — auto-detected from `GET /api/device-profile`, and it reshapes the whole UI (a TV, for instance, gets a 10-foot remote-driven interface). |
 | Language | Pick from the OS's supported languages. |
 | Timezone | Picked on a map; defaults to what your browser reports. |
@@ -96,7 +96,7 @@ After signing in you land on the desktop: a wallpaper, a translucent **menu bar*
 
 Left to right:
 
-- **vula** — the system menu: your profile, hostname, uptime, live CPU/memory/temperature, and **Log Out**.
+- **vulos** — the system menu: your profile, hostname, uptime, live CPU/memory/temperature, and **Log Out**.
 - **Desktop indicator** — "Desktop 2" plus a close button, shown only when you have more than one virtual desktop.
 - **Applications** (rocket icon) — opens the Launchpad.
 - **Mission Control** (stacked-windows icon) — same as pressing F3.
@@ -504,7 +504,7 @@ If your hardware has a reader, enroll in **Settings → Fingerprint** (start enr
 
 ### Logging out
 
-**vula menu → Log Out**, or **Settings → Account → Log Out**. Logout ends your session; your windows and desktops are restored next time you sign in on the same browser.
+**vulos menu → Log Out**, or **Settings → Account → Log Out**. Logout ends your session; your windows and desktops are restored next time you sign in on the same browser.
 
 ### More than one box, one account
 

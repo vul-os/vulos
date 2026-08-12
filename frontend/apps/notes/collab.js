@@ -453,7 +453,7 @@ export async function startCollab(noteId, textarea, statusEl, displayName = 'Me'
 /* ── Share dialog ──────────────────────────────────────────────────────────── */
 export async function shareNote(noteId, noteTitle) {
   const peerId = prompt(
-    `Share "${noteTitle || noteId}" with a peer.\n\nEnter their Vula ID or slug (e.g. alice.vulos.org):`
+    `Share "${noteTitle || noteId}" with a peer.\n\nEnter their Vulos ID or slug (e.g. alice.vulos.org):`
   )
   if (!peerId) return
 

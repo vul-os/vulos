@@ -109,9 +109,9 @@ func TestLobby_SingleLocalParticipant(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice", DisplayName: "Alice"},
+			{ID: "vulos:alice", DisplayName: "Alice"},
 		},
-		InitiatorID: "vula:alice",
+		InitiatorID: "vulos:alice",
 	})
 
 	if rr.Code != http.StatusOK {
@@ -126,8 +126,8 @@ func TestLobby_SingleLocalParticipant(t *testing.T) {
 		t.Fatalf("expected 1 participant, got %d", len(report.Participants))
 	}
 	p := report.Participants[0]
-	if p.ID != "vula:alice" {
-		t.Errorf("ID: got %q, want vula:alice", p.ID)
+	if p.ID != "vulos:alice" {
+		t.Errorf("ID: got %q, want vulos:alice", p.ID)
 	}
 	if p.UploadMbps != 25 {
 		t.Errorf("upload: got %.1f, want 25", p.UploadMbps)
@@ -140,8 +140,8 @@ func TestLobby_SingleLocalParticipant(t *testing.T) {
 	}
 
 	// Host should default to the single participant.
-	if report.HostID != "vula:alice" {
-		t.Errorf("hostID: got %q, want vula:alice", report.HostID)
+	if report.HostID != "vulos:alice" {
+		t.Errorf("hostID: got %q, want vulos:alice", report.HostID)
 	}
 	// Capacity must match formula.
 	want := estimateLobbyCapacity(25)
@@ -178,7 +178,7 @@ func TestLobby_LocalMeterNotReady(t *testing.T) {
 	svc := NewLobbyService(meter)
 
 	rr := postLobby(t, svc, lobbyReq{
-		Participants: []LobbyParticipant{{ID: "vula:bob"}},
+		Participants: []LobbyParticipant{{ID: "vulos:bob"}},
 	})
 
 	if rr.Code != http.StatusOK {
@@ -221,10 +221,10 @@ func TestLobby_RemotePeerProxied(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},                 // local
-			{ID: "vula:bob", Server: peerAddr}, // remote
+			{ID: "vulos:alice"},                 // local
+			{ID: "vulos:bob", Server: peerAddr}, // remote
 		},
-		InitiatorID: "vula:alice",
+		InitiatorID: "vulos:alice",
 	})
 
 	if rr.Code != http.StatusOK {
@@ -241,7 +241,7 @@ func TestLobby_RemotePeerProxied(t *testing.T) {
 	// Find bob's entry.
 	var bobRpt LobbyParticipantReport
 	for _, p := range report.Participants {
-		if p.ID == "vula:bob" {
+		if p.ID == "vulos:bob" {
 			bobRpt = p
 		}
 	}
@@ -260,8 +260,8 @@ func TestLobby_RemotePeerUnreachable_ErrorField(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},
-			{ID: "vula:bob", Server: "127.0.0.1:1"}, // unreachable
+			{ID: "vulos:alice"},
+			{ID: "vulos:bob", Server: "127.0.0.1:1"}, // unreachable
 		},
 	})
 
@@ -274,7 +274,7 @@ func TestLobby_RemotePeerUnreachable_ErrorField(t *testing.T) {
 
 	var bobRpt LobbyParticipantReport
 	for _, p := range report.Participants {
-		if p.ID == "vula:bob" {
+		if p.ID == "vulos:bob" {
 			bobRpt = p
 		}
 	}
@@ -306,10 +306,10 @@ func TestLobby_ExplicitHostIDOverridesAutoSelect(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},
-			{ID: "vula:bob", Server: peerAddr},
+			{ID: "vulos:alice"},
+			{ID: "vulos:bob", Server: peerAddr},
 		},
-		HostID: "vula:alice",
+		HostID: "vulos:alice",
 	})
 
 	if rr.Code != http.StatusOK {
@@ -318,8 +318,8 @@ func TestLobby_ExplicitHostIDOverridesAutoSelect(t *testing.T) {
 	var report LobbyReport
 	json.NewDecoder(rr.Body).Decode(&report) //nolint:errcheck
 
-	if report.HostID != "vula:alice" {
-		t.Errorf("hostID: got %q, want vula:alice (explicit override)", report.HostID)
+	if report.HostID != "vulos:alice" {
+		t.Errorf("hostID: got %q, want vulos:alice (explicit override)", report.HostID)
 	}
 	// Capacity should be based on alice's upload (50 Mbps).
 	wantCap := estimateLobbyCapacity(50)
@@ -329,7 +329,7 @@ func TestLobby_ExplicitHostIDOverridesAutoSelect(t *testing.T) {
 }
 
 func TestLobby_AutoSelectHighestUpload(t *testing.T) {
-	// Three participants; the middle one (vula:carol, upload=80) has the highest upload.
+	// Three participants; the middle one (vulos:carol, upload=80) has the highest upload.
 	payloadCarol := `{"upload_mbps":80,"download_mbps":200,"latency_ms":10}`
 	payloadDave := `{"upload_mbps":20,"download_mbps":100,"latency_ms":15}`
 
@@ -359,11 +359,11 @@ func TestLobby_AutoSelectHighestUpload(t *testing.T) {
 
 	rr := postLobby(t, svc, lobbyReq{
 		Participants: []LobbyParticipant{
-			{ID: "vula:alice"},                    // local, 30 Mbps
-			{ID: "vula:carol", Server: carolAddr}, // peer, 80 Mbps
-			{ID: "vula:dave", Server: daveAddr},   // peer, 20 Mbps
+			{ID: "vulos:alice"},                    // local, 30 Mbps
+			{ID: "vulos:carol", Server: carolAddr}, // peer, 80 Mbps
+			{ID: "vulos:dave", Server: daveAddr},   // peer, 20 Mbps
 		},
-		InitiatorID: "vula:alice",
+		InitiatorID: "vulos:alice",
 		// No explicit HostID — auto-select.
 	})
 
@@ -373,8 +373,8 @@ func TestLobby_AutoSelectHighestUpload(t *testing.T) {
 	var report LobbyReport
 	json.NewDecoder(rr.Body).Decode(&report) //nolint:errcheck
 
-	if report.HostID != "vula:carol" {
-		t.Errorf("auto-select host: got %q, want vula:carol (highest upload=80)", report.HostID)
+	if report.HostID != "vulos:carol" {
+		t.Errorf("auto-select host: got %q, want vulos:carol (highest upload=80)", report.HostID)
 	}
 }
 
@@ -397,10 +397,10 @@ func TestLobbyHost_RecomputesCapacity(t *testing.T) {
 	svc := NewLobbyService(newReadyMeter(10, 50, 20))
 
 	rr := postLobbyHost(t, svc, lobbyHostReq{
-		HostID: "vula:alice",
+		HostID: "vulos:alice",
 		KnownBandwidth: map[string]float64{
-			"vula:alice": 30,
-			"vula:bob":   60,
+			"vulos:alice": 30,
+			"vulos:bob":   60,
 		},
 	})
 
@@ -411,8 +411,8 @@ func TestLobbyHost_RecomputesCapacity(t *testing.T) {
 	var resp lobbyHostResp
 	json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck
 
-	if resp.HostID != "vula:alice" {
-		t.Errorf("hostID: got %q, want vula:alice", resp.HostID)
+	if resp.HostID != "vulos:alice" {
+		t.Errorf("hostID: got %q, want vulos:alice", resp.HostID)
 	}
 	want := estimateLobbyCapacity(30)
 	if resp.Capacity.VideoParticipants != want.VideoParticipants {
@@ -435,8 +435,8 @@ func TestLobbyHost_UnknownHostZeroCapacity(t *testing.T) {
 	svc := NewLobbyService(newReadyMeter(10, 50, 20))
 
 	rr := postLobbyHost(t, svc, lobbyHostReq{
-		HostID:         "vula:nobody",
-		KnownBandwidth: map[string]float64{"vula:alice": 30},
+		HostID:         "vulos:nobody",
+		KnownBandwidth: map[string]float64{"vulos:alice": 30},
 	})
 
 	if rr.Code != http.StatusOK {
@@ -462,7 +462,7 @@ func TestRegisterLobbyHandlers_RoutesRegistered(t *testing.T) {
 
 	// POST /api/peering/call/lobby should reach the handler (not 404/405).
 	body, _ := json.Marshal(lobbyReq{
-		Participants: []LobbyParticipant{{ID: "vula:alice"}},
+		Participants: []LobbyParticipant{{ID: "vulos:alice"}},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/peering/call/lobby", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -474,7 +474,7 @@ func TestRegisterLobbyHandlers_RoutesRegistered(t *testing.T) {
 	}
 
 	// POST /api/peering/call/lobby/host should also reach its handler.
-	body2, _ := json.Marshal(lobbyHostReq{HostID: "vula:alice", KnownBandwidth: map[string]float64{"vula:alice": 20}})
+	body2, _ := json.Marshal(lobbyHostReq{HostID: "vulos:alice", KnownBandwidth: map[string]float64{"vulos:alice": 20}})
 	req2 := httptest.NewRequest(http.MethodPost, "/api/peering/call/lobby/host", bytes.NewReader(body2))
 	req2.Header.Set("Content-Type", "application/json")
 	rr2 := httptest.NewRecorder()
@@ -502,7 +502,7 @@ func TestFetchBandwidth_LocalReady(t *testing.T) {
 	meter := newReadyMeter(45, 150, 8)
 	svc := NewLobbyService(meter)
 
-	rpt := svc.fetchBandwidthDirect(LobbyParticipant{ID: "vula:alice"})
+	rpt := svc.fetchBandwidthDirect(LobbyParticipant{ID: "vulos:alice"})
 
 	if rpt.Error != "" {
 		t.Errorf("unexpected error: %q", rpt.Error)
@@ -522,7 +522,7 @@ func TestFetchBandwidth_LocalNotReady(t *testing.T) {
 	meter := NewBandwidthMeter(BandwidthConfig{Interval: 10 * 60 * 1e9})
 	svc := NewLobbyService(meter)
 
-	rpt := svc.fetchBandwidthDirect(LobbyParticipant{ID: "vula:alice"})
+	rpt := svc.fetchBandwidthDirect(LobbyParticipant{ID: "vulos:alice"})
 
 	if rpt.Error == "" {
 		t.Error("expected error when meter not ready")

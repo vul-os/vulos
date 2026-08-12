@@ -84,7 +84,7 @@ const VouchRequestType = "fleet-vouch-request"
 //
 // The request is SELF-AUTHENTICATING: Sig is an Ed25519 signature by the
 // SUBJECT's own fleet key over the canonical bytes of the request with Sig
-// cleared. SubjectID is a Vula ID, which *is* that public key
+// cleared. SubjectID is a Vulos ID, which *is* that public key
 // (peering.PublicKeyForVulosID), so a peer can verify the request with no prior
 // state, no session, and no shared secret — the same trick
 // /.well-known/vulos-id and the prekey endpoints use to be reachable by strangers
@@ -238,7 +238,7 @@ type Forgetter interface {
 // VerifyVouchRequest already proved the request came from the holder of the key
 // SubjectID names; whether that key is a box the operator actually owns is a
 // completely separate question, and one an operator has no way to answer from a
-// base64 Vula ID by eye.
+// base64 Vulos ID by eye.
 type PeerAnnotation struct {
 	// Known reports that SubjectID is a member of this box's own fleet roster.
 	Known bool `json:"known"`
@@ -250,7 +250,7 @@ type PeerAnnotation struct {
 	Revoked bool `json:"revoked,omitempty"`
 }
 
-// PeerAnnotator resolves a Vula ID against this box's own roster.
+// PeerAnnotator resolves a Vulos ID against this box's own roster.
 type PeerAnnotator func(vulosID string) PeerAnnotation
 
 // ApproveGate authorizes a call to the operator-facing approve endpoint. It

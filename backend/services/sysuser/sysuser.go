@@ -188,8 +188,8 @@ func (s *Service) ensureBashrc(homeDir, username string) {
 		return // already exists
 	}
 	content := (`# Vulos shell config
-export PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]vula\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]\$ '
-export HOSTNAME=vula
+export PS1='\[\e[1;32m\]\u\[\e[0m\]@\[\e[1;34m\]vulos\[\e[0m\]:\[\e[1;36m\]\w\[\e[0m\]\$ '
+export HOSTNAME=vulos
 alias ls='ls --color=auto'
 alias ll='ls -la'
 alias la='ls -A'

@@ -1,4 +1,4 @@
-"""Vula OS - Calculator
+"""Vulos OS - Calculator
 Standard and scientific calculator with local browser history.
 """
 import http.server

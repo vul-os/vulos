@@ -540,8 +540,8 @@ func TestDropHostname(t *testing.T) {
 		vulosID string
 		want    string
 	}{
-		{"short", "vula-short._vulos-drop._tcp.local"},
-		{"vulos:ed25519:abcdefghijklmnopqrstuvwxyz", "vula-klmnopqrstuvwxyz._vulos-drop._tcp.local"},
+		{"short", "vulos-short._vulos-drop._tcp.local"},
+		{"vulos:ed25519:abcdefghijklmnopqrstuvwxyz", "vulos-klmnopqrstuvwxyz._vulos-drop._tcp.local"},
 	}
 	for _, tc := range cases {
 		got := dropHostname(tc.vulosID)
@@ -558,7 +558,7 @@ func TestDropHostname(t *testing.T) {
 // TestDropMDNSSkipIfUnavailable attempts a real mDNS server setup and skips
 // gracefully if multicast sockets are not available (e.g., CI environment).
 func TestDropMDNSSkipIfUnavailable(t *testing.T) {
-	conn, err := dropDefaultMDNSFactory("vula-test._vulos-drop._tcp.local")
+	conn, err := dropDefaultMDNSFactory("vulos-test._vulos-drop._tcp.local")
 	if err != nil {
 		t.Skipf("mDNS unavailable (expected in CI): %v", err)
 	}

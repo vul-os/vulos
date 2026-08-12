@@ -1,4 +1,4 @@
-# Vula OS — bare-metal image builder
+# Vulos OS — bare-metal image builder
 #
 # build.sh needs a Linux host (debootstrap/chroot) and cannot run on macOS.
 # This is the reproducible builder the smoke harness runs the build inside:

@@ -104,9 +104,9 @@ type RotationCert struct {
 
 	// ── Break-glass authorization evidence (Method == RotationMethodBreakGlass only) ──
 	//
-	// QuorumSubjectID is the Vula ID of THIS box's fleet-fabric identity (the
+	// QuorumSubjectID is the Vulos ID of THIS box's fleet-fabric identity (the
 	// subject the quorum vouches FOR — NOT the device key itself, which uses a
-	// different algorithm/encoding and has no Vula ID). QuorumRequestID is the
+	// different algorithm/encoding and has no Vulos ID). QuorumRequestID is the
 	// caller-chosen nonce the vouchers signed the payload hash over; binding to
 	// it stops a vouch bundle gathered for one recovery request from being
 	// replayed against a different one.
@@ -298,7 +298,7 @@ func GenerateCandidateKey() (*ecdsa.PrivateKey, error) {
 //  4. Signs the resulting RotationCert with the NEW key (proves possession;
 //     the authorization itself is the already-verified quorum) and returns it.
 //
-// subjectID is the Vula ID of this box's fleet-fabric identity (NOT the
+// subjectID is the Vulos ID of this box's fleet-fabric identity (NOT the
 // device key) — the identity the OTHER boxes' vouches are actually about.
 // requestID is a caller-chosen, single-use nonce that must match what the
 // vouchers signed over (see GenerateCandidateKey's doc comment for the

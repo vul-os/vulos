@@ -1,6 +1,6 @@
 // feeds.go — signed append-only feed log with pub/sub (PEER-41).
 //
-// A feed is a hash-chained, Ed25519-signed append-only log owned by a Vula
+// A feed is a hash-chained, Ed25519-signed append-only log owned by a Vulos
 // identity.  Subscribers pull new entries since a given sequence number.
 // Approved contacts receive push notifications over the existing peering layer.
 //
@@ -25,7 +25,7 @@
 // and content_hash = sha256(<canonical-JSON of the entry body fields without
 // the "signature" field>).  Verifying the chain means re-computing hashes and
 // checking each entry's Ed25519 signature with the author's public key from
-// their Vula ID.
+// their Vulos ID.
 //
 // # HTTP API (exported via RegisterFeedHandlers)
 //
@@ -86,7 +86,7 @@ type FeedMeta struct {
 	// FeedID is the unique identifier for this feed (format: "<vulos_id>/<slug>").
 	FeedID string `json:"feed_id"`
 
-	// Author is the owner's Vula ID.
+	// Author is the owner's Vulos ID.
 	Author string `json:"author"`
 
 	// Title is a short human-readable name for the feed.
@@ -116,7 +116,7 @@ type FeedEntry struct {
 	// FeedID is the owning feed's identifier.
 	FeedID string `json:"feed_id"`
 
-	// Author is the publisher's Vula ID.
+	// Author is the publisher's Vulos ID.
 	Author string `json:"author"`
 
 	// Sequence is the 1-based monotonically increasing position in the log.
@@ -162,7 +162,7 @@ const feedSubDirName = "own"
 // NewFeedStore creates a FeedStore rooted at <peeringDir>/feeds/own.
 //
 // priv is the node's Ed25519 private key used to sign new entries.
-// vulosID is the node's own Vula ID (the author identity for published entries).
+// vulosID is the node's own Vulos ID (the author identity for published entries).
 // contacts is used to gate access to peers-level feeds; may be nil (all peers
 // access checks will fail as if no contacts are approved).
 func NewFeedStore(peeringDir string, priv ed25519.PrivateKey, vulosID string, contacts *ContactStore) (*FeedStore, error) {
@@ -456,7 +456,7 @@ type feedHandler struct {
 //	POST   /api/feeds/{feed_id}/publish       → publish a new entry
 //	GET    /api/feeds/{feed_id}/entries       → list entries (?since=<seq>)
 //
-// callerVulosID is a function that extracts the caller's Vula ID from an
+// callerVulosID is a function that extracts the caller's Vulos ID from an
 // authenticated request.  It may return an empty string for unauthenticated
 // callers (public/link feeds do not require authentication).
 func RegisterFeedHandlers(mux *http.ServeMux, store *FeedStore, callerVulosID func(*http.Request) string) {
@@ -789,7 +789,7 @@ func feedSignEntry(entry *FeedEntry, priv ed25519.PrivateKey) error {
 }
 
 // feedVerifyEntry verifies the Ed25519 signature of a FeedEntry.
-// The author's public key is extracted from entry.Author (a Vula ID).
+// The author's public key is extracted from entry.Author (a Vulos ID).
 func feedVerifyEntry(entry *FeedEntry) error {
 	if entry.Signature == "" {
 		return errors.New("feeds: signature absent")

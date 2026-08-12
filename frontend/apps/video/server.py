@@ -1,4 +1,4 @@
-"""Vula OS — Video Player
+"""Vulos OS — Video Player
 Serves the video player UI and streams local video files with byte-range support.
 Scans ~/.vulos/videos/ (and user-configured directories) for video files.
 """

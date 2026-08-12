@@ -5,7 +5,7 @@
 // named ephor; stale-terminology finding reported separately, not fixed
 // here.
 
-// Package peering implements the Vula OS peering layer.
+// Package peering implements the Vulos OS peering layer.
 // This file (ice.go) exposes the ICE/NAT traversal configuration endpoint
 // used by browsers to bootstrap WebRTC peer connections for calls.
 package peering

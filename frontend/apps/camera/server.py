@@ -1,4 +1,4 @@
-"""Vula OS — Camera
+"""Vulos OS — Camera
 Serves the camera UI and handles photo/video saves to ~/.vulos/data/pictures and videos.
 """
 import base64

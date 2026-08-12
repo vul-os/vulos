@@ -12,7 +12,7 @@ For install and first boot, start with [GETTING-STARTED.md](GETTING-STARTED.md).
 
 ## What the assistant is
 
-The assistant (it introduces itself as *Vula*) lives in the OS shell and on the Home surface. Under the hood it is a tool-using agent loop in the Go backend (`backend/services/assistant/`): you type a request, the model decides which tools it needs, the backend executes the read-only ones on the instance, and the final answer streams back token by token.
+The assistant (it introduces itself as *Vulos*) lives in the OS shell and on the Home surface. Under the hood it is a tool-using agent loop in the Go backend (`backend/services/assistant/`): you type a request, the model decides which tools it needs, the backend executes the read-only ones on the instance, and the final answer streams back token by token.
 
 Three properties define it:
 

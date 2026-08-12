@@ -1,4 +1,4 @@
-"""Vula OS — Media Gallery
+"""Vulos OS — Media Gallery
 Traditional photo/video manager with AI features.
 Timeline view, albums from folders, favorites, EXIF info, AI describe & search.
 """

@@ -1,7 +1,7 @@
 // verify.go — vulos.org email verification for peering identities (PEER-10).
 //
 // Implements a self-contained email-address verification flow tied to the local
-// Vula identity.  No external HTTP calls are made in v1 — in non-prod the
+// Vulos identity.  No external HTTP calls are made in v1 — in non-prod the
 // one-time token is logged to stderr so operators can observe it during
 // development and testing. In VULOS_ENV=prod the token is REDACTED from logs
 // (it is a live credential: a log reader could hijack the email→identity
@@ -57,7 +57,7 @@ type VerifyEmailState struct {
 
 // ─── EmailVerifyService ────────────────────────────────────────────────────────
 
-// EmailVerifyService manages email-verification state for a single Vula identity.
+// EmailVerifyService manages email-verification state for a single Vulos identity.
 // The zero value is not usable; obtain one via NewEmailVerifyService.
 type EmailVerifyService struct {
 	mu      sync.Mutex

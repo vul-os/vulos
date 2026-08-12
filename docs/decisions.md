@@ -528,8 +528,8 @@ L-2 merged: /api/setup/join + /status now refuse once bootmode=normal (provision
 ## D84–D89, D91–D92 — Control-plane / web-property work (out of scope here)
 A series of waves over this window built and iterated a control plane and its public web property (landing, comparison, docs, auth, account UI) in a **separate (non-public) repository**. Their design, surfaces, APIs, and business/pricing details are out of scope for this OSS repo and are intentionally not recorded here. The only OSS-relevant carry-overs: pure-Go SQLite (modernc, NO CGO) preserves single-binary deploy (per D23); and the naming rules fixed in this window — see D90 below.
 
-## D90 (04:30) — Naming locked: product is "Vulos" (not "vula")
-Durable naming/URL rules established this window and recorded in memory ([[vulos-naming-and-urls]]): the product is **Vulos** (global rename of `Vula`→`Vulos` / `vula`→`vulos` / `Vula OS`→`Vulos`); the GitHub org is hyphenated `github.com/vul-os/vulos`; the production URL is `https://vulos.org`; the isiZulu "open" etymology line is dropped in favor of "Vulos is open by design and by name". These rules apply across the project.
+## D90 (04:30) — Naming locked: product is "Vulos" (not "vulos")
+Durable naming/URL rules established this window and recorded in memory ([[vulos-naming-and-urls]]): the product is **Vulos** (global rename of `Vulos`→`Vulos` / `vulos`→`vulos` / `Vulos OS`→`Vulos`); the GitHub org is hyphenated `github.com/vul-os/vulos`; the production URL is `https://vulos.org`; the isiZulu "open" etymology line is dropped in favor of "Vulos is open by design and by name". These rules apply across the project.
 
 ## D93 (09:00) — Bare-metal window model: React is always the WM; app pixels are a per-app *transport* (v1 always-stream/cage, v2 direct-surface/labwc)
 Resolves the open bare-metal question "real native windows vs stream them" and supersedes BAREMETAL-INIT.md's "browser pinned as a single fullscreen background surface, native windows above it" assumption.

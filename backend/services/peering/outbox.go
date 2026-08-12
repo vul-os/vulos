@@ -88,7 +88,7 @@ const outboxWorkerInterval = 5 * time.Second
 // message. The Envelope field holds the complete, already-signed envelope ready
 // to be delivered verbatim.
 type QueuedEnvelope struct {
-	// PeerVulosID is the recipient's Vula ID.
+	// PeerVulosID is the recipient's Vulos ID.
 	PeerVulosID string `json:"peer_vulos_id"`
 
 	// PeerServer is the last-known base URL of the recipient, e.g.

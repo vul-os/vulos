@@ -22,7 +22,7 @@ package files
 //   - REVOCABLE — the owner keeps a files_peer_shares row per capability; a
 //                revoked row makes the owner refuse to serve the bytes even
 //                though the (still validly signed) token is out in the world.
-//   - VERIFIED  — the recipient verifies the signature against the owner's Vula
+//   - VERIFIED  — the recipient verifies the signature against the owner's Vulos
 //                ID BEFORE contacting anyone; the owner re-verifies on serve and
 //                additionally enforces the recipient binding via a signed fetch
 //                proof, so a leaked bound token cannot be redeemed by a third
@@ -86,12 +86,12 @@ const (
 // ── seams ─────────────────────────────────────────────────────────────────
 
 // PeerSigner abstracts THIS box's identity for capability signing/verification.
-// In production it is backed by the peering service's Ed25519 box key and Vula
+// In production it is backed by the peering service's Ed25519 box key and Vulos
 // ID; tests supply a trivial Ed25519 implementation. Keeping it an interface
 // keeps the files package free of a peering import (and lets the capability
 // crypto be tested in isolation).
 type PeerSigner interface {
-	// SelfID returns this box's identity (a Vula ID).
+	// SelfID returns this box's identity (a Vulos ID).
 	SelfID() string
 	// Sign returns an Ed25519 signature by this box's key over msg.
 	Sign(msg []byte) []byte
@@ -232,7 +232,7 @@ func DecodeCapabilityLink(link string) (*Capability, error) {
 }
 
 // VerifyCapability checks a capability's structure, signature (against the
-// owner's Vula ID), and expiry. It does NOT consult the revocation DB — that is
+// owner's Vulos ID), and expiry. It does NOT consult the revocation DB — that is
 // the owner box's job on serve. Safe to call on the recipient side before
 // contacting anyone.
 func (s *Service) VerifyCapability(c *Capability) error {
@@ -266,7 +266,7 @@ func (s *Service) VerifyCapability(c *Capability) error {
 
 // IssueCapability mints a signed peer-share capability over nodeID. Only the
 // node's owner may issue. access must be editor or viewer. recipient is the
-// bound peer's Vula ID, or "" for an anyone-with-the-link capability. ownerAddr
+// bound peer's Vulos ID, or "" for an anyone-with-the-link capability. ownerAddr
 // is THIS box's reachable base URL (derived from the issuing request) and is
 // embedded so the recipient knows where to stream from. ttl is clamped to
 // (0, maxCapTTL]; 0 uses defaultCapTTL.

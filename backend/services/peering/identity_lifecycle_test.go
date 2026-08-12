@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// lcKeypair returns a fresh Ed25519 keypair and its base58 Vula ID.
+// lcKeypair returns a fresh Ed25519 keypair and its base58 Vulos ID.
 func lcKeypair(t *testing.T) (ed25519.PrivateKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

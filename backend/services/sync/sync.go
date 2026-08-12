@@ -1,4 +1,4 @@
-// Package sync implements file synchronisation for Vula OS.
+// Package sync implements file synchronisation for Vulos OS.
 //
 // It watches the user's data directories for changes via fsnotify, uploads
 // modified files (plus .meta sidecar objects) to S3 through the cluster

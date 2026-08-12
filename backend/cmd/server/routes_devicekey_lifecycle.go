@@ -50,7 +50,7 @@ import (
 // registryRoster adapts *multiinstance.Registry (this box's own view of its
 // fleet — read-only here) to fleetid.Roster: a peer counts toward quorum only
 // when it is a member of THIS box's own roster, exactly like fleetid's design
-// intends (a compromised peer cannot fabricate roster membership). Vula IDs
+// intends (a compromised peer cannot fabricate roster membership). Vulos IDs
 // are derived from each instance's fabric Ed25519 public key, NOT from any
 // device's ECDSA identity key — the two are deliberately different key
 // spaces (see rotation.go's QuorumSubjectID doc comment).
@@ -112,7 +112,7 @@ func decodeInstancePubKey(b64 string) (ed25519.PublicKey, bool) {
 	return ed25519.PublicKey(pub), true
 }
 
-// selfFleetVulosID resolves THIS box's own fleet-fabric Vula ID — the subject a
+// selfFleetVulosID resolves THIS box's own fleet-fabric Vulos ID — the subject a
 // peer quorum vouches FOR during break-glass — from the registry's owner-role
 // entry (self-registered by multiinstance.AppSync.SetIdentity with
 // Role=RoleOwner; see appsync.go). Returns "" if no such entry is found (e.g.
@@ -190,7 +190,7 @@ type breakGlassQuorumRequest struct {
 }
 
 // resolveSubjectID returns req.QuorumSubjectID if set, else this box's own
-// resolved fleet Vula ID, else an error the handler surfaces as 503/400.
+// resolved fleet Vulos ID, else an error the handler surfaces as 503/400.
 func (req breakGlassQuorumRequest) resolveSubjectID(reg *multiinstance.Registry) (string, error) {
 	if req.QuorumSubjectID != "" {
 		return req.QuorumSubjectID, nil

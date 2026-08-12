@@ -250,7 +250,7 @@ it costs.
 | `VULOS_DEPLOY_DB` | `~/.vulos/db/app_deployments.json` | App deployment records. A JSON store, not SQLite |
 | `VULOS_CUSTOMDOMAIN_DB` | `~/.vulos/db/app_custom_domains.json` | Custom-domain records. JSON |
 | `VULOS_EXTERNAL_UPSTREAM_DB` | `~/.vulos/db/app_external_upstreams.json` | External upstream registrations. JSON |
-| `VULOS_PEERING_DIR` | `~/.vulos/peering` | Box identity and social state — the Ed25519 keypair behind your Vula ID, contacts, groups, inbox/outbox |
+| `VULOS_PEERING_DIR` | `~/.vulos/peering` | Box identity and social state — the Ed25519 keypair behind your Vulos ID, contacts, groups, inbox/outbox |
 
 ---
 

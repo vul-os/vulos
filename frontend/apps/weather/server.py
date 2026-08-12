@@ -1,4 +1,4 @@
-"""Vula OS - Weather
+"""Vulos OS - Weather
 Static weather dashboard. Browser fetches geocoding and forecast data from Open-Meteo.
 """
 import http.server

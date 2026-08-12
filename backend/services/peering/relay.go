@@ -2,20 +2,20 @@
 //
 // # Overview
 //
-// A relay peer is any Vula instance that both parties trust, willing to hold
+// A relay peer is any Vulos instance that both parties trust, willing to hold
 // encrypted blobs in transit until the recipient comes online.  The relay
 // never decrypts — it stores opaque ciphertext indexed by the recipient's
-// Vula ID.
+// Vulos ID.
 //
 // # Protocol
 //
 //	POST /api/peering/relay/deposit
 //	  Body: { to, blob_b64, ttl_hours, nonce, signature }
-//	  → relay stores blob, indexed by recipient Vula ID
+//	  → relay stores blob, indexed by recipient Vulos ID
 //
 //	GET /api/peering/relay/pickup
 //	  Header: Authorization: Vulos-Relay <vulos_id>.<timestamp_unix>.<base64url_sig>
-//	  → returns all pending blobs for the authenticated Vula ID
+//	  → returns all pending blobs for the authenticated Vulos ID
 //
 //	POST /api/peering/relay/ack
 //	  Body: { blob_ids: [...] }
@@ -148,7 +148,7 @@ type RelayConfig struct {
 	// not request a shorter one. Capped to relayMaxTTLHours.
 	TTLHours int `json:"ttl_hours"`
 
-	// Allowed is a list of Vula IDs explicitly allowed to use this relay as
+	// Allowed is a list of Vulos IDs explicitly allowed to use this relay as
 	// sender. Empty means any mutually-approved contact may deposit.
 	Allowed []string `json:"allowed,omitempty"`
 }
@@ -199,10 +199,10 @@ type RelayBlob struct {
 	// validated to be non-empty and filesystem-safe by the relay).
 	ID string `json:"id"`
 
-	// RecipientVulosID is the intended recipient's Vula ID.
+	// RecipientVulosID is the intended recipient's Vulos ID.
 	RecipientVulosID string `json:"recipient_vulos_id"`
 
-	// SenderVulosID is the depositor's Vula ID (verified by signature).
+	// SenderVulosID is the depositor's Vulos ID (verified by signature).
 	SenderVulosID string `json:"sender_vulos_id"`
 
 	// BlobB64 is the base64-standard-encoded ciphertext.  The relay treats
@@ -357,7 +357,7 @@ func (rs *RelayStore) SetConfig(cfg RelayConfig) error {
 
 // relayDepositRequest is the JSON body of POST /api/peering/relay/deposit.
 type relayDepositRequest struct {
-	// To is the intended recipient's Vula ID.
+	// To is the intended recipient's Vulos ID.
 	To string `json:"to"`
 
 	// BlobID is a sender-chosen unique identifier for this blob.
@@ -371,7 +371,7 @@ type relayDepositRequest struct {
 	// Capped to relayMaxTTLHours by the relay.
 	TTLHours int `json:"ttl_hours,omitempty"`
 
-	// SenderVulosID is the depositor's Vula ID (must match the envelope From).
+	// SenderVulosID is the depositor's Vulos ID (must match the envelope From).
 	SenderVulosID string `json:"sender_vulos_id"`
 
 	// Nonce is a hex-encoded random nonce (16 bytes minimum) included in the
@@ -817,7 +817,7 @@ func (rs *RelayStore) dirStoredBytes(dir string) (int64, error) {
 func relayVerifyDepositSig(req relayDepositRequest) error {
 	pub, err := decodeVulosID(req.SenderVulosID)
 	if err != nil {
-		return fmt.Errorf("deposit sig: decode sender vula id: %w", err)
+		return fmt.Errorf("deposit sig: decode sender vulos id: %w", err)
 	}
 
 	sigBytes, err := base64.RawURLEncoding.DecodeString(req.Signature)
@@ -867,7 +867,7 @@ func relayDepositCanonical(req relayDepositRequest) ([]byte, error) {
 // The timestamp must be within ±relayPickupTimestampTolerance of now.
 func relayVerifyPickupAuth(recipientVulosID, tsUnixStr, sigB64URL string) error {
 	if recipientVulosID == "" {
-		return errors.New("pickup auth: recipient vula id must not be empty")
+		return errors.New("pickup auth: recipient vulos id must not be empty")
 	}
 	if tsUnixStr == "" {
 		return errors.New("pickup auth: timestamp must not be empty")
@@ -891,10 +891,10 @@ func relayVerifyPickupAuth(recipientVulosID, tsUnixStr, sigB64URL string) error 
 		return fmt.Errorf("pickup auth: timestamp skew %v exceeds tolerance %v", diff, relayPickupTimestampTolerance)
 	}
 
-	// Decode public key from Vula ID.
+	// Decode public key from Vulos ID.
 	pub, err := decodeVulosID(recipientVulosID)
 	if err != nil {
-		return fmt.Errorf("pickup auth: decode vula id: %w", err)
+		return fmt.Errorf("pickup auth: decode vulos id: %w", err)
 	}
 
 	// Decode signature.
@@ -1165,7 +1165,7 @@ func relayDepositErrStatus(err error) int {
 	case strings.Contains(s, "not approved"),
 		strings.Contains(s, "not in the allowed list"),
 		strings.Contains(s, "signature mismatch"),
-		strings.Contains(s, "decode sender vula id"):
+		strings.Contains(s, "decode sender vulos id"):
 		return http.StatusForbidden
 	case strings.Contains(s, "invalid or missing signature"),
 		strings.Contains(s, "deposit sig"):

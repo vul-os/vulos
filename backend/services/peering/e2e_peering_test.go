@@ -8,7 +8,7 @@
 // Surfaces exercised:
 //
 //  1. Identity exchange: two peers generate keypairs; each can encode/decode
-//     the other's Vula ID.
+//     the other's Vulos ID.
 //  2. 1:1 message send/receive: Peer A signs and delivers a TypeMessage
 //     envelope to Peer B's InboundMiddleware; Peer B stores it in its inbox.
 //  3. Signed feed publish + subscribe: Peer A publishes a signed entry and
@@ -39,7 +39,7 @@ import (
 
 // ─── Test peer fixture ────────────────────────────────────────────────────────
 
-// testPeer bundles all the in-process state for one Vula peer node.
+// testPeer bundles all the in-process state for one Vulos peer node.
 type testPeer struct {
 	home     string
 	svc      *Service
@@ -58,7 +58,7 @@ type testPeer struct {
 	msgAPI *MessageAPI
 }
 
-// newTestPeer constructs a fully-wired in-process Vula peer.
+// newTestPeer constructs a fully-wired in-process Vulos peer.
 func newTestPeer(t *testing.T) *testPeer {
 	t.Helper()
 
@@ -159,7 +159,7 @@ func addMutualContact(t *testing.T, a, b *testPeer) {
 // ─── 1. Identity exchange ─────────────────────────────────────────────────────
 
 // TestE2E_IdentityExchange verifies that two in-process peers each produce a
-// valid, distinct Vula ID and that each can decode the other's public key from
+// valid, distinct Vulos ID and that each can decode the other's public key from
 // that ID.
 func TestE2E_IdentityExchange(t *testing.T) {
 	a := newTestPeer(t)
@@ -169,16 +169,16 @@ func TestE2E_IdentityExchange(t *testing.T) {
 	idB := b.svc.VulosID()
 
 	if idA == idB {
-		t.Fatal("peers generated the same Vula ID — test fixture is broken")
+		t.Fatal("peers generated the same Vulos ID — test fixture is broken")
 	}
 
 	for _, id := range []string{idA, idB} {
 		if !strings.HasPrefix(id, "vulos:ed25519:") {
-			t.Errorf("Vula ID missing prefix: %q", id)
+			t.Errorf("Vulos ID missing prefix: %q", id)
 		}
 	}
 
-	// Each peer can decode the other's public key from the Vula ID.
+	// Each peer can decode the other's public key from the Vulos ID.
 	pubA, err := decodeVulosID(idA)
 	if err != nil {
 		t.Fatalf("decodeVulosID(A): %v", err)

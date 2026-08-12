@@ -644,7 +644,7 @@ type profileSvc struct {
 // RegisterProfileHandlers wires the four profile routes onto mux.
 //
 //	dir     — storage directory, e.g. filepath.Join(home, ".vulos/peering/profile")
-//	vulosID  — local Vula ID string (e.g. "vulos:ed25519:...")
+//	vulosID  — local Vulos ID string (e.g. "vulos:ed25519:...")
 //	contacts — used to resolve peer-visibility checks; may be nil
 //
 // It returns the *ProfileStore (nil on init failure) so callers can reuse it for

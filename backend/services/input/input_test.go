@@ -73,7 +73,7 @@ func TestInputEventFieldValues(t *testing.T) {
 // TestUinputUserDevNameField verifies that copy-into-[80]byte works correctly.
 func TestUinputUserDevNameField(t *testing.T) {
 	var dev uinputUserDev
-	name := "Vula OS Virtual Mouse"
+	name := "Vulos OS Virtual Mouse"
 	copy(dev.Name[:], name)
 	// Check the bytes match and are null-terminated
 	for i, c := range []byte(name) {

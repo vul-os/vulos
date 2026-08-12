@@ -1,5 +1,5 @@
 #!/bin/sh
-# xdg-open replacement for Vula OS — sends URLs to the frontend via notification
+# xdg-open replacement for Vulos OS — sends URLs to the frontend via notification
 curl -sk -X POST https://localhost:8080/api/open \
   -H "Content-Type: application/json" \
   -H "X-Internal: true" \

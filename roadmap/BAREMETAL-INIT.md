@@ -408,7 +408,7 @@ Plymouth draws directly to the kernel framebuffer (KMS/DRM). No display server n
 /usr/share/plymouth/themes/vulos/
   ├── vulos.plymouth          (theme manifest)
   ├── vulos.script            (animation script)
-  ├── logo.png                (Vula logo, centred)
+  ├── logo.png                (Vulos logo, centred)
   ├── progress.png            (progress bar sprite)
   └── background.png          (dark background)
 ```
@@ -449,7 +449,7 @@ ScriptFile=/usr/share/plymouth/themes/vulos/vulos.script
 └─────────────────────────────────────────────┘
 ```
 
-Dark background, centred Vula logo, **determinate progress bar** (not a spinner — user sees actual percentage), subtle hint text at bottom. Clean, confident, branded.
+Dark background, centred Vulos logo, **determinate progress bar** (not a spinner — user sees actual percentage), subtle hint text at bottom. Clean, confident, branded.
 
 ### Determinate progress bar
 
@@ -537,7 +537,7 @@ Built as a React component in the Vulos shell, backed by Go API endpoints.
 8. Reboot prompt
 
 **Installer UI:**
-- [ ] Welcome screen with Vula logo
+- [ ] Welcome screen with Vulos logo
 - [ ] Disk selection with visual disk map
 - [ ] Progress bar during copy (rsync output parsed for percentage)
 - [ ] Success screen with reboot button

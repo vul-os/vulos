@@ -7,7 +7,7 @@ import (
 
 // routes_mail.go — exposes the URL of the LilMail service that the OS shell
 // embeds as the built-in Mail app. LilMail (github.com/exolutionza/lilmail) is
-// the default mail client for Vula OS; it runs as a local service and is
+// the default mail client for Vulos OS; it runs as a local service and is
 // embedded same-window via an iframe.
 //
 // The URL is configurable via VULOS_MAIL_URL (default http://localhost:3000).

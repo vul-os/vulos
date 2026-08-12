@@ -45,7 +45,7 @@ func buildPeer42Mux(t *testing.T) *http.ServeMux {
 		t.Fatalf("keygen: %v", err)
 	}
 	// Use a fixed test VulosID — no real base58 encoder needed for wiring tests.
-	vulosID := "vula:test:deadbeef"
+	vulosID := "vulos:test:deadbeef"
 
 	peeringMux := http.NewServeMux()
 

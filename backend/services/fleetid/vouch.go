@@ -109,7 +109,7 @@ type VouchCert struct {
 	// Action is the break-glass action being vouched for (one of the Action*
 	// constants). A cert bound to a different action never counts.
 	Action string `json:"action"`
-	// SubjectID is the Vula ID of the box the action is FOR (the box being
+	// SubjectID is the Vulos ID of the box the action is FOR (the box being
 	// enrolled / recovered). A voucher may never equal the subject (self-exclusion).
 	SubjectID string `json:"subject_id"`
 	// PayloadHash is the base64url (raw) hash of the exact action payload being
@@ -193,7 +193,7 @@ type Result struct {
 	// DistinctValid is the number of distinct, verified, rostered, non-revoked,
 	// non-self, correctly-bound, fresh vouchers that counted.
 	DistinctValid int
-	// Counted lists the distinct voucher Vula IDs that counted (order of first
+	// Counted lists the distinct voucher Vulos IDs that counted (order of first
 	// appearance).
 	Counted []string
 	// Dropped lists every cert that did NOT count and why.
@@ -309,7 +309,7 @@ func VerifyQuorum(action, subjectID string, payloadHash []byte, certs []VouchCer
 			continue
 		}
 		// The roster's key for the voucher must match the key embedded in the
-		// voucher's Vula ID; otherwise the roster and the claimed identity disagree
+		// voucher's Vulos ID; otherwise the roster and the claimed identity disagree
 		// and we cannot safely attribute the cert. Fail closed.
 		embedded, err := peering.PublicKeyForVulosID(c.VoucherVulosID)
 		if err != nil || !bytes.Equal(embedded, pub) {

@@ -53,7 +53,7 @@ func TestOpen_FallsBackToSoftware(t *testing.T) {
 func TestSoftware_SealUnsealRoundTrip(t *testing.T) {
 	ks := newTestSoftwareStore(t)
 
-	plaintext := []byte("secret data for Vula OS AUTH-09")
+	plaintext := []byte("secret data for Vulos OS AUTH-09")
 	ct, err := ks.Seal(plaintext)
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
@@ -106,7 +106,7 @@ func TestSoftware_Unseal_TamperedCiphertext(t *testing.T) {
 func TestSoftware_Sign(t *testing.T) {
 	ks := newTestSoftwareStore(t)
 
-	msg := []byte("vula device sign test")
+	msg := []byte("vulos device sign test")
 	digest := sha256.Sum256(msg)
 
 	sig, err := ks.Sign(digest[:], crypto.SHA256)

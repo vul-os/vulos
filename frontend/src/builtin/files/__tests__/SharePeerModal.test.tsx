@@ -20,7 +20,7 @@ beforeEach(() => {
   fetchMock = vi.fn<FetchImpl>(async (url) => {
     if (String(url).endsWith('/api/peering/drop/nearby')) {
       return new Response(JSON.stringify([
-        { vulos_id: 'vula:bob', display_name: 'Bob', addr: '10.0.0.5:8080', is_contact: true },
+        { vulos_id: 'vulos:bob', display_name: 'Bob', addr: '10.0.0.5:8080', is_contact: true },
       ]), { status: 200 })
     }
     if (String(url).endsWith('/api/peering/drop/send')) {
@@ -37,7 +37,7 @@ it('lists nearby peers and sends a file with a resolved absolute path', async ()
   render(
     <SharePeerModal
       target={{ name: 'report.pdf', path: '~/Documents/report.pdf', isDir: false }}
-      home="/home/vula"
+      home="/home/vulos"
       exec={vi.fn<(cmd: string) => Promise<string>>()}
       onClose={onClose}
     />,
@@ -55,8 +55,8 @@ it('lists nearby peers and sends a file with a resolved absolute path', async ()
     if (typeof opts?.body !== 'string') throw new Error('expected a JSON string body')
     const body: unknown = JSON.parse(opts.body)
     expect(body).toMatchObject({
-      target_vulos_id: 'vula:bob',
-      media_path: '/home/vula/Documents/report.pdf',
+      target_vulos_id: 'vulos:bob',
+      media_path: '/home/vulos/Documents/report.pdf',
       mime_type: 'application/pdf',
       target_addr: 'http://10.0.0.5:8080',
     })
@@ -68,7 +68,7 @@ it('archives a folder via exec before sending', async () => {
   render(
     <SharePeerModal
       target={{ name: 'Photos', path: '~/Photos', isDir: true }}
-      home="/home/vula"
+      home="/home/vulos"
       exec={exec}
       onClose={vi.fn()}
     />,

@@ -1,6 +1,6 @@
 # Identity & peering
 
-Every Vulos instance has its own cryptographic identity — a Vula ID — and can talk to other instances directly: contact requests, messages, calls, AirDrop-style local Drop, and collaborative document sharing, all without a central account. This chapter explains what your identity is and where it lives, how devices pair and join your cluster, how Drop works on your LAN, how sharing falls back to a content-blind relay across the internet, and how key rotation, revocation, and the recovery phrase fit together.
+Every Vulos instance has its own cryptographic identity — a Vulos ID — and can talk to other instances directly: contact requests, messages, calls, AirDrop-style local Drop, and collaborative document sharing, all without a central account. This chapter explains what your identity is and where it lives, how devices pair and join your cluster, how Drop works on your LAN, how sharing falls back to a content-blind relay across the internet, and how key rotation, revocation, and the recovery phrase fit together.
 
 The design premise is simple: **every Vulos instance is a server**. If you're running Vulos, you can receive — messages, files, and calls arrive at your box, gated by your explicit approval, without relay infrastructure or third-party accounts in the required path.
 
@@ -8,21 +8,21 @@ Related chapters: [USER-GUIDE.md](USER-GUIDE.md) for day-to-day use, [FILES.md](
 
 ---
 
-## The vula: your instance identity
+## The vulos: your instance identity
 
-Your box's peering identity is an **Ed25519 keypair**. The public key, base58-encoded with a prefix, is your **Vula ID**:
+Your box's peering identity is an **Ed25519 keypair**. The public key, base58-encoded with a prefix, is your **Vulos ID**:
 
 ```
 vulos:ed25519:9pJv3kQ8tW7xY2mN4rS6uA1bC5dE8fG2hJ4kL7nP9qR3
 ```
 
-When combined with a server address for discovery and contact requests, it forms a **Vula address**:
+When combined with a server address for discovery and contact requests, it forms a **Vulos address**:
 
 ```
 vulos:ed25519:<base58-key>@your-box.example.com:443
 ```
 
-The ID *is* the public key — anyone holding your Vula ID can verify signatures you make, with no key exchange or lookup step.
+The ID *is* the public key — anyone holding your Vulos ID can verify signatures you make, with no key exchange or lookup step.
 
 ### Where identity lives on disk
 
@@ -32,15 +32,15 @@ The peering service owns `~/.vulos/peering/` (created on first boot, `backend/se
 |---|---|
 | `~/.vulos/peering/identity/ed25519.priv` | Private key (raw 64 bytes, mode 0600) |
 | `~/.vulos/peering/identity/ed25519.pub` | Public key (raw 32 bytes) |
-| `~/.vulos/peering/identity/vulos_id` | Your Vula ID as text |
+| `~/.vulos/peering/identity/vulos_id` | Your Vulos ID as text |
 | `~/.vulos/peering/contacts.json` | Approved contact list |
 | `~/.vulos/peering/inbox/`, `outbox/`, `media/`, `groups/`, `profile/` | Messages, pending deliveries, received files, groups, your profile |
 
-If any identity file is missing on startup, a fresh keypair is generated. Separately, `~/.vulos/db/instance.json` holds the box's plain instance ULID and hostname — an identifier, not a key; the Vula ID is the cryptographic identity.
+If any identity file is missing on startup, a fresh keypair is generated. Separately, `~/.vulos/db/instance.json` holds the box's plain instance ULID and hostname — an identifier, not a key; the Vulos ID is the cryptographic identity.
 
-### Viewing and sharing your Vula ID
+### Viewing and sharing your Vulos ID
 
-Open the **Peering** app — its **Identity** tab shows your display name, your Vula ID with a copy button, and a **Show QR** toggle that renders the ID as a QR code ("Scan to add this Vula instance"). The same data is available at `GET /api/peering/identity`.
+Open the **Peering** app — its **Identity** tab shows your display name, your Vulos ID with a copy button, and a **Show QR** toggle that renders the ID as a QR code ("Scan to add this Vulos instance"). The same data is available at `GET /api/peering/identity`.
 
 ### Backing up your identity (export / import)
 
@@ -57,7 +57,7 @@ This is a *manual* backup of the raw identity. The account-anchored recovery pat
 
 Peering is **closed by default**: *"No open inboxes. You don't receive anything from anyone until you approve them."* Every peer is in one of four states — Unknown, Pending, Approved, Blocked — shown as a legend in the Peering app.
 
-- **Add someone**: Peering → Requests tab → enter their Vula ID or their server name (e.g. `alice.vulos.org`) plus an optional message. This sends a signed contact request (`POST /api/peering/contacts/request`).
+- **Add someone**: Peering → Requests tab → enter their Vulos ID or their server name (e.g. `alice.vulos.org`) plus an optional message. This sends a signed contact request (`POST /api/peering/contacts/request`).
 - **Approve or block** incoming requests from the same tab. Only after mutual approval do messages, files, and calls flow.
 - **Per-contact permissions**: each contact carries capability flags (message / media / call / video) you can edit from the Contacts tab. There is no ambient "any approved peer can do anything" authority.
 - **Find people** by email or name through a directory you configure: `GET /api/peering/discover?email=...` proxies a lookup against whatever `VULOS_VERIFY_URL` names. There is **no default** (`discovery.go`'s `discoveryDefaultBaseURL` is `""`) — unset, the box logs "no directory configured — people discovery disabled" and every lookup returns empty without touching the network. Vulos the org runs no directory.
@@ -77,9 +77,9 @@ Conversations and history live entirely on the two boxes involved (`GET /api/pee
 ### Worked example: Alice adds Bob
 
 1. Bob opens Peering → Identity on his box and shows his QR (or copies `vulos:ed25519:...` and sends it to Alice out-of-band).
-2. Alice opens Peering → Requests, pastes Bob's Vula ID (or just `bob.vulos.org` if his box has a public name), adds a note, and sends the request. Her box signs it with her identity key and delivers it to Bob's box.
+2. Alice opens Peering → Requests, pastes Bob's Vulos ID (or just `bob.vulos.org` if his box has a public name), adds a note, and sends the request. Her box signs it with her identity key and delivers it to Bob's box.
 3. Bob's Requests tab shows the pending request with Alice's identity. He approves it; his box records her as an approved contact with default permissions.
-4. From now on their boxes talk directly: messages, Drop transfers, calls — each request signature-verified against the other's Vula ID, each capability gated by the contact permissions either side has granted.
+4. From now on their boxes talk directly: messages, Drop transfers, calls — each request signature-verified against the other's Vulos ID, each capability gated by the contact permissions either side has granted.
 
 No account was created anywhere, and no third party learned that Alice and Bob are contacts.
 
@@ -252,13 +252,13 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 **Recoverable with the phrase:**
 
 - **Your master key**, and therefore all content encrypted under it (mail, files, anything using derived content keys). Forgot your password? `POST /api/auth/masterkey/recover` proves phrase possession, re-wraps the master key under a new password, and revokes all sessions — the server never sees the key.
-- **Your account identity keys and keyring root** (via the recovery-kit restore path), and with them the **peering recovery anchor** — the lost-Vula-key succession described above.
+- **Your account identity keys and keyring root** (via the recovery-kit restore path), and with them the **peering recovery anchor** — the lost-Vulos-key succession described above.
 
 **Not recoverable with the phrase:**
 
 - **The password-manager vault** (`Vault` app, `backend/services/credvault/`): encrypted under its *own* master password (Argon2id + AES-256-GCM). No phrase escrow exists — lose that password and `vault.enc` is gone for good.
 - **The authenticator's TOTP secrets** (`backend/services/authvault/`): encrypted under a random local keyfile (`~/.vulos/auth/totp/<user>/keyfile`). Lose the keyfile (and any export), lose the 2FA secrets.
-- **A lost Vula identity key when no recovery kit was ever generated**: without a published anchor, peers have nothing to follow — you start a new identity and re-add contacts.
+- **A lost Vulos identity key when no recovery kit was ever generated**: without a published anchor, peers have nothing to follow — you start a new identity and re-add contacts.
 - **Past message session keys**: forward secrecy means even *you* cannot retroactively decrypt captured ciphertexts whose one-time keys are gone. That's the point.
 
 **About "trusted devices":** there is no named trusted-device registry. Any device with an active signed-in session holds your unwrapped master key in browser memory and can reset a forgotten password without the phrase (the re-wrap happens client-side; the server checks only wire-format invariants and revokes your other sessions). Treat live sessions accordingly, and see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md) for full recovery walkthroughs.
@@ -269,7 +269,7 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 
 | Path | What |
 |---|---|
-| `~/.vulos/peering/identity/` | Ed25519 keypair, Vula ID, lifecycle chain (`lifecycle.json`), anchor ID (`recovery_anchor.json`) |
+| `~/.vulos/peering/identity/` | Ed25519 keypair, Vulos ID, lifecycle chain (`lifecycle.json`), anchor ID (`recovery_anchor.json`) |
 | `~/.vulos/peering/contacts.json` | Approved contacts and permissions |
 | `~/.vulos/peering/inbox/` · `outbox/` · `media/` · `groups/` | Conversations, pending deliveries, received files, groups |
 | `~/.vulos/peering/callhistory.json` | Local call log (max 500 entries) |
@@ -297,7 +297,7 @@ Vulos shows you a **24-word recovery phrase** at signup and forces you to save i
 | Shared docs | `POST /api/peering/collab/share` · `GET /api/peering/collab/documents` · `GET`/`DELETE /api/peering/collab/{doc_id}` · `PUT /api/peering/collab/{doc_id}/perms` |
 | Cluster join | `POST /api/cluster/join-code` (admin) · `POST /api/setup/join-code` · `POST /api/setup/join` · `GET /api/setup/join/status` |
 | Device key | `GET /api/auth/device/identity` · `GET /api/auth/device/tpm/status` |
-| Public profile | `GET /.well-known/vulos-id` (Vula ID, lifecycle chain, revocations, signed prekey — public fields only) |
+| Public profile | `GET /.well-known/vulos-id` (Vulos ID, lifecycle chain, revocations, signed prekey — public fields only) |
 
 Everything under `/api/peering/inbound/*` is the box-to-box surface: it authenticates the *sending peer's signature*, not an OS login, and is not meant to be called by you directly.
 

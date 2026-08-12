@@ -1,6 +1,6 @@
 // envelope.go — signed canonical-JSON message envelope (PEER-03).
 //
-// Every message that crosses a Vula server boundary is wrapped in a signed
+// Every message that crosses a Vulos server boundary is wrapped in a signed
 // envelope: the payload is serialised to a deterministic canonical-JSON byte
 // string (sorted keys, no extra whitespace), signed with the sender's Ed25519
 // private key, and the resulting signature is embedded in the envelope's
@@ -18,8 +18,8 @@
 //
 //	{
 //	  "id":        "<string>",         // UUIDv7 or similar
-//	  "from":      "<vulos_id>",        // sender's Vula ID
-//	  "to":        "<vulos_id>",        // recipient Vula ID (empty for feed entries)
+//	  "from":      "<vulos_id>",        // sender's Vulos ID
+//	  "to":        "<vulos_id>",        // recipient Vulos ID (empty for feed entries)
 //	  "type":      "<string>",         // message|contact-request|signaling|feed
 //	  "timestamp": "<RFC3339>",
 //	  "payload":   <JSON object>,      // type-specific body
@@ -75,10 +75,10 @@ type Envelope struct {
 	// ID uniquely identifies this message (UUIDv7 recommended).
 	ID string `json:"id"`
 
-	// From is the sender's Vula ID ("vulos:ed25519:<base58>").
+	// From is the sender's Vulos ID ("vulos:ed25519:<base58>").
 	From string `json:"from"`
 
-	// To is the recipient's Vula ID. Empty for feed entries or broadcasts.
+	// To is the recipient's Vulos ID. Empty for feed entries or broadcasts.
 	To string `json:"to,omitempty"`
 
 	// Type is one of the Type* constants defined in this file.
@@ -240,7 +240,7 @@ func canonicaliseArray(arr []json.RawMessage) ([]byte, error) {
 // signs them with priv (an Ed25519 private key), and stores the base64url
 // (no-padding) encoded signature in e.Signature.
 //
-// priv must be the private key that corresponds to the Vula ID in e.From.
+// priv must be the private key that corresponds to the Vulos ID in e.From.
 // The caller is responsible for that invariant.
 func (e *Envelope) Sign(priv ed25519.PrivateKey) error {
 	if len(priv) != ed25519.PrivateKeySize {
@@ -259,12 +259,12 @@ func (e *Envelope) Sign(priv ed25519.PrivateKey) error {
 
 // Verify checks the envelope's signature.
 //
-// It derives the sender's public key from e.From (a Vula ID of the form
+// It derives the sender's public key from e.From (a Vulos ID of the form
 // "vulos:ed25519:<base58>"), recomputes the canonical bytes (signature field
 // excluded), and confirms that e.Signature is a valid Ed25519 signature over
 // those bytes.
 //
-// Returns a non-nil error if the Vula ID is malformed, the signature is absent
+// Returns a non-nil error if the Vulos ID is malformed, the signature is absent
 // or corrupt, or the signature does not match the payload.
 func (e *Envelope) Verify() error {
 	if e.Signature == "" {

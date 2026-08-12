@@ -10,7 +10,7 @@ import (
 )
 
 // resetReachabilityCache clears the package-level reachability cache so tests
-// don't leak state into each other via shared vula IDs.
+// don't leak state into each other via shared vulos IDs.
 func resetReachabilityCache(t *testing.T) {
 	t.Helper()
 	reachMu.Lock()
@@ -152,7 +152,7 @@ func TestRefreshPeerReachability_RequiresRelayBaseURLAndVulosID(t *testing.T) {
 		t.Fatal("expected error with empty relay base URL")
 	}
 	if err := RefreshPeerReachability(context.Background(), "https://relay.example.org", ""); err == nil {
-		t.Fatal("expected error with empty vula id")
+		t.Fatal("expected error with empty vulos id")
 	}
 }
 

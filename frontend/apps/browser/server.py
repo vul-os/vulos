@@ -1,4 +1,4 @@
-"""Vula OS — Smart Browser
+"""Vulos OS — Smart Browser
 Ad-stripping web viewer with AI summarization.
 Proxies pages through the server, strips ads/trackers, optionally summarizes.
 """

@@ -15,7 +15,7 @@
 // # Scheme (X3DH-style, store-and-forward / sealed-sender compatible)
 //
 // Each identity PUBLISHES a prekey bundle (PreKeyBundlePublic):
-//   - its identity key (the Ed25519 Vula ID — used only to SIGN, never as a
+//   - its identity key (the Ed25519 Vulos ID — used only to SIGN, never as a
 //     content secret),
 //   - a medium-term SIGNED prekey (X25519), signed by the identity key,
 //   - a pool of ONE-TIME prekeys (X25519), each consumed at most once.

@@ -28,7 +28,7 @@
 //	  "payload": {
 //	      "type":    "presence:join|leave|state|ping",
 //	      "app_id":  "<app identifier>",
-//	      "peer_id": "<peer's Vula ID>",
+//	      "peer_id": "<peer's Vulos ID>",
 //	      "data":    <opaque JSON — cursor/selection/etc; nil for join/leave/ping>
 //	  }}
 //
@@ -97,7 +97,7 @@ type presencePayload struct {
 	// the Yjs state).
 	AppID string `json:"app_id"`
 
-	// PeerID is the Vula ID (or local user ID) of the peer that this frame
+	// PeerID is the Vulos ID (or local user ID) of the peer that this frame
 	// describes.  Set by the server on outbound frames; trusted on inbound only
 	// if the connection is server-to-server (S2S relay path).
 	PeerID string `json:"peer_id,omitempty"`

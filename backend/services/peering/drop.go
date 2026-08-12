@@ -1,4 +1,4 @@
-// Package peering implements Vula OS peer-to-peer communication services.
+// Package peering implements Vulos OS peer-to-peer communication services.
 // drop.go implements AirDrop-style LAN discovery and file transfer ("Drop").
 //
 // mDNS service type: _vulos-drop._tcp.local
@@ -29,7 +29,7 @@ import (
 type dropDiscoverability string
 
 const (
-	// dropDiscoverEveryone advertises to all Vula peers on the LAN.
+	// dropDiscoverEveryone advertises to all Vulos peers on the LAN.
 	dropDiscoverEveryone dropDiscoverability = "everyone"
 	// dropDiscoverPeers advertises only to approved contacts.
 	dropDiscoverPeers dropDiscoverability = "peers"
@@ -47,7 +47,7 @@ const dropDefaultPort = 8080
 // External service interfaces (contacts + media, resolved at runtime)
 // ---------------------------------------------------------------------------
 
-// DropContactChecker allows drop.go to ask whether a given Vula ID is an
+// DropContactChecker allows drop.go to ask whether a given Vulos ID is an
 // approved contact. Satisfied by the contacts sub-service.
 type DropContactChecker interface {
 	IsApproved(vulosID string) bool
@@ -73,7 +73,7 @@ type DropMediaSender interface {
 // Data types
 // ---------------------------------------------------------------------------
 
-// DropPeer is a discovered nearby Vula peer on the local network.
+// DropPeer is a discovered nearby Vulos peer on the local network.
 type DropPeer struct {
 	VulosID      string    `json:"vulos_id"`
 	DisplayName  string    `json:"display_name"`
@@ -109,7 +109,7 @@ type dropDecision struct {
 
 // dropSendRequest is the payload for POST /api/peering/drop/send.
 type dropSendRequest struct {
-	// TargetVulosID is the recipient's Vula ID.
+	// TargetVulosID is the recipient's Vulos ID.
 	TargetVulosID string `json:"target_vulos_id"`
 	// TargetAddr is the peer's HTTP base URL; if empty, resolved from nearby list.
 	TargetAddr string `json:"target_addr,omitempty"`
@@ -256,14 +256,14 @@ func (s *DropService) dropStopAdvertising() {
 	}
 }
 
-// dropHostname derives the mDNS local hostname from a Vula ID.
+// dropHostname derives the mDNS local hostname from a Vulos ID.
 // Uses the last 16 chars of the ID to keep names short.
 func dropHostname(vulosID string) string {
 	suffix := vulosID
 	if len(suffix) > 16 {
 		suffix = suffix[len(suffix)-16:]
 	}
-	return fmt.Sprintf("vula-%s.%s", suffix, dropServiceType)
+	return fmt.Sprintf("vulos-%s.%s", suffix, dropServiceType)
 }
 
 // dropPruneLoop removes peers that have not been refreshed for >5 minutes.
@@ -333,7 +333,7 @@ func RegisterDropHandlers(mux *http.ServeMux, svc *DropService) {
 	mux.HandleFunc("/api/peering/drop/decide", svc.dropHandleDecide)
 }
 
-// dropHandleNearby returns the list of discovered nearby Vula peers.
+// dropHandleNearby returns the list of discovered nearby Vulos peers.
 // Applies the discoverability filter: in "peers" mode only contacts are shown.
 func (s *DropService) dropHandleNearby(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

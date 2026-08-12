@@ -25,7 +25,7 @@ Everything below is created by the Go backend (verified against the code, not as
 | `~/.vulos/db/peer-received/` | Staged bytes redeemed from peer-shares, not yet saved to Drive | Unsaved received items |
 | `~/.vulos/data/` | User data directory — **the Restic vault's backup scope** — including `data/uploads/` (upload staging) and per-app writable data | App/user working data |
 | `~/.vulos/storage/` | **Standalone mode only:** the actual Drive bytes (no S3 configured) | Your documents |
-| `~/.vulos/peering/` | Box identity and social state: `identity/` (the Ed25519 keypair behind your Vula ID), `contacts.json`, `groups/`, `inbox/`, `outbox/`, `media/`, `relay/` | Your box's peer identity — peers no longer recognize you; issued peer-share capabilities die |
+| `~/.vulos/peering/` | Box identity and social state: `identity/` (the Ed25519 keypair behind your Vulos ID), `contacts.json`, `groups/`, `inbox/`, `outbox/`, `media/`, `relay/` | Your box's peer identity — peers no longer recognize you; issued peer-share capabilities die |
 | `~/.vulos/auth/vault/<userID>/` | Per-user credential vault (password manager), AES-256-GCM under its own master password | Saved passwords |
 | `~/.vulos/auth/totp/` | Authenticator (TOTP) vault | 2FA codes you host for other sites |
 | `~/.vulos/auth/tpm/` | Device key store. On a box with a TPM the private key lives *in the TPM*; this directory then holds only references. Software fallback keeps key material here | Device identity; passkeys are sealed with it |
@@ -246,7 +246,7 @@ What moves cleanly with the directory copy:
 
 - Accounts, sessions, profiles, master-key envelopes (`db/auth.db`).
 - The Drive index and all sharing state (`db/files.db`); bucket-backed bytes need no move at all, standalone bytes move with `~/.vulos/storage`.
-- The **peering identity** (`~/.vulos/peering/identity/`) — your Vula ID, contacts, and issued capabilities keep working. If you prefer not to copy the whole tree, the OS also supports moving just the identity as a passphrase-encrypted bundle: `POST /api/peering/identity/export` on the old box, `POST /api/peering/identity/import` on the new one.
+- The **peering identity** (`~/.vulos/peering/identity/`) — your Vulos ID, contacts, and issued capabilities keep working. If you prefer not to copy the whole tree, the OS also supports moving just the identity as a passphrase-encrypted bundle: `POST /api/peering/identity/export` on the old box, `POST /api/peering/identity/import` on the new one.
 - Credential vault and TOTP vault files (still locked by their own passwords).
 
 What does **not** move, and what to do:

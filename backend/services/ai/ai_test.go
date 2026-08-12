@@ -132,8 +132,8 @@ func TestDefaultConfig_Defaults(t *testing.T) {
 	if cfg.System == "" {
 		t.Error("default system prompt should not be empty")
 	}
-	if !strings.Contains(cfg.System, "Vula") {
-		t.Error("default system prompt should mention Vula")
+	if !strings.Contains(cfg.System, "Vulos") {
+		t.Error("default system prompt should mention Vulos")
 	}
 }
 

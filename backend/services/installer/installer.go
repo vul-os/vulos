@@ -1,4 +1,4 @@
-// Package installer provides HTTP handlers for the Vula OS bare-metal
+// Package installer provides HTTP handlers for the Vulos OS bare-metal
 // installer.  It exposes four endpoints:
 //
 //	GET  /api/installer/disks    — list block devices (lsblk -J)

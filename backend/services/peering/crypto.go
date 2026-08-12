@@ -1,4 +1,4 @@
-// crypto.go — E2E encryption for Vula peering messages (PEER-37).
+// crypto.go — E2E encryption for Vulos peering messages (PEER-37).
 //
 // # Overview
 //
@@ -9,7 +9,7 @@
 // a shared secret, and then uses XChaCha20-Poly1305 for authenticated
 // encryption of message payloads.
 //
-// The Vula servers transport only ciphertext.  Even if a server is
+// The Vulos servers transport only ciphertext.  Even if a server is
 // compromised, message content is unreadable without the recipient's private
 // key.
 //
@@ -31,7 +31,7 @@
 //
 //     PeerSharedSecret computes ECDH between the local X25519 private scalar
 //     and the remote X25519 public key, then runs HKDF-SHA256 over the raw
-//     shared secret, binding it to both Vula IDs in lexicographic order so the
+//     shared secret, binding it to both Vulos IDs in lexicographic order so the
 //     same secret is derived by both parties independently.
 //
 //  3. Per-conversation keys
@@ -98,7 +98,7 @@ const (
 	xchacha20NonceSz = chacha20poly1305.NonceSizeX // 24
 
 	// hkdfLabel is the HKDF "info" context label for all peer key derivations.
-	hkdfLabel = "vula-peering-x25519-v1"
+	hkdfLabel = "vulos-peering-x25519-v1"
 )
 
 // hkdfHashFunc is the hash function used in HKDF.
@@ -224,7 +224,7 @@ func Ed25519PubToX25519(edPub ed25519.PublicKey) (X25519PublicKey, error) {
 // private key and the remote public key, then derives a 32-byte symmetric key
 // with HKDF-SHA256.
 //
-// The HKDF salt is the concatenation of the two Vula IDs in lexicographic
+// The HKDF salt is the concatenation of the two Vulos IDs in lexicographic
 // order (guaranteed to be the same on both sides of the conversation):
 //
 //	salt = sort(localVulosID, remoteVulosID)[0] + ":" + sort(...)[1]
@@ -246,7 +246,7 @@ func PeerSharedSecret(
 		return SharedKey{}, fmt.Errorf("peering/crypto: x25519 ecdh: %w", err)
 	}
 
-	// Sort the Vula IDs to produce a deterministic salt.
+	// Sort the Vulos IDs to produce a deterministic salt.
 	idA, idB := localVulosID, remoteVulosID
 	if idA > idB {
 		idA, idB = idB, idA

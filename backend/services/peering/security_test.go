@@ -29,7 +29,7 @@ import (
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-// secGenKey generates an Ed25519 keypair and Vula ID for security tests.
+// secGenKey generates an Ed25519 keypair and Vulos ID for security tests.
 func secGenKey(t *testing.T) (ed25519.PrivateKey, ed25519.PublicKey, string) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -98,7 +98,7 @@ func secSignedDeposit(t *testing.T, senderPriv ed25519.PrivateKey, senderID, rec
 func TestSEC_Envelope_BadSigRejected(t *testing.T) {
 	priv, _, vulosID := secGenKey(t)
 
-	env, err := NewEnvelope("sec-bad-sig-01", vulosID, "vula:other", TypeMessage,
+	env, err := NewEnvelope("sec-bad-sig-01", vulosID, "vulos:other", TypeMessage,
 		json.RawMessage(`{"type":"text","body":"hello"}`))
 	if err != nil {
 		t.Fatalf("NewEnvelope: %v", err)
@@ -263,7 +263,7 @@ func TestSEC_Relay_FutureTimestampRejected(t *testing.T) {
 // ─── PEER-SEC-04: Audience mismatch rejected ──────────────────────────────────
 
 // TestSEC_Relay_AudienceMismatchRejected verifies that recipientB cannot pick
-// up blobs destined for recipientA even if they present recipientA's Vula ID
+// up blobs destined for recipientA even if they present recipientA's Vulos ID
 // but sign with their own key (sig mismatch = 401).
 // Guards: SECURITY-OSS.md §5 — mutual-auth on pickup, cross-user data blocked.
 func TestSEC_Relay_AudienceMismatchRejected(t *testing.T) {

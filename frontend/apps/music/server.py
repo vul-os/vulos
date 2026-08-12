@@ -1,4 +1,4 @@
-"""Vula OS — Music Player
+"""Vulos OS — Music Player
 Serves audio files from ~/.vulos/music/, manages playlists, extracts ID3 album art.
 Formats: mp3, flac, ogg, wav, m4a — played via browser <audio> element.
 """

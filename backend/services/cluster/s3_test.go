@@ -149,7 +149,7 @@ func TestPutEncryptedGetEncryptedRoundTrip(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	want := []byte("Hello, encrypted Vula cluster world!")
+	want := []byte("Hello, encrypted Vulos cluster world!")
 	key := uniqueKey(t, "roundtrip.bin")
 
 	if err := client.PutEncrypted(ctx, key, want); err != nil {

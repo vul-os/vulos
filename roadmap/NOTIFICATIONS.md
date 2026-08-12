@@ -14,7 +14,7 @@ This spec depends on the peering system defined in [PEERING.md](PEERING.md). Not
 
 ```mermaid
 flowchart LR
-    Bob["Bob's Vula Server"] -->|notification| Alice["Alice's Vula Server"]
+    Bob["Bob's Vulos Server"] -->|notification| Alice["Alice's Vulos Server"]
     Alice --> Browser["Alice's browser<br/>(toast / badge / sound)"]
 ```
 
@@ -121,7 +121,7 @@ Custom peer-defined alerts. For automation, monitoring, bots — anything a peer
 Subtypes: `custom`, `system`
 
 `custom` — sent by a peer's automation (CI bots, monitoring, scripts). The peer must be on your approved list.
-`system` — reserved for your own Vula instance (local events, not from peers). Not delivered via peering.
+`system` — reserved for your own Vulos instance (local events, not from peers). Not delivered via peering.
 
 ### `action`
 
@@ -175,8 +175,8 @@ Every notification is a signed, structured message delivered server-to-server th
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | UUID v7 | yes | Unique notification ID, sortable by time |
-| `from` | Vula ID | yes | Sender's identity |
-| `to` | Vula ID | yes | Recipient's identity |
+| `from` | Vulos ID | yes | Sender's identity |
+| `to` | Vulos ID | yes | Recipient's identity |
 | `timestamp` | ISO 8601 | yes | When the notification was created |
 | `type` | string | yes | `presence`, `event`, `call`, `alert`, `action` |
 | `subtype` | string | yes | Type-specific subtype (see above) |
@@ -184,7 +184,7 @@ Every notification is a signed, structured message delivered server-to-server th
 | `ttl` | integer | yes | Seconds until expiry. 0 = no expiry (presence only) |
 | `priority` | string | yes | `low`, `normal`, `high`, `critical` |
 | `signature` | string | yes | Ed25519 signature of canonical JSON (same as messages) |
-| `group_id` | Vula ID | no | If notification relates to a group |
+| `group_id` | Vulos ID | no | If notification relates to a group |
 
 ### Priority Levels
 
@@ -205,7 +205,7 @@ Only `call.incoming` should use `critical`. Peers cannot set `critical` on other
 
 ```mermaid
 flowchart TD
-    A["Peer's Vula server"] --> B["POST /api/peering/inbound/notification (HTTPS, signed)"]
+    A["Peer's Vulos server"] --> B["POST /api/peering/inbound/notification (HTTPS, signed)"]
     B --> C["Recipient's server verifies signature + checks allow list"]
     C --> D["Stored in notification queue"]
     D --> E["Pushed to recipient's browser via WebSocket"]
@@ -246,12 +246,12 @@ Delivered via `POST /api/peering/inbound/notification-reply`. Same trust rules a
 
 ## Browser Delivery
 
-The browser maintains a WebSocket connection to its Vula server (same one used for messaging and call signaling). Notifications ride this connection.
+The browser maintains a WebSocket connection to its Vulos server (same one used for messaging and call signaling). Notifications ride this connection.
 
 ### WebSocket Channel
 
 ```
-Browser ◄──WebSocket──► Vula Server
+Browser ◄──WebSocket──► Vulos Server
 
 Server pushes:
 {
@@ -363,9 +363,9 @@ Exceeding the limit: notifications are silently dropped for the remainder of the
 `event.contact_request` is the only notification accepted from non-approved peers. This is how someone reaches you in the first place. Gated by:
 
 - Aggressive rate limiting: 3 requests per hour per source IP
-- Signature verification still required (must be a valid Vula ID)
+- Signature verification still required (must be a valid Vulos ID)
 - Queued in the requests list, not shown as a system toast (lower disruption)
-- If blocked, all future requests from that Vula ID are silently dropped
+- If blocked, all future requests from that Vulos ID are silently dropped
 
 ---
 

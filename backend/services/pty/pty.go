@@ -23,7 +23,7 @@ const (
 	coalesceDelay  = 16 * time.Millisecond // ~60fps frame coalescing
 )
 
-// UserResolver maps a Vula user ID to a Linux username.
+// UserResolver maps a Vulos user ID to a Linux username.
 type UserResolver func(userID string) string
 
 // Service manages PTY sessions bridged to WebSocket clients.
@@ -227,7 +227,7 @@ func (s *Service) createSession(userID string, cols, rows uint16) (*Session, err
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"LANG=en_US.UTF-8",
-		"HOSTNAME=vula",
+		"HOSTNAME=vulos",
 	)
 
 	if s.resolve != nil && s.sysUsers != nil {

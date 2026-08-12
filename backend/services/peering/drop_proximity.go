@@ -68,7 +68,7 @@ var proxRendezvousDisabledLogOnce sync.Once
 type proxCode struct {
 	Code      string    `json:"code"`
 	OwnerAddr string    `json:"owner_addr"` // "host:port" of the generating server
-	VulosID   string    `json:"vulos_id"`   // Vula ID of the generating user
+	VulosID   string    `json:"vulos_id"`   // Vulos ID of the generating user
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
@@ -93,7 +93,7 @@ type proxRedeemRequest struct {
 type proxRedeemResponse struct {
 	// OwnerAddr is the HTTP base address ("host:port") of the code generator.
 	OwnerAddr string `json:"owner_addr"`
-	// VulosID is the Vula ID of the code generator.
+	// VulosID is the Vulos ID of the code generator.
 	VulosID string `json:"vulos_id"`
 }
 
@@ -133,7 +133,7 @@ type proxHTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// NewProxService creates a ProxService for the given Vula ID.
+// NewProxService creates a ProxService for the given Vulos ID.
 // selfAddr is the default address ("host:port") advertised in generated codes.
 // If empty, it is left to the caller to supply per-request.
 func NewProxService(selfVulosID, selfAddr string) *ProxService {

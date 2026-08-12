@@ -154,7 +154,7 @@ func chooseHostname(id string) string {
 	if h, err := os.Hostname(); err == nil {
 		h = strings.TrimSpace(h)
 		// Reject generic/container defaults
-		if h != "" && h != "localhost" && h != "vula" && !looksLikeContainerID(h) {
+		if h != "" && h != "localhost" && h != "vulos" && !looksLikeContainerID(h) {
 			return h
 		}
 	}

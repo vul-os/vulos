@@ -6,7 +6,7 @@ package main
 // sessions, no peer addresses. Everything it needs to be USABLE by a human
 // therefore has to be supplied here, and this file supplies exactly two things:
 //
-//  1. fleetVouchAnnotator — the roster lookup that turns a base64 Vula ID in the
+//  1. fleetVouchAnnotator — the roster lookup that turns a base64 Vulos ID in the
 //     operator's approval queue into "this is workshop-box, one of yours" or
 //     "this is nobody this box knows". That single fact is the difference
 //     between an approval screen a human can act on and one where the only
@@ -39,7 +39,7 @@ import (
 	"vulos/backend/services/stepup"
 )
 
-// fleetVouchAnnotator resolves a Vula ID against THIS box's own instance
+// fleetVouchAnnotator resolves a Vulos ID against THIS box's own instance
 // registry for the operator's approval queue.
 //
 // It answers a question the fleetid package structurally cannot: fleetid proved

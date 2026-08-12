@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vula OS — live-USB UEFI QEMU smoke harness
+# Vulos OS — live-USB UEFI QEMU smoke harness
 #
 # Boots the --live image produced by build.sh --live inside QEMU with OVMF
 # (x86_64 UEFI) and asserts the system reaches a sane post-boot state:
@@ -137,7 +137,7 @@ if [ "$NO_BUILD" = "0" ]; then
 
   REUSE="--reuse-rootfs"
   [ "$REBUILD" = "1" ] && REUSE=""
-  say "Building Vula OS live-USB image (build.sh --${ARCH} --live ${REUSE:-(full rebuild)})…"
+  say "Building Vulos OS live-USB image (build.sh --${ARCH} --live ${REUSE:-(full rebuild)})…"
   docker run --rm --privileged \
     -v "$REPO":/src -w /src \
     -v vulos-bm-work:/work \
@@ -221,7 +221,7 @@ PY
 #       up and routing (same check as baremetal-smoke.sh). This is the
 #       gold-standard "fully running" check and is required for PASS.
 
-SERIAL_PATTERNS='vulos-live\|VULOS-LIVE-DATA\|Started.*Login Service\|login:.*\|Welcome to Vula\|vulos-init'
+SERIAL_PATTERNS='vulos-live\|VULOS-LIVE-DATA\|Started.*Login Service\|login:.*\|Welcome to Vulos\|vulos-init'
 HTTP_URL="http://127.0.0.1:${HOSTPORT}/api/setup/status"
 
 say "Waiting up to ${TIMEOUT}s for HTTP (serial pivot/login logged for diagnostics only)…"

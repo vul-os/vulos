@@ -1,6 +1,6 @@
 # PEERING
 
-Direct communication between Vulos instances. Every Vula instance is a server — if you're running Vula, you can receive. No relay infrastructure, no third-party accounts, no federation bureaucracy. Your OS is your inbox.
+Direct communication between Vulos instances. Every Vulos instance is a server — if you're running Vulos, you can receive. No relay infrastructure, no third-party accounts, no federation bureaucracy. Your OS is your inbox.
 
 > **Goal.** Make instances first-class peers. Ed25519 identity (`vulos:ed25519:<base58>`), signed canonical-JSON envelopes, server-to-server HTTP, WebSocket fan-out to the user's browser. On top of that primitive: contacts + trust, messaging, media, voice/video (WebRTC, optional Pion SFU), Yjs collaboration, AirDrop-style Drop, and optional encrypted relays for offline delivery.
 > **Non-goals.** Federation (no shared global namespace). Anonymous messaging. Hosting other people's data without their key.
@@ -14,8 +14,8 @@ Direct communication between Vulos instances. Every Vula instance is a server �
 flowchart TD
     AliceB["Alice (browser)"]
     BobB["Bob (browser)"]
-    AliceS["Alice's Vula Server"]
-    BobS["Bob's Vula Server"]
+    AliceS["Alice's Vulos Server"]
+    BobS["Bob's Vulos Server"]
     AliceB --> AliceS
     BobB --> BobS
     AliceS <-->|"messages/media"| BobS
@@ -24,9 +24,9 @@ flowchart TD
 
 Two layers, separated by nature:
 
-1. **Server-to-server** — messages, media, files, presence. Asynchronous. Durable. Your Vula instance stores incoming data and serves it when you connect. Works offline — messages queue until the recipient's server is reachable.
+1. **Server-to-server** — messages, media, files, presence. Asynchronous. Durable. Your Vulos instance stores incoming data and serves it when you connect. Works offline — messages queue until the recipient's server is reachable.
 
-2. **Device-to-device** — voice calls, video calls, screen sharing. Real-time. Direct WebRTC between the actual browsers people are sitting at. NOT through the Vula servers. This matters because most users access Vula remotely — routing call media through two servers (device → server → server → device) adds hops, latency, and pointless transcoding. The servers only handle signaling (who's calling whom, ICE candidates, SDP exchange). The media flows peer-to-peer.
+2. **Device-to-device** — voice calls, video calls, screen sharing. Real-time. Direct WebRTC between the actual browsers people are sitting at. NOT through the Vulos servers. This matters because most users access Vulos remotely — routing call media through two servers (device → server → server → device) adds hops, latency, and pointless transcoding. The servers only handle signaling (who's calling whom, ICE candidates, SDP exchange). The media flows peer-to-peer.
 
 ---
 
@@ -34,12 +34,12 @@ Two layers, separated by nature:
 
 No open inboxes. You don't receive anything from anyone until you approve them.
 
-### Vula ID
+### Vulos ID
 
-Every Vula instance generates a keypair on first boot. The public key is the cryptographic identity. Email verification through vulos.org makes it human-readable and trustworthy.
+Every Vulos instance generates a keypair on first boot. The public key is the cryptographic identity. Email verification through vulos.org makes it human-readable and trustworthy.
 
 ```
-Vula ID: vulos:ed25519:<base58-encoded-public-key>
+Vulos ID: vulos:ed25519:<base58-encoded-public-key>
 Display name: "Alice" (user-chosen, not unique)
 Verified email: alice@gmail.com (verified via vulos.org, optional but recommended)
 Slug: alice.vulos.org (from LANDING.md registration, if registered)
@@ -57,13 +57,13 @@ Uses the existing vulos.org infrastructure (see LANDING.md). Users already regis
 1. User registers on vulos.org: slug "alice", email "alice@gmail.com"
    (this already happens for DNS setup)
 2. vulos.org sends a 6-digit code to alice@gmail.com
-3. User enters code in their Vula instance
-4. vulos.org stores: slug → Vula ID public key + verified email
+3. User enters code in their Vulos instance
+4. vulos.org stores: slug → Vulos ID public key + verified email
 5. Instance receives a signed verification token from vulos.org
-6. Token is attached to the user's Vula ID — peers can verify it
+6. Token is attached to the user's Vulos ID — peers can verify it
 ```
 
-The verification token proves "this Vula ID controls alice@gmail.com" without exposing the email to every peer. Peers see:
+The verification token proves "this Vulos ID controls alice@gmail.com" without exposing the email to every peer. Peers see:
 - **Verified badge** — email has been verified through vulos.org (email itself hidden by default)
 - **Email visible** — only if the user explicitly shares it (per-contact or public)
 
@@ -78,12 +78,12 @@ vulos.org API addition:
 ```
 POST /api/verify/send     → { email, vulos_id } → sends 6-digit code
 POST /api/verify/confirm  → { email, code, vulos_id } → returns signed verification token
-GET  /api/verify/lookup   → { email } → returns Vula ID + server (if user opted into discovery)
+GET  /api/verify/lookup   → { email } → returns Vulos ID + server (if user opted into discovery)
 ```
 
 ### Profile
 
-Each user has a profile that travels with their Vula ID.
+Each user has a profile that travels with their Vulos ID.
 
 ```json
 {
@@ -104,7 +104,7 @@ Each user has a profile that travels with their Vula ID.
 **Profile image:**
 - Stored locally at `~/.vulos/peering/profile/avatar.webp`
 - Auto-resized to 256×256, compressed to WebP (~10-30KB)
-- Served at `/api/peering/profile/image` on the user's Vula instance
+- Served at `/api/peering/profile/image` on the user's Vulos instance
 - Cached by peers after first fetch (ETag-based)
 
 **Visibility controls — three levels per field:**
@@ -138,7 +138,7 @@ flowchart LR
 ```
 
 - **Unknown**: default state. Cannot send you anything. Your server rejects their requests at the door.
-- **Pending**: they've sent a contact request (just their Vula ID + display name + optional message). You see it in a requests queue. No data transferred yet.
+- **Pending**: they've sent a contact request (just their Vulos ID + display name + optional message). You see it in a requests queue. No data transferred yet.
 - **Approved**: you accepted. They're on your allow list. Now they can send messages, media, files, and initiate calls. Mutual — both sides must approve.
 - **Blocked**: explicitly rejected. Their requests are silently dropped. They don't know they're blocked.
 
@@ -162,7 +162,7 @@ Stored in `~/.vulos/peering/contacts.json`. Each contact has granular permission
 
 ### Groups / Rooms
 
-A group is just a list of approved Vula IDs with a shared name. No central server owns the group.
+A group is just a list of approved Vulos IDs with a shared name. No central server owns the group.
 
 - Creator defines the group and member list
 - Each member's server stores the group definition
@@ -174,14 +174,14 @@ A group is just a list of approved Vula IDs with a shared name. No central serve
 
 ## Server-to-Server: Messages & Media
 
-Your Vula server is your mailbox. Others deliver to it. You read from it.
+Your Vulos server is your mailbox. Others deliver to it. You read from it.
 
 ### Delivery
 
 ```mermaid
 flowchart TD
-    A["Sender's browser"] --> B["Sender's Vula server<br/>(signs message, queues for delivery)"]
-    B --> C["Recipient's Vula server<br/>(verifies signature, checks allow list)"]
+    A["Sender's browser"] --> B["Sender's Vulos server<br/>(signs message, queues for delivery)"]
+    B --> C["Recipient's Vulos server<br/>(verifies signature, checks allow list)"]
     C --> D["Stored in recipient's inbox"]
     D --> E["Recipient's browser<br/>(fetched on connect, or pushed via WebSocket)"]
 ```
@@ -224,7 +224,7 @@ Large files (images, video, documents) are transferred server-to-server over HTT
 
 ```
 ~/.vulos/peering/
-  ├── identity/          (keypair, Vula ID, verification token)
+  ├── identity/          (keypair, Vulos ID, verification token)
   ├── profile/           (avatar.webp, profile.json, visibility settings)
   ├── contacts.json      (approved list)
   ├── inbox/             (received messages, indexed by conversation)
@@ -237,33 +237,33 @@ Large files (images, video, documents) are transferred server-to-server over HTT
 
 ## Device-to-Device: Calls & Video
 
-This is the critical separation. Vula already has WebRTC for app streaming — calls reuse the same infrastructure but the peers are different.
+This is the critical separation. Vulos already has WebRTC for app streaming — calls reuse the same infrastructure but the peers are different.
 
 ### Why Device-to-Device
 
 ```
-App streaming:   browser ◄──WebRTC──► Vula server (server renders, client views)
+App streaming:   browser ◄──WebRTC──► Vulos server (server renders, client views)
 Calls:           browser ◄──WebRTC──► browser     (both sides are real devices)
 ```
 
-Most Vula users access their instance remotely. Their browser connects to a Vula server that might be in another room, another city, or a data centre. For app streaming, that's the whole point — the server does the rendering.
+Most Vulos users access their instance remotely. Their browser connects to a Vulos server that might be in another room, another city, or a data centre. For app streaming, that's the whole point — the server does the rendering.
 
-But for a call, both people are sitting at their browsers. Routing audio/video through two Vula servers means: microphone → browser → server A → server B → browser → speaker. That's two extra network hops, potential transcoding, and the servers are doing work they don't need to do.
+But for a call, both people are sitting at their browsers. Routing audio/video through two Vulos servers means: microphone → browser → server A → server B → browser → speaker. That's two extra network hops, potential transcoding, and the servers are doing work they don't need to do.
 
 Direct: microphone → browser → browser → speaker. One hop. Minimal latency.
 
 ### Signaling via Servers
 
-The Vula servers still coordinate the call setup — they just don't carry the media.
+The Vulos servers still coordinate the call setup — they just don't carry the media.
 
 ```
 1. Alice clicks "Call Bob"
-2. Alice's browser → Alice's Vula server: "I want to call Bob"
+2. Alice's browser → Alice's Vulos server: "I want to call Bob"
 3. Alice's server → Bob's server: call request (server-to-server)
 4. Bob's server → Bob's browser: incoming call notification (WebSocket push)
 5. Bob accepts
 6. Both browsers exchange SDP offers/answers and ICE candidates
-   (relayed through their Vula servers as signaling channel)
+   (relayed through their Vulos servers as signaling channel)
 7. WebRTC peer connection established: browser ◄──► browser
 8. Media flows directly. Servers are out of the loop.
 ```
@@ -272,17 +272,17 @@ The Vula servers still coordinate the call setup — they just don't carry the m
 
 Direct browser-to-browser needs both peers to discover each other's network path.
 
-- **STUN**: each browser discovers its public IP via STUN server. Vula can run its own or use public STUN servers.
-- **TURN**: fallback relay when both peers are behind symmetric NATs. Vula servers can act as TURN servers for their own users — the media still goes through a server, but it's a known, controlled fallback, not the default path.
+- **STUN**: each browser discovers its public IP via STUN server. Vulos can run its own or use public STUN servers.
+- **TURN**: fallback relay when both peers are behind symmetric NATs. Vulos servers can act as TURN servers for their own users — the media still goes through a server, but it's a known, controlled fallback, not the default path.
 - **ICE candidates** exchanged via the signaling channel (server-to-server relay)
 
-For users on the same LAN (e.g. two people in the same house with separate Vula instances), ICE discovers the local path — sub-millisecond latency, zero internet transit.
+For users on the same LAN (e.g. two people in the same house with separate Vulos instances), ICE discovers the local path — sub-millisecond latency, zero internet transit.
 
 ### Bandwidth Visibility
 
 Before starting a group call, every participant's connection speed is visible. No guessing — you see the numbers and pick the right host.
 
-Each Vula instance periodically measures its own bandwidth and reports it to peers on request:
+Each Vulos instance periodically measures its own bandwidth and reports it to peers on request:
 
 ```
 GET /api/peering/bandwidth → { "upload_mbps": 48.2, "download_mbps": 210.5, "latency_ms": 12 }
@@ -324,8 +324,8 @@ GET /api/peering/bandwidth → { "upload_mbps": 48.2, "download_mbps": 210.5, "l
 - No central point of failure
 - Falls back to SFU if any participant's bandwidth is too low
 
-**Groups (5+): SFU on the host's Vula server**
-- The host's Vula server runs the SFU (selected in pre-call lobby)
+**Groups (5+): SFU on the host's Vulos server**
+- The host's Vulos server runs the SFU (selected in pre-call lobby)
 - Each browser sends one stream to the SFU, receives streams back
 - SFU forwards packets — no transcoding, low CPU
 - Built with [Pion](https://github.com/pion/webrtc) (Go, fits the stack natively)
@@ -394,7 +394,7 @@ No manual intervention needed. The pre-call bandwidth data makes the fallback ch
 
 ## Real-Time Collaboration
 
-Documents, sheets, slides, notes — any app that holds structured data can be collaboratively edited in real-time through the peering layer. No central server. Each participant's Vula instance holds the document, operations sync peer-to-peer.
+Documents, sheets, slides, notes — any app that holds structured data can be collaboratively edited in real-time through the peering layer. No central server. Each participant's Vulos instance holds the document, operations sync peer-to-peer.
 
 ### How It Works
 
@@ -403,7 +403,7 @@ Same pipes as messaging. A document edit is just a message with type `crdt-op` i
 ```mermaid
 flowchart TD
     A["Alice types 'Hello' at position 0"] --> B["her browser generates CRDT operations"]
-    B --> C["sent to her Vula server"]
+    B --> C["sent to her Vulos server"]
     C --> D["fanned out to all peers who have this document open"]
     D --> E["each peer's browser applies the operations"]
     E --> F["everyone sees 'Hello' appear"]
@@ -424,8 +424,8 @@ Yjs is transport-agnostic — it produces binary update blobs, you choose how to
 **WebSocket (real-time, while both online):**
 ```mermaid
 flowchart LR
-    AB["Alice's browser"] -->|WebSocket| AS["Alice's Vula server"]
-    AS -->|server-to-server| BS["Bob's Vula server"]
+    AB["Alice's browser"] -->|WebSocket| AS["Alice's Vulos server"]
+    AS -->|server-to-server| BS["Bob's Vulos server"]
     BS -->|WebSocket| BB["Bob's browser"]
 ```
 Sub-100ms latency for edits. Uses the same WebSocket connections already open for messaging and call signaling. Awareness protocol (cursor positions, selections, who's online) rides the same channel.
@@ -486,7 +486,7 @@ Every app from DEFAULT-WEB-APPS.md that uses an editor Yjs already integrates wi
 
 Same as group messaging — fan out to all participants. If 5 people are editing a document:
 
-- Each person's operations go to their Vula server
+- Each person's operations go to their Vulos server
 - Their server fans out to the other 4 participants' servers
 - Each server pushes to its connected browser via WebSocket
 - CRDT handles merge — no coordination needed between servers
@@ -531,21 +531,21 @@ GET  /api/peering/inbound/collab-sync     → peer requesting diff since state v
 
 ## Discovery
 
-How do you find someone's Vula server to send them a contact request?
+How do you find someone's Vulos server to send them a contact request?
 
 ### Direct Exchange
 
-Simplest. Share your Vula ID out-of-band (in person, text message, email, QR code).
+Simplest. Share your Vulos ID out-of-band (in person, text message, email, QR code).
 
 ```
 vulos:ed25519:5Hb7...@alice.vulos.org:8080
 ```
 
-The ID includes the server address. Scan a QR code, your Vula instance sends a contact request to that address.
+The ID includes the server address. Scan a QR code, your Vulos instance sends a contact request to that address.
 
 ### Domain-Based Discovery
 
-If Alice has `alice.vulos.org` pointing to her Vula instance:
+If Alice has `alice.vulos.org` pointing to her Vulos instance:
 
 ```
 GET https://alice.vulos.org/.well-known/vulos-id
@@ -554,9 +554,9 @@ GET https://alice.vulos.org/.well-known/vulos-id
 
 Standard well-known URI. Type a domain, discover the identity.
 
-### Vula Directory (Optional, Opt-In)
+### Vulos Directory (Optional, Opt-In)
 
-A public directory at `directory.vulos.org` where users can register their Vula ID + display name + optional metadata. Completely optional — you don't need to be listed to use peering.
+A public directory at `directory.vulos.org` where users can register their Vulos ID + display name + optional metadata. Completely optional — you don't need to be listed to use peering.
 
 - Search by display name, domain, or partial ID
 - Users control what's visible (name only, name + domain, etc.)
@@ -566,27 +566,27 @@ A public directory at `directory.vulos.org` where users can register their Vula 
 
 ## Drop
 
-AirDrop-style sharing. Discover nearby Vula users, send them files, photos, links, documents — one tap. The transfer itself is just peering (server-to-server HTTPS, already built). Drop only solves discovery: who's near me and open to receive?
+AirDrop-style sharing. Discover nearby Vulos users, send them files, photos, links, documents — one tap. The transfer itself is just peering (server-to-server HTTPS, already built). Drop only solves discovery: who's near me and open to receive?
 
 ### How AirDrop Does It
 
 Two radios: Bluetooth Low Energy (BLE) broadcasts "I'm here" to devices within ~10m. Once you pick a target, Wi-Fi Direct creates a point-to-point link for the actual transfer. The file never touches a router or the internet.
 
-### How Vula Does It
+### How Vulos Does It
 
-Discovery needs to work in three contexts — Vula servers on a LAN, bare metal devices with Bluetooth, and browsers without either. Different discovery method for each, same transfer for all.
+Discovery needs to work in three contexts — Vulos servers on a LAN, bare metal devices with Bluetooth, and browsers without either. Different discovery method for each, same transfer for all.
 
 #### 1. LAN Discovery (mDNS) — primary path
 
-Any Vula server on the local network advertises itself via mDNS (multicast DNS), the same protocol printers and Chromecasts use to be found without configuration.
+Any Vulos server on the local network advertises itself via mDNS (multicast DNS), the same protocol printers and Chromecasts use to be found without configuration.
 
 ```
-Vula server broadcasts:
+Vulos server broadcasts:
   _vulos-drop._tcp.local  →  alice-vulos.local:8080
   TXT: vulos_id=vulos:ed25519:5Hb7... display_name=Alice img=<hash>
 ```
 
-Every Vula instance on the same network sees this. No internet, no central server, no pairing. Works in offices, homes, coffee shops — anywhere devices share a network.
+Every Vulos instance on the same network sees this. No internet, no central server, no pairing. Works in offices, homes, coffee shops — anywhere devices share a network.
 
 - Go has `github.com/hashicorp/mdns` or `github.com/grandcat/zeroconf` — drop-in mDNS libraries
 - Advertise when Drop is enabled (user toggles "Discoverable" in quick settings)
@@ -595,12 +595,12 @@ Every Vula instance on the same network sees this. No internet, no central serve
 
 #### 2. Bluetooth Low Energy (BLE) — bare metal bonus
 
-For bare metal Vula devices (phones, laptops, desktops with Bluetooth hardware). Discovery only — like AirDrop, BLE finds the target, the actual transfer goes over the network.
+For bare metal Vulos devices (phones, laptops, desktops with Bluetooth hardware). Discovery only — like AirDrop, BLE finds the target, the actual transfer goes over the network.
 
 ```
 BLE advertisement:
-  Service UUID: <vula-drop-uuid>
-  Data: first 8 bytes of Vula ID hash (enough to identify, not enough to track)
+  Service UUID: <vulos-drop-uuid>
+  Data: first 8 bytes of Vulos ID hash (enough to identify, not enough to track)
 ```
 
 - Range ~10m, works even without shared Wi-Fi
@@ -618,7 +618,7 @@ When there's no mDNS (remote browser) and no Bluetooth (not bare metal), users c
 flowchart TD
     A["Alice opens Drop → sees a 6-digit code: 847 291"]
     B["Bob opens Drop → enters 847 291"]
-    C["Bob's browser tells his Vula server:<br/>'connect me to whoever has code 847291'"]
+    C["Bob's browser tells his Vulos server:<br/>'connect me to whoever has code 847291'"]
     D["Matched via a lightweight rendezvous on vulos.org<br/>(or direct if both servers are reachable)"]
     E["Transfer proceeds via normal peering"]
     B --> C --> D
@@ -636,8 +636,8 @@ Users control when they're visible to Drop:
 
 | Setting | Meaning |
 |---------|---------|
-| **Everyone** | Any Vula instance on the network / in BLE range can see you |
-| **Peers only** | Only approved contacts can see you (mDNS/BLE filtered by Vula ID) |
+| **Everyone** | Any Vulos instance on the network / in BLE range can see you |
+| **Peers only** | Only approved contacts can see you (mDNS/BLE filtered by Vulos ID) |
 | **Nobody** | Drop discovery disabled, not advertised |
 
 Default: **Peers only**. Changed in quick settings or Settings > Peering > Drop.
@@ -676,14 +676,14 @@ Anything that can be sent through peering:
 - Files (any type, any size)
 - Photos / videos (thumbnail preview in notification)
 - Links / URLs
-- Documents (opens in the relevant Vula app)
-- Contact cards (Vula ID — quick way to add a peer)
+- Documents (opens in the relevant Vulos app)
+- Contact cards (Vulos ID — quick way to add a peer)
 - Text / clipboard content
 
 ### Server API
 
 ```
-GET  /api/peering/drop/nearby         → list discovered nearby Vula instances (mDNS + BLE)
+GET  /api/peering/drop/nearby         → list discovered nearby Vulos instances (mDNS + BLE)
 POST /api/peering/drop/send           → initiate a drop to a nearby peer
 POST /api/peering/drop/code/generate  → generate a 6-digit proximity code
 POST /api/peering/drop/code/redeem    → redeem a code to connect with a peer
@@ -699,11 +699,11 @@ POST /api/peering/inbound/drop        → receive a drop request (shows notifica
 
 ## Server API
 
-New endpoints on each Vula instance:
+New endpoints on each Vulos instance:
 
 ### Identity
 ```
-GET  /api/peering/identity          → own Vula ID + public key
+GET  /api/peering/identity          → own Vulos ID + public key
 POST /api/peering/identity/export   → export keypair (encrypted)
 POST /api/peering/identity/import   → import keypair
 ```
@@ -754,7 +754,7 @@ All inbound endpoints verify the sender's signature and check the allow list bef
 - **End-to-end encryption** for messages: X25519 key exchange per conversation, messages encrypted with XChaCha20-Poly1305. Servers transport ciphertext — even if a server is compromised, message content is unreadable.
 - **Perfect forward secrecy** for calls: new DTLS-SRTP keys per call (standard WebRTC)
 - **Rate limiting** on inbound endpoints — prevent spam even from approved contacts
-- **No metadata leakage to third parties** — no central server sees who talks to whom. Only the two Vula instances involved know about a conversation.
+- **No metadata leakage to third parties** — no central server sees who talks to whom. Only the two Vulos instances involved know about a conversation.
 
 ---
 
@@ -764,17 +764,17 @@ The cluster system (CLUSTER.md) syncs state across your OWN nodes via S3/MinIO. 
 
 - Your messages sync across your own nodes via S3 (you can read messages from any of your machines)
 - Incoming messages arrive at whichever of your nodes the sender's server can reach
-- Your Vula ID is the same across all your nodes (shared keypair via S3 sync)
+- Your Vulos ID is the same across all your nodes (shared keypair via S3 sync)
 
 ---
 
 ## Implementation Order
 
-1. **Identity** — keypair generation, Vula ID format, storage in `~/.vulos/peering/`
+1. **Identity** — keypair generation, Vulos ID format, storage in `~/.vulos/peering/`
 2. **Email verification** — integrate with vulos.org registration flow, 6-digit code, verification token
 3. **Profile** — display name, avatar upload/resize, bio, visibility controls (public/peers/nobody)
 4. **Contacts & trust** — allow list, contact requests with profile preview, approve/block flow
-5. **Server-to-server messaging** — deliver text messages between two Vula instances
+5. **Server-to-server messaging** — deliver text messages between two Vulos instances
 6. **Inbox UI** — conversation list, message thread view, send interface, contact profiles
 7. **Media transfer** — images, files, thumbnails
 8. **Bandwidth reporting** — server-side speed measurement, `/api/peering/bandwidth` endpoint
@@ -811,7 +811,7 @@ Extensions are opt-in — the base system works without any of them.
 
 ### How It Works
 
-A relay peer is any Vula instance that both parties trust, willing to hold encrypted messages in transit. The relay never sees plaintext — messages are encrypted to the recipient's public key before leaving the sender.
+A relay peer is any Vulos instance that both parties trust, willing to hold encrypted messages in transit. The relay never sees plaintext — messages are encrypted to the recipient's public key before leaving the sender.
 
 ```mermaid
 flowchart LR
@@ -819,7 +819,7 @@ flowchart LR
     A2["Alice (online)"] --> Carol["Carol (relay)"] --> B2["Bob (comes online later)"]
 ```
 
-Carol holds the ciphertext. When Bob's server comes back, Carol delivers. Carol cannot read the message — she sees an opaque blob addressed to Bob's Vula ID.
+Carol holds the ciphertext. When Bob's server comes back, Carol delivers. Carol cannot read the message — she sees an opaque blob addressed to Bob's Vulos ID.
 
 ### Relay Selection
 
@@ -867,8 +867,8 @@ Remote attestation proves the enclave runs the expected code.
 
 **Hardware support:**
 - Intel SGX / TDX (server-grade)
-- ARM TrustZone (mobile, embedded — relevant for bare metal Vula devices)
-- AWS Nitro Enclaves (cloud Vula instances)
+- ARM TrustZone (mobile, embedded — relevant for bare metal Vulos devices)
+- AWS Nitro Enclaves (cloud Vulos instances)
 - AMD SEV-SNP (server-grade)
 
 The relay operator can't tamper even if they want to. The sender verifies the TEE attestation before sending. If attestation fails, the relay is rejected.
@@ -878,11 +878,11 @@ The relay operator can't tamper even if they want to. The sender verifies the TE
 ```
 POST /api/peering/relay/deposit
   Body: { to: <vulos_id>, blob: <encrypted>, ttl: 72h, signature: <sender_sig> }
-  → Relay stores blob, indexed by recipient Vula ID
+  → Relay stores blob, indexed by recipient Vulos ID
 
 GET /api/peering/relay/pickup
   Headers: Authorization: <recipient_signature_of_timestamp>
-  → Returns all pending blobs for this Vula ID, deletes after delivery ACK
+  → Returns all pending blobs for this Vulos ID, deletes after delivery ACK
 
 POST /api/peering/relay/ack
   Body: { blob_ids: [...] }
@@ -916,7 +916,7 @@ POST /api/peering/relay/ack
 
 ### How It Works
 
-Alice runs multiple Vula nodes (home server, cloud VPS, office machine). All share her identity via cluster sync. When Bob sends to Alice, his server tries all of Alice's known endpoints — first response wins.
+Alice runs multiple Vulos nodes (home server, cloud VPS, office machine). All share her identity via cluster sync. When Bob sends to Alice, his server tries all of Alice's known endpoints — first response wins.
 
 ```mermaid
 flowchart LR
@@ -928,7 +928,7 @@ flowchart LR
 
 ### Discovery of Multiple Nodes
 
-Alice's Vula ID resolves to multiple endpoints:
+Alice's Vulos ID resolves to multiple endpoints:
 
 ```json
 GET https://alice.vulos.org/.well-known/vulos-id
@@ -987,7 +987,7 @@ flowchart LR
     Log -. "doesn't see anything" .-> Dave["Dave (not subscribed)"]
 ```
 
-Each entry is signed with Alice's Ed25519 key — verifiable by anyone who knows her Vula ID, no trust relationship required.
+Each entry is signed with Alice's Ed25519 key — verifiable by anyone who knows her Vulos ID, no trust relationship required.
 
 ### Feed Entry Format
 
@@ -1177,7 +1177,7 @@ POST /api/peering/inbound/gossip-push    → receive gossip entries from a peer
 - Forward secrecy: keys rotate on every membership change
 - Post-compromise security: a compromised member's past messages stay protected after they're removed
 
-### How It Fits Vula
+### How It Fits Vulos
 
 MLS replaces the encryption layer for groups, not the delivery layer. Messages still flow via gossip (Section 4) or fan-out (small groups). MLS handles who can read them.
 
@@ -1217,7 +1217,7 @@ Each member knows their path from leaf to root. They can decrypt messages encryp
 
 ### Key Packages
 
-Each Vula instance publishes an MLS key package (a bundle of public keys for joining groups):
+Each Vulos instance publishes an MLS key package (a bundle of public keys for joining groups):
 
 ```json
 {
@@ -1291,7 +1291,7 @@ Verifier sees: "signed by one of {Alice, Bob, Carol, Dave, Eve}"
 Verifier cannot determine: it was Bob.
 ```
 
-### How It Fits Vula
+### How It Fits Vulos
 
 An opt-in mode for group conversations. The group creator or members can enable "anonymous mode" for specific threads or the entire group.
 
@@ -1354,7 +1354,7 @@ No new inbound endpoints needed — ring-signed messages use the same delivery p
 Zero-knowledge proofs let a peer prove a property about themselves without revealing their identity or the underlying data.
 
 ```
-Alice wants to find other Vula users at her company (acme.com).
+Alice wants to find other Vulos users at her company (acme.com).
 
 Without ZK:
   Alice → Directory: "show me users with @acme.com emails"
@@ -1377,7 +1377,7 @@ Built on the existing email verification flow (PEERING.md, Email Verification):
 3. Alice publishes this proof to the discovery service
 4. Bob does the same for bob@acme.com
 5. Both proofs contain H(acme.com) — the service matches them
-6. Alice and Bob are introduced (Vula IDs exchanged)
+6. Alice and Bob are introduced (Vulos IDs exchanged)
 7. The service never saw "acme.com", only the hash
 ```
 
@@ -1399,7 +1399,7 @@ Precision is user-controlled — share a coarse geohash (city-level) or fine (ne
 "I'm a member of this community / organization / team" without revealing which member:
 
 ```
-1. Group admin publishes a Merkle root of member Vula IDs
+1. Group admin publishes a Merkle root of member Vulos IDs
 2. Alice generates a ZK proof of Merkle inclusion
 3. Published to discovery: "I'm in group with root <hash>"
 4. Others in the same group are matched
@@ -1426,7 +1426,7 @@ Runs on vulos.org as a lightweight match-maker:
 
 ```
 POST /api/discovery/publish    → submit a ZK proof + proof type
-GET  /api/discovery/matches    → retrieve matched Vula IDs (peers who proved the same attribute)
+GET  /api/discovery/matches    → retrieve matched Vulos IDs (peers who proved the same attribute)
 ```
 
 The service stores hashed attributes and proofs. It can verify proofs are valid but cannot extract the underlying data. Stateless by design — proofs expire, no long-term storage.
@@ -1486,7 +1486,7 @@ ZK proof that message body does not match regex patterns
 **"All messages were from authorized senders":**
 ```
 ZK proof that all message signatures in a time range
-correspond to Vula IDs in the org's member list
+correspond to Vulos IDs in the org's member list
 → Auditor sees: PASS/FAIL
 → Auditor does not see: individual messages
 ```
@@ -1499,13 +1499,13 @@ and messages within retention period are intact
 → Auditor does not see: message content or metadata
 ```
 
-These proofs are generated by the Vula instance automatically, submitted to the org's compliance system. The compliance system can verify without accessing message content.
+These proofs are generated by the Vulos instance automatically, submitted to the org's compliance system. The compliance system can verify without accessing message content.
 
 ### Legal Hold
 
 When an org issues a legal hold on a user's communications:
 
-1. Org admin sends a hold notice to the user's Vula instance (signed by org key)
+1. Org admin sends a hold notice to the user's Vulos instance (signed by org key)
 2. Instance disables message expiry for the affected conversations
 3. Instance acknowledges the hold (cryptographic receipt)
 4. User is notified: "Your messages in [Channel] are under legal hold"
@@ -1564,4 +1564,4 @@ Ordered by impact and dependency:
 5. **MLS** — group encryption at scale. Depends on groups existing and having enough members to justify it.
 6. **Ring Signatures** — niche but unique. Depends on groups + MLS.
 7. **ZK Discovery** — advanced discovery. Depends on email verification being widespread.
-8. **Compliance** — enterprise feature. Depends on orgs adopting Vula, which depends on everything else working first.
+8. **Compliance** — enterprise feature. Depends on orgs adopting Vulos, which depends on everything else working first.

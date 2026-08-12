@@ -24,7 +24,7 @@
  * substitute the resolved home directory ourselves.
  *
  * @param path  e.g. "~/Documents/report.pdf" or "/tmp/x.txt"
- * @param home  the resolved $HOME, e.g. "/home/vula"
+ * @param home  the resolved $HOME, e.g. "/home/vulos"
  * @returns an absolute path
  */
 export function resolveAbsPath(path: string, home: string | null | undefined): string {

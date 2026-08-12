@@ -104,7 +104,7 @@ refuses further attempts (it returns `409`).
   a box — see [BACKUP-RECOVERY.md](BACKUP-RECOVERY.md).
 - **Same account.** You sign in with the same local account credentials.
 - **Each box keeps its own network identity.** Every box has its own independently
-  generated Ed25519 identity / Vula ID and its own ULID — joining does not clone
+  generated Ed25519 identity / Vulos ID and its own ULID — joining does not clone
   keys between boxes (see [IDENTITY-KEYS.md](IDENTITY-KEYS.md)).
 
 ### Honest note on the current mechanism

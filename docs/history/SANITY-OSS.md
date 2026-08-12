@@ -129,18 +129,18 @@ This is not a security hole (the check still blocks services from starting if ve
 **Fix (medium-term):** Move signature/hash verification into the initramfs (before squashfs mount), so verification gates the mount itself. Short-term, rename to `verifyOSAfterPivot` and update comments to accurately describe the timing.
 
 ### M8 — MEDIUM
-**Widespread "Vula OS" naming; D90 rename not applied to 120+ files**
+**Widespread "Vulos OS" naming; D90 rename not applied to 120+ files**
 
-D90 (`decisions.md`) establishes: product is **Vulos**, not **Vula** / **Vula OS**. The rename was declared but not executed across the codebase.
+D90 (`decisions.md`) establishes: product is **Vulos**, not **Vulos** / **Vulos OS**. The rename was declared but not executed across the codebase.
 
 Files using the old name (representative sample):
-- `README.md:5` — heading `<h1 align="center">Vula OS</h1>`
-- `README.md:35` — section heading "What is Vula OS?"
-- `build.sh:2` — `# Vula OS — System Image Builder & Deployer`
-- `build.sh:163` — banner text `Vula OS — Image Builder`
-- `build.sh:425,832` — systemd unit `Description=Vula OS Server`
-- `build.sh:999` — loader entry `title Vula OS Live`
-- `build.sh:1094` — loader entry `title Vula OS`
+- `README.md:5` — heading `<h1 align="center">Vulos OS</h1>`
+- `README.md:35` — section heading "What is Vulos OS?"
+- `build.sh:2` — `# Vulos OS — System Image Builder & Deployer`
+- `build.sh:163` — banner text `Vulos OS — Image Builder`
+- `build.sh:425,832` — systemd unit `Description=Vulos OS Server`
+- `build.sh:999` — loader entry `title Vulos OS Live`
+- `build.sh:1094` — loader entry `title Vulos OS`
 - `scripts/initramfs/vulos-live:2,16,38,71` — all comments
 - `index.html` — page title
 - `Dockerfile` — comments
@@ -152,7 +152,7 @@ Files using the old name (representative sample):
 
 Total: ~120 files. This affects branding externally visible to users and contributors.
 
-**Fix:** Run a global `sed -i 's/Vula OS/Vulos/g; s/"Vula"/"Vulos"/g'` pass (with careful review to avoid breaking isiZulu etymology lines that are intentional, which have already been removed in most places).
+**Fix:** Run a global `sed -i 's/Vulos OS/Vulos/g; s/"Vulos"/"Vulos"/g'` pass (with careful review to avoid breaking isiZulu etymology lines that are intentional, which have already been removed in most places).
 
 ### M9 — LOW
 **README says "no relay required" for peering; relay IS required for NAT traversal**
@@ -167,7 +167,7 @@ The README statement is an oversimplification that may mislead operators who dep
 ### M10 — LOW
 **README references `landing/docs/desktop.png` which does not exist**
 
-`README.md:30`: `<img src="landing/docs/desktop.png" width="720" alt="Vula OS Desktop" />`
+`README.md:30`: `<img src="landing/docs/desktop.png" width="720" alt="Vulos OS Desktop" />`
 The `landing/` directory does not exist in the repository. The screenshot renders as a broken image on GitHub.
 
 **File:line:** `README.md:30`
@@ -216,7 +216,7 @@ The header says these tasks were "reopened as todo" but individual task entries 
 
 ### Medium-term (code quality and naming)
 
-7. **Global rename "Vula OS" → "Vulos"** (M8): ~120 files. Priority targets: `README.md`, `build.sh` (especially systemd unit `Description=` and bootloader `title` entries which are user-visible), `scripts/initramfs/vulos-live`. App json/server.py files and roadmap docs are lower priority (internal only).
+7. **Global rename "Vulos OS" → "Vulos"** (M8): ~120 files. Priority targets: `README.md`, `build.sh` (especially systemd unit `Description=` and bootloader `title` entries which are user-visible), `scripts/initramfs/vulos-live`. App json/server.py files and roadmap docs are lower priority (internal only).
 
 8. **Migrate `services/store` to modernc** (M11): `backend/services/store/store.go` → replace `mattn/go-sqlite3` with `modernc.org/sqlite` before this package is wired into any binary.
 

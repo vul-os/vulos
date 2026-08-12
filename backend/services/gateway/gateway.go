@@ -489,7 +489,7 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		scheme := requestScheme(r)
 		_, reqPort := appnet.SplitHostPort(r.Host)
 
-		// Try subdomain: {appId}.lvh.me or {appId}.vula.example.com
+		// Try subdomain: {appId}.lvh.me or {appId}.vulos.example.com
 		// With NET-02, subdomain may carry a profile prefix:
 		//   {profile}--{appId}.{baseDomain}  →  profile=profile, appID=appId
 		//   {appId}.{baseDomain}             →  profile=default, appID=appId
