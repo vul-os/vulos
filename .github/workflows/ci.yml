@@ -99,6 +99,13 @@ jobs:
       # this file since the previous failure — the only commits between were a
       # docs-citation test and a design note. Same code, different outcome.
       #
+      # Confirmed within the hour: the very next run — the first triggered
+      # automatically by a push, on the commit that added feature/** below —
+      # failed again with the identical signature. All 118 packages reported ok,
+      # then exit 137, with `go` and `link` as the only orphans. Two runs of the
+      # same code minutes apart, one green and one red, so this is not a
+      # regression anyone introduced and not something a bisect will find.
+      #
       # Real defects were fixed while chasing it and are worth keeping: thirteen
       # process-group kills that could signal a recycled pid (internal/procgroup),
       # and two tests that leaked an Xvfb into every package that ran after them
