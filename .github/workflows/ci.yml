@@ -515,6 +515,37 @@ jobs:
       # 120s -timeout is coincidence, OR Go did print the dump and it died with
       # the pipe. Those are different problems and the log file tells them
       # apart.
+      # Ask the RUNNER what it thinks happened. The agent writes a Worker log
+      # per job under _diag, and it records step lifecycle — including a
+      # teardown or a cancellation, with timestamps. If the runner killed this
+      # step, that file says so and names why; if the file shows the step
+      # running normally right up to the kill, the runner did NOT do it and the
+      # sender is something else on the machine.
+      #
+      # This is the cheapest way to split those two cases, and they point in
+      # completely different directions: one is a workflow/runner
+      # configuration problem, the other is a process on the VM.
+      - name: Runner diagnostic log around the kill
+        if: always()
+        run: |
+          d=$(find "$RUNNER_TEMP/.." -maxdepth 3 -type d -name _diag 2>/dev/null | head -1)
+          if [ -z "$d" ]; then
+            echo "UNKNOWN: no _diag directory found under $RUNNER_TEMP/.."
+            exit 0
+          fi
+          f=$(ls -t "$d"/Worker_*.log 2>/dev/null | head -1)
+          if [ -z "$f" ]; then
+            echo "UNKNOWN: _diag exists at $d but holds no Worker_*.log"
+            ls -la "$d" | head -20
+            exit 0
+          fi
+          echo "=== $f ($(wc -l < "$f") lines) ==="
+          echo "--- lines mentioning kill / cancel / timeout / teardown ---"
+          hits=$(grep -inE 'kill|cancel|timeout|terminat|teardown|SIGKILL|exit code' "$f" | tail -40)
+          if [ -n "$hits" ]; then printf '%s\n' "$hits"; else echo "NONE matched"; fi
+          echo "--- final 40 lines ---"
+          tail -40 "$f"
+
       - name: Last words from go test (survives a killed step)
         if: always()
         run: |
