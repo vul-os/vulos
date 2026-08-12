@@ -1,5 +1,6 @@
-import type { MouseEventHandler, ReactNode, SVGProps } from 'react'
+import { useMemo, type MouseEventHandler, type ReactNode, type SVGProps } from 'react'
 import { useShell } from '../providers/ShellProvider'
+import { isMultiScreen, readScreenIdentity } from '../providers/screenIdentity'
 import LifePulse from '../core/SystemPulse'
 import TrustBadge from './TrustBadge'
 import ThemeToggle from '../core/ThemeToggle'
@@ -37,6 +38,44 @@ function DesktopIndicator({ narrow }: { narrow: boolean }) {
         {'×'}
       </button>
     </div>
+  )
+}
+
+// ── Screen indicator ─────────────────────────────────────────────────────────
+// A machine with two monitors runs one kiosk browser per connected output (see
+// roadmap/SCREENS.md and providers/screenIdentity.ts). Those instances are
+// otherwise indistinguishable on screen — same shell, same origin, same
+// desktop — so "which monitor am I looking at, and is this the one that will
+// answer my keyboard?" has no visible answer at all.
+//
+// This is that answer, and it is the same affordance every other desktop OS
+// grew for the same reason ("Identify displays"): the output's own name, next
+// to the space indicator, in the chrome that is already there.
+//
+// Renders NOTHING on a single screen — which is every hand-opened tab, every
+// phone on the LAN, and a one-monitor box. A chip saying "Screen 1 of 1" is
+// noise, and the single-display path must look exactly as it did before
+// multi-screen existed.
+function ScreenIndicator({ narrow }: { narrow: boolean }) {
+  // Read once per mount: the identity is fixed for the life of the document —
+  // the launcher assigns it in the URL and a browser cannot migrate between
+  // outputs without being relaunched.
+  const id = useMemo(() => readScreenIdentity(), [])
+  if (!isMultiScreen(id) || !id) return null
+
+  return (
+    <span
+      className="text-[12px] font-medium leading-none px-2 py-1 rounded-md ml-1"
+      style={{
+        color: 'var(--text-tertiary)',
+        background: 'color-mix(in srgb, var(--bg-hover) 55%, transparent)',
+      }}
+      // The full form always reaches assistive tech and hover, even when the bar
+      // is too narrow to show it.
+      title={`Screen ${id.index} of ${id.total} — ${id.name}`}
+    >
+      {narrow ? `S${id.index}` : `Screen ${id.index} · ${id.name}`}
+    </span>
   )
 }
 
@@ -94,6 +133,7 @@ export default function TopBar() {
       <div className="flex items-center gap-0.5 min-w-0">
         <LifePulse />
         <DesktopIndicator narrow={narrow} />
+        <ScreenIndicator narrow={narrow} />
         <span className="vshell-div mx-1.5 hidden sm:block" />
         {/* Launchpad — application grid */}
         <BarButton onClick={toggleLaunchpad} title="Applications" label="Applications">
