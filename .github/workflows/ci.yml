@@ -303,30 +303,218 @@ jobs:
           # OOM kill would land on this job's processes without showing up in
           # ITS oom_kill counter.
           #
-          # A background sampler was tried once before and became a failure of
-          # its own — it wrote to the STEP's own stdout, so its file
-          # descriptor kept that pipe's write end open after go test returned,
-          # and a step whose output never closes is itself killed. This one
-          # writes ONLY to a file the step never reads from, so it cannot hold
-          # the step open the same way; a later `if: always()` step reads the
-          # file back, which also survives a SIGKILL of this step since the
-          # file itself isn't touched by that signal.
-          mkdir -p /tmp/ci-diag
-          : > /tmp/ci-diag/sampler.log
-          (
-            while true; do
-              {
-                echo "== $(date -u +%H:%M:%S.%N) =="
-                cat /sys/fs/cgroup/pids.current 2>/dev/null | sed 's/^/pids.current=/'
-                cat /sys/fs/cgroup/pids.max 2>/dev/null | sed 's/^/pids.max=/'
-                free -m | sed -n '2p' | awk '{print "mem_used_mb="$3" mem_free_mb="$4" mem_avail_mb="$7}'
-                echo "nproc_procs=$(ps -e --no-headers | wc -l)"
-              } >> /tmp/ci-diag/sampler.log 2>&1
-              sleep 1
-            done
-          ) < /dev/null > /dev/null 2>&1 &
-          SAMPLER_PID=$!
-          disown "$SAMPLER_PID" || true
+          # ── CAUSE FOUND 2026-08-12: `pkill -9 sh` from services/stream.
+          #
+          # backend/services/stream/pool.go, in the "monitor app exit" goroutine
+          # Launch installs at step 6:
+          #
+          #     if elapsed < 3*time.Second {
+          #         binName := filepath.Base(opts.Command)
+          #         exec.Command("pkill", "-9", binName).Run()
+          #
+          # pkill's PATTERN IS AN UNANCHORED EXTENDED REGEX MATCHED AGAINST THE
+          # PROCESS NAME. It is not an exact name match. MEASURED in a clean
+          # ubuntu:24.04 container:
+          #
+          #     $ pgrep -l sh
+          #     1 bash
+          #
+          # So `pkill -9 sh` sends SIGKILL to every process whose comm CONTAINS
+          # "sh" — which on this runner is the step's own bash shell.
+          #
+          # The caller that supplies that basename is a SECURITY test. In
+          # services/stream/gaming_wire_test.go, TestRegisterGamingHandlers_
+          # StartIsAdminGated posts
+          #
+          #     {"command":"/bin/sh","args":["-c","id > /tmp/pwned"]}
+          #
+          # and its "admin caller passes the gate" subtest asserts only that the
+          # response is not 403 — it deliberately lets the launch proceed. That
+          # test's own comment already records the half of this that was known:
+          # the launch "fails in this test environment for unrelated reasons,
+          # e.g. no Xvfb binary" is true on a laptop and FALSE on a GitHub
+          # runner, which ships Xvfb. So on CI, and only on CI:
+          #
+          #   1. Xvfb starts.
+          #   2. `/bin/sh -c "id > /tmp/pwned"` starts and exits immediately.
+          #   3. Launch's step 5 sleeps 2s ("wait for app to paint"), then step 6
+          #      installs the monitor goroutine; sess.app.Wait() returns at once.
+          #   4. elapsed is ~2s, under the 3s "stale process" threshold, so
+          #      binName = filepath.Base("/bin/sh") = "sh" and it runs
+          #      `pkill -9 sh`.
+          #   5. bash — this step's shell — matches and is SIGKILLed.
+          #
+          # Every recorded fact falls out of that, including the ones that made
+          # this look impossible:
+          #
+          #   * The SHELL dies and its children live. `go`, `tee` and the test
+          #     binary have no "sh" in their names, so pkill does not match them.
+          #     Nothing else produces a one-process SIGKILL that skips the
+          #     children — which is why "not a process-group kill" was correct
+          #     and led nowhere.
+          #   * No SIGTERM/SIGINT/SIGHUP first: -9.
+          #   * The runner did not do it and was not cancelling: correct, it was
+          #     a process inside the job.
+          #   * No kernel OOM records, 85 GB disk free: correct, and irrelevant.
+          #   * Go's -timeout never fires: correct, go was healthy throughout.
+          #   * Not reproducible locally in docker: no Xvfb there, so Launch
+          #     fails at step 1, step 6 is never reached and the pkill never runs.
+          #
+          # ── AND THE "POSITIONAL" READING WAS AN ARTEFACT OF READ LAG.
+          #
+          # Every conclusion about WHICH package the kill lands on was measuring
+          # the wrong thing. When bash dies, `go` and `tee` are orphaned but keep
+          # running, and tee keeps appending to /tmp/gotest-services.log. The
+          # if:always() step then reads that file several seconds later — so the
+          # last package in it is where go had got to BY READ TIME, not where the
+          # kill happened.
+          #
+          # `go list ./services/...` places services/stream at 71 of 85 forward
+          # and at 15 of 85 reversed. The reported kill points were 77 (upload)
+          # forward and 21 (sandbox) reversed. SIX PACKAGES AFTER STREAM, BOTH
+          # TIMES — the read lag, twice, not a property of upload or sandbox.
+          #
+          # That also explains the two elapsed times that killed the fixed-clock
+          # theory: 32.2s reversed is how long it takes to reach stream at
+          # position 15 through the heavy w-packages; 166.9s forward is how long
+          # it takes to reach stream at position 71 through 70 cheap ones. Same
+          # event, same trigger, different distance to it. And it explains the
+          # 40ms reproducibility: the work before stream is deterministic.
+          #
+          # RETRACTED, so nobody builds on them again: "the kill is positional",
+          # "services/sandbox is the package in flight", "the nine tail packages
+          # never report", and "something cumulative that expensive packages
+          # consume faster". All four are artefacts of reading a log that three
+          # orphaned processes were still writing to.
+          #
+          # ── THE FIX IS IN backend/, NOT HERE.
+          #
+          # This file cannot fix it. The defect is `exec.Command("pkill", "-9",
+          # binName)` treating a regex as a name, in a code path that a test
+          # reaches with the basename of /bin/sh. Two independent changes are
+          # needed, and neither is a CI concern:
+          #
+          #   1. pool.go must not kill by name at all. It has the pid it started
+          #      and starts it with Setpgid — internal/procgroup.Signal already
+          #      exists for exactly this. If a name-based sweep is genuinely
+          #      wanted it must at minimum be anchored (`pkill -9 -x`), which
+          #      still kills unrelated /bin/sh processes and is a bad trade.
+          #   2. gaming_wire_test.go's admin subtest must not let a real
+          #      /bin/sh launch proceed. It asserts an authorization decision;
+          #      it does not need the process. Its existing pool.StopAll cleanup
+          #      does not help, because the damage is done by the monitor
+          #      goroutine before anything is stopped.
+          #
+          # The instrumentation below stays until a backend fix lands and this
+          # step is green repeatedly, because one green run proves nothing about
+          # an intermittent-looking failure.
+          #
+          # WHAT THE INSTRUMENTS ARE, and what each would show if the diagnosis
+          # is WRONG:
+          #
+          #   * A PATH shim in front of pkill/killall/skill that logs argv and
+          #     its caller and then execs the real tool. If nothing appears in
+          #     killcalls.log, no external kill ran and the diagnosis is dead.
+          #   * /tmp/pwned. The gaming test's payload is `id > /tmp/pwned`, so
+          #     the file exists if and only if /bin/sh really executed here.
+          #   * A per-package sample that records whether THIS SHELL is still
+          #     alive, by pid, at every package boundary. It runs in the
+          #     foreground pipeline, not in the background — the previous
+          #     background sampler held the step's stdout open and became a
+          #     failure of its own, which is recorded above. This one is a
+          #     pipeline stage that dies when go test does. The first sample
+          #     showing shell=GONE names the package the kill actually landed
+          #     in, which is the measurement the read-lag artefact denied us.
+          mkdir -p /tmp/ci-diag/bin
+          : > /tmp/ci-diag/killcalls.log
+          : > /tmp/ci-diag/samples.log
+          : > /tmp/ci-diag/ps.log
+          rm -f /tmp/pwned
+          SHELL_PID=$$
+          export SHELL_PID
+
+          cat > /tmp/ci-diag/bin/_killshim <<'SHIM'
+          #!/bin/sh
+          n=$(basename "$0")
+          echo "$(date -u +%H:%M:%S.%N) CALL $n [$*] ppid=$PPID caller=$(ps -o args= -p $PPID 2>/dev/null | tr -d '\n')" >> /tmp/ci-diag/killcalls.log 2>/dev/null
+          exec "/usr/bin/$n" "$@"
+          SHIM
+          chmod +x /tmp/ci-diag/bin/_killshim
+          for t in pkill killall skill; do
+            if [ -x "/usr/bin/$t" ]; then
+              ln -sf /tmp/ci-diag/bin/_killshim "/tmp/ci-diag/bin/$t"
+              echo "kill-shim installed: $t -> /usr/bin/$t"
+            else
+              echo "kill-shim NOT installed for $t: /usr/bin/$t is absent"
+            fi
+          done
+          export PATH=/tmp/ci-diag/bin:$PATH
+
+          # THE SAMPLER MUST SURVIVE THE KILL IT IS MEASURING.
+          #
+          # The obvious construction — a `while IFS= read -r line` stage at the
+          # end of the pipeline — does not. That stage is a bash SUBSHELL, so
+          # its comm is "bash" and `pkill -9 sh` matches it exactly as it
+          # matches the step's shell. MEASURED in an ubuntu:24.04 container
+          # driving a fake go test that ends in `pkill -9 sh`: the step shell
+          # died with 137 as intended, and the sampler died with it, so the last
+          # sample predated the kill and nothing recorded the death at all. An
+          # instrument that shares its subject's failure mode reports the
+          # aftermath of nothing.
+          #
+          # Running the stage under a RENAMED COPY of bash fixes it: comm
+          # becomes "samplerd", which "sh" does not match, so it keeps sampling
+          # across the kill and records shell=GONE. Its command substitutions
+          # fork from samplerd and inherit that name too, and awk/ps/cat/tr
+          # contain no "sh" either.
+          #
+          # That also makes the read-lag artefact visible in one run rather than
+          # argued about: samples.log will show the shell dying at services/
+          # stream while gotest-services.log, still being written by an orphaned
+          # tee, runs on for another six packages.
+          cp /bin/bash /tmp/ci-diag/bin/samplerd
+
+          # In a file, not a shell function, because the sampler stage execs a
+          # different binary and functions do not survive exec.
+          cat > /tmp/ci-diag/sample.sh <<'SAMPLE'
+          sample() {
+            {
+              printf '%s tag=%s ' "$(date -u +%H:%M:%S.%N)" "$1"
+              if [ -e "/proc/$SHELL_PID/stat" ]; then
+                printf 'shell=%s ' "$(awk '{print $3}' "/proc/$SHELL_PID/stat" 2>/dev/null)"
+              else
+                printf 'shell=GONE '
+              fi
+              awk '/^MemTotal:|^MemFree:|^MemAvailable:|^Cached:|^Dirty:|^Committed_AS:|^SwapFree:/{printf "%s%s ",$1,$2}' /proc/meminfo
+              printf 'file_nr=%s ' "$(tr '\t' ',' < /proc/sys/fs/file-nr 2>/dev/null || echo NA)"
+              printf 'pids_cur=%s pids_max=%s ' "$(cat /sys/fs/cgroup/pids.current 2>/dev/null || echo NA)" "$(cat /sys/fs/cgroup/pids.max 2>/dev/null || echo NA)"
+              printf 'mem_cur=%s mem_peak=%s ' "$(cat /sys/fs/cgroup/memory.current 2>/dev/null || echo NA)" "$(cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo NA)"
+              printf 'psi_some=%s ' "$(awk '/^some/{print $2$3}' /proc/pressure/memory 2>/dev/null || echo NA)"
+              printf 'procs=%s threads=%s ' "$(ps -e --no-headers 2>/dev/null | wc -l)" "$(ps -eL --no-headers 2>/dev/null | wc -l)"
+              if [ -e /tmp/pwned ]; then printf 'pwned=YES'; else printf 'pwned=no'; fi
+              echo
+            } >> /tmp/ci-diag/samples.log 2>&1
+            {
+              echo "== $1 =="
+              ps -eo pid,ppid,pgid,sid,stat,etimes,rss,comm --no-headers 2>/dev/null | awk '$2!=2 && $1!=2'
+            } >> /tmp/ci-diag/ps.log 2>&1
+          }
+          SAMPLE
+
+          # The pipeline stage: reprint every line so the step log is unchanged,
+          # and sample on package-result lines ("ok ", "FAIL", "? " for
+          # no-test-files packages).
+          cat > /tmp/ci-diag/loop.sh <<'LOOP'
+          . /tmp/ci-diag/sample.sh
+          while IFS= read -r line; do
+            printf '%s\n' "$line"
+            case "$line" in
+              ok*|FAIL*|'?'*) sample "$line" ;;
+            esac
+          done
+          LOOP
+
+          . /tmp/ci-diag/sample.sh
 
           # Trap what CAN be trapped. SIGKILL cannot be caught, but if whatever
           # ends this step sends SIGTERM/SIGINT/SIGHUP first — as an orderly
@@ -336,33 +524,104 @@ jobs:
           trap 'echo "::warning::SIGTERM received by the test step at $(date -u +%T)"' TERM
           trap 'echo "::warning::SIGINT received by the test step at $(date -u +%T)"' INT
           trap 'echo "::warning::SIGHUP received by the test step at $(date -u +%T)"' HUP
-          echo "test step pid $$ starting at $(date -u +%T)"
-          go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 | tee /tmp/gotest-services.log
-          rc1=$?
+          echo "test step pid $SHELL_PID starting at $(date -u +%T.%N)"
+          # Is this shell a process-group leader, and which session is it in?
+          # Recorded because a kill aimed at a pgid hits the LEADER only, and
+          # that was the runner-up hypothesis to the pkill one.
+          ps -o pid,ppid,pgid,sid,comm -p "$SHELL_PID" || true
+          sample START
+
+          # The sampler is a FOREGROUND pipeline stage, not a background loop:
+          # it exits when go test does, so it cannot hold the step's stdout open
+          # the way the old background sampler did — that failure is recorded
+          # above and is not being repeated.
+          go test -p 1 -timeout 120s $(go list ./services/... | tac) 2>&1 \
+            | tee /tmp/gotest-services.log \
+            | /tmp/ci-diag/bin/samplerd /tmp/ci-diag/loop.sh
+          # PIPESTATUS[0], not $?: $? is now the sampler's status, which is
+          # always 0 and would report a failing go test as a pass.
+          rc1=${PIPESTATUS[0]}
+          sample AFTER_SERVICES
           # Everything EXCEPT services, computed rather than enumerated: an
           # enumerated list silently drops a package added at the repo root, and
           # this run is only meaningful if it covers what ./... covered.
-          go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services') 2>&1 | tee /tmp/gotest-rest.log
-          rc2=$?
+          go test -p 1 -timeout 120s $(go list ./... | grep -v '^vulos/backend/services') 2>&1 \
+            | tee /tmp/gotest-rest.log \
+            | /tmp/ci-diag/bin/samplerd /tmp/ci-diag/loop.sh
+          rc2=${PIPESTATUS[0]}
+          sample AFTER_REST
 
-          kill "$SAMPLER_PID" 2>/dev/null || true
           set -e
           echo "::notice::go test exited services=${rc1} rest=${rc2}"
           [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ]
         timeout-minutes: 25
 
-      # ALWAYS, because the run that matters is the one that got SIGKILLed —
-      # the sampler.log file survives that signal even though the step didn't,
-      # since it was written to disk by a background process, not to the
-      # step's own stdout. Tail rather than the whole file: the file grows at
-      # 1 sample/sec and only the seconds right before death are informative.
-      - name: Diagnostics after tests (pids/mem sampler tail, ulimits)
+      # ALWAYS, because the run that matters is the one that got SIGKILLed. The
+      # files below survive that signal: they are written by processes the
+      # signal did not reach (the pipeline sampler) or by the shimmed tool
+      # itself, and nothing here reads the step's stdout.
+      #
+      # Every section distinguishes "found nothing" from "could not look". An
+      # empty section that could mean either answer is the defect this
+      # repository keeps finding in its own guards, and it is not acceptable in
+      # the instrument being used to attribute a SIGKILL.
+      - name: Diagnostics after tests (kill-shim log, per-package samples)
         if: always()
         run: |
+          echo "==== external pkill / killall / skill invocations ===="
+          if [ ! -f /tmp/ci-diag/killcalls.log ]; then
+            echo "UNKNOWN: /tmp/ci-diag/killcalls.log does not exist — the Test step"
+            echo "  died or failed before it installed the PATH shim, so nothing was watched."
+          elif [ ! -s /tmp/ci-diag/killcalls.log ]; then
+            echo "NONE: the shim log exists and is EMPTY. No pkill/killall/skill was"
+            echo "  executed via PATH for the whole run, which REFUTES the pkill diagnosis."
+          else
+            echo "$(wc -l < /tmp/ci-diag/killcalls.log) invocation(s) — argv and calling process:"
+            cat /tmp/ci-diag/killcalls.log
+          fi
+
+          echo
+          echo "==== /tmp/pwned — did the gaming test's /bin/sh really execute here? ===="
+          if [ -e /tmp/pwned ]; then
+            echo "PRESENT: /bin/sh ran on this runner and wrote it. Contents:"
+            cat /tmp/pwned
+          else
+            echo "ABSENT: the launch did not get as far as running /bin/sh."
+          fi
+
+          echo
+          echo "==== per-package samples ===="
+          if [ ! -f /tmp/ci-diag/samples.log ]; then
+            echo "UNKNOWN: samples.log does not exist — the sampler never ran."
+          elif [ ! -s /tmp/ci-diag/samples.log ]; then
+            echo "UNKNOWN: samples.log exists but is empty — no package boundary was reached."
+          else
+            echo "$(wc -l < /tmp/ci-diag/samples.log) samples."
+            dead=$(grep -n -m1 -E 'shell=(GONE|Z)' /tmp/ci-diag/samples.log || true)
+            if [ -n "$dead" ]; then
+              echo ">>> FIRST SAMPLE WITH THIS STEP'S SHELL DEAD (this names the package"
+              echo ">>> the kill ACTUALLY landed in, as opposed to the last package in the"
+              echo ">>> tee'd log, which is only where orphaned go/tee got to by read time):"
+              echo "$dead"
+            else
+              echo ">>> the shell was alive at every sample: either it outlived go test"
+              echo ">>> (a passing run) or it died between two package boundaries."
+            fi
+            echo "---- all samples ----"
+            cat /tmp/ci-diag/samples.log
+          fi
+
+          echo
+          echo "==== process census, last 150 lines ===="
+          if [ -s /tmp/ci-diag/ps.log ]; then
+            tail -n 150 /tmp/ci-diag/ps.log
+          else
+            echo "UNKNOWN/NONE: no ps census was written"
+          fi
+
+          echo
           echo "---- ulimits ----"
           ulimit -a || true
-          echo "---- last 40 sampler lines (1/sec) before step end ----"
-          tail -n 200 /tmp/ci-diag/sampler.log 2>/dev/null || echo "no sampler log"
 
       # Disk at the moment the Test step ends, pass or fail.
       #
@@ -759,6 +1018,30 @@ jobs:
               printf '%s\n' "$hits"
             else
               echo "NONE: dmesg readable, no OOM records ($(printf '%s\n' "$raw" | wc -l) lines scanned)"
+            fi
+          fi
+
+      # The one killer this job had never asked about. dmesg covers the KERNEL
+      # OOM killer; it does not cover userspace killers that log to the journal
+      # — systemd-oomd being the obvious one, which kills on PSI pressure and
+      # writes "Killed /user.slice/... due to memory pressure" to the journal
+      # and nothing at all to dmesg.
+      #
+      # Kept even though the pkill diagnosis explains the failure: if a run ever
+      # dies WITHOUT a pkill in the shim log, this is where the next answer
+      # would be, and adding it after the fact would mean another day of runs.
+      - name: systemd journal after tests (userspace killers)
+        if: always()
+        run: |
+          if ! raw=$(sudo journalctl --since "-20 min" --no-pager 2>/dev/null); then
+            echo "UNKNOWN: journalctl could not be read on this runner"
+          else
+            n=$(printf '%s\n' "$raw" | wc -l)
+            hits=$(printf '%s\n' "$raw" | grep -iE 'oomd|out of memory|sigkill|memory pressure|killed process' | tail -30)
+            if [ -n "$hits" ]; then
+              printf 'MATCHES (%s journal lines scanned):\n%s\n' "$n" "$hits"
+            else
+              echo "NONE: journal readable, $n lines scanned, no oom/kill records"
             fi
           fi
 
