@@ -80,7 +80,7 @@ Each phase is independently landable and independently revertible. TYPE-01 gates
 |---|---|---|---|
 | **TYPE-01** | Baseline config: `tsconfig.json` with `allowJs: true`, `checkJs: false`, `strict: true`, `noEmit: true`, `jsx: "react-jsx"`. `npm run typecheck`. CI job. | `tsconfig.json`, `package.json`, `.github/workflows/` | **Landed**, probe-verified. |
 | **TYPE-02** | Migrate the SDK to real TypeScript, file-by-file: `masterKey.js` → `contentSeal.js` → `offlineAuth.js` → `stepup.js` → `offlineQueue.js` become `.ts`. Runtime validation added at every boundary the module receives untrusted input (parse, don't cast). | `src/lib/*.ts` | In progress. |
-| **TYPE-03** | Type the API boundary: emit `src/lib/api.types.d.ts` describing every response shape, consumed by `api.js`/its TS successor and `src/lib/net/endpoints.ts`. Runtime-validated on receipt, not just typed. | new `.d.ts`, `src/lib/api.ts` | Design (source-of-truth choice below). |
+| **TYPE-03** | Type the API boundary: emit `src/lib/api.types.d.ts` describing every response shape, consumed by `api.js`/its TS successor and `src/lib/net/endpoints.ts`. Runtime-validated on receipt, not just typed. | new `.d.ts`, `src/lib/api.ts` | Planned — design (source-of-truth choice below); `src/lib/api.types.d.ts` does not exist yet. |
 | **TYPE-04** | Extend to shell core — `src/providers/`, `src/core/AppRegistry.ts`, `src/lib/net/`. Explicitly **not** the large leaf components. | `src/core/`, `src/providers/` | Not started. |
 | **TYPE-05** | Enforcement: flip the CI job to blocking for migrated files; ESLint rule so a `.ts` file can't silently regress or lose coverage. | `eslint.config.js`, CI | Not started. |
 

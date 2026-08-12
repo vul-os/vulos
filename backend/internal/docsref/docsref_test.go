@@ -60,19 +60,9 @@ var skipDocs = map[string]bool{
 	"CHANGELOG.md":         true,
 	"SW-CACHE-VERSIONS.md": true,
 
-	// These two name PLANNED files in a roadmap TABLE rather than a checklist,
-	// so the "- [ ]" rule below cannot see them: NODE-CAPABILITY.md's additive
-	// store_only migration and TYPE-SAFETY.md's TYPE-03 deliverable
-	// (src/lib/api.types.d.ts). Skipped by name, with the reason, rather than
-	// added to absentByDesign — that list is tied to REPRODUCIBLE-BUILDS.md by
-	// an inverse invariant that exists to stop it becoming a dumping ground,
-	// and it correctly refused these when I tried.
-	//
-	// The cost is stated plainly: every OTHER citation in these two files is
-	// unchecked too. Narrowing that needs a per-line marker for planned work,
-	// which is worth doing when a third file needs it.
-	"NODE-CAPABILITY.md": true,
-	"TYPE-SAFETY.md":     true,
+	// (NODE-CAPABILITY.md and TYPE-SAFETY.md used to be skipped here. They are
+	// scanned now: their planned entries carry the reader-visible marker
+	// isPlannedWork() recognises, so every OTHER citation in them is checked.)
 }
 
 func resolves(t *testing.T, cited string) bool {
@@ -102,7 +92,15 @@ func resolves(t *testing.T, cited string) bool {
 // next. A checked item ("- [x]") is a claim and stays checked.
 func isPlannedWork(line string) bool {
 	t := strings.TrimSpace(line)
-	return strings.HasPrefix(t, "- [ ]") || strings.HasPrefix(t, "* [ ]")
+	if strings.HasPrefix(t, "- [ ]") || strings.HasPrefix(t, "* [ ]") {
+		return true
+	}
+	// A TABLE row cannot carry a checkbox, and roadmap documents describe
+	// planned deliverables in tables constantly. The marker is deliberately
+	// prose a READER sees — "…does not exist yet" — rather than an HTML comment
+	// or a magic token: someone reading the rendered page should be able to tell
+	// a plan from a description without knowing this test exists.
+	return strings.Contains(strings.ToLower(t), "does not exist yet")
 }
 
 func describesRemoval(line string) bool {

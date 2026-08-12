@@ -39,7 +39,7 @@ All in `backend/internal/multiinstance` unless noted. Field name `store_only` th
 
 | Change | File |
 |---|---|
-| `store_only INTEGER NOT NULL DEFAULT 0` (additive migration) | `migrations/0002_store_only.sql` |
+| `store_only INTEGER NOT NULL DEFAULT 0` (additive migration) | `backend/internal/multiinstance/migrations/0002_store_only.sql` |
 | `Instance.StoreOnly` + Upsert / Get / List / `scanInstance` carry it | `registry.go` |
 | `SetStoreOnly(ulid, bool)` — targeted UPDATE, returns row, `ErrNotFound` on unknown | `registry.go` |
 | `storeOnlyEnv()` — reads `VULOS_STORE_ONLY` (explicit opt-in only) | `registry.go` |
