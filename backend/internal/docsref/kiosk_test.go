@@ -226,3 +226,48 @@ func TestKioskEnvMatchesInit(t *testing.T) {
 			"screen while every test stayed green", missing)
 	}
 }
+
+// The image must ship a pre-built font cache.
+//
+// The OS root is a read-only dm-verity squashfs, so fontconfig cannot write its
+// cache at runtime — every kiosk start logged "Fontconfig error: No writable
+// cache directories" and then re-scanned every font on the system to lay out
+// the first frame, on every boot for the life of the machine. fc-cache during
+// the build is the only moment the rootfs is writable.
+
+// withoutShellComments drops whole-line shell comments, so an assertion about a
+// command cannot be satisfied by the comment that explains it.
+func withoutShellComments(src string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func TestImageShipsAFontCache(t *testing.T) {
+	src := readRepoFile(t, "build.sh")
+	// COMMENTS STRIPPED FIRST. The prose above the fc-cache call explains why it
+	// is there and contains the word — so replacing the actual command with a
+	// no-op left this check green. Found by running that mutation, and the third
+	// hollow assertion of this exact shape in this file: a check about code
+	// satisfied by writing about the code.
+	// The INVOCATION, not the word. Stripping comments was not enough: the
+	// fallback branch echoes "fc-cache failed …", and that message alone kept
+	// this green when the command was replaced by a no-op. An assertion about a
+	// command has to name the command being run.
+	if !strings.Contains(withoutShellComments(src), `chroot "$ROOTFS" fc-cache`) {
+		t.Error("build.sh no longer runs fc-cache. On a read-only root the kiosk cannot " +
+			"build a font cache at runtime, so it rebuilds one it cannot save on every " +
+			"single boot")
+	}
+	kiosk := scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+	if !strings.Contains(kiosk, "XDG_CACHE_HOME=") {
+		t.Error("vulos-kiosk does not point XDG_CACHE_HOME at a writable path; anything " +
+			"fontconfig still tries to cache has nowhere to go on a read-only root")
+	}
+}

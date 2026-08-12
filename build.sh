@@ -703,6 +703,19 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     initramfs-tools "linux-image-${GOARCH}" systemd-boot-efi \
     cryptsetup-bin
 
+# ── Font cache, built into the image ─────────────────────────────────────────
+#
+# The OS root is a read-only dm-verity squashfs, so fontconfig cannot write its
+# cache at runtime. Every kiosk start logged "Fontconfig error: No writable
+# cache directories", repeatedly, and then re-scanned every font on the system
+# to lay out the first frame — on every boot, for the life of the machine.
+#
+# fc-cache here bakes the cache into the image while the rootfs is still
+# writable, which is the only moment it can be done.
+chroot "$ROOTFS" fc-cache -f >/dev/null 2>&1 \
+    && echo "  ${GREEN}✓${NC} fontconfig cache generated into the image (root is read-only at runtime)" \
+    || echo "  ${YELLOW}⚠${NC} fc-cache failed — the kiosk will rescan fonts on every boot"
+
 [ "$ARCH" = "amd64" ] && chroot "$ROOTFS" apt-get install -y --no-install-recommends intel-media-va-driver-non-free || true
 
 # ── ARM device-specific packages and firmware ──
@@ -1359,6 +1372,12 @@ echo "vulos-kiosk: display present; starting the OS in a browser at $URL" >&2
 # no log, no exit. TestKioskEnvMatchesInit keeps the two lists in step.
 mkdir -p /run/user/0 && chmod 700 /run/user/0
 export XDG_RUNTIME_DIR=/run/user/0
+# Somewhere writable for fontconfig. The image ships a pre-built cache (fc-cache
+# runs at build time), but the root is a read-only dm-verity squashfs, so any
+# cache write fontconfig still attempts has nowhere to go and it says so on
+# every start. /run/user/0 is tmpfs.
+mkdir -p /run/user/0/.cache
+export XDG_CACHE_HOME=/run/user/0/.cache
 export LIBSEAT_BACKEND=builtin
 # ALWAYS, per backend/cmd/init/main.go's own note: this means "do not abort the
 # compositor if libinput sees zero devices right now", NOT "disable input".
