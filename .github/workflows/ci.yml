@@ -421,9 +421,17 @@ jobs:
       # passed individually earlier, and it rules out the simplest reading of
       # the timeout theory rather than confirming it.
       #
-      # Candidates worth checking in that light: a leaked process or a held
-      # port from an earlier package. services/stream sits before sandbox in
-      # the reversed order and is known to have leaked an Xvfb before.
+      # Candidate ELIMINATED: services/stream. Running stream then sandbox in
+      # one invocation on linux/amd64 gives ok 4.339s and ok 10.468s, exit 0.
+      # sandbox's time is unchanged from its solo run (10.503s), so stream
+      # leaves nothing behind that touches it — despite stream being the
+      # obvious suspect, having leaked an Xvfb into later packages before.
+      #
+      # So the stall needs either a different predecessor or more of the run
+      # than two packages. Note the arithmetic that constrains this: sandbox
+      # takes ~10.5s normally and the kill lands at ~110s after roughly 20
+      # packages, so sandbox is not merely slow in CI — it is stopped. A
+      # reproduction has to produce an actual stall, not a slowdown.
       #
       # Superseded next step: run services/sandbox alone on amd64
       # with the runner's python3 present and a short -timeout, and read the
