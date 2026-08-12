@@ -172,10 +172,19 @@ jobs:
       - name: Why did it die (kernel + cgroup)
         if: always()
         run: |
-          echo "--- cgroup memory events (oom/oom_kill counters for this job):"
-          cat /sys/fs/cgroup/memory.events 2>/dev/null || echo "  (unreadable)"
-          echo "--- cgroup peak/max:"
-          cat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory.max 2>/dev/null || echo "  (unreadable)"
+          # RESOLVE the cgroup rather than assume /sys/fs/cgroup is it. The first
+          # version of this step read the root paths and printed "(unreadable)"
+          # twice — a diagnostic that produced no data, which is the same
+          # failure mode as the thing it was diagnosing.
+          echo "--- /proc/self/cgroup:"; cat /proc/self/cgroup 2>/dev/null || true
+          CG=$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup 2>/dev/null | head -1)
+          echo "--- resolved cgroup path: ${CG:-<none>}"
+          for base in "/sys/fs/cgroup${CG}" /sys/fs/cgroup /sys/fs/cgroup/memory; do
+            for f in memory.events memory.peak memory.max memory.limit_in_bytes memory.failcnt; do
+              [ -r "$base/$f" ] && { echo "== $base/$f"; cat "$base/$f"; }
+            done
+          done
+          echo "--- (nothing above means the runner exposes no readable memory cgroup)"
           echo "--- kernel ring buffer, last 40 lines:"
           dmesg 2>/dev/null | tail -40 || echo "  (dmesg not permitted)"
 
