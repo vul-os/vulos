@@ -73,7 +73,7 @@ func kioskBrowsersFromGo(t *testing.T) []string {
 
 func kioskBrowsersFromShell(t *testing.T) []string {
 	t.Helper()
-	src := readRepoFile(t, "build.sh")
+	src := readRepoFile(t, "scripts/vulos-kiosk.sh")
 	m := shKioskRe.FindStringSubmatch(src)
 	if m == nil {
 		t.Fatal("build.sh no longer writes a `for cand in …` browser search into " +
@@ -126,7 +126,7 @@ func TestKioskAndConsoleAreMutuallyExclusiveOnADisplay(t *testing.T) {
 	// whether the unit was missing, skipped or crashed, and nothing outside the
 	// machine could tell which. The detection therefore has to be somewhere it
 	// can log, and the log line is what this asserts.
-	if !strings.Contains(src, "no display found") {
+	if !strings.Contains(readRepoFile(t, "scripts/vulos-kiosk.sh"), "no display found") {
 		t.Error("vulos-kiosk no longer reports WHY it declined to start a browser. A box " +
 			"that shows no OS and says nothing is indistinguishable from a broken one")
 	}
@@ -135,7 +135,7 @@ func TestKioskAndConsoleAreMutuallyExclusiveOnADisplay(t *testing.T) {
 			"to be readable from outside a box that is not showing you a desktop — the one " +
 			"situation where reading the journal means logging in to that box first")
 	}
-	if !strings.Contains(src, "/sys/class/drm/*/status") {
+	if !strings.Contains(readRepoFile(t, "scripts/vulos-kiosk.sh"), "/sys/class/drm/") {
 		t.Error("the display check no longer falls back to the sysfs connector state; a " +
 			"DRM node can be absent while a display is attached")
 	}
@@ -190,7 +190,6 @@ func scriptBlock(t *testing.T, src, path, delim string) string {
 
 func TestKioskEnvMatchesInit(t *testing.T) {
 	initSrc := readRepoFile(t, "backend/cmd/init/main.go")
-	shSrc := readRepoFile(t, "build.sh")
 
 	start := strings.Index(initSrc, "func startKiosk()")
 	if start < 0 {
@@ -214,7 +213,7 @@ func TestKioskEnvMatchesInit(t *testing.T) {
 	// elsewhere in build.sh, so an unscoped search passed while the kiosk script
 	// itself set nothing — the mutation that exposed this check as hollow, and
 	// the second time the same mistake appeared in this file.
-	kioskScript := scriptBlock(t, shSrc, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+	kioskScript := readRepoFile(t, "scripts/vulos-kiosk.sh")
 
 	var missing []string
 	for n := range names {
@@ -269,7 +268,7 @@ func TestImageShipsAFontCache(t *testing.T) {
 			"build a font cache at runtime, so it rebuilds one it cannot save on every " +
 			"single boot")
 	}
-	kiosk := scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+	kiosk := readRepoFile(t, "scripts/vulos-kiosk.sh")
 	if !strings.Contains(kiosk, "XDG_CACHE_HOME=") {
 		t.Error("vulos-kiosk does not point XDG_CACHE_HOME at a writable path; anything " +
 			"fontconfig still tries to cache has nowhere to go on a read-only root")
@@ -290,8 +289,7 @@ func TestImageShipsAFontCache(t *testing.T) {
 // that is the current single-output step, and a multi-output launcher setting
 // screens=2 must not have to edit this test to stay honest.
 func TestKioskSetsScreenIdentity(t *testing.T) {
-	src := readRepoFile(t, "build.sh")
-	kiosk := scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF")
+	kiosk := readRepoFile(t, "scripts/vulos-kiosk.sh")
 	body := withoutShellComments(kiosk)
 
 	for _, param := range []string{"screen=", "screens=", "screenIndex="} {
@@ -332,7 +330,7 @@ func TestKioskSetsScreenIdentity(t *testing.T) {
 // logs a reason — the exact silent failure this file exists to prevent.
 func TestKioskMultiOutputLaunch(t *testing.T) {
 	src := readRepoFile(t, "build.sh")
-	kiosk := withoutShellComments(scriptBlock(t, src, "/usr/local/bin/vulos-kiosk", "KIOSKEOF"))
+	kiosk := withoutShellComments(readRepoFile(t, "scripts/vulos-kiosk.sh"))
 
 	// Only on more than one screen. A single-output box must keep the old path,
 	// because that is what every real boot uses.
@@ -349,10 +347,18 @@ func TestKioskMultiOutputLaunch(t *testing.T) {
 		t.Error("vulos-kiosk does not call the config generator, so no labwc rules are written " +
 			"and every browser lands on the active output")
 	}
-	if !strings.Contains(withoutShellComments(src), "install -m 0755") ||
-		!strings.Contains(src, "vulos-kiosk-genconfig") {
-		t.Error("build.sh does not install scripts/vulos-kiosk-genconfig.sh into the image; " +
-			"vulos-kiosk would call a command that is not there")
+	// Name the FILES, not just "install -m 0755". That phrase now appears twice
+	// in build.sh — once for the kiosk, once for the generator — so a check for
+	// the phrase alone passes with either one deleted. Found by mutation:
+	// removing the kiosk install left this green because the generator's install
+	// still matched. An assertion satisfied by a different line is the defect
+	// this file keeps catching.
+	buildSrc := withoutShellComments(src)
+	for _, want := range []string{"scripts/vulos-kiosk.sh", "scripts/vulos-kiosk-genconfig.sh"} {
+		if !strings.Contains(buildSrc, "install -m 0755") || !strings.Contains(buildSrc, want) {
+			t.Errorf("build.sh does not install %s into the image; the kiosk would call or be "+
+				"a command that is not there", want)
+		}
 	}
 }
 
