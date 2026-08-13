@@ -4,6 +4,7 @@ import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 import { useShellSession, type ShellSession } from './useShellSession'
+import { useViewportFocus } from './viewportFocus'
 import {
   readViewportSize, viewportPx,
   toCanonicalPoint, fromCanonicalPoint,
@@ -174,7 +175,11 @@ export type ShellAction =
   | { type: 'SET_CHAT'; open: boolean }
   | { type: 'TOGGLE_MISSION_CONTROL' }
   | { type: 'SET_MISSION_CONTROL'; open: boolean }
-  | { type: 'RESTORE_STATE'; saved: SavedShellState }
+  // `fromMirror` distinguishes "this is a peer's mirrored state" from "this is
+  // MY OWN saved session" — see the RESTORE_STATE reducer case for why that
+  // distinction is load-bearing rather than cosmetic (roadmap/SCREENS.md,
+  // "Input focus across instances").
+  | { type: 'RESTORE_STATE'; saved: SavedShellState; fromMirror?: boolean }
   | { type: 'SYNC_WLTOPLEVELS'; toplevels: WlToplevel[] }
 
 const ShellContext = createContext<ShellContextValue | null>(null)
@@ -426,7 +431,36 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
           }
           return w
         })
-        desktops[deskId] = { ...desk, windows }
+        // activeWindow is the field keyboard shortcuts key off (see
+        // shell/useWindowShortcuts.ts's `windows.find(w => w.id === activeWindow)`)
+        // — it is this instance's notion of which window a keystroke should hit.
+        // A LOCAL restore (page load, no `fromMirror`) is this tab's own prior
+        // session, so adopting `saved`'s value verbatim is correct — it's what
+        // this tab itself last had focused.
+        //
+        // A MIRRORED restore is a different thing entirely: it is the WRITER's
+        // activeWindow, republished on a ~500ms debounce every time ANYTHING on
+        // the writer's desktop changes. The writer/follower split tracks who
+        // owns *persistence*, not who the user is looking at or typing into —
+        // a follower can be, and normally is, the actually-focused viewport
+        // (roadmap/SCREENS.md, "Input focus across instances": the leader has
+        // nothing to do with which screen has the compositor's attention).
+        // Adopting the writer's activeWindow unconditionally here would yank
+        // THIS viewport's keyboard target to whatever the writer's screen last
+        // clicked, mid-keystroke, on every unrelated edit — the exact
+        // "instances compete for focus" failure mode this file exists to
+        // avoid. So a mirrored restore keeps this instance's OWN active window
+        // whenever it still exists in the incoming set, and only falls back to
+        // the writer's pick when there is no local pick yet (first sync) or
+        // the local pick was closed out from under it.
+        let activeWindow = desk.activeWindow
+        if (action.fromMirror) {
+          const localActive = state.desktops[deskId]?.activeWindow ?? null
+          if (localActive != null && windows.some(w => w.id === localActive)) {
+            activeWindow = localActive
+          }
+        }
+        desktops[deskId] = { ...desk, windows, activeWindow }
       }
       // Advance the id counter past every restored window so freshly-opened
       // windows never collide with a persisted id.
@@ -763,8 +797,20 @@ export interface ShellContextValue {
   switchDesktop: (id: string) => void
   addDesktop: (label?: string) => void
   /** Cross-tab session: who is on this desktop and whether we drive it.
-   *  Null where BroadcastChannel is unavailable (single-tab behaviour). */
+   *  Null where BroadcastChannel is unavailable (single-tab behaviour).
+   *  Deliberately NOTHING to do with keyboard focus — see `hasFocus` below
+   *  and roadmap/SCREENS.md, "Input focus across instances": which instance
+   *  owns persistence and which instance the user is looking at are
+   *  unrelated facts, and conflating them was explicitly ruled out. */
   session: ShellSession | null
+  /** Whether THIS instance currently holds the compositor's input focus —
+   *  see providers/viewportFocus.ts. Read-only signal for callers that need
+   *  to defer to it (e.g. a global keyboard-shortcut listener should not act
+   *  on behalf of a viewport the user isn't looking at). ShellProvider itself
+   *  never gates persistence or session role on this field, and must not
+   *  start to — see providers/shellSession.ts, which keeps writer election
+   *  entirely independent of focus for the same reason. */
+  hasFocus: boolean
   removeDesktop: (id: string) => void
   moveWindowToDesktop: (windowId: number, desktopId: string) => void
   openNativeWindow: (win: OpenNativeWindowInput) => Promise<void>
@@ -800,6 +846,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // is an election rather than a merge.
   const session = useShellSession(state.activeDesktop)
 
+  // Whether THIS instance currently has the compositor's input focus — see
+  // providers/viewportFocus.ts. Independent of `session.role` on purpose:
+  // roadmap/SCREENS.md, "Input focus across instances" — the writer is
+  // whoever owns persistence, not whoever the user is looking at.
+  const hasFocus = useViewportFocus()
+
   // Auto-save state on changes (debounced).
   //
   // ONLY THE WRITER SAVES. Every tab used to write this one key on its own
@@ -826,7 +878,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (session.role !== 'follower' || !session.mirrored) return
     const hydrated = hydratePersistedState(session.mirrored as PersistedShellState, readViewportSize())
-    dispatch({ type: 'RESTORE_STATE', saved: hydrated })
+    // fromMirror: true — this is a peer's state, not our own saved session, so
+    // RESTORE_STATE must not let it overwrite which window THIS viewport has
+    // focused. See the reducer case's comment and roadmap/SCREENS.md, "Input
+    // focus across instances".
+    dispatch({ type: 'RESTORE_STATE', saved: hydrated, fromMirror: true })
   }, [session.role, session.mirrored])
 
   // Current desktop's windows (for dock, etc.)
@@ -1008,7 +1064,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       launchpadOpen: state.launchpadOpen, chatOpen: state.chatOpen, missionControlOpen: state.missionControlOpen,
       layout,
       openWindow, closeWindow, focusWindow, moveWindow, resizeWindow, minimizeWindow, maximizeWindow, tileWindow,
-      switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop, session,
+      switchDesktop, addDesktop, removeDesktop, moveWindowToDesktop, session, hasFocus,
       openNativeWindow, closeNativeWindow,
       popoutApp, closePopout,
       toggleLaunchpad, setLaunchpad, toggleChat, setChat,
