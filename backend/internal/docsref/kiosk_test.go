@@ -447,3 +447,21 @@ func TestKioskGenConfig(t *testing.T) {
 			"box needs no placement rules and writing them claims something it cannot honour")
 	}
 }
+
+// The kiosk must not report a screen count it is about to contradict.
+//
+// The identity line runs before the multi-output branch, so a hardcoded
+// "(1 of 1)" claimed one screen and then started two browsers on a two-monitor
+// box. The journal is the only window into a machine that is showing you
+// nothing, and one that disagrees with what the machine did is worse than
+// silence.
+func TestKioskLogsRealScreenCount(t *testing.T) {
+	kiosk := withoutShellComments(readRepoFile(t, "scripts/vulos-kiosk.sh"))
+	if strings.Contains(kiosk, "(1 of 1)") {
+		t.Error("vulos-kiosk logs a hardcoded \"(1 of 1)\" screen count; on a multi-output box " +
+			"it then launches several browsers, so the journal contradicts the machine")
+	}
+	if !strings.Contains(kiosk, "$screen_count connected") {
+		t.Error("the screen identity line does not report the counted number of screens")
+	}
+}

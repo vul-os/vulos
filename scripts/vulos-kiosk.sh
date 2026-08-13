@@ -7,6 +7,11 @@
 set -eu
 URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
 
+# VULOS_DRM_ROOT overrides where connectors are read from. Default is the real
+# sysfs; scripts/smoke-kiosk-multiscreen.sh points it at a fake tree so this
+# script — the one the image runs — can be executed and its output checked,
+# rather than only grepped.
+#
 # Screen identity (see roadmap/SCREENS.md, frontend/src/providers/screenIdentity.ts).
 #
 # One browser per output is the target shape. This is the SINGLE-OUTPUT step of
@@ -28,7 +33,7 @@ URL="${VULOS_KIOSK_URL:-http://localhost:8080}"
 screen_name=""
 screen_list=""
 screen_count=0
-for st in /sys/class/drm/*/status; do
+for st in "${VULOS_DRM_ROOT:-/sys/class/drm}"/*/status; do
   [ -r "$st" ] || continue
   [ "$(cat "$st" 2>/dev/null)" = "connected" ] || continue
   conn=$(basename "$(dirname "$st")")
@@ -43,7 +48,12 @@ if [ -n "$screen_name" ]; then
     *\?*) URL="$URL&screen=$screen_name&screens=1&screenIndex=1" ;;
     *)    URL="$URL?screen=$screen_name&screens=1&screenIndex=1" ;;
   esac
-  echo "vulos-kiosk: screen identity $screen_name (1 of 1)"
+  # Report the REAL count, not "1 of 1". This line runs before the multi-output
+  # branch below, so on a two-monitor box it used to claim one screen and then
+  # start two browsers — a journal that contradicts what the machine does is
+  # worse than no journal, and this is the only window into a box that is
+  # showing you nothing.
+  echo "vulos-kiosk: screen identity $screen_name ($screen_count connected:$screen_list)"
 fi
 
 # Say what we decided and why, ALWAYS.
@@ -65,7 +75,7 @@ done
 if [ "$have_display" = no ]; then
   # A DRM node can be absent while a display is still attached on some kernels;
   # check the sysfs connector state before giving up.
-  for st in /sys/class/drm/*/status; do
+  for st in "${VULOS_DRM_ROOT:-/sys/class/drm}"/*/status; do
     [ -e "$st" ] || continue
     if grep -qx connected "$st" 2>/dev/null; then have_display=yes; break; fi
   done
