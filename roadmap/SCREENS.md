@@ -97,18 +97,30 @@ tests, mutation-tested three ways: removing the index>total consistency check,
 loosening the connector-name pattern, and making `isMultiScreen` accept
 `total=1` each turn it red.
 
-**NOT built: anything that SETS the parameter.** Neither `build.sh`'s
-`vulos-kiosk` script nor `backend/cmd/init/main.go` writes `?screen=`,
-`?screens=` or `?screenIndex=` into the URL it opens. Verified by grep, not
-assumed.
+**~~NOT built: anything that SETS the parameter.~~ NO LONGER TRUE — corrected
+2026-08-13.** On 2026-08-12 neither launcher wrote `?screen=`, `?screens=` or
+`?screenIndex=` into the URL it opened, so `readScreenIdentity()` returned null
+on every real boot, `isMultiScreen()` was always false, and the indicator
+rendered for nobody. That was the "green suite over a feature reachable from no
+surface" shape this repository has shipped before, which is why it was written
+down.
 
-The consequence, plainly: `readScreenIdentity()` returns null on every real
-boot today, `isMultiScreen()` is therefore always false, and the indicator
-renders for nobody. **The feature is reachable from no surface.** Its tests all
-pass, which is exactly what makes this worth writing down — a green suite over
-an unreachable feature is the shape this repository has shipped before, and the
-tests are honest about the parser while saying nothing about whether anything
-calls it.
+The launcher work closed it. `scripts/vulos-kiosk.sh:48-49` appends all three
+on the single-screen path (with `screens=1`, so the parser is exercised on
+every boot rather than only on the rare one), and
+`scripts/vulos-kiosk-genconfig.sh:71` writes a distinct triple per output on
+the multi-output path. Verified by grep, as the original claim was.
+
+**One asymmetry, recorded rather than fixed:** `backend/cmd/init/main.go` still
+opens a bare `http://localhost:8080` (lines 1548 and 1603) with no parameters.
+That is the initramfs path; an installed Vulos boots systemd and runs the shell
+copy, which is why the divergence is invisible on real installs. It is also
+harmless today — the initramfs path runs cage, one window on one output, and
+`isMultiScreen()` needs `total>1` to render anything, so both paths behave
+identically on a single screen. It would stop being harmless if that path ever
+drove more than one output. Note that `kiosk_test.go` pins the browser list and
+the wlroots environment across the two copies but does NOT pin the URL, so this
+particular drift is unguarded.
 
 **What the launcher side needs**, so the remaining work is not re-derived:
 enumerate connected outputs (`backend/services/display/display.go` already
@@ -325,12 +337,62 @@ against.
 Named rather than glossed, because these are the parts that will decide whether
 it works:
 
-1. **Which viewport owns the leader role**, and what happens when that screen is
-   the one unplugged. `shellSession.ts` has a leader/follower model; a display
-   disappearing is not the same event as a tab closing.
-2. **Per-output scale.** A 4K screen beside a 1080p one needs different device
-   pixel ratios in two browser instances of the same session. The shared state
-   must not carry one viewport's pixel assumptions to the other.
+1. ~~**Which viewport owns the leader role**, and what happens when that screen
+   is the one unplugged.~~ **ADDRESSED IN CODE 2026-08-13; unverified on real
+   hardware.** Reading `shellSession.ts` found something sharper than this
+   entry described: role only ever moved follower→writer. There was **no
+   demotion path at all**, so once a tab decided it was the writer nothing
+   could tell it otherwise.
+
+   That is fine for a tab closing — it sends `bye` and is gone. It is not fine
+   for an unplugged display, because a browser instance behind a dead output
+   need not exit, and a backgrounded non-painting tab is exactly what browsers
+   throttle: its heartbeat goes stale past `WRITER_TIMEOUT_MS`, a follower
+   correctly promotes itself, and then the original **resumes**, still claiming
+   writer. Two tabs writing localStorage and publishing state — the original
+   last-writer-wins bug, re-entered from the one direction promotion-only logic
+   could not close.
+
+   `shouldStepDown` adds the missing transition, reusing `nextWriter`'s
+   lowest-tabId tie-break so both sides converge without negotiation. Covered
+   by a hook-level test that drops the writer's traffic **without unmounting it
+   or sending `bye`** — the ungraceful path, since a test that calls the clean
+   teardown proves nothing about a yanked monitor.
+
+   **The caveat that keeps this out of "settled":** whether a compositor
+   actually keeps a client alive when its output is unplugged is unverified,
+   and sits on the far side of the same hardware gap as everything else here.
+   The fix holds either way — if the process dies instead, the pre-existing
+   crash path already covers it — but the premise itself has not been observed.
+
+2. ~~**Per-output scale.**~~ **ADDRESSED IN CODE 2026-08-13; unverified on real
+   hardware.** The hazard was not where this entry pointed. Nothing about
+   resolution or scale reaches the shell at all — `screen=`/`screens=`/
+   `screenIndex=` carry a connector name and an ordinal, nothing more. The leak
+   was downstream: `ShellProvider.tsx` copied each window's raw CSS-px
+   `position`/`size` verbatim into the published snapshot, `useShellSession.ts`
+   broadcast it unconverted, and a follower applied it straight back through
+   `RESTORE_STATE`. A window position meaningful on a 1920-wide writer is
+   off-screen on a 3840-wide follower — a units bug wearing a layout bug's
+   clothes.
+
+   `frontend/src/providers/screenScale.ts` defines the canonical unit as a
+   **fraction of the writer's own viewport**, deliberately not DPR-adjusted
+   pixels: CSS px is already DPR-normalised for its own screen, so what differs
+   between two instances is viewport *extent*, not DPR. `devicePixelRatio` is
+   kept out of the conversion path and retained for diagnostics only.
+
+   Two decisions worth not re-deriving. The unit boundary is enforced by
+   **branded types**, so mixing raw px into a canonical field fails
+   `tsc --noEmit`, which CI runs — a convention living only in a comment is the
+   failure mode this file keeps warning about. And because
+   `serializableShellState` feeds **both** localStorage and the cross-tab
+   publish, the read side was made symmetric rather than converting only on
+   publish; legacy untagged payloads are read as raw px, so an explicit
+   `geomUnit: 'canonical-v1'` tag — not magnitude — is what distinguishes them.
+
+   **Unverified:** the 4K-beside-1080p case is exercised by construction in
+   tests, not by two real monitors.
 3. **Input focus across instances.** Two browser windows, one keyboard. The
    compositor decides focus; the shell has to follow it rather than compete.
 4. **Cost.** One browser process per screen is not free on a 2GB box, which is
