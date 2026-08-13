@@ -1228,6 +1228,33 @@ jobs:
           fi
           echo "OK — no private key material tracked in git."
 
+  smoke-multiscreen:
+    # SCREENS-01 — does MoveToOutput actually place one window per output?
+    #
+    # The multi-output kiosk stakes everything on a labwc windowRule matching a
+    # window title and moving it to a named output, and every part of that can
+    # look right while placing nothing: a rule matching no window is silent, and
+    # the symptom is every browser stacked on one monitor with no log line.
+    #
+    # The harness runs labwc twice against two headless wlroots outputs — once
+    # with the rules and once without — and the test is the DIFFERENCE. Without
+    # the control it would prove nothing, since a compositor that distributed
+    # windows by default would produce the same "one per screen" result with the
+    # rules doing no work at all.
+    #
+    # Separate job for the same reason as REACH-NAT: it is new to CI, it needs
+    # docker, and a failure should be legible as itself rather than mixed into
+    # the backend result.
+    name: SCREENS-01 — labwc places one window per output
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the multi-screen placement smoke test
+        run: bash scripts/smoke-multiscreen.sh
+        timeout-minutes: 20
+
   smoke-relay-nat:
     # REACH-NAT — the one promise in docs/REACH.md that had no automated
     # evidence: "Most boxes sit behind NAT, CGNAT, or a router nobody can
