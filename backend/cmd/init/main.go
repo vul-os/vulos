@@ -1115,9 +1115,34 @@ func startKiosk() {
 		// Without these cage starts, opens /dev/dri/card0, but silently
 		// fails to put a framebuffer on screen (no logs, no exit) — the
 		// "QEMU window shows kernel console under its own chrome" symptom.
-		// DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null gives Chromium one
+		// DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null gives the browser one
 		// "Connection refused" on the session bus and lets it proceed to
-		// navigation instead of looping on NameHasOwner.
+		// navigation instead of looping on NameHasOwner. That was written for
+		// Chromium, and Chromium is NOT what the bare-metal image installs —
+		// scripts/build-sh-packages.txt ships cog only, and findKioskBrowser
+		// prefers it. So the line's justification named a browser no box runs.
+		//
+		// MEASURED 2026-08-13 for cog, because a container round had blamed
+		// this setting for killing it (see scripts/smoke-kiosk-multiscreen.sh,
+		// ROUND 5). Four arms, same privileged arm64 trixie container, same
+		// cage/headless/pixman seat, same served page, cog 0.18.4 / WPE WebKit
+		// 2.48.3 — only the bus varied:
+		//
+		//   /dev/null bus, --platform=wl   Loaded successfully. + GET / 200
+		//   bus unset                      Loaded successfully. + GET / 200
+		//   dbus-run-session (real bus)    Loaded successfully. + GET / 200
+		//   /dev/null bus, no --platform   Loaded successfully. + GET / 200
+		//
+		// So the dead bus does not stop cog. It costs exactly one line —
+		// "Failed to connect to bus: Could not connect: Connection refused" —
+		// which is the same one-shot refusal the setting was added to produce,
+		// and then the page loads. The round-5 failure was bubblewrap being
+		// denied user namespaces by Docker, not this variable; the arms above
+		// were run with `bwrap --unshare-user` verified working first, which is
+		// the control that round lacked.
+		//
+		// NOT measured on real DRM hardware: this was a headless wlroots
+		// backend with no GPU, like the run in commit a10c47fc.
 		baseEnv = append(baseEnv,
 			"WLR_RENDERER=pixman",
 			"WLR_RENDERER_ALLOW_SOFTWARE=1",

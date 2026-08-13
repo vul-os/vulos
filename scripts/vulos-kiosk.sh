@@ -139,6 +139,20 @@ if [ "$sw" = yes ]; then
   export WLR_RENDERER_ALLOW_SOFTWARE="${WLR_RENDERER_ALLOW_SOFTWARE:-1}"
   export WLR_DRM_NO_ATOMIC="${WLR_DRM_NO_ATOMIC:-1}"
   export WLR_DRM_NO_MODIFIERS="${WLR_DRM_NO_MODIFIERS:-1}"
+  # One "Connection refused" on the session bus instead of a browser looping on
+  # NameHasOwner. backend/cmd/init/main.go carries the full note; the short
+  # version is that this was written for Chromium, which the bare-metal image
+  # does not install — scripts/build-sh-packages.txt ships cog only.
+  #
+  # MEASURED 2026-08-13 that cog tolerates it, because ROUND 5 of
+  # scripts/smoke-kiosk-multiscreen.sh had blamed this line for killing cog and
+  # that would have meant a black screen on every GPU-less box. Four arms in one
+  # privileged arm64 trixie container on a cage/headless/pixman seat, cog 0.18.4
+  # (WPE WebKit 2.48.3), varying ONLY the bus — /dev/null, unset, and a real
+  # dbus-run-session bus — all four logged "Loaded successfully." and all four
+  # fetched GET / from the stub server. The dead bus costs one warning line and
+  # nothing else. Round 5's real cause was bubblewrap being denied user
+  # namespaces by Docker.
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/dev/null}"
   echo "vulos-kiosk: software rendering path (pixman, legacy KMS, no modifiers)" >&2
 fi
