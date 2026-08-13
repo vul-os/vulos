@@ -1,0 +1,44 @@
+# Trivy ignore list — CVE IDs to suppress, one per line, # for comments.
+# https://aquasecurity.github.io/trivy/latest/docs/configuration/filtering/#trivyignore
+#
+# ── This file must EXIST even when it is empty. ──────────────────────────────
+#
+# .github/workflows/security-scan.yml passes `trivyignores: .trivyignore` to
+# aquasecurity/trivy-action. When the file is absent the action does not fall
+# back to scanning without it — it fails outright:
+#
+#     ERROR: cannot find ignorefile '.trivyignore'
+#     ##[error]Process completed with exit code 1
+#
+# and exits BEFORE scanning anything. Measured on the first run of this
+# workflow against a branch (PR #2, 2026-08-13): the job log contained zero
+# lines of scan output — no CVE table, no "Total:", no report summary. The job
+# showed a red X, which reads like "CVEs found" and is in fact "nothing was
+# examined".
+#
+# The job is `continue-on-error: true`, i.e. advisory rather than blocking, so
+# the failure never stopped a merge and nothing forced anyone to look at it.
+# An advisory gate that cannot produce advice is worth less than no gate: it
+# occupies the slot where a working scan would go.
+#
+# So: deleting this file does not disable the ignore list, it disables the
+# SCAN. If there is genuinely nothing to suppress, leave it with only comments,
+# which is the state it is in now.
+#
+# ── Adding an entry ─────────────────────────────────────────────────────────
+#
+# One CVE ID per line. Every entry needs a reason and a review date directly
+# above it, because a suppression with no expiry is how a known-vulnerable
+# dependency becomes permanent:
+#
+#   # CVE-2026-12345 — vulnerable path is the SAML handler, which this build
+#   # compiles out (-tags nosaml). No upstream fix as of 2026-08-13.
+#   # Review: 2026-11-13
+#   CVE-2026-12345
+#
+# Prefer upgrading. `exit-code: '0'` and `continue-on-error: true` mean a
+# finding here never blocks anyone, so an entry in this file buys nothing
+# except a quieter log — the only reason to add one is to stop a known and
+# accepted finding from burying a new one.
+
+# (no suppressions)
