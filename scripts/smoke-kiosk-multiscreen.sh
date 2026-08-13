@@ -23,34 +23,41 @@
 # What that leaves genuinely unverified: a real boot, with the real shell
 # setting its own title, on real DRM connectors.
 #
-# STATUS 2026-08-13 — narrowing, does NOT yet pass. Three rounds:
+# STATUS 2026-08-13 — the KIOSK path is verified; the compositor does not start.
 #
-# R1  labwc had no socket directory. MY bug: vulos-kiosk exports
-#     XDG_RUNTIME_DIR=/run/user/0 itself, overriding what this set. Fixed.
-#     R1 also found a REAL defect — the kiosk logged a hardcoded "(1 of 1)" and
-#     then started two browsers. Fixed, and confirmed here in R2.
+# Reached, by executing the real installed script:
 #
-# R2  Enumeration and counting correct:
-#       vulos-kiosk: screen identity HEADLESS-1 (2 connected: HEADLESS-1 HEADLESS-2)
-#     but the run still takes the SINGLE-output path and no socket appears.
+#     vulos-kiosk: screen identity HEADLESS-1 (2 connected: HEADLESS-1 HEADLESS-2)
+#     vulos-kiosk: 2 screens ( HEADLESS-1 HEADLESS-2 ) — labwc, one browser per output
 #
-# R3  Two candidate causes ELIMINATED by measurement, not argument:
-#       - the readiness wait. vulos-kiosk polls $URL/api/setup/status for up to
-#         SIXTY seconds before launching, and this harness served no such path,
-#         so the run was timing out mid-wait. Now served as a static file. The
-#         behaviour did not change, so that was not it.
-#       - a restricted PATH inside the kiosk. There is none; it never touches
-#         PATH, and labwc/cog/grim/foot are all confirmed present in the image.
+# So enumeration, counting and the multi-output branch decision are all correct
+# in the file the image installs. That is the part this harness existed to
+# check, and it now checks it.
 #
-# So screen_count is 2, labwc and cog are both on PATH, and the branch guarded
-# by exactly those three conditions is still not taken. That is contradictory
-# on its face, which is the point at which guessing gets expensive.
+# Remaining failure: no Wayland socket appears, so labwc does not come up. Its
+# environment here is the kiosk's own, which is written for real DRM hardware
+# (LIBSEAT_BACKEND=builtin, the WLR_DRM_* flags, XDG_RUNTIME_DIR=/run/user/0).
+# scripts/smoke-multiscreen.sh proves labwc works headless when IT sets the
+# environment, so the gap is between those two environments rather than in
+# labwc or in the placement rules.
 #
-# NEXT, and deliberately a measurement rather than a theory: run the kiosk under
-# `sh -x` and read the trace. It will show the branch evaluation directly —
-# which condition was false, and what the variables held at that moment —
-# instead of inferring it from which messages did and did not print. This
-# investigation has already cost a day once by reasoning ahead of the evidence.
+# FOUR of this harness's failures were its own bugs, and naming them is the
+# point — each looked like a product fault first:
+#   1. XDG_RUNTIME_DIR set here was overridden by the kiosk's own export.
+#   2. The stub served no /api/setup/status, so the readiness loop timed out.
+#   3. curl was not installed, so the probe could not succeed even once the
+#      URL was correct — it failed for a reason unrelated to the server.
+#   4. wayland-0 was assumed rather than discovered.
+#
+# It also found TWO REAL DEFECTS, which is why it is committed despite failing:
+# the kiosk logging a hardcoded "(1 of 1)" while starting two browsers, and a
+# readiness probe built from a URL carrying a query string, which could never
+# succeed and cost sixty seconds on every boot with a display.
+#
+# NEXT: let the harness supply the compositor environment instead of inheriting
+# the kiosk's, or teach the kiosk to respect WLR_BACKENDS when it is already
+# set. The second is a one-line seam and would make the whole path testable
+# without changing any real boot.
 #
 # NOT wired into CI while it cannot pass.
 set -euo pipefail
@@ -117,7 +124,7 @@ chmod +x "$WORK/run.sh"
 echo "▸ running the real vulos-kiosk against two headless outputs…"
 docker run --rm --platform linux/amd64 -v "$WORK:/work" debian:trixie sh -c '
   apt-get update -qq >/dev/null 2>&1
-  apt-get install -y -qq labwc cog grim python3 >/dev/null 2>&1
+  apt-get install -y -qq labwc cog grim python3 curl >/dev/null 2>&1
   timeout 60 sh /work/run.sh || true
 '
 
