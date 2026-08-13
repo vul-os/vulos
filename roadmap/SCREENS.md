@@ -180,10 +180,29 @@ So labwc validates both the action name and the XML structure, and accepts
 ours. `MoveToOutput` is a real action in 0.8.3 and `output` is a valid argument
 to it — which was the specific thing taken from the manual and never run.
 
-This does NOT prove placement. A config labwc accepts can still put every
-window on one monitor: whether the title rule matches the browser's actual
-title, and whether MoveToOutput does what its name says at runtime, both need
-real windows on real outputs. A wrong rule fails the way everything in this area fails: silently,
+**PLACEMENT VERIFIED 2026-08-13**, by `scripts/smoke-multiscreen.sh`. A real
+labwc runs against two headless wlroots outputs, two windows are launched with
+the titles the shell actually sets, and each output is photographed.
+
+The control is what makes it evidence. Two windows landing on two screens
+proves nothing alone — a compositor might distribute them by default, in which
+case the rules are decoration. So the scenario runs twice:
+
+    with rules:    HEADLESS-1 = 9922 bytes   HEADLESS-2 = 10502 bytes
+    without rules: HEADLESS-1 = 2759 bytes   HEADLESS-2 = 14678 bytes
+
+With the rules, each output holds exactly one window. Without them, both
+windows pile onto HEADLESS-2 — overlapping, one partly behind the other — and
+HEADLESS-1 is empty. So labwc does NOT distribute windows across outputs on its
+own, and the windowRule/MoveToOutput pair is doing the work.
+
+That failure mode is precisely what this design exists to prevent, and it is
+now reproducible on demand rather than imagined.
+
+Still short of a real boot: the harness uses `foot` on HEADLESS-N outputs
+rather than `cog` on DRM connectors, because the mechanism under test is
+labwc's and not the browser's. The last mile is a QEMU boot with two virtual
+displays. A wrong rule fails the way everything in this area fails: silently,
 with every browser on one monitor and nothing in any log saying why. Verify by
 running labwc with two virtual outputs under QEMU and reading a screendump —
 the verification this feature needs regardless.
