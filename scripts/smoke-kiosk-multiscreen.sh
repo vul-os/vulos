@@ -56,10 +56,34 @@
 #
 # ROUND 5 — labwc was never the problem. cog is:
 #     ERROR cog: Failed to fully launch dbus-proxy: Child process exited with code 1
-# cog launches xdg-dbus-proxy for its web-process sandbox and the kiosk pointed
-# DBUS_SESSION_BUS_ADDRESS at /dev/null. Both browsers died instantly, the
-# session's `wait` returned, and labwc -S terminated the compositor BY DESIGN.
-# "socket: NONE" was a consequence, and it misdirected two rounds.
+# Both browsers died instantly, the session's `wait` returned, and labwc -S
+# terminated the compositor BY DESIGN. "socket: NONE" was a consequence, and it
+# misdirected two rounds.
+#
+# **CORRECTED 2026-08-13. This round blamed DBUS_SESSION_BUS_ADDRESS=/dev/null,
+# and that was WRONG.** The accusation mattered: the software-rendering path
+# exports that on every GPU-less box, including the single-screen branch every
+# real install boots, so if it were true the product had a black-screen defect.
+# It was measured instead of argued — four arms in one privileged arm64 trixie
+# container, cog 0.18.4 / WPE WebKit 2.48.3 on a cage/headless/pixman seat,
+# varying ONLY the bus:
+#
+#     /dev/null bus, --platform=wl   Loaded successfully. + GET / 200
+#     bus unset                      Loaded successfully. + GET / 200
+#     dbus-run-session (real bus)    Loaded successfully. + GET / 200
+#     /dev/null bus, no --platform   Loaded successfully. + GET / 200
+#
+# All four loaded the page. The dead bus costs one warning line —
+# "Failed to connect to bus: Could not connect: Connection refused" — and then
+# cog navigates. The container was first proved to ALLOW the sandbox
+# (`bwrap --unshare-user ... /bin/true` -> OK), which is the control this round
+# lacked: it ran BEFORE --cap-add SYS_ADMIN --security-opt seccomp=unconfined
+# were added. xdg-dbus-proxy is itself launched sandboxed, so ROUND 6's bwrap
+# error was the cause and this dbus-proxy error was its symptom. The two rounds
+# are one failure, not two, and it belongs entirely to Docker.
+#
+# The lesson is the one this file keeps teaching: an error message names the
+# component that gave up, not the component that broke.
 #
 # ROUND 6 — a real bus was necessary but not sufficient. dbus-run-session got
 # cog past the proxy (it activates org.a11y.Bus successfully), and the run still
@@ -87,7 +111,8 @@
 #   2. no /api/setup/status served, so the readiness loop timed out
 #   3. curl absent, so the probe could not succeed at all
 #   4. wayland-0 assumed rather than discovered
-#   5. no session bus, so cog's dbus-proxy died
+#   5. cog's dbus-proxy died — a SYMPTOM of 6, not a separate cause; the
+#      /dev/null bus was measured innocent on 2026-08-13 (see ROUND 5 above)
 #   6. bwrap denied unprivileged user namespaces
 #   7. the run hanging under emulation with the sandbox flags granted
 #
