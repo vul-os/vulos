@@ -38,6 +38,13 @@ partway through if they are wrong.
   whose firmware works differently — those need an image built for them
   (`sudo ./build.sh --arm64 --device rpi4`, or `--device pinephone`).
 - **2 GB RAM minimum**, 4 GB or more if you want it to feel good.
+- **4 GB or more if you are plugging in more than one monitor.** Vulos runs one
+  browser per screen, and each screen after the first costs roughly 150–170 MB.
+  Two or three screens do fit in 2 GB — that is measured, not guessed, and
+  nothing refuses to start on a 2 GB box with three monitors — but what is left
+  over is thin, and thin is where a box stops feeling good. Treat this as a
+  recommendation for buying, not a floor for booting. The measurements are in
+  [roadmap/SCREENS-COST.md](../roadmap/SCREENS-COST.md).
 - **10 GB of disk**, 20 GB or more recommended, if you are installing to disk.
 - **A monitor and keyboard** for the first boot — or none at all, if you would
   rather do the whole thing from another device's browser
