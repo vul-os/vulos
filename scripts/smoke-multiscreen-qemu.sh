@@ -117,6 +117,20 @@
 #       P1 MUST go red. If it does not, this harness cannot see the failure it
 #       claims to check and its pass means nothing.
 #
+#       Verified against the real parser's semantics before being run, so the
+#       control is known to do what it says:
+#           new URLSearchParams("?vulos-control=1?screen=Virtual-1&screens=2&screenIndex=1")
+#           → vulos-control="1?screen=Virtual-1", screens="2", screenIndex="1"
+#           → screen = null  → parseScreenIdentity() returns null
+#
+#       It breaks TWO things at once, which is worth naming rather than
+#       glossing: with no identity the shell sets no window title (so no
+#       windowRule matches — placement dies) AND renders no screen chip (so the
+#       two heads have no per-screen content to differ by — D dies). The
+#       evidence block prints P0, P1 and D separately for exactly this reason:
+#       WHICH of them goes red says which half of the contract was doing the
+#       work, and a single boolean would have hidden that.
+#
 #   --control single-head   the cheap control: one head, so there is genuinely
 #       no second output. P1 must go red for the other reason.
 #
