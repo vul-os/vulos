@@ -465,3 +465,27 @@ func TestKioskLogsRealScreenCount(t *testing.T) {
 		t.Error("the screen identity line does not report the counted number of screens")
 	}
 }
+
+// The readiness probe must not be built from a URL that carries a query string.
+//
+// vulos-kiosk waits for $BASE_URL/api/setup/status before launching a browser,
+// because starting it first shows an error page that never retries. Once the
+// screen identity was appended to $URL, probing "$URL/api/setup/status" put the
+// path AFTER the query — an address that can never answer. Every box with a
+// display then waited the full sixty seconds and launched anyway, so the guard
+// was silently doing nothing and costing a minute of boot.
+//
+// Caught by tracing the real script under sh -x, not by reading it: the broken
+// URL looks entirely reasonable in the source.
+func TestKioskProbesTheBareURL(t *testing.T) {
+	kiosk := withoutShellComments(readRepoFile(t, "scripts/vulos-kiosk.sh"))
+	if strings.Contains(kiosk, `"$URL/api/`) {
+		t.Error(`vulos-kiosk probes "$URL/api/..." — $URL carries the screen identity query ` +
+			"string, so the path lands after the query and the probe can never succeed")
+	}
+	if !strings.Contains(kiosk, `"$BASE_URL/api/setup/status"`) {
+		t.Error("vulos-kiosk no longer probes $BASE_URL/api/setup/status before launching a " +
+			"browser; without it the browser can open before the server answers and shows an " +
+			"error page that never retries")
+	}
+}

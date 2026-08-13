@@ -135,7 +135,13 @@ fi
 # error page that never retries, which looks exactly like a broken box.
 i=0
 while [ "$i" -lt 60 ]; do
-  if curl -fsS --max-time 2 "$URL/api/setup/status" >/dev/null 2>&1; then break; fi
+  # BASE_URL, not URL. $URL carries the screen identity query string by this
+  # point, so "$URL/api/setup/status" puts the path AFTER the query and probes
+  # a nonsense address that can never answer. The effect was that every box
+  # with a display waited the full sixty seconds and then launched anyway —
+  # defeating exactly the protection this loop exists to provide, and adding a
+  # minute to every boot. Found by tracing the real script under sh -x.
+  if curl -fsS --max-time 2 "$BASE_URL/api/setup/status" >/dev/null 2>&1; then break; fi
   i=$((i + 1))
   sleep 1
 done

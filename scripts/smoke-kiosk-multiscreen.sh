@@ -101,7 +101,7 @@ sleep 2
 export VULOS_KIOSK_URL=http://localhost:8080
 
 # The kiosk execs labwc, so run it in the background and screenshot from here.
-/work/vulos-kiosk > /work/kiosk.log 2>&1 &
+sh -x /work/vulos-kiosk > /work/kiosk.log 2>&1 &
 sleep 18
 # Discover the socket rather than assuming wayland-0.
 sock=$(ls /run/user/0/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
