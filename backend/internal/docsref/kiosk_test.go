@@ -316,6 +316,149 @@ func TestKioskSetsScreenIdentity(t *testing.T) {
 	}
 }
 
+// The URL is the THIRD thing duplicated across the two launchers, and the only
+// one that had already drifted before anything pinned it.
+//
+// The multi-screen work put screen/screens/screenIndex on the URL
+// scripts/vulos-kiosk.sh opens. backend/cmd/init/main.go was not touched and
+// went on opening a bare http://localhost:8080. The tests above pin the browser
+// list and the compositor environment; nothing pinned the address, so the two
+// copies diverged silently and the initramfs path simply never set an identity.
+//
+// It has been harmless, and the caveat is the whole reason this is a guard and
+// not a bug report: that path runs cage — one window, one output — and
+// isMultiScreen() needs total>1, so screens=1 and a bare URL render the same
+// pixels today. What it is not is stable. The moment the initramfs path drives
+// more than one output, a bare URL means every window claims to be nowhere.
+//
+// So the invariant is the same one the browser list gets: same identity, same
+// shape, or say so.
+
+// screenIdentityRe matches one COMPLETE identity triple. Partial is the failure
+// that matters: readScreenIdentity() in frontend/src/providers/screenIdentity.ts
+// returns null unless all three are present, so a copy emitting two of them has
+// done work that changes nothing while looking like it works.
+//
+// The name field is captured rather than matched, because each copy substitutes
+// it differently — $screen_name in the shell, %s in the Go format string.
+var screenIdentityRe = regexp.MustCompile(`screen=([^&"'\s]+)&screens=([^&"'\s]+)&screenIndex=([^&"'\s;]+)`)
+
+// goFuncBody returns the body of a top-level Go function, so an assertion about
+// one function cannot be satisfied by another — or by the doc comment above it,
+// which is where the prose about these parameters lives.
+func goFuncBody(t *testing.T, src, sig string) string {
+	t.Helper()
+	start := strings.Index(src, sig)
+	if start < 0 {
+		t.Fatalf("%s is gone from backend/cmd/init/main.go; this check has lost its subject", sig)
+	}
+	end := strings.Index(src[start:], "\n}\n")
+	if end < 0 {
+		t.Fatalf("could not find the end of %s", sig)
+	}
+	return src[start : start+end]
+}
+
+// identityTriples returns every complete triple in src, and fails if any of the
+// three parameter names appears OUTSIDE one — which is how a half-set identity
+// would look.
+func identityTriples(t *testing.T, what, src string) [][]string {
+	t.Helper()
+	got := screenIdentityRe.FindAllStringSubmatch(src, -1)
+	for _, param := range []string{"screen=", "screens=", "screenIndex="} {
+		if n := strings.Count(src, param); n != len(got) {
+			t.Errorf("%s mentions %q %d time(s) but forms %d complete screen/screens/screenIndex "+
+				"triple(s). readScreenIdentity() refuses a partial identity, so a lone parameter "+
+				"is either dead or a lie:\n%s", what, param, n, len(got), src)
+		}
+	}
+	return got
+}
+
+func TestKioskURLIdentityMatchesInit(t *testing.T) {
+	shell := identityTriples(t, "scripts/vulos-kiosk.sh",
+		withoutShellComments(readRepoFile(t, "scripts/vulos-kiosk.sh")))
+	if len(shell) == 0 {
+		t.Fatal("no screen-identity triple parsed out of scripts/vulos-kiosk.sh; either the " +
+			"systemd launcher stopped setting one, or this matcher is broken and would report " +
+			"agreement between two empty lists")
+	}
+
+	initSrc := readRepoFile(t, "backend/cmd/init/main.go")
+	urlFn := goFuncBody(t, initSrc, "func kioskURL()")
+	goTriples := identityTriples(t, "kioskURL in backend/cmd/init/main.go", urlFn)
+	if len(goTriples) == 0 {
+		t.Fatal("kioskURL in backend/cmd/init/main.go sets no screen/screens/screenIndex triple. " +
+			"The initramfs path then opens a bare URL while the systemd path names its output — " +
+			"the exact drift this check exists for. See roadmap/SCREENS.md")
+	}
+
+	// The two copies must agree on the CONSTANTS. The name necessarily differs
+	// in spelling, so it is checked for being a substitution rather than a
+	// literal — a hardcoded name would satisfy every shape check here while
+	// telling the shell the wrong output on every machine.
+	for _, tr := range append(append([][]string{}, shell...), goTriples...) {
+		if !strings.ContainsAny(tr[1], "$%") {
+			t.Errorf("the screen name in %q is the literal %q, not a substitution; it would "+
+				"report the same output on every box", tr[0], tr[1])
+		}
+	}
+	want := shell[0]
+	for _, tr := range goTriples {
+		if tr[2] != want[2] || tr[3] != want[3] {
+			t.Errorf("the two kiosk launchers disagree on the screen identity they set.\n"+
+				"  scripts/vulos-kiosk.sh (systemd, what an installed box runs): screens=%s screenIndex=%s\n"+
+				"  backend/cmd/init/main.go kioskURL (initramfs):                screens=%s screenIndex=%s\n"+
+				"Both launch one window on one output, so these must match. A launcher that "+
+				"reports a screen count it is about to contradict is worse than one that reports "+
+				"nothing.", want[2], want[3], tr[2], tr[3])
+		}
+	}
+
+	// The identity has to be REACHED, not merely defined. A kioskURL nobody
+	// calls is the shape this file already caught once: a feature tested,
+	// rendered in code, and reachable from no surface.
+	browser := goFuncBody(t, initSrc, "func findKioskBrowser()")
+	if !strings.Contains(browser, "kioskURL()") {
+		t.Error("findKioskBrowser does not call kioskURL, so whatever kioskURL builds is never " +
+			"opened by anything")
+	}
+	if strings.Contains(browser, "http://localhost:8080") {
+		t.Error("findKioskBrowser still hands a browser a hardcoded http://localhost:8080; that " +
+			"argument carries no screen identity no matter what kioskURL returns")
+	}
+
+	// And derived from the DRM connector, not invented — the same assertion
+	// TestKioskSetsScreenIdentity makes about the shell's `sed 's/^card[0-9]*-//'`,
+	// against the Go copy of that expression. Scoped to the deriving function:
+	// displayConnected reads the same sysfs path higher up the file, and an
+	// unscoped search for it is satisfied by that unrelated code — which is how
+	// the shell version of this check was found hollow.
+	name := goFuncBody(t, initSrc, "func kioskScreenName()")
+	if !strings.Contains(name, "drmRoot") {
+		t.Error("kioskScreenName no longer reads the DRM connector tree, so the name it reports " +
+			"is not the output the box is on")
+	}
+	// Both halves: that the stripper is APPLIED, and that it strips what the
+	// shell's sed strips. Checking only the declaration passes with the call
+	// removed; checking only the call passes with the pattern gutted.
+	if !strings.Contains(name, "drmCardPrefix") {
+		t.Error("kioskScreenName does not strip the card prefix from the connector directory; " +
+			"it would report card0-HDMI-A-1 where labwc and screenWindowTitle both say HDMI-A-1, " +
+			"so the placement rule matches no window")
+	}
+	decl := regexp.MustCompile("var drmCardPrefix = regexp\\.MustCompile\\(`([^`]*)`\\)")
+	m := decl.FindStringSubmatch(initSrc)
+	if m == nil {
+		t.Fatal("drmCardPrefix is no longer a literal regexp in backend/cmd/init/main.go; this " +
+			"check can no longer see what the initramfs path strips")
+	}
+	if m[1] != `^card[0-9]*-` {
+		t.Errorf("drmCardPrefix is %q, but scripts/vulos-kiosk.sh strips `^card[0-9]*-`; the two "+
+			"launchers would name the same output differently", m[1])
+	}
+}
+
 // Multi-output launch: the pieces must agree, because nothing here can be
 // checked at runtime by anything but a person with two monitors.
 //
