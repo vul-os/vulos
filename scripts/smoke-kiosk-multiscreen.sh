@@ -23,21 +23,33 @@
 # What that leaves genuinely unverified: a real boot, with the real shell
 # setting its own title, on real DRM connectors.
 #
-# STATUS 2026-08-13: this harness does NOT yet pass. cog and grim both report
-# "failed to create display" — the Wayland socket labwc creates is not the
-# wayland-0 this assumes, so the browsers and the screenshotter never reach the
-# compositor. The kiosk script itself runs correctly up to that point: it
-# enumerates both fake connectors, takes the multi-output branch, and launches
-# two browsers.
+# STATUS 2026-08-13 — gets further each round, does NOT yet pass.
 #
-# It is committed failing, on purpose. It found a real defect on its first run
-# — the kiosk logged a hardcoded "(1 of 1)" and then started two browsers — and
-# a harness that catches that is worth more checked in than deleted. It is NOT
-# wired into CI, because a job that cannot pass teaches nothing on every push.
+# Round 1: labwc could not create its socket. That was this harness's bug, not
+# the kiosk's: vulos-kiosk exports XDG_RUNTIME_DIR=/run/user/0 itself, so
+# setting a different one here was overridden and the directory never existed.
+# Fixed by creating /run/user/0.
 #
-# To finish it: discover the socket rather than assuming it. labwc prints the
-# WAYLAND_DISPLAY it created on startup; parse that from the log and export it
-# for both the session and grim.
+# Round 1 also found a REAL defect, which is why this file exists: the kiosk
+# logged a hardcoded "(1 of 1)" and then started two browsers. Now fixed, and
+# round 2 confirms it against the real script:
+#
+#     vulos-kiosk: screen identity HEADLESS-1 (2 connected: HEADLESS-1 HEADLESS-2)
+#
+# Round 2: enumeration and counting are correct, but the run still takes the
+# SINGLE-output path — the log line after it reads "...&screens=1&screenIndex=1"
+# — and no Wayland socket appears (socket: NONE), with two "failed to create
+# display" errors.
+#
+# So the open question is why the multi-output branch is not taken when
+# screen_count is 2. Its other conditions are `command -v labwc` and
+# `command -v cog`, both installed in this image. Worth dumping the whole
+# kiosk.log rather than the first 12 lines, and echoing the branch decision,
+# before theorising further — this investigation has already cost a day once by
+# reasoning ahead of the evidence.
+#
+# NOT wired into CI while it cannot pass: a permanently red job teaches nothing
+# on every push.
 set -euo pipefail
 
 WORK=$(mktemp -d)
@@ -65,7 +77,10 @@ chmod +x "$WORK/vulos-kiosk" "$WORK/vulos-kiosk-genconfig"
 cat > "$WORK/run.sh" <<'RUN'
 #!/bin/sh
 set -e
-export XDG_RUNTIME_DIR=/tmp/xdg; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+# vulos-kiosk exports XDG_RUNTIME_DIR=/run/user/0 itself, so that is the
+# directory that has to exist — setting a different one here is overridden and
+# labwc then fails to create its socket. That was this harness's first failure.
+mkdir -p /run/user/0; chmod 700 /run/user/0
 export WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_RENDERER=pixman
 export VULOS_DRM_ROOT=/work/drm
 export PATH="/work:$PATH"
@@ -77,8 +92,12 @@ export VULOS_KIOSK_URL=http://localhost:8080
 # The kiosk execs labwc, so run it in the background and screenshot from here.
 /work/vulos-kiosk > /work/kiosk.log 2>&1 &
 sleep 14
+# Discover the socket rather than assuming wayland-0.
+sock=$(ls /run/user/0/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+echo "socket: ${sock:-NONE}" >> /work/kiosk.log
 for o in HEADLESS-1 HEADLESS-2; do
-    WAYLAND_DISPLAY=wayland-0 grim -o "$o" "/work/shots/$o.png" 2>>/work/kiosk.log || true
+    XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY=$(basename "${sock:-wayland-0}") \
+      grim -o "$o" "/work/shots/$o.png" 2>>/work/kiosk.log || true
 done
 sleep 1
 RUN
