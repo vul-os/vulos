@@ -207,6 +207,28 @@ with every browser on one monitor and nothing in any log saying why. Verify by
 running labwc with two virtual outputs under QEMU and reading a screendump —
 the verification this feature needs regardless.
 
+## What the QEMU verification actually needs (checked 2026-08-13)
+
+The remaining claim is that the real launcher places real browsers on real
+outputs. Precisely what stands in the way, measured rather than assumed:
+
+- **qemu is present** on the dev host (`qemu-system-x86_64`, `-aarch64`).
+- **Bootable images exist** — `output/vulos-live-arm64.img` and the two
+  installed-disk images the netboot smoke test produces.
+- **`debootstrap` is ABSENT**, so those images cannot be rebuilt here. They
+  predate the multi-output launcher, the screen-identity parameters and both
+  kiosk fixes made today.
+
+So booting what is on disk would exercise the OLD kiosk and prove nothing about
+the new path. The verification needs an image built on a Linux host (or in a
+privileged Linux container with debootstrap), after which
+`scripts/netboot-install-smoke.sh` supplies the machinery: it already boots
+QEMU, already screendumps, and already measures pixels — a second
+`-device virtio-gpu-pci` and a screendump of each head is the whole change.
+
+Worth stating because it is easy to get wrong twice: the blocker is the IMAGE
+BUILD, not QEMU and not the harness.
+
 ## What is genuinely unresolved
 
 Named rather than glossed, because these are the parts that will decide whether
