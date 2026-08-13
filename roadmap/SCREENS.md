@@ -229,6 +229,22 @@ QEMU, already screendumps, and already measures pixels — a second
 Worth stating because it is easy to get wrong twice: the blocker is the IMAGE
 BUILD, not QEMU and not the harness.
 
+**Attempted 2026-08-13 in a privileged arm64 container** (repo mounted
+read-only, output to /tmp, so nothing root-owned could land in the tree — worth
+keeping, and it worked: the tree was untouched afterwards). The build **took
+down the Docker daemon**: `error waiting for container: unexpected EOF`,
+followed by the socket becoming unreachable. OrbStack had already been logging
+NFS warnings earlier in the day, so it was likely strained before this started.
+
+A privileged debootstrap build is heavy — chroot, squashfs, initramfs, a full
+package install — and it may simply need more memory than a default OrbStack
+VM has. Try raising the VM's memory before retrying. If it fails the same way a
+second time, that is a strong argument for building on a real Linux host rather
+than a container on macOS, and not worth a third attempt here.
+
+Note the collateral: while the daemon is down, `SCREENS-01` and the NAT harness
+cannot run locally either, since both are container-based. CI is unaffected.
+
 ## What is genuinely unresolved
 
 Named rather than glossed, because these are the parts that will decide whether
