@@ -1,6 +1,10 @@
 package docsref
 
 import (
+	"encoding/xml"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -336,27 +340,104 @@ func TestKioskMultiOutputLaunch(t *testing.T) {
 		t.Error("the multi-output path is not gated on more than one connected screen, so a " +
 			"single-screen box could take it — that box is the one every real boot is")
 	}
-	if !strings.Contains(kiosk, "MoveToOutput") {
-		t.Error("no MoveToOutput action is written, so labwc has nothing that places a window " +
-			"on a given output and every browser lands on the active one")
+	// The CONTENT of the generated config is covered by TestKioskGenConfig,
+	// which runs the real generator. What build.sh still owns is calling it and
+	// shipping it — so that is what is asserted here. These used to check the
+	// XML text inline; after the generator moved to scripts/, keeping them here
+	// would have meant asserting against a string build.sh no longer contains.
+	if !strings.Contains(kiosk, "vulos-kiosk-genconfig") {
+		t.Error("vulos-kiosk does not call the config generator, so no labwc rules are written " +
+			"and every browser lands on the active output")
 	}
-	if !strings.Contains(kiosk, "windowRule title=") {
-		t.Error("the windowRule does not match on title; nothing else distinguishes two " +
-			"instances of the same shell")
+	if !strings.Contains(withoutShellComments(src), "install -m 0755") ||
+		!strings.Contains(src, "vulos-kiosk-genconfig") {
+		t.Error("build.sh does not install scripts/vulos-kiosk-genconfig.sh into the image; " +
+			"vulos-kiosk would call a command that is not there")
 	}
-	// -S, not -s: the compositor must exit when the session does.
-	if !strings.Contains(kiosk, "labwc -C") || !strings.Contains(kiosk, "-S ") {
-		t.Error("labwc is not started with a config dir and a session command (-C and -S); " +
-			"with -s instead the compositor outlives the browsers")
+}
+
+// Run the REAL generator with fake outputs and check what it produces.
+//
+// scripts/vulos-kiosk-genconfig.sh is a file in the repo that build.sh installs
+// into the image, so this executes the same bytes the OS runs. That is the
+// reason it was pulled out of build.sh: while it was a heredoc, a test could
+// only grep at the text that would later generate the config, never at the
+// config itself. Every assertion here would have been satisfiable by a script
+// that emitted nothing.
+func TestKioskGenConfig(t *testing.T) {
+	gen := filepath.Join(repoRoot, "scripts", "vulos-kiosk-genconfig.sh")
+	if _, err := os.Stat(gen); err != nil {
+		t.Fatalf("generator missing: %v", err)
 	}
-	// The title written into the rule must be the SAME shape screenWindowTitle
-	// produces, or the rule matches nothing.
-	if !strings.Contains(kiosk, `Vulos — $nm`) {
-		t.Error("the windowRule title is not \"Vulos — <connector>\", which is what " +
-			"screenWindowTitle in screenIdentity.ts actually sets — the rule would match no window")
+
+	out := t.TempDir()
+	cmd := exec.Command("sh", gen, out, "http://localhost:8080", "HDMI-A-1", "DP-2")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generator failed: %v\n%s", err, b)
 	}
-	if !strings.Contains(kiosk, "screenIndex=$i") || !strings.Contains(kiosk, "screens=$screen_count") {
-		t.Error("each browser is not given its own screenIndex and the true screen count, so the " +
-			"shell cannot tell the instances apart")
+
+	rc, err := os.ReadFile(filepath.Join(out, "rc.xml"))
+	if err != nil {
+		t.Fatalf("no rc.xml: %v", err)
+	}
+
+	// Well-formed, not merely present. A truncated or unescaped config is the
+	// failure that leaves every browser on one monitor with nothing logged.
+	var parsed struct {
+		Rules []struct {
+			Title  string `xml:"title,attr"`
+			Action struct {
+				Name   string `xml:"name,attr"`
+				Output string `xml:"output,attr"`
+			} `xml:"action"`
+		} `xml:"windowRules>windowRule"`
+	}
+	if err := xml.Unmarshal(rc, &parsed); err != nil {
+		t.Fatalf("rc.xml is not well-formed XML: %v\n%s", err, rc)
+	}
+	if len(parsed.Rules) != 2 {
+		t.Fatalf("want 2 windowRules for 2 outputs, got %d:\n%s", len(parsed.Rules), rc)
+	}
+
+	for i, want := range []struct{ title, output string }{
+		{"Vulos — HDMI-A-1", "HDMI-A-1"},
+		{"Vulos — DP-2", "DP-2"},
+	} {
+		got := parsed.Rules[i]
+		// The title must be EXACTLY what screenWindowTitle produces, em dash and
+		// all. A rule that matches no window places nothing, silently.
+		if got.Title != want.title {
+			t.Errorf("rule %d title = %q, want %q — this must match screenWindowTitle in "+
+				"frontend/src/providers/screenIdentity.ts or the rule matches no window",
+				i, got.Title, want.title)
+		}
+		if got.Action.Name != "MoveToOutput" {
+			t.Errorf("rule %d action = %q, want MoveToOutput (FocusOutput only changes focus)",
+				i, got.Action.Name)
+		}
+		if got.Action.Output != want.output {
+			t.Errorf("rule %d output = %q, want %q", i, got.Action.Output, want.output)
+		}
+	}
+
+	sess, err := os.ReadFile(filepath.Join(out, "session.sh"))
+	if err != nil {
+		t.Fatalf("no session.sh: %v", err)
+	}
+	for _, want := range []string{
+		"screen=HDMI-A-1&screens=2&screenIndex=1",
+		"screen=DP-2&screens=2&screenIndex=2",
+	} {
+		if !strings.Contains(string(sess), want) {
+			t.Errorf("session.sh does not give a browser %q; the shell cannot then tell the "+
+				"instances apart:\n%s", want, sess)
+		}
+	}
+
+	// One output must be REFUSED rather than given a pointless rule set.
+	one := exec.Command("sh", gen, t.TempDir(), "http://localhost:8080", "HDMI-A-1")
+	if err := one.Run(); err == nil {
+		t.Error("the generator accepted a single output; it should refuse, since a one-screen " +
+			"box needs no placement rules and writing them claims something it cannot honour")
 	}
 }
