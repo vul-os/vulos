@@ -236,11 +236,24 @@ down the Docker daemon**: `error waiting for container: unexpected EOF`,
 followed by the socket becoming unreachable. OrbStack had already been logging
 NFS warnings earlier in the day, so it was likely strained before this started.
 
-A privileged debootstrap build is heavy — chroot, squashfs, initramfs, a full
-package install — and it may simply need more memory than a default OrbStack
-VM has. Try raising the VM's memory before retrying. If it fails the same way a
-second time, that is a strong argument for building on a real Linux host rather
-than a container on macOS, and not worth a third attempt here.
+**Attempted a SECOND time after restarting OrbStack, with the container capped
+at `-m 6g --memory-swap 6g` so it could not exhaust the VM. The daemon died
+again.** So it is NOT container memory exhaustion — the cap made no difference.
+A privileged build performs loop-device and kernel-level operations (chroot,
+squashfs, initramfs, partitioning), and something in that destabilises the
+OrbStack VM itself rather than the container.
+
+**Do not attempt this a third time on macOS.** Build the image on a real Linux
+host. Two crashes with different memory configurations is enough evidence, and
+each one takes the daemon down with it — which also stops SCREENS-01 and the
+NAT harness from running locally.
+
+Progress worth keeping from attempt two: it got as far as building all Go
+binaries and failed at `npm: not found` (install `npm`, not just `nodejs`).
+And a trap for whoever retries — `cp -a /src /build` copies the repo's existing
+`output/` directory, so stale images appear in the destination and look like a
+successful build. Delete `output/` after copying, and capture the build's real
+exit code rather than a pipeline's.
 
 Note the collateral: while the daemon is down, `SCREENS-01` and the NAT harness
 cannot run locally either, since both are container-based. CI is unaffected.
