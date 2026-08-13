@@ -77,6 +77,42 @@
 # then no socket, then a dbus-proxy error, then bwrap. Each looked like the
 # answer.
 #
+# ── DECISION 2026-08-13: stop extending this harness. Use QEMU instead. ──────
+#
+# Round 7 hung with no output after the namespace flags were added, and that is
+# the point to stop. Every one of the seven failures has been ENVIRONMENTAL, and
+# none has been a fault in Vulos:
+#
+#   1. XDG_RUNTIME_DIR overridden by the kiosk's own export
+#   2. no /api/setup/status served, so the readiness loop timed out
+#   3. curl absent, so the probe could not succeed at all
+#   4. wayland-0 assumed rather than discovered
+#   5. no session bus, so cog's dbus-proxy died
+#   6. bwrap denied unprivileged user namespaces
+#   7. the run hanging under emulation with the sandbox flags granted
+#
+# When seven consecutive failures are all about making a container behave like a
+# graphics stack, the container has stopped being a good proxy for the thing
+# under test. The remaining claim — that the REAL launcher places real browsers
+# on real outputs — is cheaper to get from a QEMU boot with two virtual
+# displays, where the graphics stack is genuine and none of these seven problems
+# exist.
+#
+# scripts/netboot-install-smoke.sh already has working QEMU screendump machinery
+# and the kiosk already renders under it. Adding a second -device virtio-gpu-pci
+# and screendumping both heads is a smaller change than any two of the rounds
+# above.
+#
+# KEEP this file. It is not wasted: it found two real defects that reading never
+# would — the kiosk logging "(1 of 1)" while starting two browsers, and a
+# readiness probe built from a URL carrying a query string, which could never
+# succeed and cost sixty seconds on every boot with a display. It also forced
+# the compositor environment to become overridable defaults. Its diagnosis chain
+# is recorded above because the next person will otherwise repeat it.
+#
+# What it does NOT do is pass, and it should not be extended further without a
+# specific reason to believe round eight differs from rounds one to seven.
+#
 # NOT wired into CI while it cannot pass.
 set -euo pipefail
 
