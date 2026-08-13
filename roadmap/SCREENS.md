@@ -161,8 +161,29 @@ labwc rc.xml with one rule per output binding that identity to that output, and
 pass each instance its own `screen`/`screens`/`screenIndex` parameters (the
 parser and indicator for those are built, tested and rendered — see above).
 
-The syntax above is from the manuals and is believed correct, but it has NOT
-been run. A wrong rule fails the way everything in this area fails: silently,
+**VERIFIED 2026-08-13 against labwc 0.8.3.** The generated rc.xml was fed to a
+real labwc running headless (`WLR_BACKENDS=headless`, `WLR_HEADLESS_OUTPUTS=2`,
+pixman renderer) in a Debian trixie container. It produced no errors.
+
+That result only means something because the same check was run against two
+deliberately broken configs, and both were rejected:
+
+    MoveToOutput → NotARealAction
+      [ERROR] [../src/action.c:503] Invalid action: NotARealAction
+      [ERROR] [../src/action.c:488] Invalid argument for action INVALID: 'output'
+
+    </windowRules> removed
+      Entity: line 1: parser error : Opening and ending tag mismatch
+      [ERROR] [../src/config/rcxml.c:1396] error parsing config file
+
+So labwc validates both the action name and the XML structure, and accepts
+ours. `MoveToOutput` is a real action in 0.8.3 and `output` is a valid argument
+to it — which was the specific thing taken from the manual and never run.
+
+This does NOT prove placement. A config labwc accepts can still put every
+window on one monitor: whether the title rule matches the browser's actual
+title, and whether MoveToOutput does what its name says at runtime, both need
+real windows on real outputs. A wrong rule fails the way everything in this area fails: silently,
 with every browser on one monitor and nothing in any log saying why. Verify by
 running labwc with two virtual outputs under QEMU and reading a screendump —
 the verification this feature needs regardless.
