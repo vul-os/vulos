@@ -397,6 +397,18 @@ PY
 # D — are the two heads the same picture? Compared over EVERY pixel of the top
 # band (where TopBar renders the screen name), not a sample: the discriminating
 # content is a few words of text and a 1-in-17 sample can miss it entirely.
+#
+# "The frames differ" on its own is NOT a safe test, and the dry run of this
+# harness proved it: two blank text consoles alternated between two hashes
+# because of the blinking cursor. Head 0 and head 1 are photographed a few
+# milliseconds apart, so ANY animation — a cursor, a clock, a spinner — makes
+# two screens differ while showing the same thing.
+#
+# So the run measures its own noise floor. Three shots, in this order:
+# head0, head1, head0 again. diff(head0a, head0b) is what one screen does to
+# itself across the same interval; diff(head0a, head1) is what the two screens
+# do to each other. The second must EXCEED the first, or the difference is
+# time passing rather than two different desktops.
 compare() {
   python3 - "$1" "$2" <<'PY'
 import sys
@@ -446,7 +458,16 @@ while [ "$i" -lt "$SCREEN_TRIES" ]; do
   i=$((i + 1)); sleep 5
 done
 echo
-[ "$HEADS" -gt 1 ] && CMP="$(compare "$SHOT0" "$SHOT1")"
+
+# The noise-floor shot: head 0 again, immediately after head 1, so the interval
+# it covers BRACKETS the interval between the two heads' captures.
+SHOT0B="$OUTDIR/_ms-head0-again.ppm"
+NOISE="n/a 0 0"
+if [ "$HEADS" -gt 1 ]; then
+  qmp "{\"execute\":\"screendump\",\"arguments\":{\"filename\":\"$SHOT0B\",\"device\":\"gpu0\",\"head\":0}}" >/dev/null 2>&1 || true
+  CMP="$(compare "$SHOT0" "$SHOT1")"
+  NOISE="$(compare "$SHOT0" "$SHOT0B")"
+fi
 
 # ── Serial evidence ──────────────────────────────────────────────────────────
 S1=0; S2=0
@@ -464,7 +485,8 @@ printf "  S1 two connectors seen by the launcher   %s\n" "$([ "$S1" = 1 ] && ech
 printf "  S2 labwc multi-output branch taken       %s\n" "$([ "$S2" = 1 ] && echo yes || echo NO)"
 printf "  P0 head 0 renders a desktop              %s   (colours fill%% size sha) %s\n" "$([ "$P0" = 1 ] && echo yes || echo NO)" "$M0"
 printf "  P1 head 1 renders a desktop              %s   (colours fill%% size sha) %s\n" "$([ "$P1" = 1 ] && echo yes || echo NO)" "$M1"
-printf "  D  heads differ / top-band diff%% / band  %s\n" "$CMP"
+printf "  D  head0 vs head1   (state topband-diff%% band)  %s\n" "$CMP"
+printf "  D  head0 vs itself  (noise floor, same interval) %s\n" "$NOISE"
 if [ -n "$KIOSK_LINES" ]; then
   echo "  launcher said:"
   echo "$KIOSK_LINES" | sed 's/^/    /'
@@ -477,10 +499,15 @@ echo ""
 
 VERDICT=pass
 DIFFSTATE="$(echo "$CMP" | cut -d' ' -f1)"
+CROSS="$(echo "$CMP" | cut -d' ' -f2)"
+SELF="$(echo "$NOISE" | cut -d' ' -f2)"
 for cond in "$BOOTED" "$S1" "$S2" "$P0" "$P1"; do
   [ "$cond" = "1" ] || VERDICT=fail
 done
 [ "$DIFFSTATE" = "differ" ] || VERDICT=fail
+# Strictly greater. Equal means the two heads differ by no more than one head
+# differs from itself over the same interval — i.e. by time, not by content.
+[ "${CROSS:-0}" -gt "${SELF:-0}" ] 2>/dev/null || VERDICT=fail
 
 if [ "$SHOW" = "1" ]; then say "QEMU window open — Ctrl-C to stop."; wait "$QEMU_PID"; fi
 qmp '{"execute":"quit"}' >/dev/null 2>&1 || true
