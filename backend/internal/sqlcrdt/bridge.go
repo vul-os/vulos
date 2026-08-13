@@ -67,8 +67,12 @@ type Config struct {
 // merged CRDT state back into the SQL tables. Neither direction requires any
 // existing code to change how it talks to the database.
 type Bridge struct {
-	mu       sync.Mutex
-	cfg      Config
+	mu  sync.Mutex
+	cfg Config
+	// closed is set by Close and makes every subsequent cycle operation fail
+	// with ErrClosed. Without it a cycle racing a Close dereferences the freed
+	// session handle — see ErrClosed for the shutdown crash that caused.
+	closed   bool
 	sess     *sessionDB
 	live     *sql.DB
 	tables   []TableSpec
@@ -139,10 +143,27 @@ func New(cfg Config) (*Bridge, error) {
 	return b, nil
 }
 
-// Close releases both connections.
+// ErrClosed is returned by Capture, Materialise and Cycle once Close has run.
+//
+// A closed bridge must REFUSE work, not crash on it. Close frees the session
+// handle, so a cycle that slipped past it called sessionDB.diff on a nil
+// receiver and panicked — and because the loop in Run holds no recover, that
+// panic took the whole process down. It was reachable in production, not just
+// under test: the server started Run and Close as two independent goroutines
+// keyed on the same context, with nothing ordering them, so a box could panic
+// on the way down instead of exiting cleanly.
+//
+// Guarding the state rather than ordering the goroutines is deliberate: it
+// makes the crash impossible for EVERY caller and every interleaving, rather
+// than for the one shutdown path that happened to be audited.
+var ErrClosed = errors.New("sqlcrdt: bridge is closed")
+
+// Close releases both connections. Safe to call more than once, and safe to
+// call while Run is still ticking — subsequent cycles return ErrClosed.
 func (b *Bridge) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.closed = true
 	var first error
 	if b.sess != nil {
 		first = b.sess.Close()
@@ -215,6 +236,9 @@ func (b *Bridge) Cycle() (captured, applied int, err error) {
 func (b *Bridge) Capture() (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.closed {
+		return 0, ErrClosed
+	}
 	return b.captureLocked()
 }
 
@@ -289,6 +313,9 @@ func (b *Bridge) captureLocked() (int, error) {
 func (b *Bridge) Materialise() (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.closed {
+		return 0, ErrClosed
+	}
 	n, err := b.materialiseLocked()
 	if err != nil {
 		return n, err

@@ -3,6 +3,7 @@ package sqlcrdt
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -409,4 +410,74 @@ func mustKey(t *testing.T, id string) string {
 		t.Fatal(err)
 	}
 	return k
+}
+
+// A closed bridge must REFUSE work rather than crash on it.
+//
+// Regression test for a shutdown crash. Close frees the session handle, and
+// nothing stopped a cycle from running afterwards: captureLocked read the nil
+// sess and called sessionDB.diff on it, panicking at session.go's s.mu.Lock().
+// The Run loop holds no recover, so that panic killed the whole process.
+//
+// It was reachable in PRODUCTION, not only under test: cmd/server started
+// br.Run(ctx, ...) and a separate goroutine that did <-ctx.Done() then
+// b.Close(), with nothing ordering the two. Whenever Close won that race a box
+// panicked on the way down instead of exiting cleanly.
+func TestCycleAfterCloseIsRefusedNotFatal(t *testing.T) {
+	a := newBox(t, "AAA")
+
+	// A cycle works before Close, so a passing test cannot be an artefact of
+	// the bridge having been broken all along.
+	if _, _, err := a.bridge.Cycle(); err != nil {
+		t.Fatalf("cycle before close: %v", err)
+	}
+
+	if err := a.bridge.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	// Every entry point that reaches the freed handle, not just the one that
+	// happened to be on the crashing stack.
+	if _, err := a.bridge.Capture(); !errors.Is(err, ErrClosed) {
+		t.Errorf("Capture after Close = %v, want ErrClosed", err)
+	}
+	if _, err := a.bridge.Materialise(); !errors.Is(err, ErrClosed) {
+		t.Errorf("Materialise after Close = %v, want ErrClosed", err)
+	}
+	if _, _, err := a.bridge.Cycle(); !errors.Is(err, ErrClosed) {
+		t.Errorf("Cycle after Close = %v, want ErrClosed", err)
+	}
+}
+
+// Closing a bridge out from under a LIVE Run loop must not panic, and the loop
+// must exit rather than spin logging the same terminal error every tick.
+//
+// ctx is deliberately never cancelled here: closing the bridge is by itself
+// the interleaving that used to be fatal, and driving it this way proves the
+// loop stops on a closed bridge rather than merely on a cancelled context.
+func TestCloseDuringRunExitsWithoutPanic(t *testing.T) {
+	a := newBox(t, "AAA")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.bridge.Run(ctx, time.Millisecond, nil)
+	}()
+
+	// No sleep to "let the loop start": the tick AFTER Close is the one that
+	// used to dereference the freed handle, and it happens whether or not a
+	// tick landed first. Waiting here would test the scheduler, not the fix.
+	if err := a.bridge.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Run did not exit after the bridge was closed; a closed bridge " +
+			"must stop the loop, not make it log forever")
+	}
 }

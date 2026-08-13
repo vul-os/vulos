@@ -258,9 +258,14 @@ func startCRDTSync(
 			table := rt.Spec.Name
 			br.SetOnApplied(func(int) { onApplied(table) })
 		}
-		go br.Run(ctx, sqlcrdt.DefaultCycleInterval, syncer.Nudge)
+		// Run and Close in ONE goroutine, in that order. They used to be two
+		// goroutines both waiting on ctx.Done(), which left their order to the
+		// scheduler: when Close won, it freed the session out from under a
+		// loop that was still ticking and the next cycle panicked the process
+		// during shutdown. Run returns as soon as ctx is done, so sequencing
+		// them costs nothing and makes teardown deterministic.
 		go func(b *sqlcrdt.Bridge) {
-			<-ctx.Done()
+			b.Run(ctx, sqlcrdt.DefaultCycleInterval, syncer.Nudge)
 			_ = b.Close()
 		}(br)
 		bridged++

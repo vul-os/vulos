@@ -2,6 +2,7 @@ package sqlcrdt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -105,12 +106,32 @@ func (rt ReplicatedTable) LiveDBPath(dbDir string) string {
 // that has not been captured yet cannot be replicated at all.
 const DefaultCycleInterval = 5 * time.Second
 
-// Run cycles the bridge until ctx is cancelled.
+// Run cycles the bridge until ctx is cancelled or the bridge is closed.
 //
 // onCaptured fires after a cycle that recorded at least one local op, so the
 // wiring can Nudge the network syncer instead of waiting for its tick. A cycle
 // error is logged and the loop continues: a transient SQLite busy error must
-// not permanently stop replication for the life of the process.
+// not permanently stop replication for the life of the process. ErrClosed is
+// the one exception — see the error handling below.
+//
+// # Shutting this loop down
+//
+// Run BLOCKS until it returns, and that is the only signal a caller gets: there
+// is no done channel and no Stop. So a caller that must know the loop has
+// stopped — because it is about to free what the loop touches — has to run it
+// somewhere it can wait on and sequence the teardown AFTER it returns:
+//
+//	done := make(chan struct{})
+//	go func() { defer close(done); b.Run(ctx, interval, nil) }()
+//	...
+//	cancel()
+//	<-done      // the loop is now guaranteed not to be mid-cycle
+//	b.Close()
+//
+// Cancelling ctx and closing the bridge from two INDEPENDENT goroutines does
+// not do this: nothing orders them, so Close can free the session while the
+// loop is still ticking. That was a real shutdown crash — see ErrClosed, which
+// now makes the outcome an error rather than a panic either way.
 func (b *Bridge) Run(ctx context.Context, interval time.Duration, onCaptured func()) {
 	if interval <= 0 {
 		interval = DefaultCycleInterval
@@ -124,6 +145,13 @@ func (b *Bridge) Run(ctx context.Context, interval time.Duration, onCaptured fun
 		case <-t.C:
 			captured, applied, err := b.Cycle()
 			if err != nil {
+				// A closed bridge is terminal, not transient: retrying it
+				// would log the same error every tick for the life of the
+				// process. Returning also means a caller can shut this loop
+				// down by closing the bridge, not only by cancelling ctx.
+				if errors.Is(err, ErrClosed) {
+					return
+				}
 				log.Printf("[sqlcrdt] cycle: %v", err)
 				continue
 			}
