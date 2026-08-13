@@ -4,6 +4,7 @@ import {
   decideRole,
   livePeersOn,
   nextWriter,
+  shouldStepDown,
   suggestDesktopId,
   type PeerInfo,
 } from '../providers/shellSession'
@@ -85,6 +86,58 @@ describe('nextWriter — successor is deterministic, so exactly one promotes', (
   it('does not promote a tab from another desktop', () => {
     const peers = [peer('a', 'desktop-2', 'follower', T0)]
     expect(nextWriter(peers, 'desktop-1', T0)).toBeNull()
+  })
+})
+
+describe('shouldStepDown — resolving a writer that should not exist anymore', () => {
+  // These simulate the case a tab closing can never produce: no `bye` was
+  // ever sent, so from the peer set alone there is nothing to distinguish
+  // "the old writer crashed and something is stale" from "the old writer is
+  // still alive and about to say so again" — the display-unplugged hazard
+  // this function exists for. Every case here is built by constructing
+  // PeerInfo timestamps directly, the same way decideRole's timeout tests
+  // do above, precisely so no real teardown path runs anywhere near it.
+
+  it('steps down when a live peer with a LOWER tabId also claims writer', () => {
+    // This is the resurfacing writer's own view: it went silent, a follower
+    // with a lower id promoted itself in its absence, and now both believe
+    // they hold the desktop. The higher id must yield.
+    const peers = [peer('aaa-survivor', 'desktop-1', 'writer', T0)]
+    expect(shouldStepDown('zzz-resurfaced', peers, 'desktop-1', T0)).toBe(true)
+  })
+
+  it('does NOT step down when self already has the lowest tabId', () => {
+    // The survivor's own view of the identical conflict: it must not
+    // flip-flop just because a higher-id peer also claims writer, or the two
+    // tabs would alternate the role forever instead of converging.
+    const peers = [peer('zzz-resurfaced', 'desktop-1', 'writer', T0)]
+    expect(shouldStepDown('aaa-survivor', peers, 'desktop-1', T0)).toBe(false)
+  })
+
+  it('ignores a rival writer that has gone stale past the timeout', () => {
+    // A memory of a conflict that already resolved itself (the rival is long
+    // gone) must not force a permanent, unnecessary step-down.
+    const peers = [peer('aaa', 'desktop-1', 'writer', T0 - WRITER_TIMEOUT_MS - 1)]
+    expect(shouldStepDown('zzz', peers, 'desktop-1', T0)).toBe(false)
+  })
+
+  it('ignores a live FOLLOWER, even with a lower tabId — a follower is not a conflict', () => {
+    const peers = [peer('aaa', 'desktop-1', 'follower', T0)]
+    expect(shouldStepDown('zzz', peers, 'desktop-1', T0)).toBe(false)
+  })
+
+  it('ignores a live writer on a DIFFERENT desktop', () => {
+    const peers = [peer('aaa', 'desktop-2', 'writer', T0)]
+    expect(shouldStepDown('zzz', peers, 'desktop-1', T0)).toBe(false)
+  })
+
+  it('ignores its own entry, if present in the peer set', () => {
+    const peers = [peer('zzz', 'desktop-1', 'writer', T0)]
+    expect(shouldStepDown('zzz', peers, 'desktop-1', T0)).toBe(false)
+  })
+
+  it('is false with no peers at all — a lone writer has nothing to step down for', () => {
+    expect(shouldStepDown('zzz', [], 'desktop-1', T0)).toBe(false)
   })
 })
 
