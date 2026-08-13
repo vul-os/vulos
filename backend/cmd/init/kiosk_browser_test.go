@@ -32,6 +32,33 @@ func stubBin(t *testing.T, dir, name, body string) {
 	}
 }
 
+// fakeDRM points drmRoot at a connector tree the test writes, and restores it
+// afterwards.
+//
+// Every assertion about the kiosk URL needs this. Left on the real
+// /sys/class/drm, a test asserting the bare URL is really asserting that the
+// machine running it has no connected output — true on an Azure CI runner with
+// no DRM device, false on anything with a monitor, and the same host-dependent
+// assertion binRoot exists to have removed once already.
+func fakeDRM(t *testing.T, status map[string]string) {
+	t.Helper()
+	root := t.TempDir()
+	for name, st := range status {
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Trailing newline: that is how sysfs writes it, and reading it as if it
+		// were not there is a real way to see "disconnected" as connected.
+		if err := os.WriteFile(filepath.Join(dir, "status"), []byte(st+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := drmRoot
+	drmRoot = root
+	t.Cleanup(func() { drmRoot = old })
+}
+
 // plymouthRecorder installs a fake `plymouth` that appends its argv to a file,
 // so a test can prove what this process tried to put on the screen.
 func plymouthRecorder(t *testing.T) (dir, logPath string) {
@@ -56,6 +83,7 @@ func readLines(t *testing.T, p string) []string {
 // ---------------------------------------------------------------------------
 
 func TestFindKioskBrowserPrefersCog(t *testing.T) {
+	fakeDRM(t, nil) // no connector → the bare URL, on any host
 	dir := t.TempDir()
 	stubBin(t, dir, "cog", ":")
 	stubBin(t, dir, "chromium", ":")
@@ -77,6 +105,7 @@ func TestFindKioskBrowserPrefersCog(t *testing.T) {
 }
 
 func TestFindKioskBrowserFallsBackToChromium(t *testing.T) {
+	fakeDRM(t, nil)
 	dir := t.TempDir()
 	stubBin(t, dir, "chromium", ":")
 	t.Setenv("PATH", dir)
@@ -111,6 +140,54 @@ func TestFindKioskBrowserEmptyWhenNoBrowserInstalled(t *testing.T) {
 
 	if bin != "" || args != nil {
 		t.Fatalf("findKioskBrowser() = (%q, %v), want (\"\", nil) when no browser is installed", bin, args)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The screen identity on the URL
+// ---------------------------------------------------------------------------
+
+// frontend/src/providers/screenIdentity.ts refuses anything but the complete
+// triple, so the only two acceptable outputs are the full identity or a bare
+// URL. These run the real derivation against a controlled connector tree —
+// backend/internal/docsref's TestKioskURLIdentityMatchesInit pins this copy
+// against scripts/vulos-kiosk.sh, but only the source text; it cannot see what
+// the code does with a directory.
+
+func TestKioskURLNamesTheConnectedOutput(t *testing.T) {
+	fakeDRM(t, map[string]string{
+		// "disconnected" contains "connected", so a substring test would pick
+		// the wrong output here — and card0-DP-1 sorts first, so it would pick
+		// it every time rather than intermittently.
+		"card0-DP-1":     "disconnected",
+		"card0-HDMI-A-1": "connected",
+	})
+
+	got := kioskURL()
+	want := "http://localhost:8080?screen=HDMI-A-1&screens=1&screenIndex=1"
+	if got != want {
+		t.Errorf("kioskURL() = %q, want %q", got, want)
+	}
+}
+
+// The card number is the kernel's, not the compositor's. labwc's MoveToOutput
+// and screenWindowTitle both speak HDMI-A-1; card0-HDMI-A-1 matches no output
+// and no window, and places nothing while logging nothing.
+func TestKioskURLStripsTheCardPrefix(t *testing.T) {
+	fakeDRM(t, map[string]string{"card1-eDP-1": "connected"})
+	if got := kioskURL(); !strings.Contains(got, "screen=eDP-1&") {
+		t.Errorf("kioskURL() = %q, want the connector name with the card prefix stripped", got)
+	}
+}
+
+// No connector → NO parameters, not guessed ones. A half-set identity is
+// discarded by the parser anyway, and an invented one names an output the box
+// is not on. vulos.kiosk=force lands here: virtio-gpu reports nothing
+// connected while still rendering.
+func TestKioskURLIsBareWithoutAConnector(t *testing.T) {
+	fakeDRM(t, map[string]string{"card0-HDMI-A-1": "disconnected"})
+	if got := kioskURL(); got != "http://localhost:8080" {
+		t.Errorf("kioskURL() = %q, want the bare URL when no output is connected", got)
 	}
 }
 

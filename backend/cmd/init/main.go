@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -1538,14 +1539,92 @@ func displayConnected() bool {
 	return false
 }
 
+// drmRoot is where DRM connector state is read from.
+//
+// A var rather than a constant for the same reason binRoot is one: it is the
+// only seam that lets a test drive the real derivation off a fake connector
+// tree. Production never touches it. scripts/vulos-kiosk.sh has the identical
+// seam as $VULOS_DRM_ROOT, for the identical reason.
+var drmRoot = "/sys/class/drm"
+
+// drmCardPrefix strips the card number a connector directory is named with:
+// /sys/class/drm/card0-HDMI-A-1 is the output the compositor calls HDMI-A-1.
+// This is the Go copy of `sed 's/^card[0-9]*-//'` in scripts/vulos-kiosk.sh.
+var drmCardPrefix = regexp.MustCompile(`^card[0-9]*-`)
+
+// kioskScreenName returns the name of the first CONNECTED DRM output, or ""
+// when none is readable.
+//
+// Ordering is filepath.Glob's, which sorts, so this picks the same connector
+// the shell copy's glob loop picks. "First" is enough because this path runs
+// cage: one window, one output.
+func kioskScreenName() string {
+	matches, err := filepath.Glob(filepath.Join(drmRoot, "*", "status"))
+	if err != nil {
+		return ""
+	}
+	for _, path := range matches {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		// TrimSpace, not an exact compare: the file is "connected\n" and the
+		// shell copy reads it through $(cat …), which eats the newline.
+		if strings.TrimSpace(string(data)) != "connected" {
+			continue
+		}
+		return drmCardPrefix.ReplaceAllString(filepath.Base(filepath.Dir(path)), "")
+	}
+	return ""
+}
+
+// kioskBaseURL is the shell the kiosk browser opens. No query string of its
+// own, which is why kioskURL can append with a bare "?" where the shell copy
+// needs a ?/& case — $VULOS_KIOSK_URL there may already carry one.
+const kioskBaseURL = "http://localhost:8080"
+
+// kioskURL is the address handed to the kiosk browser, carrying the screen
+// identity frontend/src/providers/screenIdentity.ts reads.
+//
+// It is the Go copy of the URL scripts/vulos-kiosk.sh builds, and the two are
+// pinned together by TestKioskURLIdentityMatchesInit in
+// backend/internal/docsref. That guard exists because they had already drifted:
+// the multi-screen work added these parameters to the shell launcher and left
+// this one opening a bare URL, silently, for as long as nothing pinned them.
+//
+// Harmless so far and only so far — this path runs cage, one window on one
+// output, and isMultiScreen() needs total>1, so a bare URL and screens=1 render
+// the same thing. It stops being harmless the moment this path drives a second
+// output.
+//
+// When no connector is readable the parameters are omitted ENTIRELY. That is
+// the deliberate case, not an oversight: readScreenIdentity() refuses a partial
+// or inconsistent triple, so a guessed name would either be discarded (work
+// that changes nothing) or believed (a window title and a placement rule naming
+// an output the box is not on). vulos.kiosk=force is exactly this case — QEMU's
+// virtio-gpu reports no connected output while still rendering — and it gets
+// the bare URL, because there is genuinely no output name to report.
+//
+// The connector vocabulary the kernel generates is [A-Za-z0-9-] (HDMI-A-1,
+// DP-2, eDP-1, Virtual-1), so there is nothing to percent-encode; the shell
+// copy does not encode either, and the two must agree byte for byte.
+func kioskURL() string {
+	name := kioskScreenName()
+	if name == "" {
+		return kioskBaseURL
+	}
+	return fmt.Sprintf("%s?screen=%s&screens=1&screenIndex=1", kioskBaseURL, name)
+}
+
 // findKioskBrowser returns the browser binary + args run (under cage)
 // fullscreen as the single kiosk window showing the React shell.
 // Cog (WPE WebKit) is preferred (lightweight, no browser chrome);
 // Chromium is the fallback with equivalent --kiosk flags.
 func findKioskBrowser() (string, []string) {
+	url := kioskURL()
 	cogBin := findBinary("cog", "/usr/bin/cog")
 	if cogBin != "" {
-		return cogBin, []string{"--platform=wl", "http://localhost:8080"}
+		return cogBin, []string{"--platform=wl", url}
 	}
 	chromiumBin := findBinary(
 		"chromium", "chromium-browser",
@@ -1600,7 +1679,7 @@ func findKioskBrowser() (string, []string) {
 				"--disable-dev-shm-usage",
 			)
 		}
-		args = append(args, "http://localhost:8080")
+		args = append(args, url)
 		return chromiumBin, args
 	}
 	return "", nil
