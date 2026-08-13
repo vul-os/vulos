@@ -2,6 +2,7 @@ package docsref
 
 import (
 	"encoding/xml"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -674,6 +675,341 @@ func TestKioskHeadlessExitsZero(t *testing.T) {
 	if strings.Contains(string(out), "display present") {
 		t.Errorf("vulos-kiosk claims a display is present when given empty DRM roots; the "+
 			"headless detection is looking somewhere other than where it was told.\n%s", out)
+	}
+}
+
+// ── Memory warning on a multi-output box ─────────────────────────────────────
+//
+// roadmap/SCREENS-COST.md measured one kiosk browser per screen at ~322MB PSS
+// for the first and ~150-170MB for each one after it, and decided three screens
+// IS supported on the advertised 2GB floor. What it asked for on a low-memory
+// multi-output box was therefore a warning, explicitly not a gate — and the
+// difference between those two is invisible to a grep. `echo …` and
+// `echo …; exit 1` differ by four characters, both contain the warning text,
+// and only one of them still shows you a desktop.
+//
+// So these run the real file. The fake box is assembled out of the seams the
+// script already has for exactly this (VULOS_DRM_ROOT, VULOS_DRI_ROOT, and now
+// VULOS_MEMINFO) plus a PATH of stubs standing in for labwc/cog/cage, so that
+// "did it launch" is an observable event — the stub prints when it is exec'd —
+// rather than something inferred from the source.
+//
+// The most important assertion in here is the boring one:
+// TestKioskLowMemoryMultiScreenStillLaunches. A warning that grew into a
+// refusal would leave a user's second and third monitors dark because a
+// launcher decided it knew better about hardware it has not watched run out of
+// memory, on a box whose only diagnostic surface is the monitors it just
+// declined to use.
+
+const (
+	// The wording the warning is recognised by. Deliberately a substring of the
+	// real line rather than the whole of it, so rephrasing the sentence does not
+	// turn every test below red — but specific enough that nothing else in the
+	// script's output matches it.
+	//
+	// If it ever stops matching, TestKioskWarnsOnLowMemoryMultiScreen fails
+	// FIRST and loudly. That is what stops the three negative tests below from
+	// quietly passing against a marker that matches nothing, which is the shape
+	// of hollow guard this package keeps catching.
+	kioskLowMemWarning = "multi-screen is recommended at 4GB+"
+	// What a stub prints when the script execs it. Seeing this is the proof the
+	// launcher launched.
+	kioskStubExec = "kiosk-stub-exec"
+)
+
+// meminfo2GB is the shape a real 2GB box reports: MemTotal is memory the kernel
+// can hand out, always some way below what is on the board.
+const meminfo2GB = "MemTotal:        2035892 kB\nMemFree:          131072 kB\nBuffers:            8192 kB\n"
+
+// meminfo8GB is comfortably over the threshold — an ordinary box.
+const meminfo8GB = "MemTotal:        8037892 kB\nMemFree:         4131072 kB\n"
+
+// kioskStubNames are the programs the launcher looks for on PATH. Standing in
+// for all of them is what lets the real script be run off a real box.
+var kioskStubNames = []string{"labwc", "cog", "cage", "vulos-kiosk-genconfig", "curl"}
+
+// kioskStubBin is a directory of symlinks — one per name above — pointing at
+// THIS TEST BINARY, which re-execs as the named stub (see TestMain).
+//
+// That indirection is a measured decision, not cleverness. The obvious harness
+// writes five little `#!/bin/sh` files into a temp dir, and on macOS the FIRST
+// execution of any freshly written executable blocks ~10-20 seconds while the
+// system inspects it — all wall time, ~0 user and ~0 sys, so it does not even
+// look like work. Measured here: 21.4s for the first labwc launch and 11.6s for
+// the first cage launch, against 0.1-0.2s for every run after them, and the toll
+// is paid again on every `go test` because the temp dir is new each time. This
+// file's tests took 36s that way and take under a second now.
+//
+// A symlink to the already-running test binary is exempt because that binary has
+// already been through it — measured at 21 MILLIseconds cold. Symlinking to
+// /bin/echo is equally cheap but loses the program's name, and "which launcher
+// did it exec" is the question these tests exist to ask.
+var kioskStubBin string
+
+func TestMain(m *testing.M) {
+	// Running AS a stub: the script exec'd one of the symlinks. Announce the name
+	// and the arguments — that line is the only proof anywhere that the launcher
+	// launched, as opposed to a source file that looks like it would.
+	for _, name := range kioskStubNames {
+		if filepath.Base(os.Args[0]) == name {
+			fmt.Printf("%s %s %s\n", kioskStubExec, name, strings.Join(os.Args[1:], " "))
+			os.Exit(0)
+		}
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		panic("kiosk stub setup: " + err.Error())
+	}
+	dir, err := os.MkdirTemp("", "vulos-kiosk-stubs")
+	if err != nil {
+		panic("kiosk stub setup: " + err.Error())
+	}
+	for _, name := range kioskStubNames {
+		if err := os.Symlink(self, filepath.Join(dir, name)); err != nil {
+			panic("kiosk stub setup: " + err.Error())
+		}
+	}
+	kioskStubBin = dir
+
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+type kioskBox struct {
+	// Connector names as the compositor sees them, e.g. "HDMI-A-1". Written into
+	// the fake DRM tree as card0-<name>/status = connected.
+	screens []string
+	// Contents of the fake /proc/meminfo. Ignored when noMeminfoFile is set.
+	meminfo string
+	// Point VULOS_MEMINFO at a path that does not exist, i.e. the box whose
+	// memory size is unknown.
+	noMeminfoFile bool
+}
+
+// runKiosk runs scripts/vulos-kiosk.sh — the same bytes build.sh installs into
+// the image — against a fabricated box, and returns everything it said.
+func runKiosk(t *testing.T, box kioskBox) (string, error) {
+	t.Helper()
+
+	root := t.TempDir()
+	drm := filepath.Join(root, "drm")
+	dri := filepath.Join(root, "dri")
+	xdg := filepath.Join(root, "run")
+	for _, d := range []string{drm, dri, xdg} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatalf("harness setup: %v", err)
+		}
+	}
+
+	for _, name := range box.screens {
+		dir := filepath.Join(drm, "card0-"+name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("harness setup: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "status"), []byte("connected\n"), 0o644); err != nil {
+			t.Fatalf("harness setup: %v", err)
+		}
+	}
+	// A render node, so the headless branch (TestKioskHeadlessExitsZero's
+	// subject) is not the one taken here.
+	if err := os.WriteFile(filepath.Join(dri, "card0"), nil, 0o644); err != nil {
+		t.Fatalf("harness setup: %v", err)
+	}
+
+	// The stubs (TestMain builds them). labwc/cog/cage announce themselves so an
+	// exec is observable; vulos-kiosk-genconfig stands in for the generator,
+	// whose real output is TestKioskGenConfig's subject and not this one's — it
+	// would otherwise write to /run/vulos-kiosk, a path a test has no business
+	// creating.
+	//
+	// curl is stubbed too, and not because it is missing: the script waits up to
+	// sixty seconds for $BASE_URL/api/setup/status before launching anything, so
+	// without this every test here would either take a minute or need a real
+	// listening socket. What is probed is TestKioskProbesTheBareURL's subject.
+	// The stub also means these tests open no socket at all.
+	bin := kioskStubBin
+
+	meminfoPath := filepath.Join(root, "meminfo")
+	if box.noMeminfoFile {
+		meminfoPath = filepath.Join(root, "no-such-meminfo")
+	} else if err := os.WriteFile(meminfoPath, []byte(box.meminfo), 0o644); err != nil {
+		t.Fatalf("harness setup: %v", err)
+	}
+
+	cmd := exec.Command("sh", filepath.Join(repoRoot, "scripts", "vulos-kiosk.sh"))
+	// Later entries win in os/exec, so these override anything inherited.
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"VULOS_DRM_ROOT="+drm,
+		"VULOS_DRI_ROOT="+dri,
+		// ALWAYS set, even for the "memory is unknown" case, which points it at a
+		// path that does not exist rather than leaving it unset. Unset, a Linux CI
+		// machine would read its OWN /proc/meminfo and the result would depend on
+		// how much RAM the runner happens to have.
+		"VULOS_MEMINFO="+meminfoPath,
+		"XDG_RUNTIME_DIR="+xdg,
+		// Never dialled: curl is stubbed. Port 1 so a regression that removed the
+		// stub fails fast and visibly rather than hanging.
+		"VULOS_KIOSK_URL=http://127.0.0.1:1",
+	)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// launched reports whether the script reached a compositor, and which one.
+func launched(out, what string) bool {
+	return strings.Contains(out, kioskStubExec+" "+what+" ")
+}
+
+// THE assertion. A low-memory multi-output box must still light up every screen.
+func TestKioskLowMemoryMultiScreenStillLaunches(t *testing.T) {
+	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: meminfo2GB})
+	if err != nil {
+		t.Fatalf("vulos-kiosk exited non-zero on a 2GB two-monitor box: %v\n%s\n\n"+
+			"The memory check is a WARNING. An exit here is a refusal, and "+
+			"vulos-kiosk.service is Restart=on-failure, so it is also a restart loop.", err, out)
+	}
+	if !launched(out, "labwc") {
+		t.Errorf("vulos-kiosk never exec'd labwc on a 2GB two-monitor box, so the second "+
+			"monitor stays dark. roadmap/SCREENS-COST.md measured three screens as fitting "+
+			"the 2GB floor with ~1GB free — there is no wall here to stop a user at, and a "+
+			"launcher that silently drops to one output is indistinguishable from broken "+
+			"hardware.\nOutput:\n%s", out)
+	}
+	// And it must be the MULTI-output launcher, not a quiet fallback to the
+	// single-window cage path — which would also "launch", on one screen.
+	if launched(out, "cage") {
+		t.Errorf("vulos-kiosk fell back to cage (one window, one output) on a two-monitor "+
+			"box; that is the refusal this test exists to catch, wearing a launch's "+
+			"clothes.\nOutput:\n%s", out)
+	}
+	if !strings.Contains(out, "2 screens (") {
+		t.Errorf("vulos-kiosk did not report launching 2 screens.\nOutput:\n%s", out)
+	}
+}
+
+func TestKioskWarnsOnLowMemoryMultiScreen(t *testing.T) {
+	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: meminfo2GB})
+	if err != nil {
+		t.Fatalf("vulos-kiosk exited non-zero: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, kioskLowMemWarning) {
+		t.Fatalf("vulos-kiosk said nothing about memory on a 2GB two-monitor box. The "+
+			"measurement in roadmap/SCREENS-COST.md is only useful to someone who is told "+
+			"it, and a console or journal is the one place a user of a slow box will "+
+			"look.\nOutput:\n%s", out)
+	}
+	// The NUMBERS, not just a mood. "low memory" is not actionable; "1988MB, 2
+	// screens" is — it tells a reader which of the two facts to change.
+	// 2035892 kB / 1024 = 1988 MB.
+	if !strings.Contains(out, "1988MB") {
+		t.Errorf("the warning does not name the RAM it actually found (expected 1988MB from "+
+			"MemTotal 2035892 kB). A warning that will not say what it measured cannot be "+
+			"acted on or disbelieved.\nOutput:\n%s", out)
+	}
+	if !strings.Contains(out, "2 screens on") {
+		t.Errorf("the warning does not name how many screens it is warning about.\nOutput:\n%s", out)
+	}
+	if !strings.Contains(out, "docs/GETTING-STARTED.md") {
+		t.Errorf("the warning does not point at the recommendation it is invoking, so a "+
+			"reader cannot find out what to do about it.\nOutput:\n%s", out)
+	}
+	// Still launched. Stated here too, because a test named "warns" that passed
+	// while the box refused would be the worst possible green.
+	if !launched(out, "labwc") {
+		t.Errorf("the warning appeared but nothing launched.\nOutput:\n%s", out)
+	}
+}
+
+// An ordinary box must hear nothing. A warning printed on every multi-monitor
+// machine is a warning nobody reads by the second week.
+func TestKioskDoesNotWarnOnAmpleMemory(t *testing.T) {
+	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: meminfo8GB})
+	if err != nil {
+		t.Fatalf("vulos-kiosk exited non-zero on an 8GB two-monitor box: %v\n%s", err, out)
+	}
+	// Prove the branch was REACHED before believing the silence. Without this,
+	// deleting the multi-output path entirely would pass this test.
+	if !launched(out, "labwc") {
+		t.Fatalf("the multi-output branch was never reached, so this test's silence proves "+
+			"nothing.\nOutput:\n%s", out)
+	}
+	if strings.Contains(out, kioskLowMemWarning) {
+		t.Errorf("vulos-kiosk warned about memory on an 8GB box (MemTotal 8037892 kB, well "+
+			"over the ~3GB line). An unconditional warning is noise, and noise is what makes "+
+			"the real one on a 2GB box get ignored.\nOutput:\n%s", out)
+	}
+}
+
+// Unknown memory must be treated like an ordinary box, not a low one — and must
+// not break the boot path. Guessing low would put a warning in front of users
+// whose machines are fine, on the strength of a number nobody read.
+func TestKioskDoesNotWarnWhenMemoryIsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		box  kioskBox
+	}{
+		{"no meminfo file at all", kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, noMeminfoFile: true}},
+		// What a truncated or foreign /proc/meminfo looks like.
+		{"empty meminfo", kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: ""}},
+		{"unparseable meminfo", kioskBox{screens: []string{"HDMI-A-1", "DP-2"},
+			meminfo: "MemTotal:        not-a-number kB\n"}},
+		{"truncated meminfo", kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: "MemTot"}},
+		// TWO MemTotal lines — a corrupt or concatenated file. This is the case
+		// the all-digits guard in the script actually exists for, and the only one
+		// of these five that kills it under mutation: the sed pattern already
+		// demands digits, so a garbage VALUE never reaches the comparison, but two
+		// matches leave a two-line value that `[ … -lt … ]` answers with
+		// "[: integer expression expected" on the console of a healthy box.
+		{"two MemTotal lines", kioskBox{screens: []string{"HDMI-A-1", "DP-2"},
+			meminfo: "MemTotal:        2035892 kB\nMemTotal:        8037892 kB\n"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runKiosk(t, tc.box)
+			if err != nil {
+				t.Fatalf("vulos-kiosk exited non-zero when it could not read MemTotal: %v\n%s\n\n"+
+					"An unreadable /proc/meminfo must not be able to stop a box booting to its "+
+					"screens; the only thing that depends on it is one printed line.", err, out)
+			}
+			if !launched(out, "labwc") {
+				t.Fatalf("nothing launched when memory was unknown.\nOutput:\n%s", out)
+			}
+			if strings.Contains(out, kioskLowMemWarning) {
+				t.Errorf("vulos-kiosk warned about memory it never successfully read — that is a "+
+					"guess presented as a measurement.\nOutput:\n%s", out)
+			}
+			// And it must fail QUIETLY. Both spellings, because the two shells this
+			// script runs under disagree: bash says "integer expression expected",
+			// dash says "Illegal number". Either one lands on the console of a box
+			// that is working perfectly, from a check whose entire job is to print
+			// at most one line.
+			for _, complaint := range []string{"integer expression", "Illegal number"} {
+				if strings.Contains(out, complaint) {
+					t.Errorf("the shell complained (%q) about the value read from a meminfo it "+
+						"could not parse. Nothing is wrong with this box; the memory check is "+
+						"talking to itself in front of the user.\nOutput:\n%s", complaint, out)
+				}
+			}
+		})
+	}
+}
+
+// One screen, whatever the RAM, is the case the measurement found comfortable
+// (~322MB PSS of a 2048MB budget) and is what every real boot is today.
+func TestKioskDoesNotWarnOnASingleScreen(t *testing.T) {
+	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1"}, meminfo: meminfo2GB})
+	if err != nil {
+		t.Fatalf("vulos-kiosk exited non-zero on a 2GB single-monitor box: %v\n%s", err, out)
+	}
+	if !launched(out, "cage") {
+		t.Fatalf("the single-screen path did not reach cage, so this test's silence proves "+
+			"nothing.\nOutput:\n%s", out)
+	}
+	if strings.Contains(out, kioskLowMemWarning) {
+		t.Errorf("vulos-kiosk warned about multi-screen memory on a box with one monitor. "+
+			"One browser on 2GB is the measured, comfortable case.\nOutput:\n%s", out)
 	}
 }
 
