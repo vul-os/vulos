@@ -54,10 +54,21 @@
 # readiness probe built from a URL carrying a query string, which could never
 # succeed and cost sixty seconds on every boot with a display.
 #
-# NEXT: let the harness supply the compositor environment instead of inheriting
-# the kiosk's, or teach the kiosk to respect WLR_BACKENDS when it is already
-# set. The second is a one-line seam and would make the whole path testable
-# without changing any real boot.
+# ROUND 5 — labwc was never the problem. cog is:
+#
+#     ERROR cog: Failed to fully launch dbus-proxy: Child process exited with code 1
+#
+# cog (WPE) launches xdg-dbus-proxy for its web process sandbox, and the kiosk
+# points DBUS_SESSION_BUS_ADDRESS at /dev/null. Both browsers die instantly, the
+# session's `wait` returns, and labwc -S then terminates the compositor by
+# design — which is why no socket exists by screenshot time. "socket: NONE" was
+# a consequence, not a cause, and it misdirected two rounds.
+#
+# NEXT: give the container a real session bus — install dbus and wrap the run in
+# `dbus-run-session` — rather than pointing it at /dev/null. Worth checking on a
+# real image too: if cog needs a working bus, DBUS_SESSION_BUS_ADDRESS=/dev/null
+# may be wrong there as well, and the reason it has not shown up is that the
+# single-screen path uses cage, which does not sandbox the same way.
 #
 # NOT wired into CI while it cannot pass.
 set -euo pipefail
@@ -99,7 +110,14 @@ set -e
 # directory that has to exist — setting a different one here is overridden and
 # labwc then fails to create its socket. That was this harness's first failure.
 mkdir -p /run/user/0; chmod 700 /run/user/0
+# Supply a headless-appropriate environment. vulos-kiosk now takes these as
+# DEFAULTS (${VAR:-...}), so setting them here wins without changing what a real
+# boot does. LIBSEAT_BACKEND=noop matters most: the kiosk default of "builtin"
+# wants real DRM, which a container has none of.
 export WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_RENDERER=pixman
+export LIBSEAT_BACKEND=noop
+export XDG_RUNTIME_DIR=/run/user/0
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null
 export VULOS_DRM_ROOT=/work/drm
 export PATH="/work:$PATH"
 

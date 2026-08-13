@@ -97,20 +97,25 @@ echo "vulos-kiosk: display present; starting the OS in a browser at $URL" >&2
 # Without them cage starts, opens /dev/dri/card0 and silently paints nothing —
 # no log, no exit. TestKioskEnvMatchesInit keeps the two lists in step.
 mkdir -p /run/user/0 && chmod 700 /run/user/0
-export XDG_RUNTIME_DIR=/run/user/0
+# These are DEFAULTS, not mandates: every one is ${VAR:-default}, so a real
+# boot (which sets none of them) gets exactly the values it always did, while a
+# harness can supply an environment suited to a headless compositor. Without
+# that, scripts/smoke-kiosk-multiscreen.sh cannot start labwc at all, because
+# LIBSEAT_BACKEND=builtin wants real DRM and there is none in a container.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
 # Somewhere writable for fontconfig. The image ships a pre-built cache (fc-cache
 # runs at build time), but the root is a read-only dm-verity squashfs, so any
 # cache write fontconfig still attempts has nowhere to go and it says so on
 # every start. /run/user/0 is tmpfs.
 mkdir -p /run/user/0/.cache
 export XDG_CACHE_HOME=/run/user/0/.cache
-export LIBSEAT_BACKEND=builtin
+export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-builtin}"
 # ALWAYS, per backend/cmd/init/main.go's own note: this means "do not abort the
 # compositor if libinput sees zero devices right now", NOT "disable input".
 # Unset, cage's libinput backend aborts with "Unable to start the wlroots
 # backend" whenever udev coldplug has not finished — including on machines whose
 # keyboard is about to appear. Hotplugged devices still arrive normally.
-export WLR_LIBINPUT_NO_DEVICES=1
+export WLR_LIBINPUT_NO_DEVICES="${WLR_LIBINPUT_NO_DEVICES:-1}"
 
 # Software rendering only when there is no real GPU. virtio_gpu is the QEMU case;
 # a machine with a hardware driver keeps the GL renderer.
@@ -123,11 +128,11 @@ for d in /sys/class/drm/card*/device/driver; do
   esac
 done
 if [ "$sw" = yes ]; then
-  export WLR_RENDERER=pixman
-  export WLR_RENDERER_ALLOW_SOFTWARE=1
-  export WLR_DRM_NO_ATOMIC=1
-  export WLR_DRM_NO_MODIFIERS=1
-  export DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null
+  export WLR_RENDERER="${WLR_RENDERER:-pixman}"
+  export WLR_RENDERER_ALLOW_SOFTWARE="${WLR_RENDERER_ALLOW_SOFTWARE:-1}"
+  export WLR_DRM_NO_ATOMIC="${WLR_DRM_NO_ATOMIC:-1}"
+  export WLR_DRM_NO_MODIFIERS="${WLR_DRM_NO_MODIFIERS:-1}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/dev/null}"
   echo "vulos-kiosk: software rendering path (pixman, legacy KMS, no modifiers)" >&2
 fi
 

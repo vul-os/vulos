@@ -489,3 +489,26 @@ func TestKioskProbesTheBareURL(t *testing.T) {
 			"error page that never retries")
 	}
 }
+
+// The compositor environment must be DEFAULTS, not mandates.
+//
+// vulos-kiosk sets XDG_RUNTIME_DIR, LIBSEAT_BACKEND, the WLR_* flags and
+// DBUS_SESSION_BUS_ADDRESS for a real DRM boot. Written as bare assignments
+// they were unoverridable, and a harness could not start the script against a
+// headless compositor at all — LIBSEAT_BACKEND=builtin wants real DRM.
+//
+// As ${VAR:-default} a real boot is unchanged (it sets none of them) while a
+// test can supply an environment that suits it. This is the seam that let
+// scripts/smoke-kiosk-multiscreen.sh execute the real launcher.
+func TestKioskEnvIsOverridable(t *testing.T) {
+	kiosk := withoutShellComments(readRepoFile(t, "scripts/vulos-kiosk.sh"))
+	for _, v := range []string{
+		"XDG_RUNTIME_DIR", "LIBSEAT_BACKEND", "WLR_RENDERER",
+		"WLR_DRM_NO_ATOMIC", "DBUS_SESSION_BUS_ADDRESS",
+	} {
+		if !strings.Contains(kiosk, "export "+v+`="${`+v+":-") {
+			t.Errorf("%s is exported as a bare assignment rather than ${%s:-default}; the "+
+				"script cannot then be run against any environment but real DRM hardware", v, v)
+		}
+	}
+}
