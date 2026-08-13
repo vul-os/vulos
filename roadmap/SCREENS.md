@@ -111,16 +111,33 @@ every boot rather than only on the rare one), and
 `scripts/vulos-kiosk-genconfig.sh:71` writes a distinct triple per output on
 the multi-output path. Verified by grep, as the original claim was.
 
-**One asymmetry, recorded rather than fixed:** `backend/cmd/init/main.go` still
-opens a bare `http://localhost:8080` (lines 1548 and 1603) with no parameters.
-That is the initramfs path; an installed Vulos boots systemd and runs the shell
-copy, which is why the divergence is invisible on real installs. It is also
-harmless today — the initramfs path runs cage, one window on one output, and
-`isMultiScreen()` needs `total>1` to render anything, so both paths behave
-identically on a single screen. It would stop being harmless if that path ever
-drove more than one output. Note that `kiosk_test.go` pins the browser list and
-the wlroots environment across the two copies but does NOT pin the URL, so this
-particular drift is unguarded.
+**~~One asymmetry, recorded rather than fixed~~ — FIXED 2026-08-13.**
+`backend/cmd/init/main.go` opened a bare `http://localhost:8080` while the
+shell copy had been appending the triple since this work started. It now
+derives the connector name the same way — first connected
+`/sys/class/drm/*/status`, card prefix stripped — and emits the same
+single-screen triple, behind a `drmRoot` seam mirroring the shell's
+`$VULOS_DRM_ROOT`.
+
+Where no connector is readable, the parameters are **omitted entirely rather
+than guessed**. `vulos.kiosk=force` under virtio-gpu is the real instance of
+this: QEMU reports no connected output while still rendering.
+`readScreenIdentity()` refuses a partial identity, so an invented name is
+either discarded — work that changes nothing — or believed, in which case the
+window title and any future `MoveToOutput` rule name an output the box is not
+on.
+
+This was never user-visible, and that caveat stands unchanged: the initramfs
+path runs cage, one window on one output, and `isMultiScreen()` needs `total>1`
+to render anything. It would have become visible the first time that path drove
+a second output.
+
+**The drift itself is now pinned** by `TestKioskURLIdentityMatchesInit`
+(mutation-tested, 9 mutations, including dropping `screenIndex` and
+re-hardcoding the URL). Worth naming why it happened: the URL was the *third*
+thing duplicated across the two launchers, and the only one nothing was
+checking — the browser list and the wlroots environment were already guarded,
+which is exactly why this one drifted in silence.
 
 **What the launcher side needs**, so the remaining work is not re-derived:
 enumerate connected outputs (`backend/services/display/display.go` already
