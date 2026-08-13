@@ -1,9 +1,18 @@
 // useShellSession.ts — the React half of the cross-tab shell session.
 //
-// Announces this tab, tracks its peers, elects a single writer per desktop, and
-// tells the shell whether it owns the persisted state or is mirroring someone
+// Announces this tab, tracks its peers, elects a single writer per desktop,
+// steps down if it turns out another tab already holds that role, and tells
+// the shell whether it owns the persisted state or is mirroring someone
 // else's. The rules themselves live in shellSession.ts as pure functions so
 // they can be tested without a browser, a timer or a second tab.
+//
+// The step-down path (shouldStepDown) exists for the case a tab closing can
+// never produce: a writer that goes quiet past WRITER_TIMEOUT_MS, a follower
+// promoting itself in response, and then the ORIGINAL writer's heartbeat
+// resuming — plausible for an unplugged-but-not-quit browser instance, whose
+// timers a background tab throttles rather than a compositor cleanly killing.
+// See the "display disappearing" section of shellSession.ts for the full
+// argument.
 //
 // Everything degrades to "single tab, behave exactly as before" when
 // BroadcastChannel is unavailable — see openChannel.
@@ -16,6 +25,7 @@ import {
   newTabId,
   nextWriter,
   openChannel,
+  shouldStepDown,
   type Channel,
   type PeerInfo,
   type SessionMessage,
@@ -81,13 +91,29 @@ export function useShellSession(desktopId: string): ShellSession {
       })
     }
 
+    // Change role AND say so immediately, rather than waiting for the next
+    // periodic heartbeat (up to HEARTBEAT_MS away) to mention it. This matters
+    // most for a step-down: the whole point of shouldStepDown is closing the
+    // window where two tabs both believe they are the writer, and leaving the
+    // demotion unannounced would just re-open it under a different name.
+    const setRoleAndAnnounce = (r: SessionRole) => {
+      setRole(r)
+      ch.postMessage({ kind: 'heartbeat', tabId, desktopId, role: r, at: Date.now() })
+    }
+
     ch.onmessage = (ev) => {
       const m = ev.data as SessionMessage
       if (!m || m.tabId === tabId) return
 
       switch (m.kind) {
         case 'hello':
-          note(m)
+          // A `hello` sender has not decided its own role yet — settling takes
+          // another 250ms after this — so its self-announced role (always
+          // 'writer', the pre-decision default) is not a real claim. Recording
+          // it as one would make an established writer see every newcomer's
+          // hello as a rival and step down before the newcomer has even had a
+          // chance to see US and correctly settle on 'follower'.
+          note({ ...m, role: 'follower' })
           // Answer a newcomer immediately rather than making it wait a full
           // heartbeat to discover us — otherwise a second tab opening next to a
           // live writer sees an empty peer set, decides it is the writer, and
@@ -96,6 +122,16 @@ export function useShellSession(desktopId: string): ShellSession {
           break
         case 'heartbeat':
           note(m)
+          // The peer we just heard from claims 'writer'. If we ALSO believe we
+          // are the writer for this desktop, that is a live conflict — most
+          // plausibly a display that dropped out without the tab behind it
+          // ever closing, so no `bye` ever ran and this tab's own promotion
+          // path never fired for the other side. Resolved deterministically
+          // (see shouldStepDown) rather than by whoever's heartbeat arrived
+          // last, which would just alternate the two tabs forever.
+          if (roleRef.current === 'writer' && shouldStepDown(tabId, [...peersRef.current.values()], desktopId, Date.now())) {
+            setRoleAndAnnounce('follower')
+          }
           break
         case 'bye': {
           peersRef.current.delete(m.tabId)
@@ -104,7 +140,7 @@ export function useShellSession(desktopId: string): ShellSession {
           if (roleRef.current === 'follower') {
             const self: PeerInfo = { tabId, desktopId, role: 'follower', lastSeen: Date.now() }
             const all = [...peersRef.current.values(), self]
-            if (nextWriter(all, desktopId, Date.now()) === tabId) setRole('writer')
+            if (nextWriter(all, desktopId, Date.now()) === tabId) setRoleAndAnnounce('writer')
           }
           break
         }
@@ -136,7 +172,17 @@ export function useShellSession(desktopId: string): ShellSession {
         const others = [...peersRef.current.values()]
         if (decideRole(others, desktopId, now) === 'writer') {
           const self: PeerInfo = { tabId, desktopId, role: 'follower', lastSeen: now }
-          if (nextWriter([...others, self], desktopId, now) === tabId) setRole('writer')
+          if (nextWriter([...others, self], desktopId, now) === tabId) setRoleAndAnnounce('writer')
+        }
+      } else {
+        // Belt-and-suspenders companion to the shouldStepDown check in
+        // ch.onmessage: that one reacts the instant a rival writer's
+        // heartbeat arrives, this one catches it on our own next tick even if
+        // that message handler somehow didn't (e.g. messages coalesced, or a
+        // rival's heartbeat and our own tick landed in an order that skipped
+        // it). Same rule, same peer set shape, just a different trigger.
+        if (shouldStepDown(tabId, [...peersRef.current.values()], desktopId, Date.now())) {
+          setRoleAndAnnounce('follower')
         }
       }
       setPeers(livePeersOn([...peersRef.current.values()], desktopId, tabId, Date.now()))

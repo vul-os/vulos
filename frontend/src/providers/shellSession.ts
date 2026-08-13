@@ -39,6 +39,42 @@
 // stated here rather than implied away, and it is why the desktop's identity is
 // also written to the persisted state so a returning client can be told what it
 // is joining.
+//
+// # A display disappearing is not the same event as a tab closing
+//
+// Every promotion path above (decideRole's timeout branch, nextWriter after a
+// `bye`) assumes the old writer is actually gone: closed, crashed, or silent
+// forever. A tab that closes fires `pagehide`, which sends `bye`, and then it
+// stops existing — there is no way for it to come back and disagree with
+// whoever took over.
+//
+// A monitor being unplugged is a weaker event than that. In the one-browser-
+// per-output model (see roadmap/SCREENS.md), the browser instance driving that
+// output does not necessarily quit when the output goes away — that depends on
+// the compositor and the launcher, and per SCREENS.md is not yet verified
+// against real hardware. What IS certain, because it follows from ordinary
+// browser scheduling rather than from any compositor behaviour, is that a tab
+// which is not painting to a live surface is exactly the kind of tab browsers
+// throttle: background timers can be delayed far past WRITER_TIMEOUT_MS and
+// then resume. So the sequence this module has to survive is not "writer dies,
+// successor elected" but "writer goes silent past the timeout, a follower
+// promotes itself, and THEN the original writer's throttled heartbeat fires
+// again" — two tabs both convinced they are the writer for the same desktop,
+// neither having sent `bye`. That is the exact duelling-writer bug this module
+// exists to prevent, entered from a direction the original design (promotion
+// only, no demotion) had no way to close: nothing ever told an established
+// writer to stop being one.
+//
+// shouldStepDown below is that missing direction. It is symmetric with
+// nextWriter's tie-break (lowest tabId) rather than inventing a second rule,
+// so a resurrected writer and its successor reach the same conclusion about
+// which of them survives without a negotiation round — same as promotion, each
+// tab decides alone from its own view of the peer set and every honest tab
+// decides the same way. It only compares tabIds that are THEMSELVES live
+// writers right now, never "would a newcomer with a lower id become writer if
+// elected fresh" (that's nextWriter's job, and reusing it here would make a
+// stable writer demote itself just because a new follower with a lower tabId
+// joined — churn with no conflict behind it).
 
 export const SHELL_CHANNEL = 'vulos-shell-session'
 
@@ -131,6 +167,39 @@ export function nextWriter(peers: PeerInfo[], desktopId: string, now: number): s
     .map(p => p.tabId)
     .sort()
   return candidates.length > 0 ? candidates[0] : null
+}
+
+/**
+ * shouldStepDown decides whether a tab that currently believes itself the
+ * writer must demote to follower because another live tab is ALSO claiming
+ * writer for the same desktop right now.
+ *
+ * This is the other half of the election `decideRole`/`nextWriter` handle.
+ * Those answer "who becomes writer when none exists" — a question a closed
+ * tab can only ever ask once, since closing is terminal. This answers "what
+ * happens when two already believe they are" — a question a tab whose
+ * display was unplugged but whose process kept running can ask more than
+ * once, if a throttled heartbeat resumes after a successor was already
+ * elected. See the module comment above for why that is a real sequence and
+ * not a hypothetical one.
+ *
+ * Resolved with the SAME tie-break `nextWriter` uses (lowest tabId), so the
+ * two conflicting tabs need no negotiation: each independently compares
+ * itself only to other peers presently claiming 'writer', and the one with
+ * the higher id steps down. A peer merely existing on the desktop — a
+ * follower, or a newcomer who has not yet decided its own role — is not a
+ * conflict and must not cause a step-down; only a peer that is ITSELF
+ * claiming 'writer' counts.
+ */
+export function shouldStepDown(selfTabId: string, peers: PeerInfo[], desktopId: string, now: number): boolean {
+  return peers.some(
+    p =>
+      p.desktopId === desktopId &&
+      p.tabId !== selfTabId &&
+      p.role === 'writer' &&
+      p.tabId < selfTabId &&
+      now - p.lastSeen < WRITER_TIMEOUT_MS,
+  )
 }
 
 /**
