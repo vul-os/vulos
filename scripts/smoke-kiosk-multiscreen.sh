@@ -55,20 +55,27 @@
 # succeed and cost sixty seconds on every boot with a display.
 #
 # ROUND 5 — labwc was never the problem. cog is:
-#
 #     ERROR cog: Failed to fully launch dbus-proxy: Child process exited with code 1
+# cog launches xdg-dbus-proxy for its web-process sandbox and the kiosk pointed
+# DBUS_SESSION_BUS_ADDRESS at /dev/null. Both browsers died instantly, the
+# session's `wait` returned, and labwc -S terminated the compositor BY DESIGN.
+# "socket: NONE" was a consequence, and it misdirected two rounds.
 #
-# cog (WPE) launches xdg-dbus-proxy for its web process sandbox, and the kiosk
-# points DBUS_SESSION_BUS_ADDRESS at /dev/null. Both browsers die instantly, the
-# session's `wait` returns, and labwc -S then terminates the compositor by
-# design — which is why no socket exists by screenshot time. "socket: NONE" was
-# a consequence, not a cause, and it misdirected two rounds.
+# ROUND 6 — a real bus was necessary but not sufficient. dbus-run-session got
+# cog past the proxy (it activates org.a11y.Bus successfully), and the run still
+# produced nothing. The error underneath:
 #
-# NEXT: give the container a real session bus — install dbus and wrap the run in
-# `dbus-run-session` — rather than pointing it at /dev/null. Worth checking on a
-# real image too: if cog needs a working bus, DBUS_SESSION_BUS_ADDRESS=/dev/null
-# may be wrong there as well, and the reason it has not shown up is that the
-# single-screen path uses cage, which does not sandbox the same way.
+#     bwrap: Creating new namespace failed: Operation not permitted
+#
+# cog sandboxes its web process with bubblewrap, which needs unprivileged user
+# namespaces; Docker blocks them by default. So this was never a product fault
+# and never labwc — it is what a browser sandbox requires to start in a
+# container. --cap-add SYS_ADMIN --security-opt seccomp=unconfined are now
+# passed, UNVERIFIED at the time of writing.
+#
+# Three layers of symptom stood between the log and the cause: no screenshot,
+# then no socket, then a dbus-proxy error, then bwrap. Each looked like the
+# answer.
 #
 # NOT wired into CI while it cannot pass.
 set -euo pipefail
@@ -117,7 +124,9 @@ mkdir -p /run/user/0; chmod 700 /run/user/0
 export WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=2 WLR_RENDERER=pixman
 export LIBSEAT_BACKEND=noop
 export XDG_RUNTIME_DIR=/run/user/0
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null
+# NOT /dev/null. cog launches xdg-dbus-proxy for its web-process sandbox and
+# dies without a real bus; dbus-run-session below provides one and exports the
+# address, which the kiosk now inherits because its own value is a default.
 export VULOS_DRM_ROOT=/work/drm
 export PATH="/work:$PATH"
 
@@ -140,10 +149,16 @@ RUN
 chmod +x "$WORK/run.sh"
 
 echo "▸ running the real vulos-kiosk against two headless outputs…"
-docker run --rm --platform linux/amd64 -v "$WORK:/work" debian:trixie sh -c '
+# cog sandboxes its web process with bubblewrap, which needs unprivileged user
+# namespaces. Docker blocks those by default, and the failure surfaces as a
+# dbus-proxy error several layers downstream — see ROUND 6 above. These two
+# flags are what a browser sandbox needs to start in a container.
+docker run --rm --platform linux/amd64 \
+  --cap-add SYS_ADMIN --security-opt seccomp=unconfined \
+  -v "$WORK:/work" debian:trixie sh -c '
   apt-get update -qq >/dev/null 2>&1
-  apt-get install -y -qq labwc cog grim python3 curl >/dev/null 2>&1
-  timeout 60 sh /work/run.sh || true
+  apt-get install -y -qq labwc cog grim python3 curl dbus >/dev/null 2>&1
+  timeout 90 dbus-run-session -- sh /work/run.sh || true
 '
 
 echo "── kiosk log ──"; cat "$WORK/kiosk.log" 2>/dev/null || true
