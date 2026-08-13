@@ -349,10 +349,24 @@ GPU, no `/dev/dri` — the same limitation as commit `a10c47fc`, which verified
 cog loading a page and is the run this one was designed to discriminate
 against.
 
-## What is genuinely unresolved
+## What was genuinely unresolved — all five now closed, in three different senses
 
-Named rather than glossed, because these are the parts that will decide whether
-it works:
+Named rather than glossed, because these were the parts that would decide
+whether it works. As of 2026-08-13 every one has been answered, but **not to
+the same standard, and the difference matters more than the count**:
+
+- **SETTLED** (item 5) — the thing itself was executed and a test drives it.
+- **MEASURED AND DECIDED** (item 4) — real numbers, a recorded product
+  decision, and a written list of what the numbers do not cover.
+- **ADDRESSED IN CODE** (items 1, 2, 3) — a real defect found and fixed, with
+  unit tests over a case constructed in software. None of these three has met
+  two physical monitors, and two of them rest on a premise no one has observed.
+
+Read the individual entries for which is which. A summary that flattened these
+into "all resolved" would be the exact failure this file exists to prevent.
+
+In all three of items 1, 2 and 3 **the defect was not the one predicted here** —
+worth noting before trusting the framing of any remaining design note:
 
 1. ~~**Which viewport owns the leader role**, and what happens when that screen
    is the one unplugged.~~ **ADDRESSED IN CODE 2026-08-13; unverified on real
@@ -448,9 +462,44 @@ it works:
    shared global `document`, so two readers of the zero-arg `hasFocus()` always
    see the same value. The primitive takes an injectable host to prove the
    branching logic, which is not the same as proving the DOM plumbing.
-4. **Cost.** One browser process per screen is not free on a 2GB box, which is
-   the floor this project advertises. Whether three monitors is a supported
-   configuration on minimum hardware is a product decision, not a technical one.
+4. ~~**Cost.**~~ **MEASURED AND DECIDED 2026-08-13 — full numbers, method and
+   limits in `roadmap/SCREENS-COST.md`.** Three screens is a supported
+   configuration on the 2GB floor, under the software-rendering path that was
+   measured.
+
+   Per screen, real `frontend/dist` build, whole cog process tree (cog, cage,
+   WPEWebProcess, WPENetworkProcess, bwrap×4, xdg-dbus-proxy, dbus):
+
+   | screens | RSS | PSS | marginal PSS |
+   |---|---|---|---|
+   | 1 | 469MB | 322MB | — |
+   | 2 | 947MB | 491MB | +169MB |
+   | 3 | 1414MB | 647MB | +155MB |
+
+   **The RSS/PSS gap is the finding, not a footnote.** Naive summed RSS charges
+   every process the full size of each page it maps, shared or not, so it puts
+   the marginal cost of a screen (~475MB) at almost the same as the first one —
+   which would have said three screens does not fit. PSS apportions the shared
+   WebKit and font pages the kernel holds one physical copy of, giving ~150-
+   170MB marginal. Even the pessimistic RSS-naive bound leaves ~287MB free
+   after `vulos-server` (47MB); PSS leaves over 1GB.
+
+   Two measurement bugs were caught before either number was trusted, both of
+   which would have produced a confident wrong answer: `/proc/*/comm` truncates
+   to 15 characters, so an exact-match filter silently dropped
+   `WPENetworkProcess` (~33MB/instance), and `cage --platform=wl -- cog URL`
+   is wrong syntax — the flag is cog's, not cage's.
+
+   **Recommended, not implemented** (they touch files outside that work's
+   scope): say in `docs/GETTING-STARTED.md` that multi-screen wants 4GB+, and
+   have `vulos-kiosk.sh`'s multi-output branch *warn* — never refuse — when
+   more than one output is connected on a box under ~3GB.
+
+   **What these numbers do NOT establish**, kept because the temptation is to
+   quote the table alone: the OS/kernel baseline was estimated rather than
+   measured; only `WLR_RENDERER=pixman` was exercised, never a hardware GL
+   path; it ran arm64 inside OrbStack's VM, not bare metal; and it is a ~30s
+   snapshot, not a soak test. Tracked as V1-V4 in the cost doc.
 5. ~~**What a headless box does.**~~ **SETTLED 2026-08-13, and now executed
    rather than read.** The multi-output work did not turn the headless path
    into an error path: with no render nodes and no connected connectors,
