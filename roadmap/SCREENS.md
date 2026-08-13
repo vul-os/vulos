@@ -1,9 +1,15 @@
 # Screens — how a browser-rendered desktop spans more than one display
 
-**Status: design note. Nothing here is built.** It exists because the question
-"what happens with two monitors" has an answer that is not obvious for an OS
-whose desktop is a web app, and because most of the machinery the answer needs
-is already in the tree for other reasons.
+**Status: built, and its placement mechanism is proven in CI. The real launcher
+driving real browsers onto real outputs is NOT yet verified** — see "What is
+built as of 2026-08-12" and "What the QEMU verification actually needs" below,
+which are the authoritative sections and say precisely which half is which.
+
+This began as a design note, and the reasoning above the status sections is
+still the design argument rather than a report on shipped code. It was written
+because the question "what happens with two monitors" has an answer that is not
+obvious for an OS whose desktop is a web app, and because most of the machinery
+the answer needs was already in the tree for other reasons.
 
 Everything asserted below about existing code was read from the code, and the
 file is named each time so it can be checked rather than believed.
