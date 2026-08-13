@@ -410,8 +410,44 @@ it works:
 
    **Unverified:** the 4K-beside-1080p case is exercised by construction in
    tests, not by two real monitors.
-3. **Input focus across instances.** Two browser windows, one keyboard. The
-   compositor decides focus; the shell has to follow it rather than compete.
+3. ~~**Input focus across instances.**~~ **ADDRESSED IN CODE 2026-08-13;
+   unverified on real hardware.** The entry predicted instances fighting over
+   keystrokes. That half turns out to be safe by construction and was never the
+   problem: a browser only dispatches `keydown` to the OS/compositor-focused
+   top-level window, so an unfocused instance's listener never fires. "Act
+   once" already held for the literal keypress.
+
+   **The real bug was `activeWindow` crossing the cross-tab boundary.** It is
+   the field `shell/useWindowShortcuts.ts` reads to decide which window a
+   keystroke acts on, and it was part of the published shell state. Every
+   `RESTORE_STATE` — including a follower applying a peer's mirrored publish,
+   which fires on a ~500ms debounce whenever *anything* changes on the writer's
+   desktop — adopted the writer's `activeWindow` verbatim. Because a follower
+   can perfectly well be the focused viewport (leader/follower tracks
+   persistence ownership, not compositor attention), an unrelated edit on the
+   other screen silently reassigned this screen's keyboard target mid-use.
+
+   Fixed with a `fromMirror` flag on `RESTORE_STATE`: a mirrored sync keeps
+   this instance's own `activeWindow` if that window still exists, deferring to
+   the writer only on first sync or once the local pick was closed remotely.
+   `providers/viewportFocus.ts` adds a read-only focus primitive that never
+   calls `.focus()`. A regression test flips which instance is focused and
+   confirms the leader election is unaffected — the two concepts must not be
+   allowed to merge.
+
+   **Deliberately NOT done:** wiring `hasFocus` into the global keydown
+   listeners in `shell/useWindowShortcuts.ts` and `App.tsx`. Those are already
+   safe by browser event routing, and a focus gate there can only ever
+   *suppress* input — if it were ever wrong, every shortcut on the box would
+   stop working, which is a worse failure than the double-fire it would guard
+   against. The primitive exists if a real need appears.
+
+   **Unverified:** whether a real compositor drives two instances'
+   `document.hasFocus()` apart across two physical outputs. This is also
+   genuinely untestable in the suite — vitest's jsdom gives every test one
+   shared global `document`, so two readers of the zero-arg `hasFocus()` always
+   see the same value. The primitive takes an injectable host to prove the
+   branching logic, which is not the same as proving the DOM plumbing.
 4. **Cost.** One browser process per screen is not free on a 2GB box, which is
    the floor this project advertises. Whether three monitors is a supported
    configuration on minimum hardware is a product decision, not a technical one.
