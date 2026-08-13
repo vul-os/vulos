@@ -490,6 +490,50 @@ func TestKioskProbesTheBareURL(t *testing.T) {
 	}
 }
 
+// A headless box must EXIT ZERO, and this runs the script to find out.
+//
+// roadmap/SCREENS.md listed "multi-screen must not turn the headless path into
+// an error path" as unresolved, and every check on it so far was a grep. A grep
+// cannot see the failure mode that matters: vulos-kiosk.service is
+// Restart=on-failure, so a non-zero exit on a box with no display is not a bad
+// log line, it is systemd restarting the kiosk every three seconds forever, on
+// exactly the machines that have no screen to show the reason on.
+//
+// It is easy to reintroduce without touching the exit statement. `set -eu` is
+// in force, so any command in the detection path that fails last in its list
+// terminates the script with ITS status — the multi-output work added a second
+// connector loop above this point, and a future one could add a third.
+//
+// So: run the real file with no render nodes and no connected connectors, and
+// assert both the status and the reason. VULOS_DRI_ROOT/VULOS_DRM_ROOT exist
+// for this; a real boot sets neither.
+func TestKioskHeadlessExitsZero(t *testing.T) {
+	empty := t.TempDir()
+	cmd := exec.Command("sh", filepath.Join(repoRoot, "scripts", "vulos-kiosk.sh"))
+	cmd.Env = append(os.Environ(),
+		"VULOS_DRI_ROOT="+empty,
+		"VULOS_DRM_ROOT="+empty,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("vulos-kiosk exited non-zero on a headless box: %v\n%s\n\n"+
+			"vulos-kiosk.service is Restart=on-failure, so this is not a cosmetic "+
+			"defect: systemd restarts the unit every RestartSec forever on a machine "+
+			"with no display, and no display means nothing to read the reason on.", err, out)
+	}
+	if !strings.Contains(string(out), "no display found") {
+		t.Errorf("vulos-kiosk exited 0 without saying why. A box that shows no OS and "+
+			"explains nothing is indistinguishable from a broken one.\nOutput:\n%s", out)
+	}
+	// It must DECLINE, not launch. An exit 0 reached by some other route — a
+	// browser that started and quit, say — would satisfy the two checks above
+	// while meaning the opposite.
+	if strings.Contains(string(out), "display present") {
+		t.Errorf("vulos-kiosk claims a display is present when given empty DRM roots; the "+
+			"headless detection is looking somewhere other than where it was told.\n%s", out)
+	}
+}
+
 // The compositor environment must be DEFAULTS, not mandates.
 //
 // vulos-kiosk sets XDG_RUNTIME_DIR, LIBSEAT_BACKEND, the WLR_* flags and

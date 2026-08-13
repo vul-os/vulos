@@ -68,8 +68,15 @@ fi
 # So the detection lives here now, where it can be logged, and the unit runs
 # unconditionally. A headless box exits 0 with a reason on the journal instead of
 # being silently absent.
+#
+# VULOS_DRI_ROOT overrides where DRM render nodes are looked for, exactly as
+# VULOS_DRM_ROOT does for connectors and for the same reason: without it the
+# headless decision could only be GREPPED, never executed, on any host that has
+# a /dev/dri of its own. TestKioskHeadlessExitsZero points both at empty
+# directories and runs this file. A real boot sets neither and reads the real
+# paths.
 have_display=no
-for node in /dev/dri/card*; do
+for node in "${VULOS_DRI_ROOT:-/dev/dri}"/card*; do
   [ -e "$node" ] && have_display=yes && break
 done
 if [ "$have_display" = no ]; then
