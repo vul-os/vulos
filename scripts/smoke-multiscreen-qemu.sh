@@ -21,19 +21,35 @@
 #
 # ── The QEMU shape, and why it is not the obvious one ────────────────────────
 #
-# roadmap/SCREENS.md predicted "a second -device virtio-gpu-pci". Read from the
-# guest, that is the WRONG shape and would have produced a confusing pass:
+# roadmap/SCREENS.md predicted "a second -device virtio-gpu-pci". This harness
+# uses ONE device carrying two scanouts instead. The first draft of this
+# comment justified that with a NAME COLLISION — two cards, both connectors
+# called Virtual-1, so the launcher would derive one name for two outputs.
 #
-#   Two virtio-gpu DEVICES give the guest two DRM CARDS — card0 and card1 —
-#   each with one connector, and each connector is called Virtual-1. The kiosk
-#   derives its screen name by stripping the card prefix
-#   (scripts/vulos-kiosk.sh: sed 's/^card[0-9]*-//'), so BOTH outputs would be
-#   named "Virtual-1": two windowRules with the same title, two MoveToOutput
-#   actions naming the same output. wlroots would also have to drive two GPUs.
+# That was reasoning, and it was WRONG. Booted and read off the guest's own
+# log:
 #
-#   ONE device with max_outputs=2 gives one card with two connectors,
-#   Virtual-1 and Virtual-2 — which is what a two-monitor box actually looks
-#   like, and the case the launcher is written for.
+#     [drm] pci: virtio-gpu-pci detected at 0000:00:02.0
+#     [drm] number of scanouts: 1
+#     [drm] forcing Virtual-1 connector on
+#     [drm] Initialized virtio_gpu 0.1.0 for 0000:00:02.0 on minor 0
+#     [drm] pci: virtio-gpu-pci detected at 0000:00:03.0
+#     [drm] number of scanouts: 1
+#     [drm] forcing Virtual-2 connector on
+#     [drm] Initialized virtio_gpu 0.1.0 for 0000:00:03.0 on minor 1
+#
+# DRM numbers connectors per TYPE across the whole system, not per card, so
+# the second device's connector is Virtual-2 and the names do not collide.
+# The launcher would enumerate both correctly.
+#
+# The real reason to prefer max_outputs=2 is narrower and worth stating
+# accurately: two devices are two GPUs (minor 0 and minor 1, card0 and card1),
+# which puts the run on wlroots' multi-GPU path — a different and much rarer
+# hardware shape than the one this feature is for. One device with two
+# scanouts is one card with two connectors, which is what a desk with two
+# monitors on one graphics card actually looks like, and what the placement
+# rules were written against. Two devices is a legitimate second scenario;
+# it is not the one being verified here.
 #
 # ── The connector force, measured rather than assumed ────────────────────────
 #
