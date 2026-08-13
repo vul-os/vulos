@@ -4,6 +4,13 @@ import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
 import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 import { useShellSession, type ShellSession } from './useShellSession'
+import {
+  readViewportSize, viewportPx,
+  toCanonicalPoint, fromCanonicalPoint,
+  toCanonicalSize, fromCanonicalSize,
+  isPlausibleCanonicalUnit,
+  type ViewportSize, type CanonicalUnit,
+} from './screenScale'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // The window shape + reducer actions are the heart of the window manager
@@ -450,6 +457,143 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
   }
 }
 
+// ─── Cross-viewport geometry wire format ────────────────────────────────────
+//
+// position/size cross TWO boundaries that both leave this process: localStorage
+// (saveShellState/loadShellState, read back by the SAME tab, maybe after a
+// resize) and BroadcastChannel (useShellSession.publish/session.mirrored, read
+// by a DIFFERENT tab that can be a different physical screen — see
+// roadmap/SCREENS.md and screenScale.ts's module header for why raw CSS px is
+// wrong the moment two instances don't share a viewport extent).
+//
+// So the wire shape carries a canonical fraction-of-viewport (screenScale.ts)
+// instead of raw px whenever this tab can read its own viewport, tagged with
+// `geomUnit` so a reader can tell it apart from:
+//   - legacy data written before this conversion existed (no tag), and
+//   - a same-shape fallback THIS tab writes when it can't read its own
+//     viewport either (no `window`, e.g. SSR/tests) — also untagged, because
+//     there is no extent to divide by and a fabricated fraction would be
+//     worse than being honest that the numbers are px.
+// isPlausibleCanonicalUnit's magnitude heuristic alone can't always tell a
+// small window (0.3 x 0.4 of the viewport) from a raw px value, per
+// screenScale.ts, so the explicit tag is the primary signal; the heuristic is
+// only a backstop against a canonical-tagged payload whose numbers are
+// obviously wrong (e.g. a future bug that tags without converting).
+
+type GeometryUnitTag = 'canonical-v1'
+
+/** A window's geometry exactly as it crosses localStorage / BroadcastChannel.
+ *  Reuses WindowPosition/WindowSize's field names (x/y, width/height) for both
+ *  the canonical and legacy cases, so `geomUnit` is the only thing that says
+ *  which one it is. Never assign this straight into a live ShellWindow's
+ *  position/size — always through hydrateGeometry first. */
+interface SerializedGeometry {
+  geomUnit?: GeometryUnitTag
+  position: WindowPosition
+  size: WindowSize
+}
+
+interface PersistedWindow {
+  id: number
+  appId: string
+  title?: string
+  icon?: string
+  position: WindowPosition
+  size: WindowSize
+  geomUnit?: GeometryUnitTag
+  minimized: boolean
+  _tile?: string | null
+  _maximized?: boolean
+  _builtin?: boolean
+  url?: string
+}
+
+interface PersistedDesktop {
+  id: string
+  label: string
+  windows: PersistedWindow[]
+  activeWindow: number | null
+}
+
+/** The wire/on-disk shape produced by serializableShellState and consumed by
+ *  loadShellState / a follower's session.mirrored — geometry NOT YET resolved
+ *  to any particular viewport. Distinct from SavedShellState (below), which is
+ *  always raw px ready to hand a RESTORE_STATE dispatch; hydratePersistedState
+ *  is what turns one into the other. */
+interface PersistedShellState {
+  desktops: Record<string, PersistedDesktop>
+  activeDesktop: string
+}
+
+/** A window with no explicit/resolvable geometry falls back to this — the same
+ *  values OPEN_WINDOW uses for a freshly opened window with no explicit size —
+ *  so it opens visible and sane rather than off-screen, NaN, or a canonical
+ *  fraction misread as a pixel count. */
+const FALLBACK_WINDOW_POSITION: WindowPosition = { x: 60, y: 50 }
+const FALLBACK_WINDOW_SIZE: WindowSize = { width: 720, height: 500 }
+
+/** Converts one window's live px position/size into the wire form. Canonical
+ *  (fraction of THIS tab's own viewport) whenever the viewport is readable, so
+ *  a reader on a different-sized viewport lands the window in the same
+ *  RELATIVE place instead of the same raw px. Falls back to untagged raw px
+ *  only when this tab cannot read its own viewport at all. */
+function serializeGeometry(position: WindowPosition, size: WindowSize, viewport: ViewportSize | null): SerializedGeometry {
+  if (!viewport) return { position, size }
+  const p = toCanonicalPoint({ x: viewportPx(position.x), y: viewportPx(position.y) }, viewport)
+  const s = toCanonicalSize({ width: viewportPx(size.width), height: viewportPx(size.height) }, viewport)
+  return { geomUnit: 'canonical-v1', position: { x: p.nx, y: p.ny }, size: { width: s.nw, height: s.nh } }
+}
+
+/** The inverse: resolves a wire-format window's geometry to THIS tab's own
+ *  viewport px, ready to render.
+ *   - `geomUnit === 'canonical-v1'` and the numbers are plausible: convert
+ *     through THIS tab's own current viewport — never the writer's.
+ *   - no tag: legacy pre-canonical-unit data, or a viewport-less writer's
+ *     fallback — already raw px, used as-is.
+ *   - tagged canonical but this tab has no viewport, or the numbers fail the
+ *     plausibility backstop (a corrupted payload): neither raw-as-is nor a
+ *     fabricated conversion is safe, so fall back to FALLBACK_WINDOW_*. */
+function hydrateGeometry(w: SerializedGeometry, viewport: ViewportSize | null): { position: WindowPosition; size: WindowSize } {
+  if (w.geomUnit !== 'canonical-v1') return { position: w.position, size: w.size }
+  const plausible = isPlausibleCanonicalUnit(w.position.x) && isPlausibleCanonicalUnit(w.position.y) &&
+    isPlausibleCanonicalUnit(w.size.width) && isPlausibleCanonicalUnit(w.size.height)
+  if (!viewport || !plausible) {
+    return { position: { ...FALLBACK_WINDOW_POSITION }, size: { ...FALLBACK_WINDOW_SIZE } }
+  }
+  const p = fromCanonicalPoint({ nx: w.position.x as CanonicalUnit, ny: w.position.y as CanonicalUnit }, viewport)
+  const s = fromCanonicalSize({ nw: w.size.width as CanonicalUnit, nh: w.size.height as CanonicalUnit }, viewport)
+  return { position: { x: p.x, y: p.y }, size: { width: s.width, height: s.height } }
+}
+
+/** Resolves an entire wire-format PersistedShellState (from loadShellState's
+ *  localStorage read, or a follower's session.mirrored) to THIS tab's own
+ *  viewport — the ONLY thing that ever feeds a RESTORE_STATE dispatch.
+ *  Exported so both call sites (loadShellState below, and ShellProvider's
+ *  follower effect) share one implementation, and so it's unit-testable
+ *  against an explicit viewport without needing two live browser tabs. */
+// eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
+export function hydratePersistedState(persisted: PersistedShellState, viewport: ViewportSize | null): SavedShellState {
+  const desktops: Record<string, Desktop> = {}
+  for (const [id, desk] of Object.entries(persisted.desktops)) {
+    desktops[id] = {
+      id: desk.id,
+      label: desk.label,
+      activeWindow: desk.activeWindow,
+      windows: desk.windows.map((w): ShellWindow => {
+        const { position, size } = hydrateGeometry(w, viewport)
+        return {
+          id: w.id, appId: w.appId, title: w.title, icon: w.icon,
+          position, size, minimized: w.minimized,
+          _tile: w._tile ?? null, _maximized: !!w._maximized,
+          ...(w._builtin ? { _builtin: true } : {}),
+          ...(w.url ? { url: w.url } : {}),
+        }
+      }),
+    }
+  }
+  return { desktops, activeDesktop: persisted.activeDesktop }
+}
+
 // Persist shell state to localStorage (survives refresh)
 const STORAGE_KEY = 'vulos-shell-state'
 /**
@@ -464,10 +608,21 @@ const STORAGE_KEY = 'vulos-shell-state'
  * Publishing raw state therefore threw an uncaught error the moment any window
  * with a React component was open — which is every builtin app. Three e2e specs
  * were failing on it, and cross-tab mirroring never delivered a single message.
+ *
+ * Also the single place position/size are converted to the canonical
+ * fraction-of-viewport wire format (see the "Cross-viewport geometry wire
+ * format" section above) — BOTH saveShellState (localStorage, read back by
+ * this same tab) and useShellSession.publish (BroadcastChannel, read by a
+ * DIFFERENT tab/screen) go through this, so both get the conversion. A
+ * single-viewport reload isn't harmed by that: loadShellState below converts
+ * back through THIS tab's own current viewport, which for an unresized window
+ * is the same extent it was saved with, so the round trip is a no-op modulo
+ * float precision (proven in ShellProvider's tests).
  */
 // eslint-disable-next-line react-refresh/only-export-components -- this module intentionally exports the provider alongside its reducer/persistence/hook; splitting them would fragment the shell's state machine across files for an HMR nicety.
-export function serializableShellState(state: ShellState): SavedShellState {
-  const toSave: SavedShellState = {
+export function serializableShellState(state: ShellState): PersistedShellState {
+  const viewport = readViewportSize()
+  const toSave: PersistedShellState = {
     desktops: {},
     activeDesktop: state.activeDesktop,
   }
@@ -480,9 +635,10 @@ export function serializableShellState(state: ShellState): SavedShellState {
         // raw-html windows need a live backend session, so they're dropped.
         .filter(w => (w.url && !w.component && !w.html) || isBuiltinComponent(w.appId))
         .map(w => {
+          const geom = serializeGeometry(w.position, w.size, viewport)
           const base = {
             id: w.id, appId: w.appId, title: w.title, icon: w.icon,
-            position: w.position, size: w.size, minimized: w.minimized,
+            ...geom, minimized: w.minimized,
             _tile: w._tile || null, _maximized: !!w._maximized,
           }
           return isBuiltinComponent(w.appId)
@@ -505,7 +661,7 @@ export function loadShellState(): SavedShellState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    const data: SavedShellState = JSON.parse(raw)
+    const data: PersistedShellState = JSON.parse(raw)
     // Validate schema before restoring
     if (!data || typeof data !== 'object') return null
     if (!data.desktops || typeof data.desktops !== 'object') return null
@@ -522,7 +678,11 @@ export function loadShellState(): SavedShellState | null {
     if (!data.desktops[data.activeDesktop]) {
       data.activeDesktop = Object.keys(data.desktops)[0]
     }
-    return data
+    // Resolve canonical (or legacy raw-px) geometry to THIS tab's own current
+    // viewport — see hydratePersistedState. Same-viewport reload round-trips;
+    // a reload after resizing the window rescales proportionally instead of
+    // leaving a window's saved position meaningless for the new extent.
+    return hydratePersistedState(data, readViewportSize())
   } catch { return null }
 }
 
@@ -658,10 +818,15 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, [state.desktops, state.activeDesktop, session.role, session.publish, session])
 
   // A follower mirrors whatever the writer publishes, so both tabs show the
-  // same desktop instead of drifting apart.
+  // same desktop instead of drifting apart. session.mirrored carries geometry
+  // in the writer's canonical fraction-of-ITS-viewport (or, for a legacy/
+  // viewport-less writer, raw px) — see serializableShellState. Resolve it to
+  // THIS tab's own current viewport (which can be a different physical screen
+  // entirely, per roadmap/SCREENS.md) before it ever reaches shell state.
   useEffect(() => {
     if (session.role !== 'follower' || !session.mirrored) return
-    dispatch({ type: 'RESTORE_STATE', saved: session.mirrored as SavedShellState })
+    const hydrated = hydratePersistedState(session.mirrored as PersistedShellState, readViewportSize())
+    dispatch({ type: 'RESTORE_STATE', saved: hydrated })
   }, [session.role, session.mirrored])
 
   // Current desktop's windows (for dock, etc.)
