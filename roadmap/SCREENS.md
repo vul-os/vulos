@@ -490,10 +490,19 @@ worth noting before trusting the framing of any remaining design note:
    `WPENetworkProcess` (~33MB/instance), and `cage --platform=wl -- cog URL`
    is wrong syntax — the flag is cog's, not cage's.
 
-   **Recommended, not implemented** (they touch files outside that work's
-   scope): say in `docs/GETTING-STARTED.md` that multi-screen wants 4GB+, and
-   have `vulos-kiosk.sh`'s multi-output branch *warn* — never refuse — when
-   more than one output is connected on a box under ~3GB.
+   **~~Recommended, not implemented~~ — both SHIPPED same day.**
+   `docs/GETTING-STARTED.md` recommends 4 GB for multi-monitor boxes without
+   moving the 2 GB minimum, and `vulos-kiosk` warns — never refuses — when more
+   than one output is connected under ~3 GiB, naming the actual RAM and screen
+   count so the message is actionable. Unknown memory is silent, not assumed
+   low. Both are pinned by tests that execute the real launcher, mutation-tested
+   against the three ways the warning could have become a refusal (`exit 0`,
+   `exit 1`, and a silent drop to one output) — because a box that quietly
+   decides you get one monitor is a worse failure than a slow one.
+
+   `docs/DEPLOY.md` deliberately did NOT get the same sentence: it is the
+   Docker/SSH server guide and has no display path at all, so a multi-monitor
+   memory note there would describe a configuration it cannot produce.
 
    **What these numbers do NOT establish**, kept because the temptation is to
    quote the table alone: the OS/kernel baseline was estimated rather than

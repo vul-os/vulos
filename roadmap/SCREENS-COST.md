@@ -248,9 +248,27 @@ Reasoning:
   takes the GL path could plausibly use meaningfully more than this
   document's assumed 150-300MB baseline.
 
-**What is specified here, for the file owner to implement** (this document
-does not touch `scripts/vulos-kiosk.sh`, per this investigation's file
-ownership):
+**~~What is specified here, for the file owner to implement~~ — BOTH SHIPPED
+2026-08-13**, by the owner of those files. `docs/GETTING-STARTED.md` gained a
+"4 GB or more if you are plugging in more than one monitor" bullet beside an
+unchanged 2 GB minimum, stating plainly that two or three screens do fit and
+that nothing refuses to start (`6a5b3278`). `scripts/vulos-kiosk.sh`'s
+multi-output branch now reads `MemTotal` and, under 3 GiB, logs
+`vulos-kiosk: warning: N screens on XMB RAM — multi-screen is recommended at
+4GB+ (see docs/GETTING-STARTED.md). Starting all N anyway.` before launching
+every screen unchanged (`ab75cbbe`). An unreadable or unparseable
+`/proc/meminfo` prints nothing and cannot affect the boot; `VULOS_MEMINFO`
+overrides the path, mirroring the existing `VULOS_DRM_ROOT`/`VULOS_DRI_ROOT`
+seams.
+
+The never-refuse property is pinned by `backend/internal/docsref/kiosk_test.go`
+executing the real script, mutation-tested against three ways it could have
+regressed into a refusal: `exit 0`, `exit 1`, and a silent drop to one output.
+The keying is on `MemTotal` rather than screen count, so a box above the
+threshold hears nothing however many monitors it has.
+
+The original specification follows, kept because the reasoning is why the
+implementation looks the way it does:
 
 1. **Documented memory recommendation, not a hard block.** Extend the
    existing distinction in `docs/GETTING-STARTED.md` ("2 GB RAM minimum, 4 GB
