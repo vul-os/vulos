@@ -23,38 +23,41 @@
 # What that leaves genuinely unverified: a real boot, with the real shell
 # setting its own title, on real DRM connectors.
 #
-# STATUS 2026-08-13 — gets further each round, does NOT yet pass.
+# STATUS 2026-08-13 — narrowing, does NOT yet pass. Three rounds:
 #
-# Round 1: labwc could not create its socket. That was this harness's bug, not
-# the kiosk's: vulos-kiosk exports XDG_RUNTIME_DIR=/run/user/0 itself, so
-# setting a different one here was overridden and the directory never existed.
-# Fixed by creating /run/user/0.
+# R1  labwc had no socket directory. MY bug: vulos-kiosk exports
+#     XDG_RUNTIME_DIR=/run/user/0 itself, overriding what this set. Fixed.
+#     R1 also found a REAL defect — the kiosk logged a hardcoded "(1 of 1)" and
+#     then started two browsers. Fixed, and confirmed here in R2.
 #
-# Round 1 also found a REAL defect, which is why this file exists: the kiosk
-# logged a hardcoded "(1 of 1)" and then started two browsers. Now fixed, and
-# round 2 confirms it against the real script:
+# R2  Enumeration and counting correct:
+#       vulos-kiosk: screen identity HEADLESS-1 (2 connected: HEADLESS-1 HEADLESS-2)
+#     but the run still takes the SINGLE-output path and no socket appears.
 #
-#     vulos-kiosk: screen identity HEADLESS-1 (2 connected: HEADLESS-1 HEADLESS-2)
+# R3  Two candidate causes ELIMINATED by measurement, not argument:
+#       - the readiness wait. vulos-kiosk polls $URL/api/setup/status for up to
+#         SIXTY seconds before launching, and this harness served no such path,
+#         so the run was timing out mid-wait. Now served as a static file. The
+#         behaviour did not change, so that was not it.
+#       - a restricted PATH inside the kiosk. There is none; it never touches
+#         PATH, and labwc/cog/grim/foot are all confirmed present in the image.
 #
-# Round 2: enumeration and counting are correct, but the run still takes the
-# SINGLE-output path — the log line after it reads "...&screens=1&screenIndex=1"
-# — and no Wayland socket appears (socket: NONE), with two "failed to create
-# display" errors.
+# So screen_count is 2, labwc and cog are both on PATH, and the branch guarded
+# by exactly those three conditions is still not taken. That is contradictory
+# on its face, which is the point at which guessing gets expensive.
 #
-# So the open question is why the multi-output branch is not taken when
-# screen_count is 2. Its other conditions are `command -v labwc` and
-# `command -v cog`, both installed in this image. Worth dumping the whole
-# kiosk.log rather than the first 12 lines, and echoing the branch decision,
-# before theorising further — this investigation has already cost a day once by
-# reasoning ahead of the evidence.
+# NEXT, and deliberately a measurement rather than a theory: run the kiosk under
+# `sh -x` and read the trace. It will show the branch evaluation directly —
+# which condition was false, and what the variables held at that moment —
+# instead of inferring it from which messages did and did not print. This
+# investigation has already cost a day once by reasoning ahead of the evidence.
 #
-# NOT wired into CI while it cannot pass: a permanently red job teaches nothing
-# on every push.
+# NOT wired into CI while it cannot pass.
 set -euo pipefail
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-mkdir -p "$WORK/drm/card0-HEADLESS-1" "$WORK/drm/card0-HEADLESS-2" "$WORK/shots" "$WORK/www"
+mkdir -p "$WORK/www/api/setup" "$WORK/drm/card0-HEADLESS-1" "$WORK/drm/card0-HEADLESS-2" "$WORK/shots" "$WORK/www"
 echo connected > "$WORK/drm/card0-HEADLESS-1/status"
 echo connected > "$WORK/drm/card0-HEADLESS-2/status"
 
@@ -69,6 +72,14 @@ cat > "$WORK/www/index.html" <<'HTML'
   document.body.textContent = document.title;
 </script>
 HTML
+
+# vulos-kiosk polls $URL/api/setup/status for up to SIXTY SECONDS before
+# launching a browser — it refuses to show an error page that never retries.
+# A static server satisfies that if the path exists as a file. Without this the
+# kiosk sits in the wait loop, the screenshot lands mid-wait, and the run times
+# out before the multi-output branch is ever reached. That was round 2's
+# failure, and it looked exactly like the branch being skipped.
+echo '{"setup_complete":true}' > "$WORK/www/api/setup/status"
 
 cp scripts/vulos-kiosk.sh "$WORK/vulos-kiosk"
 cp scripts/vulos-kiosk-genconfig.sh "$WORK/vulos-kiosk-genconfig"
@@ -91,7 +102,7 @@ export VULOS_KIOSK_URL=http://localhost:8080
 
 # The kiosk execs labwc, so run it in the background and screenshot from here.
 /work/vulos-kiosk > /work/kiosk.log 2>&1 &
-sleep 14
+sleep 18
 # Discover the socket rather than assuming wayland-0.
 sock=$(ls /run/user/0/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
 echo "socket: ${sock:-NONE}" >> /work/kiosk.log
@@ -110,7 +121,7 @@ docker run --rm --platform linux/amd64 -v "$WORK:/work" debian:trixie sh -c '
   timeout 60 sh /work/run.sh || true
 '
 
-echo "── kiosk log ──"; sed -n '1,12p' "$WORK/kiosk.log" 2>/dev/null || true
+echo "── kiosk log ──"; cat "$WORK/kiosk.log" 2>/dev/null || true
 
 size() { [ -f "$1" ] && wc -c < "$1" | tr -d ' ' || echo 0; }
 a=$(size "$WORK/shots/HEADLESS-1.png"); b=$(size "$WORK/shots/HEADLESS-2.png")
