@@ -264,6 +264,62 @@ exit code rather than a pipeline's.
 Note the collateral: while the daemon is down, `SCREENS-01` and the NAT harness
 cannot run locally either, since both are container-based. CI is unaffected.
 
+## One thing that looked unresolved and is now settled: the dead session bus
+
+Worth its own section because it was, for a day, the most serious open question
+in this file — and because it turned out to be an accusation the harness made
+against shipping code rather than a defect.
+
+`scripts/vulos-kiosk.sh` exports
+`DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/dev/null}"` on
+the software-rendering path, and `backend/cmd/init/main.go`'s `startKiosk` does
+the same. That path is taken by **every box with no hardware GPU**, on the
+single-output branch as much as the multi-output one — which is what every real
+install boots. ROUND 5 of `scripts/smoke-kiosk-multiscreen.sh` recorded cog
+dying instantly with `Failed to fully launch dbus-proxy` and blamed that
+setting. If the blame were correct, every GPU-less box showed a black screen.
+
+**Measured 2026-08-13. It is not correct.** One privileged arm64 debian:trixie
+container, cog 0.18.4 / WPE WebKit 2.48.3 / cage 0.2.0 on
+`WLR_BACKENDS=headless` + `WLR_RENDERER=pixman`, a python3 stub server, and
+four runs differing only in the bus:
+
+    a  /dev/null bus, --platform=wl    Loaded successfully.  +  GET / 200
+    b  bus unset                       Loaded successfully.  +  GET / 200
+    c  dbus-run-session, real bus      Loaded successfully.  +  GET / 200
+    d  /dev/null bus, no --platform    Loaded successfully.  +  GET / 200
+
+Two independent success signals on purpose: cog's own `Loaded successfully.`
+and the server's `GET / 200`. A browser that starts and paints nothing is the
+failure this project keeps getting fooled by, so a live process was not
+accepted as a pass. Arm (a) is the command line `cmd/init` builds and arm (d)
+the one the shell script runs — they differ, and both were run rather than
+assumed equivalent.
+
+The dead bus costs exactly one line, `Failed to connect to bus: Could not
+connect: Connection refused`, which is the one-shot refusal the setting exists
+to produce; arm (b) has no such line, so the variable was demonstrably in
+effect. What makes the comparison evidence rather than one lucky run is the
+control the original round lacked: the container was first proved to allow the
+sandbox at all (`bwrap --unshare-user --unshare-pid --ro-bind / / /bin/true` →
+OK). Round 5 ran before `--cap-add SYS_ADMIN --security-opt seccomp=unconfined`
+were added, and xdg-dbus-proxy is itself launched inside that sandbox — so
+rounds 5 and 6 are one environmental failure and the dbus-proxy error was its
+symptom.
+
+Two corrections came out of it. The comments justifying the line named
+**Chromium**, which the bare-metal image does not install at all —
+`scripts/build-sh-packages.txt` ships `cog` and chromium appears only in the
+Dockerfile, which never runs this code. And `bubblewrap` + `xdg-dbus-proxy`,
+named nowhere in that package list, arrive as dependencies of cog even under
+build.sh's own `--no-install-recommends`, so the image does have the sandbox
+the browser expects.
+
+**Still not claimed:** any of this on real DRM hardware. Headless wlroots, no
+GPU, no `/dev/dri` — the same limitation as commit `a10c47fc`, which verified
+cog loading a page and is the run this one was designed to discriminate
+against.
+
 ## What is genuinely unresolved
 
 Named rather than glossed, because these are the parts that will decide whether
@@ -280,8 +336,26 @@ it works:
 4. **Cost.** One browser process per screen is not free on a 2GB box, which is
    the floor this project advertises. Whether three monitors is a supported
    configuration on minimum hardware is a product decision, not a technical one.
-5. **What a headless box does.** Today `vulos-kiosk` exits cleanly when it finds
-   no display. Multi-screen must not turn that into an error path.
+5. ~~**What a headless box does.**~~ **SETTLED 2026-08-13, and now executed
+   rather than read.** The multi-output work did not turn the headless path
+   into an error path: with no render nodes and no connected connectors,
+   `scripts/vulos-kiosk.sh` logs `no display found` and exits 0, before the
+   multi-output branch is anywhere near.
+
+   Proved by running the file, not by grepping it —
+   `TestKioskHeadlessExitsZero` in `backend/internal/docsref/kiosk_test.go`
+   executes the real script with empty DRM roots and asserts the status, the
+   reason, and that it DECLINED (a browser that started and quit would satisfy
+   the first two while meaning the opposite). Running it needed one seam,
+   `VULOS_DRI_ROOT`, mirroring the `VULOS_DRM_ROOT` that already existed; a
+   real boot sets neither.
+
+   The reason a grep was not enough is `Restart=on-failure` in
+   `vulos-kiosk.service` (build.sh). A non-zero exit here is not a bad log
+   line — it is systemd restarting the kiosk every three seconds forever on a
+   machine with no screen to show the reason on. Mutation-tested both ways:
+   `exit 0` → `exit 1` fails the test, and detection that ignores the override
+   fails it too.
 
 ## Why write this down before building it
 
