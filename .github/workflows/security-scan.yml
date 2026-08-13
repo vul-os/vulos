@@ -51,20 +51,41 @@ permissions:
 
 jobs:
   # ── 1. Go dependency vulnerability scan ─────────────────────────────────────
+  #
+  # THIS REPO HAS MORE THAN ONE GO MODULE. `backend` is the obvious one;
+  # `clients/core` (module `vulos/clients/core`) is the shared security core
+  # consumed by desktop/android/ios — see clients/core/doc.go — and ci.yml
+  # already gives it its own build/vet/test job for exactly that reason.
+  #
+  # This scan used to run only in backend/, so clients/core was never scanned
+  # by anything. It was Trivy's filesystem scan — which walks every go.mod in
+  # the tree rather than one module — that surfaced x/net CVE-2026-46600 there
+  # on 2026-08-13, and only because Trivy itself had just been repaired (it had
+  # been failing on a missing .trivyignore and scanning nothing at all). Two
+  # blind gates covering for each other is not redundancy.
+  #
+  # The matrix is the guard: adding a Go module to this repo without adding it
+  # here means it goes unscanned, and nothing will say so. If a third module
+  # appears, it belongs in this list.
   go-vuln:
-    name: Go Vulnerability Scan
+    name: Go Vulnerability Scan (${{ matrix.module }})
     runs-on: ubuntu-latest
     # Advisory gate: report findings without blocking the merge.
     continue-on-error: true
+    strategy:
+      # One module's findings must not cancel the other's scan.
+      fail-fast: false
+      matrix:
+        module: [backend, clients/core]
     steps:
       - uses: actions/checkout@v4
 
-      # — clone the sibling so the module resolves on the CI runner.
-
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          # Each module pins its own toolchain; read it from the module being
+          # scanned rather than always from backend's.
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
 
       # govulncheck is the official Go vulnerability scanner maintained by the
       # Go security team.  It checks both direct and transitive dependencies
@@ -73,12 +94,15 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
-        # Run from backend/ so the module root is resolved correctly.
+        # Run from the module root so it is resolved correctly.
         # Exit code 3 = vulnerabilities found (govulncheck convention).
-        # IGNORE: add vuln IDs (e.g. GO-2024-1234) to backend/.govulncheck-ignore,
+        # IGNORE: add vuln IDs (e.g. GO-2024-1234) to <module>/.govulncheck-ignore,
         #         one per line; lines starting with # are treated as comments.
+        #         The ignore list is PER-MODULE — suppressing a finding in
+        #         backend must not silently suppress the same ID in clients/core,
+        #         where the reachable call path may be entirely different.
         run: |
-          cd backend
+          cd "${{ matrix.module }}"
 
           RAW_OUTPUT=$(govulncheck ./... 2>&1) || EXIT_CODE=$?
           echo "$RAW_OUTPUT"
