@@ -118,7 +118,7 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/0}"
 # write /run/user/0. Every check past this point could therefore only ever be a
 # grep, and the property that matters most below (a low-memory box still
 # LAUNCHES, it is not refused) is invisible to a grep: a warning and an early
-# exit look almost identical in the source. TestKioskLowMemoryStillLaunches
+# exit look almost identical in the source. TestKioskLowMemoryMultiScreenStillLaunches
 # runs the real file through to the launch because of this line.
 mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 # Somewhere writable for fontconfig. The image ships a pre-built cache (fc-cache
@@ -224,9 +224,17 @@ if [ "$screen_count" -gt 1 ] && command -v labwc >/dev/null 2>&1 && command -v c
   # unreadable or unparseable file leaves mem_kb empty and nothing is printed —
   # warning on a number we do not have would be a guess presented as a
   # measurement. `|| true` keeps a failed read from ending the boot under
-  # `set -eu`, and the case guard rejects anything that is not all digits, so a
-  # truncated or garbage line cannot reach the arithmetic below (`-lt` on a
-  # non-number is a fatal error in most shells, i.e. a black screen).
+  # `set -eu`.
+  #
+  # The case guard rejects anything that is not all digits. Its job is narrower
+  # than it looks and worth stating exactly rather than overstating: a garbage
+  # VALUE cannot get past the sed pattern, which requires digits — what can is
+  # MORE THAN ONE match, e.g. a corrupt or concatenated file with two MemTotal
+  # lines, which leaves a two-line mem_kb. `[ "$mem_kb" -lt … ]` then prints
+  # `[: integer expression expected` (dash: `Illegal number`) straight onto the
+  # console of a box that is otherwise perfectly fine. It is NOT fatal — the
+  # test is an `if` condition, which `set -e` exempts — so this is about not
+  # putting a shell error in front of a user, not about a black screen.
   mem_kb=$(sed -n 's/^MemTotal:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*kB.*/\1/p' \
     "${VULOS_MEMINFO:-/proc/meminfo}" 2>/dev/null || true)
   case "$mem_kb" in
