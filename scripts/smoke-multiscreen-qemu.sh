@@ -474,7 +474,25 @@ try:
 except Exception:
     print("unreadable 0 0"); raise SystemExit
 if (w0, h0) != (w1, h1):
-    print(f"different-geometry {w0}x{h0} {w1}x{h1}"); raise SystemExit
+    # NOT a failure, and treating it as one hid a real result for two runs.
+    #
+    # This comparison exists to catch ONE thing: the same surface mirrored onto
+    # both heads, which would satisfy P0 and P1 while proving nothing about
+    # placement. Two heads at different resolutions cannot be the same surface
+    # — the discriminator's whole question is already answered, in the
+    # affirmative, by the geometry alone.
+    #
+    # It fires here because QEMU's virtio-gpu applies xres/yres to scanout 0
+    # only, so head 1 comes up at the device default (5120x2160) even with
+    # video=Virtual-2:1024x768e on the cmdline. Reporting that as an
+    # indistinguishable pair made EVERY run fail for a reason unrelated to
+    # placement — including the control, which then "behaved" on a build where
+    # placement worked perfectly. A control that passes for the wrong reason is
+    # worse than no control.
+    #
+    # What still carries the weight: P1 (a window actually rendered on head 1)
+    # and the --control same-app-id differential. Both survive this branch.
+    print(f"differ-by-geometry 100 0"); raise SystemExit
 band = int(h0 * 0.08) or 1
 row = w0 * 3
 diff = sum(1 for i in range(0, band*row, 3) if a[i:i+3] != b[i:i+3])
@@ -550,7 +568,10 @@ SELF="$(echo "$NOISE" | cut -d' ' -f2)"
 for cond in "$BOOTED" "$S1" "$S2" "$P0" "$P1"; do
   [ "$cond" = "1" ] || VERDICT=fail
 done
-[ "$DIFFSTATE" = "differ" ] || VERDICT=fail
+case "$DIFFSTATE" in
+  differ|differ-by-geometry) ;;   # distinct surfaces — see the note in the comparator
+  *) VERDICT=fail ;;              # identical, unreadable: could be one surface mirrored
+esac
 # Strictly greater. Equal means the two heads differ by no more than one head
 # differs from itself over the same interval — i.e. by time, not by content.
 [ "${CROSS:-0}" -gt "${SELF:-0}" ] 2>/dev/null || VERDICT=fail
