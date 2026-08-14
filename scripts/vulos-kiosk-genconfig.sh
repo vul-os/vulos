@@ -145,7 +145,32 @@ set -eu
 #     pattern with no metacharacters is a literal, so the glob degenerates to a
 #     case-insensitive exact match, which is what we want and not what we would
 #     get if a connector name could smuggle a `*` into the rule.
+#
+# VULOS_KIOSK_FORCE_APP_ID collapses EVERY output onto one app id, and exists
+# for exactly one caller: the control arm of scripts/smoke-multiscreen-qemu.sh.
+# A real boot sets it no more than it sets VULOS_DRM_ROOT, VULOS_DRI_ROOT or
+# VULOS_MEMINFO, and this file reads it in precisely one place.
+#
+# Why a seam rather than a test that reads the generated files: the claim the
+# QEMU harness makes is that the app id is what puts each browser on its own
+# monitor. That claim is only worth anything if a run in which the app ids are
+# NOT distinct can be shown to fail — on the same image, through the same
+# launcher, with two connectors, two browsers and labwc all still real. There
+# is no way to reach that state from outside the box, because both halves of
+# the pair are derived in here from the connector name.
+#
+# It collapses rather than desynchronises, and the difference matters. Both
+# halves — cog's --gapplication-app-id and the rule's identifier — still come
+# from this one function, so they still cannot disagree; they simply stop being
+# distinct from each other. That is faithfully the state this whole mechanism
+# replaced, where every instance ran under COG_DEFAULT_APPID "com.igalia.Cog".
+# A seam that let the two halves say different things would be a loaded gun in
+# shipping code and is deliberately not what this is.
 kiosk_app_id() {
+    if [ -n "${VULOS_KIOSK_FORCE_APP_ID:-}" ]; then
+        printf '%s\n' "$VULOS_KIOSK_FORCE_APP_ID"
+        return
+    fi
     printf 'org.vulos.kiosk.out-%s\n' \
         "$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g')"
 }
@@ -180,18 +205,33 @@ fi
 #
 # That makes this a cheap conversion of a theoretical hazard into an observable
 # failure. A refusal here is loud; the alternative is a dark monitor.
-seen=""
-for nm in "$@"; do
-    key=$(kiosk_app_id "$nm" | tr 'A-Z' 'a-z')
-    case " $seen " in
-        *" $key "*)
-            echo "$0: outputs collide on app id '$key'; refusing to write a config" \
-                 "that would place two browsers on one screen" >&2
-            exit 4
-            ;;
-    esac
-    seen="$seen $key"
-done
+#
+# Skipped, and ONLY skipped, when VULOS_KIOSK_FORCE_APP_ID is set. The check
+# guards against a collision arriving by accident out of two connector names;
+# under the force variable the collision IS the instruction, and refusing would
+# mean the control arm could never produce the failure it exists to produce —
+# the generator would exit 4, vulos-kiosk would exit 1, labwc would never
+# start, and the run would go red for want of a compositor rather than for want
+# of placement. A control that fails for the wrong reason is not a control.
+#
+# Written as an `if` wrapping the loop rather than a `[ … ] && break` inside it,
+# deliberately: under `set -e` an AND-OR list whose test fails is a well-known
+# way to end a script on the line that was supposed to do nothing, and this
+# file runs with `set -eu` on a box whose only symptom would be a dark monitor.
+if [ -z "${VULOS_KIOSK_FORCE_APP_ID:-}" ]; then
+    seen=""
+    for nm in "$@"; do
+        key=$(kiosk_app_id "$nm" | tr 'A-Z' 'a-z')
+        case " $seen " in
+            *" $key "*)
+                echo "$0: outputs collide on app id '$key'; refusing to write a config" \
+                     "that would place two browsers on one screen" >&2
+                exit 4
+                ;;
+        esac
+        seen="$seen $key"
+    done
+fi
 
 mkdir -p "$outdir"
 

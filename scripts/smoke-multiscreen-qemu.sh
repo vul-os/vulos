@@ -104,39 +104,53 @@
 #
 # ── The control, which is what makes any of it evidence ─────────────────────
 #
-#   --control break-title   keeps EVERYTHING else identical — two heads, two
-#       connectors, two browsers, labwc, the real launcher — and breaks only
-#       the one contract the placement rests on: the shell's window title.
-#       VULOS_KIOSK_URL is set (via systemd.setenv on the kernel cmdline, so
-#       no product file and no image content changes) to a URL that already
-#       carries a query string. vulos-kiosk-genconfig appends its own
-#       `?screen=…`, the result has two `?`, and `screen` is no longer a
-#       parameter the shell can read. readScreenIdentity() then returns null,
-#       the title stays the default instead of "Vulos — Virtual-2", no
-#       windowRule matches, and both browsers land wherever labwc puts them.
+#   --control same-app-id   keeps EVERYTHING else identical — two heads, two
+#       connectors, two browsers, labwc, the real launcher, both per-screen
+#       URLs, both MoveToOutput targets — and breaks only the thing placement
+#       now rests on: the app ids being DISTINCT.
+#       `systemd.setenv=VULOS_KIOSK_FORCE_APP_ID=…` on the kernel cmdline makes
+#       vulos-kiosk-genconfig emit one id for every output, on both sides of
+#       the pair. Both cog instances then run under the same app id and both
+#       windowRules carry it, so at most one window can be placed
+#       (`matchOnce="yes"` + labwc's other_instances_exist) and the second
+#       stays wherever labwc's default placement puts it.
 #       P1 MUST go red. If it does not, this harness cannot see the failure it
 #       claims to check and its pass means nothing.
 #
-#       Verified against the real parser's semantics before being run, so the
-#       control is known to do what it says:
-#           new URLSearchParams("?vulos-control=1?screen=Virtual-1&screens=2&screenIndex=1")
-#           → vulos-control="1?screen=Virtual-1", screens="2", screenIndex="1"
-#           → screen = null  → parseScreenIdentity() returns null
+#       That is faithfully the state this mechanism replaced: before
+#       `--gapplication-app-id` was passed, every instance ran under cog's
+#       COG_DEFAULT_APPID "com.igalia.Cog" and no rule could tell them apart.
 #
-#       It breaks TWO things at once, which is worth naming rather than
-#       glossing: with no identity the shell sets no window title (so no
-#       windowRule matches — placement dies) AND renders no screen chip (so the
-#       two heads have no per-screen content to differ by — D dies). The
-#       evidence block prints P0, P1 and D separately for exactly this reason:
-#       WHICH of them goes red says which half of the contract was doing the
-#       work, and a single boolean would have hidden that.
+#       ── Why the previous control had to be replaced ──
+#       The control this supersedes, `break-title`, broke the `screen=` URL
+#       parameter so the shell set no window title. That was load-bearing when
+#       the rule matched on `title`. It is not any more: the app id is derived
+#       from the DRM CONNECTOR NAME inside vulos-kiosk-genconfig and never
+#       touches the URL, so `break-title` would now leave placement working and
+#       PASS on a build where the mechanism is broken. A control that cannot
+#       fail is worse than none, so it is gone rather than kept alongside.
+#       This is a change to the INSTRUMENT and is reported separately from any
+#       result, because the harness's credibility rests on it having given
+#       P0 NO on a broken image and P0 yes on a fixed one with nothing else
+#       altered.
+#
+#       The seam it uses is documented in scripts/vulos-kiosk-genconfig.sh
+#       beside VULOS_DRM_ROOT/VULOS_DRI_ROOT/VULOS_MEMINFO, and pinned by
+#       TestKioskGenConfigForceAppIDSeam, which asserts it changes nothing when
+#       unset, COLLAPSES rather than desynchronises when set, and has not
+#       disabled the generator's colliding-app-id refusal on real boots.
+#
+#       NOTE: the seam must be present IN THE IMAGE. Against an image built
+#       before it existed the variable is simply ignored, the run behaves as an
+#       ordinary one, and the control is not validated — which this harness
+#       reports as "CONTROL DID NOT FAIL" rather than as a pass.
 #
 #   --control single-head   the cheap control: one head, so there is genuinely
 #       no second output. P1 must go red for the other reason.
 #
 # Usage:
 #   scripts/smoke-multiscreen-qemu.sh --image out/vulos-v0.1.1-arm64.img.gz
-#   scripts/smoke-multiscreen-qemu.sh --image X --control break-title --expect fail
+#   scripts/smoke-multiscreen-qemu.sh --image X --control same-app-id --expect fail
 #   scripts/smoke-multiscreen-qemu.sh --image X --control single-head --expect fail
 #   scripts/smoke-multiscreen-qemu.sh --image X --show      # open QEMU windows
 #
@@ -181,8 +195,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$CONTROL" in
-  none|break-title|single-head) ;;
-  *) echo "unknown --control: $CONTROL (none|break-title|single-head)" >&2; exit 2 ;;
+  none|same-app-id|single-head) ;;
+  *) echo "unknown --control: $CONTROL (none|same-app-id|single-head)" >&2; exit 2 ;;
 esac
 case "$EXPECT" in pass|fail) ;; *) echo "--expect must be pass or fail" >&2; exit 2 ;; esac
 [ "$CONTROL" = "single-head" ] && HEADS=1
@@ -248,7 +262,7 @@ esac
 #                       run — whether the second connector came up — is not
 #                       printed anywhere.
 #   add  video=…e       forces both connectors on (see the header).
-#   add  systemd.setenv only in --control break-title.
+#   add  systemd.setenv only in --control same-app-id.
 #
 # `splash`/plymouth are left exactly as shipped: plymouth owns the framebuffer
 # early in boot and removing it would change what the compositor inherits,
@@ -276,13 +290,15 @@ ENTRY="$OUTDIR/_ms-entry.conf"
 mtype -i "$WORK@@$ESP_OFF" ::/loader/entries/vulos.conf > "$ENTRY" 2>/dev/null \
   || die "no ::/loader/entries/vulos.conf in the image's ESP — is this a Vulos image?"
 
+CONTROL_APP_ID="org.vulos.kiosk.control"
 CONTROL_SETENV=""
-if [ "$CONTROL" = "break-title" ]; then
-  # A URL that ALREADY carries a query string. vulos-kiosk-genconfig appends
-  # `?screen=…` unconditionally, so the shell sees `c=1?screen=Virtual-1` as
-  # one parameter named `c` and no `screen` at all. Nothing else changes: two
-  # browsers still start, still load the shell, still fill their windows.
-  CONTROL_SETENV=" systemd.setenv=VULOS_KIOSK_URL=http://localhost:8080/?vulos-control=1"
+if [ "$CONTROL" = "same-app-id" ]; then
+  # Collapses every output onto one app id, on BOTH sides of the pair, inside
+  # vulos-kiosk-genconfig. Two browsers still start, still load the shell, still
+  # get their own per-screen URL, and both MoveToOutput targets stay correct —
+  # the ONLY difference from a passing run is that the rules can no longer tell
+  # the two windows apart.
+  CONTROL_SETENV=" systemd.setenv=VULOS_KIOSK_FORCE_APP_ID=$CONTROL_APP_ID"
 fi
 
 VIDEO=""
@@ -314,9 +330,9 @@ sed -n 's/^options //p' "$ENTRY" | sed "s/^/    /"
 mtype -i "$WORK@@$ESP_OFF" ::/loader/entries/vulos.conf 2>/dev/null \
   | grep -q "video=Virtual-1:${MODE_W}x${MODE_H}e" \
   || die "the loader entry read back out of the ESP does not contain the video= force — the patch did not land"
-if [ "$CONTROL" = "break-title" ]; then
+if [ "$CONTROL" = "same-app-id" ]; then
   mtype -i "$WORK@@$ESP_OFF" ::/loader/entries/vulos.conf 2>/dev/null \
-    | grep -q "systemd.setenv=VULOS_KIOSK_URL=" \
+    | grep -q "systemd.setenv=VULOS_KIOSK_FORCE_APP_ID=" \
     || die "control requested but systemd.setenv did not land in the ESP — the control would have run as an ordinary pass"
 fi
 ok "loader entry verified in the image"
@@ -552,6 +568,12 @@ if [ "$VERDICT" = "$EXPECT" ]; then
 fi
 
 if [ "$EXPECT" = "fail" ]; then
+  if [ "$CONTROL" = "same-app-id" ]; then
+    printf "${c_r}  FIRST thing to check: does this IMAGE contain the seam? VULOS_KIOSK_FORCE_APP_ID${c_n}\n" >&2
+    printf "${c_r}  is read by scripts/vulos-kiosk-genconfig.sh; an image built before it existed${c_n}\n" >&2
+    printf "${c_r}  ignores the variable and runs as an ordinary boot. Check with:${c_n}\n" >&2
+    printf "${c_r}    tar -xzOf <same build>-rootfs.tar.gz ./usr/local/bin/vulos-kiosk-genconfig | grep VULOS_KIOSK_FORCE_APP_ID${c_n}\n" >&2
+  fi
   die "CONTROL DID NOT FAIL. --control $CONTROL was supposed to break placement and the run still passed every assertion — this harness cannot see the failure it claims to check, so its green runs prove nothing."
 fi
 die "SCREENS-02 FAIL — see the evidence block above; the first NO is the one to chase"

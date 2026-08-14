@@ -915,6 +915,103 @@ func TestKioskGenConfigRefusesCollidingAppIDs(t *testing.T) {
 	}
 }
 
+// TestKioskGenConfigForceAppIDSeam pins VULOS_KIOSK_FORCE_APP_ID, which exists
+// only for the control arm of scripts/smoke-multiscreen-qemu.sh.
+//
+// The QEMU harness claims the app id is what puts each browser on its own
+// monitor. That claim is worth something only if a run with NON-distinct app
+// ids can be shown to fail on the same image, through the same launcher, with
+// two connectors and two browsers and labwc all still real — and there is no
+// way to reach that state from outside the box, because both halves of the
+// pair are derived in the generator from the connector name.
+//
+// Three properties, because the seam is only safe if all three hold:
+//
+//  1. Unset, it changes NOTHING. A real boot sets this no more than it sets
+//     VULOS_DRM_ROOT.
+//  2. Set, it COLLAPSES — every rule identifier and every cog flag becomes the
+//     one value. It must never DESYNCHRONISE the two halves; a seam that let
+//     the rule and the browser say different things would be a loaded gun in
+//     shipping code, and the whole point of the generator is that one variable
+//     feeds both.
+//  3. The collision refusal still fires when the seam is unset, so the escape
+//     hatch has not quietly disabled a safety check on real boots.
+func TestKioskGenConfigForceAppIDSeam(t *testing.T) {
+	gen := filepath.Join(repoRoot, "scripts", "vulos-kiosk-genconfig.sh")
+
+	read := func(t *testing.T, env []string) (rc, session string) {
+		t.Helper()
+		dir := t.TempDir()
+		cmd := exec.Command("sh", gen, dir, "http://localhost:8080", "Virtual-1", "Virtual-2")
+		cmd.Env = append(os.Environ(), env...)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("generator failed (env=%v): %v\n%s", env, err, b)
+		}
+		r, err := os.ReadFile(filepath.Join(dir, "rc.xml"))
+		if err != nil {
+			t.Fatalf("no rc.xml: %v", err)
+		}
+		s, err := os.ReadFile(filepath.Join(dir, "session.sh"))
+		if err != nil {
+			t.Fatalf("no session.sh: %v", err)
+		}
+		return string(r), string(s)
+	}
+
+	// (1) Unset — distinct per output, and the two halves agree.
+	rc, session := read(t, nil)
+	for _, want := range []string{
+		`identifier="org.vulos.kiosk.out-Virtual-1"`,
+		`identifier="org.vulos.kiosk.out-Virtual-2"`,
+	} {
+		if !strings.Contains(rc, want) {
+			t.Errorf("with the seam unset, rc.xml lacks %s — the seam has leaked into the "+
+				"normal path, which is the boot every real box takes.\n%s", want, rc)
+		}
+	}
+	for _, want := range []string{
+		`--gapplication-app-id="org.vulos.kiosk.out-Virtual-1"`,
+		`--gapplication-app-id="org.vulos.kiosk.out-Virtual-2"`,
+	} {
+		if !strings.Contains(session, want) {
+			t.Errorf("with the seam unset, session.sh lacks %s.\n%s", want, session)
+		}
+	}
+
+	// (2) Set — everything collapses onto the one id, on BOTH sides.
+	const forced = "org.vulos.kiosk.control"
+	rc, session = read(t, []string{"VULOS_KIOSK_FORCE_APP_ID=" + forced})
+	if got := strings.Count(rc, `identifier="`+forced+`"`); got != 2 {
+		t.Errorf("forced app id appears in %d rules, want 2 — the control cannot reproduce "+
+			"the failure unless BOTH rules carry it.\n%s", got, rc)
+	}
+	if got := strings.Count(session, `--gapplication-app-id="`+forced+`"`); got != 2 {
+		t.Errorf("forced app id appears on %d cog invocations, want 2.\n%s", got, session)
+	}
+	// The collapse must not take the per-screen URL with it: the control has to
+	// differ from a passing run in the app id and NOTHING else, or a red result
+	// cannot be attributed to placement.
+	for _, want := range []string{"screen=Virtual-1", "screen=Virtual-2", "screenIndex=1", "screenIndex=2"} {
+		if !strings.Contains(session, want) {
+			t.Errorf("the forced app id also changed the URLs (missing %q). The control must "+
+				"differ from a passing run in the app id alone.\n%s", want, session)
+		}
+	}
+	// Still one output per rule — the control breaks matching, not the targets.
+	for _, want := range []string{`output="Virtual-1"`, `output="Virtual-2"`} {
+		if !strings.Contains(rc, want) {
+			t.Errorf("the forced app id also changed MoveToOutput (missing %s).\n%s", want, rc)
+		}
+	}
+
+	// (3) The safety check is still live on the path a real box takes.
+	cmd := exec.Command("sh", gen, t.TempDir(), "http://localhost:8080", "DP-1", "DP.1")
+	if b, err := cmd.CombinedOutput(); err == nil {
+		t.Errorf("with the seam unset the generator accepted two colliding names; adding the "+
+			"seam has disabled the refusal on real boots.\n%s", b)
+	}
+}
+
 // The kiosk must not report a screen count it is about to contradict.
 //
 // The identity line runs before the multi-output branch, so a hardcoded
