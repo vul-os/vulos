@@ -1392,7 +1392,36 @@ EOF
 chroot "$ROOTFS" systemctl enable vulos-console.service
 
 mkdir -p "$ROOTFS/var/lib/vulos"
-touch "$ROOTFS/var/lib/vulos/.setup-complete"
+
+# DO NOT create /var/lib/vulos/.setup-complete here.
+#
+# `GET /api/setup/status` is literally os.Stat on that file
+# (backend/cmd/server/main.go), and AuthGate skips the entire first-boot wizard
+# when it reports true. Creating it at BUILD time meant every image ever
+# shipped — live and installed alike — booted claiming setup was already
+# finished, so the fifteen-step wizard ran for nobody:
+#
+#   welcome, chooser, device, language, timezone, network, account, pin, apps,
+#   appearance, identity, storage, ssh, recoverykit, ready
+#
+# What a first boot actually offered instead was the create-account form:
+# display name, username, password. No timezone, no network, and — the part
+# that matters — no identity keypair step, no SSH key step and no recovery-kit
+# step. Confirmed on a pristine, never-booted v0.2.0 arm64 image, which
+# answered {"setup_complete":true} before anyone had touched it.
+#
+# It arrived in 11687bf2 (2026-03-31), whose entire commit message is ",", so
+# there is no recorded reason for it. It is not conditional on --live and never
+# was: this line sits in the shared rootfs build, above the "--live only"
+# section.
+#
+# The marker is RUNTIME state. The thing that finishes setup writes it; a build
+# must not pre-answer a question the user has not been asked. scripts/dev.sh
+# and scripts/seed-demo.sh touch it deliberately for a seeded dev box, and that
+# is the right place for it — those are not shipped images.
+#
+# Guarded by TestBuildDoesNotPreCompleteSetup in
+# backend/internal/docsref/kiosk_test.go.
 
 echo "  ${GREEN}✓${NC} rootfs built"
 

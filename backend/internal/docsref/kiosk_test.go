@@ -1508,3 +1508,65 @@ func TestKioskEnvIsOverridable(t *testing.T) {
 		}
 	}
 }
+
+// A build must not answer a question the user has not been asked.
+//
+// GET /api/setup/status is os.Stat("/var/lib/vulos/.setup-complete") and
+// nothing else, and the shell's AuthGate skips the whole fifteen-step
+// first-boot wizard when it reports true. build.sh created that file in the
+// rootfs, unconditionally, from 2026-03-31 until 2026-08-15 — so every image
+// ever shipped, live and installed, booted claiming setup was already done.
+//
+// The wizard covers language, timezone, network, the identity keypair, SSH keys
+// and the recovery kit. None of it ran. A first boot asked for a display name,
+// a username and a password, and went straight to the desktop.
+//
+// This is asserted against the SCRIPT rather than a built image because a build
+// takes an hour and this regression is one line. The complementary check —
+// that a real image actually shows the wizard — belongs in a boot test.
+func TestBuildDoesNotPreCompleteSetup(t *testing.T) {
+	src := readRepoFile(t, "build.sh")
+
+	// Strip comments before matching. This file now carries a long comment
+	// ABOUT .setup-complete, and a naive grep would match the explanation and
+	// fail forever — a guard that cannot pass is as useless as one that cannot
+	// fail.
+	var code []string
+	for _, line := range strings.Split(src, "\n") {
+		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		code = append(code, line)
+	}
+	body := strings.Join(code, "\n")
+
+	// The deploy path (--deploy) legitimately INSPECTS the marker on a remote
+	// box: `ssh host test -f /var/lib/vulos/.setup-complete`. Reading is fine.
+	// Creating it inside $ROOTFS is what ships a lie.
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.Contains(line, ".setup-complete") {
+			continue
+		}
+		if !strings.Contains(line, "ROOTFS") {
+			continue // remote inspection, not image content
+		}
+		if strings.Contains(line, "touch") || strings.Contains(line, "> ") {
+			t.Errorf("build.sh creates .setup-complete inside the rootfs:\n  %s\n\n"+
+				"That makes /api/setup/status report true on a machine nobody has "+
+				"set up, and AuthGate then skips the first-boot wizard entirely — "+
+				"no timezone, no network, no identity keypair, no SSH keys, no "+
+				"recovery kit. The marker is runtime state: whatever COMPLETES "+
+				"setup writes it. scripts/dev.sh and scripts/seed-demo.sh may "+
+				"touch it, because a seeded dev box is not a shipped image.",
+				strings.TrimSpace(line))
+		}
+	}
+
+	// Coverage assertion: this test is worthless if it stopped being able to
+	// see the file it guards. build.sh must still mention the marker somewhere
+	// (the --deploy inspection at minimum), or the check has lost its subject.
+	if !strings.Contains(src, ".setup-complete") {
+		t.Fatal("build.sh no longer mentions .setup-complete at all — this guard " +
+			"has lost its subject and would pass on any file")
+	}
+}
