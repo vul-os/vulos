@@ -223,9 +223,36 @@ echo "  ${GREEN}✓${NC} webroot/"
 echo "${BLUE}▸ Copying assets...${NC}"
 rm -rf "$OUTDIR/apps"
 mkdir -p "$OUTDIR/apps"
-for app in "$ROOT_DIR/apps/"*/; do
-  [ -d "$app" ] && cp -r "$app" "$OUTDIR/apps/" && echo "  ${GREEN}✓${NC} $(basename "$app")"
+# Bundled apps live in frontend/apps/ (moved there by cea77898, "move the web
+# tier into frontend/"). This loop kept reading $ROOT_DIR/apps/, which stopped
+# existing at that commit — the glob matched nothing, `[ -d ]` was false for the
+# unexpanded literal, the loop body never ran, and every image from v0.1.0
+# onwards shipped an EMPTY /opt/vulos/apps. The backend then found no manifest,
+# never registered a namespace, and the gateway answered
+# {"error":"app not running"} for every app on a real box.
+#
+# The count check below is the part that makes this stay fixed: a silent
+# zero-app copy is the exact failure that shipped, so a build that produces no
+# apps now fails loudly instead of producing a plausible-looking image.
+# The destination is named EXPLICITLY rather than passing the directory to
+# `cp -r src/ dst/`: the glob yields a trailing slash, and with that trailing
+# slash BSD cp (macOS, where this script is also run) copies the CONTENTS of
+# each app into $OUTDIR/apps/ — flattening all 16 apps' files on top of each
+# other into one directory — while GNU cp copies the directory itself. Spelling
+# out the target directory behaves identically on both.
+app_count=0
+for app in "$ROOT_DIR/frontend/apps/"*/; do
+  [ -d "$app" ] || continue
+  cp -r "$app" "$OUTDIR/apps/$(basename "$app")"
+  app_count=$((app_count + 1))
+  echo "  ${GREEN}✓${NC} $(basename "$app")"
 done
+if [ "$app_count" -eq 0 ]; then
+  echo "  ${RED}✗${NC} no bundled apps found under $ROOT_DIR/frontend/apps/ —" >&2
+  echo "    refusing to build an image with an empty /opt/vulos/apps." >&2
+  exit 1
+fi
+echo "  ${GREEN}✓${NC} ${app_count} bundled apps"
 cp "$ROOT_DIR/registry.json" "$OUTDIR/registry.json"
 [ -f "$ROOT_DIR/scripts/xdg-open" ] && cp "$ROOT_DIR/scripts/xdg-open" "$OUTDIR/xdg-open"
 echo "  ${GREEN}✓${NC} registry.json"

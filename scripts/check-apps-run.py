@@ -94,9 +94,20 @@ def discover_apps() -> list[dict]:
 
 
 def http_get(url: str):
+    """GET a URL, treating an HTTP error response as an ANSWER, not an outage.
+
+    urllib raises HTTPError (a subclass of URLError) for 4xx/5xx. Letting that
+    fall into the connect-retry loop would make an app that is up and serving
+    500s look like an app that is still booting, and burn the whole boot budget
+    before failing — measured at 40s during mutation testing. A status line
+    means the server bound and replied, so return it immediately.
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "vulos-check-apps-run"})
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-        return resp.status, resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
 
 
 def start_and_serve(app: dict) -> dict:
@@ -205,12 +216,20 @@ def start_and_serve(app: dict) -> dict:
         shutil.rmtree(home, ignore_errors=True)
 
 
-def check_ship_paths(app_ids: list[str]) -> list[str]:
-    """Assert build.sh copies bundled apps from a path that really has them.
+SHIP_BLOCK_START = 'rm -rf "$OUTDIR/apps"'
+SHIP_BLOCK_END = "${app_count} bundled apps"
 
-    This is the check that would have caught v0.2.0. It does not care HOW the
-    path is written — it extracts whatever source path the copy loop iterates,
-    resolves it, and demands the apps actually be there.
+
+def check_ship_paths(app_ids: list[str]) -> list[str]:
+    """Assert build.sh really does place every app where the image expects it.
+
+    This is the check that would have caught v0.2.0, and it works by RUNNING
+    build.sh's own bundled-app copy block against a throwaway $OUTDIR rather
+    than pattern-matching the path out of it. Reading the path is not enough:
+    a first attempt at the fix pointed at the right directory and still
+    flattened all 16 apps into one, because the glob yields a trailing slash
+    and BSD `cp -r src/ dst/` copies contents rather than the directory. Only
+    executing the block and looking at what landed catches that class of bug.
     """
     failures: list[str] = []
     if not os.path.isfile(BUILD_SH):
@@ -219,37 +238,61 @@ def check_ship_paths(app_ids: list[str]) -> list[str]:
     with open(BUILD_SH) as f:
         build = f.read()
 
-    # The loop that populates $OUTDIR/apps, e.g.
-    #   for app in "$ROOT_DIR/frontend/apps/"*/; do
-    m = re.search(
-        r'for\s+\w+\s+in\s+"?\$\{?ROOT_DIR\}?/([^"*]*)"?\*/\s*;\s*do', build
-    )
-    if not m:
+    start = build.find(SHIP_BLOCK_START)
+    if start == -1:
         return [
-            "could not find the bundled-app copy loop in build.sh "
-            "(expected `for app in \"$ROOT_DIR/<path>/\"*/; do`) — if the copy "
-            "mechanism changed, update this check to follow it"
+            f"could not find the bundled-app copy block in build.sh (expected a "
+            f"line containing {SHIP_BLOCK_START!r}) — if the copy mechanism "
+            f"changed, update this check to follow it rather than deleting it"
         ]
+    end = build.find(SHIP_BLOCK_END, start)
+    if end == -1:
+        return ["found the start of build.sh's app-copy block but not its end"]
+    block = build[start : build.find("\n", end) + 1]
 
-    rel = m.group(1).strip("/")
-    src = os.path.join(ROOT, rel)
-    if not os.path.isdir(src):
+    if "frontend/apps" not in block:
         failures.append(
-            f"build.sh copies bundled apps from $ROOT_DIR/{rel}/ which DOES NOT "
-            f"EXIST — the glob matches nothing, so the image ships ZERO apps "
-            f"(this is exactly the v0.2.0 defect)"
+            "build.sh's app-copy block does not read frontend/apps/ — bundled "
+            "apps live there since cea77898"
         )
-        return failures
 
-    present = {
-        n for n in os.listdir(src) if os.path.isfile(os.path.join(src, n, "app.json"))
-    }
-    missing = sorted(set(app_ids) - present)
-    if missing:
-        failures.append(
-            f"build.sh copies from $ROOT_DIR/{rel}/ but these apps are not "
-            f"there: {', '.join(missing)}"
+    outdir = tempfile.mkdtemp(prefix="vulos-shipcheck-")
+    try:
+        # Run the REAL block, with only the variables it reads bound.
+        script = (
+            f'set -e\nROOT_DIR={ROOT!r}\nOUTDIR={outdir!r}\n'
+            f'GREEN=""\nRED=""\nNC=""\n{block}\n'
         )
+        proc = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, timeout=180
+        )
+        if proc.returncode != 0:
+            failures.append(
+                f"build.sh's app-copy block exited {proc.returncode}: "
+                f"{(proc.stderr or proc.stdout).strip()[:400]}"
+            )
+            return failures
+
+        shipped = os.path.join(outdir, "apps")
+        for app_id in app_ids:
+            manifest = os.path.join(shipped, app_id, "app.json")
+            if not os.path.isfile(manifest):
+                failures.append(
+                    f"{app_id} did not land at $OUTDIR/apps/{app_id}/app.json — "
+                    f"it would be MISSING from /opt/vulos/apps in the image"
+                )
+        # Every app that has a server.py must still have it after the copy.
+        for app_id in app_ids:
+            src_server = os.path.join(APPS_DIR, app_id, "server.py")
+            if os.path.isfile(src_server) and not os.path.isfile(
+                os.path.join(shipped, app_id, "server.py")
+            ):
+                failures.append(f"{app_id}/server.py was not copied into the image")
+    except subprocess.TimeoutExpired:
+        failures.append("build.sh's app-copy block timed out")
+    finally:
+        shutil.rmtree(outdir, ignore_errors=True)
+
     return failures
 
 
@@ -291,12 +334,14 @@ def main() -> int:
 
     ship_failures = [] if args.only else check_ship_paths([a["id"] for a in apps])
     print()
-    if ship_failures:
+    if args.only:
+        print(f"  {DIM}skip  build.sh ships apps: not checked under --only{RESET}")
+    elif ship_failures:
         for f in ship_failures:
             print(f"  {RED}FAIL{RESET}  build.sh ships apps: {f}")
     else:
-        print(f"  {GREEN}PASS{RESET}  build.sh ships apps: "
-              f"copy source resolves and contains all {len(apps)} apps")
+        print(f"  {GREEN}PASS{RESET}  build.sh ships apps: ran build.sh's own "
+              f"copy block; all {len(apps)} apps landed with their manifests")
 
     # COVERAGE ASSERTION — a check that examined nothing must never report
     # success. Guards against an empty/renamed apps dir silently zeroing this
