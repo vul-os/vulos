@@ -156,7 +156,36 @@ self.addEventListener('fetch', (event) => {
           if (request.mode === 'navigate') {
             return caches.match('/index.html').then((idx) => idx || caches.match('/'));
           }
-          return Response.error();
+
+          // ONE retry before giving up, for lazy-loaded app chunks.
+          //
+          // Every app in this shell is a code-split chunk fetched on open. A
+          // single failed fetch here used to return Response.error() straight
+          // away, which rejects the dynamic import, trips the window's error
+          // boundary, and leaves that app DEAD until a full reload — from one
+          // transient blip. Observed on a real box: opening Drive and Contacts
+          // both died this way while the backend was briefly unresponsive, and
+          // the only symptom a user gets is "error loading dynamically
+          // imported module".
+          //
+          // A chunk is immutable and content-hashed, so retrying is safe: the
+          // same URL can only ever return the same bytes. This does not paper
+          // over a server that is genuinely down — the second failure still
+          // errors — it removes the single-packet-loss cliff.
+          //
+          // Deliberately NOT a longer backoff loop: an app that hangs for
+          // seconds is a worse experience than one that reports a failure the
+          // user can retry by reopening, and holding the fetch open keeps the
+          // window's spinner spinning with no way out.
+          return fetch(request)
+            .then((response) => {
+              if (response && response.status === 200 && response.type !== 'opaque') {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              }
+              return response;
+            })
+            .catch(() => Response.error());
         });
 
       // Cache-first: return cached immediately; revalidate in the background.

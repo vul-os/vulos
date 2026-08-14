@@ -277,6 +277,32 @@ describe('public/sw.js — OS service worker', () => {
     expect(resp.type).toBe('error')
   })
 
+  it('a lazy app chunk survives ONE transient failure instead of killing the window', async () => {
+    // Every app in this shell is a code-split chunk fetched when it opens. One
+    // failed fetch used to return Response.error() immediately, rejecting the
+    // dynamic import, tripping the window error boundary and leaving that app
+    // dead until a full reload. Seen on a real box: Drive and Contacts both
+    // died this way ("error loading dynamically imported module") while the
+    // backend was briefly unresponsive.
+    //
+    // Chunks are immutable and content-hashed, so a retry can only ever fetch
+    // the same bytes.
+    let calls = 0
+    const { handlers } = loadSW({
+      fetchImpl: async () => {
+        calls += 1
+        if (calls === 1) throw new Error('transient blip')
+        return { status: 200, type: 'basic', body: 'chunk', clone: () => ({ body: 'chunk' }) }
+      },
+    })
+    const req = makeRequest('https://app.vulos.org/assets/Drive-BY7BsChL.js')
+    const evt = fireFetch(handlers, req)
+    const resp = await evt._response
+    if (!resp) throw new Error('expected fetch handler to respondWith a response')
+    expect(resp.type, 'the retry did not happen — one blip still kills the app window').not.toBe('error')
+    expect(calls, 'expected exactly one retry, not a backoff loop').toBe(2)
+  })
+
   // ── Web Push (PUSH-CELL-01) ────────────────────────────────────────────────
   function firePush(handlers: Record<string, SWHandler>, dataObj: unknown): SWEvt {
     const evt: SWEvt = {
