@@ -26,6 +26,39 @@ import { startNotificationBridge } from './core/notificationBridge'
 import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
 import { refreshInstalled, refreshAIApps } from './core/AppRegistry'
 import { startLocationReporting, stopLocationReporting } from './core/location/reporter'
+import { applyScreenWindowTitle } from './providers/screenIdentity'
+
+// SCREENS-01: announce which physical output this browser instance belongs to,
+// at MODULE SCOPE, before React is involved at all.
+//
+// A multi-output kiosk starts one browser per connected output and labwc places
+// each window by matching a windowRule against its TITLE (scripts/vulos-kiosk.sh
+// → scripts/vulos-kiosk-genconfig.sh). Every instance of this shell is otherwise
+// byte-identical, so the title is the only thing that tells the compositor which
+// window is which. That makes it a contract with the compositor, not a piece of
+// chrome, and it has to hold for the WHOLE life of the document.
+//
+// Here, rather than in a component, for three reasons:
+//
+//   1. No mount condition. This runs whether the tree renders the setup wizard,
+//      the login screen, the lock screen, a popout or the full desktop. The
+//      title previously came from the top bar's screen chip, which lives inside
+//      DesktopCanvas — so it existed only after setup AND after login, and the
+//      first real two-display boot landed on the setup wizard and left the
+//      second monitor black (roadmap/SCREENS-QEMU.md).
+//   2. Earliest reachable point. ES module imports are evaluated before the
+//      importing module's body, so this runs before main.tsx's own pre-paint
+//      work, and long before the first React commit.
+//   3. It survives a failed boot. If the React tree throws and main.tsx paints
+//      its VULOS BOOT ERROR screen instead, the window still carries its
+//      connector name and still lands on the right monitor — a boot error you
+//      can read on the correct screen, rather than one stacked on top of
+//      another window.
+//
+// A browser with no screen identity (ordinary tab, phone on the LAN, dev
+// server, one-monitor kiosk) is left completely untouched; see
+// providers/screenIdentity.ts.
+applyScreenWindowTitle()
 
 // isRecord narrows an `unknown` value (parsed JSON from the network) to a
 // plain object before any property access — same guard as lib/offlineAuth.ts.

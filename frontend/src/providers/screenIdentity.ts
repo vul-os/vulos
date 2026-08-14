@@ -143,3 +143,54 @@ export function screenWindowTitle(id: ScreenIdentity | null, base: string): stri
   if (!isMultiScreen(id) || !id) return base
   return `${base} — ${id.name}`
 }
+
+/**
+ * applyScreenWindowTitle stamps the CURRENT document's title with the connector
+ * name this browser instance was launched for. It is the single writer of
+ * document.title in this shell.
+ *
+ * # Why this is not a UI concern
+ *
+ * The title is a COMPOSITOR CONTRACT. labwc decides which physical output this
+ * window belongs on by matching a windowRule against the title, so the title
+ * has to hold from the moment the document exists — before setup, during setup,
+ * at the login screen, and after login — regardless of which route is mounted.
+ *
+ * It used to be a side-effect of the top bar's screen chip, which mounts only
+ * inside DesktopCanvas, i.e. only after setup AND after login. The first
+ * two-display QEMU boot (roadmap/SCREENS-QEMU.md) landed on the setup wizard,
+ * so no top bar ever mounted, so no title was ever set, so no rule matched and
+ * the second monitor stayed black for the entire pre-login life of the session.
+ * A window's identity to the compositor cannot depend on how far through login
+ * the user has got.
+ *
+ * # Does nothing without a multi-screen identity
+ *
+ * An ordinary tab, a phone on the LAN, the dev server and a one-monitor kiosk
+ * all get `null` from readScreenIdentity() (or a total of 1), and this leaves
+ * document.title completely alone in that case — no connector name, and no
+ * rewriting of the title the HTML shipped with. Only a browser the kiosk
+ * launched for one of several outputs is touched.
+ *
+ * # Idempotent
+ *
+ * The base is taken as everything before the first em-dash separator, which is
+ * how screenWindowTitle joins it, so applying twice yields the same string. It
+ * returns the title it set, or null when it deliberately set nothing, so
+ * "did nothing" is observable rather than assumed.
+ */
+export function applyScreenWindowTitle(): string | null {
+  // Guarded exactly like readScreenIdentity: this module is also loaded where
+  // there is no document (unit tests, any future server-side render), and a
+  // missing document means single-screen, never an exception.
+  const doc = (globalThis as { document?: { title?: unknown } }).document
+  if (!doc || typeof doc.title !== 'string') return null
+
+  const id = readScreenIdentity()
+  if (!isMultiScreen(id)) return null
+
+  const base = doc.title.split(' — ')[0] || 'Vulos'
+  const next = screenWindowTitle(id, base)
+  doc.title = next
+  return next
+}

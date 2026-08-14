@@ -1,6 +1,6 @@
-import { useEffect, useMemo, type MouseEventHandler, type ReactNode, type SVGProps } from 'react'
+import { useMemo, type MouseEventHandler, type ReactNode, type SVGProps } from 'react'
 import { useShell } from '../providers/ShellProvider'
-import { isMultiScreen, readScreenIdentity, screenWindowTitle } from '../providers/screenIdentity'
+import { isMultiScreen, readScreenIdentity } from '../providers/screenIdentity'
 import LifePulse from '../core/SystemPulse'
 import TrustBadge from './TrustBadge'
 import ThemeToggle from '../core/ThemeToggle'
@@ -62,19 +62,21 @@ function ScreenIndicator({ narrow }: { narrow: boolean }) {
   // outputs without being relaunched.
   const id = useMemo(() => readScreenIdentity(), [])
 
-  // Announce the screen in the WINDOW TITLE as well as on screen.
+  // This component renders the chip and NOTHING ELSE. It deliberately does not
+  // touch document.title.
   //
-  // That title is what lets the compositor place this window: labwc matches a
-  // windowRule on it and applies MoveToOutput, and every instance of this shell
-  // is otherwise indistinguishable. Without it a multi-output kiosk starts N
-  // browsers and labwc lands them all on the active output.
+  // The window title is a compositor contract — labwc matches a windowRule on
+  // it to place this window on the right output — and it used to be set from an
+  // effect right here. That was wrong twice over. It made the contract depend on
+  // this component mounting, and TopBar mounts only inside DesktopCanvas, i.e.
+  // only after setup and after login: the first two-display boot landed on the
+  // setup wizard and the second monitor stayed black. And if BOTH places set the
+  // title, whichever ran last would silently win, which is a race with no
+  // failure mode you could see.
   //
-  // Single screen and ordinary tabs are left alone — screenWindowTitle returns
-  // the base title unchanged, so no connector name appears in a normal tab.
-  useEffect(() => {
-    const base = document.title.split(' — ')[0] || 'Vulos'
-    document.title = screenWindowTitle(id, base)
-  }, [id])
+  // So there is exactly one writer, applyScreenWindowTitle() at module scope in
+  // App.tsx, and it has already run by the time anything renders. This is the
+  // reader.
 
   if (!isMultiScreen(id) || !id) return null
 
