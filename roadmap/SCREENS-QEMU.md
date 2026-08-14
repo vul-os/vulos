@@ -59,6 +59,91 @@ compositor to whether a browser appeared. `TestKioskSessionIsRunByAnInterpreter`
 now asserts on the argv the launcher actually exec'd, and is mutation-tested:
 restoring the old `-S` turns it red.
 
+## What it found on the second run — a second defect, one layer up
+
+With the noexec fix in the image (CI run 31756851168, branch
+`screens-02-verify` = last known-good release SHA + that one commit), the same
+harness gives a different and much more informative picture:
+
+    S1 two connectors seen by the launcher   yes
+    S2 labwc multi-output branch taken       yes
+    P0 head 0 renders a desktop              yes   672 colours, 99% fill, 1024x768
+    P1 head 1 renders a desktop              NO      1 colour,   0% fill, 5120x2160
+
+Both browsers start — two processes, `vulos-kiosk[599]` and `vulos-kiosk[600]`,
+each logging its own EGL fallback. No spawn error. Head 0 shows the real Vulos
+web UI, full-screen, rendered by cog under labwc on a real DRM connector.
+
+**Head 1 is live but empty, and its geometry is the tell.** The kernel was told
+`video=Virtual-2:1024x768e`, and the framebuffer console honoured that. After
+labwc starts, head 1 is 5120x2160 — labwc took DRM master, enumerated
+`Virtual-2`, and set its own mode from the connector's EDID. So labwc *is*
+driving both real outputs. What never arrives is a window.
+
+**Why: the window title is set by desktop chrome that a real boot does not
+reach.** The whole placement mechanism hangs on labwc matching
+`title="Vulos — Virtual-2"`, and the only code that ever sets that title is the
+`ScreenIndicator` effect inside `frontend/src/shell/TopBar.tsx`. `TopBar` is
+rendered by `layouts/DesktopCanvas.tsx`, which `App.tsx` reaches only after
+`setup_complete` **and** login:
+
+    if (!setupDone) return <Setup onComplete={...} />
+
+A freshly imaged box shows the setup wizard — which is exactly what head 0 is
+showing in the screendump. No `TopBar`, therefore no `document.title`,
+therefore no rule can match, therefore both browsers stay wherever labwc first
+put them and the second monitor stays black. The login screen has the same
+shape. So placement can only ever work on a box that is already set up *and*
+already logged in, and never on the boot where a user first plugs in two
+monitors.
+
+The fix is small and belongs one layer up from where the code is now: the
+window title is a **compositor contract**, not a piece of desktop chrome, and
+should be set from `App.tsx` (or a provider that mounts unconditionally)
+regardless of which screen the app is showing. **Not done here and NOT
+verified** — recorded so it is not re-derived.
+
+Note the family resemblance to the noexec defect. Both are cases where the
+mechanism is correct in isolation, tested in isolation, and cannot run on the
+path a real box actually takes. That is the third time this pattern has been
+recorded in the multi-screen work.
+
+## What is and is not established
+
+**Established on a real boot, for the first time:**
+
+- The launcher reads two real DRM connectors from real sysfs and names them
+  `Virtual-1`/`Virtual-2` (S1).
+- It takes the labwc multi-output branch and generates the config (S2).
+- Two browser processes start under labwc.
+- labwc drives **both** real DRM outputs — it set a mode on `Virtual-2`.
+- A real browser renders the real Vulos UI full-screen on a real DRM
+  connector under labwc (P0) — 672 colours, 99% fill.
+- The single-output path also renders on a real boot (the `--control
+  single-head` run: `1 connected: Virtual-1`, cage, P0 yes).
+
+**NOT established, and not claimable:**
+
+- **One browser per output.** Head 1 is black. Placement does not work on a
+  real boot, for the reason above.
+- Anything about the *mapping* of a connector name to an output.
+- Anything on physical hardware, a hardware GPU, or a physical monitor.
+
+## The controls, and their results
+
+The harness was shown to go red, twice, and in two different ways:
+
+    --control single-head, fixed image   S1 NO, S2 NO, P1 NO (0x0)  → CONTROL BEHAVED
+    (differential, not synthetic)        broken image: P0 NO — 5 colours, 9% fill,
+                                         both heads byte-identical (boot splash)
+                                         fixed image:  P0 yes — 672 colours, 99% fill
+
+The second is the stronger of the two and was not designed as a control at
+all: the same harness, same assertions, same image build pipeline, gave
+opposite verdicts either side of a one-line product fix. A harness that could
+not fail could not have done that, and a harness that could not pass could not
+have done it either.
+
 ## The QEMU shape, and two things assumed wrongly first
 
 **Two `-device virtio-gpu-pci` is not the right shape** — but not for the
