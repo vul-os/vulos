@@ -2,7 +2,7 @@ module vulos/clients/core
 
 go 1.25.7
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/pion/mdns/v2 v2.1.0

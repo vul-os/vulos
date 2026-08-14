@@ -2,7 +2,7 @@ module vulos/backend
 
 go 1.25.7
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
