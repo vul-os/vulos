@@ -465,10 +465,15 @@ func TestKioskURLIdentityMatchesInit(t *testing.T) {
 //
 // labwc places a window with a windowRule carrying a MoveToOutput action
 // (labwc-config(5), labwc-actions(5) — verified against the manuals). The rule
-// matches on the window TITLE, which the shell builds from the screen=
-// parameter it was handed (screenIdentity.ts screenWindowTitle). So the same
+// matches on the window's WAYLAND APP_ID, which vulos-kiosk-genconfig derives
+// from the connector name and hands to cog as --gapplication-app-id. So the same
 // connector name has to appear in four places: read from /sys/class/drm, put in
-// the URL, echoed in the title the rule matches, and given to MoveToOutput.
+// the URL, folded into the app id that cog runs under and that the rule
+// matches, and given to MoveToOutput.
+//
+// It matched on the TITLE until 2026-08-14, which could never have worked —
+// see TestKioskPlacementMatchesOnAppIDNotTitle for what labwc 0.8.3's source
+// says about when rules are evaluated.
 //
 // If any one of those drifts, every browser lands on one monitor and nothing
 // logs a reason — the exact silent failure this file exists to prevent.
@@ -533,33 +538,28 @@ func TestKioskGenConfig(t *testing.T) {
 
 	// Well-formed, not merely present. A truncated or unescaped config is the
 	// failure that leaves every browser on one monitor with nothing logged.
-	var parsed struct {
-		Rules []struct {
-			Title  string `xml:"title,attr"`
-			Action struct {
-				Name   string `xml:"name,attr"`
-				Output string `xml:"output,attr"`
-			} `xml:"action"`
-		} `xml:"windowRules>windowRule"`
-	}
-	if err := xml.Unmarshal(rc, &parsed); err != nil {
+	parsed, err := parseWindowRules(rc)
+	if err != nil {
 		t.Fatalf("rc.xml is not well-formed XML: %v\n%s", err, rc)
 	}
-	if len(parsed.Rules) != 2 {
-		t.Fatalf("want 2 windowRules for 2 outputs, got %d:\n%s", len(parsed.Rules), rc)
+	if len(parsed) != 2 {
+		t.Fatalf("want 2 windowRules for 2 outputs, got %d:\n%s", len(parsed), rc)
 	}
 
-	for i, want := range []struct{ title, output string }{
-		{"Vulos — HDMI-A-1", "HDMI-A-1"},
-		{"Vulos — DP-2", "DP-2"},
+	for i, want := range []struct{ identifier, output string }{
+		{"org.vulos.kiosk.out-HDMI-A-1", "HDMI-A-1"},
+		{"org.vulos.kiosk.out-DP-2", "DP-2"},
 	} {
-		got := parsed.Rules[i]
-		// The title must be EXACTLY what screenWindowTitle produces, em dash and
-		// all. A rule that matches no window places nothing, silently.
-		if got.Title != want.title {
-			t.Errorf("rule %d title = %q, want %q — this must match screenWindowTitle in "+
-				"frontend/src/providers/screenIdentity.ts or the rule matches no window",
-				i, got.Title, want.title)
+		got := parsed[i]
+		// The identifier must be EXACTLY the app id cog is launched with — see
+		// TestKioskAppIDsAgreeAndAreValid, which checks the two sides against
+		// each other rather than against a literal. Pinned here as well because
+		// a literal catches a change that moves BOTH sides at once.
+		if got.Identifier != want.identifier {
+			t.Errorf("rule %d identifier = %q, want %q — labwc matches this against the "+
+				"Wayland app_id, so it must be exactly what session.sh passes to cog as "+
+				"--gapplication-app-id or the rule matches no window",
+				i, got.Identifier, want.identifier)
 		}
 		if got.Action.Name != "MoveToOutput" {
 			t.Errorf("rule %d action = %q, want MoveToOutput (FocusOutput only changes focus)",
@@ -589,6 +589,329 @@ func TestKioskGenConfig(t *testing.T) {
 	if err := one.Run(); err == nil {
 		t.Error("the generator accepted a single output; it should refuse, since a one-screen " +
 			"box needs no placement rules and writing them claims something it cannot honour")
+	}
+}
+
+// ── The app id is the placement mechanism ────────────────────────────────────
+//
+// Everything below exists because the previous mechanism — matching the rule on
+// the window TITLE — could never have worked, and every test in this file was
+// green while it did not. There are TWO independent reasons, each sufficient
+// alone, both read out of the source of the exact versions in the image.
+//
+//  1. labwc 0.8.3 evaluates rules ONCE, at first map:
+//
+//     enum window_rule_event { LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP = 0 };
+//
+//     one member; and window_rules_apply() is called from exactly one place,
+//     src/view-impl-common.c inside view_impl_map(), behind
+//     `if (!view->been_mapped)`. A later title change re-runs nothing.
+//
+//  2. cog 0.18.4 never puts the document title on the Wayland toplevel at all.
+//     platform/wayland/cog-platform-wl.c has exactly one
+//     xdg_toplevel_set_title() call in the whole file, at window creation, with
+//     COG_DEFAULT_APPNAME — the literal "Cog". So the title labwc sees for a cog
+//     window is "Cog", forever, on every screen. No page-side change could ever
+//     have fixed this; there was nothing on the page end of the wire.
+//
+// Two two-display QEMU boots confirmed it: both windows on output 1.
+//
+// `identifier` is compared against the Wayland app_id (src/view.c
+// view_matches_query -> view_get_string_prop(view, "app_id"); src/xdg.c returns
+// xdg_toplevel->app_id), which cog sets at toplevel creation on the statement
+// immediately before wl_surface_commit() — the same commit that maps the
+// surface — so it is present when the rules run.
+
+// windowRule is the shape of one generated placement rule.
+//
+// Title is captured deliberately even though nothing should set it: labwc ANDs
+// its criteria (view_matches_query returns false on the first mismatch), so a
+// rule carrying BOTH identifier and title matches nothing at first map, which
+// is the original bug wearing a fix's clothes.
+type windowRule struct {
+	Identifier string `xml:"identifier,attr"`
+	Title      string `xml:"title,attr"`
+	MatchOnce  string `xml:"matchOnce,attr"`
+	Action     struct {
+		Name   string `xml:"name,attr"`
+		Output string `xml:"output,attr"`
+	} `xml:"action"`
+}
+
+func parseWindowRules(rc []byte) ([]windowRule, error) {
+	var parsed struct {
+		Rules []windowRule `xml:"windowRules>windowRule"`
+	}
+	if err := xml.Unmarshal(rc, &parsed); err != nil {
+		return nil, err
+	}
+	return parsed.Rules, nil
+}
+
+// sessionAppIDs returns the --gapplication-app-id values session.sh launches cog
+// with, in order.
+var sessionAppIDRe = regexp.MustCompile(`--gapplication-app-id="([^"]*)"`)
+
+func sessionAppIDs(sess string) []string {
+	var out []string
+	for _, m := range sessionAppIDRe.FindAllStringSubmatch(sess, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// glibAppIDIsValid models g_application_id_is_valid().
+//
+// It is a MODEL, and a model of something whose disagreement silently restores
+// the very bug this replaced. MEASURED, because the obvious guess is wrong: cog
+// does NOT refuse to start on an invalid id. GLib's
+// g_application_set_application_id is a g_return_if_fail, so the setter becomes
+// a no-op, one GLib-GIO-CRITICAL line is printed, and cog carries on under
+// COG_DEFAULT_APPID — "com.igalia.Cog", identical for every instance, matching
+// no rule, every window on one output.
+//
+// So the rules encoded here were measured against the real function rather than
+// read off a doc page —
+// GLib 2.84.4, which is what debian trixie ships and trixie is the image's own
+// suite (build.sh: SUITE="trixie"). The measurements are replayed as a table in
+// TestGlibAppIDModelMatchesMeasuredGlib, so this function cannot quietly drift
+// away from the thing it stands in for.
+func glibAppIDIsValid(id string) bool {
+	if id == "" || len(id) > 255 {
+		return false
+	}
+	if !strings.Contains(id, ".") {
+		return false
+	}
+	if strings.HasPrefix(id, ".") || strings.HasSuffix(id, ".") {
+		return false
+	}
+	for _, el := range strings.Split(id, ".") {
+		if el == "" {
+			return false
+		}
+		if el[0] >= '0' && el[0] <= '9' {
+			return false
+		}
+		for i := 0; i < len(el); i++ {
+			c := el[i]
+			switch {
+			case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z',
+				c >= '0' && c <= '9', c == '_', c == '-':
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// The measured answers. Every line here was printed by a C program calling
+// g_application_id_is_valid() directly, in a debian:trixie container:
+//
+//	docker run --rm -v "$PWD:/work" debian:trixie sh /work/glib-only.sh
+//
+// If the model above stops reproducing them, the model is wrong — not the
+// table.
+func TestGlibAppIDModelMatchesMeasuredGlib(t *testing.T) {
+	for _, tc := range []struct {
+		id    string
+		valid bool
+	}{
+		{"org.vulos.kiosk.DP-1", true},
+		{"org.vulos.kiosk.DP_1", true},
+		{"org.vulos.kiosk.eDP-1", true},
+		{"org.vulos.kiosk.HDMI-A-1", true},
+		{"org.vulos.kiosk.DP-2-1", true},
+		{"org.vulos.kiosk.Virtual-2", true},
+		{"org.vulos.kiosk.out-9PinDIN-1", true},
+		{"org.vulos.kiosk.out_9PinDIN_1", true},
+		// THE trap. 9PinDIN is a real connector type in the kernel's table
+		// (drm_connector.c), so a mapping that puts the raw connector name in
+		// the last element produces an id GLib rejects, which drops cog back
+		// to the shared default and un-does the placement entirely.
+		{"org.vulos.kiosk.9PinDIN-1", false},
+		{"nodot", false},
+		{".org.vulos.x", false},
+		{"org.vulos.x.", false},
+		{"org.vulos..x", false},
+		{"org.vulos.1x", false},
+		// fnmatch metacharacters. labwc matches identifier with
+		// fnmatch(pattern, app_id, FNM_CASEFOLD) (src/common/match.c), so this
+		// is what makes a valid app id necessarily a LITERAL pattern.
+		{"org.vulos.a*b", false},
+		{"org.vulos.a?b", false},
+		{"org.vulos.a[b]", false},
+		{"org.vulos.a b", false},
+		{"org.vulos.a/b", false},
+	} {
+		if got := glibAppIDIsValid(tc.id); got != tc.valid {
+			t.Errorf("glibAppIDIsValid(%q) = %v, but GLib 2.84.4 measured %v. The model has "+
+				"drifted from g_application_id_is_valid, and it is the model that is wrong. An "+
+				"id GLib rejects is not a loud failure: the setter is a g_return_if_fail, so cog "+
+				"keeps com.igalia.Cog, no rule matches, and every window lands on one output — "+
+				"exactly the defect this replaced.", tc.id, got, tc.valid)
+		}
+	}
+}
+
+// kioskConnectorSpread is the real range of DRM connector names, not just the
+// one QEMU happens to produce. The type names come from the kernel's
+// drm_connector_enum_list (drivers/gpu/drm/drm_connector.c).
+var kioskConnectorSpread = []string{
+	"Virtual-1", "Virtual-2", "DP-1", "DP-2", "DP-2-1",
+	"HDMI-A-1", "HDMI-A-2", "HDMI-B-1", "eDP-1",
+	"DVI-I-1", "DVI-D-1", "DVI-A-1", "9PinDIN-1",
+	"SVIDEO-1", "Composite-1", "Component-1", "LVDS-1",
+	"TV-1", "DSI-1", "DPI-1", "Writeback-1", "SPI-1",
+	"USB-1", "VGA-1", "Unknown-1",
+}
+
+// genKioskConfig runs the REAL generator over the given connectors and returns
+// what it wrote.
+func genKioskConfig(t *testing.T, connectors ...string) ([]windowRule, string) {
+	t.Helper()
+	gen := filepath.Join(repoRoot, "scripts", "vulos-kiosk-genconfig.sh")
+	out := t.TempDir()
+
+	args := append([]string{gen, out, "http://localhost:8080"}, connectors...)
+	if b, err := exec.Command("sh", args...).CombinedOutput(); err != nil {
+		t.Fatalf("generator failed for %v: %v\n%s", connectors, err, b)
+	}
+
+	rc, err := os.ReadFile(filepath.Join(out, "rc.xml"))
+	if err != nil {
+		t.Fatalf("no rc.xml: %v", err)
+	}
+	rules, err := parseWindowRules(rc)
+	if err != nil {
+		t.Fatalf("rc.xml is not well-formed XML: %v\n%s", err, rc)
+	}
+	sess, err := os.ReadFile(filepath.Join(out, "session.sh"))
+	if err != nil {
+		t.Fatalf("no session.sh: %v", err)
+	}
+	return rules, string(sess)
+}
+
+// THE assertion this change turns on: the id the rule matches and the id the
+// browser runs under are the same string, one per connector, and GLib accepts
+// every one of them.
+//
+// These two values live in two generated files and are the whole mechanism. A
+// rule built from the raw connector name while cog got a sanitised one — or the
+// reverse — places nothing and logs nothing, which is exactly the failure the
+// title-matching version produced for two full QEMU boots.
+func TestKioskAppIDsAgreeAndAreValid(t *testing.T) {
+	rules, sess := genKioskConfig(t, kioskConnectorSpread...)
+	ids := sessionAppIDs(sess)
+
+	if len(rules) != len(kioskConnectorSpread) {
+		t.Fatalf("got %d windowRules for %d connectors", len(rules), len(kioskConnectorSpread))
+	}
+	if len(ids) != len(kioskConnectorSpread) {
+		t.Fatalf("session.sh passes --gapplication-app-id %d time(s) for %d connectors. Every cog "+
+			"instance needs its own id: without one it keeps cog's default com.igalia.Cog, "+
+			"which is identical for every instance, and the rule that names it matches all of "+
+			"them or none.\n%s", len(ids), len(kioskConnectorSpread), sess)
+	}
+
+	seen := map[string]string{}
+	for i, conn := range kioskConnectorSpread {
+		rule, id := rules[i], ids[i]
+
+		if rule.Identifier != id {
+			t.Errorf("connector %q: the rule matches identifier %q but cog is launched with "+
+				"--gapplication-app-id=%q. labwc compares identifier against the Wayland app_id, so "+
+				"these two strings ARE the placement mechanism — a mismatch places nothing and "+
+				"logs nothing.", conn, rule.Identifier, id)
+		}
+		// Paired with the RIGHT output. Two agreeing lists that are rotated
+		// against each other would satisfy the check above and send every window
+		// to the wrong monitor.
+		if rule.Action.Output != conn {
+			t.Errorf("rule %d matches %q but moves the window to output %q, not %q",
+				i, rule.Identifier, rule.Action.Output, conn)
+		}
+		if !glibAppIDIsValid(id) {
+			t.Errorf("connector %q produces app id %q, which g_application_id_is_valid rejects. "+
+				"GLib's setter is a g_return_if_fail, so cog does not fail loudly: it keeps "+
+				"COG_DEFAULT_APPID (com.igalia.Cog) for every instance, this rule matches no "+
+				"window, and all of them land on one output.", conn, id)
+		}
+		// The connector must still be RECOVERABLE from the id, or the four
+		// places the name lives have stopped being the same name.
+		if !strings.Contains(strings.ToLower(id), strings.ToLower(conn)) {
+			t.Errorf("connector %q is not visible in its app id %q; the id is no longer derived "+
+				"from the connector name in a way anyone reading a journal can follow", conn, id)
+		}
+		// Case-INSENSITIVELY unique, because labwc's match is
+		// fnmatch(..., FNM_CASEFOLD) — two ids differing only in case would
+		// match each other's rule.
+		key := strings.ToLower(id)
+		if prev, dup := seen[key]; dup {
+			t.Errorf("connectors %q and %q both produce app id %q (compared case-insensitively, "+
+				"as labwc compares it). Both browsers would land on one screen.", prev, conn, id)
+		}
+		seen[key] = conn
+	}
+}
+
+// The rule must match on the app id and on NOTHING ELSE.
+//
+// labwc ANDs its criteria — view_matches_query returns false the moment one
+// fails — and the only title a cog window ever has is the literal "Cog". So a
+// rule carrying identifier AND title matches no window at all, which is the
+// original defect restored by someone being careful.
+func TestKioskPlacementMatchesOnAppIDNotTitle(t *testing.T) {
+	rules, _ := genKioskConfig(t, "HDMI-A-1", "DP-2")
+	for i, r := range rules {
+		if r.Identifier == "" {
+			t.Errorf("rule %d carries no identifier, so it matches every window or none", i)
+		}
+		if r.Title != "" {
+			t.Errorf("rule %d carries title=%q as well as identifier=%q. labwc ANDs its "+
+				"criteria, and cog's Wayland platform sets the toplevel title exactly once, to "+
+				"the literal \"Cog\" (one xdg_toplevel_set_title call in "+
+				"platform/wayland/cog-platform-wl.c, with COG_DEFAULT_APPNAME). It never "+
+				"propagates the document title. So any title criterion makes the rule match "+
+				"nothing — the exact defect two QEMU boots recorded.",
+				i, r.Title, r.Identifier)
+		}
+		// A valid app id cannot contain one (measured: `*`, `?`, `[` are all
+		// rejected by GLib), so this failing means the id stopped being a valid
+		// app id in a way glibAppIDIsValid did not catch.
+		if strings.ContainsAny(r.Identifier, "*?[\\") {
+			t.Errorf("rule %d identifier %q contains an fnmatch metacharacter; labwc matches it "+
+				"with fnmatch(pattern, app_id, FNM_CASEFOLD), so the rule would match windows "+
+				"it was not written for", i, r.Identifier)
+		}
+	}
+}
+
+// Two connectors that would share an app id must be REFUSED, not silently
+// stacked on one monitor.
+//
+// The mapping is injective over the names the kernel produces. It is not
+// injective over arbitrary input, and the difference between those two
+// statements is a dark monitor, so the generator checks rather than assumes.
+func TestKioskGenConfigRefusesCollidingAppIDs(t *testing.T) {
+	gen := filepath.Join(repoRoot, "scripts", "vulos-kiosk-genconfig.sh")
+	for _, pair := range [][2]string{
+		{"DP-1", "DP.1"}, // both fold to out-DP-1
+		{"eDP-1", "EDP-1"},
+	} {
+		cmd := exec.Command("sh", gen, t.TempDir(), "http://localhost:8080", pair[0], pair[1])
+		b, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("the generator accepted %q and %q, which produce the same app id. Both "+
+				"browsers would match the first rule and land on one screen, with nothing "+
+				"logged.\n%s", pair[0], pair[1], b)
+			continue
+		}
+		if !strings.Contains(string(b), "collide") {
+			t.Errorf("the generator refused %q + %q but did not say why:\n%s", pair[0], pair[1], b)
+		}
 	}
 }
 

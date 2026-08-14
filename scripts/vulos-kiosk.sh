@@ -192,10 +192,29 @@ done
 # labwc rather than cage: cage is deliberately one-window-one-output. labwc
 # places windows with a windowRule carrying a MoveToOutput action, and a rule
 # can only name a window it can tell apart — so each instance is identified by
-# its TITLE, which the shell sets from the screen= parameter it was given
-# (frontend/src/providers/screenIdentity.ts, screenWindowTitle). The connector
-# name is the same string on both sides: read from /sys/class/drm here, passed
-# in the URL, echoed back in the title, matched by the rule.
+# its WAYLAND APP_ID, which vulos-kiosk-genconfig derives from the connector
+# name and passes to cog as --gapplication-app-id (GLib's own flag, present
+# because cog sets G_APPLICATION_CAN_OVERRIDE_APP_ID; cog has no
+# --application-id of its own — measured, it answers "Unknown option").
+#
+# It was the TITLE until 2026-08-14 and that could never have worked, for two
+# independent reasons. labwc 0.8.3 — the version in this image — evaluates
+# window rules exactly once, at first map (LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP is
+# the only member of its enum, and window_rules_apply is called from one place,
+# view_impl_map, behind `if (!view->been_mapped)`). And cog 0.18.4's Wayland
+# platform sets the toplevel title exactly once, to the literal "Cog", and never
+# propagates the document title to the compositor at all — so no title the shell
+# could set was ever going to reach a window rule. app_id, by contrast, is set
+# on the statement immediately before the mapping commit, so it IS there when
+# the rules run.
+#
+# The title is still set and still correct in the tab; it is cosmetic now.
+#
+# The connector name remains the same string throughout: read from
+# /sys/class/drm here, passed in the URL, folded into the app id that cog runs
+# under AND that the rule matches, and given to MoveToOutput. See
+# scripts/vulos-kiosk-genconfig.sh for the app-id derivation and why GLib will
+# not accept a raw connector name.
 #
 # -S runs the session and terminates the compositor when it exits, so the
 # systemd unit sees the kiosk end rather than a compositor lingering with no
