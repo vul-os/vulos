@@ -1,22 +1,32 @@
 # Screens — how a browser-rendered desktop spans more than one display
 
-**Status: TESTED AND FAILED. As of 2026-08-14 the real launcher has been booted
-on two displays — twice — and it does NOT place one browser per output.** Head
-0 renders the real Vulos UI on a real DRM connector; head 1 is a single flat
-colour. Both browsers start, neither dies, and labwc drives both outputs. The
-windows simply both land on output 1.
+**Status: WORKING UNDER QEMU, with a valid control — and it took three defects
+and four boots to get there.** As of 2026-08-14 the real launcher puts a
+rendered desktop on BOTH DRM outputs. `scripts/smoke-multiscreen-qemu.sh`
+passes, and the decisive evidence is not the pass but the differential, on one
+image with one instrument:
 
-**The placement design cannot work as built**, and that is now settled from
-labwc's source rather than inferred from a screendump — see "What the QEMU
-verification actually found" below. The fix is known and unverified.
+| run | head 1 |
+|---|---|
+| distinct app ids (normal) | **674 colours — a real window** |
+| one shared app id (`--control same-app-id`) | **1 colour — blank** |
 
-Read this before trusting any other line in this file: **everything that was
-green stayed green while the feature was dead.** `SCREENS-01` passes, the
-frontend suite passes, twelve CI jobs pass, and the multi-output kiosk had
-never once worked on a real boot. Two of the defects were found by booting it
-and could not have been found any other way. The CI gate is honest about what
-it tests — labwc places windows when given rules that match — and that turned
-out not to be the question.
+The window reaches the second output **if and only if the app ids differ**, and
+the control's head-1 hash is byte-identical to the hash from the builds where
+placement was broken. That is what makes the pass mean something.
+
+**NOT hardware.** QEMU virtio-gpu, software rendering, no physical monitor, no
+GPU. Nobody has yet plugged two real displays into a Vulos box. What is now
+established is that the mechanism works end to end on a real boot of a real
+image — which is strictly more than any green test in this repository
+established before 2026-08-14, and strictly less than hardware.
+
+Read this before trusting any other line in this file: **for weeks, everything
+green stayed green while the feature was dead.** `SCREENS-01` passed, the
+frontend suite passed, twelve CI jobs passed, and the multi-output kiosk had
+never once worked on any boot. All three defects were found by booting it, and
+none could have been found any other way. See "Why the CI gate stayed green"
+below — the gate was honest, controlled, and testing the wrong client.
 
 This began as a design note, and the reasoning above the status sections is
 still the design argument rather than a report on shipped code. It was written
@@ -348,7 +358,40 @@ glob degenerates to a literal. The generator refuses to write a config when two
 connectors fold to the same id, rather than emitting one that stacks both
 browsers on one output.
 
-**This remains a hypothesis.** It has not been observed placing a window.
+**VERIFIED 2026-08-14 — this is the run that settled it.** On an image built
+from `50577a43` carrying all three fixes, with the control seam present:
+
+    --control same-app-id  ->  FAIL   head 1: 1 colour,   0% fill
+    no control             ->  PASS   head 1: 674 colours, a real window
+
+One image, one instrument, one variable. Placement works, and it works because
+of the app id.
+
+**Two instrument faults were found on the way, and both would have produced a
+confident wrong answer:**
+
+1. **The first control could not control.** The image was built from
+   `4cb18c75`; the `VULOS_KIOSK_FORCE_APP_ID` seam landed in `25573a06`, after
+   it. The kernel cmdline carried the variable correctly and the image simply
+   could not read it, so the "control" run was an ordinary boot. Caught by
+   checking the seam's presence in the image's own
+   `vulos-kiosk-genconfig` — a check the harness prints in its own failure
+   text, which is the only reason it was checked.
+
+2. **Every run was failing for an unrelated reason, which hid the first fault.**
+   The comparator treated two heads of different resolution as
+   indistinguishable and failed the run. So the normal run failed (expected
+   pass) and the control failed (expected fail, reported "BEHAVED") — the
+   control would have reported success on any build in existence, including one
+   with placement entirely broken. Fixed, and the fix was proved not to be a
+   free pass: after it, the control still fails and the normal run passes.
+
+The geometry difference itself is a QEMU artifact — virtio-gpu applies
+`xres`/`yres` to scanout 0 only, so head 1 comes up at the device default
+5120x2160 despite `video=Virtual-2:1024x768e`. The window on it is 1024x768,
+i.e. 7% of that framebuffer, which is exactly the arithmetic that first
+suggested a correctly sized window on an oversized output rather than a broken
+one.
 
 **What this cost, and the lesson worth keeping:** the design note asserted that
 placement was "the one genuinely unknown mechanism, narrowed" and that a labwc
