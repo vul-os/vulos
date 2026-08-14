@@ -291,27 +291,64 @@ second output changed.
    in `8bc592a7` by applying it at module scope in `App.tsx`. **Correct, and
    not sufficient — see 3.**
 
-3. **Matching on `title` cannot work, at all.** Settled from labwc 0.8.3's
-   source, not from a screendump: `enum window_rule_event` has exactly one
+3. **Matching on `title` cannot work, at all — for TWO independent reasons,
+   either of which alone is fatal.** Both settled from the source of the exact
+   versions in the image.
+
+   **(a) labwc never re-matches.** `enum window_rule_event` has exactly one
    member, `LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP`, and `window_rules_apply()` is
    called from exactly one place — inside `view_impl_map()`, under
-   `if (!view->been_mapped)`. Rules are evaluated **once, at first map, never
-   on a title change**; `view_update_title()` refreshes the titlebar and emits
+   `if (!view->been_mapped)`. Rules are evaluated once, at first map, never on
+   a title change; `view_update_title()` refreshes the titlebar and emits
    `new_title` without re-applying anything.
 
-   cog maps its surface **before any page JavaScript runs**, so the title
-   labwc matches against is always the static one in `frontend/index.html`.
-   Defect 2's fix lands too late **by construction** — module scope is still
-   page JS, and no earlier position in the page exists. This is not a race that
-   could be tightened; it is an ordering the protocol imposes.
+   **(b) cog never sends the document title at all.** This is the stronger
+   half, and it was found only when the fix was written.
+   `platform/wayland/cog-platform-wl.c` contains exactly ONE
+   `xdg_toplevel_set_title()` call in the whole file, at window creation, with
+   `COG_DEFAULT_APPNAME` — the literal string `"Cog"`. Nothing propagates the
+   WebKitWebView's title to the compositor on this platform. **The title labwc
+   sees for a cog window is `"Cog"`, forever, on every screen.**
 
-**The fix, known and NOT yet verified:** match on `identifier` (Wayland app_id)
-instead of `title`. app_id is set at toplevel creation, before the mapping
-commit, so it is present at `ON_FIRST_MAP`. cog 0.18.4 accepts
-`--application-id` and passes it to `xdg_toplevel_set_app_id()`; both instances
-currently share the default `com.igalia.Cog`, which is why matching on
-`identifier` does nothing today. Read from cog's and labwc's source; it needs
-its own image build and boot before it may be called anything but a hypothesis.
+   So there was never anything on the page end of the wire. Defect 2's fix is
+   a correct fix to a real bug that could not have affected placement even if
+   labwc had re-matched on every keystroke. An earlier version of this section
+   said labwc matched `index.html`'s static title; that was wrong, and wrong in
+   the direction of making the design look nearly-workable.
+
+**The fix, implemented and NOT yet verified:** match on `identifier`, which
+labwc compares against the Wayland app_id — set by cog immediately before the
+`wl_surface_commit()` that maps the surface, so it is unambiguously present at
+`ON_FIRST_MAP`.
+
+Each browser now launches with
+`--gapplication-app-id=org.vulos.kiosk.out-<connector>`. Three details that
+were measured rather than assumed, each of which would have cost a build-and-
+boot cycle:
+
+- **The flag is `--gapplication-app-id`, not `--application-id`.** cog has no
+  option of its own; the flag comes from GLib, and exists only because cog
+  sets `G_APPLICATION_CAN_OVERRIDE_APP_ID`. It appears under "GApplication
+  Options" in `--help-all` and nowhere in plain `--help`. The packaged binary
+  rejects `--application-id` outright.
+- **The `out-` prefix is load-bearing.** No app-id element may begin with a
+  digit, and `9PinDIN` is a real DRM connector type, so
+  `org.vulos.kiosk.9PinDIN-1` is invalid. Validity was checked by calling
+  `g_application_id_is_valid()` in GLib 2.84.4 on trixie — the image's own
+  suite — across all 25 connector types in the kernel's enum.
+- **An invalid id is not a black screen.** GLib's setter is a
+  `g_return_if_fail`, so cog prints one CRITICAL and carries on under the
+  default `com.igalia.Cog` — i.e. it silently restores this exact bug. Milder
+  than a crash and considerably harder to notice.
+
+labwc's `identifier` match is `fnmatch(pattern, app_id, FNM_CASEFOLD)` — a
+case-insensitive glob, not an exact match. Since `*`, `?`, `[` and `\` are all
+invalid in an app id, a valid id cannot smuggle a metacharacter in, and the
+glob degenerates to a literal. The generator refuses to write a config when two
+connectors fold to the same id, rather than emitting one that stacks both
+browsers on one output.
+
+**This remains a hypothesis.** It has not been observed placing a window.
 
 **What this cost, and the lesson worth keeping:** the design note asserted that
 placement was "the one genuinely unknown mechanism, narrowed" and that a labwc
