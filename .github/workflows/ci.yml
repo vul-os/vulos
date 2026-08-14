@@ -1161,6 +1161,26 @@ jobs:
       - name: Check pinned apt package sets
         run: scripts/check-image-packages.sh
 
+  apps-run:
+    name: APPS-RUN — Every bundled app starts, serves, and is shipped in the image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # v0.2.0 shipped with /opt/vulos/apps EMPTY: build.sh copied bundled apps
+      # from $ROOT_DIR/apps/ after cea77898 moved them to frontend/apps/, so the
+      # glob matched nothing and the loop body never ran. Every app on a real box
+      # answered {"error":"app not running"}. The e2e screenshots were green the
+      # whole time because they run against a mocked backend, so no app had ever
+      # actually been launched.
+      #
+      # This gate spawns each app for real and does a real GET / over a real
+      # socket — nothing mocked — and separately RUNS build.sh's own copy block
+      # to prove the apps land where the image expects them. Takes a few seconds
+      # and needs nothing but python3.
+      - name: Every bundled app starts and serves, and build.sh ships it
+        run: python3 scripts/check-apps-run.py
+
   licenses:
     name: LICENCES — THIRD_PARTY_NOTICES.md matches the dependency graph
     runs-on: ubuntu-latest
