@@ -358,6 +358,43 @@ so the check discriminated. It still established only that the *config parses*,
 never that the *rule fires*. `SCREENS-01` then proved labwc places windows when
 given rules that match, which is true and was never the question.
 
+### Why the CI gate stayed green through a feature that never worked
+
+`scripts/smoke-multiscreen.sh` is not a hollow gate. It runs labwc on two real
+headless wlroots outputs, with and without the placement rules, and the control
+is genuine: with rules, one window per output; without, both pile onto one. It
+proves `MoveToOutput` works and that labwc does not distribute windows by
+itself. Every word of that is true.
+
+**It uses `foot`, and the shipping client is `cog`.** Line 24 of that script
+states the substitution and its reasoning out loud:
+
+> Uses foot rather than cog because it is tiny and takes `--title`; the
+> mechanism is the same
+
+The mechanism was not the same, in the single respect that decided the outcome:
+**foot sets its toplevel title; cog never does.** The gate therefore supplied
+the very attribute whose absence was the bug, and line 11's claim to photograph
+"windows with the titles the shell actually sets" was false for the real client
+— the shell's titles never reach the compositor at all.
+
+This is worth separating from the hollow-gate pattern catalogued elsewhere in
+this repository. A hollow gate examines nothing. This one examined the wrong
+thing, convincingly, with a real control, for weeks — and the substitution that
+broke it was reasoned about explicitly and written down. The reasoning was just
+wrong, and being written down is what made it invisible: it read as diligence.
+
+**The generalisable rule: a test double must be verified to share the property
+under test, not merely to be convenient.** "Tiny and takes `--title`" is a
+statement about cost and interface, not about the contract. The question that
+was never asked is the one that mattered: *does the real client set this
+attribute at all?*
+
+Applied here, that means a gate for placement has to exercise the client that
+ships, or at minimum assert the client's own contract — that `cog` puts the
+expected app_id on its toplevel — separately from asserting that labwc honours
+it. Those are two different claims and only the second was ever tested.
+
 ---
 
 ## What the QEMU verification needed (checked 2026-08-13, now historical)
