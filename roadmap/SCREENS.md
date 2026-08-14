@@ -1,9 +1,22 @@
 # Screens — how a browser-rendered desktop spans more than one display
 
-**Status: built, and its placement mechanism is proven in CI. The real launcher
-driving real browsers onto real outputs is NOT yet verified** — see "What is
-built as of 2026-08-12" and "What the QEMU verification actually needs" below,
-which are the authoritative sections and say precisely which half is which.
+**Status: TESTED AND FAILED. As of 2026-08-14 the real launcher has been booted
+on two displays — twice — and it does NOT place one browser per output.** Head
+0 renders the real Vulos UI on a real DRM connector; head 1 is a single flat
+colour. Both browsers start, neither dies, and labwc drives both outputs. The
+windows simply both land on output 1.
+
+**The placement design cannot work as built**, and that is now settled from
+labwc's source rather than inferred from a screendump — see "What the QEMU
+verification actually found" below. The fix is known and unverified.
+
+Read this before trusting any other line in this file: **everything that was
+green stayed green while the feature was dead.** `SCREENS-01` passes, the
+frontend suite passes, twelve CI jobs pass, and the multi-output kiosk had
+never once worked on a real boot. Two of the defects were found by booting it
+and could not have been found any other way. The CI gate is honest about what
+it tests — labwc places windows when given rules that match — and that turned
+out not to be the question.
 
 This began as a design note, and the reasoning above the status sections is
 still the design argument rather than a report on shipped code. It was written
@@ -242,7 +255,81 @@ with every browser on one monitor and nothing in any log saying why. Verify by
 running labwc with two virtual outputs under QEMU and reading a screendump —
 the verification this feature needs regardless.
 
-## What the QEMU verification actually needs (checked 2026-08-13)
+## What the QEMU verification actually found (RUN 2026-08-14)
+
+**It ran. It failed. Full method, controls and limits in `roadmap/SCREENS-QEMU.md`.**
+
+Two boots of `scripts/smoke-multiscreen-qemu.sh`, the second against an image
+carrying both kiosk fixes (run `31764201607`, `8bc592a7`):
+
+| | |
+|---|---|
+| launcher sees two real DRM connectors | yes |
+| takes the labwc multi-output branch | yes |
+| both browsers start, neither dies | yes (PIDs 496, 600, 601) |
+| labwc drives both outputs | yes — it mode-set head 1 to 5120x2160 |
+| head 0 renders the real Vulos UI | yes — 672 colours, 99% fill |
+| **head 1 renders anything** | **NO — 1 colour, 0% fill** |
+
+Head 1's pixel hash was **byte-identical across both runs**. Nothing about the
+second output changed.
+
+**Three defects, none of them predicted anywhere in this file.**
+
+1. **`/run` is mounted noexec**, so labwc could not exec the generated session
+   script: `Failed to execute primary client /run/vulos-kiosk/session.sh:
+   Permission denied`. Debian's initramfs mounts `/run` noexec and *moves that
+   mount* onto the real root, so the `chmod +x` in the generator succeeds and
+   buys nothing. **The multi-output kiosk had therefore never worked at all, on
+   any boot, ever.** Fixed by running the session through an interpreter;
+   pinned by a mutation-tested test.
+
+2. **The window title was never set before login.** The `screen=` →
+   `document.title` link was written only by `TopBar`'s `ScreenIndicator`
+   effect, and `TopBar` mounts inside `DesktopCanvas` — after setup AND after
+   login. A first boot shows the setup wizard, so no title was ever set. Fixed
+   in `8bc592a7` by applying it at module scope in `App.tsx`. **Correct, and
+   not sufficient — see 3.**
+
+3. **Matching on `title` cannot work, at all.** Settled from labwc 0.8.3's
+   source, not from a screendump: `enum window_rule_event` has exactly one
+   member, `LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP`, and `window_rules_apply()` is
+   called from exactly one place — inside `view_impl_map()`, under
+   `if (!view->been_mapped)`. Rules are evaluated **once, at first map, never
+   on a title change**; `view_update_title()` refreshes the titlebar and emits
+   `new_title` without re-applying anything.
+
+   cog maps its surface **before any page JavaScript runs**, so the title
+   labwc matches against is always the static one in `frontend/index.html`.
+   Defect 2's fix lands too late **by construction** — module scope is still
+   page JS, and no earlier position in the page exists. This is not a race that
+   could be tightened; it is an ordering the protocol imposes.
+
+**The fix, known and NOT yet verified:** match on `identifier` (Wayland app_id)
+instead of `title`. app_id is set at toplevel creation, before the mapping
+commit, so it is present at `ON_FIRST_MAP`. cog 0.18.4 accepts
+`--application-id` and passes it to `xdg_toplevel_set_app_id()`; both instances
+currently share the default `com.igalia.Cog`, which is why matching on
+`identifier` does nothing today. Read from cog's and labwc's source; it needs
+its own image build and boot before it may be called anything but a hypothesis.
+
+**What this cost, and the lesson worth keeping:** the design note asserted that
+placement was "the one genuinely unknown mechanism, narrowed" and that a labwc
+`windowRule` was the answer. The syntax was verified against the manual and
+against labwc itself — a made-up action and a malformed tag were both rejected,
+so the check discriminated. It still established only that the *config parses*,
+never that the *rule fires*. `SCREENS-01` then proved labwc places windows when
+given rules that match, which is true and was never the question.
+
+---
+
+## What the QEMU verification needed (checked 2026-08-13, now historical)
+
+Kept because it is the reasoning that got the verification built, and because
+its central claim — that the blocker was a Linux host — was wrong in a way
+worth remembering: `release.yml` already had a `workflow_dispatch` path that
+builds both images on `ubuntu-latest` and publishes nothing, added for exactly
+this purpose. The blocker was never the host. Nobody read the workflows.
 
 The remaining claim is that the real launcher places real browsers on real
 outputs. Precisely what stands in the way, measured rather than assumed:
