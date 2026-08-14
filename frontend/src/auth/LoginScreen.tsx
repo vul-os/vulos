@@ -156,7 +156,6 @@ export default function LoginScreen() {
           <img src="/icon-96.png" alt="Vulos OS" className="relative w-16 h-16 drop-shadow-lg" />
         </div>
         <h1 className="text-3xl font-light tracking-[0.18em]" style={{ color: 'var(--text-primary)' }}>vulos</h1>
-        <p className="text-sm mt-1 tracking-wide" style={{ color: 'var(--text-faint)' }}>open OS</p>
       </div>
 
       {/* Auth card */}
@@ -285,14 +284,6 @@ export default function LoginScreen() {
       )}
 
       {/* Bottom branding */}
-      <div className="absolute bottom-6 text-center">
-        {/* A THEME TOKEN, not a Tailwind neutral. Measured on the real boot
-            frame, this line rendered #e5e5e5 on #fefeff — 1.26:1, against a
-            4.5:1 requirement. The class said neutral-800 (#262626) and the
-            pixels said neutral-200, so it was not being applied at all; the
-            product's own name was invisible on the first screen anyone sees. */}
-        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Vulos OS</p>
-      </div>
     </div>
   )
 }

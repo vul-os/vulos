@@ -31,6 +31,11 @@ const BRANCHES = [
       'GET /api/setup/status': json({ setup_complete: true }),
     },
     expect: 'Create your account',
+    // Floors sit ONE BELOW the real measured count, so a screen that loses any
+    // text fails. Measured, not guessed: create-account renders 4 text nodes,
+    // sign-in 3 — they differ because create-account carries a display-name
+    // field and a longer heading.
+    minText: 3,
   },
   {
     name: 'sign-in (user exists)',
@@ -39,6 +44,7 @@ const BRANCHES = [
       'GET /api/auth/status': json({ has_users: true }),
     },
     expect: 'Sign in',
+    minText: 2,
   },
 ] as const
 
@@ -85,15 +91,26 @@ for (const theme of ['dark', 'light'] as const) {
         { timeout: 10_000 },
       )
 
-      // The sign-in branch is deliberately spare: heading, two field labels, the
-      // button, and the wordmark — five nodes, counted rather than guessed after
-      // a floor of >5 failed on the real screen. This is a vacuity guard, so it
-      // sits just under the real count and not at a round number.
+      // Vacuity guard: stop belowAA() passing on a screen that rendered
+      // nothing. PER-BRANCH, because the two screens genuinely differ in how
+      // much text they carry and one shared floor has to be set to the sparser
+      // of them — which leaves it too slack to catch a gutted create-account
+      // screen. Each sits one below its real measured count.
+      //
+      // Was a single >4 while both screens also carried an "open OS" tagline
+      // under the wordmark and a "Vulos OS" line at the foot. Both were removed
+      // by deliberate design change on 2026-08-15, taking sign-in 4 -> 3.
+      //
+      // Moving a floor to match a screen that legitimately lost content is not
+      // the same as lowering one to get past a defect, and the distinction is
+      // worth writing down because this repository has been bitten by the
+      // second. What decides this test is belowAA() below; this line only
+      // proves it had something to measure.
       const measured = await textNodeCount(page)
       expect(
         measured,
         'the auth screen rendered almost no text, so this would pass vacuously',
-      ).toBeGreaterThan(4)
+      ).toBeGreaterThan(branch.minText)
 
       expect(
         await belowAA(page),
