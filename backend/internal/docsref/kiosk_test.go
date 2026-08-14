@@ -890,6 +890,59 @@ func TestKioskLowMemoryMultiScreenStillLaunches(t *testing.T) {
 	}
 }
 
+// TestKioskSessionIsRunByAnInterpreter pins the fix for the defect that made
+// the multi-output kiosk not work AT ALL on a real boot, found 2026-08-14 by
+// scripts/smoke-multiscreen-qemu.sh against the v0.1.0 arm64 image:
+//
+//	[ERROR] [../src/common/spawn.c:120] Failed to execute primary client
+//	        /run/vulos-kiosk/session.sh: Permission denied
+//
+// Debian's initramfs mounts /run NOEXEC and then moves that mount onto the
+// real root, so /run is noexec for the whole life of every booted system. The
+// generated session script lives there (correctly — the installed root is a
+// read-only dm-verity squashfs), and vulos-kiosk-genconfig chmod +x's it,
+// which succeeds and buys nothing: execve() on a noexec mount returns EACCES
+// whatever the mode bits say. So labwc must be given an INTERPRETER and the
+// script as an argument, which reads the file as data.
+//
+// This asserts on the argv the launcher actually exec'd, not on the source.
+// The distinction matters here more than usual: the broken and fixed versions
+// differ by nine characters in a string, and every other test in this file
+// passed against the broken one — including the ones that check labwc was
+// launched at all, because labwc WAS launched. It just could not start a
+// browser, and no assertion anywhere looked past the compositor.
+func TestKioskSessionIsRunByAnInterpreter(t *testing.T) {
+	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: meminfo8GB})
+	if err != nil {
+		t.Fatalf("vulos-kiosk exited non-zero on a two-monitor box: %v\n%s", err, out)
+	}
+	// The stub prints its whole argv, so this is the command line the box runs.
+	var labwcArgs string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, kioskStubExec+" labwc ") {
+			labwcArgs = strings.TrimPrefix(line, kioskStubExec+" labwc ")
+		}
+	}
+	if labwcArgs == "" {
+		t.Fatalf("labwc was never exec'd, so there is no session command to check.\nOutput:\n%s", out)
+	}
+	if !strings.Contains(labwcArgs, "-S /bin/sh ") {
+		t.Errorf("labwc's session (-S) is %q.\n\n"+
+			"It must hand the generated script to an interpreter — `-S \"/bin/sh <path>\"` — "+
+			"rather than naming the script's own path. /run is mounted noexec on every "+
+			"real boot (Debian initramfs: `mount -t tmpfs -o \"nodev,noexec,nosuid,...\" "+
+			"tmpfs /run`, then `mount -n -o move /run ${rootmnt}/run`), so labwc's execve "+
+			"of the script fails with EACCES and BOTH monitors keep the boot splash "+
+			"forever. chmod +x does not help and did not help.", labwcArgs)
+	}
+	// The path must still be there — an interpreter with nothing to run would
+	// satisfy the check above while starting no browsers at all.
+	if !strings.Contains(labwcArgs, "session.sh") {
+		t.Errorf("labwc's session (-S) is %q and names no session script, so no browser "+
+			"is ever started.", labwcArgs)
+	}
+}
+
 func TestKioskWarnsOnLowMemoryMultiScreen(t *testing.T) {
 	out, err := runKiosk(t, kioskBox{screens: []string{"HDMI-A-1", "DP-2"}, meminfo: meminfo2GB})
 	if err != nil {
