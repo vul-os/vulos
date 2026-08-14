@@ -255,7 +255,38 @@ if [ "$screen_count" -gt 1 ] && command -v labwc >/dev/null 2>&1 && command -v c
   vulos-kiosk-genconfig "$cfg" "$BASE_URL" $screen_list || exit 1
 
   echo "vulos-kiosk: $screen_count screens ($screen_list ) — labwc, one browser per output"
-  exec labwc -C "$cfg" -S "$cfg/session.sh"
+  # `/bin/sh <script>`, NOT the script's own path, and this is not a style
+  # choice — the multi-output kiosk did not work at all without it.
+  #
+  # MEASURED 2026-08-14 on a real two-display boot of the v0.1.0 arm64 image
+  # (scripts/smoke-multiscreen-qemu.sh). labwc started, then:
+  #
+  #   [ERROR] [../src/common/spawn.c:120] Failed to execute primary client
+  #           /run/vulos-kiosk/session.sh: Permission denied
+  #   [ERROR] [../src/server.c:148] spawned child 590 exited with 1
+  #
+  # and both monitors kept the boot splash forever. The cause is not ours and
+  # not labwc's: Debian's initramfs mounts /run NOEXEC and then MOVES that very
+  # mount onto the real root, so /run is noexec for the whole life of every
+  # booted system. Read out of this image's own initrd.img:
+  #
+  #   mount -t tmpfs -o "nodev,noexec,nosuid,size=${RUNSIZE:-10%},mode=0755" tmpfs /run
+  #   mount -n -o move /run ${rootmnt}/run
+  #
+  # vulos-kiosk-genconfig writes session.sh there and chmod +x's it — which
+  # succeeds and means nothing, because execve() on a noexec mount returns
+  # EACCES no matter what the mode bits say. Handing the file to an interpreter
+  # reads it as DATA and sidesteps the mount flag entirely.
+  #
+  # /run is still the right home for it: the installed root is a read-only
+  # dm-verity squashfs, so runtime state has nowhere else to go. The bug was
+  # never the location, it was executing from it.
+  #
+  # Only this path was affected. The single-output path below execs
+  # `cage -- cog "$URL"` with no generated script, which is why every
+  # one-monitor box — i.e. every box anyone has booted — was fine, and why
+  # nothing caught this until a second display existed.
+  exec labwc -C "$cfg" -S "/bin/sh $cfg/session.sh"
 fi
 
 for cand in cog chromium chromium-browser; do
