@@ -1,0 +1,876 @@
+{
+  "_source": "Staged by the system/browsers/utilities curation pass, 2026-08-15. Merge into registry.json under `apps`, then `make sign-registry` — every entry here has signature:\"\" and WILL fail `make verify-registry` until signed.",
+  "_verification": "Every flatpak_id was resolved live against Flathub on 2026-08-15 via GET /api/v2/appstream/<id> (200) and GET /api/v2/summary/<id> (arches, runtime, sandbox permissions), publisher status via GET /api/v2/verification/<id>/status, and extra-data by reading the flathub/<id> build manifest on GitHub. NOT verified: no app was actually installed or launched — that is scripts/verify-app-recipe.sh's job.",
+  "apps": {
+    "flatseal": {
+      "name": "Flatseal",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Flatpak permission editor — review and change what each installed Flatpak app on this box may reach: files, devices, sockets and D-Bus services.",
+      "category": "system",
+      "author": "Martin Abente Lahaye",
+      "homepage": "https://github.com/tchx84/flatseal",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "permissions",
+        "sandbox",
+        "security",
+        "portal",
+        "override"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/tchx84). Sandbox: filesystems=[xdg-data/flatpak/overrides:create, /var/lib/flatpak/app:ro, xdg-data/flatpak/app:ro]; no network. Edits USER overrides (~/.local/share/flatpak/overrides), which do apply to the system-wide installs FlatpakInstall creates. Talks org.freedesktop.impl.portal.PermissionStore — confirm xdg-desktop-portal actually runs in the streamed session, or the portal pane is inert.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.tchx84.Flatseal",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.tchx84.Flatseal",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "warehouse": {
+      "name": "Warehouse",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Flatpak manager — inspect installed Flatpaks on this box, view and copy their manifests, manage per-app user data, and batch-remove leftovers.",
+      "category": "system",
+      "author": "Heliguy / flattool",
+      "homepage": "https://github.com/flattool/warehouse",
+      "icon": "W",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "manage",
+        "packages",
+        "inspect",
+        "cleanup",
+        "manifest"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/flattool). Sandbox: filesystems=[~/.var/app, /var/lib/flatpak:ro, ~/.local/share/flatpak:ro, host-etc]; session-bus talk=org.freedesktop.Flatpak (that is full host-side Flatpak control, not a sandboxed subset). COST: runtime is org.gnome.Platform/49 while every other GNOME app here is /50 — installing Warehouse pulls a SECOND ~1.07GB GNOME runtime.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.flattool.Warehouse",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.flattool.Warehouse",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "flatsweep": {
+      "name": "Flatsweep",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Removes leftover data directories that uninstalled Flatpak apps left behind on this box.",
+      "category": "system",
+      "author": "Giant Pink Robots!",
+      "homepage": "https://github.com/giantpinkrobots/flatsweep",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "cleanup",
+        "leftover",
+        "disk",
+        "uninstall"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/giantpinkrobots). Sandbox: filesystems=[~/.var/app, ~/.local/share/flatpak/app:ro, /var/lib/flatpak/app:ro]; no network. OVERLAP: FlatpakUninstall already runs `flatpak uninstall -y --unused` (flatpak.go:110); Flatsweep covers the ~/.var/app residue that command leaves.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.giantpinkrobots.flatsweep",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.giantpinkrobots.flatsweep",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "resources": {
+      "name": "Resources",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "System monitor — CPU, memory, GPU, disk, network and per-process usage FOR THIS BOX, not for the machine you are viewing from.",
+      "category": "system",
+      "author": "nokyan",
+      "homepage": "https://apps.gnome.org/app/net.nokyan.Resources/",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "monitor",
+        "system",
+        "cpu",
+        "memory",
+        "gpu",
+        "processes",
+        "disk"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). Sandbox: filesystems include host:ro — reads the whole box read-only, which is what makes the readings real. STREAMED-MODEL: correct by construction (it reports the box). OVERLAP: duplicates builtin 'system-info' and 'activity'.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.nokyan.Resources",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.nokyan.Resources",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "chromium": {
+      "name": "Chromium",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Open-source web browser — the upstream project Chrome, Brave, Edge and Vivaldi are built from, with no vendor account, sync or telemetry layer.",
+      "category": "internet",
+      "author": "The Chromium Authors",
+      "homepage": "https://www.chromium.org/Home/",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "chromium",
+        "open source"
+      ],
+      "license": "BSD-3-Clause AND LGPL-2.1+ AND Apache-2.0 AND MIT AND others",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub (community-maintained packaging of an open-source project — source is auditable, which is why this is acceptable where an unverified proprietary package would not be). Built from source on Flathub builders; NOT extra-data. Sandbox: filesystems=[home], devices=[all], shared=[ipc,network]. SOVEREIGNTY: this is the entry to recommend over Chrome — same engine, no proprietary blob, no vendor terms.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.chromium.Chromium",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.chromium.Chromium",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "google-chrome": {
+      "name": "Google Chrome",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Google's proprietary web browser. The Flathub package is a thin wrapper that downloads Google's binary from dl.google.com at install time; Google's servers and terms govern it, not Vulos.",
+      "category": "internet",
+      "author": "Google LLC",
+      "homepage": "https://www.google.com/chrome/",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "chrome",
+        "google",
+        "proprietary"
+      ],
+      "license": "Proprietary",
+      "flathub_verified": false,
+      "extra_data": true,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub. EXTRA-DATA CONFIRMED by reading the manifest (flathub/com.google.Chrome/master/com.google.Chrome.yaml lines 98 and 112: `type: extra-data`, url dl.google.com, per-arch). So neither Flathub nor Vulos ever holds the payload; the sha256 in the manifest is the only integrity check and it points at Google's server. Sandbox: filesystems include host-etc and xdg-*; devices=[all]; system-bus talk to Avahi/UPower/bluez. Offered for compatibility only — prefer 'chromium'.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.google.Chrome",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.google.Chrome",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "brave": {
+      "name": "Brave",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Chromium-based browser with ad and tracker blocking on by default. Core browser is MPL-2.0; the optional rewards/VPN features are Brave-operated services.",
+      "category": "internet",
+      "author": "Brave Software",
+      "homepage": "https://brave.com",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "brave",
+        "privacy",
+        "adblock",
+        "chromium"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website, brave.com). NOT extra-data — the manifest fetches Brave's official release zip per arch at Flathub BUILD time (flathub/com.brave.Browser master, `type: file`, only-arches x86_64/aarch64), so Flathub's own signing does cover the bytes. Sandbox: devices=[all], filesystems include host-etc, /tmp, xdg-desktop; system-bus talk to Avahi/UPower/bluez.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.brave.Browser",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.brave.Browser",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "librewolf": {
+      "name": "LibreWolf",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Firefox fork with telemetry, sponsored content and studies removed and stricter privacy defaults compiled in. No vendor account.",
+      "category": "internet",
+      "author": "LibreWolf Community",
+      "homepage": "https://librewolf.net/",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "firefox",
+        "privacy",
+        "librewolf",
+        "fork"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). NOT extra-data. Sandbox is the TIGHTEST of the six browsers: filesystems=[xdg-download, xdg-run/speech-dispatcher:ro] only — no home, no host. devices=[dri] not [all]. That matters here because a streamed desktop app otherwise runs as root against the box's whole filesystem (see roadmap/APP-CATALOG-SYSTEM-BROWSERS-UTILITIES.md).",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.librewolf-community",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.librewolf-community",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "vivaldi": {
+      "name": "Vivaldi",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Proprietary Chromium-based browser with heavy UI customisation, built-in mail, calendar and feed reader. Free of charge, closed source.",
+      "category": "internet",
+      "author": "Vivaldi Technologies",
+      "homepage": "https://vivaldi.com/",
+      "icon": "V",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "vivaldi",
+        "customisable",
+        "proprietary",
+        "mail"
+      ],
+      "license": "Proprietary",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub. CORRECTION TO roadmap/APP-CATALOG.md POLICY 1: Vivaldi is NOT extra-data. Its manifest (flathub/com.vivaldi.Vivaldi master, lines 92-109) uses `type: file` on downloads.vivaldi.com .deb per arch, consumed at Flathub BUILD time. Flathub therefore does hold and sign the payload for Vivaldi, unlike Chrome. Verified by reading the manifest, not assumed. Sandbox: devices=[all], filesystems include xdg-desktop and ~/.local/share/applications:create.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.vivaldi.Vivaldi",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.vivaldi.Vivaldi",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "fragments": {
+      "name": "Fragments",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Simple BitTorrent client. Torrents download to THIS BOX's disk, not to the machine you are viewing from — use Files to retrieve them.",
+      "category": "network",
+      "author": "Felix Häcker",
+      "homepage": "https://apps.gnome.org/Fragments/",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). Sandbox: filesystems=[host], shared=[network,ipc]. STREAMED-MODEL: description must say downloads land on the box; that is the whole point of a sovereign box, but it is not what a desktop user assumes. OVERLAP: qbittorrent is already in the registry; Fragments is the simple alternative, not a replacement.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "de.haeckerfelix.Fragments",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run de.haeckerfelix.Fragments",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "bitwarden": {
+      "name": "Bitwarden",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Password manager client for the Bitwarden service. The app is GPL-3.0, but your vault lives on Bitwarden's servers (or a self-hosted Bitwarden/Vaultwarden) — this is a client, not local-only storage.",
+      "category": "system",
+      "author": "Bitwarden Inc.",
+      "homepage": "https://bitwarden.com",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "password",
+        "vault",
+        "manager",
+        "security",
+        "totp",
+        "credentials"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). NOT extra-data — the manifest pulls Bitwarden's GitHub release tarball per arch at BUILD time. Sandbox: devices=[all,dri]; filesystems are NativeMessagingHosts dirs + xdg-download + ~/.mozilla; system-bus talk to login1 and PolicyKit1. SOVEREIGNTY: pairs with the registry's existing self-hostable 'vaultwarden' server entry; keepassxc remains the offline-only option. OVERLAP: builtin 'vault' app.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.bitwarden.desktop",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.bitwarden.desktop",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pika-backup": {
+      "name": "Pika Backup",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Scheduled deduplicating backups (BorgBackup) of THIS BOX's data to a local disk or a remote host over SSH. It backs up the box, not the device you are viewing from.",
+      "category": "storage",
+      "author": "Small Mammal Collective",
+      "homepage": "https://apps.gnome.org/PikaBackup/",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "backup",
+        "borg",
+        "snapshot",
+        "restore",
+        "schedule",
+        "ssh"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host, /var:ro, ~/.var/app, gvfs]; devices=[all]; sockets include ssh-auth; shared=[ipc,network]. STREAMED-MODEL: correct and genuinely useful — a box that backs itself up is the point. NOTE: 'background' is in ValidPermissions but is NOT enforced by anything (manifest.go:19-31 vs the four read sites); scheduled runs depend on the app staying alive in its stream session.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.gnome.World.PikaBackup",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.gnome.World.PikaBackup",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "background"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "czkawka": {
+      "name": "Czkawka",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Finds duplicate files, empty folders, similar images and broken symlinks on THIS BOX's disks and helps remove them.",
+      "category": "system",
+      "author": "Rafał Mikrut",
+      "homepage": "https://github.com/qarmin/czkawka",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "duplicate",
+        "cleanup",
+        "disk",
+        "space",
+        "similar",
+        "files"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host]; no network. COST: runtime is org.gnome.Platform/49, the same second-runtime problem as Warehouse (~1.07GB on top of /50). DESTRUCTIVE: it deletes files on the box; the Flatpak sandbox grants host, and the streamed session runs as root, so there is no second line of defence.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.qarmin.czkawka",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.qarmin.czkawka",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "peazip": {
+      "name": "PeaZip",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Archive manager for THIS BOX's filesystem — creates and extracts 7z, zip, tar, rar, iso and ~200 other formats, with AES-256 encrypted archives.",
+      "category": "system",
+      "author": "Giorgio Tani",
+      "homepage": "https://peazip.github.io",
+      "icon": "Z",
+      "icon_url": "",
+      "keywords": [
+        "archive",
+        "zip",
+        "7z",
+        "tar",
+        "rar",
+        "extract",
+        "compress",
+        "encryption"
+      ],
+      "license": "LGPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host, xdg-config/kdeglobals:ro]; no network. RUNTIME: org.kde.Platform/6.10 — shared with the registry's existing qbittorrent entry, so the ~1.05GB is not additional if that is installed. REJECTED ALTERNATIVES: org.gnome.FileRoller (GNOME/50, would share the runtime with Flatseal, but its sandbox is filesystems=[home] only — cannot reach the box's data outside a home dir, which is the streamed case that matters); org.kde.ark (equivalent sandbox and runtime to PeaZip, fewer formats); org.xarchiver.Xarchiver (NOT on Flathub, 404).",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.peazip.PeaZip",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.peazip.PeaZip",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "cryptomator": {
+      "name": "Cryptomator",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Client-side encryption for cloud folders — creates an encrypted vault on this box that mounts as a normal folder, so files are encrypted before they ever leave.",
+      "category": "system",
+      "author": "Skymatic GmbH",
+      "homepage": "https://cryptomator.org/",
+      "icon": "K",
+      "icon_url": "",
+      "keywords": [
+        "encryption",
+        "vault",
+        "cloud",
+        "privacy",
+        "crypto",
+        "files"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "CATALOGUE DEFECT FIXED: roadmap/APP-CATALOG.md lists `org.cryptomator.Crypt`, which returns 404 from the Flathub API — that id does not exist. Correct id is org.cryptomator.Cryptomator. Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). NOT extra-data. Sandbox: filesystems=[home, host-etc:ro] + KeePassXC browser-server sockets; devices=[all]; sockets=[x11] ONLY — no wayland socket, so under the cage/labwc v2 stack it needs XWayland.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.cryptomator.Cryptomator",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.cryptomator.Cryptomator",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "impression": {
+      "name": "Impression",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Writes an ISO or disk image to a USB stick or SD card PLUGGED INTO THIS BOX. It cannot see removable media attached to the device you are viewing from.",
+      "category": "system",
+      "author": "Khaleel Al-Adhami",
+      "homepage": "https://apps.gnome.org/Impression/",
+      "icon": "I",
+      "icon_url": "",
+      "keywords": [
+        "usb",
+        "iso",
+        "image",
+        "flash",
+        "bootable",
+        "sd card"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: NO static filesystem grants; reaches drives via system-bus talk to org.freedesktop.UDisks2 and the portal. STREAMED-MODEL WARNING — the sharpest in this batch: the drive list is the BOX's drives. Combined with the streamed session running as root (stream/pool.go:416 has no uid drop, no netns, no cgroup), a mis-click writes an image over one of the box's own disks. The description above is the mitigation; a confirm-step in the shell would be better.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.adhami3310.Impression",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.adhami3310.Impression",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "usb",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "metadata-cleaner": {
+      "name": "Metadata Cleaner",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Strips EXIF, author, GPS and other hidden metadata from documents, images, audio and video stored on this box before you share them.",
+      "category": "system",
+      "author": "Metadata Cleaner Developers",
+      "homepage": "https://gitlab.com/metadatacleaner/metadatacleaner",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "metadata",
+        "exif",
+        "privacy",
+        "strip",
+        "gps",
+        "anonymise"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "CATALOGUE DEFECT FIXED: roadmap/APP-CATALOG.md lists `fr.romainvigier.MetadataCleaner`, which the Flathub API reports is_eol=true (the project moved namespace). Shipping an EOL id gets a user a package that stops receiving updates. Correct current id is io.gitlab.metadatacleaner.metadatacleaner (is_eol=false, publisher verified by website). Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Sandbox: NO static filesystem grants and NO network — file access is portal-mediated only. Best-isolated app in this batch.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.metadatacleaner.metadatacleaner",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.metadatacleaner.metadatacleaner",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "frog": {
+      "name": "Frog",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Extracts text from any image or screenshot by OCR, including QR codes, and copies it to the clipboard. Runs against images on this box.",
+      "category": "productivity",
+      "author": "Tender Owl",
+      "homepage": "https://getfrog.app",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "ocr",
+        "text",
+        "extract",
+        "screenshot",
+        "qr",
+        "clipboard",
+        "tesseract"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[xdg-pictures] only; shared=[network,ipc] (used to download Tesseract language packs). STREAMED-MODEL: OCR of an on-box image is fine; 'grab from screen' captures the BOX's virtual display, which is what the user is looking at, so it behaves as expected.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.tenderowl.frog",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.tenderowl.frog",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    }
+  }
+}
