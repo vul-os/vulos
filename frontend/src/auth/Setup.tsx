@@ -6,6 +6,7 @@ import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
 import { nativeBridge } from '../core/nativeBridge'
+import './setup.css'
 
 // Setup wizard config — every field the wizard steps read/write via
 // `config`/`update`. This is purely OS-local wizard state (never itself
@@ -195,8 +196,8 @@ const DEVICE_PROFILES: DeviceProfile[] = [
 const PROFILE_ACCENT_CLASSES: Record<DeviceAccent, { selected: string; icon: string; check: string }> = {
   blue:    { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
   violet:  { selected: 'accent-bg-soft accent-border', icon: 'accent-text', check: 'accent-bg' },
-  amber:   { selected: 'bg-warning-soft border-warning-soft', icon: 'text-warning', check: 'bg-warning' },
-  emerald: { selected: 'bg-success-soft border-success-soft', icon: 'text-success', check: 'bg-success' },
+  amber:   { selected: 'bg-warning-soft border-warning-soft', icon: 'wz-warn', check: 'bg-warning' },
+  emerald: { selected: 'bg-success-soft border-success-soft', icon: 'wz-ok', check: 'bg-success' },
 }
 
 // Timezone data with approximate map positions (% from top-left)
@@ -380,31 +381,29 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
     )
   }
 
+  // Steps that genuinely need horizontal room. Everything else stays on a
+  // reading measure — a 40rem column on a 1440px screen is a deliberate choice,
+  // not wasted space, because setup is a sequence of single decisions.
+  const wide = current === 'language' || current === 'timezone' || current === 'appearance'
+
   return (
-    <div className="fixed inset-0 overflow-hidden" style={{ background: 'var(--bg-base)' }}>
-      {/* Animated background */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-[15%] left-[25%] w-[600px] h-[600px] rounded-full opacity-[0.05] blur-[180px] animate-pulse" style={{ animationDuration: '8s', background: 'var(--accent)' }} />
-        <div className="absolute bottom-[15%] right-[15%] w-[500px] h-[500px] rounded-full opacity-[0.04] blur-[180px] animate-pulse" style={{ animationDuration: '12s', background: 'color-mix(in srgb, var(--accent) 60%, #a855f7)' }} />
-        <div className="absolute top-[50%] left-[60%] w-[300px] h-[300px] rounded-full opacity-[0.02] blur-[120px] animate-pulse" style={{ animationDuration: '10s', background: 'color-mix(in srgb, var(--accent) 40%, #06b6d4)' }} />
-      </div>
+    <div className={`wz-root${wide ? ' wz-wide' : ''}`}>
+      <div className="wz-bg" aria-hidden="true" />
 
-      <div className="relative h-full flex flex-col">
-        {/* Header: step progress + theme toggle */}
-        <header className="shrink-0 safe-pt safe-px">
-          <div className="mx-auto w-full max-w-xl px-6 pt-5 pb-2 flex items-center gap-4">
-            <WizardProgress steps={IS09_baseSteps} step={step} onJump={goTo} />
-            <ThemeToggle />
-          </div>
-        </header>
+      {/* Header: step progress, fullscreen affordance, theme toggle */}
+      <header className="wz-header">
+        <div className="wz-header-inner">
+          <WizardProgress steps={IS09_baseSteps} step={step} onJump={goTo} />
+          <FullscreenHint />
+          <ThemeToggle />
+        </div>
+      </header>
 
-        {/* Scrollable content region — centers when there's room, scrolls when not */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden safe-px">
-          <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
-            <div
-              className={`w-full max-w-xl transition-all duration-300 ${transitioning ? 'opacity-0 translate-y-3' : 'opacity-100 translate-y-0'}`}
-              style={{ transitionTimingFunction: 'var(--ease-out)' }}
-            >
+      {/* The one scroll container. Steps render their own sticky action bar at
+          the bottom of it, so the primary action can never leave the viewport. */}
+      <main className="wz-body">
+        <div className="wz-body-inner">
+          <div key={current} className={transitioning ? 'opacity-0' : 'wz-step'}>
             {current === 'welcome' && <WelcomeStep onNext={next} />}
             {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'IS09_chooser' && (
@@ -445,17 +444,9 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
             {/* Shared steps (pin + ready used by both flows) */}
             {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
-            </div>
           </div>
         </div>
-
-        {/* Footer: fullscreen hint */}
-        <footer className="shrink-0 safe-pb safe-px">
-          <div className="flex justify-center pb-4 pt-1">
-            <FullscreenHint />
-          </div>
-        </footer>
-      </div>
+      </main>
     </div>
   )
 }
@@ -468,9 +459,9 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
 function WizardProgress({ steps, step, onJump }: { steps: string[]; step: number; onJump: (idx: number) => void }) {
   const total = steps.length
   return (
-    <div className="flex-1 flex items-center gap-3 min-w-0">
+    <div className="wz-rail">
       <div
-        className="flex-1 flex items-center gap-1"
+        className="wz-rail"
         role="progressbar"
         aria-valuenow={step + 1}
         aria-valuemin={1}
@@ -480,32 +471,35 @@ function WizardProgress({ steps, step, onJump }: { steps: string[]; step: number
         {steps.map((_, i) => {
           const done = i < step
           const active = i === step
+          // Only completed segments are buttons. Rendering the future as
+          // fifteen disabled buttons put fifteen inert stops in the tab order
+          // of the first screen anyone meets — and a wizard is exactly the
+          // place someone is driving with a TV remote or a keyboard.
+          if (!done) {
+            return (
+              <span
+                key={i}
+                className={`wz-seg${active ? ' wz-seg--now' : ''}`}
+                aria-current={active ? 'step' : undefined}
+              />
+            )
+          }
           return (
             <button
               key={i}
               type="button"
-              onClick={() => done && onJump(i)}
-              aria-label={`Go to step ${i + 1}`}
-              aria-current={active ? 'step' : undefined}
-              disabled={!done}
-              className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
-                done ? 'cursor-pointer hover:opacity-80' : active ? '' : ''
-              }`}
-              style={{
-                background: done || active ? 'var(--accent)' : 'var(--border-strong)',
-                opacity: done ? 0.55 : active ? 1 : 1,
-                boxShadow: active ? '0 0 12px color-mix(in srgb, var(--accent) 55%, transparent)' : 'none',
-              }}
+              onClick={() => onJump(i)}
+              aria-label={`Go back to step ${i + 1} of ${total}`}
+              className="wz-seg wz-seg--done"
             />
           )
         })}
       </div>
-      <span
-        className="text-[12px] font-mono tabular-nums shrink-0 whitespace-nowrap"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        {String(step + 1).padStart(2, '0')}
-        <span style={{ color: 'var(--text-ghost)' }}> / {String(total).padStart(2, '0')}</span>
+      {/* Was `01 / 15` in --text-ghost: 2.11:1 dark, 2.18:1 light. It sits in
+          the header, so that single pair was a WCAG failure on all 15 steps in
+          both themes — the most-repeated contrast defect in the wizard. */}
+      <span className="wz-count">
+        Step <b>{step + 1}</b> of {total}
       </span>
     </div>
   )
@@ -589,9 +583,9 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
               className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all border-2
                 ${isSelected
                   ? `${ac.selected} elevate-lg`
-                  : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+                  : 'wz-surface wz-hairline wz-body hover:wz-edge hover:wz-strong'}`}
             >
-              <span className={isSelected ? ac.icon : 'text-neutral-500'}>
+              <span className={isSelected ? ac.icon : 'wz-dim'}>
                 {profile.icon}
               </span>
               <div>
@@ -599,12 +593,12 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
                 <div className="text-[12px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>{profile.desc}</div>
               </div>
               {detected === profile.id && !isSelected && (
-                <div className="absolute top-2 right-2 text-[12px] font-semibold tracking-wider text-neutral-500 uppercase">
+                <div className="absolute top-2 right-2 text-[12px] font-semibold tracking-wider wz-dim uppercase">
                   Detected
                 </div>
               )}
               {detected === profile.id && isSelected && (
-                <div className="absolute top-2 left-2 text-[12px] font-semibold tracking-wider text-neutral-400 uppercase">
+                <div className="absolute top-2 left-2 text-[12px] font-semibold tracking-wider wz-body uppercase">
                   Detected
                 </div>
               )}
@@ -639,7 +633,7 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }: { onChoo
         {/* New system card */}
         <button
           onClick={onChooseNew}
-          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 wz-hairline wz-surface text-left hover-accent-border hover-accent-bg-soft transition-all"
         >
           <div className="w-14 h-14 rounded-2xl accent-bg-soft accent-bg-hover flex items-center justify-center transition-colors">
             <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -648,14 +642,14 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }: { onChoo
             </svg>
           </div>
           <div>
-            <div className="text-base font-semibold text-neutral-100 mb-1">New System</div>
-            <div className="text-sm text-neutral-500">Set up this device from scratch with a new identity and storage.</div>
+            <div className="text-base font-semibold wz-strong mb-1">New System</div>
+            <div className="text-sm wz-dim">Set up this device from scratch with a new identity and storage.</div>
           </div>
         </button>
         {/* Join existing card */}
         <button
           onClick={onChooseJoin}
-          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 border-neutral-800/60 bg-neutral-900/50 text-left hover-accent-border hover-accent-bg-soft transition-all"
+          className="group flex flex-col items-center gap-3 px-6 py-7 rounded-2xl border-2 wz-hairline wz-surface text-left hover-accent-border hover-accent-bg-soft transition-all"
         >
           <div className="w-14 h-14 rounded-2xl accent-bg-soft flex items-center justify-center transition-colors">
             <svg viewBox="0 0 24 24" className="w-7 h-7 accent-text" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -665,13 +659,13 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }: { onChoo
             </svg>
           </div>
           <div>
-            <div className="text-base font-semibold text-neutral-100 mb-1">Join Existing</div>
-            <div className="text-sm text-neutral-500">Connect to an existing Vulos OS cluster by providing storage credentials.</div>
+            <div className="text-base font-semibold wz-strong mb-1">Join Existing</div>
+            <div className="text-sm wz-dim">Connect to an existing Vulos OS cluster by providing storage credentials.</div>
           </div>
         </button>
       </div>
-      <div className="flex justify-start pt-4 border-t border-neutral-800/30">
-        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+      <div className="flex justify-start pt-4 border-t wz-hairline">
+        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
           ← Back
         </button>
       </div>
@@ -788,7 +782,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
       />
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Join code (optional quick-fill)</label>
+          <label className="block text-xs wz-dim mb-1.5">Join code (optional quick-fill)</label>
           <div className="flex items-center gap-2">
             <input
               value={IS09_joinCode}
@@ -805,11 +799,11 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
               </button>
             )}
           </div>
-          {IS09_redeemMsg && <p className="text-xs text-neutral-500 mt-1.5">{IS09_redeemMsg}</p>}
+          {IS09_redeemMsg && <p className="text-xs wz-dim mt-1.5">{IS09_redeemMsg}</p>}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">S3 Bucket <span className="text-danger">*</span></label>
+            <label className="block text-xs wz-dim mb-1.5">S3 Bucket <span className="wz-danger">*</span></label>
             <input
               value={IS09_s3Bucket}
               onChange={e => IS09_setS3Bucket(e.target.value.trim())}
@@ -819,7 +813,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
             />
           </div>
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">Region</label>
+            <label className="block text-xs wz-dim mb-1.5">Region</label>
             <input
               value={IS09_s3Region}
               onChange={e => IS09_setS3Region(e.target.value.trim())}
@@ -829,7 +823,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
           </div>
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Access Key <span className="text-danger">*</span></label>
+          <label className="block text-xs wz-dim mb-1.5">Access Key <span className="wz-danger">*</span></label>
           <input
             value={IS09_s3AccessKey}
             onChange={e => IS09_setS3AccessKey(e.target.value.trim())}
@@ -838,7 +832,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Secret Key <span className="text-danger">*</span></label>
+          <label className="block text-xs wz-dim mb-1.5">Secret Key <span className="wz-danger">*</span></label>
           <input
             type="password"
             value={IS09_s3SecretKey}
@@ -848,7 +842,7 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">Encryption Passphrase <span className="text-danger">*</span></label>
+          <label className="block text-xs wz-dim mb-1.5">Encryption Passphrase <span className="wz-danger">*</span></label>
           <input
             type="password"
             value={IS09_passphrase}
@@ -859,11 +853,11 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
         </div>
         {IS09_error && (
           <div className="flex flex-col gap-2 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3">
-            <p className="text-sm text-danger">{IS09_error}</p>
+            <p className="text-sm wz-danger">{IS09_error}</p>
             {IS09_error.includes('not yet available') && (
               <button
                 onClick={IS09_handleJoin}
-                className="self-start text-xs text-danger underline underline-offset-2 hover:opacity-80"
+                className="self-start text-xs wz-danger underline underline-offset-2 hover:opacity-80"
               >
                 Retry
               </button>
@@ -871,8 +865,8 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
-        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+      <div className="flex items-center justify-between mt-6 pt-4 border-t wz-hairline">
+        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
           ← Back
         </button>
         <button
@@ -971,7 +965,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
       <div className="text-center">
         <div className="text-4xl mb-4">🔄</div>
         <StepHeader title="Syncing in the background" subtitle="You can use Vulos OS while sync continues." />
-        <p className="text-sm text-neutral-500">Setup will complete automatically when sync finishes.</p>
+        <p className="text-sm wz-dim">Setup will complete automatically when sync finishes.</p>
       </div>
     )
   }
@@ -981,7 +975,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
       <div className="mb-6 flex flex-col items-center">
         <div className="w-16 h-16 rounded-2xl accent-bg-soft flex items-center justify-center mb-4">
           {IS09_done ? (
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-success" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 wz-ok" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
           ) : (
@@ -990,10 +984,10 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
             </svg>
           )}
         </div>
-        <h2 className="text-2xl font-light text-neutral-100">
+        <h2 className="text-2xl font-light wz-strong">
           {IS09_done ? 'Sync complete' : 'Syncing your data'}
         </h2>
-        <p className="text-sm text-neutral-500 mt-1">
+        <p className="text-sm wz-dim mt-1">
           {IS09_done
             ? 'Everything has been restored. Continue to set your PIN.'
             : 'Restoring your identity and data from storage...'}
@@ -1002,11 +996,11 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
 
       {/* Phase progress bar */}
       <div className="mb-4">
-        <div className="flex justify-between text-xs text-neutral-600 mb-1.5">
+        <div className="flex justify-between text-xs wz-dim mb-1.5">
           <span>{IS09_SYNC_PHASES[IS09_phaseIdx]?.label || 'Initialising'}</span>
           <span>{Math.round(IS09_progress)}%</span>
         </div>
-        <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
+        <div className="h-1.5 w-full wz-surface-2 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-700"
             style={{
@@ -1027,10 +1021,10 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
               ${isCurrent ? 'accent-bg-soft border accent-border-soft' : ''}
             `}>
               <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px]
-                ${isDone ? 'bg-success-soft text-success' : isCurrent ? 'accent-bg-soft accent-text' : 'bg-neutral-800 text-neutral-600'}`}>
+                ${isDone ? 'bg-success-soft wz-ok' : isCurrent ? 'accent-bg-soft accent-text' : 'wz-surface-2 wz-dim'}`}>
                 {isDone ? '✓' : isCurrent ? '·' : '○'}
               </span>
-              <span className={`text-sm ${isDone ? 'text-neutral-400' : isCurrent ? 'text-neutral-200' : 'text-neutral-600'}`}>
+              <span className={`text-sm ${isDone ? 'wz-body' : isCurrent ? 'wz-strong' : 'wz-dim'}`}>
                 {phase.label}
               </span>
               {isCurrent && (
@@ -1047,7 +1041,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
 
       {IS09_error && (
         <div className="mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3">
-          <p className="text-sm text-danger">{IS09_error}</p>
+          <p className="text-sm wz-danger">{IS09_error}</p>
         </div>
       )}
 
@@ -1059,7 +1053,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
         ) : (
           <button
             onClick={() => { IS09_setBgMode(true); onComplete() }}
-            className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors underline underline-offset-2"
+            className="text-sm wz-dim hover:wz-body transition-colors underline underline-offset-2"
           >
             Continue in Background
           </button>
@@ -1084,13 +1078,13 @@ function LanguageStep({ config, update, onNext, onPrev }: StepProps) {
             onClick={() => { update('locale', lang.code); setLocale(lang.code) }}
             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all
               ${config.locale === lang.code
-                ? 'accent-bg-soft accent-border text-neutral-100 border'
-                : 'bg-neutral-900/50 border border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+                ? 'accent-bg-soft accent-border wz-strong border'
+                : 'wz-surface border wz-hairline wz-body hover:wz-edge hover:wz-strong'}`}
           >
             <span className="text-xl">{lang.flag}</span>
             <div>
               <div className="text-sm font-medium">{lang.native}</div>
-              <div className="text-xs text-neutral-500">{lang.name}</div>
+              <div className="text-xs wz-dim">{lang.name}</div>
             </div>
           </button>
         ))}
@@ -1112,7 +1106,7 @@ function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
       <StepHeader title={t('setup.timezone.title')} subtitle={selected ? `${selected.label} (${selected.offset})` : t('setup.timezone.subtitle_none')} />
 
       {/* World map */}
-      <div className="relative w-full aspect-[2/1] bg-neutral-900/50 rounded-2xl border border-neutral-800/50 overflow-hidden mb-4">
+      <div className="relative w-full aspect-[2/1] wz-surface rounded-2xl border wz-hairline overflow-hidden mb-4">
         {/* Simplified world outline via CSS gradients */}
         <div className="absolute inset-0 opacity-10">
           <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="none">
@@ -1128,7 +1122,7 @@ function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
 
         {/* Timezone grid lines */}
         {Array.from({ length: 24 }, (_, i) => (
-          <div key={i} className="absolute top-0 bottom-0 w-px bg-neutral-800/30" style={{ left: `${(i / 24) * 100}%` }} />
+          <div key={i} className="absolute top-0 bottom-0 w-px wz-surface-2" style={{ left: `${(i / 24) * 100}%` }} />
         ))}
 
         {/* City markers */}
@@ -1143,11 +1137,11 @@ function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
             <div className={`w-3 h-3 rounded-full transition-all border-2
               ${config.timezone === tz.id
                 ? 'accent-bg accent-border scale-150 shadow-lg'
-                : 'bg-neutral-600 border-neutral-500 hover-accent-bg hover-accent-border group-hover:scale-125'}`}
+                : 'wz-surface-2 wz-edge hover-accent-bg hover-accent-border group-hover:scale-125'}`}
             />
             {/* Label (shows on hover or when selected) */}
             <div className={`absolute left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap text-[12px] font-medium transition-opacity
-              ${config.timezone === tz.id ? 'opacity-100 accent-text' : 'opacity-0 group-hover:opacity-100 text-neutral-400'}`}>
+              ${config.timezone === tz.id ? 'opacity-100 accent-text' : 'opacity-0 group-hover:opacity-100 wz-body'}`}>
               {tz.label}
             </div>
             {/* Pulse ring when selected */}
@@ -1167,7 +1161,7 @@ function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
             className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap
               ${config.timezone === tz.id
                 ? 'accent-bg-soft accent-text border accent-border'
-                : 'bg-neutral-900/50 text-neutral-500 border border-neutral-800/50 hover:text-neutral-300'}`}
+                : 'wz-surface wz-dim border wz-hairline hover:wz-body'}`}
           >
             {tz.label}
           </button>
@@ -1235,12 +1229,12 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
         disabled={scanning}
         className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
           ${scanning
-            ? 'bg-neutral-800 text-neutral-500'
-            : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover-accent-text'}`}
+            ? 'wz-surface-2 wz-dim'
+            : 'wz-surface border wz-edge wz-body hover-accent-border hover-accent-text'}`}
       >
         {scanning ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
+            <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
             {t('setup.network.scanning')}
           </span>
         ) : networks ? t('setup.network.scan_again') : t('setup.network.scan')}
@@ -1248,23 +1242,23 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
 
       {/* Network list */}
       {networks && (
-        <div className="max-h-[35vh] overflow-y-auto rounded-xl border border-neutral-800/50 mb-4">
+        <div className="max-h-[35vh] overflow-y-auto rounded-xl border wz-hairline mb-4">
           {networks.length === 0 && (
-            <div className="p-4 text-sm text-neutral-600 text-center">{t('setup.network.no_networks')}</div>
+            <div className="p-4 text-sm wz-dim text-center">{t('setup.network.no_networks')}</div>
           )}
           {networks.map((n, i) => (
             <button
               key={n.bssid || n.ssid || i}
               onClick={() => { update('wifiSSID', n.ssid || ''); setShowPassword(true) }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-neutral-800/30 transition-colors
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b wz-hairline transition-colors
                 ${config.wifiSSID === n.ssid
-                  ? 'accent-bg-soft text-neutral-100'
-                  : 'text-neutral-300 hover:bg-neutral-800/40'}`}
+                  ? 'accent-bg-soft wz-strong'
+                  : 'wz-body hover:wz-surface-2'}`}
             >
-              <span className="text-[10px] font-mono text-neutral-500 w-10">{signalIcon(n.signal)}</span>
+              <span className="text-[10px] font-mono wz-dim w-10">{signalIcon(n.signal)}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate">{n.ssid || '(hidden)'}</div>
-                <div className="text-[12px] text-neutral-600">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
+                <div className="text-[12px] wz-dim">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
               </div>
               {config.wifiSSID === n.ssid && <span className="accent-text text-xs">{t('setup.network.selected')}</span>}
             </button>
@@ -1274,10 +1268,10 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
 
       {/* Password input */}
       {config.wifiSSID && showPassword && (
-        <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl p-4 mb-4 animate-[fadeIn_0.2s_ease-out]">
+        <div className="wz-surface border wz-hairline rounded-xl p-4 mb-4 animate-[fadeIn_0.2s_ease-out]">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm text-neutral-300">{config.wifiSSID}</span>
-            <button onClick={() => { update('wifiSSID', ''); setShowPassword(false) }} className="text-xs text-neutral-600 hover:text-neutral-400">{t('setup.network.change')}</button>
+            <span className="text-sm wz-body">{config.wifiSSID}</span>
+            <button onClick={() => { update('wifiSSID', ''); setShowPassword(false) }} className="text-xs wz-dim hover:wz-body">{t('setup.network.change')}</button>
           </div>
           <input
             type="password"
@@ -1324,7 +1318,7 @@ function AccountStep({ config, update, onNext, onPrev }: StepProps) {
 
       <div className="space-y-4">
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.name_label')}</label>
+          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.name_label')}</label>
           <input
             value={config.displayName}
             onChange={e => update('displayName', e.target.value)}
@@ -1334,7 +1328,7 @@ function AccountStep({ config, update, onNext, onPrev }: StepProps) {
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.username_label')}</label>
+          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.username_label')}</label>
           <input
             value={config.username}
             onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
@@ -1343,7 +1337,7 @@ function AccountStep({ config, update, onNext, onPrev }: StepProps) {
           />
         </div>
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('setup.account.password_label')}</label>
+          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.password_label')}</label>
           <input
             type="password"
             value={config.password}
@@ -1354,7 +1348,7 @@ function AccountStep({ config, update, onNext, onPrev }: StepProps) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-danger mt-2">{error}</p>}
+      {error && <p className="text-sm wz-danger mt-2">{error}</p>}
 
       <NavBar onPrev={onPrev} onNext={handleNext} />
     </div>
@@ -1381,73 +1375,82 @@ function PinStep({ config, update, onNext, onPrev }: StepProps) {
     onNext()
   }
 
+  const mismatch = Boolean(confirm) && config.pin !== confirm
+
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 max-w-sm mx-auto">
-      <div className="w-12 h-12 rounded-2xl bg-warning-soft flex items-center justify-center mb-4">
-        <svg viewBox="0 0 24 24" className="w-6 h-6 text-warning" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" />
-          <path d="M7 11V7a5 5 0 0110 0v4" />
-          <circle cx="12" cy="16.5" r="1.5" fill="currentColor" />
-        </svg>
+    <div>
+      <StepHeader title={t('setup.pin.title')} subtitle={t('setup.pin.subtitle')} />
+
+      {error && <p role="alert" className="wz-note wz-note--danger mb-4">{error}</p>}
+
+      <div className="wz-panel">
+        {/* Labelled, not placeholder-only. These were two unlabelled password
+            boxes distinguishable only by their placeholder, which a screen
+            reader announces last and a filled field does not announce at all. */}
+        <label className="wz-label" htmlFor="wz-pin">{t('setup.pin.placeholder')}</label>
+        <input
+          id="wz-pin"
+          type="password"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="new-password"
+          value={config.pin}
+          onChange={e => { update('pin', e.target.value.replace(/\D/g, '')); setError('') }}
+          maxLength={8}
+          className="input wz-pin-input"
+        />
+
+        {config.pin && (
+          <div className="mt-3">
+            <label className="wz-label" htmlFor="wz-pin-confirm">{t('setup.pin.confirm_placeholder')}</label>
+            <input
+              id="wz-pin-confirm"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
+              maxLength={8}
+              aria-describedby={confirm ? 'pin-confirm-msg' : undefined}
+              aria-invalid={mismatch || undefined}
+              className="input wz-pin-input"
+            />
+            {confirm && (
+              <p
+                id="pin-confirm-msg"
+                role={mismatch ? 'alert' : undefined}
+                className={`wz-hint mt-1.5 flex items-center gap-1.5 ${mismatch ? 'wz-danger' : 'wz-ok'}`}
+              >
+                <span aria-hidden="true">{mismatch ? '✕' : '✓'}</span>
+                {mismatch ? t('setup.pin.error_match') : t('setup.pin.match')}
+              </p>
+            )}
+          </div>
+        )}
       </div>
-      <h2 className="text-xl font-semibold text-neutral-100 text-center">{t('setup.pin.title')}</h2>
-      <p className="text-sm text-neutral-500 text-center mt-2 mb-6">
-        {t('setup.pin.subtitle')}
+
+      {/* The PIN unlocks a screen; it does not replace the account password and
+          it never leaves this device. Worth saying, because the step otherwise
+          reads like a second password being demanded. */}
+      <p className="wz-hint mt-3">
+        This PIN only unlocks the screen on this device. Your account password still signs you in,
+        and the PIN is never sent anywhere.
       </p>
 
-      {error && <p className="text-sm text-danger mb-3">{error}</p>}
-
-      <input
-        type="password"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={config.pin}
-        onChange={e => { update('pin', e.target.value.replace(/\D/g, '')); setError('') }}
-        placeholder={t('setup.pin.placeholder')}
-        maxLength={8}
-        className="w-full rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] outline-none placeholder:tracking-normal placeholder:text-sm mb-3 transition-colors focus:border-[color-mix(in_srgb,var(--status-warning)_55%,transparent)]"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+      {/* Was a bespoke three-button row whose primary action was WHITE ON AMBER:
+          1.89:1 dark, 3.19:1 light, the single worst contrast failure in the
+          wizard. Amber also read as a warning on the one control the user is
+          meant to press. It uses the standard action bar now, so the primary
+          action of this step looks and measures like every other step's. */}
+      <NavBar
+        onPrev={onPrev}
+        onNext={handleNext}
+        nextLabel={config.pin ? t('setup.pin.set') : undefined}
+        skipLabel={t('setup.pin.skip')}
+        onSkip={() => { update('pin', ''); onNext() }}
+        nextDisabled={Boolean(config.pin && config.pin.length < 4)}
       />
-
-      {config.pin && (
-        <>
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={confirm}
-            onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setError('') }}
-            placeholder={t('setup.pin.confirm_placeholder')}
-            maxLength={8}
-            aria-describedby={confirm ? 'pin-confirm-msg' : undefined}
-            aria-invalid={(confirm && config.pin !== confirm) || undefined}
-            className="w-full rounded-xl px-4 py-3 text-center text-lg tracking-[0.3em] outline-none placeholder:tracking-normal placeholder:text-sm mb-1 transition-colors focus:border-[color-mix(in_srgb,var(--status-warning)_55%,transparent)]"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
-          />
-          {confirm && (
-            <p
-              id="pin-confirm-msg"
-              role={config.pin !== confirm ? 'alert' : undefined}
-              className={`text-[12px] mb-3 flex items-center gap-1 self-start ${config.pin !== confirm ? 'text-danger' : 'text-success'}`}
-            >
-              <span aria-hidden="true">{config.pin !== confirm ? '✕' : '✓'}</span>
-              {config.pin !== confirm ? t('setup.pin.error_match') : t('setup.pin.match')}
-            </p>
-          )}
-        </>
-      )}
-
-      <div className="flex gap-3 mt-4 w-full">
-        <button onClick={onPrev} className="flex-1 py-3 rounded-xl text-sm font-medium text-neutral-400 bg-neutral-800/60 hover:bg-neutral-800 transition-colors">
-          {t('setup.pin.back')}
-        </button>
-        <button onClick={() => { update('pin', ''); onNext() }} className="py-3 px-5 rounded-xl text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
-          {t('setup.pin.skip')}
-        </button>
-        <button onClick={handleNext} disabled={Boolean(config.pin && config.pin.length < 4)} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white bg-warning hover:opacity-90 disabled:opacity-40 transition-opacity">
-          {config.pin ? t('setup.pin.set') : t('setup.pin.skip')}
-        </button>
-      </div>
     </div>
   )
 }
@@ -1500,11 +1503,11 @@ function AppsStep({ config, update, onNext, onPrev }: StepProps) {
       className={`w-full flex items-start gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all
         ${checked
           ? `${accent} shadow-sm`
-          : 'border-neutral-800/60 bg-neutral-900/40 hover:border-neutral-700'}`}
+          : 'wz-hairline wz-surface hover:wz-edge'}`}
     >
       {/* Checkbox */}
       <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center border-2 transition-colors
-        ${checked ? 'accent-bg accent-border' : 'border-neutral-600 bg-transparent'}`}>
+        ${checked ? 'accent-bg accent-border' : 'wz-edge bg-transparent'}`}>
         {checked && (
           <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-white">
             <path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -1512,8 +1515,8 @@ function AppsStep({ config, update, onNext, onPrev }: StepProps) {
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-neutral-100">{title}</div>
-        <p className="text-xs text-neutral-500 leading-relaxed mt-0.5">{desc}</p>
+        <div className="text-sm font-medium wz-strong">{title}</div>
+        <p className="text-xs wz-dim leading-relaxed mt-0.5">{desc}</p>
       </div>
     </button>
   )
@@ -1545,16 +1548,16 @@ function AppsStep({ config, update, onNext, onPrev }: StepProps) {
       </div>
 
       {minimal && (
-        <div className="mb-4 rounded-xl bg-neutral-900/50 border border-neutral-800/50 px-4 py-3">
-          <p className="text-xs text-neutral-500 leading-relaxed">
-            <span className="text-neutral-400 font-medium">Minimal OS.</span>{' '}
+        <div className="mb-4 rounded-xl wz-surface border wz-hairline px-4 py-3">
+          <p className="text-xs wz-dim leading-relaxed">
+            <span className="wz-body font-medium">Minimal OS.</span>{' '}
             You'll get a clean Vulos install without Mail or the productivity apps — great for gaming or a single-purpose device. Everything stays available to add later from the App Hub.
           </p>
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-neutral-800/30">
-        <button onClick={onPrev} className="text-sm text-neutral-600 hover:text-neutral-400 transition-colors">
+      <div className="flex items-center justify-between mt-6 pt-4 border-t wz-hairline">
+        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
           ← Back
         </button>
         <button onClick={handleNext} disabled={saving} className="btn-primary flex items-center gap-2">
@@ -1598,17 +1601,17 @@ function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => 
             onClick={() => setTheme(thm.value)}
             className={`relative flex flex-col items-center gap-2 px-4 py-5 rounded-2xl text-center transition-all
               ${theme === thm.value
-                ? 'accent-bg-soft border-2 accent-border text-neutral-100 shadow-lg'
-                : 'bg-neutral-900/50 border-2 border-neutral-800/50 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200'}`}
+                ? 'accent-bg-soft border-2 accent-border wz-strong shadow-lg'
+                : 'wz-surface border-2 wz-hairline wz-body hover:wz-edge hover:wz-strong'}`}
           >
             {/* Preview swatch */}
-            <div className="w-12 h-12 rounded-xl border border-neutral-700/50 flex items-center justify-center overflow-hidden"
+            <div className="w-12 h-12 rounded-xl border wz-edge flex items-center justify-center overflow-hidden"
               style={{ background: thm.preview }}>
-              <span className={theme === thm.value ? 'accent-text' : 'text-neutral-400'}>{thm.icon}</span>
+              <span className={theme === thm.value ? 'accent-text' : 'wz-body'}>{thm.icon}</span>
             </div>
             <div>
               <div className="text-sm font-medium">{thm.label}</div>
-              <div className="text-[12px] text-neutral-500 mt-0.5">{thm.desc}</div>
+              <div className="text-[12px] wz-dim mt-0.5">{thm.desc}</div>
             </div>
             {theme === thm.value && (
               <div className="absolute top-2 right-2 w-5 h-5 rounded-full accent-bg flex items-center justify-center">
@@ -1620,15 +1623,15 @@ function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => 
       </div>
 
       {/* Night Shift quick toggle */}
-      <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-2">
+      <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 mb-2">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-neutral-300">{t('setup.appearance.night_shift')}</div>
-            <div className="text-[12px] text-neutral-600">{t('setup.appearance.night_shift_desc')}</div>
+            <div className="text-sm wz-body">{t('setup.appearance.night_shift')}</div>
+            <div className="text-[12px] wz-dim">{t('setup.appearance.night_shift_desc')}</div>
           </div>
           <button
             onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
-            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-warning' : 'bg-neutral-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-warning' : 'wz-surface-2'}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${nightShiftMode !== 'off' ? 'left-5' : 'left-0.5'}`} />
           </button>
@@ -1699,21 +1702,21 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
 
       <div className="space-y-4 mb-2">
         {/* ULID display */}
-        <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-4">
-          <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Instance ID (ULID)')}</div>
+        <div className="wz-surface border wz-hairline rounded-xl px-4 py-4">
+          <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Instance ID (ULID)')}</div>
           {IS05_loading ? (
-            <div className="h-5 w-48 bg-neutral-800 rounded animate-pulse" />
+            <div className="h-5 w-48 wz-surface-2 rounded animate-pulse" />
           ) : (
             <div className="font-mono text-sm accent-text select-all break-all">
               {config.IS05_ulid}
             </div>
           )}
-          <div className="text-[12px] text-neutral-600 mt-1">{t('Read-only — cryptographically unique, auto-assigned')}</div>
+          <div className="text-[12px] wz-dim mt-1">{t('Read-only — cryptographically unique, auto-assigned')}</div>
         </div>
 
         {/* Hostname input */}
         <div>
-          <label className="block text-xs text-neutral-500 mb-1.5">{t('Hostname')}</label>
+          <label className="block text-xs wz-dim mb-1.5">{t('Hostname')}</label>
           <input
             value={config.IS05_hostname}
             onChange={e => {
@@ -1723,10 +1726,10 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
             placeholder="my-vulos-node"
             className="input text-base py-3 font-mono"
           />
-          <p className="text-[12px] text-neutral-600 mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
+          <p className="text-[12px] wz-dim mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
         </div>
 
-        {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
+        {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
       </div>
 
       <NavBar onPrev={onPrev} onNext={handleNext} nextLabel={IS05_saving ? t('Saving...') : t('Continue')} />
@@ -1826,15 +1829,15 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
       />
 
       {/* Toggle */}
-      <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
+      <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-neutral-200">{t('Enable Cluster Sync')}</div>
-            <div className="text-[12px] text-neutral-600">{t('Shared encrypted storage across cluster nodes')}</div>
+            <div className="text-sm wz-strong">{t('Enable Cluster Sync')}</div>
+            <div className="text-[12px] wz-dim">{t('Shared encrypted storage across cluster nodes')}</div>
           </div>
           <button
             onClick={() => { update('IS05_storageEnabled', !config.IS05_storageEnabled); IS05_setError('') }}
-            className={`w-10 h-5 rounded-full transition-colors relative ${config.IS05_storageEnabled ? 'accent-bg' : 'bg-neutral-700'}`}
+            className={`w-10 h-5 rounded-full transition-colors relative ${config.IS05_storageEnabled ? 'accent-bg' : 'wz-surface-2'}`}
           >
             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${config.IS05_storageEnabled ? 'left-5' : 'left-0.5'}`} />
           </button>
@@ -1843,9 +1846,9 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
 
       {/* STORE-LOCAL-01: bundle storage-mode selector. Always visible so the
           operator chooses a backend even when cluster-sync is off. */}
-      <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 mb-4">
-        <div className="text-sm text-neutral-200 mb-2">{t('Bundle Storage Mode')}</div>
-        <div className="text-[12px] text-neutral-600 mb-2">
+      <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 mb-4">
+        <div className="text-sm wz-strong mb-2">{t('Bundle Storage Mode')}</div>
+        <div className="text-[12px] wz-dim mb-2">
           {t('This device is the default — your data stays on this box, with no object store and no third-party service. Local MinIO + sync runs a local source-of-truth and replicates between Vulos nodes via the CRDT layer. Central Tigris hands your data to a hosted third party.')}
         </div>
         <select
@@ -1861,7 +1864,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
         {config.IS05_storageMode === 'local-minio-sync' && (
           <div className="space-y-2 mt-3 animate-[fadeIn_0.2s_ease-out]">
             <div>
-              <label className="block text-[12px] text-neutral-500 mb-1">{t('MinIO endpoint')}</label>
+              <label className="block text-[12px] wz-dim mb-1">{t('MinIO endpoint')}</label>
               <input
                 value={config.IS05_storageMinioEndpoint}
                 onChange={e => update('IS05_storageMinioEndpoint', e.target.value)}
@@ -1870,7 +1873,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
               />
             </div>
             <div>
-              <label className="block text-[12px] text-neutral-500 mb-1">{t('Region')}</label>
+              <label className="block text-[12px] wz-dim mb-1">{t('Region')}</label>
               <input
                 value={config.IS05_storageMinioRegion}
                 onChange={e => update('IS05_storageMinioRegion', e.target.value)}
@@ -1879,7 +1882,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
               />
             </div>
             <div>
-              <label className="block text-[12px] text-neutral-500 mb-1">{t('Bucket')}</label>
+              <label className="block text-[12px] wz-dim mb-1">{t('Bucket')}</label>
               <input
                 value={config.IS05_storageMinioBucket}
                 onChange={e => update('IS05_storageMinioBucket', e.target.value)}
@@ -1888,7 +1891,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
               />
             </div>
             <div>
-              <label className="block text-[12px] text-neutral-500 mb-1">{t('Credentials reference (file path or secret-store key)')}</label>
+              <label className="block text-[12px] wz-dim mb-1">{t('Credentials reference (file path or secret-store key)')}</label>
               <input
                 value={config.IS05_storageMinioCredsRef}
                 onChange={e => update('IS05_storageMinioCredsRef', e.target.value)}
@@ -1896,7 +1899,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
                 className="input text-sm py-2"
               />
             </div>
-            <p className="text-[12px] text-neutral-600">
+            <p className="text-[12px] wz-dim">
               {t('The installer writes /var/lib/vulos/minio/.minio_secret when run with --storage=minio.')}
             </p>
           </div>
@@ -1908,7 +1911,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
           {/* Size slider */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs text-neutral-500">{t('Allocated Size')}</label>
+              <label className="text-xs wz-dim">{t('Allocated Size')}</label>
               <span className="text-sm font-mono accent-text">{config.IS05_storageSizeGb} GB</span>
             </div>
             <input
@@ -1920,14 +1923,14 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
               onChange={e => update('IS05_storageSizeGb', Number(e.target.value))}
               className="w-full" style={{ accentColor: 'var(--accent)' }}
             />
-            <div className="flex justify-between text-[12px] text-neutral-700 mt-1">
+            <div className="flex justify-between text-[12px] wz-dim mt-1">
               <span>5 GB</span><span>100 GB</span>
             </div>
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">{t('Storage Password')}</label>
+            <label className="block text-xs wz-dim mb-1.5">{t('Storage Password')}</label>
             <input
               type="password"
               value={config.IS05_storagePassword}
@@ -1939,7 +1942,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
 
           {/* Passphrase + confirm */}
           <div>
-            <label className="block text-xs text-neutral-500 mb-1.5">{t('Encryption Passphrase')}</label>
+            <label className="block text-xs wz-dim mb-1.5">{t('Encryption Passphrase')}</label>
             <input
               type="password"
               value={config.IS05_storagePassphrase}
@@ -1956,7 +1959,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
             />
           </div>
 
-          {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
+          {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
         </div>
       )}
 
@@ -2095,12 +2098,12 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
           disabled={IS05_generating}
           className={`w-full py-3 rounded-xl text-sm font-medium transition-all
             ${IS05_generating
-              ? 'bg-neutral-800 text-neutral-500'
-              : 'bg-neutral-900/80 border border-neutral-700/50 text-neutral-300 hover-accent-border hover-accent-text'}`}
+              ? 'wz-surface-2 wz-dim'
+              : 'wz-surface border wz-edge wz-body hover-accent-border hover-accent-text'}`}
         >
           {IS05_generating ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
+              <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
               {t('Generating keypair...')}
             </span>
           ) : config.IS05_sshPubkey ? t('Regenerate Keypair') : t('Generate Ed25519 Keypair')}
@@ -2108,17 +2111,17 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
 
         {/* Private key display (shown once) */}
         {IS05_privateKey && (
-          <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-center justify-between px-4 py-2 bg-neutral-900/60 border-b border-neutral-800">
-              <span className="text-[12px] text-warning font-medium">{t('Private Key — shown once, copy now')}</span>
+          <div className="wz-surface-deep border wz-hairline rounded-xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-center justify-between px-4 py-2 wz-surface border-b wz-hairline">
+              <span className="text-[12px] wz-warn font-medium">{t('Private Key — shown once, copy now')}</span>
               <button
                 onClick={IS05_copy}
-                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft text-success' : 'bg-neutral-800 text-neutral-400 hover-accent-text'}`}
+                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft wz-ok' : 'wz-surface-2 wz-body hover-accent-text'}`}
               >
                 {IS05_copied ? t('Copied!') : t('Copy')}
               </button>
             </div>
-            <pre className="text-[12px] font-mono text-neutral-400 p-4 overflow-x-auto whitespace-pre-wrap break-all select-all">
+            <pre className="text-[12px] font-mono wz-body p-4 overflow-x-auto whitespace-pre-wrap break-all select-all">
               {IS05_privateKey}
             </pre>
           </div>
@@ -2126,9 +2129,9 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
 
         {/* Public key fingerprint */}
         {config.IS05_sshFingerprint && (
-          <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
-            <div className="font-mono text-xs text-success break-all">{config.IS05_sshFingerprint}</div>
+          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
+            <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
+            <div className="font-mono text-xs wz-ok break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
 
@@ -2143,19 +2146,19 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
                 className="sr-only"
               />
               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-                ${IS05_confirmed ? 'accent-bg accent-border' : 'border-neutral-600 group-hover:border-neutral-400'}`}>
+                ${IS05_confirmed ? 'accent-bg accent-border' : 'wz-edge group-hover:wz-edge'}`}>
                 {IS05_confirmed && (
                   <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
                 )}
               </div>
             </div>
-            <span className="text-sm text-neutral-400 group-hover:text-neutral-200 transition-colors leading-snug">
+            <span className="text-sm wz-body group-hover:wz-strong transition-colors leading-snug">
               {t('I have saved this private key in a secure location. I understand it will not be shown again.')}
             </span>
           </label>
         )}
 
-        {IS05_error && <p className="text-sm text-danger">{IS05_error}</p>}
+        {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
       </div>
 
       <NavBar
@@ -2250,7 +2253,7 @@ function IK06_QRCanvas({ content }: { content: string }) {
 
   if (IK06_qrError) {
     return (
-      <div className="text-[12px] text-neutral-600 text-center p-2">
+      <div className="text-[12px] wz-dim text-center p-2">
         (QR rendering pending — verify checksum below)
       </div>
     )
@@ -2341,30 +2344,30 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
 
       {/* Credentials summary */}
       <div className="space-y-2 mb-4">
-        <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-          <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Identity')}</div>
+        <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
+          <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Identity')}</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div>
-              <div className="text-neutral-600 mb-0.5">{t('ULID')}</div>
+              <div className="wz-dim mb-0.5">{t('ULID')}</div>
               <div className="font-mono accent-text text-[12px] break-all">{config.IS05_ulid || '—'}</div>
             </div>
             <div>
-              <div className="text-neutral-600 mb-0.5">{t('Hostname')}</div>
-              <div className="font-mono text-neutral-300 text-[12px]">{config.IS05_hostname || '—'}</div>
+              <div className="wz-dim mb-0.5">{t('Hostname')}</div>
+              <div className="font-mono wz-body text-[12px]">{config.IS05_hostname || '—'}</div>
             </div>
           </div>
         </div>
 
         {config.IS05_storageEnabled && (
-          <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
+          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
+            <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
             <div className="text-xs">
-              <div className="text-neutral-600 mb-0.5">{t('Status')}</div>
-              <div className="text-success">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
+              <div className="wz-dim mb-0.5">{t('Status')}</div>
+              <div className="wz-ok">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
               {config.IS05_s3AccessKey && (
                 <>
-                  <div className="text-neutral-600 mt-2 mb-0.5">{t('S3 Access Key')}</div>
-                  <div className="font-mono text-[12px] text-neutral-300 break-all">{config.IS05_s3AccessKey}</div>
+                  <div className="wz-dim mt-2 mb-0.5">{t('S3 Access Key')}</div>
+                  <div className="font-mono text-[12px] wz-body break-all">{config.IS05_s3AccessKey}</div>
                 </>
               )}
             </div>
@@ -2373,26 +2376,26 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
 
         {/* INIT-06: storage-skipped notice — shown when user skipped storage */}
         {IS06_storageSkipped && (
-          <div className="bg-neutral-900/30 border border-neutral-800/30 rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[12px] text-neutral-600 uppercase tracking-wider mb-1">{t('Cluster Storage')}</div>
-            <div className="text-xs text-neutral-600">{t('Skipped — can be enabled later in Settings')}</div>
+          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
+            <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Cluster Storage')}</div>
+            <div className="text-xs wz-dim">{t('Skipped — can be enabled later in Settings')}</div>
           </div>
         )}
 
         {config.IS05_sshFingerprint && (
-          <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl px-4 py-3">
-            <div className="text-[12px] text-neutral-500 uppercase tracking-wider mb-2">{t('SSH Access')}</div>
-            <div className="text-[12px] font-mono text-success break-all">{config.IS05_sshFingerprint}</div>
+          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
+            <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('SSH Access')}</div>
+            <div className="text-[12px] font-mono wz-ok break-all">{config.IS05_sshFingerprint}</div>
           </div>
         )}
       </div>
 
       {/* INIT-06: Inline QR code — encodes recovery identity token */}
       {!IK06_buildingPayload && IK06_qrContent && (
-        <div className="bg-neutral-950 border border-neutral-800/50 rounded-xl p-4 mb-4 flex flex-col items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
-          <div className="text-[12px] text-neutral-500 uppercase tracking-wider">{t('Recovery QR — scan to verify identity')}</div>
+        <div className="wz-surface-deep border wz-hairline rounded-xl p-4 mb-4 flex flex-col items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
+          <div className="text-[12px] wz-dim uppercase tracking-wider">{t('Recovery QR — scan to verify identity')}</div>
           <IK06_QRCanvas content={IK06_qrContent} />
-          <div className="text-[12px] font-mono text-neutral-700 break-all text-center max-w-[200px]">
+          <div className="text-[12px] font-mono wz-dim break-all text-center max-w-[200px]">
             {IK06_qrContent}
           </div>
         </div>
@@ -2400,9 +2403,9 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
 
       {/* INIT-06: Checksum preview */}
       {IK06_payload && (
-        <div className="bg-neutral-900/40 border border-neutral-800/30 rounded-xl px-4 py-2 mb-4">
-          <div className="text-[12px] text-neutral-600 uppercase tracking-wider mb-1">{t('Kit checksum (SHA-256)')}</div>
-          <div className="font-mono text-[12px] text-neutral-500 break-all">{IK06_payload.checksum_sha256}</div>
+        <div className="wz-surface border wz-hairline rounded-xl px-4 py-2 mb-4">
+          <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Kit checksum (SHA-256)')}</div>
+          <div className="font-mono text-[12px] wz-dim break-all">{IK06_payload.checksum_sha256}</div>
         </div>
       )}
 
@@ -2412,14 +2415,14 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
         disabled={IS05_downloading || IK06_buildingPayload}
         className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
           ${IS05_downloaded
-            ? 'bg-success-soft border border-success-soft text-success'
+            ? 'bg-success-soft border border-success-soft wz-ok'
             : IS05_downloading
-              ? 'bg-neutral-800 text-neutral-500'
+              ? 'wz-surface-2 wz-dim'
               : 'accent-bg-soft border accent-border accent-text accent-bg-hover'}`}
       >
         {IS05_downloading ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-neutral-600 rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
+            <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
             {t('Preparing download...')}
           </span>
         ) : IS05_downloaded
@@ -2427,20 +2430,20 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
           : t('Download Recovery Kit')}
       </button>
 
-      {IS05_error && <p className="text-sm text-danger mb-3">{IS05_error}</p>}
+      {IS05_error && <p className="text-sm wz-danger mb-3">{IS05_error}</p>}
 
       {/* Type-to-confirm gate — applies to ALL variants including storage-skipped */}
-      <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl px-4 py-4 mb-2">
-        <p className="text-sm text-neutral-400 mb-3">
+      <div className="wz-surface border wz-hairline rounded-xl px-4 py-4 mb-2">
+        <p className="text-sm wz-body mb-3">
           {t('Type ')}
-          <code className="bg-neutral-800 text-warning px-1.5 py-0.5 rounded text-xs font-mono">confirm</code>
+          <code className="wz-surface-2 wz-warn px-1.5 py-0.5 rounded text-xs font-mono">confirm</code>
           {t(' to proceed')}
         </p>
         <input
           value={IS05_confirmText}
           onChange={e => IS05_setConfirmText(e.target.value)}
           placeholder="confirm"
-          className={`input py-2 font-mono text-sm ${IS05_canProceed ? 'border-success-soft text-success' : ''}`}
+          className={`input py-2 font-mono text-sm ${IS05_canProceed ? 'border-success-soft wz-ok' : ''}`}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -2586,7 +2589,7 @@ function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish
         className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center"
         style={{ background: 'var(--status-success-soft)' }}
       >
-        <svg viewBox="0 0 24 24" className="w-8 h-8 text-success" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="w-8 h-8 wz-ok" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M20 6L9 17l-5-5" />
         </svg>
       </div>
@@ -2605,7 +2608,7 @@ function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish
         <SummaryCard icon="🎨" label={t('setup.ready.label_theme')} value={themeLabels[theme] || theme} />
       </div>
 
-      {error && <p className="text-sm text-danger mb-4">{error}</p>}
+      {error && <p className="text-sm wz-danger mb-4">{error}</p>}
 
       <button
         onClick={handleFinish}
@@ -2747,20 +2750,20 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
         subtitle="Optional — download the on-box embedding model so your assistant can search your mail by meaning, entirely on your box."
       />
 
-      <div className="mx-auto max-w-md text-left rounded-xl border border-neutral-800/50 bg-neutral-900/40 px-4 py-3 mb-5">
-        <p className="text-sm text-neutral-400 leading-relaxed">
-          Downloads the recommended <span className="font-mono text-neutral-300">{modelName}</span> model
+      <div className="mx-auto max-w-md text-left rounded-xl border wz-hairline wz-surface px-4 py-3 mb-5">
+        <p className="text-sm wz-body leading-relaxed">
+          Downloads the recommended <span className="font-mono wz-body">{modelName}</span> model
           {totalMB ? <> (~{totalMB} MB)</> : null} from a pinned source and verifies it by checksum.
-          Nothing leaves your box — this powers <span className="text-neutral-300">semantic search</span> locally.
+          Nothing leaves your box — this powers <span className="wz-body">semantic search</span> locally.
         </p>
-        <p className="text-xs text-neutral-500 leading-relaxed mt-2">
-          Without it, search still works in <span className="text-neutral-400">lexical/degraded mode</span> — you can
-          add the model any time in <span className="text-neutral-400">Settings → AI Models</span>.
+        <p className="text-xs wz-dim leading-relaxed mt-2">
+          Without it, search still works in <span className="wz-body">lexical/degraded mode</span> — you can
+          add the model any time in <span className="wz-body">Settings → AI Models</span>.
         </p>
         {deps && !deps.ready && (
-          <p className="text-[12px] text-warning leading-relaxed mt-2">
+          <p className="text-[12px] wz-warn leading-relaxed mt-2">
             Note: running embeddings also needs the vulos-embed Python packages on the box:
-            <code className="block mt-1 font-mono text-warning bg-neutral-950/60 rounded px-2 py-1 select-all">
+            <code className="block mt-1 font-mono wz-warn wz-surface-deep rounded px-2 py-1 select-all">
               {deps.install_hint || 'pip install onnxruntime tokenizers numpy'}
             </code>
             These are never installed automatically.
@@ -2770,13 +2773,13 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
 
       {state === 'error' && error && (
         <div role="alert" className="mx-auto max-w-md mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3 text-left">
-          <p className="text-sm text-danger">{error}</p>
+          <p className="text-sm wz-danger">{error}</p>
         </div>
       )}
 
       {state === 'done' ? (
         <div role="status" className="mx-auto max-w-md mb-4 bg-success-soft border border-success-soft rounded-xl px-4 py-3 text-left">
-          <p className="text-sm text-success">Model installed. Semantic search is ready on your box.</p>
+          <p className="text-sm wz-ok">Model installed. Semantic search is ready on your box.</p>
         </div>
       ) : null}
 
@@ -2804,7 +2807,7 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
             <button
               onClick={onDone}
               disabled={state === 'downloading'}
-              className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors disabled:opacity-40"
+              className="text-sm wz-dim hover:wz-body transition-colors disabled:opacity-40"
             >
               Skip for now
             </button>
@@ -2821,8 +2824,12 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
 function StepHeader({ title, subtitle }: { title: ReactNode; subtitle?: ReactNode }) {
   return (
     <div className="mb-6">
-      <h2 className="text-2xl font-light tracking-tight" style={{ color: 'var(--text-primary)' }}>{title}</h2>
-      {subtitle && <p className="text-sm mt-1.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>}
+      {/* h2, and the only h2 on the step: the wizard is one screen per view, so
+          each step's title is the document's heading for as long as it is up. */}
+      <h2 className="wz-title">{title}</h2>
+      {/* Was --text-muted at 14px; now --text-secondary, because this is a
+          sentence the user is expected to read, not a caption. */}
+      {subtitle && <p className="wz-sub">{subtitle}</p>}
     </div>
   )
 }
@@ -2836,24 +2843,34 @@ interface NavBarProps {
   nextDisabled?: boolean
 }
 
+/**
+ * The action bar. STICKY to the bottom of the wizard's scroll container.
+ *
+ * That is the fix for a measured defect, not styling. At 1440x900 the
+ * recovery-kit step rendered 231px of content below the fold, and those 231px
+ * held the type-to-confirm field and the "Finish Setup" button — the primary
+ * action of the last step of first boot, invisible on an ordinary laptop, with
+ * the fullscreen pill sitting across the cut so the page did not even look
+ * truncated. Sticky means no step can ever hide its own way forward, at any
+ * viewport, without anyone having to remember to check.
+ */
 function NavBar({ onPrev, onNext, nextLabel, skipLabel, onSkip, nextDisabled }: NavBarProps) {
   const { t } = useI18nTyped()
   const resolvedNext = nextLabel ?? t('nav.continue')
   return (
-    <div className="flex items-center justify-between mt-6 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-      <button onClick={onPrev} className="text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
+    <div className="wz-nav">
+      <button type="button" onClick={onPrev} className="wz-quiet">
         {t('nav.back')}
       </button>
-      <div className="flex items-center gap-3">
-        {skipLabel && (
-          <button onClick={onSkip} className="text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
-            {skipLabel}
-          </button>
-        )}
-        <button onClick={onNext} disabled={nextDisabled} className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
-          {resolvedNext} →
+      <div className="wz-footer-spacer" />
+      {skipLabel && (
+        <button type="button" onClick={onSkip} className="wz-quiet">
+          {skipLabel}
         </button>
-      </div>
+      )}
+      <button type="button" onClick={onNext} disabled={nextDisabled} className="btn-primary">
+        {resolvedNext} →
+      </button>
     </div>
   )
 }

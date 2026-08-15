@@ -1,0 +1,593 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   First-boot setup wizard — visual system.
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Why this file exists.
+
+   Setup.tsx carried its own look in ~200 hardcoded `neutral-*` Tailwind classes.
+   Those DO invert with the theme (index.css remaps the whole neutral scale under
+   [data-theme="light"]), so the wizard was never light-theme-broken — but the
+   scale is a lightness ladder, not a semantic one, and the wizard used its
+   bottom rungs for real copy. Measured on composited pixels across all fifteen
+   steps, EVERY step carried text below WCAG AA on BOTH themes:
+
+     "5 GB" / "100 GB"            1.92 dark   1.48 light   (text-neutral-700)
+     recovery QR payload          1.91 dark   1.42 light   (text-neutral-700)
+     "Set PIN" (white on amber)   1.89 dark
+     "← Back"                     2.55 dark
+     "Shared encrypted storage…"  2.43 dark                (text-neutral-600)
+     "Read-only — cryptograph…"   2.41 dark                (text-neutral-600)
+     step counter "/ 15"          2.11 dark   2.18 light   (--text-ghost)
+     …and ~40 more between 3.6 and 4.4.
+
+   The classes below are SEMANTIC — they say what a piece of text is for, and
+   each one is pinned to a theme token that clears 4.5:1 on this wizard's own
+   surfaces in both themes. A tier that cannot be read is not offered, so the
+   next person cannot reach for it by accident. That is the whole point: the
+   defect was never one bad value, it was a palette that made unreadable text
+   as easy to type as readable text.
+
+   Contrast here is enforced by e2e/onboarding-contrast.e2e.ts, which measures
+   real composited pixels (via e2e/contrast-scan.ts) on every step, both themes.
+   Do not add a colour here without running it.
+*/
+
+/* ── Status colours that are safe as TEXT ────────────────────────────────
+   index.css's `text-success` / `text-warning` / `text-danger` utilities paint
+   --status-* directly. Those values are tuned as FILLS (badges, dots, soft
+   tints) and they do not hold as text on a light canvas — measured in this
+   wizard, "SHA256:…" in text-success came out 3.10:1 and the amber "Private
+   Key — shown once, copy now" 3.00:1, both on the light theme, both well under
+   4.5. On dark they were fine, which is exactly why it survived: the wizard was
+   only ever looked at in dark.
+
+   So the wizard carries text-weight variants of the same three hues: bright on
+   dark, deep on light, same meaning. Every value below is measured against this
+   theme's LEAST forgiving surface for it — --bg-elevated, the darkest surface
+   in light and the lightest in dark, since these sit inside panels.
+
+   Declared for all three theme states index.css supports: the dark default,
+   the explicit light attribute, and a System-Light user on a paint that
+   happened before main.jsx stamped data-theme. Miss the third and the very
+   first frame of first boot is the one that fails. */
+.wz-root {
+  --ok-strong: #4ade80;     /* 10.9:1 on #171a21 */
+  --warn-strong: #fbbf24;   /* 10.4:1 on #171a21 */
+  --danger-strong: #f87171; /*  6.4:1 on #171a21 */
+}
+[data-theme="light"] .wz-root {
+  --ok-strong: #166534;     /* 6.0:1 on #eef0f4 */
+  --warn-strong: #854d0e;   /* 5.8:1 on #eef0f4 */
+  --danger-strong: #b91c1c; /* 5.6:1 on #eef0f4 */
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .wz-root {
+    --ok-strong: #166534;
+    --warn-strong: #854d0e;
+    --danger-strong: #b91c1c;
+  }
+}
+.wz-ok     { color: var(--ok-strong); }
+.wz-warn   { color: var(--warn-strong); }
+.wz-danger { color: var(--danger-strong); }
+
+/* ── Text tiers ───────────────────────────────────────────────────────────
+   Three, deliberately. --text-faint/--text-ghost/--text-dim exist in the token
+   set and all three fail AA as body copy on these surfaces, so the wizard does
+   not use them for text at all. --text-ghost survives only as a hairline rule
+   colour, where nothing is being read. */
+.wz-strong { color: var(--text-primary); }    /* headings, values, selected labels */
+.wz-body   { color: var(--text-secondary); }  /* sentences the user reads */
+.wz-dim    { color: var(--text-muted); }      /* labels, hints, units, captions */
+
+/* Surface + edge helpers. These exist so the ~90 `bg-neutral-900/50` /
+   `border-neutral-800/50` pairs scattered through Setup.tsx could be converted
+   to tokens mechanically and verifiably, rather than by hand-rewriting every
+   class string and hoping none were missed. They are token aliases, nothing
+   more — reach for .wz-panel when you are building a new surface. */
+.wz-surface      { background: var(--bg-surface); }
+.wz-surface-2    { background: var(--bg-elevated); }
+.wz-surface-deep { background: var(--bg-base); }
+.wz-hairline     { border-color: var(--border-default); }
+.wz-edge         { border-color: var(--border-strong); }
+
+/* ── Type scale ──────────────────────────────────────────────────────────
+   Nothing below 12.5px. The suite's recorded regression on the landing pages
+   was SUB-12px TYPE, and a 10px signal-strength glyph is exactly that mistake
+   in a different corner. */
+.wz-title {
+  font-size: clamp(1.5rem, 1.15rem + 1.4vw, 2rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+.wz-sub {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  max-width: 56ch;
+}
+.wz-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+}
+.wz-hint {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.wz-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.wz-mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+/* ── Layout shell ────────────────────────────────────────────────────────
+   The wizard is a three-row grid: header (progress), body (scrolls), footer
+   (actions). The footer NEVER scrolls away.
+
+   That is a fix, not a preference. At 1440x900 — an ordinary laptop — the
+   recovery-kit step put 231px below the fold, and the 231px contained the
+   type-to-confirm field AND the "Finish Setup" button. The primary action of
+   the last step of first boot was invisible, with the fullscreen pill sitting
+   over the cut so the page did not even look truncated. */
+.wz-root {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.wz-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* One calm wash instead of three pulsing blobs. The old background animated
+   three 500-600px blurred circles on 8s/10s/12s loops forever; blurring
+   half a megapixel continuously is the kind of thing that shows up on the
+   low-power boxes this OS targets, and it never read as anything but noise. */
+.wz-bg::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(48% 42% at 26% 14%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 68%),
+    radial-gradient(42% 40% at 82% 88%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 66%);
+}
+
+.wz-header {
+  position: relative;
+  padding: max(0.875rem, env(safe-area-inset-top)) 1rem 0.5rem;
+}
+.wz-header-inner {
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--wz-measure, 40rem);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.wz-body {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 1.25rem 1rem;
+  scrollbar-gutter: stable both-edges;
+}
+.wz-body-inner {
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--wz-measure, 40rem);
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* Steps that genuinely need horizontal room (language grid, timezone picker,
+   layout previews) opt into a wider measure rather than every step being sized
+   for the widest one. */
+.wz-wide { --wz-measure: 52rem; }
+
+.wz-footer {
+  position: relative;
+  padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-base) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+.wz-footer-inner {
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--wz-measure, 40rem);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.wz-footer-spacer { flex: 1; }
+
+/* ── Progress ────────────────────────────────────────────────────────────
+   A segmented rail. Completed segments are reachable (you can go back); future
+   ones are inert and are NOT buttons, because a disabled button in a row of
+   fifteen is fifteen tab stops that do nothing. */
+.wz-rail {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.wz-seg {
+  height: 4px;
+  flex: 1;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  transition: background var(--motion-base) var(--ease-standard);
+}
+.wz-seg--done { background: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); }
+.wz-seg--done:hover { background: var(--accent); }
+button.wz-seg { cursor: pointer; padding: 0; border: 0; }
+.wz-seg--now {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* 12.5px and --text-muted. Was 12px --text-ghost at 2.11:1 dark / 2.18:1 light —
+   the single most-repeated contrast failure in the wizard, present on all
+   fifteen steps because it lives in the header. */
+.wz-count {
+  flex-shrink: 0;
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.wz-count b { font-weight: 600; color: var(--text-secondary); }
+
+/* ── Panels ──────────────────────────────────────────────────────────────
+   The wizard's one surface. Replaces bg-neutral-900/50 + border-neutral-800/50
+   repeated nineteen times. */
+.wz-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 1rem 1.125rem;
+}
+.wz-panel + .wz-panel { margin-top: 0.75rem; }
+.wz-panel--quiet { background: color-mix(in srgb, var(--bg-surface) 60%, transparent); }
+.wz-panel--flush { padding: 0; overflow: hidden; }
+
+/* ── Selectable cards ────────────────────────────────────────────────────
+   One control for device profiles, themes, languages and layout presets, so
+   "selected" looks the same everywhere. Selection is carried by aria-pressed,
+   which is also what makes it announce correctly. */
+.wz-choice {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-xl);
+  border: 1.5px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.wz-choice:hover { border-color: var(--border-emphasis); background: var(--bg-hover); }
+.wz-choice[aria-pressed="true"],
+.wz-choice[aria-checked="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
+}
+.wz-choice--tile {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 1.125rem 0.875rem;
+}
+.wz-choice-title { font-size: 0.9375rem; font-weight: 500; color: var(--text-primary); line-height: 1.3; }
+.wz-choice-desc  { font-size: 0.8125rem; line-height: 1.45; color: var(--text-muted); margin-top: 0.125rem; }
+.wz-choice-icon  { color: var(--text-tertiary); flex-shrink: 0; }
+.wz-choice[aria-pressed="true"] .wz-choice-icon { color: var(--accent-text, var(--accent)); }
+
+/* Tick badge on a selected card. */
+.wz-tick {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid, var(--accent));
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* Checkbox-style row (the apps step). */
+.wz-check {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.125rem;
+  border-radius: var(--radius-xs);
+  border: 1.5px solid var(--border-emphasis);
+  display: grid;
+  place-items: center;
+  color: transparent;
+}
+[aria-pressed="true"] > .wz-check,
+[aria-checked="true"] > .wz-check {
+  background: var(--accent-solid, var(--accent));
+  border-color: var(--accent-solid, var(--accent));
+  color: #fff;
+}
+
+/* ── Grids ───────────────────────────────────────────────────────────────
+   auto-fit means these reflow at every width instead of at three breakpoints,
+   which is what a shell dragged to arbitrary sizes needs. */
+.wz-grid { display: grid; gap: 0.75rem; }
+.wz-grid--2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
+.wz-grid--3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+
+/* ── Toggle ──────────────────────────────────────────────────────────────
+   A real switch: 44px hit target, focus ring, aria-checked. */
+.wz-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+.wz-switch[aria-checked="true"] {
+  background: var(--accent-solid, var(--accent));
+  border-color: var(--accent-solid, var(--accent));
+}
+.wz-switch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 1.0625rem;
+  height: 1.0625rem;
+  margin-top: -0.53125rem;
+  border-radius: var(--radius-full);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--motion-base) var(--ease-out);
+}
+.wz-switch[aria-checked="true"]::after { transform: translateX(1.1875rem); }
+
+/* ── Rows / lists ────────────────────────────────────────────────────────*/
+.wz-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.wz-row:last-child { border-bottom: 0; }
+.wz-row:hover { background: var(--bg-hover); }
+.wz-row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-primary);
+}
+
+/* ── Notes / callouts ────────────────────────────────────────────────────*/
+.wz-note {
+  display: flex;
+  gap: 0.625rem;
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.wz-note b { color: var(--text-primary); font-weight: 600; }
+/* Status text sits on its own soft tint, which is the least forgiving surface
+   for it — so the foreground is the SOLID status colour, not the tint. */
+.wz-note--warn {
+  border-color: color-mix(in srgb, var(--status-warning) 40%, transparent);
+  background: var(--status-warning-soft);
+  color: var(--text-secondary);
+}
+.wz-note--danger {
+  border-color: color-mix(in srgb, var(--status-danger) 40%, transparent);
+  background: var(--status-danger-soft);
+  color: var(--text-secondary);
+}
+.wz-note--ok {
+  border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
+  background: var(--status-success-soft);
+  color: var(--text-secondary);
+}
+.wz-note-icon { flex-shrink: 0; margin-top: 0.0625rem; }
+.wz-note--warn   .wz-note-icon { color: var(--warn-strong, var(--status-warning)); }
+.wz-note--danger .wz-note-icon { color: var(--danger-strong, var(--status-danger)); }
+.wz-note--ok     .wz-note-icon { color: var(--ok-strong, var(--status-success)); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────
+   .btn-primary (index.css) resolves to --accent-solid, which ThemeProvider
+   derives so WHITE clears 4.5:1 on it. Measured, that lands at 4.52:1 with the
+   default accent — passing, with 0.02 of headroom. This wizard is the first
+   screen anyone sees and its buttons carry the only way forward, so it takes a
+   little more margin: one more step of darkening, which costs nothing visually
+   and moves white to ~5.4:1. */
+.wz-root .btn-primary {
+  background: color-mix(in srgb, var(--accent-solid, var(--accent)) 92%, #000);
+  min-height: 2.75rem;
+  padding-inline: 1.25rem;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+}
+.wz-root .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-solid, var(--accent)) 100%, #000);
+}
+.wz-cta { min-height: 3rem; padding-inline: 2.25rem; font-size: 1rem; }
+
+/* Text-weight actions (Back / Skip). Was text-neutral-600 at 2.55:1. */
+.wz-quiet {
+  background: none;
+  border: 0;
+  padding: 0.625rem 0.75rem;
+  min-height: 2.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.wz-quiet:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* ── Action bar ──────────────────────────────────────────────────────────
+   Sticky to the bottom of .wz-body. See the NavBar docstring in Setup.tsx for
+   the 231px-below-the-fold defect this closes. The negative margins let the
+   blurred bar bleed to the edges of the scroll container while its contents
+   stay on the reading measure. */
+.wz-nav {
+  position: sticky;
+  bottom: -1.25rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.5rem -1rem -1.25rem;
+  padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--bg-base) 90%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+@media (max-width: 30rem) {
+  .wz-nav { margin-inline: -0.75rem; padding-inline: 0.75rem; }
+  .wz-nav .btn-primary { flex: 1; justify-content: center; }
+}
+
+/* PIN fields: wide tracking so the dots read as discrete digits. */
+.wz-pin-input {
+  text-align: center;
+  font-size: 1.125rem;
+  letter-spacing: 0.3em;
+  padding-block: 0.75rem;
+}
+
+/* ── Focus ───────────────────────────────────────────────────────────────
+   A visible ring on everything focusable. The wizard is the one screen that
+   may be driven entirely by a TV remote or a car dial (two of the four device
+   profiles it offers on its own third step), where an invisible focus ring
+   makes the product unusable rather than merely awkward. */
+.wz-root :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-text, var(--accent));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Code / secret blocks ────────────────────────────────────────────────*/
+.wz-secret {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.wz-secret-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+.wz-secret pre {
+  margin: 0;
+  padding: 0.875rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-secondary);
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────
+   Step entrances are the only animation left. --motion-* already collapse
+   under prefers-reduced-motion (index.css), but a keyframe animation does not
+   read those, so it is disabled explicitly. */
+@keyframes wzStepIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.wz-step { animation: wzStepIn var(--motion-slow) var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wz-step { animation: none; }
+  .wz-seg,
+  .wz-switch,
+  .wz-switch::after,
+  .wz-choice,
+  .wz-row,
+  .wz-quiet { transition: none; }
+}
+
+/* ── Narrow screens ──────────────────────────────────────────────────────
+   390x844 is the reference phone. The footer becomes the only fixed chrome and
+   the actions go full-width, because a 14px "Back" link in a corner is not a
+   touch target. */
+@media (max-width: 30rem) {
+  .wz-header { padding-inline: 0.75rem; }
+  .wz-body   { padding: 1rem 0.75rem; }
+  .wz-footer { padding-inline: 0.75rem; }
+  .wz-title  { font-size: 1.5rem; }
+  .wz-panel  { padding: 0.875rem 1rem; border-radius: var(--radius-lg); }
+  .wz-footer-inner .btn-primary { flex: 1; justify-content: center; }
+  .wz-cta { width: 100%; }
+}
+
+/* Short viewports (a car dash, a phone in landscape, a 768x1024 tablet with the
+   keyboard up). Vertical centring is what pushes content off-screen when the
+   viewport is shorter than the content, so above the fold wins over centred. */
+@media (max-height: 44rem) {
+  .wz-body-inner { justify-content: flex-start; }
+}
