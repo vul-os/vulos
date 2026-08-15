@@ -1,0 +1,74 @@
+/* mobile.css — styles owned by the mobile shell (src/mobile/**, layouts/MobileStack).
+ *
+ * Everything here is either scoped under .vmob-active (stamped on <html> by
+ * useMobileEdgeGuards, only while MobileStack is mounted) or under a .vmob-*
+ * class that only the mobile tree emits. The desktop shell never sees any of it,
+ * and src/index.css / shell-chrome.css — which this workstream does not own —
+ * need no changes.
+ */
+
+/* ── MOBILE-08: kill pull-to-refresh on the OS shell ────────────────────────
+ * Measured 'auto' on both html and body on the shipping build. A downward drag
+ * near the top of any Vulos surface reloads the whole shell: every app's
+ * in-memory state, every iframe, the assistant conversation. In an installed PWA
+ * there is no URL bar to explain it — the OS just blinks.
+ *
+ * Chrome reads overscroll-behavior from the ROOT SCROLLER, so this has to be on
+ * html/body; putting it on .vmob-root (position: fixed, never the root scroller)
+ * would be a no-op that looks like a fix. `contain` keeps normal scrolling and
+ * suppresses only the browser's own overscroll action.
+ *
+ * The html rule is what disables pull-to-refresh; the body rule is belt-and-
+ * braces for engines that resolve the root scroller to body in quirks-ish cases.
+ */
+html.vmob-active,
+html.vmob-active > body {
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+}
+
+/* No text-size inflation inside the OS shell: the layouts are already sized for
+ * the viewport, and Android's autosizing silently breaks the 44px hit-target
+ * arithmetic the switcher and dock depend on. */
+html.vmob-active {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ── App switcher card ──────────────────────────────────────────────────────
+ * Cards drag UPWARD to dismiss (the phone-recents idiom). The drag is driven by
+ * pointer events on the card body, well away from every screen edge the Android
+ * system owns, so it survives gesture navigation. See roadmap/MOBILE-SHELL.md §3.
+ */
+.vmob-swipecard {
+  touch-action: pan-x;          /* we own vertical; the deck keeps horizontal */
+  will-change: transform, opacity;
+}
+.vmob-swipecard[data-dragging='false'] {
+  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vmob-swipecard[data-dragging='false'] { transition: none; }
+}
+
+/* The tinted plate behind a switcher card's app mark. Deliberately NOT a live
+ * render of the app — see AppSwitcher.tsx for why that was the defect. */
+.vmob-cardart {
+  background:
+    radial-gradient(120% 100% at 50% 0%, var(--bg-hover) 0%, transparent 70%),
+    var(--bg-subtle, var(--bg-secondary));
+}
+
+/* ── Home app grid ───────────────────────────────────────────────────────── */
+.vmob-tile {
+  -webkit-tap-highlight-color: transparent;
+}
+.vmob-tile:active .vmob-tile-art {
+  transform: scale(0.92);
+}
+.vmob-tile-art {
+  transition: transform 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vmob-tile-art { transition: none; }
+}

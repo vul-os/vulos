@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useShell, type ShellWindow } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
-import Portal from '../core/Portal'
 import AppIcon from '../core/AppIcons'
 import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
@@ -10,7 +9,11 @@ import TransparencyPanel from '../shell/TransparencyPanel'
 import CommandPalette from '../shell/CommandPalette'
 import { iframeSandboxForURL } from '../core/AppOrigins'
 import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
+import MobileHome from '../mobile/MobileHome'
+import AppSwitcher from '../mobile/AppSwitcher'
+import { useMobileEdgeGuards } from '../mobile/useMobileEdgeGuards'
 import '../shell/shell-chrome.css'
+import '../mobile/mobile.css'
 
 // ORIGIN-01: identical rule to the desktop shell (src/shell/Window.jsx) —
 // allow-same-origin is derived from the frame URL's origin and is granted only
@@ -36,6 +39,10 @@ type MobileView = 'home' | 'app' | 'switcher'
 
 export default function MobileStack() {
   const { windows, activeWindow, focusWindow, toggleLaunchpad } = useShell()
+  // MOBILE-08: disarm Chrome's pull-to-refresh for as long as the mobile shell
+  // is mounted. Measured armed ('auto') on the shipping build — a downward drag
+  // near the top of the OS reloaded the whole shell. See useMobileEdgeGuards.
+  useMobileEdgeGuards()
   // view: 'home' (assistant + glance) | 'app' (fullscreen active app) | 'switcher'
   const [view, setView] = useState<MobileView>('home')
   const prevCount = useRef(windows.length)
@@ -100,17 +107,12 @@ export default function MobileStack() {
 
       {/* Main content */}
       <div className="flex-1 relative overflow-hidden">
-        {/* HOME — assistant + glance. Kept mounted (hidden behind apps) so the
-            assistant conversation survives app switches. */}
+        {/* HOME — a real phone home screen: app grid + a resting ask bar that
+            hands the surface to the assistant on tap (MOBILE-10). Kept mounted
+            (hidden behind apps) so both the grid's scroll position and any
+            assistant conversation survive app switches. */}
         <div className={`absolute inset-0 flex flex-col ${view === 'home' ? '' : 'hidden'}`}>
-          {windows.length === 0 && (
-            <div className="shrink-0 flex flex-col items-center justify-center pt-8 pb-5">
-              <LifePulse />
-            </div>
-          )}
-          <div className="flex-1 min-h-0 flex flex-col">
-            <Portal mode="fullscreen" />
-          </div>
+          <MobileHome />
         </div>
 
         {/* APP STACK — every open window mounted; only the active one is shown.
@@ -125,9 +127,13 @@ export default function MobileStack() {
           </div>
         ))}
 
-        {/* APP SWITCHER — phone-style overview of running apps. */}
+        {/* APP SWITCHER — phone-style overview of running apps (MOBILE-09).
+            Cards are identity cards, NOT live second mounts of each app; the
+            previous version doubled every running app's memory at exactly the
+            moment the user opened it because memory was tight. See
+            mobile/AppSwitcher.tsx. */}
         {view === 'switcher' && (
-          <MobileSwitcher onOpen={openApp} onHome={() => setView('home')} />
+          <AppSwitcher onOpen={openApp} onHome={() => setView('home')} />
         )}
       </div>
 
@@ -196,76 +202,6 @@ function MobileAppFrame({ win }: { win: ShellWindow }) {
       sandbox={win.html ? 'allow-scripts' : iframeSandboxForURL(win.url)}
       referrerPolicy="no-referrer"
     />
-  )
-}
-
-// MobileSwitcher — full-height overlay listing every running app as a large,
-// tappable card with a close affordance. This is the mobile replacement for the
-// desktop window stack / dock.
-function MobileSwitcher({ onOpen, onHome }: { onOpen: (id: number) => void; onHome: () => void }) {
-  const { windows, closeWindow } = useShell()
-
-  return (
-    <div className="vmob-switcher absolute inset-0 z-10 overflow-y-auto overscroll-contain anim-sheet-up [-webkit-overflow-scrolling:touch]">
-      {/* Grab handle + header — signals the overview is a dismissible sheet. */}
-      <div className="safe-px-4 pt-2.5 pb-1">
-        <div className="mx-auto mb-3.5 h-1 w-9 rounded-full" style={{ background: 'var(--border-emphasis)' }} aria-hidden="true" />
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-[color:var(--text-primary)]">Running apps</h2>
-          <span className="text-xs font-medium text-[color:var(--text-faint)] tabular-nums">{windows.length} open</span>
-        </div>
-      </div>
-      {windows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-center px-6">
-          <p className="text-sm text-[color:var(--text-tertiary)]">No apps are running</p>
-          <button onClick={onHome} className="focus-primary mt-3 text-xs font-medium accent-text active:opacity-70 transition-opacity">Back to home</button>
-        </div>
-      ) : (
-        // A horizontally-snapping deck, not a vertical list.
-        //
-        // As a single column of full-width cards this was the weakest surface in
-        // the product on the device it exists for: at 390x844 exactly two and a
-        // bit cards fit, so the third was always sliced by the dock, and nothing
-        // about it read as "several apps are running" — it read as a stubby
-        // list. Cards now sit side by side at ~76% width so the next one peeks,
-        // which is the phone-recents metaphor every user already knows and the
-        // only layout at this size where more than one app is legible at once.
-        //
-        // snap-x + snap-center makes the peek deliberate rather than an
-        // accident of overflow; sm: keeps the roomier two-up grid for tablets.
-        <div className="safe-px-4 py-4 flex sm:grid sm:grid-cols-2 gap-3.5 overflow-x-auto sm:overflow-visible snap-x snap-mandatory sm:snap-none no-scrollbar [-webkit-overflow-scrolling:touch]">
-          {windows.map(win => (
-            <div key={win.id} className="vmob-card rounded-[var(--radius-xl)] overflow-hidden transition-transform duration-200 active:scale-[0.985] shrink-0 w-[76%] snap-center sm:w-auto sm:shrink">
-              <div className="flex items-center gap-2.5 px-3 h-12">
-                <AppIcon id={win.appId} size={20} color={undefined} style={undefined} />
-                <span className="text-[13px] font-medium text-[color:var(--text-secondary)] truncate flex-1">{win.title}</span>
-                <button
-                  onClick={() => closeWindow(win.id)}
-                  aria-label={`Close ${win.title}`}
-                  className="focus-primary touch-target -mr-1.5 flex items-center justify-center rounded-full text-[color:var(--text-tertiary)] active:text-[color:var(--status-danger)] active:bg-[color:var(--status-danger-soft)] transition-colors"
-                >
-                  <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
-                </button>
-              </div>
-              <button
-                onClick={() => onOpen(win.id)}
-                aria-label={`Switch to ${win.title}`}
-                className="block w-full text-left"
-              >
-                {/* Near-full-height on a phone: a recents card is a portrait
-                    preview of the app, and at a fixed 16rem the deck sat as a
-                    stubby band with two thirds of the screen empty below it.
-                    vh-relative so it fills whatever handset it lands on. The
-                    tablet grid keeps its shorter card. */}
-                <div className="vmob-card-body h-[58vh] sm:h-44 relative pointer-events-none overflow-hidden">
-                  <MobileAppFrame win={win} />
-                </div>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 
