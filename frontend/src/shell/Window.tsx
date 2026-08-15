@@ -339,6 +339,17 @@ export default function Window({ win, pointerBlock }: WindowProps) {
       // .vwin drives the token-based elevation + accent focus ring (theme-aware,
       // active/inactive keyed off [data-active]); .win-anim drives lifecycle motion.
       className="vwin win-anim absolute flex flex-col rounded-lg overflow-hidden"
+      // NOTE — win.position/win.size are painted VERBATIM here, on purpose.
+      //
+      // A window opening off the right edge of a narrow screen is a real bug
+      // (it was: 12px off at 768, 172px by the sixth window) but it is not this
+      // component's bug to fix, and clamping it here would be wrong twice
+      // over. It would cage a window the user deliberately dragged half
+      // off-screen; and onDragStart below computes the next position from
+      // win.position.x, so a rendered box that disagreed with state would make
+      // the window jump under the pointer on the first drag after the clamp
+      // engaged. The fit belongs to the geometry the shell INVENTS — see
+      // openWindowGeometry in ./windowTiling.ts, applied once at OPEN_WINDOW.
       style={{
         left: win.position.x, top: win.position.y, width: win.size.width, height: win.size.height,
         zIndex: closing ? zBase + WINDOW_Z_CLOSING_LIFT : zBase,

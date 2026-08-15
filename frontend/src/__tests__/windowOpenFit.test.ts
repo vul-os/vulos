@@ -232,6 +232,26 @@ describe('the clamp stops at OPEN_WINDOW — the boundary is the decision', () =
     expect(w.position.x + w.size.width).toBeGreaterThan(768)
   })
 
+  it('leaves the tiler alone: a window opened at 768 maximizes and restores to the same on-screen geometry', () => {
+    // The fit must not fight tiling, and must not leave a restored window
+    // somewhere it cannot be restored FROM. TILE/MAXIMIZE stash the pre-tile
+    // floating geometry verbatim — which is now the fitted geometry, so the
+    // round trip lands back on screen instead of back off the right edge.
+    vi.stubGlobal('innerWidth', 768)
+    vi.stubGlobal('innerHeight', 1024)
+    let s = shellReducer(baseState(), { type: 'OPEN_WINDOW', appId: 'terminal' })
+    const opened = s.desktops['desktop-1'].windows[0]
+    s = shellReducer(s, { type: 'MAXIMIZE_WINDOW', id: opened.id })
+    const max = s.desktops['desktop-1'].windows[0]
+    expect(max._maximized).toBe(true)
+    expect(max.size.width).toBe(768)
+    s = shellReducer(s, { type: 'MAXIMIZE_WINDOW', id: opened.id })
+    const restored = s.desktops['desktop-1'].windows[0]
+    expect(restored.position).toEqual(opened.position)
+    expect(restored.size).toEqual(opened.size)
+    expect(restored.position.x + restored.size.width).toBeLessThanOrEqual(768)
+  })
+
   it('a window opened on a phone-narrow screen does NOT come back shrunken on a big one', () => {
     // The corruption a clamp-at-hydrate would cause: the writer re-serializes
     // whatever is in state as a fraction of ITS OWN viewport, so any px the
