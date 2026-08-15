@@ -8,12 +8,18 @@ edit nothing, run the harness. A row exists only because a container really ran.
 debian:trixie container, every assertion in the *Asserted* column held, and the
 app was then removed again. `untestable-on-arm64` = the upstream publishes no
 aarch64 build, so this machine cannot install it — that is a stated limit, **not**
-a pass and **not** a claim the app works.
+a pass and **not** a claim the app works. `disabled` = the entry carries
+`_disabled`, so the product refuses to install it by design — nothing was run.
 
 | status | apps |
 | --- | --- |
-| ✅ passed | 1 |
+| 🚫 disabled | 2 |
+| ✅ passed | 3 |
 
 | App | Source | Arch | Verified | Status | Disk MB | Mins | Date | Asserted / why not |
 | --- | --- | --- | --- | --- | ---: | ---: | --- | --- |
+| `memos` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
+| `vaultwarden` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
 | `filezilla` | flathub | arm64 | - | ✅ passed | 2059 | 29 | 2026-08-15 | install-path, manifest-written, command-declared, flatpak-present, flatpak-deployed, flatpak-runtime, command-resolves, command-executes, uninstall |
+| `nginx` | unclassified | arm64 | - | ✅ passed | 29 | 1 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |
+| `syncthing` | unclassified | arm64 | - | ✅ passed | 45 | 1 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |

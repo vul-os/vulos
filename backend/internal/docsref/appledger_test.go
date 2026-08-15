@@ -99,7 +99,7 @@ func TestAppVerificationLedgerRowsAreHonest(t *testing.T) {
 			t.Errorf("%s: ledger row for an app id that is not in registry.json", r.ID)
 		}
 		if !valid[r.Status] {
-			t.Errorf("%s: status %q is not one the harness emits (passed|failed|untestable-on-arm64|skipped)", r.ID, r.Status)
+			t.Errorf("%s: status %q is not one the harness emits (passed|failed|untestable-on-arm64|skipped|disabled)", r.ID, r.Status)
 		}
 		if r.Date == "" {
 			t.Errorf("%s: ledger row has no date", r.ID)
@@ -128,7 +128,7 @@ func TestAppVerificationLedgerRowsAreHonest(t *testing.T) {
 			if strings.TrimSpace(r.Note) != "" {
 				t.Errorf("%s: status=passed but the row carries a failure note %q — a pass with a complaint in it is not a pass", r.ID, r.Note)
 			}
-		case "untestable-on-arm64", "skipped":
+		case "untestable-on-arm64", "skipped", "disabled":
 			if strings.TrimSpace(r.Note) == "" {
 				t.Errorf("%s: status=%s with no note — this status is only worth anything when it says why", r.ID, r.Status)
 			}

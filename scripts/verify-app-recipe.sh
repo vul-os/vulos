@@ -462,7 +462,8 @@ if not arch and ra: arch=ra
 print(json.dumps({
  "id":aid,"name":e.get("name"),"version":latest,"type":e.get("type"),
  "arch":arch,"source":e.get("source"),"verified":e.get("verified"),
- "proprietary":e.get("proprietary"),"disabled":bool(e.get("_disabled")),
+ "proprietary":e.get("proprietary"),
+ "disabled":bool(e.get("_disabled")) or bool(r.get("_disabled")),
  "flatpak_id":r.get("flatpak_id") or "","install":r.get("install") or "",
  "download_url":r.get("download_url") or "","command":r.get("command") or "",
  "signed":bool(e.get("signature")),
@@ -544,7 +545,7 @@ src,dst=sys.argv[1],sys.argv[2]
 rows=[]
 if os.path.exists(src):
     rows=json.load(open(src)).get("rows",[])
-icon={"passed":"✅","failed":"❌","untestable-on-arm64":"⛔","skipped":"⏭"}
+icon={"passed":"✅","failed":"❌","untestable-on-arm64":"⛔","skipped":"⏭","disabled":"🚫"}
 out=[]
 out.append("# App Hub — install verification ledger\n")
 out.append("Generated from `roadmap/app-verification-ledger.json` by")
@@ -554,7 +555,8 @@ out.append("`passed` = the product's own installer (`appnet.InstallFromRegistry`
 out.append("debian:trixie container, every assertion in the *Asserted* column held, and the")
 out.append("app was then removed again. `untestable-on-arm64` = the upstream publishes no")
 out.append("aarch64 build, so this machine cannot install it — that is a stated limit, **not**")
-out.append("a pass and **not** a claim the app works.\n")
+out.append("a pass and **not** a claim the app works. `disabled` = the entry carries")
+out.append("`_disabled`, so the product refuses to install it by design — nothing was run.\n")
 counts={}
 for r in rows: counts[r.get("status","?")]=counts.get(r.get("status","?"),0)+1
 out.append("| status | apps |")
@@ -594,6 +596,23 @@ verify_one() {
   arch_decl="$(meta_get arch)"
   [[ "$(meta_get signed)" == "True" ]] || die "entry '$app' has no signature — sign it (make sign-registry) before verifying"
   [[ -z "$src" ]] && src="$( [[ -n "$fpid" ]] && echo flathub || echo unclassified )"
+
+  local date_disabled; date_disabled="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # Administratively disabled entries (_disabled on the entry or the recipe) are
+  # REFUSED by the product on purpose — 11 of 55 entries are in this state today.
+  # Recording that as "failed" would read as a broken recipe, which is a
+  # different and much louder claim than "nobody has turned this on".
+  if [[ "$(meta_get disabled)" == "True" ]]; then
+    say "  ${c_yel}SKIP${c_off} — entry is administratively disabled (_disabled); the product refuses to install it"
+    ledger_put "$(python3 -c '
+import json,sys
+print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"arch":sys.argv[3],"status":"disabled",
+ "date":sys.argv[4],"note":"_disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run",
+ "harness":sys.argv[5],"assertions":[]}))' \
+      "$app" "$src" "$(go_arch)" "$date_disabled" "$HARNESS_VERSION")"
+    ledger_render >/dev/null
+    return 3
+  fi
 
   local host_arch fh_arch; host_arch="$(go_arch)"; fh_arch="$(flathub_arch "$host_arch")"
   [[ -n "$host_arch" ]] || die "cannot determine the container architecture from docker"

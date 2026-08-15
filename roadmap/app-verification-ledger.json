@@ -26,6 +26,72 @@
       "seconds": 1765,
       "source": "flathub",
       "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [],
+      "date": "2026-08-15T02:48:47Z",
+      "harness": "1",
+      "id": "memos",
+      "note": "_disabled is set on the entry or its latest recipe \u2014 appnet refuses the install by design; nothing was run",
+      "source": "unclassified",
+      "status": "disabled"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
+        "command-resolves",
+        "artifact-provenance",
+        "command-executes"
+      ],
+      "date": "2026-08-15T02:38:52Z",
+      "disk_delta_mb": 29,
+      "download_mb": 0,
+      "flathub_verified": null,
+      "flatpak_id": "",
+      "harness": "1",
+      "id": "nginx",
+      "installed_mb": 0,
+      "note": "",
+      "seconds": 52,
+      "source": "unclassified",
+      "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
+        "command-resolves",
+        "artifact-provenance",
+        "command-executes"
+      ],
+      "date": "2026-08-15T02:40:42Z",
+      "disk_delta_mb": 45,
+      "download_mb": 0,
+      "flathub_verified": null,
+      "flatpak_id": "",
+      "harness": "1",
+      "id": "syncthing",
+      "installed_mb": 0,
+      "note": "",
+      "seconds": 33,
+      "source": "unclassified",
+      "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [],
+      "date": "2026-08-15T02:48:47Z",
+      "harness": "1",
+      "id": "vaultwarden",
+      "note": "_disabled is set on the entry or its latest recipe \u2014 appnet refuses the install by design; nothing was run",
+      "source": "unclassified",
+      "status": "disabled"
     }
   ]
 }
