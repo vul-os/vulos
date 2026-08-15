@@ -61,6 +61,70 @@ export const AA_TARGET = AA_TEXT * AA_HEADROOM
  */
 export const ACCENT_TINT_RANGE = [15, 22] as const
 
+/**
+ * The status-tint percentages the OS draws status-coloured TEXT on.
+ *
+ * Same shape as ACCENT_TINT_RANGE and the same reason, one layer down: a
+ * status string is very often drawn on a `-soft` tint of its own hue
+ * (`text-danger bg-danger-soft`), and Packages/Drivers deepen that to 24% on
+ * hover while the text colour stays put. Contrast against a tint of your own
+ * hue degrades monotonically as the tint deepens, so bounding the deepest one
+ * bounds every lighter chip and every plain surface.
+ *
+ * These are not hand-maintained: accentContrast.status.test.ts re-reads the
+ * percentages out of the source tree, so a new `color-mix(--status-danger
+ * 30%)` anywhere in src widens the enumeration by itself instead of quietly
+ * escaping it. The list here is the FLOOR — the `-soft` tokens in index.css.
+ */
+export const STATUS_TINT_RANGE = [12, 14, 24] as const
+
+/** `color-mix(in srgb, colour pct%, transparent)` composited over `base`. */
+export function tintOver(colour: Rgb, pct: number, base: Rgb): Rgb {
+  const f = pct / 100
+  return {
+    r: colour.r * f + base.r * (1 - f),
+    g: colour.g * f + base.g * (1 - f),
+    b: colour.b * f + base.b * (1 - f),
+  }
+}
+
+/**
+ * Move a FILL colour until it clears `target` on every surface it will be read
+ * on — where the surface set DEPENDS ON THE CANDIDATE, because some of those
+ * surfaces are tints of the colour itself.
+ *
+ * That dependency is the whole reason this is a loop and not a call to
+ * adjustForContrast. --accent-text was derived against a single fixed tint and
+ * came out at 4.21:1 on a control that tinted its own background more deeply:
+ * the derivation had aimed at a pair that the control never drew. Re-deriving
+ * the surfaces from each candidate closes that gap by construction.
+ *
+ * Returns the closest it managed if the target is unreachable, matching
+ * adjustForContrast's contract: callers always get a usable colour.
+ */
+export function deriveTextVariant(
+  fill: Rgb,
+  surfacesFor: (candidate: Rgb) => Rgb[],
+  target = AA_TARGET,
+): Rgb {
+  let cur = fill
+  for (let i = 0; i < 32; i++) {
+    const surfaces = surfacesFor(cur)
+    let worst = surfaces[0]
+    let worstRatio = Infinity
+    for (const s of surfaces) {
+      const r = contrast(cur, s)
+      if (r < worstRatio) { worstRatio = r; worst = s }
+    }
+    if (worstRatio >= target) return cur
+    const next = adjustForContrast(cur, worst, target)
+    // No movement left (pure black/white reached) — stop rather than spin.
+    if (toHex(next) === toHex(cur)) return cur
+    cur = next
+  }
+  return cur
+}
+
 export interface Rgb { r: number; g: number; b: number }
 
 export function parseColor(input: string): Rgb | null {

@@ -833,7 +833,7 @@
 }
 
 .hub-state svg { flex: none; width: 16px; height: 16px; }
-.hub-state[data-tone='ok'] svg { color: var(--status-success); }
+.hub-state[data-tone='ok'] svg { color: var(--status-success-text); }
 .hub-state[data-tone='off'] svg { color: var(--text-ghost); }
 
 /* ═══ Notices (cache banner, load error, install error, success) ══════════ */
@@ -852,8 +852,8 @@
 
 .hub-notice > svg { flex: none; width: 17px; height: 17px; margin-top: 1px; color: var(--text-tertiary); }
 .hub-notice[data-tone='accent'] > svg { color: var(--accent-text, var(--accent)); }
-.hub-notice[data-tone='danger'] > svg { color: var(--status-danger); }
-.hub-notice[data-tone='success'] > svg { color: var(--status-success); }
+.hub-notice[data-tone='danger'] > svg { color: var(--status-danger-text); }
+.hub-notice[data-tone='success'] > svg { color: var(--status-success-text); }
 
 .hub-notice[data-tone='danger'] { border-color: color-mix(in srgb, var(--status-danger) 30%, transparent); }
 .hub-notice[data-tone='success'] { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); }

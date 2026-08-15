@@ -933,9 +933,11 @@ textarea::placeholder {
    MobileStack.jsx) and were silently dead as plain CSS. */
 /* TEXT reads --status-*-text; FILLS read --status-* itself. The three below
    used to paint the fill value, which is how the same colour ended up being
-   asked to be a legible 12px string AND a 6px dot. `text-[var(--status-danger)]`
-   is the same defect spelled by hand — core/accentContrast.status.test.ts
-   fails on it, so the two spellings cannot drift apart again. */
+   asked to be a legible 12px string AND a 6px dot. Spelling the same thing as
+   an arbitrary-value utility bypasses these rules entirely, which is how 109
+   of the 138 call sites escaped the first fix — core/accentContrast.status
+   .test.ts fails on that spelling anywhere in src (this file included), so the
+   two cannot drift apart again. */
 @utility text-success { color: var(--status-success-text); }
 @utility text-danger  { color: var(--status-danger-text); }
 @utility text-warning { color: var(--status-warning-text); }

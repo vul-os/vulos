@@ -17,10 +17,10 @@ import type { Size } from './phoneLayout'
 import { displayNumber } from './phoneUtils'
 import type { PhoneContact } from './telephonyApi'
 
-const SOURCE_META: Record<string, { label: string; color: string }> = {
-  vulos: { label: 'Vulos', color: 'var(--accent)' },
-  phone: { label: 'Device', color: 'var(--status-success)' },
-  'box-sim': { label: 'Box SIM', color: 'var(--status-warning)' },
+const SOURCE_META: Record<string, { label: string; dot: string }> = {
+  vulos: { label: 'Vulos', dot: 'var(--accent)' },
+  phone: { label: 'Device', dot: 'var(--status-success)' },
+  'box-sim': { label: 'Box SIM', dot: 'var(--status-warning)' },
 }
 const SOURCE_ORDER = ['vulos', 'phone', 'box-sim']
 
@@ -31,7 +31,7 @@ function SourceDots({ sources }: { sources: string[] }) {
   return (
     <span className="inline-flex items-center gap-[3px] shrink-0">
       {list.map((s) => (
-        <span key={s} aria-hidden="true" className="w-1.5 h-1.5 rounded-full" style={{ background: SOURCE_META[s].color }} />
+        <span key={s} aria-hidden="true" className="w-1.5 h-1.5 rounded-full" style={{ background: SOURCE_META[s].dot }} />
       ))}
       <span className="sr-only">{`On ${labels}`}</span>
     </span>

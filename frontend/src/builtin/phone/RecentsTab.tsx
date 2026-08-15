@@ -33,16 +33,16 @@ import type { CallEntry } from './telephonyApi'
 // missed call put a person's name at 3.97:1 in light. Colour is now a second
 // cue on a graphic, which is held to 3:1, while every word in the row sits on
 // the normal text ramp. Nothing is conveyed by colour alone.
-const DIRECTION: Record<string, { path: string; color: string; label: string; emphasis: boolean }> = {
-  incoming: { path: 'M17 7 L7 17 M7 11 v6 h6', color: 'var(--status-success)', label: 'Incoming', emphasis: false },
-  outgoing: { path: 'M7 17 L17 7 M11 7 h6 v6', color: 'var(--accent)', label: 'Outgoing', emphasis: false },
-  missed: { path: 'M7 7 L17 17 M17 11 v6 h-6', color: 'var(--status-danger)', label: 'Missed', emphasis: true },
+const DIRECTION: Record<string, { path: string; stroke: string; label: string; emphasis: boolean }> = {
+  incoming: { path: 'M17 7 L7 17 M7 11 v6 h6', stroke: 'var(--status-success)', label: 'Incoming', emphasis: false },
+  outgoing: { path: 'M7 17 L17 7 M11 7 h6 v6', stroke: 'var(--accent)', label: 'Outgoing', emphasis: false },
+  missed: { path: 'M7 7 L17 17 M17 11 v6 h-6', stroke: 'var(--status-danger)', label: 'Missed', emphasis: true },
 }
 
-function DirectionMark({ path, color }: { path: string; color: string }) {
+function DirectionMark({ path, stroke }: { path: string; stroke: string }) {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none"
-      stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      stroke={stroke} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
       <path d={path} />
     </svg>
   )
@@ -105,7 +105,7 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
                         {label(c)}
                       </span>
                       <span className="flex items-center gap-1.5 text-[12.5px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                        <DirectionMark path={meta.path} color={meta.color} />
+                        <DirectionMark path={meta.path} stroke={meta.stroke} />
                         <span className="truncate">
                           {meta.label}
                           {c.duration > 0 ? ` · ${formatDuration(c.duration)}` : ''}
@@ -166,7 +166,7 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
           const meta = DIRECTION[c.direction] ?? DIRECTION.incoming
           return (
             <li key={c.id} className="flex items-center gap-2 py-2 text-[13px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-              <DirectionMark path={meta.path} color={meta.color} />
+              <DirectionMark path={meta.path} stroke={meta.stroke} />
               <span style={{ color: 'var(--text-primary)' }}>{meta.label}</span>
               {c.duration > 0 && <span style={{ color: 'var(--text-tertiary)' }}>· {formatDuration(c.duration)}</span>}
               <span className="ml-auto" style={{ color: 'var(--text-tertiary)' }}>{formatRelative(callTimeMs(c))}</span>
