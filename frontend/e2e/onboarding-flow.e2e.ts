@@ -210,15 +210,21 @@ test('SSH can be skipped — it is not a condition of owning the machine', async
 })
 
 test('a box that cannot record setup-complete says so instead of pretending', async ({ page }) => {
-  // GET /api/setup/status is os.Stat on /var/lib/vulos/.setup-complete, and the
-  // only writer of that file in the whole product is a `touch` sent through
-  // POST /api/exec — which is admin-gated and kill-switchable
-  // (VULOS_DISABLE_EXEC -> 503). When it fails, nothing else ever marks setup
-  // done and the wizard runs again on the next boot, with the account already
+  // GET /api/setup/status is os.Stat on /var/lib/vulos/.setup-complete. The
+  // writer is now POST /api/setup/complete (backend routes_setup.go), a
+  // single-purpose owner-gated route; it used to be a `touch` through the
+  // kill-switchable /api/exec, which is why a hardened box could never record
+  // that it had been set up. Either way the failure mode this test guards is
+  // the same: when the marker cannot be written, nothing else marks setup done
+  // and the wizard runs again on the next boot, with the account already
   // created so register then fails on a duplicate username. The user should
   // hear about that at the time, not discover it after a reboot.
+  //
+  // Both writers are refused here, so this stays a test of the WIZARD's
+  // reporting rather than of which endpoint it happens to call.
   test.setTimeout(240_000)
   await bootWizard(page, 'dark', {
+    'POST /api/setup/complete': json({ error: 'could not record setup completion' }, 500),
     'POST /api/exec': json({ error: 'exec endpoint disabled by configuration' }, 503),
   })
 

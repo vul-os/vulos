@@ -398,19 +398,22 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
    *
    * The MARKER is not best-effort, and it is now reported.
    *
-   * GET /api/setup/status is `os.Stat("/var/lib/vulos/.setup-complete")`, and
-   * the only thing in the entire product that creates that file is the `touch`
-   * below, sent through POST /api/exec. /api/exec is admin-gated AND carries a
-   * kill switch (VULOS_DISABLE_EXEC -> 503). So on a box where exec is disabled
-   * by configuration, or where the owner is somehow not admin, the touch fails,
-   * nothing else ever writes the marker, and the wizard runs again on EVERY
-   * subsequent boot — with the account already created, so the account step's
-   * register then fails on a duplicate username and the user is stuck.
+   * GET /api/setup/status is `os.Stat("/var/lib/vulos/.setup-complete")`. That
+   * file used to have no writer at all: the wizard `touch`ed it through POST
+   * /api/exec, which is admin-gated AND carries a kill switch
+   * (VULOS_DISABLE_EXEC -> 503). On a box where exec is disabled by
+   * configuration the touch failed, nothing else ever wrote the marker, and the
+   * wizard ran again on EVERY subsequent boot — with the account already
+   * created, so the account step's register then failed on a duplicate username
+   * and the user was stuck.
    *
-   * That is a backend gap, not something this component can fix: there is no
-   * POST /api/setup/complete. Reported. What the wizard can do is stop
-   * pretending, so the user sees a real message instead of silently finding
-   * themselves back in setup after the next reboot.
+   * There is now a route whose only job is this: POST /api/setup/complete
+   * (backend/cmd/server/routes_setup.go). It is owner-gated (the account step
+   * has already created that account and signed the browser in) and it is NOT
+   * kill-switchable, because "stop running arbitrary commands" must not mean
+   * "make setup impossible to finish". The failure is still reported rather
+   * than swallowed: if the box cannot record completion, the user hears it now
+   * instead of discovering it after a reboot.
    */
   const finish = async () => {
     if (config.deviceProfile) {
@@ -432,10 +435,7 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
       })
     }
 
-    const marked = await saveToBox('/api/exec', {
-      method: 'POST',
-      body: JSON.stringify({ command: 'mkdir -p /var/lib/vulos && touch /var/lib/vulos/.setup-complete' }),
-    })
+    const marked = await saveToBox('/api/setup/complete', { method: 'POST' })
     if (!marked.ok) {
       setFinishError(
         `Setup is done, but this box could not record that it is done, so it may run setup again on the next boot. ${marked.message}`,
