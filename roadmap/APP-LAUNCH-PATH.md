@@ -199,7 +199,23 @@ Two further binaries on the same execution path were also Dockerfile-only. `pool
 
 **Decision: ship Chromium, not Chrome.** Chromium is open source and redistributable inside an image; Chrome is proprietary, and shipping it is a licensing decision rather than a packaging one. `findBin` prefers `chromium` anyway, and the gate now *fails* if a `google-chrome*` package appears in the rootfs list.
 
-**Cost.** Measured on `debian:trixie-slim` arm64 — `chromium xvfb xdotool` pulled in **176 packages, +662 MB on disk, +251 MB gzipped**. That is an upper bound: it was measured against a bare slim base, and the real Vulos rootfs already carries several of those packages (`systemd`, `mesa-*`, `gstreamer*`, `fonts-noto`, `flatpak`). The largest single items are `chromium` (292 MB), `libllvm19` (120 MB) and `chromium-common` (84 MB). Against a 2 GB image floor this is a material but affordable share, and it buys a headline feature that was entirely non-functional on the target hardware.
+**Cost — measured twice, because the first number was wrong.**
+
+Measured against a bare `debian:trixie-slim` arm64, the five packages pull in **189 packages, +662 MB on disk, +251 MB compressed**. That figure is misleading and should not be quoted: most of that closure is `systemd`, `mesa-*`, `libgtk-3-*`, `libllvm19`, `fonts` — which the Vulos rootfs *already installs* via `flatpak`, `labwc`, `cage` and `gstreamer1.0-*`.
+
+Measured against the **real rootfs package closure** (502 packages, resolved with `apt-get install -s` over `build.sh`'s own list):
+
+| | |
+|---|---|
+| Packages added | **30** |
+| Installed on disk | **+411 MB** |
+| Download / compressed | **+121 MB** |
+
+`chromium` (292 MB) and `chromium-common` (84 MB) are 92 % of it; everything else — `xvfb` (4.6 MB), `x11-xserver-utils` (1.2 MB), `xdotool`, `matchbox-window-manager` (0.3 MB each) — is rounding error.
+
+Against a 2 GB image floor that is roughly 6 % compressed, and it buys a headline feature that was entirely non-functional on the target hardware. Worth taking.
+
+*Method note:* the first attempt to measure this correctly was killed at 15 minutes on a loaded host, and the background job reported `EXIT=137`. That is a SIGKILL from my own cleanup, not a measurement — checking the exit code rather than reading the empty log as a result is what kept a fabricated number out of this section.
 
 ### The failure was silent
 
