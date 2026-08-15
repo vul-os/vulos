@@ -141,6 +141,22 @@ here, and with CI off the table they stay **untested**. The ledger records that 
 pass inferred from metadata: a row saying "not tested, and here is why" is worth more
 than a green tick that means nothing.
 
+## Ids are case-sensitive, and a typo is a 404
+
+`io.lmms.lmms` in an earlier revision of this list was wrong — the real id is
+`io.lmms.LMMS`, caught by resolving it rather than reading it. Together with
+`org.cryptomator.Crypt` (404), `fr.romainvigier.MetadataCleaner` (EOL) and
+`org.raspberrypi.rpi-imager` (EOL), that is **four bad ids found in the first
+~40 apps**. Assume the same rate across the remaining 100+ and resolve every id
+before it is written into an entry.
+
+**A multi-branch app needs its branch pinned.** `FlatpakInstall` runs with no
+branch, so an app publishing more than one — QGIS ships `stable` *and* `lts` —
+exits 1 on the bare id, while Flathub's API reports a single `"branch":"stable"`.
+An entry built from API metadata therefore looks correct and fails at first
+click. QGIS is pinned `org.qgis.qgis//stable`. Wine publishes seven branches,
+none named plain `stable`.
+
 ## The catalogue — 120 apps
 
 Legend: **✓** already in the registry as a Flatpak · **↻** in the registry via apt,
@@ -182,7 +198,7 @@ verification unconfirmed.
 ### Wave 2 — the remainder
 
 **Audio production (6)**
-`org.audacityteam.Audacity` ✓ · `org.ardour.Ardour` ↻ · `io.lmms.lmms` ↻ ·
+`org.audacityteam.Audacity` ✓ · `org.ardour.Ardour` ↻ · `io.lmms.LMMS` ↻ ·
 `org.musescore.MuseScore` + · `com.github.wwmm.easyeffects` + · `org.mixxx.Mixxx` +
 
 **Graphics & photo (11)**
