@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
-import QRCode from 'qrcode'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
@@ -63,6 +62,50 @@ interface StepProps {
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
+}
+
+/**
+ * POST/PUT something to the box and report honestly whether it landed.
+ *
+ * Every write in this wizard used to look like:
+ *
+ *     try { await fetch(url, { method: 'POST', ... }) } catch { }
+ *     onNext()
+ *
+ * which cannot fail. `fetch` rejects only on a network-level error; a 401, a
+ * 403, a 500 all RESOLVE, so the catch never ran, res.ok was never read, and
+ * the step advanced reporting success it had not checked for. That is how the
+ * identity, storage and SSH steps came to post into the void on every real
+ * first boot — they were 401ing (none of those paths are in the backend's
+ * publicPaths) and the UI could not tell, because it never looked.
+ *
+ * Returns a discriminated result so callers must handle the failure branch;
+ * the wizard shows it and lets the user retry or knowingly continue, rather
+ * than silently pretending.
+ */
+type SaveResult = { ok: true } | { ok: false; message: string }
+
+async function saveToBox(url: string, init: RequestInit): Promise<SaveResult> {
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
+      credentials: 'include',
+    })
+    if (res.ok) return { ok: true }
+    const raw: unknown = await res.json().catch(() => ({}))
+    const data = isRecord(raw) ? raw : {}
+    const detail = typeof data.error === 'string' && data.error ? data.error : ''
+    // 401/403 here means "no owner session yet", which is a wizard-ordering
+    // bug rather than anything the user did — say which, so the next person
+    // reading a bug report can tell the two apart immediately.
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, message: detail || 'This box refused the change because setup is not signed in yet.' }
+    }
+    return { ok: false, message: detail || `The box returned ${res.status}.` }
+  } catch {
+    return { ok: false, message: 'Could not reach this box.' }
+  }
 }
 
 // useI18n() / useTheme() (../core/i18n.jsx, ../core/ThemeProvider.jsx — both
@@ -285,6 +328,12 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
   })
   const [transitioning, setTransitioning] = useState(false)
 
+  // The owner account, once AccountStep has actually created it on the box.
+  // `phrase` is the one-time master recovery phrase from the register
+  // response — held here so the recovery-kit step can put the credential that
+  // actually recovers the account INTO the recovery kit.
+  const [account, setAccount] = useState<{ created: boolean; phrase: string }>({ created: false, phrase: '' })
+
   // INIT-09: flow type — 'new' (default) or 'join'
   const [IS09_flowType, IS09_setFlowType] = useState('new')
   // INIT-09: whether mode check is done
@@ -423,6 +472,8 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
                 update={update}
                 onNext={next}
                 onPrev={prev}
+                created={account.created}
+                onCreated={(phrase) => setAccount({ created: true, phrase })}
               />
             )}
             {/* BUNDLE-01: default-everything (batteries-included, opt-out) app selection */}
@@ -433,7 +484,9 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
             {current === 'identity' && <IS05_IdentityStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'storage' && <IS05_StorageStep config={config} update={update} onNext={next} onPrev={prev} />}
             {current === 'ssh' && <IS05_SSHStep config={config} update={update} onNext={next} onPrev={prev} />}
-            {current === 'recoverykit' && <IS05_RecoveryKitStep config={config} onNext={next} onPrev={prev} />}
+            {current === 'recoverykit' && (
+              <IS05_RecoveryKitStep config={config} masterPhrase={account.phrase} onNext={next} onPrev={prev} />
+            )}
             {/* Join-flow steps */}
             {current === 'IS09_join_storage' && (
               <IS09_JoinConnectStorageStep onNext={next} onPrev={prev} />
@@ -443,7 +496,9 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
             )}
             {/* Shared steps (pin + ready used by both flows) */}
             {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
-            {current === 'ready' && <ReadyStep config={config} onFinish={finish} onPrev={prev} />}
+            {current === 'ready' && (
+              <ReadyStep config={config} accountCreated={account.created} onFinish={finish} onPrev={prev} />
+            )}
           </div>
         </div>
       </main>
@@ -1293,64 +1348,185 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
 // Account
 // ═══════════════════════════════════
 
-function AccountStep({ config, update, onNext, onPrev }: StepProps) {
+/**
+ * The owner account — and the point at which the box gets a SESSION.
+ *
+ * This step used to collect a username and password into wizard state and
+ * nothing else; POST /api/auth/register did not run until the very last step.
+ * Six steps sat in between, four of which write to the box:
+ *
+ *   identity     GET  /api/identity          POST /api/identity/hostname
+ *   storage      POST /api/setup/storage     PUT  /api/storagemode
+ *   ssh          POST /api/ssh/authorized
+ *   recoverykit  GET  /api/recovery/kit
+ *
+ * None of those paths are in the backend's publicPaths (services/auth/
+ * handlers.go), so on a real first boot every one of them answered 401 — and
+ * not one call site checked res.ok. A non-2xx `fetch` does not throw, so the
+ * `catch` blocks around them never ran either: the wizard read 401, discarded
+ * it, and advanced. Verified in a browser against a backend gating exactly the
+ * paths the real one gates: the identity step displayed the literal string
+ * "auto-generated" as the node's cryptographic instance ID, and the SSH step
+ * had the user tick "I have saved this private key" for a key the box never
+ * received.
+ *
+ * Registering HERE is the fix. Everything downstream now runs with the owner's
+ * session, so those four steps do what their copy says. Ordering was the whole
+ * defect — the steps were fine, they just ran before the box would talk to them.
+ *
+ * It also puts the master recovery phrase in the right place. register mints it
+ * once and never again; it used to be revealed AFTER the recovery-kit step,
+ * which meant the kit ceremony — download a file, type "confirm" — happened
+ * before the only credential that actually recovers anything existed. The
+ * phrase is revealed here, immediately, and carried into the kit.
+ */
+function AccountStep({
+  config, update, onNext, onPrev, created, onCreated,
+}: StepProps & { created: boolean; onCreated: (phrase: string) => void }) {
   const { t } = useI18nTyped()
   const [error, setError] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [phrase, setPhrase] = useState('')
 
-  // Local account only — Vulos is self-hosted software with no cloud account
-  // to sign in to or create.
-  const handleNext = () => {
+  const MIN_PW = 8
+
+  const handleNext = async () => {
     if (!config.username || config.username.length < 2) {
       setError(t('setup.account.error_username'))
       return
     }
-    if (!config.password || config.password.length < 4) {
-      setError(t('setup.account.error_password'))
+    if (!config.password || config.password.length < MIN_PW) {
+      setError(`Password must be at least ${MIN_PW} characters.`)
+      return
+    }
+    if (config.password !== confirmPw) {
+      setError('The two passwords do not match.')
       return
     }
     setError('')
-    onNext()
+
+    // Going forward again after coming Back: the account exists, and register
+    // would fail on a duplicate username. Nothing to redo.
+    if (created) { onNext(); return }
+
+    setBusy(true)
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: config.username,
+          password: config.password,
+          display_name: config.displayName || config.username,
+        }),
+      })
+      // Untrusted network JSON — narrowed field by field, never cast.
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
+      if (!res.ok) {
+        setError((typeof data.error === 'string' && data.error) || `Could not create your account (${res.status}).`)
+        setBusy(false)
+        return
+      }
+      const mp = typeof data.master_recovery_phrase === 'string' ? data.master_recovery_phrase : ''
+      onCreated(mp)
+      setBusy(false)
+      // The phrase is shown once, by the server, ever. Gate on it before
+      // moving on rather than carrying it silently to a later step.
+      if (mp) { setPhrase(mp); return }
+      onNext()
+    } catch {
+      setError(t('setup.ready.error_server'))
+      setBusy(false)
+    }
+  }
+
+  if (phrase) {
+    return <MasterKeyReveal phrase={phrase} onConfirm={onNext} onSkip={onNext} />
   }
 
   return (
     <div>
-      <StepHeader title={t('setup.account.title')} subtitle={t('setup.account.subtitle')} />
+      <StepHeader
+        title={t('setup.account.title')}
+        subtitle="This is the owner account for this box. It is created on the box itself — there is no Vulos cloud account, and this password never leaves your machine."
+      />
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.name_label')}</label>
-          <input
-            value={config.displayName}
-            onChange={e => update('displayName', e.target.value)}
-            placeholder={t('setup.account.name_placeholder')}
-            autoFocus
-            className="input text-base py-3"
-          />
-        </div>
-        <div>
-          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.username_label')}</label>
-          <input
-            value={config.username}
-            onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-            placeholder={t('setup.account.username_placeholder')}
-            className="input text-base py-3 font-mono"
-          />
-        </div>
-        <div>
-          <label className="block text-xs wz-dim mb-1.5">{t('setup.account.password_label')}</label>
-          <input
-            type="password"
-            value={config.password}
-            onChange={e => update('password', e.target.value)}
-            placeholder={t('setup.account.password_placeholder')}
-            className="input text-base py-3"
-          />
-        </div>
+      <div className="wz-panel">
+        {/* htmlFor/id on every field. These were bare <label>s next to inputs,
+            associated with nothing, so a screen reader announced three
+            unlabelled boxes on the step that creates the machine's owner. */}
+        <label className="wz-label" htmlFor="wz-name">{t('setup.account.name_label')}</label>
+        <input
+          id="wz-name"
+          value={config.displayName}
+          onChange={e => update('displayName', e.target.value)}
+          placeholder={t('setup.account.name_placeholder')}
+          autoComplete="name"
+          autoFocus
+          className="input"
+        />
+
+        <label className="wz-label mt-4" htmlFor="wz-username">{t('setup.account.username_label')}</label>
+        <input
+          id="wz-username"
+          value={config.username}
+          onChange={e => update('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+          placeholder={t('setup.account.username_placeholder')}
+          autoComplete="username"
+          disabled={created}
+          className="input font-mono"
+        />
+
+        <label className="wz-label mt-4" htmlFor="wz-password">{t('setup.account.password_label')}</label>
+        <input
+          id="wz-password"
+          type="password"
+          value={config.password}
+          onChange={e => { update('password', e.target.value); setError('') }}
+          placeholder={t('setup.account.password_placeholder')}
+          autoComplete="new-password"
+          disabled={created}
+          className="input"
+        />
+        {/* Was a four-character minimum, with no confirmation field, on the
+            administrator account of a machine that offers SSH two steps later. */}
+        <p className="wz-hint mt-1.5">At least {MIN_PW} characters.</p>
+
+        <label className="wz-label mt-4" htmlFor="wz-password2">Confirm password</label>
+        <input
+          id="wz-password2"
+          type="password"
+          value={confirmPw}
+          onChange={e => { setConfirmPw(e.target.value); setError('') }}
+          autoComplete="new-password"
+          disabled={created}
+          aria-invalid={(Boolean(confirmPw) && confirmPw !== config.password) || undefined}
+          className="input"
+        />
       </div>
 
-      {error && <p className="text-sm wz-danger mt-2">{error}</p>}
+      {created && (
+        <p className="wz-note wz-note--ok mt-3">
+          <span className="wz-note-icon" aria-hidden="true">✓</span>
+          <span>Your account is created and you are signed in as <b>{config.username}</b>. The remaining steps configure this box using that session.</span>
+        </p>
+      )}
 
-      <NavBar onPrev={onPrev} onNext={handleNext} />
+      {error && (
+        <p role="alert" className="wz-note wz-note--danger mt-3">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{error}</span>
+        </p>
+      )}
+
+      <NavBar
+        onPrev={onPrev}
+        onNext={handleNext}
+        nextDisabled={busy}
+        nextLabel={busy ? 'Creating account…' : created ? undefined : 'Create account'}
+      />
     </div>
   )
 }
@@ -1651,26 +1827,38 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
   const [IS05_saving, IS05_setSaving] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
   const [IS05_hostnameEdited, IS05_setHostnameEdited] = useState(false)
+  // Did GET /api/identity actually answer? Distinguishes "this box has no ID
+  // yet" from "we could not ask" — the wizard used to render both as the
+  // literal string "auto-generated" in the Instance ID field.
+  const [IS05_unreachable, IS05_setUnreachable] = useState(false)
 
   const t = (s: string) => s
 
   useEffect(() => {
-    fetch('/api/identity')
+    fetch('/api/identity', { credentials: 'include' })
       .then(r => {
-        if (!r.ok) throw new Error('not found')
+        if (!r.ok) throw new Error(String(r.status))
         return r.json()
       })
       .then((raw: unknown) => {
         // Untrusted network JSON — narrowed field-by-field, never cast.
         const data = isRecord(raw) ? raw : {}
-        const ulid = (typeof data.ulid === 'string' && data.ulid) || (typeof data.instance_id === 'string' && data.instance_id) || 'auto-generated'
+        const ulid = (typeof data.ulid === 'string' && data.ulid) || (typeof data.instance_id === 'string' && data.instance_id) || ''
         update('IS05_ulid', ulid)
         if (!IS05_hostnameEdited) {
           update('IS05_hostname', (typeof data.hostname === 'string' && data.hostname) || '')
         }
       })
       .catch(() => {
-        update('IS05_ulid', 'auto-generated')
+        // Was: update('IS05_ulid', 'auto-generated'). On every real first boot
+        // this endpoint answered 401 — it is not in the backend's publicPaths
+        // and the wizard had no session yet — so the step displayed the literal
+        // words "auto-generated" in a monospace accent font, under the heading
+        // "Instance ID (ULID)", above the caption "Read-only — cryptographically
+        // unique, auto-assigned". Screenshotted on a simulated real boot before
+        // this change. A placeholder dressed as a cryptographic identifier.
+        IS05_setUnreachable(true)
+        update('IS05_ulid', '')
       })
       .finally(() => IS05_setLoading(false))
   }, [])
@@ -1679,16 +1867,18 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
     IS05_setError('')
     if (config.IS05_hostname && IS05_hostnameEdited) {
       IS05_setSaving(true)
-      try {
-        await fetch('/api/identity/hostname', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hostname: config.IS05_hostname }),
-        })
-      } catch {
-        // degrade gracefully — hostname save is best-effort
-      }
+      const r = await saveToBox('/api/identity/hostname', {
+        method: 'POST',
+        body: JSON.stringify({ hostname: config.IS05_hostname }),
+      })
       IS05_setSaving(false)
+      // Was: try/await/catch{} then onNext() unconditionally — so a 401 (which
+      // is what this endpoint returned on every real first boot) advanced the
+      // wizard as though the hostname had been set.
+      if (!r.ok) {
+        IS05_setError(`Could not set the hostname. ${r.message}`)
+        return
+      }
     }
     onNext()
   }
@@ -1702,22 +1892,29 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
 
       <div className="space-y-4 mb-2">
         {/* ULID display */}
-        <div className="wz-surface border wz-hairline rounded-xl px-4 py-4">
-          <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Instance ID (ULID)')}</div>
+        <div className="wz-panel">
+          <div className="wz-eyebrow mb-2">{t('Instance ID')}</div>
           {IS05_loading ? (
             <div className="h-5 w-48 wz-surface-2 rounded animate-pulse" />
+          ) : config.IS05_ulid ? (
+            <>
+              <div className="wz-mono accent-text select-all">{config.IS05_ulid}</div>
+              <p className="wz-hint mt-1.5">{t('Assigned by this box. Read-only, and unique to this machine.')}</p>
+            </>
           ) : (
-            <div className="font-mono text-sm accent-text select-all break-all">
-              {config.IS05_ulid}
-            </div>
+            <p className="wz-hint">
+              {IS05_unreachable
+                ? t('This box did not report an instance ID. It will assign one on first start; nothing here is blocked by that.')
+                : t('Not assigned yet — this box will generate one on first start.')}
+            </p>
           )}
-          <div className="text-[12px] wz-dim mt-1">{t('Read-only — cryptographically unique, auto-assigned')}</div>
         </div>
 
         {/* Hostname input */}
         <div>
-          <label className="block text-xs wz-dim mb-1.5">{t('Hostname')}</label>
+          <label className="wz-label" htmlFor="wz-hostname">{t('Hostname')}</label>
           <input
+            id="wz-hostname"
             value={config.IS05_hostname}
             onChange={e => {
               IS05_setHostnameEdited(true)
@@ -1764,18 +1961,23 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
       }
     }
     IS05_setSaving(true)
-    try {
-      await fetch('/api/setup/storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          config.IS05_storageEnabled
-            ? { enable: true, size_gb: config.IS05_storageSizeGb, password: config.IS05_storagePassword, passphrase: config.IS05_storagePassphrase }
-            : { enable: false }
-        ),
-      })
-    } catch {
-      // degrade gracefully
+    // Both writes are checked now. They used to be try/await/catch{} pairs that
+    // could not fail: on a real first boot both returned 401 (neither path is
+    // in the backend's publicPaths) and the step advanced saying nothing, so a
+    // user who typed a storage password and an encryption passphrase watched
+    // them go nowhere.
+    const stored = await saveToBox('/api/setup/storage', {
+      method: 'POST',
+      body: JSON.stringify(
+        config.IS05_storageEnabled
+          ? { enable: true, size_gb: config.IS05_storageSizeGb, password: config.IS05_storagePassword, passphrase: config.IS05_storagePassphrase }
+          : { enable: false }
+      ),
+    })
+    if (!stored.ok) {
+      IS05_setSaving(false)
+      IS05_setError(`Could not save your storage settings. ${stored.message}`)
+      return
     }
     // STORE-LOCAL-01: persist the bundle storage mode. Whatever the operator
     // left selected is POSTed so the row is materialised and the dashboard
@@ -1975,6 +2177,157 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
 }
 
 // ═══════════════════════════════════
+// INIT-05: SSH Step — key encoding
+// ═══════════════════════════════════
+//
+// These four helpers were closures inside the step component. They are at
+// module scope, and exported, so ssh-keyformat.test.ts can assert their output
+// byte-for-byte against the formats OpenSSH actually defines. Two of the three
+// formats the step produced were wrong in ways nothing could have noticed from
+// inside the browser, because the wizard never round-tripped them through ssh.
+
+const B64 = (bytes: Uint8Array): string => {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin)
+}
+
+/** An SSH `string`: a 4-byte big-endian length followed by the bytes. */
+// Exported ON PURPOSE so ssh-keyformat.test.ts exercises the SAME encoder the wizard
+// runs. A copy in a test would have agreed with itself while the shipped one emitted a
+// key ssh cannot load — the exact defect this replaces.
+// eslint-disable-next-line react-refresh/only-export-components
+export function sshString(data: Uint8Array | string): Uint8Array {
+  const body = typeof data === 'string' ? new TextEncoder().encode(data) : data
+  const out = new Uint8Array(4 + body.length)
+  new DataView(out.buffer).setUint32(0, body.length)
+  out.set(body, 4)
+  return out
+}
+
+const concat = (...parts: Uint8Array[]): Uint8Array => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let off = 0
+  for (const p of parts) { out.set(p, off); off += p.length }
+  return out
+}
+
+/**
+ * The `ssh-ed25519` public-key blob — the thing that is base64'd in an
+ * authorized_keys line, and the thing an OpenSSH fingerprint is taken OVER.
+ */
+// Exported ON PURPOSE so ssh-keyformat.test.ts exercises the SAME encoder the wizard
+// runs. A copy in a test would have agreed with itself while the shipped one emitted a
+// key ssh cannot load — the exact defect this replaces.
+// eslint-disable-next-line react-refresh/only-export-components
+export function sshEd25519PubBlob(rawPub: Uint8Array): Uint8Array {
+  return concat(sshString('ssh-ed25519'), sshString(rawPub))
+}
+
+/** `ssh-ed25519 AAAA… comment`, ready to paste into authorized_keys. */
+// Exported ON PURPOSE so ssh-keyformat.test.ts exercises the SAME encoder the wizard
+// runs. A copy in a test would have agreed with itself while the shipped one emitted a
+// key ssh cannot load — the exact defect this replaces.
+// eslint-disable-next-line react-refresh/only-export-components
+export function sshEd25519AuthorizedKey(rawPub: Uint8Array, comment: string): string {
+  return `ssh-ed25519 ${B64(sshEd25519PubBlob(rawPub))}${comment ? ` ${comment}` : ''}`
+}
+
+/**
+ * An OpenSSH PRIVATE KEY file — the `-----BEGIN OPENSSH PRIVATE KEY-----`
+ * format, unencrypted, as `ssh-keygen -t ed25519 -N ""` writes it.
+ *
+ * The step used to hand the user a PKCS#8 `-----BEGIN PRIVATE KEY-----` blob
+ * instead. OpenSSH reads PEM/PKCS#8 through OpenSSL for RSA and ECDSA, but
+ * Ed25519 private keys are only supported in this native format — so the file
+ * the wizard told you to save, under a checkbox reading "I have saved this
+ * private key in a secure location", was not a file `ssh -i` would load. The
+ * step's whole purpose is remote access to the box, and it handed out a key
+ * that does not open it.
+ *
+ * Layout (PROTOCOL.key), unencrypted so ciphername/kdfname are "none":
+ *
+ *   "openssh-key-v1\0"
+ *   string  ciphername  "none"
+ *   string  kdfname     "none"
+ *   string  kdfoptions  ""
+ *   uint32  nkeys       1
+ *   string  publickey blob
+ *   string  private section:
+ *             uint32 checkint, uint32 checkint   (equal; integrity check
+ *                                                 after decryption)
+ *             string keytype "ssh-ed25519"
+ *             string pub32
+ *             string priv64   (seed32 || pub32)
+ *             string comment
+ *             padding 1,2,3,… up to the 8-byte cipher block size
+ */
+// Exported ON PURPOSE so ssh-keyformat.test.ts exercises the SAME encoder the wizard
+// runs. A copy in a test would have agreed with itself while the shipped one emitted a
+// key ssh cannot load — the exact defect this replaces.
+// eslint-disable-next-line react-refresh/only-export-components
+export function sshEd25519PrivateKeyFile(
+  seed: Uint8Array,
+  rawPub: Uint8Array,
+  comment: string,
+  checkint = 0,
+): string {
+  if (seed.length !== 32) throw new Error(`ed25519 seed must be 32 bytes, got ${seed.length}`)
+  if (rawPub.length !== 32) throw new Error(`ed25519 public key must be 32 bytes, got ${rawPub.length}`)
+
+  const ci = new Uint8Array(4)
+  new DataView(ci.buffer).setUint32(0, checkint >>> 0)
+
+  let priv = concat(
+    ci, ci,
+    sshString('ssh-ed25519'),
+    sshString(rawPub),
+    sshString(concat(seed, rawPub)),
+    sshString(comment),
+  )
+  // Pad to the cipher block size with 1,2,3,… — the "none" cipher still pads
+  // to 8, and ssh-keygen rejects a file that gets this wrong.
+  const pad = (8 - (priv.length % 8)) % 8
+  if (pad) priv = concat(priv, Uint8Array.from({ length: pad }, (_, i) => i + 1))
+
+  const nkeys = new Uint8Array(4)
+  new DataView(nkeys.buffer).setUint32(0, 1)
+
+  const body = concat(
+    new TextEncoder().encode('openssh-key-v1\0'),
+    sshString('none'),
+    sshString('none'),
+    sshString(''),
+    nkeys,
+    sshString(sshEd25519PubBlob(rawPub)),
+    sshString(priv),
+  )
+
+  const b64 = B64(body)
+  const lines = b64.match(/.{1,70}/g) || []
+  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join('\n')}\n-----END OPENSSH PRIVATE KEY-----\n`
+}
+
+/**
+ * Pull the 32-byte seed out of a WebCrypto PKCS#8 Ed25519 export.
+ *
+ * RFC 8410 §7: the PKCS#8 PrivateKeyInfo for Ed25519 is a fixed 48 bytes and
+ * ends with the OCTET STRING header `04 20` followed by the seed, so the seed
+ * is the final 32 bytes. Checked rather than assumed, because silently reading
+ * the wrong 32 bytes would produce a well-formed key file that does not match
+ * the public key the box was given.
+ */
+// Exported ON PURPOSE so ssh-keyformat.test.ts exercises the SAME encoder the wizard
+// runs. A copy in a test would have agreed with itself while the shipped one emitted a
+// key ssh cannot load — the exact defect this replaces.
+// eslint-disable-next-line react-refresh/only-export-components
+export function ed25519SeedFromPkcs8(pkcs8: Uint8Array): Uint8Array {
+  if (pkcs8.length !== 48) throw new Error(`unexpected PKCS#8 length ${pkcs8.length}, expected 48`)
+  if (pkcs8[14] !== 0x04 || pkcs8[15] !== 0x20) throw new Error('PKCS#8 does not carry a 32-byte Ed25519 seed where RFC 8410 puts it')
+  return pkcs8.slice(16)
+}
+
+// ═══════════════════════════════════
 // INIT-05: SSH Step
 // ═══════════════════════════════════
 function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
@@ -1987,42 +2340,18 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
 
   const t = (s: string) => s
 
-  // Convert ArrayBuffer to base64
-  const IS05_bufToB64 = (buf: ArrayBuffer) => {
-    const bytes = new Uint8Array(buf)
-    let bin = ''
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-    return btoa(bin)
-  }
-
-  // Build OpenSSH Ed25519 public key wire format
-  const IS05_buildOpenSSHPubkey = (rawPub: ArrayBuffer) => {
-    const keyType = 'ssh-ed25519'
-    const typeBytes = new TextEncoder().encode(keyType)
-    const rawBytes = new Uint8Array(rawPub)
-    const buf = new ArrayBuffer(4 + typeBytes.length + 4 + rawBytes.length)
-    const view = new DataView(buf)
-    let off = 0
-    view.setUint32(off, typeBytes.length); off += 4
-    new Uint8Array(buf, off, typeBytes.length).set(typeBytes); off += typeBytes.length
-    view.setUint32(off, rawBytes.length); off += 4
-    new Uint8Array(buf, off, rawBytes.length).set(rawBytes)
-    return `ssh-ed25519 ${btoa(String.fromCharCode(...new Uint8Array(buf)))} setup`
-  }
-
-  // Build PEM-style private key representation (PKCS8)
-  const IS05_buildPrivkeyPEM = async (privKeyRaw: CryptoKey) => {
-    const pkcs8 = await crypto.subtle.exportKey('pkcs8', privKeyRaw)
-    const b64 = IS05_bufToB64(pkcs8)
-    const lines = b64.match(/.{1,64}/g) || []
-    return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----`
-  }
-
-  // SHA-256 fingerprint of raw public key bytes
-  const IS05_fingerprint = async (rawPub: ArrayBuffer) => {
-    const hash = await crypto.subtle.digest('SHA-256', rawPub)
-    const b64 = IS05_bufToB64(hash)
-    return `SHA256:${b64.replace(/=+$/, '')}`
+  /**
+   * OpenSSH's `SHA256:` fingerprint — the digest of the public-key WIRE BLOB,
+   * which is what `ssh-keygen -lf` and the box's authorized_keys list print.
+   *
+   * This used to digest the bare 32 raw public-key bytes instead. That produces
+   * a plausible-looking `SHA256:…` string that matches nothing: the value on
+   * screen could never be compared against the value on the box, which is the
+   * only reason to show a fingerprint at all.
+   */
+  const IS05_fingerprint = async (blob: Uint8Array) => {
+    const hash = await crypto.subtle.digest('SHA-256', blob as BufferSource)
+    return `SHA256:${B64(new Uint8Array(hash)).replace(/=+$/, '')}`
   }
 
   const IS05_generate = async () => {
@@ -2031,19 +2360,14 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
     IS05_setConfirmed(false)
     IS05_setPrivateKey('')
     try {
-      const keyPair = await crypto.subtle.generateKey(
-        { name: 'Ed25519' },
-        true,
-        ['sign', 'verify']
-      )
-      const rawPub = await crypto.subtle.exportKey('raw', keyPair.publicKey)
-      const pubkeyStr = IS05_buildOpenSSHPubkey(rawPub)
-      const privPEM = await IS05_buildPrivkeyPEM(keyPair.privateKey)
-      const fp = await IS05_fingerprint(rawPub)
+      const keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
+      const rawPub = new Uint8Array(await crypto.subtle.exportKey('raw', keyPair.publicKey))
+      const seed = ed25519SeedFromPkcs8(new Uint8Array(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)))
 
-      update('IS05_sshPubkey', pubkeyStr)
-      update('IS05_sshFingerprint', fp)
-      IS05_setPrivateKey(privPEM)
+      const comment = `${config.username || 'vulos'}@${config.IS05_hostname || 'vulos'}`
+      update('IS05_sshPubkey', sshEd25519AuthorizedKey(rawPub, comment))
+      update('IS05_sshFingerprint', await IS05_fingerprint(sshEd25519PubBlob(rawPub)))
+      IS05_setPrivateKey(sshEd25519PrivateKeyFile(seed, rawPub, comment))
     } catch (err: unknown) {
       const msg = isRecord(err) && typeof err.message === 'string' ? err.message : ''
       IS05_setError(t('Key generation failed. Your browser may not support Ed25519. ') + msg)
@@ -2061,9 +2385,32 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
     }
   }
 
+  /** Save the private key as a file, which is what people actually need. */
+  const IS05_download = () => {
+    const blob = new Blob([IS05_privateKey], { type: 'application/x-pem-file' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'id_ed25519'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // The step had NO way past it without generating a key and ticking "I have
+  // saved this private key in a secure location" — so a user who does not want
+  // SSH on their machine had to make a key and attest to storing it. Skipping
+  // is a legitimate answer to "do you want remote shell access".
+  const handleSkip = () => {
+    update('IS05_sshPubkey', '')
+    update('IS05_sshFingerprint', '')
+    onNext()
+  }
+
   const handleNext = async () => {
     if (!config.IS05_sshPubkey) {
-      IS05_setError(t('Please generate an SSH keypair first'))
+      IS05_setError(t('Generate a keypair, or skip this step.'))
       return
     }
     if (!IS05_confirmed) {
@@ -2071,24 +2418,28 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
       return
     }
     IS05_setSaving(true)
-    try {
-      await fetch('/api/ssh/authorized', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comment: 'setup', pubkey: config.IS05_sshPubkey }),
-      })
-    } catch {
-      // degrade gracefully
-    }
+    // Was try/await/catch{} then onNext() unconditionally. On every real first
+    // boot this POST answered 401 and the user was walked past it having just
+    // ticked a box saying they had stored a private key — for a public key the
+    // box never received. The step told them they had SSH access to their
+    // machine and they did not.
+    const r = await saveToBox('/api/ssh/authorized', {
+      method: 'POST',
+      body: JSON.stringify({ comment: 'setup', pubkey: config.IS05_sshPubkey }),
+    })
     IS05_setSaving(false)
+    if (!r.ok) {
+      IS05_setError(`This box did not accept the key, so SSH access is NOT set up. ${r.message}`)
+      return
+    }
     onNext()
   }
 
   return (
     <div>
       <StepHeader
-        title={t('SSH Access Key')}
-        subtitle={t('Generate an Ed25519 keypair for secure remote access to this node.')}
+        title={t('Remote access over SSH')}
+        subtitle={t('Optional. Creates a key that lets you open a terminal on this box from another computer. If you are not sure you need this, skip it — you can add a key later from Settings.')}
       />
 
       <div className="space-y-4 mb-2">
@@ -2096,75 +2447,88 @@ function IS05_SSHStep({ config, update, onNext, onPrev }: StepProps) {
         <button
           onClick={IS05_generate}
           disabled={IS05_generating}
-          className={`w-full py-3 rounded-xl text-sm font-medium transition-all
-            ${IS05_generating
-              ? 'wz-surface-2 wz-dim'
-              : 'wz-surface border wz-edge wz-body hover-accent-border hover-accent-text'}`}
+          className="btn-secondary w-full"
         >
           {IS05_generating ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
-              {t('Generating keypair...')}
+              <span className="spinner w-4 h-4" />
+              {t('Generating keypair…')}
             </span>
-          ) : config.IS05_sshPubkey ? t('Regenerate Keypair') : t('Generate Ed25519 Keypair')}
+          ) : config.IS05_sshPubkey ? t('Generate a new keypair') : t('Generate an Ed25519 keypair')}
         </button>
 
-        {/* Private key display (shown once) */}
+        {/* Private key — shown once */}
         {IS05_privateKey && (
-          <div className="wz-surface-deep border wz-hairline rounded-xl overflow-hidden animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-center justify-between px-4 py-2 wz-surface border-b wz-hairline">
-              <span className="text-[12px] wz-warn font-medium">{t('Private Key — shown once, copy now')}</span>
-              <button
-                onClick={IS05_copy}
-                className={`text-xs px-3 py-1 rounded-lg transition-colors ${IS05_copied ? 'bg-success-soft wz-ok' : 'wz-surface-2 wz-body hover-accent-text'}`}
-              >
-                {IS05_copied ? t('Copied!') : t('Copy')}
-              </button>
+          <div className="wz-secret">
+            <div className="wz-secret-head">
+              <span className="wz-warn text-[0.8125rem] font-medium">{t('Private key — shown once')}</span>
+              <span className="flex gap-2">
+                <button onClick={IS05_download} className="btn-secondary text-xs py-1 px-2.5">
+                  {t('Save as id_ed25519')}
+                </button>
+                <button onClick={IS05_copy} className={`btn-secondary text-xs py-1 px-2.5 ${IS05_copied ? 'wz-ok' : ''}`}>
+                  {IS05_copied ? t('Copied') : t('Copy')}
+                </button>
+              </span>
             </div>
-            <pre className="text-[12px] font-mono wz-body p-4 overflow-x-auto whitespace-pre-wrap break-all select-all">
-              {IS05_privateKey}
-            </pre>
+            <pre className="wz-mono select-all">{IS05_privateKey}</pre>
           </div>
+        )}
+
+        {IS05_privateKey && (
+          <p className="wz-note">
+            <span className="wz-note-icon" aria-hidden="true">💡</span>
+            <span>
+              Save it as <code className="wz-code">~/.ssh/id_ed25519</code> on the computer you will
+              connect FROM, then <code className="wz-code">chmod 600</code> it. Connect with{' '}
+              <code className="wz-code">ssh {config.username || 'you'}@{config.IS05_hostname || 'this-box'}</code>.
+            </span>
+          </p>
         )}
 
         {/* Public key fingerprint */}
         {config.IS05_sshFingerprint && (
-          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
-            <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Public Key Fingerprint')}</div>
-            <div className="font-mono text-xs wz-ok break-all">{config.IS05_sshFingerprint}</div>
+          <div className="wz-panel">
+            <div className="wz-eyebrow mb-1">{t('Fingerprint')}</div>
+            <div className="wz-mono wz-ok">{config.IS05_sshFingerprint}</div>
+            <p className="wz-hint mt-1.5">
+              {t('Matches what ssh-keygen -lf prints for this key, so you can check it against the box.')}
+            </p>
           </div>
         )}
 
         {/* Confirmation checkbox */}
         {config.IS05_sshPubkey && IS05_privateKey && (
-          <label className="flex items-start gap-3 cursor-pointer group animate-[fadeIn_0.2s_ease-out]">
-            <div className="relative mt-0.5 shrink-0">
-              <input
-                type="checkbox"
-                checked={IS05_confirmed}
-                onChange={e => { IS05_setConfirmed(e.target.checked); IS05_setError('') }}
-                className="sr-only"
-              />
-              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-                ${IS05_confirmed ? 'accent-bg accent-border' : 'wz-edge group-hover:wz-edge'}`}>
-                {IS05_confirmed && (
-                  <svg viewBox="0 0 16 16" className="w-3 h-3 text-white"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
-                )}
-              </div>
-            </div>
-            <span className="text-sm wz-body group-hover:wz-strong transition-colors leading-snug">
-              {t('I have saved this private key in a secure location. I understand it will not be shown again.')}
+          <label className="wz-choice">
+            <input
+              type="checkbox"
+              checked={IS05_confirmed}
+              onChange={e => { IS05_setConfirmed(e.target.checked); IS05_setError('') }}
+              className="sr-only"
+            />
+            <span className="wz-check" aria-hidden="true">
+              <svg viewBox="0 0 16 16" className="w-3 h-3"><path d="M3.5 8l3 3 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+            </span>
+            <span className="wz-choice-title" style={{ fontWeight: 400 }}>
+              {t('I have saved this private key. It will not be shown again.')}
             </span>
           </label>
         )}
 
-        {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
+        {IS05_error && (
+          <p role="alert" className="wz-note wz-note--danger">
+            <span className="wz-note-icon" aria-hidden="true">!</span>
+            <span>{IS05_error}</span>
+          </p>
+        )}
       </div>
 
       <NavBar
         onPrev={onPrev}
         onNext={handleNext}
-        nextLabel={IS05_saving ? t('Saving...') : t('Continue')}
+        nextLabel={IS05_saving ? t('Authorising…') : t('Continue')}
+        skipLabel={config.IS05_sshPubkey ? undefined : t('Skip — no SSH')}
+        onSkip={config.IS05_sshPubkey ? undefined : handleSkip}
         nextDisabled={Boolean(IS05_saving || (config.IS05_sshPubkey && IS05_privateKey && !IS05_confirmed))}
       />
     </div>
@@ -2187,6 +2551,20 @@ interface RecoveryKit {
   storage?: RecoveryKitStorage
   ssh_fingerprint: string
   issued_at: string
+  /**
+   * The 24-word master recovery phrase minted once by POST /api/auth/register.
+   *
+   * This is the ONLY field in the kit that recovers anything. Without it the
+   * "Recovery Kit" was a ULID, a hostname, an SSH fingerprint and a checksum —
+   * four identifiers, no credential — and the step still made the user type
+   * "confirm" to attest they had stored it safely. The phrase was minted at the
+   * END of the wizard, one step after this one, so it could not have been
+   * included even in principle. Registration moving to the account step is what
+   * makes this possible; see AccountStep's docstring.
+   */
+  master_recovery_phrase?: string
+  /** Present only when the phrase is absent, saying so out loud. */
+  master_recovery_phrase_note?: string
 }
 
 interface RecoveryKitPayload {
@@ -2196,7 +2574,9 @@ interface RecoveryKitPayload {
 }
 
 // INIT-06: build a versioned kit object from wizard config
-function IK06_buildKitObject(config: SetupConfig): RecoveryKit {
+// Exported so recovery-kit.test.ts asserts on the REAL kit builder; see the note above.
+// eslint-disable-next-line react-refresh/only-export-components
+export function IK06_buildKitObject(config: SetupConfig, masterPhrase = ''): RecoveryKit {
   const issuedAt = new Date().toISOString()
   return {
     ulid: config.IS05_ulid || '',
@@ -2212,6 +2592,11 @@ function IK06_buildKitObject(config: SetupConfig): RecoveryKit {
       : {}),
     ssh_fingerprint: config.IS05_sshFingerprint || '',
     issued_at: issuedAt,
+    // A kit with no phrase says so, rather than looking complete. Silence here
+    // is what let a kit of four identifiers pass as a recovery credential.
+    ...(masterPhrase
+      ? { master_recovery_phrase: masterPhrase }
+      : { master_recovery_phrase_note: 'No recovery phrase was captured during setup. Generate one from Settings → Security before you need it.' }),
   }
 }
 
@@ -2223,8 +2608,8 @@ async function IK06_sha256hex(obj: unknown): Promise<string> {
 }
 
 // INIT-06: assemble the versioned download payload
-async function IK06_buildDownloadPayload(config: SetupConfig): Promise<RecoveryKitPayload> {
-  const kit = IK06_buildKitObject(config)
+async function IK06_buildDownloadPayload(config: SetupConfig, masterPhrase = ''): Promise<RecoveryKitPayload> {
+  const kit = IK06_buildKitObject(config, masterPhrase)
   const checksumSha256 = await IK06_sha256hex(kit)
   return {
     schema_version: 1,
@@ -2233,49 +2618,40 @@ async function IK06_buildDownloadPayload(config: SetupConfig): Promise<RecoveryK
   }
 }
 
-// INIT-06: QR canvas component — renders the kit checksum + ULID as a QR code
-function IK06_QRCanvas({ content }: { content: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [IK06_qrError, IK06_setQRError] = useState('')
+// The recovery-kit step used to render a QR code under the heading
+// "Recovery QR — scan to verify identity". It encoded
+// "vulos-recovery:v1:<ulid>:<first 16 hex of the kit checksum>" and NOTHING
+// consumes that string: there is no scanner in this repo that reads it, no
+// endpoint that accepts it, and no verification it could perform — the checksum
+// it carries is a checksum of the file you are holding, so scanning it proves
+// only that the file matches itself. It was 160x160 of reassurance.
+//
+// It also had a fallback branch reading "(QR rendering pending — verify
+// checksum below)", which described a permanent state as a temporary one.
+//
+// Removed rather than left decorative, on the same principle as the rest of
+// this pass: a step that renders a nice card and does nothing is worse than a
+// missing one, because the user believes it. The QR hex it displayed is still
+// shown as the kit checksum, in text, where it is honestly just a checksum.
+//
+// This was the wizard's only use of the `qrcode` library, so its import goes
+// with it. The join flow's "Scan QR" button is unaffected — that one READS a
+// code through the native camera bridge (nativeBridge.camera.scanQR) and never
+// generated one. src/core/settings/LANPairingPanel.tsx still generates QR
+// codes, and there the code is a pairing token something actually consumes.
 
-  useEffect(() => {
-    if (!content || !canvasRef.current) return
-    QRCode.toCanvas(canvasRef.current, content, {
-      width: 160,
-      margin: 2,
-      color: { dark: '#e2e8f0', light: '#0a0a0a' },
-      errorCorrectionLevel: 'M',
-    }).catch((err: unknown) => {
-      const msg = isRecord(err) && typeof err.message === 'string' && err.message ? err.message : 'QR render failed'
-      IK06_setQRError(msg)
-    })
-  }, [content])
-
-  if (IK06_qrError) {
-    return (
-      <div className="text-[12px] wz-dim text-center p-2">
-        (QR rendering pending — verify checksum below)
-      </div>
-    )
-  }
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="rounded-lg mx-auto block"
-      style={{ imageRendering: 'pixelated' }}
-    />
-  )
-}
-
-function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig; onNext: () => void; onPrev: () => void }) {
+function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
+  config: SetupConfig
+  masterPhrase: string
+  onNext: () => void
+  onPrev: () => void
+}) {
   const [IS05_confirmText, IS05_setConfirmText] = useState('')
   const [IS05_downloading, IS05_setDownloading] = useState(false)
   const [IS05_downloaded, IS05_setDownloaded] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
   // INIT-06: versioned payload built client-side (fallback when server unavailable)
   const [IK06_payload, IK06_setPayload] = useState<RecoveryKitPayload | null>(null)
-  const [IK06_qrContent, IK06_setQRContent] = useState('')
   const [IK06_buildingPayload, IK06_setBuildingPayload] = useState(true)
 
   const t = (s: string) => s
@@ -2283,20 +2659,14 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
   // INIT-06: build the payload on mount / whenever config changes
   useEffect(() => {
     IK06_setBuildingPayload(true)
-    IK06_buildDownloadPayload(config)
-      .then(payload => {
-        IK06_setPayload(payload)
-        // QR encodes: "vulos-recovery:v1:<ulid>:<checksum_sha256_prefix16>"
-        const qrStr = `vulos-recovery:v1:${payload.kit.ulid}:${payload.checksum_sha256.slice(0, 16)}`
-        IK06_setQRContent(qrStr)
-      })
-      .catch(() => {
-        IK06_setQRContent('')
-      })
+    IK06_buildDownloadPayload(config, masterPhrase)
+      .then(IK06_setPayload)
+      .catch(() => IK06_setPayload(null))
       .finally(() => IK06_setBuildingPayload(false))
-  }, [config.IS05_ulid, config.IS05_hostname, config.IS05_storageEnabled, config.IS05_sshFingerprint])
+  }, [config.IS05_ulid, config.IS05_hostname, config.IS05_storageEnabled, config.IS05_sshFingerprint, masterPhrase])
 
-  // INIT-05 + INIT-06: confirm gate applies regardless of storage variant
+  // INIT-05 + INIT-06: confirm gate applies regardless of storage variant.
+  // The gate is only honest once the file exists — see the download button.
   const IS05_canProceed = IS05_confirmText === 'confirm'
 
   // INIT-06: download uses the versioned schema with checksum; falls back to
@@ -2338,125 +2708,128 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
   return (
     <div>
       <StepHeader
-        title={t('Recovery Kit')}
-        subtitle={t('Store your recovery credentials somewhere safe — you will need them if you lose access.')}
+        title={t('Your recovery kit')}
+        subtitle={
+          masterPhrase
+            ? 'One file with everything needed to get back into this box if you forget your password or the machine dies. Keep it somewhere that is not this machine.'
+            : 'A record of this box’s identity. Keep it somewhere that is not this machine.'
+        }
       />
 
-      {/* Credentials summary */}
-      <div className="space-y-2 mb-4">
-        <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
-          <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Identity')}</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div>
-              <div className="wz-dim mb-0.5">{t('ULID')}</div>
-              <div className="font-mono accent-text text-[12px] break-all">{config.IS05_ulid || '—'}</div>
-            </div>
-            <div>
-              <div className="wz-dim mb-0.5">{t('Hostname')}</div>
-              <div className="font-mono wz-body text-[12px]">{config.IS05_hostname || '—'}</div>
-            </div>
-          </div>
-        </div>
+      {/* The kit's headline is now the CREDENTIAL, not the identifiers. Before,
+          the whole step was a ULID, a hostname, an SSH fingerprint and a
+          checksum — no secret at all — and it still demanded the user type
+          "confirm" to attest they had stored it safely. */}
+      {masterPhrase ? (
+        <p className="wz-note wz-note--warn mb-4">
+          <span className="wz-note-icon" aria-hidden="true">🔑</span>
+          <span>
+            <b>This file contains your 24-word recovery phrase.</b> Anyone who has it can
+            take over this box. Store it like a house key, not like a document — an
+            encrypted drive, a password manager, or paper in a safe.
+          </span>
+        </p>
+      ) : (
+        <p className="wz-note wz-note--warn mb-4">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>
+            <b>No recovery phrase was captured.</b> This kit records who this box is, but it
+            cannot get you back in on its own. Generate a phrase from Settings → Security
+            before you need it.
+          </span>
+        </p>
+      )}
 
-        {config.IS05_storageEnabled && (
-          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('Cluster Storage')}</div>
-            <div className="text-xs">
-              <div className="wz-dim mb-0.5">{t('Status')}</div>
-              <div className="wz-ok">{t('Enabled')} · {config.IS05_storageSizeGb} GB</div>
-              {config.IS05_s3AccessKey && (
-                <>
-                  <div className="wz-dim mt-2 mb-0.5">{t('S3 Access Key')}</div>
-                  <div className="font-mono text-[12px] wz-body break-all">{config.IS05_s3AccessKey}</div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* INIT-06: storage-skipped notice — shown when user skipped storage */}
-        {IS06_storageSkipped && (
-          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 animate-[fadeIn_0.2s_ease-out]">
-            <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Cluster Storage')}</div>
-            <div className="text-xs wz-dim">{t('Skipped — can be enabled later in Settings')}</div>
-          </div>
-        )}
-
-        {config.IS05_sshFingerprint && (
-          <div className="wz-surface border wz-hairline rounded-xl px-4 py-3">
-            <div className="text-[12px] wz-dim uppercase tracking-wider mb-2">{t('SSH Access')}</div>
-            <div className="text-[12px] font-mono wz-ok break-all">{config.IS05_sshFingerprint}</div>
-          </div>
+      {/* What's inside — stated plainly, so nobody has to open the JSON to find
+          out whether it is worth protecting. */}
+      <div className="wz-panel">
+        <div className="wz-eyebrow mb-3">In this kit</div>
+        <KitRow label="Recovery phrase" value={masterPhrase ? '24 words — the credential that restores access' : 'Not included'} ok={Boolean(masterPhrase)} />
+        <KitRow label="Instance ID" value={config.IS05_ulid || '—'} mono />
+        <KitRow label="Hostname" value={config.IS05_hostname || 'Default'} mono />
+        <KitRow
+          label="SSH key"
+          value={config.IS05_sshFingerprint || 'None authorised'}
+          mono={Boolean(config.IS05_sshFingerprint)}
+        />
+        <KitRow
+          label="Cluster storage"
+          value={
+            config.IS05_storageEnabled
+              ? `Enabled · ${config.IS05_storageSizeGb} GB`
+              : IS06_storageSkipped
+                ? 'Skipped — can be enabled later in Settings'
+                : 'Off'
+          }
+        />
+        {IK06_payload && (
+          <KitRow label="Checksum (SHA-256)" value={IK06_payload.checksum_sha256} mono />
         )}
       </div>
-
-      {/* INIT-06: Inline QR code — encodes recovery identity token */}
-      {!IK06_buildingPayload && IK06_qrContent && (
-        <div className="wz-surface-deep border wz-hairline rounded-xl p-4 mb-4 flex flex-col items-center gap-2 animate-[fadeIn_0.2s_ease-out]">
-          <div className="text-[12px] wz-dim uppercase tracking-wider">{t('Recovery QR — scan to verify identity')}</div>
-          <IK06_QRCanvas content={IK06_qrContent} />
-          <div className="text-[12px] font-mono wz-dim break-all text-center max-w-[200px]">
-            {IK06_qrContent}
-          </div>
-        </div>
-      )}
-
-      {/* INIT-06: Checksum preview */}
-      {IK06_payload && (
-        <div className="wz-surface border wz-hairline rounded-xl px-4 py-2 mb-4">
-          <div className="text-[12px] wz-dim uppercase tracking-wider mb-1">{t('Kit checksum (SHA-256)')}</div>
-          <div className="font-mono text-[12px] wz-dim break-all">{IK06_payload.checksum_sha256}</div>
-        </div>
-      )}
 
       {/* Download button */}
       <button
         onClick={IS05_downloadKit}
         disabled={IS05_downloading || IK06_buildingPayload}
-        className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
-          ${IS05_downloaded
-            ? 'bg-success-soft border border-success-soft wz-ok'
-            : IS05_downloading
-              ? 'wz-surface-2 wz-dim'
-              : 'accent-bg-soft border accent-border accent-text accent-bg-hover'}`}
+        className={`btn-primary w-full mt-4 ${IS05_downloaded ? 'wz-downloaded' : ''}`}
       >
         {IS05_downloading ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
-            {t('Preparing download...')}
+            <span className="spinner w-4 h-4" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} />
+            {t('Preparing download…')}
           </span>
         ) : IS05_downloaded
-          ? t('Recovery Kit Downloaded')
-          : t('Download Recovery Kit')}
+          ? t('✓ Downloaded — download again')
+          : t('Download recovery kit')}
       </button>
 
-      {IS05_error && <p className="text-sm wz-danger mb-3">{IS05_error}</p>}
-
-      {/* Type-to-confirm gate — applies to ALL variants including storage-skipped */}
-      <div className="wz-surface border wz-hairline rounded-xl px-4 py-4 mb-2">
-        <p className="text-sm wz-body mb-3">
-          {t('Type ')}
-          <code className="wz-surface-2 wz-warn px-1.5 py-0.5 rounded text-xs font-mono">confirm</code>
-          {t(' to proceed')}
+      {IS05_error && (
+        <p role="alert" className="wz-note wz-note--danger mt-3">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{IS05_error}</span>
         </p>
+      )}
+
+      {/* Type-to-confirm gate. Now gated on the download HAVING HAPPENED as
+          well: attesting "I have saved my recovery kit" while the button above
+          has never been pressed is a signature on nothing. */}
+      <div className="wz-panel mt-3">
+        <label className="wz-label" htmlFor="wz-kit-confirm">
+          Type <code className="wz-code">confirm</code> to acknowledge you have saved this kit
+        </label>
         <input
+          id="wz-kit-confirm"
           value={IS05_confirmText}
           onChange={e => IS05_setConfirmText(e.target.value)}
           placeholder="confirm"
-          className={`input py-2 font-mono text-sm ${IS05_canProceed ? 'border-success-soft wz-ok' : ''}`}
+          disabled={!IS05_downloaded}
+          className="input font-mono"
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
         />
+        {!IS05_downloaded && (
+          <p className="wz-hint mt-1.5">Download the kit first.</p>
+        )}
       </div>
 
       <NavBar
         onPrev={onPrev}
         onNext={onNext}
-        nextLabel={t('Finish Setup')}
-        nextDisabled={!IS05_canProceed}
+        nextLabel={t('Finish setup')}
+        nextDisabled={!IS05_canProceed || !IS05_downloaded}
       />
+    </div>
+  )
+}
+
+/** One "what's in the kit" line. */
+function KitRow({ label, value, mono, ok }: { label: string; value: string; mono?: boolean; ok?: boolean }) {
+  return (
+    <div className="wz-kitrow">
+      <span className="wz-dim">{label}</span>
+      <span className={`${mono ? 'wz-mono' : ''} ${ok ? 'wz-ok' : 'wz-body'}`}>{value}</span>
     </div>
   )
 }
@@ -2464,14 +2837,16 @@ function IS05_RecoveryKitStep({ config, onNext, onPrev }: { config: SetupConfig;
 // ═══════════════════════════════════
 // Ready
 // ═══════════════════════════════════
-function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish: () => Promise<void>; onPrev: () => void }) {
+function ReadyStep({ config, accountCreated, onFinish, onPrev }: {
+  config: SetupConfig
+  accountCreated: boolean
+  onFinish: () => Promise<void>
+  onPrev: () => void
+}) {
   const { t } = useI18nTyped()
   const { theme } = useThemeTyped()
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
-  // WAVE2-RECOVERY: the 24-word master-key recovery phrase, returned once by the
-  // register endpoint. When set, we FORCE the phrase-reveal screen before finishing.
-  const [masterPhrase, setMasterPhrase] = useState('')
   // MODEL-DL-01: optional "Enable private AI search" install-time offer. After the
   // owner account exists (register set the session), we show a clearly-optional
   // step to download the on-box embedding model before entering the desktop.
@@ -2489,78 +2864,20 @@ function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish
     await onFinish()
   }
 
+  // Registration moved to AccountStep — see its docstring. Doing it here meant
+  // the six steps in between ran with no session and silently 401'd, and it
+  // put the one-time recovery phrase AFTER the recovery-kit step that is
+  // supposed to contain it.
   const handleFinish = async () => {
-    setCreating(true)
     setError('')
-
-    // Create account first
-    if (config.username && config.password) {
-      try {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: config.username,
-            password: config.password,
-            display_name: config.displayName || config.username,
-          }),
-        })
-        if (!res.ok) {
-          // Untrusted network JSON — narrowed before use, never cast.
-          const errRaw: unknown = await res.json().catch(() => ({}))
-          const errData = isRecord(errRaw) ? errRaw : {}
-          setError((typeof errData.error === 'string' && errData.error) || 'Failed to create account')
-          setCreating(false)
-          return
-        }
-        // WAVE2-RECOVERY trust boundary: the register response may carry the
-        // one-time master-key recovery phrase. Narrowed with an explicit
-        // typeof check — never cast to "the phrase is a string" without
-        // verifying it, since this value is about to be shown to the user as
-        // their only account-recovery credential.
-        const raw: unknown = await res.json().catch(() => ({}))
-        const data = isRecord(raw) ? raw : {}
-        if (typeof data.master_recovery_phrase === 'string' && data.master_recovery_phrase) {
-          setMasterPhrase(data.master_recovery_phrase)
-          setCreating(false)
-          return
-        }
-      } catch {
-        setError(t('setup.ready.error_server'))
-        setCreating(false)
-        return
-      }
-    }
-
-    // MODEL-DL-01: with an owner account now created (session established), offer
-    // the optional private-AI model download BEFORE finalizing. Only meaningful
-    // for a local OS account (a real owner session on this box); the join flow
-    // (account already exists on the synced cluster) skips straight to finalize.
-    if (config.username && config.password) {
-      setCreating(false)
+    // MODEL-DL-01: the model download endpoint is owner-gated, so it is only
+    // worth offering when an owner session actually exists.
+    if (accountCreated) {
       setShowPrivateAI(true)
       return
     }
-
+    setCreating(true)
     await finalize()
-  }
-
-  // WAVE2-RECOVERY: forced recovery-phrase reveal gate. After the phrase is saved,
-  // route into the optional private-AI offer (MODEL-DL-01) rather than finishing
-  // directly, so the model download is offered on every local-account install.
-  if (masterPhrase) {
-    const afterPhrase = () => {
-      setMasterPhrase('')
-      if (config.username && config.password) { setShowPrivateAI(true); return }
-      setCreating(true); finalize()
-    }
-    return (
-      <MasterKeyReveal
-        phrase={masterPhrase}
-        onConfirm={afterPhrase}
-        onSkip={afterPhrase}
-      />
-    )
   }
 
   // MODEL-DL-01: optional "Enable private AI search" install-time step. Clearly
@@ -2594,26 +2911,57 @@ function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish
         </svg>
       </div>
       <div className="flex flex-col items-center">
-        <StepHeader title={t('setup.ready.title')} subtitle={t('setup.ready.subtitle')} />
+        {/* Was "Here's what we'll configure" — future tense on a screen where
+            the account, hostname, SSH key and storage mode have ALREADY been
+            written to the box. Only the device profile, timezone and Wi-Fi are
+            still pending, and they are applied by the button below. */}
+        <StepHeader
+          title={t('setup.ready.title')}
+          subtitle="Here's how this box is set up. The last few settings are applied when you continue."
+        />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-left mb-8">
-        {config.deviceProfile && (
-          <SummaryCard icon="💻" label="Device" value={DEVICE_PROFILES.find(p => p.id === config.deviceProfile)?.label || config.deviceProfile} />
-        )}
-                <SummaryCard icon="🌍" label={t('setup.ready.label_language')} value={selectedLang?.native || config.locale} />
+      {/* The summary listed six things and the wizard has fifteen steps — it
+          showed nothing about the account handle, the hostname, storage or SSH,
+          which are precisely the four the user is least able to recall later.
+          Every row also stated a setting the user CHOSE, not a result, under a
+          heading reading "Here's what we'll configure". */}
+      <div className="wz-grid wz-grid--2 text-left mb-8">
+        <SummaryCard icon="💻" label="Device" value={DEVICE_PROFILES.find(p => p.id === config.deviceProfile)?.label || 'Not set'} />
+        <SummaryCard icon="👤" label={t('setup.ready.label_account')} value={config.username || t('setup.ready.account_none')} />
+        <SummaryCard icon="🖧" label="Hostname" value={config.IS05_hostname || 'Default'} />
+        <SummaryCard icon="🌍" label={t('setup.ready.label_language')} value={selectedLang?.native || config.locale} />
         <SummaryCard icon="🕐" label={t('setup.ready.label_timezone')} value={selectedTz?.label || config.timezone || t('setup.ready.timezone_auto')} />
         <SummaryCard icon="📶" label={t('setup.ready.label_wifi')} value={config.wifiSSID || t('setup.ready.wifi_none')} />
-        <SummaryCard icon="👤" label={t('setup.ready.label_account')} value={config.username || t('setup.ready.account_none')} />
         <SummaryCard icon="🎨" label={t('setup.ready.label_theme')} value={themeLabels[theme] || theme} />
+        <SummaryCard
+          icon="🔑"
+          label="SSH access"
+          value={config.IS05_sshFingerprint ? 'Key authorised' : 'Not set up'}
+        />
+        <SummaryCard
+          icon="🗄"
+          label="Cluster storage"
+          value={config.IS05_storageEnabled ? `Enabled · ${config.IS05_storageSizeGb} GB` : 'Off'}
+        />
+        <SummaryCard
+          icon="🔒"
+          label="Screen PIN"
+          value={config.pin ? 'Set' : 'Not set'}
+        />
       </div>
 
-      {error && <p className="text-sm wz-danger mb-4">{error}</p>}
+      {error && (
+        <p role="alert" className="wz-note wz-note--danger mb-4 text-left">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{error}</span>
+        </p>
+      )}
 
       <button
         onClick={handleFinish}
         disabled={creating}
-        className="btn-primary px-10 py-3.5 text-base elevate-md hover:elevate-lg transition-shadow disabled:opacity-60"
+        className="btn-primary wz-cta elevate-md hover:elevate-lg transition-shadow"
       >
         {creating ? (
           <span className="flex items-center gap-2">
@@ -2623,19 +2971,22 @@ function ReadyStep({ config, onFinish, onPrev }: { config: SetupConfig; onFinish
         ) : t('setup.ready.enter')}
       </button>
 
-      <button onClick={onPrev} className="block mx-auto mt-4 text-sm transition-colors hover-accent-text" style={{ color: 'var(--text-muted)' }}>
+      <button onClick={onPrev} className="wz-quiet block mx-auto mt-4">
         {t('setup.ready.go_back')}
       </button>
 
-      {/* kitBackup-IK11: recovery kit hint — additive, admin context */}
-      <div className="mt-6 mx-auto max-w-sm rounded-xl px-4 py-3 text-left" style={{ border: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>Recovery kit</span> — your credentials JSON was shown once during setup.
-          You can re-download it any time as an admin via{' '}
-          <code className="accent-text text-[12px]">GET /api/recovery/kit</code>
-          {' '}from a trusted local session.
-        </p>
-      </div>
+      {/* Was: "your credentials JSON was shown once during setup. You can
+          re-download it any time as an admin via GET /api/recovery/kit from a
+          trusted local session." A raw HTTP verb and path, on the last screen
+          of first boot, as the instruction for recovering the machine. */}
+      <p className="wz-note mt-6 text-left">
+        <span className="wz-note-icon" aria-hidden="true">🛟</span>
+        <span>
+          <b>Recovery kit</b> — you downloaded it two steps ago. Keep it somewhere
+          that is not this machine. You can download a fresh copy any time from
+          Settings → Security.
+        </span>
+      </p>
     </div>
   )
 }

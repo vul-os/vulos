@@ -515,6 +515,41 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
   padding-block: 0.75rem;
 }
 
+/* Recovery-kit contents list. */
+.wz-kitrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.4375rem 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.wz-kitrow:last-child { border-bottom: 0; }
+.wz-kitrow > span:last-child { text-align: right; min-width: 0; word-break: break-all; }
+
+.wz-code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+
+/* A completed download keeps the button pressable (people re-download) while
+   reading as done. */
+.wz-root .btn-primary.wz-downloaded {
+  background: color-mix(in srgb, var(--ok-strong) 22%, var(--bg-surface));
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--ok-strong) 45%, transparent);
+}
+.wz-root .btn-primary.wz-downloaded:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ok-strong) 30%, var(--bg-surface));
+}
+
 /* ── Focus ───────────────────────────────────────────────────────────────
    A visible ring on everything focusable. The wizard is the one screen that
    may be driven entirely by a TV remote or a car dial (two of the four device
