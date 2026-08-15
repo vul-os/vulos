@@ -380,6 +380,29 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 			appLogFile.Close()
 		}
 
+		// LAUNCH-01: tear the namespace down with the process.
+		//
+		// Only Stop() used to do this, so a process that exited on its OWN — a
+		// crash, an OOM kill, a bad config, a port it could not bind — left its
+		// namespace registered. Manager.GetForProfile is a pure lookup and would
+		// keep answering with it, so the gateway went on proxying to a dead
+		// 10.200.x.2 forever: every later request 502'd, and because a namespace
+		// still "existed" nothing would ever start the app again. Removing it
+		// here turns a dead app back into a namespace MISS, which the gateway's
+		// activator then heals on the next request.
+		//
+		// A background context deliberately: the launch context is long gone by
+		// the time a long-running app exits, and teardown must not be skipped
+		// because of it.
+		//
+		// Stop() does the same teardown on the explicit-stop path; whichever
+		// gets there first wins (Manager.Destroy deletes under its own mutex)
+		// and the loser sees a plain not-found, which is not worth logging.
+		RemoveCgroup(instanceID)
+		if dErr := l.manager.Destroy(context.Background(), instanceID); dErr != nil && !strings.Contains(dErr.Error(), "not found") {
+			log.Printf("[appnet] namespace teardown for exited app %s: %v", instanceID, dErr)
+		}
+
 		log.Printf("[appnet] app %s exited (code=%d, err=%v)", instanceID, exitCode, err)
 	}()
 

@@ -2107,6 +2107,32 @@ func main() {
 		writeJSON(w, telemetry.SystemInfo())
 	})
 
+	// ARCH-01: the BOX's architecture, so the App Hub can show which of the
+	// ~120 catalogue apps this instance can actually install. Debian spelling
+	// (amd64/arm64), normalised in exactly one place — appnet.NormalizeArch.
+	//
+	// It is the SERVER's arch and nothing else. Vulos streams desktop apps from
+	// the box, so a user on an arm64 Mac driving an amd64 box must be offered
+	// amd64 apps. Nothing here reads a header, a user agent, or any other value
+	// the client controls; a client-side guess would agree with the server on
+	// every machine a developer tests on and disagree on exactly the mixed
+	// setups this OS exists for.
+	//
+	// `supported` additionally reports what this box can INSTALL for — the
+	// native arch, plus whatever `flatpak --supported-arches` reports when
+	// flatpak is present, since flatpak is the installer for the desktop
+	// catalogue and therefore the authority on which refs it will resolve.
+	// Per-entry installability is already resolved server-side on
+	// GET /api/store/registry (`installable` / `installable_reason`); this
+	// endpoint exists so the hub can label the box itself without waiting on
+	// the catalogue.
+	mux.HandleFunc("GET /api/system/arch", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"arch":      appnet.BoxArch(),
+			"supported": appnet.SupportedArches(),
+		})
+	})
+
 	// Open-source licence notices, surfaced by Settings → About. Served from the
 	// generated THIRD_PARTY_NOTICES.md that build.sh writes into the image at
 	// /opt/vulos/legal/; falls back to the repo copy in development. The written

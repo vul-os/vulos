@@ -157,6 +157,43 @@ func TestStaticApp_IsAPermanent404(t *testing.T) {
 	}
 }
 
+// TestUninstalledApp_SaysSo. The shell's registry offers entries that nothing
+// on the box implements — Mail (`lilmail`) is one on a stock image. Answering
+// those with the same "app not running" as a cold Calculator tells the user to
+// wait for something that is never coming.
+func TestUninstalledApp_SaysSo(t *testing.T) {
+	store, mgr, pool := newTestDeps(t)
+	g := New(store, mgr, pool)
+	token, _ := seedSession(t, store)
+	_ = mgr
+
+	g.SetActivator(func(ctx context.Context, appID, uid, profile string) error {
+		return fmt.Errorf("%q is offered by the shell but no manifest for it exists: %w",
+			appID, ErrNotInstalled)
+	})
+
+	srv := httptest.NewServer(g.Handler())
+	defer srv.Close()
+
+	req, _ := http.NewRequest("GET", srv.URL+"/app/lilmail/", nil)
+	req.AddCookie(&http.Cookie{Name: "vulos_session", Value: token})
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("status %d, want 404 for an app the box does not have", resp.StatusCode)
+	}
+	buf := make([]byte, 512)
+	n, _ := resp.Body.Read(buf)
+	body := string(buf[:n])
+	if !contains(body, "not installed") {
+		t.Fatalf("body %q does not say the app is not installed — it is "+
+			"indistinguishable from an app that simply has not started yet", body)
+	}
+}
+
 // TestConcurrentRequests_LaunchOnce is the thundering-herd guard.
 //
 // Loading an app page fires the document plus every subresource at once, and

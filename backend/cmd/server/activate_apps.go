@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"vulos/backend/services/appnet"
@@ -49,6 +50,20 @@ func newAppActivator(
 		// same call the admin launch endpoint makes.
 		m, err := appStore.GetManifest(appID)
 		if err != nil {
+			// Distinguish "the box does not have this app" from "this app's
+			// manifest is broken". The shell's registry (src/core/AppRegistry.ts)
+			// offers entries that resolve to /app/<id>/ without anything on the box
+			// implementing them — `lilmail` is one: it is a separate product, not a
+			// bundled app, and there is no lilmail directory in frontend/apps/, no
+			// entry in registry.json, and nothing in the rootfs but its logo. That
+			// tile used to answer with the same {"error":"app not running"} as an
+			// app that merely had not started yet, so a user could not tell a dead
+			// entry point from a cold one. Say which it is.
+			if os.IsNotExist(err) {
+				return fmt.Errorf("%q is offered by the shell but no manifest for it "+
+					"exists in the install dir or in the image's bundled apps: %w",
+					appID, gateway.ErrNotInstalled)
+			}
 			return fmt.Errorf("app %s: %w", appID, err)
 		}
 

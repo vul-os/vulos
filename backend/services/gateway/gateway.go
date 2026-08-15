@@ -617,9 +617,9 @@ func (g *Gateway) Handler() http.HandlerFunc {
 			if aErr != nil {
 				log.Printf("[gateway] activate %s for %s/%s failed: %v", appID, session.UserID, net02Profile, aErr)
 				w.Header().Set("Content-Type", "application/json")
-				// A static app has nothing to start, ever — that is a permanent
-				// 404, not a timeout a retry could clear.
-				if errors.Is(aErr, ErrNoProcess) {
+				// A static app, or one the box does not have, has nothing to start
+				// ever — that is a permanent 404, not a timeout a retry could clear.
+				if errors.Is(aErr, ErrNoProcess) || errors.Is(aErr, ErrNotInstalled) {
 					w.WriteHeader(http.StatusNotFound)
 					fmt.Fprintf(w, `{"error":"app not running","detail":%q}`, aErr.Error())
 					return

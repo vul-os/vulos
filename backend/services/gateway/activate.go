@@ -71,6 +71,17 @@ import (
 // that genuinely failed or timed out. Retrying would never help.
 var ErrNoProcess = errors.New("app has no process to start")
 
+// ErrNotInstalled is what an Activator returns for an app that the shell offers
+// but the box does not have — no manifest in the install dir, none in the
+// bundled dirs the image ships.
+//
+// This is a different fact from "app not running" and the old answer conflated
+// them, which is how a Mail tile that resolves to nothing on a stock image
+// looked identical to a Calculator that simply had not been started yet. Like
+// ErrNoProcess it is permanent (a 404), but the explanation has to name the
+// actual problem: nothing will start, because there is nothing to start.
+var ErrNotInstalled = errors.New("app is not installed on this box")
+
 // activateTimeout bounds how long a request will wait for an app to come up.
 // A python process-backed app measured ~0.2s to bind and serve
 // (scripts/check-apps-run.py); the namespace setup around it is a dozen
