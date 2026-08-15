@@ -75,12 +75,24 @@
 # a browser that never started would satisfy "one output is blank" while
 # meaning nothing.
 #
+# The three arms also pin the INSTRUMENT from both sides, which is worth having
+# in a file with this history: an instrument that labelled everything `none`
+# would fail the controls (two blank outputs, not one), and one that labelled
+# everything S1/S2 would fail them too (no blank output at all). There is no
+# broken-metric reading that quietly reports a pass.
+#
 # Measured 2026-08-15, labwc 0.8.3 / cog 0.18.4 / WPE WebKit on debian trixie:
 #
 #   arm           HEADLESS-1        HEADLESS-2
 #   normal        #ff0000  (S1)     #0000ff  (S2)
-#   same-app-id   #000000  blank    #ff0000  (S1)
-#   no-rules      #000000  blank    #0000ff  (S2)
+#   same-app-id   #000000  blank    #ff0000 or #0000ff — both browsers, stacked
+#   no-rules      #000000  blank    #ff0000 or #0000ff — both browsers, stacked
+#
+# WHICH of the two is on top of the pile varies between runs, so the control
+# assertion is "exactly one output is blank" and never "this colour is there".
+# HEADLESS-2 is where they land because wlroots puts it at 0,0 and HEADLESS-1
+# to its right; that is a fact about the backend, not about the rules, and it
+# is not asserted either.
 #
 # ── Showing this gate red on demand ──────────────────────────────────────────
 #
