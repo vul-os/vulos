@@ -135,6 +135,40 @@
   --status-warning-soft: color-mix(in srgb, var(--status-warning) 14%, transparent);
   --status-danger-soft: color-mix(in srgb, var(--status-danger) 12%, transparent);
 
+  /* ── The same three tones, as TEXT ───────────────────────────────────────
+     One colour cannot be both a fill and a text colour, and this is the third
+     time that has cost us: `.accent-bg` painted the raw accent under white text
+     (3.68:1), --accent-text was derived against a single tint so a control that
+     tinted its own background deeper measured a different pair (4.21:1), and
+     the values ABOVE — tuned as dots, bars, badge fills and 34% borders — were
+     being painted straight into `text-success` / `text-warning` / `text-danger`.
+
+     The `-text` values below are the fill hue moved along LIGHTNESS ONLY (hue
+     and saturation untouched, so danger still reads as danger) until it clears
+     4.5:1 × 1.06 headroom on the WORST surface the OS actually draws status
+     text on. That surface is not the canvas: it is a 24% tint of the tone's own
+     hue over --bg-hover, which is what `text-danger bg-danger-soft
+     hover:bg-[color-mix(--status-danger 24%,transparent)]` paints in Packages
+     and Drivers. Contrast against a tint of your own hue degrades as the tint
+     deepens, so bounding the deepest one bounds every lighter chip and every
+     plain surface. src/core/accentContrast.ts owns the enumeration
+     (STATUS_TEXT_SURFACES) and core/accentContrast.status.test.ts re-derives
+     these six values from it, so a hand-edit here fails a unit test; e2e/
+     status-surfaces.e2e.ts then measures the REAL composited pixels, which is
+     the only check that can see an `opacity` in the chain.
+
+     Dark, measured worst-case → canvas:
+       success  #35c081 4.35 → #4bcd92 4.78  (9.90 on --bg-base)
+       warning  #f0b232 5.00 → unchanged     (amber already clears; moving it
+                                              would only dull it for nothing)
+       danger   #f2565b 3.47 → #f8a2a5 4.85  (10.15 on --bg-base)
+     Dark was NOT symmetric-and-fine: --status-danger measured 4.23:1 as plain
+     text on --bg-active and 3.47:1 on its own 24% tint. The Settings sweep
+     reported dark clean only because it never rendered either pair. */
+  --status-success-text: #4bcd92;
+  --status-warning-text: #f0b232;
+  --status-danger-text:  #f8a2a5;
+
   /* ═══ STRUCTURAL TOKENS (theme-agnostic — identical in light + dark) ═══ */
 
   /* Radius scale — a slightly more generous squircle language across the OS. */
@@ -325,7 +359,11 @@
   --overlay: rgba(15, 23, 42, 0.4);
   --scrim: rgba(15, 23, 42, 0.22);
 
-  /* Status colours read slightly deeper on white for contrast. */
+  /* Status colours read slightly deeper on white for contrast. Deeper than the
+     dark theme's, yes — but these are FILL values (dots, bars, badge grounds,
+     `-soft` tints, 34% borders), and as text they were the OS's worst remaining
+     contrast defect: 3.30 / 3.19 / 4.83 on the white canvas and 2.15 / 2.10 /
+     2.80 on their own 24% tint. Text uses --status-*-text below. */
   --status-danger: #dc2626;
   --status-warning: #d97706;
   --tier-local:     #065f46;
@@ -333,6 +371,19 @@
   --tier-brokered:  #92400e;
   --tier-external:  #991b1b;
   --status-success: #16a34a;
+  /* Text variants — same hue and saturation, darkened until they clear
+     4.77:1 (4.5 + 6% headroom) on the worst surface status text lands on, a
+     24% tint of their own hue over --bg-hover. Measured worst-case → canvas:
+       success  #16a34a 2.15 → #0c5727 4.90  (8.72 on white)
+       warning  #d97706 2.10 → #713e03 4.94  (8.78 on white)
+       danger   #dc2626 2.80 → #8f1717 4.89  (9.12 on white)
+     Amber cannot stay amber and be read as text on white — 4.5:1 forces it to
+     brown. That is the colour, not a mistake: the alternative is text nobody
+     can read. The MEANING is carried by the pairing with --status-warning-soft,
+     which is unchanged. */
+  --status-danger-text:  #8f1717;
+  --status-warning-text: #713e03;
+  --status-success-text: #0c5727;
 }
 
 /* Fix shadow intensity for legacy Tailwind shadow utilities in light mode. */
@@ -393,6 +444,13 @@
   --tier-brokered:  #92400e;
   --tier-external:  #991b1b;
   --status-success: #16a34a;
+  /* The third theme state, and the one that is always forgotten: a
+     System-Light user on a paint that happened before main.jsx stamped
+     data-theme. Miss it and the very first frame of first boot is the frame
+     that fails. */
+  --status-danger-text:  #8f1717;
+  --status-warning-text: #713e03;
+  --status-success-text: #0c5727;
   }
 }
 
@@ -873,9 +931,14 @@ textarea::placeholder {
    elevate-* family above — `hover:bg-danger-soft` / `hover:text-danger` are
    live in the codebase (Calendar.jsx, Contacts.jsx, InstancesPanel.jsx,
    MobileStack.jsx) and were silently dead as plain CSS. */
-@utility text-success { color: var(--status-success); }
-@utility text-danger  { color: var(--status-danger); }
-@utility text-warning { color: var(--status-warning); }
+/* TEXT reads --status-*-text; FILLS read --status-* itself. The three below
+   used to paint the fill value, which is how the same colour ended up being
+   asked to be a legible 12px string AND a 6px dot. `text-[var(--status-danger)]`
+   is the same defect spelled by hand — core/accentContrast.status.test.ts
+   fails on it, so the two spellings cannot drift apart again. */
+@utility text-success { color: var(--status-success-text); }
+@utility text-danger  { color: var(--status-danger-text); }
+@utility text-warning { color: var(--status-warning-text); }
 @utility bg-success   { background: var(--status-success); }
 @utility bg-danger    { background: var(--status-danger); }
 @utility bg-warning   { background: var(--status-warning); }
