@@ -950,6 +950,22 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		return fmt.Errorf("registry entry %q is administratively disabled (_disabled) — install refused", appID)
 	}
 
+	// ARCH-01: refuse an install this box's architecture cannot satisfy.
+	//
+	// The listing marks these entries not-installable, but a listing is a
+	// suggestion and this is the enforcement. Without it, an x86_64-only Flathub
+	// app (Steam, Chrome, Spotify, Zoom, VS Code…) installed on an arm64 box
+	// fails somewhere deep in `flatpak install` — or worse, half-succeeds,
+	// leaving a manifest for an app that can never run. Refusing here names the
+	// reason once, before anything touches the filesystem.
+	//
+	// Empty Arch still means "any", so the 46 entries that declare nothing are
+	// unaffected.
+	if !ArchSupported(entry.Arch, SupportedArches()) {
+		return fmt.Errorf("registry entry %q cannot be installed on this box: %s",
+			appID, ArchUnavailableReason(entry.Arch, SupportedArches()))
+	}
+
 	// Downgrade protection (M4): enforce per-app minimum version.
 	if entry.MinVersion != "" && version < entry.MinVersion {
 		return fmt.Errorf("registry: requested version %q for %q is below the minimum allowed version %q (downgrade protection)",
@@ -1122,6 +1138,21 @@ type RegistryListEntry struct {
 	Installed   bool     `json:"installed"`
 	Homepage    string   `json:"homepage"`
 	License     string   `json:"license"`
+	// Installable (ARCH-01) reports whether THIS BOX can install the app: its
+	// declared Arch intersected with the box's supported arches. The comparison
+	// is done here, server-side, and never handed to the client as two lists to
+	// compare itself — the whole failure mode this closes is a comparison that
+	// mixes naming schemes (Debian amd64/arm64 vs Flatpak x86_64/aarch64) and
+	// silently matches nothing. See arch.go.
+	Installable bool `json:"installable"`
+	// InstallableReason explains a false Installable in one sentence a UI can
+	// show verbatim ("requires amd64; this box is arm64"). Empty when installable.
+	InstallableReason string `json:"installable_reason,omitempty"`
+	// BoxArch is the architecture of the BOX, Debian spelling — the server
+	// process's own runtime.GOARCH, never anything derived from the request.
+	// Desktop apps are streamed FROM the box, so a user on an arm64 Mac driving
+	// an amd64 box must see amd64.
+	BoxArch string `json:"box_arch"`
 	// Keywords surfaces RegistryEntry.Keywords to the App Hub list/search API
 	// (GET /api/store/registry) — without this the registry's per-app keywords
 	// data reaches neither the API response nor the frontend search box.
@@ -1132,6 +1163,11 @@ type RegistryListEntry struct {
 // For Flatpak apps, checks the live Flatpak state so removed apps disappear immediately.
 func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 	flatpakApps := InstalledFlatpaks()
+	// ARCH-01: resolved ONCE per listing, not per entry — SupportedArches may
+	// shell out to flatpak, and the answer cannot differ between two entries of
+	// the same response.
+	supported := SupportedArches()
+	boxArch := supported[0]
 	var entries []RegistryListEntry
 	for id, entry := range r.Apps {
 		versions := availableVersions(entry)
@@ -1175,6 +1211,10 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 			Homepage:    entry.Homepage,
 			License:     entry.License,
 			Keywords:    entry.Keywords,
+
+			Installable:       ArchSupported(entry.Arch, supported),
+			InstallableReason: ArchUnavailableReason(entry.Arch, supported),
+			BoxArch:           boxArch,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
