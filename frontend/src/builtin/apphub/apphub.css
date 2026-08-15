@@ -833,6 +833,12 @@
 }
 
 .hub-state svg { flex: none; width: 16px; height: 16px; }
+/* These tone icons take the -text variant, not the fill, and the accent rule
+   below has done the same since the accent split. A glyph is held to 3:1 rather
+   than 4.5:1, so the fill would have been permissible in principle — but the
+   light fills did not clear even that: --status-success #16a34a measures 2.89:1
+   on --bg-elevated. Rather than tune a third value for icons, they ride the one
+   that is already derived and already gated. */
 .hub-state[data-tone='ok'] svg { color: var(--status-success-text); }
 .hub-state[data-tone='off'] svg { color: var(--text-ghost); }
 
