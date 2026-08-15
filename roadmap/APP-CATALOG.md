@@ -47,6 +47,29 @@ Zoom, Steam and Obsidian are **unverified either way** and must not be flagged a
 extra-data until someone reads their manifests. The distinction matters: it decides
 whether an app is redistributable and whether a mirror would ever work for it.
 
+**1a — Proprietary apps are excluded, for now (founder call, 2026-08-15).**
+No proprietary app ships in the catalogue at this stage. This is scoped as *for now* —
+reversible, not a permanent position — and it resolves several open problems at once
+rather than requiring each to be solved:
+
+- **extra-data becomes moot.** The only confirmed extra-data app was Chrome, which is
+  proprietary and therefore out.
+- **the unverified-publisher problem shrinks to its mildest form.** Policy 2's
+  scrutinise-hardest category was *community-maintained packages of proprietary
+  software*. With proprietary out, what remains unverified is open source — packaged by
+  a third party but auditable at source, e.g. Chromium.
+- **the emulation burden shrinks.** The x86_64-only set is very largely the proprietary
+  set, so most of what could not follow a user onto an arm instance is now out of scope
+  anyway.
+
+**What this removes**, and the second item is a real product cost worth stating rather
+than burying: Chrome and Vivaldi from browsers; Discord, Slack and Zoom from comms;
+Spotify from media; Obsidian from notes; VS Code from development (**VSCodium, the FOSS
+build, stays and is the direct substitute**); and **Steam from gaming** — which takes
+the flagship of that category with it, leaving Heroic, Lutris, Bottles, ProtonUp-Qt and
+the emulators, all open source. If gaming is a priority, Steam is the entry to revisit
+first when this call is reopened.
+
 **2 — `verified` is a first-class field.**
 Roughly a third of this catalogue has no verified publisher. Flathub exposes the flag
 in its AppStream metadata and API. Unverified apps are either badged in the UI or held
