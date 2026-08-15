@@ -186,36 +186,47 @@ const COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
  */
 const FORBIDDEN_SUBSTRINGS = ['url(', 'image-set', '@import', 'element(', 'expression', 'javascript:', 'data:', '\\', ';', '{', '}', '/*', '<', '>', 'var(', 'attr(']
 
-export function validateTokenValue(name: string, raw: unknown): ValidationResult<string> {
+/**
+ * `where` names the JSON path this token came from, and it is threaded through
+ * to every message rather than left at the default.
+ *
+ * A pack developer gets these strings straight out of the CLI, and
+ * `tokens["--vd-accent"]: …` does not tell them WHICH of a manifest's objects
+ * was wrong. Every other error in this file carries its path; this one used to
+ * hardcode `tokens` and silently drop it, which made the documented CLI output
+ * a lie.
+ */
+export function validateTokenValue(name: string, raw: unknown, where = 'tokens'): ValidationResult<string> {
+  const at = `${where}["${name}"]`
   const rule = TOKEN_ALLOWLIST[name]
   if (!rule) {
-    return fail([`tokens: "${name}" is not an allowlisted custom property (allowed: ${Object.keys(TOKEN_ALLOWLIST).join(', ')})`])
+    return fail([`${where}: "${name}" is not an allowlisted custom property (allowed: ${Object.keys(TOKEN_ALLOWLIST).join(', ')})`])
   }
-  if (typeof raw !== 'string') return fail([`tokens["${name}"]: expected a string`])
+  if (typeof raw !== 'string') return fail([`${at}: expected a string`])
   const value = raw.trim()
-  if (value.length === 0 || value.length > 32) return fail([`tokens["${name}"]: value must be 1–32 characters`])
-  if (/[^\x20-\x7e]/.test(value)) return fail([`tokens["${name}"]: value must be printable ASCII`])
+  if (value.length === 0 || value.length > 32) return fail([`${at}: value must be 1–32 characters`])
+  if (/[^\x20-\x7e]/.test(value)) return fail([`${at}: value must be printable ASCII`])
   const lowered = value.toLowerCase()
   for (const bad of FORBIDDEN_SUBSTRINGS) {
-    if (lowered.includes(bad)) return fail([`tokens["${name}"]: value contains forbidden sequence "${bad}"`])
+    if (lowered.includes(bad)) return fail([`${at}: value contains forbidden sequence "${bad}"`])
   }
 
   if (rule.kind === 'color') {
-    if (!COLOR_RE.test(value)) return fail([`tokens["${name}"]: expected #rgb or #rrggbb, got ${JSON.stringify(value)}`])
+    if (!COLOR_RE.test(value)) return fail([`${at}: expected #rgb or #rrggbb, got ${JSON.stringify(value)}`])
     return ok(value.toLowerCase())
   }
   if (rule.kind === 'length') {
-    if (!LENGTH_RE.test(value)) return fail([`tokens["${name}"]: expected a px length, got ${JSON.stringify(value)}`])
+    if (!LENGTH_RE.test(value)) return fail([`${at}: expected a px length, got ${JSON.stringify(value)}`])
     const n = parseFloat(value)
-    if (rule.min !== undefined && n < rule.min) return fail([`tokens["${name}"]: ${n}px is below the minimum of ${rule.min}px — ${rule.doc}`])
-    if (rule.max !== undefined && n > rule.max) return fail([`tokens["${name}"]: ${n}px is above the maximum of ${rule.max}px`])
+    if (rule.min !== undefined && n < rule.min) return fail([`${at}: ${n}px is below the minimum of ${rule.min}px — ${rule.doc}`])
+    if (rule.max !== undefined && n > rule.max) return fail([`${at}: ${n}px is above the maximum of ${rule.max}px`])
     return ok(`${n}px`)
   }
   // number
-  if (!NUMBER_RE.test(value)) return fail([`tokens["${name}"]: expected a number between 0 and 1, got ${JSON.stringify(value)}`])
+  if (!NUMBER_RE.test(value)) return fail([`${at}: expected a number between 0 and 1, got ${JSON.stringify(value)}`])
   const n = parseFloat(value)
-  if (rule.min !== undefined && n < rule.min) return fail([`tokens["${name}"]: ${n} is below the minimum of ${rule.min} — ${rule.doc}`])
-  if (rule.max !== undefined && n > rule.max) return fail([`tokens["${name}"]: ${n} is above the maximum of ${rule.max}`])
+  if (rule.min !== undefined && n < rule.min) return fail([`${at}: ${n} is below the minimum of ${rule.min} — ${rule.doc}`])
+  if (rule.max !== undefined && n > rule.max) return fail([`${at}: ${n} is above the maximum of ${rule.max}`])
   return ok(String(n))
 }
 
@@ -225,7 +236,7 @@ export function validateTokens(input: unknown, where = 'tokens'): ValidationResu
   const errors: string[] = []
   const out: Record<string, string> = {}
   for (const [name, raw] of Object.entries(input)) {
-    const r = validateTokenValue(name, raw)
+    const r = validateTokenValue(name, raw, where)
     if (r.ok) out[name] = r.value
     else errors.push(...r.errors)
   }

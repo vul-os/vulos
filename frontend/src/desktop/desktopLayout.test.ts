@@ -270,6 +270,23 @@ describe('hostile packs are rejected', () => {
     expect(validatePack(wrongVersion).ok).toBe(false)
   })
 
+  it('reports the JSON path of a bad token, not just the token name', () => {
+    // The pack CLI prints these strings verbatim and a manifest has several
+    // objects; "tokens[...]" alone does not say which one. Guarded because the
+    // path used to be accepted as an argument and then dropped on the floor,
+    // which made the documented CLI output in roadmap/CUSTOMIZATION.md a lie.
+    const pack = goodPack()
+    at(pack, ['layout']).tokens = { '--vd-dock-opacity': '0' }
+    const result = validatePack(pack, 'my-layout.pack.json')
+    expect(result.ok).toBe(false)
+    expect(result.errors[0]).toContain('my-layout.pack.json.layout.tokens["--vd-dock-opacity"]')
+
+    const unknown = goodPack()
+    at(unknown, ['layout']).tokens = { '--bg-elevated': '#000000' }
+    expect(validatePack(unknown, 'my-layout.pack.json').errors[0])
+      .toContain('my-layout.pack.json.layout.tokens:')
+  })
+
   it('accepts the base pack, so the cases above fail for the reason claimed', () => {
     // Without this, every assertion above could be passing because goodPack()
     // itself is invalid — the "hollow gate" shape this repo keeps finding.
