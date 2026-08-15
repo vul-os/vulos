@@ -327,6 +327,12 @@ async function exec(command: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command }),
   })
+  // BUILTIN-6: res.ok was never consulted. /api/exec answering 500 (or 403,
+  // or a "not permitted") with a JSON body parses cleanly, has no `output`
+  // field, and so returned '' — which loadDir parses into zero rows and
+  // renders with the designed "Empty directory" state. A permission failure
+  // and a genuinely empty folder were pixel-identical.
+  if (!res.ok) throw new Error(`/api/exec returned HTTP ${res.status}`)
   const data: unknown = await res.json()
   return isRecord(data) && typeof data.output === 'string' ? data.output : ''
 }
@@ -366,10 +372,16 @@ export default function FileManager() {
 
   // Resolve actual home path once
   useEffect(() => {
-    exec('echo $HOME').then(out => {
-      const h = out.trim()
-      if (h) setResolvedHome(h)
-    })
+    // This had no rejection handler at all: with the box unreachable, `exec`
+    // rejected and the failure surfaced as an unhandled promise rejection
+    // (which the window error boundary turns into a dead app) instead of just
+    // leaving the home path at its default.
+    exec('echo $HOME')
+      .then(out => {
+        const h = out.trim()
+        if (h) setResolvedHome(h)
+      })
+      .catch(() => { /* keep the '~' default; loadDir reports the real failure */ })
   }, [])
 
   const loadDir = useCallback(async (dir: string, pushHistory = true) => {

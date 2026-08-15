@@ -704,10 +704,13 @@ interface ConversationListProps {
   onSelect: (conv: Conversation) => void
   loading: boolean
   wsConnected: boolean
+  /** Non-null when the conversation list could not be fetched at all. */
+  loadError: string | null
+  onRetry: () => void
   narrow: boolean
 }
 
-function ConversationList({ conversations, activeId, onSelect, loading, wsConnected, narrow }: ConversationListProps) {
+function ConversationList({ conversations, activeId, onSelect, loading, wsConnected, narrow, loadError, onRetry }: ConversationListProps) {
   const sidebarStyle = narrow
     ? { ...S.sidebar, width: '100%', minWidth: 0, borderRight: 'none' }
     : S.sidebar
@@ -715,15 +718,53 @@ function ConversationList({ conversations, activeId, onSelect, loading, wsConnec
     <aside style={sidebarStyle}>
       <div style={S.sidebarHeader}>
         <div style={S.sidebarTitle}>Messages</div>
-        <div
-          title={wsConnected ? 'Connected' : 'Disconnected'}
-          style={wsConnected ? S.onlineDot : S.offlineDot}
-        />
+        {/* An 8px grey dot was the ONLY signal that realtime delivery was
+            dead, and its meaning lived in a title attribute no one hovers.
+            Say it in words. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            title={wsConnected ? 'Connected' : 'Disconnected'}
+            style={wsConnected ? S.onlineDot : S.offlineDot}
+          />
+          {!wsConnected && (
+            <span style={{ fontSize: 11, color: 'var(--text-ghost, #777)' }}>Offline</span>
+          )}
+        </div>
       </div>
 
-      {loading && conversations.length === 0 ? (
+      {!wsConnected && (
+        <div style={{
+          padding: '6px 12px', fontSize: 11, lineHeight: 1.5,
+          color: 'var(--text-ghost, #777)', borderBottom: '1px solid var(--border-default, #2a2a2a)',
+        }}>
+          Not receiving live messages — reconnecting. Reopen a conversation to refresh it.
+        </div>
+      )}
+
+      {loading && conversations.length === 0 && !loadError ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
           <div style={S.spinner} />
+        </div>
+      ) : loadError ? (
+        /* BUILTIN-7: `r.ok ? r.json() : []` turned every 500/404 into an empty
+           list, so an unreachable box and a brand-new account rendered the
+           identical "No conversations yet." — the app cheerfully reported that
+           you have no correspondents when it simply could not ask. */
+        <div role="alert" style={{
+          padding: 24, textAlign: 'center', color: 'var(--text-ghost, #555)', fontSize: 12, lineHeight: 1.6,
+        }}>
+          <div style={{ color: 'var(--text-secondary, #aaa)' }}>Could not load conversations</div>
+          <div style={{ marginTop: 4 }}>{loadError}</div>
+          <button
+            onClick={onRetry}
+            style={{
+              marginTop: 10, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+              borderRadius: 6, border: '1px solid var(--border-default, #333)',
+              background: 'transparent', color: 'var(--text-secondary, #aaa)',
+            }}
+          >
+            Try again
+          </button>
         </div>
       ) : conversations.length === 0 ? (
         <div style={{
@@ -1297,6 +1338,7 @@ export default function Messages() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [loadingConvs, setLoadingConvs] = useState(false)
+  const [convsError, setConvsError] = useState<string | null>(null)
   const [myVulosId, setMyVulosId] = useState<string | null>(null)
 
   // Fetch own identity
@@ -1312,8 +1354,12 @@ export default function Messages() {
   // Fetch conversation list
   const fetchConversations = useCallback(() => {
     setLoadingConvs(true)
+    setConvsError(null)
     fetch('/api/peering/conversations')
-      .then(r => (r.ok ? r.json() : []))
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then((data: unknown) => {
         const raw: unknown[] = Array.isArray(data)
           ? data
@@ -1322,7 +1368,7 @@ export default function Messages() {
             : []
         setConversations(raw.map(normalizeConversation).filter((c): c is Conversation => c !== null))
       })
-      .catch(() => {})
+      .catch((e: unknown) => setConvsError(errMessage(e, 'Could not reach the box')))
       .finally(() => setLoadingConvs(false))
   }, [])
 
@@ -1402,6 +1448,8 @@ export default function Messages() {
           loading={loadingConvs}
           wsConnected={wsConnected}
           narrow={narrow}
+          loadError={convsError}
+          onRetry={fetchConversations}
         />
       )}
       {showThread && (

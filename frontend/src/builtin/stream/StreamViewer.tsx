@@ -129,6 +129,11 @@ interface StreamKbdEvent {
 
 const STREAM_TOOLBAR_FPS_OPTIONS = [30, 60, 90, 120]
 
+// How many 1s polls to wait for a session to move to running before admitting
+// it is not coming. ~20s is longer than a cold app launch on a slow box and
+// far shorter than "forever", which is what this used to be.
+const MAX_START_ATTEMPTS = 20
+
 interface StreamToolbarProps {
   sessionId: string
   pcRef: RefObject<RTCPeerConnection | null>
@@ -384,8 +389,28 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   const scrollAccRef = useRef(0)
   const scrollRafRef = useRef<number | null>(null)
   const pointerLockedRef = useRef(false)
-  const [status, setStatus] = useState<'connecting' | 'connected'>('connecting')
+  // 'starting'   — the session exists on the box but is not running yet, so we
+  //                are genuinely waiting for something that is expected to
+  //                arrive. This is the ONLY state entitled to a spinner.
+  // 'connecting' — session is running; WebRTC/signalling is negotiating.
+  // 'connected'  — media is flowing.
+  // A failure is NOT a status; it lives in `error` and renders a distinct
+  // surface. See the STREAM-01 note on the error branch below.
+  const [status, setStatus] = useState<'starting' | 'connecting' | 'connected'>('starting')
   const [error, setError] = useState<string | null>(null)
+  // Bounds the "waiting for the session to start" poll. Without a bound a
+  // session that never starts spins forever with no way for the user to tell
+  // that nothing is going to happen (STREAM-02).
+  const startAttemptsRef = useRef(0)
+  // Set once the viewer has stopped retrying by itself. It gates the automatic
+  // reconnect below so a verdict ("this never started") stays on screen instead
+  // of flickering against a spinner every 2s; the user re-arms it with Retry.
+  const [gaveUp, setGaveUp] = useState(false)
+  // Every pending reconnect/poll timer, so unmount can cancel them. A stream
+  // window closed while its session was not running used to leave a 1s loop
+  // building a fresh RTCPeerConnection + WebSocket forever (STREAM-03).
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelledRef = useRef(false)
   const [pointerLocked, setPointerLocked] = useState(false)
   const streamSize = useRef({ w: 1280, h: 720 })
 
@@ -406,21 +431,39 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   }, [])
 
   const connect = useCallback(async () => {
+    if (cancelledRef.current) return
     pcRef.current?.close()
     wsRef.current?.close()
     connectedRef.current = false
-    setStatus('connecting')
     setError(null)
 
     try {
       const res = await fetch('/api/stream/sessions')
+      // A 5xx/404 from the box used to be fed straight into toStreamSessions(),
+      // which answers [] for any shape it doesn't recognise — so a dead backend
+      // was indistinguishable from "your session isn't up yet" and the viewer
+      // sat in the start-poll forever.
+      if (!res.ok) throw new Error(`Box returned HTTP ${res.status} for the session list`)
       const sessions = toStreamSessions(await res.json())
+      if (cancelledRef.current) return
       const session = sessions.find(s => s.id === sessionId)
       if (!session || !session.running) {
-        // eslint-disable-next-line react-hooks/immutability
-        setTimeout(() => connect(), 1000)
+        startAttemptsRef.current += 1
+        if (startAttemptsRef.current > MAX_START_ATTEMPTS) {
+          setGaveUp(true)
+          setError(
+            sessions.length === 0
+              ? 'The box reports no running stream sessions.'
+              : 'This session is registered on the box but never started.',
+          )
+          return
+        }
+        setStatus('starting')
+        retryTimerRef.current = setTimeout(() => connect(), 1000)
         return
       }
+      startAttemptsRef.current = 0
+      setStatus('connecting')
       streamSize.current = { w: session.width || 1280, h: session.height || 720 }
 
       // RELAY-01: ICE servers come from the box's single relay/TURN provider
@@ -513,20 +556,36 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
   }, [sessionId, gaming])
 
   useEffect(() => {
+    cancelledRef.current = false
     connect()
     return () => {
+      // Order matters: latch cancelled BEFORE tearing down, so an in-flight
+      // connect() that resumes after this cleanup bails out instead of
+      // resurrecting a peer connection on a window the user has closed.
+      cancelledRef.current = true
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
       pcRef.current?.close()
       wsRef.current?.close()
       if (gpLoopRef.current) cancelAnimationFrame(gpLoopRef.current)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-retry on error
+  // Auto-retry on error. Deliberately does NOT run once the viewer has given
+  // up: re-entering connect() clears `error`, so an unconditional interval
+  // would alternate the verdict with a spinner forever.
   useEffect(() => {
-    if (!error) return
+    if (!error || gaveUp) return
     const id = setInterval(() => connect(), 2000)
     return () => clearInterval(id)
-  }, [error, connect])
+  }, [error, gaveUp, connect])
+
+  const retryNow = useCallback(() => {
+    startAttemptsRef.current = 0
+    setGaveUp(false)
+    setStatus('starting')
+    connect()
+  }, [connect])
 
   // Gamepad polling loop — reads full state at rAF rate and sends via dedicated channel.
   // Only polls when a gamepad is actually connected; stops cleanly on unmount or disconnect.
@@ -733,13 +792,32 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
     if (status === 'connected') focusContainer()
   }, [status, focusContainer])
 
+  // STREAM-01: this branch used to render a spinner over the words "Starting
+  // app...", with the actual reason demoted to 12px at 40% opacity underneath.
+  // Every failure the viewer can reach — a refused signalling socket, a dead
+  // ICE path, a 500 from the box, a session that never started — was therefore
+  // presented to the user as ordinary progress, which is why a permanently
+  // broken stream "just says connecting". An error is not a loading state: no
+  // spinner, the reason is the headline, and there is a way out.
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full w-full min-w-0 bg-black text-white/50 text-sm p-6">
+      <div
+        role="alert"
+        className="flex items-center justify-center h-full w-full min-w-0 bg-black text-white/50 text-sm p-6"
+      >
         <div className="stream-fade-in text-center space-y-3 max-w-sm min-w-0">
-          <span className="w-6 h-6 spinner inline-block" />
-          <p className="text-white/70">Starting app...</p>
-          <p className="text-white/40 text-xs break-words">{error}</p>
+          <span aria-hidden="true" className="block text-2xl leading-none text-white/30">⚠</span>
+          <p className="text-white/80 font-medium">Stream unavailable</p>
+          <p className="text-white/50 text-xs break-words">{error}</p>
+          <button
+            onClick={retryNow}
+            className="mt-1 px-3 py-1.5 rounded-lg bg-white/10 text-white/80 text-xs font-medium hover:bg-white/20 transition-[background-color] duration-[var(--motion-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            {gaveUp ? 'Try again' : 'Retry now'}
+          </button>
+          {!gaveUp && (
+            <p className="text-white/30 text-[11px]">Retrying automatically…</p>
+          )}
         </div>
       </div>
     )
@@ -787,11 +865,11 @@ export default function StreamViewer({ sessionId, scrollSensitivity = 1.0, gamin
         />
       )}
 
-      {status === 'connecting' && (
+      {status !== 'connected' && (
         <div className="stream-fade-in absolute inset-0 flex items-center justify-center z-10 bg-black">
           <span className="text-white/55 text-sm flex items-center gap-2.5">
             <span className="w-4 h-4 spinner" />
-            Connecting...
+            {status === 'starting' ? 'Starting app…' : 'Connecting…'}
           </span>
         </div>
       )}
