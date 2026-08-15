@@ -112,7 +112,43 @@ with them and could not do them anyway from inside an opaque frame:
   This is what stops a widget painting a convincing "Vulos needs your password"
   panel inside the rail. Every field a user types into is drawn by the OS.
 
-### Permissions
+### Permissions are enforced here, not somewhere else
+
+This deserves stating plainly because Vulos already contains the failure mode.
+An **app** manifest's `permissions` array is validated against a list of valid
+strings and then, for almost all of them, has *no runtime effect at all* — an app
+declaring `camera` is neither granted nor denied anything, because nothing reads
+the declaration. The string is documentation wearing the costume of a control.
+
+So "the platform will contain it" was not available as an assumption for this
+API, and a widget permission that existed only in a manifest and a settings
+switch would be the same lie in a new place. Every grant here is enforced in this
+code:
+
+- `host/context.ts` is a **pure function**, deliberately, and it is the single
+  place a `granted` array becomes a capability or a `null`. It is a function
+  rather than a literal inside the rail's JSX precisely so it can be driven
+  directly by `__tests__/permissions.test.ts` — buried in a component the same
+  logic would be reachable only through a render, which in practice means
+  untested, which in practice means a `granted.includes(…)` could be deleted and
+  nothing would notice.
+- Denied yields `null` — not a throwing object, not an empty stub — so a widget
+  can *see* that it does not have something.
+- Denied also **stops the box doing the work**: `seamsNeeded()` decides whether
+  the telemetry socket and the agenda read are opened at all. Handing a widget
+  `null` while still holding the socket open would satisfy the type and miss the
+  point.
+- For the sandbox lane the bridge refuses each verb on the grant it needs, and
+  refuses unknown verbs outright.
+
+The test asserts, for **every** string in the enum: denied ⇒ null, granted ⇒
+usable, and granting one grants *nothing else*. It also asserts the enum and the
+test's own table are the same set, so a permission added later without a gate
+fails there rather than in production. Four mutations confirm it can fail —
+including one that ignores the `telemetry` grant, which is exactly the app
+manifest's behaviour today.
+
+### The model
 
 Closed enum, **default deny, per placement**. `storage`, `network`, `notify`,
 `notifications`, `launch`, `telemetry`, `calendar`. Adding a widget from the
@@ -152,6 +188,14 @@ read "Allow…" looks broken rather than careful. Anything the user adds asks.
 all, and no widget can originate a third-party request on any box today.**
 
 ### The reasoning
+
+**There is now a precedent to match.** The founder has excluded proprietary apps
+from the App Hub catalogue for the time being, explicitly to avoid vendor terms
+and vendor-controlled payloads. A stocks widget calling a third-party finance API
+from the box sits in the same territory: it is a vendor relationship the user did
+not choose, carrying a payload the vendor controls, and the request itself
+discloses personal data. The decision below was reached independently and lands
+in the same place, which is the answer one would want.
 
 Every quote source is a third party. The set of tickers a person watches is not
 incidental — it is their portfolio, their employer, the thing they are about to
@@ -244,14 +288,18 @@ desktop and persisted settings outlive tzdata entries.
 
 ## 6. Verification
 
-- **135 unit tests.** Manifest validation, layout reconciliation, storage
+- **167 unit tests.** Manifest validation, layout reconciliation, storage
   isolation and quotas, the bridge's refusals, the tz boundary cases, the public
-  API discipline gate.
+  API discipline gate, and a per-permission gate asserting denied ⇒ null,
+  granted ⇒ usable, and granting one grants nothing else — for every string in
+  the enum.
 - **17 e2e** in a real browser against the production bundle, including a
   composited-pixel contrast scan in **both** themes covering the resting rail
   *and* the edit/gallery/settings chrome that only exists after a click, with a
   measured coverage floor so a rail that renders nothing cannot pass.
-- **Mutation-tested.** 13 mutations, all killed. One of them appeared killed and
+- **Mutation-tested.** 17 mutations, all killed — including one that ignores the
+  `telemetry` grant (the app manifest's actual behaviour today) and one that
+  gates `notify` on the read permission instead of the write one. One of them appeared killed and
   had silently not applied — a mutation that does not apply is a hollow gate
   wearing a green tick, so the harness now asserts its anchor.
 - **Looked at.** `frontend/e2e/widgets-shoot.mjs` renders the rail at
