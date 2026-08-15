@@ -78,6 +78,7 @@ func TestAppVerificationLedgerRowsAreHonest(t *testing.T) {
 		"failed":              true,
 		"untestable-on-arm64": true,
 		"skipped":             true,
+		"disabled":            true,
 	}
 	// A pass claims two things above all: the product's own install path ran,
 	// and the binary the launcher would exec is real.
