@@ -76,6 +76,117 @@ export function tileGeometry(zone: string, vw: number, vh: number, menuBar: numb
   }
 }
 
+// ─── Opening geometry ───────────────────────────────────────────────────────
+//
+// Where a window lands the moment it is opened, and how big it starts.
+//
+// This used to be two expressions inlined in ShellProvider's OPEN_WINDOW case:
+//   position: { x: 60 + (n % 6) * 32, y: 50 + (n % 6) * 32 }
+//   size:     action.size || { width: 720, height: 500 }
+// Neither consulted the viewport. Measured in a real browser (see
+// e2e/windows-open-geometry.e2e.ts), on a 768px-wide viewport — the NARROWEST
+// width at which the desktop canvas is ever mounted, see shell/viewportRule.ts
+// — the first window's right edge landed at 780px and the sixth at 940px, i.e.
+// 12px and 172px of the window off the right of the screen, taking the resize
+// grip (bottom-right corner) with them for all six. On 834x1194 the third
+// window onward overflowed by 10..106px. On 1024x768 the sixth window's bottom
+// edge sat at 710px, 10px underneath the dock, which floats over the last 68px
+// and takes the clicks.
+//
+// WHY THE CLAMP LIVES HERE AND NOT AT RENDER OR AT HYDRATE
+//
+// Opening geometry is geometry the SHELL invents; every other geometry a window
+// has is geometry the USER produced (a drag, a resize, a tile) or a faithful
+// re-scaling of it. Only the invented kind may be clamped:
+//
+//   - Clamping at RENDER (Window.tsx's style) would cage a window the user
+//     deliberately dragged half off-screen — a legitimate arrangement, and one
+//     the drag handler itself would then fight, because it computes the next
+//     position from win.position.x while the rendered box says something else.
+//   - Clamping at HYDRATE would corrupt persisted state. The writer re-
+//     serializes whatever is in state, as a fraction of its own viewport, so a
+//     window clamped down to fit a phone would be written back as a
+//     phone-shaped fraction and come back shrunken on a 27-inch monitor
+//     forever. The canonical unit's whole point is that a restore is a
+//     PROPORTIONAL operation; a clamp is not proportional, so it must never
+//     run on that path.
+//
+// So: clamp once, at open, against the viewport the window is opening on.
+// MOVE_WINDOW / RESIZE_WINDOW / TILE_WINDOW stay untouched.
+
+/** Left/right gutter kept between a freshly opened window and the screen edge.
+ *  Purely so a full-width-clamped window doesn't butt the bezel; the vertical
+ *  insets are MENU_BAR_H / DOCK_H, which are real occlusions rather than
+ *  taste. */
+export const WINDOW_EDGE_MARGIN = 8
+
+/** The flat default every caller but Settings gets (Settings opts into a
+ *  larger initial window — see ShellProvider's OPEN_WINDOW action type). Also
+ *  the shape hydratePersistedState falls back to when a persisted geometry is
+ *  unreadable, so the two cannot drift. */
+export const DEFAULT_WINDOW_SIZE: WindowSizeLike = { width: 720, height: 500 }
+
+/** First window's top-left, and the per-window cascade step; the cascade wraps
+ *  back to the origin every OPEN_CASCADE_WRAP windows. */
+export const OPEN_CASCADE_ORIGIN = { x: 60, y: 50 }
+export const OPEN_CASCADE_STEP = 32
+export const OPEN_CASCADE_WRAP = 6
+
+export interface WindowSizeLike { width: number; height: number }
+
+/** Just the extent, in the reading tab's own CSS px. Structurally satisfied by
+ *  screenScale's ViewportSize (whose ViewportPx is `number & brand`), so
+ *  ShellProvider can hand readViewportSize()'s result straight in. */
+export interface ViewportExtent { widthPx: number; heightPx: number }
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(Math.max(v, lo), Math.max(lo, hi))
+}
+
+/**
+ * Geometry for the `index`-th window opened on a desktop.
+ *
+ * @param index      how many windows the desktop already has (0 for the first)
+ * @param requested  the caller's desired size, or DEFAULT_WINDOW_SIZE
+ * @param viewport   the OPENING tab's own extent, or null when it cannot be
+ *                   read at all (no `window`: SSR, unit tests). With null this
+ *                   returns the un-clamped cascade + requested size — the exact
+ *                   pre-clamp behaviour — because inventing an extent to clamp
+ *                   against would be worse than not clamping.
+ *
+ * Fit beats every other consideration: when the viewport is too small for the
+ * requested size, the size shrinks (there is no minimum that outranks being on
+ * screen), and when it is too small for the cascade, the cascade collapses.
+ * At 768px both happen — the window is 752 wide and every window in the cascade
+ * shares x=8 — but the VERTICAL cascade survives, so a stack of windows is
+ * still visibly a stack.
+ */
+export function openWindowGeometry(
+  index: number,
+  requested: WindowSizeLike,
+  viewport: ViewportExtent | null,
+  menuBar: number = MENU_BAR_H,
+  dock: number = DOCK_H,
+): TileGeometryResult {
+  const step = ((index % OPEN_CASCADE_WRAP) + OPEN_CASCADE_WRAP) % OPEN_CASCADE_WRAP
+  const idealX = OPEN_CASCADE_ORIGIN.x + step * OPEN_CASCADE_STEP
+  const idealY = OPEN_CASCADE_ORIGIN.y + step * OPEN_CASCADE_STEP
+  if (!viewport) {
+    return { position: { x: idealX, y: idealY }, size: { width: requested.width, height: requested.height } }
+  }
+  const vw = viewport.widthPx
+  const vh = viewport.heightPx
+  // Size first: the position clamp depends on how wide/tall the window ended up.
+  const width = Math.max(1, Math.min(requested.width, vw - 2 * WINDOW_EDGE_MARGIN))
+  const height = Math.max(1, Math.min(requested.height, vh - menuBar - dock))
+  const x = clamp(idealX, WINDOW_EDGE_MARGIN, vw - WINDOW_EDGE_MARGIN - width)
+  const y = clamp(idealY, menuBar, vh - dock - height)
+  return {
+    position: { x: Math.round(x), y: Math.round(y) },
+    size: { width: Math.round(width), height: Math.round(height) },
+  }
+}
+
 /**
  * Detect which snap zone a pointer at (x, y) falls into during a drag, given an
  * edge-trigger threshold. Corners take precedence over edges.

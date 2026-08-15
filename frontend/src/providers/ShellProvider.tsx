@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
-import { tileGeometry, MENU_BAR_H } from '../shell/windowTiling'
+import { tileGeometry, openWindowGeometry, DEFAULT_WINDOW_SIZE, MENU_BAR_H } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 import { useShellSession, type ShellSession } from './useShellSession'
 import { useViewportFocus } from './viewportFocus'
@@ -204,6 +204,19 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         }
       }
       const id = nextId++
+      // Opening geometry is the ONE geometry the shell invents rather than the
+      // user producing it, so it is the one geometry that may be fitted to the
+      // screen it is opening on. The cascade + the 720x500 default used to be
+      // written inline here and consulted no viewport at all: at 768px — the
+      // narrowest width the desktop canvas is ever mounted at — the first
+      // window opened 12px off the right edge and the sixth 172px off it. See
+      // openWindowGeometry in shell/windowTiling.ts for the measurements and
+      // for why the clamp belongs here and not at render or at hydrate.
+      //
+      // readViewportSize() returns null wherever there is no `window` (SSR,
+      // unit tests), and openWindowGeometry then reproduces the pre-clamp
+      // cascade exactly rather than clamping against a fabricated extent.
+      const geom = openWindowGeometry(desk.windows.length, action.size || DEFAULT_WINDOW_SIZE, readViewportSize())
       desk.windows = [...desk.windows, {
         id,
         appId: action.appId,
@@ -213,10 +226,11 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         html: action.html || null,
         _saveable: action._saveable || null,
         icon: action.icon || '',
-        position: { x: 60 + (desk.windows.length % 6) * 32, y: 50 + (desk.windows.length % 6) * 32 },
-        // Every caller but Settings omits `size` and gets this unchanged
-        // default — see the OPEN_WINDOW action type's comment.
-        size: action.size || { width: 720, height: 500 },
+        position: geom.position,
+        // Every caller but Settings omits `size` and gets DEFAULT_WINDOW_SIZE —
+        // see the OPEN_WINDOW action type's comment — shrunk only if it does
+        // not fit this viewport.
+        size: geom.size,
         minimized: false,
       }]
       desk.activeWindow = id
@@ -559,12 +573,22 @@ interface PersistedShellState {
   activeDesktop: string
 }
 
-/** A window with no explicit/resolvable geometry falls back to this — the same
- *  values OPEN_WINDOW uses for a freshly opened window with no explicit size —
- *  so it opens visible and sane rather than off-screen, NaN, or a canonical
- *  fraction misread as a pixel count. */
-const FALLBACK_WINDOW_POSITION: WindowPosition = { x: 60, y: 50 }
-const FALLBACK_WINDOW_SIZE: WindowSize = { width: 720, height: 500 }
+/** A window with no explicit/resolvable geometry falls back to this — literally
+ *  what OPEN_WINDOW would give a freshly opened first window with no explicit
+ *  size, so it lands visible and sane rather than off-screen, NaN, or a
+ *  canonical fraction misread as a pixel count.
+ *
+ *  This is the ONLY geometry hydration ever clamps, and it is clamped for the
+ *  same reason opening geometry is: it is invented by the shell, not produced
+ *  by the user. The persisted numbers it replaces have already been judged
+ *  unusable by the time this is called. Every OTHER hydration path — the
+ *  canonical conversion below — is left alone deliberately: it is a
+ *  proportional re-scaling of the user's own arrangement, and clamping it
+ *  would write a small screen's limits back into the persisted state the next
+ *  time this tab is the writer. */
+function fallbackWindowGeometry(viewport: ViewportSize | null): { position: WindowPosition; size: WindowSize } {
+  return openWindowGeometry(0, DEFAULT_WINDOW_SIZE, viewport)
+}
 
 /** Converts one window's live px position/size into the wire form. Canonical
  *  (fraction of THIS tab's own viewport) whenever the viewport is readable, so
@@ -586,13 +610,14 @@ function serializeGeometry(position: WindowPosition, size: WindowSize, viewport:
  *     fallback — already raw px, used as-is.
  *   - tagged canonical but this tab has no viewport, or the numbers fail the
  *     plausibility backstop (a corrupted payload): neither raw-as-is nor a
- *     fabricated conversion is safe, so fall back to FALLBACK_WINDOW_*. */
+ *     fabricated conversion is safe, so fall back to
+ *     fallbackWindowGeometry(). */
 function hydrateGeometry(w: SerializedGeometry, viewport: ViewportSize | null): { position: WindowPosition; size: WindowSize } {
   if (w.geomUnit !== 'canonical-v1') return { position: w.position, size: w.size }
   const plausible = isPlausibleCanonicalUnit(w.position.x) && isPlausibleCanonicalUnit(w.position.y) &&
     isPlausibleCanonicalUnit(w.size.width) && isPlausibleCanonicalUnit(w.size.height)
   if (!viewport || !plausible) {
-    return { position: { ...FALLBACK_WINDOW_POSITION }, size: { ...FALLBACK_WINDOW_SIZE } }
+    return fallbackWindowGeometry(viewport)
   }
   const p = fromCanonicalPoint({ nx: w.position.x as CanonicalUnit, ny: w.position.y as CanonicalUnit }, viewport)
   const s = fromCanonicalSize({ nw: w.size.width as CanonicalUnit, nh: w.size.height as CanonicalUnit }, viewport)
