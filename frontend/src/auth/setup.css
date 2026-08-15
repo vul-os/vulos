@@ -49,19 +49,24 @@
    Declared for all three theme states index.css supports: the dark default,
    the explicit light attribute, and a System-Light user on a paint that
    happened before main.jsx stamped data-theme. Miss the third and the very
-   first frame of first boot is the one that fails. */
-.wz-root {
+   first frame of first boot is the one that fails.
+
+   Declared at :root rather than scoped to .wz-root because MasterKeyReveal —
+   the recovery-phrase screen — replaces the step body wholesale and imports
+   this sheet itself. Scoped to the wizard shell alone it fell back to the raw
+   --status-* values and measured 3.19:1 on light. */
+:root {
   --ok-strong: #4ade80;     /* 10.9:1 on #171a21 */
   --warn-strong: #fbbf24;   /* 10.4:1 on #171a21 */
   --danger-strong: #f87171; /*  6.4:1 on #171a21 */
 }
-[data-theme="light"] .wz-root {
+[data-theme="light"] {
   --ok-strong: #166534;     /* 6.0:1 on #eef0f4 */
   --warn-strong: #854d0e;   /* 5.8:1 on #eef0f4 */
   --danger-strong: #b91c1c; /* 5.6:1 on #eef0f4 */
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme]) .wz-root {
+  :root:not([data-theme]) {
     --ok-strong: #166534;
     --warn-strong: #854d0e;
     --danger-strong: #b91c1c;
@@ -548,6 +553,75 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
 }
 .wz-root .btn-primary.wz-downloaded:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ok-strong) 30%, var(--bg-surface));
+}
+
+/* Wi-Fi signal bars. */
+.wz-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 1.125rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+.wz-bar {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--border-strong);
+}
+.wz-bar--on { background: var(--text-tertiary); }
+[aria-selected="true"] .wz-bar--on { background: var(--accent-text, var(--accent)); }
+
+/* An inline action that reads as a link inside a sentence. */
+.wz-linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text, var(--accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Timezone row: the live local time, right-aligned and tabular so the column
+   does not jitter as the minutes tick. */
+.wz-tz-time {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* Range input with a real grab target. A bare <input type=range> renders 16px
+   tall, which is a 16px drag target for a value the user is meant to tune. */
+.wz-range {
+  width: 100%;
+  height: 2.75rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* A checkbox you can actually hit. The native control is ~13x16 at default
+   size; 1.375rem keeps it a checkbox while clearing a usable target, and the
+   surrounding <label> extends the hit area across the whole sentence. */
+.wz-checkbox {
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  margin-top: 0.0625rem;
+}
+
+/* ── Narrow header ───────────────────────────────────────────────────────
+   Below ~24rem the progress rail, the fullscreen affordance and the theme
+   toggle cannot share a row: measured at 320x568 the header ran to x=326 in a
+   320px viewport. The fullscreen hint is the one that goes — it is an
+   affordance, not a control, and the wizard is already fullscreen on the
+   hardware where 320px is real. */
+@media (max-width: 24rem) {
+  .wz-header-inner > :nth-child(2) { display: none; }
+  .wz-header-inner { gap: 0.5rem; }
 }
 
 /* ── Focus ───────────────────────────────────────────────────────────────

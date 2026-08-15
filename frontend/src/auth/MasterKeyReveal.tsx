@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import './setup.css'
 
 interface MasterKeyRevealProps {
   /** The 24-word space-separated recovery phrase (from the register response). */
@@ -44,7 +45,7 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
           className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
           style={{ background: 'var(--status-warning-soft)' }}
         >
-          <svg viewBox="0 0 24 24" className="w-7 h-7 text-warning" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" className="w-7 h-7 wz-warn" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0110 0v4" />
           </svg>
@@ -52,7 +53,7 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
         <h2 className="text-2xl font-light" style={{ color: 'var(--text-primary)' }}>Save your recovery phrase</h2>
         <p className="text-sm mt-1.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
           These 24 words are the master key to your account. Write them down and store them
-          somewhere safe and offline. <span className="text-warning">We can never show them again,
+          somewhere safe and offline. <span className="wz-warn">We can never show them again,
           and without them a lost password means lost access.</span>
         </p>
       </div>
@@ -102,12 +103,15 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
             className="flex items-start gap-3 rounded-xl px-4 py-3 mb-3 cursor-pointer transition-colors"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
           >
+            {/* Was a 4x4 (16px) box beside a full sentence — measured 13x16, one
+                of the smallest targets in the flow, on the one control gating
+                the only credential that recovers this account. */}
             <input
               type="checkbox"
               checked={savedChecked}
               onChange={(e) => setSavedChecked(e.target.checked)}
               disabled={!revealed}
-              className="mt-0.5 w-4 h-4"
+              className="wz-checkbox"
               style={{ accentColor: 'var(--accent)' }}
             />
             <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -115,14 +119,12 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
             </span>
           </label>
 
-          <div className="flex items-center justify-between mt-2 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-            <button
-              onClick={() => setConfirmingSkip(true)}
-              className="text-sm transition-colors"
-              style={{ color: 'var(--text-muted)' }}
-            >
+          <div className="wz-nav">
+            {/* Was a bare 14px text link measured 79x20. */}
+            <button onClick={() => setConfirmingSkip(true)} className="wz-quiet">
               Skip for now
             </button>
+            <span className="wz-footer-spacer" />
             <button
               onClick={onConfirm}
               disabled={!savedChecked}
@@ -137,7 +139,7 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
           className="rounded-xl px-4 py-4 mt-2 animate-[fadeIn_0.2s_ease-out]"
           style={{ background: 'var(--status-danger-soft)', border: '1px solid color-mix(in srgb, var(--status-danger) 34%, transparent)' }}
         >
-          <p className="text-sm mb-3 leading-relaxed text-danger">
+          <p className="text-sm mb-3 leading-relaxed wz-danger">
             Without your recovery phrase, <span className="font-medium">a forgotten password cannot be
             recovered</span> and your account may be permanently inaccessible. Skip anyway?
           </p>
@@ -151,7 +153,7 @@ export default function MasterKeyReveal({ phrase, onConfirm, onSkip }: MasterKey
             </button>
             <button
               onClick={onSkip}
-              className="px-4 py-2 rounded-xl text-sm font-medium text-danger transition-all"
+              className="px-4 py-2 rounded-xl text-sm font-medium wz-danger transition-all"
               style={{ background: 'var(--status-danger-soft)', border: '1px solid color-mix(in srgb, var(--status-danger) 42%, transparent)' }}
             >
               Skip and accept the risk

@@ -284,8 +284,19 @@ const LANGUAGES = [
   { code: 'ja', name: 'Japanese', native: '日本語', flag: '🇯🇵' },
 ]
 
-export default function Setup({ onComplete }: { onComplete: () => void }) {
+export default function Setup({ onComplete, desktopLayouts }: {
+  onComplete: () => void
+  /**
+   * Desktop layout presets for the appearance step (see DesktopLayoutModule).
+   * Optional — when absent the layout section is not rendered at all. Passing
+   * this and calling registerDesktopLayouts() are equivalent; the prop is the
+   * tidier of the two if App.tsx is being edited anyway.
+   */
+  desktopLayouts?: DesktopLayoutModule | null
+}) {
   const [step, setStep] = useState(0)
+  // Register before first paint, so the appearance step sees it on mount.
+  if (desktopLayouts !== undefined) registerDesktopLayouts(desktopLayouts)
   const [config, setConfig] = useState<SetupConfig>({
     deviceProfile: '',
     locale: 'en',
@@ -333,6 +344,8 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
   // response — held here so the recovery-kit step can put the credential that
   // actually recovers the account INTO the recovery kit.
   const [account, setAccount] = useState<{ created: boolean; phrase: string }>({ created: false, phrase: '' })
+  // Set when finish() could not record that setup is complete — see finish().
+  const [finishError, setFinishError] = useState('')
 
   // INIT-09: flow type — 'new' (default) or 'join'
   const [IS09_flowType, IS09_setFlowType] = useState('new')
@@ -387,31 +400,58 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
     goTo(step + 1)
   }
 
+  /**
+   * Apply the last few settings and mark setup complete.
+   *
+   * The device profile, timezone and Wi-Fi are genuinely best-effort — none of
+   * them can strand the user, and all three are changeable from Settings.
+   *
+   * The MARKER is not best-effort, and it is now reported.
+   *
+   * GET /api/setup/status is `os.Stat("/var/lib/vulos/.setup-complete")`, and
+   * the only thing in the entire product that creates that file is the `touch`
+   * below, sent through POST /api/exec. /api/exec is admin-gated AND carries a
+   * kill switch (VULOS_DISABLE_EXEC -> 503). So on a box where exec is disabled
+   * by configuration, or where the owner is somehow not admin, the touch fails,
+   * nothing else ever writes the marker, and the wizard runs again on EVERY
+   * subsequent boot — with the account already created, so the account step's
+   * register then fails on a duplicate username and the user is stuck.
+   *
+   * That is a backend gap, not something this component can fix: there is no
+   * POST /api/setup/complete. Reported. What the wizard can do is stop
+   * pretending, so the user sees a real message instead of silently finding
+   * themselves back in setup after the next reboot.
+   */
   const finish = async () => {
-    try {
-      if (config.deviceProfile) {
-        await fetch('/api/device-profile', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile: config.deviceProfile }),
-        }).catch(() => {})
-      }
-      if (config.timezone) {
-        await fetch('/api/exec', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: `ln -sf /usr/share/zoneinfo/${config.timezone} /etc/localtime 2>/dev/null; echo done` }),
-        }).catch(() => {})
-      }
-      if (config.wifiSSID) {
-        await fetch('/api/wifi/connect', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ssid: config.wifiSSID, password: config.wifiPassword }),
-        }).catch(() => {})
-      }
-      await fetch('/api/exec', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'mkdir -p /var/lib/vulos && touch /var/lib/vulos/.setup-complete' }),
-      }).catch(() => {})
-    } catch { /* best-effort finish — proceed to complete regardless */ }
+    if (config.deviceProfile) {
+      await saveToBox('/api/device-profile', {
+        method: 'PUT',
+        body: JSON.stringify({ profile: config.deviceProfile }),
+      })
+    }
+    if (config.timezone) {
+      await saveToBox('/api/exec', {
+        method: 'POST',
+        body: JSON.stringify({ command: `ln -sf /usr/share/zoneinfo/${config.timezone} /etc/localtime 2>/dev/null; echo done` }),
+      })
+    }
+    if (config.wifiSSID) {
+      await saveToBox('/api/wifi/connect', {
+        method: 'POST',
+        body: JSON.stringify({ ssid: config.wifiSSID, password: config.wifiPassword }),
+      })
+    }
+
+    const marked = await saveToBox('/api/exec', {
+      method: 'POST',
+      body: JSON.stringify({ command: 'mkdir -p /var/lib/vulos && touch /var/lib/vulos/.setup-complete' }),
+    })
+    if (!marked.ok) {
+      setFinishError(
+        `Setup is done, but this box could not record that it is done, so it may run setup again on the next boot. ${marked.message}`,
+      )
+      return
+    }
     onComplete()
   }
 
@@ -452,6 +492,17 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
           the bottom of it, so the primary action can never leave the viewport. */}
       <main className="wz-body">
         <div className="wz-body-inner">
+          {finishError && (
+            <p role="alert" className="wz-note wz-note--warn mb-4">
+              <span className="wz-note-icon" aria-hidden="true">!</span>
+              <span>
+                {finishError}{' '}
+                <button className="wz-linkish" onClick={() => { setFinishError(''); onComplete() }}>
+                  Continue to the desktop anyway
+                </button>
+              </span>
+            </p>
+          )}
           <div key={current} className={transitioning ? 'opacity-0' : 'wz-step'}>
             {current === 'welcome' && <WelcomeStep onNext={next} />}
             {current === 'device' && <DeviceStep config={config} update={update} onNext={next} onPrev={prev} />}
@@ -599,8 +650,8 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/device-profile')
-      .then(r => r.json())
+    fetch('/api/device-profile', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
       .then((data: unknown) => {
         if (cancelled) return
         const d = isRecord(data) ? data : {}
@@ -608,11 +659,20 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
           || (typeof d.profile === 'string' && d.profile)
           || null
         setDetected(suggested)
-        if (suggested && !config.deviceProfile) {
-          update('deviceProfile', suggested)
+        if (!config.deviceProfile) {
+          // Fall back to 'pc' when detection says nothing. GET
+          // /api/device-profile is not in the backend's publicPaths, so on a
+          // real first boot it 401s and detection is ALWAYS empty — which left
+          // nothing selected and turned the step's primary button into "Skip",
+          // i.e. the wizard shrugging at its own question. Observed in a
+          // browser. 'pc' is the right default: it is the responsive profile,
+          // and the only one whose UI works on all four device classes.
+          update('deviceProfile', suggested || 'pc')
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled && !config.deviceProfile) update('deviceProfile', 'pc')
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -719,8 +779,8 @@ function IS09_NewJoinChooserStep({ onChooseNew, onChooseJoin, onPrev }: { onChoo
           </div>
         </button>
       </div>
-      <div className="flex justify-start pt-4 border-t wz-hairline">
-        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
+      <div className="wz-nav">
+        <button onClick={onPrev} className="wz-quiet">
           ← Back
         </button>
       </div>
@@ -920,8 +980,8 @@ function IS09_JoinConnectStorageStep({ onNext, onPrev }: { onNext: () => void; o
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between mt-6 pt-4 border-t wz-hairline">
-        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
+      <div className="wz-nav">
+        <button onClick={onPrev} className="wz-quiet">
           ← Back
         </button>
         <button
@@ -1150,78 +1210,138 @@ function LanguageStep({ config, update, onNext, onPrev }: StepProps) {
 }
 
 // ═══════════════════════════════════
-// Timezone (interactive map)
+// Timezone
 // ═══════════════════════════════════
+//
+// This step used to be a "world map": six blurred ellipses at opacity 0.1 that
+// resemble no landmass, twenty-four vertical hairlines, and nineteen absolutely
+// positioned 12x12px dots at hand-guessed percentage coordinates. Looked at on
+// a real screen it reads as a grey void with floating specks, and its faults
+// were not only cosmetic:
+//
+//   - Nineteen zones for the entire planet. No Amsterdam, no Karachi, no Seoul,
+//     no Perth. A user outside those nineteen simply could not say where they
+//     are, and the subtitle then read "no timezone selected" even though
+//     `config.timezone` held a perfectly good IANA id from the browser.
+//   - The 12x12 dots are a 12px touch target — measured, the smallest
+//     interactive elements in the wizard.
+//   - Positioned in PERCENTAGES inside an aspect-ratio box, the dots and their
+//     labels escaped the container below ~430px wide. Measured at 390x844 and
+//     320x568: elements at x = -2 and beyond the right edge, i.e. the phone
+//     layout was broken.
+//
+// Replaced with a searchable list of every zone the platform knows, showing the
+// live local time in each — which is the thing a person actually checks to know
+// they picked right. Intl.supportedValuesOf('timeZone') is the source; where it
+// is unavailable the curated list below is the fallback, so the step degrades
+// to what it used to be rather than to nothing.
+const FALLBACK_ZONES = TIMEZONES.map(tz => tz.id)
+
+function allTimezones(): string[] {
+  try {
+    const withValues = Intl as unknown as { supportedValuesOf?: (k: string) => string[] }
+    const zones = withValues.supportedValuesOf?.('timeZone')
+    if (Array.isArray(zones) && zones.length > 0) return zones
+  } catch { /* older engine — fall through */ }
+  return FALLBACK_ZONES
+}
+
+/** "Africa/Johannesburg" -> "Johannesburg", "America/New_York" -> "New York". */
+function zoneCity(id: string): string {
+  return (id.split('/').pop() || id).replace(/_/g, ' ')
+}
+
+function zoneRegion(id: string): string {
+  const parts = id.split('/')
+  return parts.length > 1 ? parts.slice(0, -1).join(' / ').replace(/_/g, ' ') : ''
+}
+
+/** Current wall-clock time in a zone, or '' if the engine rejects the id. */
+function zoneNow(id: string, now: Date): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, { timeZone: id, hour: '2-digit', minute: '2-digit' }).format(now)
+  } catch {
+    return ''
+  }
+}
+
+/** "UTC+2" for a zone, derived rather than hardcoded so it is right in DST. */
+function zoneOffset(id: string, now: Date): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: id, timeZoneName: 'shortOffset' }).formatToParts(now)
+    return parts.find(p => p.type === 'timeZoneName')?.value || ''
+  } catch {
+    return ''
+  }
+}
+
 function TimezoneStep({ config, update, onNext, onPrev }: StepProps) {
   const { t } = useI18nTyped()
-  const selected = TIMEZONES.find(tz => tz.id === config.timezone)
+  const [query, setQuery] = useState('')
+  // One clock for the whole render, ticking each minute, so every row agrees.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const zones = allTimezones()
+  const q = query.trim().toLowerCase()
+  const matches = (q
+    ? zones.filter(z => z.toLowerCase().replace(/_/g, ' ').includes(q))
+    : zones
+  ).slice(0, 300)
+
+  const selected = config.timezone
+  const selectedOffset = selected ? zoneOffset(selected, now) : ''
 
   return (
     <div>
-      <StepHeader title={t('setup.timezone.title')} subtitle={selected ? `${selected.label} (${selected.offset})` : t('setup.timezone.subtitle_none')} />
+      <StepHeader
+        title={t('setup.timezone.title')}
+        subtitle={
+          selected
+            ? `${zoneCity(selected)} — ${zoneNow(selected, now)}${selectedOffset ? ` (${selectedOffset})` : ''}`
+            : t('setup.timezone.subtitle_none')
+        }
+      />
 
-      {/* World map */}
-      <div className="relative w-full aspect-[2/1] wz-surface rounded-2xl border wz-hairline overflow-hidden mb-4">
-        {/* Simplified world outline via CSS gradients */}
-        <div className="absolute inset-0 opacity-10">
-          <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="none">
-            {/* Simplified continents as rough shapes */}
-            <ellipse cx="20" cy="35" rx="12" ry="15" fill="#3b82f6" opacity="0.3" />
-            <ellipse cx="47" cy="28" rx="8" ry="10" fill="#3b82f6" opacity="0.3" />
-            <ellipse cx="52" cy="55" rx="6" ry="12" fill="#3b82f6" opacity="0.3" />
-            <ellipse cx="70" cy="40" rx="14" ry="12" fill="#3b82f6" opacity="0.3" />
-            <ellipse cx="80" cy="35" rx="8" ry="10" fill="#3b82f6" opacity="0.3" />
-            <ellipse cx="90" cy="60" rx="5" ry="5" fill="#3b82f6" opacity="0.3" />
-          </svg>
-        </div>
+      <label className="wz-label" htmlFor="wz-tz-search">Search for your city or region</label>
+      <input
+        id="wz-tz-search"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Johannesburg, Berlin, Tokyo…"
+        className="input"
+        autoComplete="off"
+        spellCheck={false}
+      />
 
-        {/* Timezone grid lines */}
-        {Array.from({ length: 24 }, (_, i) => (
-          <div key={i} className="absolute top-0 bottom-0 w-px wz-surface-2" style={{ left: `${(i / 24) * 100}%` }} />
-        ))}
-
-        {/* City markers */}
-        {TIMEZONES.map(tz => (
+      <div className="wz-panel wz-panel--flush mt-3" style={{ maxHeight: '46vh', overflowY: 'auto' }}>
+        {matches.length === 0 && (
+          <p className="wz-hint p-4 text-center">No timezone matches “{query}”.</p>
+        )}
+        {matches.map(id => (
           <button
-            key={tz.id}
-            onClick={() => update('timezone', tz.id)}
-            className="absolute group"
-            style={{ left: `${tz.x}%`, top: `${tz.y}%`, transform: 'translate(-50%, -50%)' }}
+            key={id}
+            onClick={() => update('timezone', id)}
+            aria-selected={selected === id}
+            className="wz-row"
           >
-            {/* Dot */}
-            <div className={`w-3 h-3 rounded-full transition-all border-2
-              ${config.timezone === tz.id
-                ? 'accent-bg accent-border scale-150 shadow-lg'
-                : 'wz-surface-2 wz-edge hover-accent-bg hover-accent-border group-hover:scale-125'}`}
-            />
-            {/* Label (shows on hover or when selected) */}
-            <div className={`absolute left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap text-[12px] font-medium transition-opacity
-              ${config.timezone === tz.id ? 'opacity-100 accent-text' : 'opacity-0 group-hover:opacity-100 wz-body'}`}>
-              {tz.label}
-            </div>
-            {/* Pulse ring when selected */}
-            {config.timezone === tz.id && (
-              <div className="absolute inset-0 w-3 h-3 rounded-full border accent-border animate-ping opacity-30" />
-            )}
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm truncate wz-strong">{zoneCity(id)}</span>
+              {zoneRegion(id) && <span className="block wz-hint truncate">{zoneRegion(id)}</span>}
+            </span>
+            <span className="wz-tz-time">
+              <span className="block">{zoneNow(id, now)}</span>
+              <span className="block wz-hint">{zoneOffset(id, now)}</span>
+            </span>
           </button>
         ))}
       </div>
-
-      {/* List fallback (scrollable) */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
-        {TIMEZONES.map(tz => (
-          <button
-            key={tz.id}
-            onClick={() => update('timezone', tz.id)}
-            className={`shrink-0 px-3 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap
-              ${config.timezone === tz.id
-                ? 'accent-bg-soft accent-text border accent-border'
-                : 'wz-surface wz-dim border wz-hairline hover:wz-body'}`}
-          >
-            {tz.label}
-          </button>
-        ))}
-      </div>
+      {matches.length === 300 && (
+        <p className="wz-hint mt-2">Showing the first 300 — type to narrow it down.</p>
+      )}
 
       <NavBar onPrev={onPrev} onNext={onNext} />
     </div>
@@ -1250,71 +1370,121 @@ function toWifiNetwork(x: unknown): WifiNetwork {
   }
 }
 
+/**
+ * Signal strength as four bars.
+ *
+ * Replaces `████` / `███░` / `██░░` / `█░░░` rendered at 10px in a muted grey.
+ * Block-drawing glyphs at that size are a grey smudge whose filled and unfilled
+ * halves are not distinguishable, and 10px is below this suite's own floor —
+ * sub-12px type is its recorded landing-page regression. Bars are also readable
+ * without colour, which the glyphs were not.
+ */
+function SignalBars({ dbm }: { dbm: number | undefined }) {
+  const level = typeof dbm !== 'number' ? 1 : dbm > -50 ? 4 : dbm > -60 ? 3 : dbm > -70 ? 2 : 1
+  const label = ['weak', 'fair', 'good', 'excellent'][level - 1]
+  return (
+    <span className="wz-bars" role="img" aria-label={`Signal ${label}`}>
+      {[1, 2, 3, 4].map(i => (
+        <span key={i} className={i <= level ? 'wz-bar wz-bar--on' : 'wz-bar'} style={{ height: `${i * 25}%` }} />
+      ))}
+    </span>
+  )
+}
+
 function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
   const { t } = useI18nTyped()
   const [networks, setNetworks] = useState<WifiNetwork[] | null>(null)
   const [scanning, setScanning] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  // Non-empty when the scan could not be PERFORMED, as opposed to finding
+  // nothing. `networks` stays null in that case so the two never collapse into
+  // the same rendering again.
+  const [scanError, setScanError] = useState('')
 
+  /**
+   * Scan for Wi-Fi, and DISTINGUISH "there are no networks" from "we could not
+   * ask".
+   *
+   * This used to be `catch { setNetworks([]) }` with no res.ok check, and
+   * GET /api/wifi/scan is not in the backend's publicPaths — so on every real
+   * first boot it answered 401, `res.json()` happily parsed the error body,
+   * `Array.isArray` was false, and the step rendered "No networks found".
+   *
+   * That is not a cosmetic difference. It is the screen telling a user on
+   * wifi-only hardware that there is no wifi in range, with a "Scan again"
+   * button that will say the same thing forever, on the step whose entire job
+   * is getting the machine online. Screenshotted on a simulated real boot.
+   */
   const scan = async () => {
     setScanning(true)
+    setScanError('')
     try {
-      const res = await fetch('/api/wifi/scan')
+      const res = await fetch('/api/wifi/scan', { credentials: 'include' })
+      if (!res.ok) {
+        setNetworks(null)
+        setScanError(
+          res.status === 401 || res.status === 403
+            ? 'This box would not run a scan for us yet. You can continue on Ethernet and set up Wi-Fi from Settings.'
+            : `The box could not scan for networks (${res.status}).`,
+        )
+        return
+      }
       // Untrusted network JSON — each entry narrowed via toWifiNetwork rather
       // than cast to WifiNetwork[].
       const data: unknown = await res.json()
-      setNetworks(Array.isArray(data) ? data.map(toWifiNetwork) : [])
-    } catch { setNetworks([]) }
-    setScanning(false)
-  }
-
-  const signalIcon = (dbm: number | undefined) => {
-    if (typeof dbm === 'number' && dbm > -50) return '████'
-    if (typeof dbm === 'number' && dbm > -60) return '███░'
-    if (typeof dbm === 'number' && dbm > -70) return '██░░'
-    return '█░░░'
+      if (!Array.isArray(data)) {
+        setNetworks(null)
+        setScanError('The box returned an unexpected answer to the scan.')
+        return
+      }
+      setNetworks(data.map(toWifiNetwork))
+    } catch {
+      setNetworks(null)
+      setScanError('Could not reach this box to scan for networks.')
+    } finally {
+      setScanning(false)
+    }
   }
 
   return (
     <div>
       <StepHeader title={t('setup.network.title')} subtitle={t('setup.network.subtitle')} />
 
-      <button
-        onClick={scan}
-        disabled={scanning}
-        className={`w-full py-3 rounded-xl text-sm font-medium transition-all mb-4
-          ${scanning
-            ? 'wz-surface-2 wz-dim'
-            : 'wz-surface border wz-edge wz-body hover-accent-border hover-accent-text'}`}
-      >
+      <button onClick={scan} disabled={scanning} className="btn-secondary w-full mb-4">
         {scanning ? (
           <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 wz-edge rounded-full animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
+            <span className="spinner w-4 h-4" />
             {t('setup.network.scanning')}
           </span>
         ) : networks ? t('setup.network.scan_again') : t('setup.network.scan')}
       </button>
 
+      {/* Could not scan — NOT the same as found nothing. */}
+      {scanError && (
+        <p role="alert" className="wz-note wz-note--warn mb-4">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{scanError}</span>
+        </p>
+      )}
+
       {/* Network list */}
       {networks && (
-        <div className="max-h-[35vh] overflow-y-auto rounded-xl border wz-hairline mb-4">
+        <div className="wz-panel wz-panel--flush mb-4" style={{ maxHeight: '35vh', overflowY: 'auto' }}>
           {networks.length === 0 && (
-            <div className="p-4 text-sm wz-dim text-center">{t('setup.network.no_networks')}</div>
+            <p className="wz-hint p-4 text-center">{t('setup.network.no_networks')}</p>
           )}
           {networks.map((n, i) => (
             <button
               key={n.bssid || n.ssid || i}
               onClick={() => { update('wifiSSID', n.ssid || ''); setShowPassword(true) }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b wz-hairline transition-colors
-                ${config.wifiSSID === n.ssid
-                  ? 'accent-bg-soft wz-strong'
-                  : 'wz-body hover:wz-surface-2'}`}
+              aria-selected={config.wifiSSID === n.ssid}
+              className="wz-row"
             >
-              <span className="text-[10px] font-mono wz-dim w-10">{signalIcon(n.signal)}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm truncate">{n.ssid || '(hidden)'}</div>
-                <div className="text-[12px] wz-dim">{n.band || '2.4GHz'} · {n.security || 'Open'}</div>
-              </div>
+              <SignalBars dbm={n.signal} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm truncate wz-strong">{n.ssid || '(hidden network)'}</span>
+                <span className="block wz-hint">{n.band || '2.4GHz'} · {n.security || 'Open'}</span>
+              </span>
               {config.wifiSSID === n.ssid && <span className="accent-text text-xs">{t('setup.network.selected')}</span>}
             </button>
           ))}
@@ -1323,19 +1493,29 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
 
       {/* Password input */}
       {config.wifiSSID && showPassword && (
-        <div className="wz-surface border wz-hairline rounded-xl p-4 mb-4 animate-[fadeIn_0.2s_ease-out]">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm wz-body">{config.wifiSSID}</span>
-            <button onClick={() => { update('wifiSSID', ''); setShowPassword(false) }} className="text-xs wz-dim hover:wz-body">{t('setup.network.change')}</button>
-          </div>
+        <div className="wz-panel mb-4">
+          <label className="wz-label" htmlFor="wz-wifi-pw">
+            {t('setup.network.wifi_password')} — <span className="wz-strong">{config.wifiSSID}</span>
+          </label>
           <input
+            id="wz-wifi-pw"
             type="password"
             value={config.wifiPassword}
             onChange={e => update('wifiPassword', e.target.value)}
             placeholder={t('setup.network.wifi_password')}
+            autoComplete="off"
             autoFocus
             className="input"
           />
+          <div className="flex items-center justify-between mt-2">
+            {/* The wizard does not attempt the connection here — it happens at
+                the very end, in finish(). Saying so beats letting the user
+                believe they are online nine steps before they are. */}
+            <p className="wz-hint">Connects when you finish setup.</p>
+            <button onClick={() => { update('wifiSSID', ''); update('wifiPassword', ''); setShowPassword(false) }} className="wz-quiet">
+              {t('setup.network.change')}
+            </button>
+          </div>
         </div>
       )}
 
@@ -1732,8 +1912,8 @@ function AppsStep({ config, update, onNext, onPrev }: StepProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-6 pt-4 border-t wz-hairline">
-        <button onClick={onPrev} className="text-sm wz-dim hover:wz-body transition-colors">
+      <div className="wz-nav">
+        <button onClick={onPrev} className="wz-quiet">
           ← Back
         </button>
         <button onClick={handleNext} disabled={saving} className="btn-primary flex items-center gap-2">
@@ -1799,22 +1979,160 @@ function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => 
       </div>
 
       {/* Night Shift quick toggle */}
-      <div className="wz-surface border wz-hairline rounded-xl px-4 py-3 mb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm wz-body">{t('setup.appearance.night_shift')}</div>
-            <div className="text-[12px] wz-dim">{t('setup.appearance.night_shift_desc')}</div>
-          </div>
+      <div className="wz-panel">
+        <div className="flex items-center justify-between gap-4">
+          <span>
+            <span className="block text-sm wz-strong">{t('setup.appearance.night_shift')}</span>
+            <span className="block wz-hint">{t('setup.appearance.night_shift_desc')}</span>
+          </span>
+          {/* Was a bare <button> with no role and no state exposed to anything
+              but its own colour — unusable by a screen reader and invisible to
+              a keyboard user checking what is on. */}
           <button
+            type="button"
+            role="switch"
+            aria-checked={nightShiftMode !== 'off'}
+            aria-label={t('setup.appearance.night_shift')}
             onClick={() => setNightShiftMode(nightShiftMode === 'off' ? 'auto' : 'off')}
-            className={`w-10 h-5 rounded-full transition-colors relative ${nightShiftMode !== 'off' ? 'bg-warning' : 'wz-surface-2'}`}
-          >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${nightShiftMode !== 'off' ? 'left-5' : 'left-0.5'}`} />
-          </button>
+            className="wz-switch"
+          />
         </div>
       </div>
 
+      {/* DESKTOP LAYOUT — renders only when a preset module has been supplied.
+          See DesktopLayoutModule below. */}
+      <DesktopLayoutChoice />
+
+      {/* Everything on this step is written to localStorage by ThemeProvider and
+          is therefore DEVICE-LOCAL: it does not follow the account to a phone or
+          to another browser pointed at the same box. Defensible — theme is
+          arguably per-screen — but it is not what "you can change this later in
+          Settings" implies, and nothing said so. Reported. */}
+      <p className="wz-hint mt-3">
+        Remembered on this device. Change any of it later in Settings → Appearance.
+      </p>
+
       <NavBar onPrev={onPrev} onNext={onNext} />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════
+// Desktop layout presets — INJECTION SEAM
+// ═══════════════════════════════════
+//
+// The founder wants first boot to offer a familiar desktop LAYOUT, so someone
+// arriving from Windows, macOS or Ubuntu lands in an arrangement their muscle
+// memory expects. The preset model itself is being built separately under
+// src/desktop/**; this file must not invent the list, and does not.
+//
+// What lives here is the seam and the UI contract:
+//
+//   - registerDesktopLayouts(module), or the equivalent `desktopLayouts` prop
+//     on <Setup>. Either wiring works; the prop is tidier if App.tsx is being
+//     edited anyway.
+//   - Until something supplies a module, DesktopLayoutChoice renders NOTHING.
+//     A seam with no data must not render a teaser card: this suite's dominant
+//     defect is UI that looks like a working feature and is not, and a
+//     "coming soon" panel on first boot would be exactly that.
+//
+// Two constraints are encoded in the types rather than left to convention:
+//
+//   ERGONOMICS, NOT IMITATION. A preset carries `label` (what it DOES — where
+//   the dock sits, which side the window controls are on) and `habit` (a plain
+//   note about whose habits it matches). There is deliberately NO field for a
+//   skin, an icon set, a wallpaper, a font or a vendor name, because none of
+//   that may transfer. Vulos looks like Vulos in every preset; what moves is
+//   convention. A preset that needed to ship trade dress could not be expressed
+//   in this interface, which is the point.
+//
+//   REVERTIBLE. `stockId` is required, so the step can always offer the way
+//   back without each caller remembering to include one, and it defaults to
+//   stock rather than to whatever happens to be first in the array.
+export interface DesktopLayoutPreset {
+  id: string
+  /** Named for what it does, e.g. "Dock at the bottom, window buttons right". */
+  label: string
+  /** Preview-safe description of the arrangement. No trade dress. */
+  description: string
+  /** Plain note about whose habits this matches, e.g. "Familiar from Windows". */
+  habit?: string
+  /** Optional schematic: a diagram of regions, never a screenshot or a skin. */
+  preview?: ReactNode
+}
+
+export interface DesktopLayoutModule {
+  presets: DesktopLayoutPreset[]
+  /** The Vulos layout. Always offered, always the default, always revertible. */
+  stockId: string
+  apply: (id: string) => void | Promise<void>
+}
+
+let registeredLayouts: DesktopLayoutModule | null = null
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function registerDesktopLayouts(mod: DesktopLayoutModule | null): void {
+  registeredLayouts = mod
+}
+
+function DesktopLayoutChoice() {
+  const mod = registeredLayouts
+  const [chosen, setChosen] = useState<string>(mod?.stockId ?? '')
+  const [error, setError] = useState('')
+
+  // Nothing supplied → nothing rendered. Deliberate; see the note above.
+  if (!mod || mod.presets.length === 0) return null
+
+  const pick = async (id: string) => {
+    const previous = chosen
+    setChosen(id)
+    setError('')
+    try {
+      await mod.apply(id)
+    } catch {
+      setChosen(previous)
+      setError('That layout could not be applied, so your current layout is unchanged.')
+    }
+  }
+
+  return (
+    <div className="mt-6">
+      <h3 className="wz-eyebrow mb-1">Desktop layout</h3>
+      <p className="wz-hint mb-3">
+        Where things sit — the dock, the launcher, the window buttons. Pick whichever matches the
+        habits you already have. Vulos looks the same either way; only the arrangement changes, and
+        you can return to the Vulos layout at any time, here or in Settings.
+      </p>
+      <div className="wz-grid wz-grid--2" role="radiogroup" aria-label="Desktop layout">
+        {mod.presets.map(preset => (
+          <button
+            key={preset.id}
+            type="button"
+            role="radio"
+            aria-checked={chosen === preset.id}
+            onClick={() => pick(preset.id)}
+            className="wz-choice"
+          >
+            <span className="min-w-0">
+              {preset.preview}
+              <span className="wz-choice-title">{preset.label}</span>
+              <span className="wz-choice-desc">{preset.description}</span>
+              {preset.habit && <span className="wz-choice-desc">{preset.habit}</span>}
+            </span>
+          </button>
+        ))}
+      </div>
+      {chosen !== mod.stockId && (
+        <button type="button" onClick={() => pick(mod.stockId)} className="wz-quiet mt-2">
+          Back to the Vulos layout
+        </button>
+      )}
+      {error && (
+        <p role="alert" className="wz-note wz-note--danger mt-3">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{error}</span>
+        </p>
+      )}
     </div>
   )
 }
@@ -1995,12 +2313,13 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
             minio_creds_ref: config.IS05_storageMinioCredsRef,
           }
         : { mode: config.IS05_storageMode || 'local-fs' }
-      await fetch('/api/storagemode', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(modeBody),
-      })
-    } catch { /* mode is best-effort during setup — admin can change later */ }
+      const mode = await saveToBox('/api/storagemode', { method: 'PUT', body: JSON.stringify(modeBody) })
+      if (!mode.ok) {
+        IS05_setSaving(false)
+        IS05_setError(`Storage is set, but the storage MODE could not be saved. ${mode.message}`)
+        return
+      }
+    } catch { /* unreachable: saveToBox does not throw */ }
     IS05_setSaving(false)
     // Record that storage was not enabled (skipped via Continue with toggle off)
     if (!config.IS05_storageEnabled) {
@@ -2011,14 +2330,12 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
 
   const handleSkip = async () => {
     IS05_setSaving(true)
-    try {
-      await fetch('/api/setup/storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enable: false }),
-      })
-    } catch { /* storage disable is best-effort — proceed regardless */ }
+    const r = await saveToBox('/api/setup/storage', { method: 'POST', body: JSON.stringify({ enable: false }) })
     IS05_setSaving(false)
+    if (!r.ok) {
+      IS05_setError(`Could not record that storage is off. ${r.message}`)
+      return
+    }
     update('IS05_storageSkipped', true)
     onNext()
   }
@@ -2038,11 +2355,13 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
             <div className="text-[12px] wz-dim">{t('Shared encrypted storage across cluster nodes')}</div>
           </div>
           <button
+            type="button"
+            role="switch"
+            aria-checked={config.IS05_storageEnabled}
+            aria-label={t('Enable Cluster Sync')}
             onClick={() => { update('IS05_storageEnabled', !config.IS05_storageEnabled); IS05_setError('') }}
-            className={`w-10 h-5 rounded-full transition-colors relative ${config.IS05_storageEnabled ? 'accent-bg' : 'wz-surface-2'}`}
-          >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${config.IS05_storageEnabled ? 'left-5' : 'left-0.5'}`} />
-          </button>
+            className="wz-switch"
+          />
         </div>
       </div>
 
@@ -2123,7 +2442,7 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
               step="5"
               value={config.IS05_storageSizeGb}
               onChange={e => update('IS05_storageSizeGb', Number(e.target.value))}
-              className="w-full" style={{ accentColor: 'var(--accent)' }}
+              className="wz-range" style={{ accentColor: 'var(--accent)' }}
             />
             <div className="flex justify-between text-[12px] wz-dim mt-1">
               <span>5 GB</span><span>100 GB</span>
@@ -2575,7 +2894,6 @@ interface RecoveryKitPayload {
 
 // INIT-06: build a versioned kit object from wizard config
 // Exported so recovery-kit.test.ts asserts on the REAL kit builder; see the note above.
-// eslint-disable-next-line react-refresh/only-export-components
 export function IK06_buildKitObject(config: SetupConfig, masterPhrase = ''): RecoveryKit {
   const issuedAt = new Date().toISOString()
   return {
@@ -3158,7 +3476,7 @@ export function PrivateAIStep({ onDone }: { onDone: () => void | Promise<void> }
             <button
               onClick={onDone}
               disabled={state === 'downloading'}
-              className="text-sm wz-dim hover:wz-body transition-colors disabled:opacity-40"
+              className="wz-quiet disabled:opacity-40"
             >
               Skip for now
             </button>
