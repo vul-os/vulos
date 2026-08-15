@@ -150,7 +150,7 @@ def render_manifest(fixture: list[str], live: list[str]) -> str:
         "looks like. `VULOS_API` is pinned to the dead address `127.0.0.1:1`, so an",
         "app that reports itself offline or unconfigured is telling the truth.",
         "",
-        "Captured on a developer machine, not on a box: `system-info.png` therefore",
+        "`system-info.png` is the exception and is **deliberately absent**.",
         "reads that machine's real hostname, kernel and disk. That is a deliberate",
         "trade — it is also the clearest evidence the shot is not staged.",
         "",
@@ -203,7 +203,28 @@ def main() -> int:
         fail("COVERAGE", "found NO process-backed apps under frontend/apps/")
 
     live_names = {os.path.basename(p)[: -len(".png")] for p in live}
-    missing = sorted(set(apps) - live_names)
+
+    # Apps deliberately without a live shot. Not a general escape hatch, and the
+    # two rules below stop it becoming one: an entry must carry a reason, and it
+    # must be STALE the moment a shot appears -- so capturing one properly forces
+    # the exemption to be deleted rather than quietly outliving its cause.
+    NO_LIVE_SHOT = {
+        "system-info": (
+            "This app's entire surface IS the machine it runs on, so a capture "
+            "on a developer machine publishes that machine's hostname, kernel "
+            "and disk -- and this repository is public. Cropping was rejected: a "
+            "doctored shot of a system-information app is a staged shot of the "
+            "one app whose whole job is to be accurate. Capture it on a real box "
+            "or in the Linux container, then delete this entry."
+        ),
+    }
+    for name, reason in NO_LIVE_SHOT.items():
+        if len(reason) < 60:
+            fail("COVERAGE", f"{name} is exempted from a live shot with no real reason given")
+        if name in live_names:
+            fail("COVERAGE", f"{name} now HAS a live screenshot -- delete its NO_LIVE_SHOT entry")
+
+    missing = sorted(set(apps) - live_names - set(NO_LIVE_SHOT))
     extra = sorted(live_names - set(apps))
     if missing:
         fail("COVERAGE", f"process-backed apps with no LIVE screenshot: {', '.join(missing)}")

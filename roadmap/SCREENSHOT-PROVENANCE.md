@@ -24,7 +24,7 @@ browser network layer via `frontend/e2e/mock-backend.js`. It writes 48 PNGs to
 `site/` directory in this repo, and no CI job generates, uploads or link-checks
 screenshots.
 
-**`frontend/e2e/_polish-shots.e2e.ts`** was the file whose header read
+**`frontend/e2e/_polish-shots.e2e.ts`** — since deleted — was the file whose header read
 `NOT part of the suite — never commit this file`. It was committed, and it
 matched `playwright.config.ts`'s `**/*.e2e.{js,ts}`, so it ran on every CI E2E
 run. Its output went to `/tmp/polish-shots`, which **nothing reads**. It was
