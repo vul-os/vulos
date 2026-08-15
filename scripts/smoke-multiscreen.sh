@@ -129,7 +129,32 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 IMAGE=${VULOS_SCREENS01_IMAGE:-vulos-screens01:trixie}
 
 WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
+
+# Cleanup must not decide the verdict.
+#
+# The arms run as root inside the container and write into $WORK through a bind
+# mount, so on a host whose user is not root — every CI runner — the plain
+# `rm -rf` that used to be this trap fails with "Permission denied" on each
+# generated rc.xml and session.sh. `rm`'s exit status then became the script's,
+# and CI reported a FAILURE for a run that had printed
+#
+#     PASS: cog sets the app id, labwc places each browser on its own output
+#
+# three lines earlier, with both controls correctly red. A gate whose exit code
+# disagrees with its own verdict is worse than no gate: here it cried wolf, and
+# the same mechanism would have swallowed a real failure if the order had been
+# reversed.
+#
+# So: remember the real status, delete as root in a throwaway container (the
+# only user that can), fall back to a best-effort rm if docker is gone, and exit
+# with the status the ASSERTIONS produced.
+cleanup() {
+    _rc=$?
+    docker run --rm -v "$WORK:/work" "$IMAGE" rm -rf /work/out /work/bin >/dev/null 2>&1 || true
+    rm -rf "$WORK" >/dev/null 2>&1 || true
+    exit "$_rc"
+}
+trap cleanup EXIT
 mkdir -p "$WORK/bin" "$WORK/out"
 
 # THE REAL GENERATOR, copied — not a reimplementation of it. If the shipping
