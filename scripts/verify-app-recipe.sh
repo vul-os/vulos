@@ -561,15 +561,18 @@ out.append("| status | apps |")
 out.append("| --- | --- |")
 for k in sorted(counts): out.append(f"| {icon.get(k,'')} {k} | {counts[k]} |")
 out.append("")
-out.append("| App | Source | Arch tested | Status | Installed MB | Secs | Date | Asserted / why not |")
-out.append("| --- | --- | --- | --- | ---: | ---: | --- | --- |")
+out.append("| App | Source | Arch | Verified | Status | Disk MB | Mins | Date | Asserted / why not |")
+out.append("| --- | --- | --- | --- | --- | ---: | ---: | --- | --- |")
 for r in sorted(rows,key=lambda r:(r.get("status",""),r.get("id",""))):
     a=r.get("assertions") or []
     detail=", ".join(a) if a else (r.get("note") or "")
-    out.append("| `{}` | {} | {} | {} {} | {} | {} | {} | {} |".format(
-        r.get("id",""), r.get("source",""), r.get("arch") or "-",
+    v=r.get("flathub_verified")
+    vtxt={True:"yes",False:"**no**"}.get(v,"-")
+    secs=r.get("seconds") or 0
+    out.append("| `{}` | {} | {} | {} | {} {} | {} | {} | {} | {} |".format(
+        r.get("id",""), r.get("source",""), r.get("arch") or "-", vtxt,
         icon.get(r.get("status",""),""), r.get("status",""),
-        r.get("installed_mb","") or "", r.get("seconds","") or "",
+        r.get("disk_delta_mb") or "", (round(secs/60) if secs else ""),
         (r.get("date") or "")[:10], detail))
 out.append("")
 open(dst,"w").write("\n".join(out))
@@ -606,7 +609,7 @@ verify_one() {
     dl_mb="$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("download_mb") or "")' <<<"$fh")"
     inst_mb="$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("installed_mb") or "")' <<<"$fh")"
     rt_mb="$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("runtime_mb") or "")' <<<"$fh")"
-    fh_verified="$(python3 -c 'import json,sys;print(json.load(sys.stdin).get("verified"))' <<<"$fh")"
+    fh_verified="$(python3 -c 'import json,sys;v=json.load(sys.stdin).get("verified");print("" if v is None else ("true" if v else "false"))' <<<"$fh")"
     say "  flathub: arches=[$arches] download=${dl_mb}MB installed=${inst_mb}MB runtime=${rt_mb}MB verified=$fh_verified"
 
     if [[ -n "$arches" ]]; then
@@ -623,7 +626,8 @@ import json,sys
 print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"flatpak_id":sys.argv[3],"arch":sys.argv[4],
  "status":"untestable-on-arm64" if sys.argv[4]=="arm64" else "skipped","date":sys.argv[5],
  "note":"flathub publishes only ["+sys.argv[6]+"] — no "+sys.argv[7]+" build exists to install",
- "flathub_verified":sys.argv[8],"harness":sys.argv[9],"assertions":[]}))' \
+ "flathub_verified":{"true":True,"false":False}.get(sys.argv[8]),
+ "harness":sys.argv[9],"assertions":[]}))' \
           "$app" "$src" "$fpid" "$host_arch" "$date_now" "$arches" "$fh_arch" "$fh_verified" "$HARNESS_VERSION")"
         ledger_render >/dev/null
         return 3
@@ -670,7 +674,8 @@ import json,sys
 print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"flatpak_id":sys.argv[3],"arch":sys.argv[4],
  "status":sys.argv[5],"date":sys.argv[6],"seconds":int(sys.argv[7] or 0),
  "installed_mb":int(sys.argv[8] or 0),"download_mb":int(sys.argv[9] or 0),
- "disk_delta_mb":int(sys.argv[10] or 0),"flathub_verified":sys.argv[11],
+ "disk_delta_mb":int(sys.argv[10] or 0),
+ "flathub_verified":{"true":True,"false":False}.get(sys.argv[11]),
  "assertions":[a for a in sys.argv[12].split() if a],"note":sys.argv[13],
  "harness":sys.argv[14]}))' \
     "$app" "$src" "$fpid" "$host_arch" "$status" "$date_now" "${secs:-0}" \

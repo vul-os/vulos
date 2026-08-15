@@ -1,0 +1,31 @@
+{
+  "_comment": "Authoritative App Hub install-verification ledger. Written by scripts/verify-app-recipe.sh. Render the .md with --ledger-render.",
+  "rows": [
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
+        "flatpak-present",
+        "flatpak-deployed",
+        "flatpak-runtime",
+        "command-resolves",
+        "command-executes",
+        "uninstall"
+      ],
+      "date": "2026-08-15T01:31:44Z",
+      "disk_delta_mb": 2059,
+      "download_mb": 13,
+      "flathub_verified": "False",
+      "flatpak_id": "org.filezillaproject.Filezilla",
+      "harness": "1",
+      "id": "filezilla",
+      "installed_mb": 35,
+      "note": "",
+      "seconds": 1765,
+      "source": "flathub",
+      "status": "passed"
+    }
+  ]
+}
