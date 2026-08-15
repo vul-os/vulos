@@ -245,13 +245,35 @@ test.describe('phone 390×844 (touch)', () => {
     expect(await page.locator('[data-calendar-app]').count()).toBe(1)
   })
 
-  test('the explicit close button still closes — the gesture is not the only path', async ({ page }) => {
+  // Both input paths, deliberately. The first version of the swipe gesture
+  // captured the pointer on `pointerdown`, and pointer capture retargets the
+  // subsequent `click` to the CAPTURING element — so the card swallowed its own
+  // ✕ button's click and closing silently stopped working for mouse input. It
+  // still worked for `.tap()`. A tap-only assertion here went green while the
+  // defect was live; only mobile-shell.e2e.ts, which uses `.click()`, caught it.
+  for (const via of ['tap', 'click'] as const) {
+    test(`the explicit close button still closes (${via}) — the gesture is not the only path`, async ({ page }) => {
+      await bootMobile(page, CALENDAR_EMPTY)
+      await launch(page, 'Calendar')
+      await expect(page.locator('[data-calendar-app]')).toBeVisible({ timeout: 15_000 })
+      await page.locator(NAV).getByRole('button', { name: 'Apps' }).tap()
+      const close = page.getByRole('button', { name: /^Close Calendar$/ })
+      if (via === 'tap') await close.tap()
+      else await close.click()
+      await expect(page.locator('[data-calendar-app]')).toHaveCount(0)
+      await expect(page.locator('[data-switcher-card="vulos-calendar"]')).toHaveCount(0)
+    })
+  }
+
+  test('switching to an app from its card works by click as well as tap', async ({ page }) => {
+    // Same pointer-capture hazard on the card's own "Switch to" surface.
     await bootMobile(page, CALENDAR_EMPTY)
     await launch(page, 'Calendar')
     await expect(page.locator('[data-calendar-app]')).toBeVisible({ timeout: 15_000 })
     await page.locator(NAV).getByRole('button', { name: 'Apps' }).tap()
-    await page.getByRole('button', { name: /^Close Calendar$/ }).tap()
-    await expect(page.locator('[data-calendar-app]')).toHaveCount(0)
+    await page.getByRole('button', { name: /^Switch to Calendar$/ }).click()
+    await expect(page.locator('[data-mobile-switcher]')).toHaveCount(0)
+    await expect(page.locator('[data-calendar-app]')).toBeVisible()
   })
 
   // MOBILE-08 — pull-to-refresh must not reload the OS.

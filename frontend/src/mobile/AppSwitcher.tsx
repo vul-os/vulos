@@ -132,9 +132,26 @@ interface SwitcherCardProps {
   onClose: () => void
 }
 
+// Movement, in px, before a press becomes a drag.
+//
+// THE BUG THIS NUMBER EXISTS FOR. The first version captured the pointer in
+// `pointerdown`. Pointer capture retargets the subsequent `click` to the
+// CAPTURING element, so the card swallowed its own ✕ button's click and the
+// close button silently stopped working for mouse input. It still worked for
+// `tap()`, which is why this workstream's own e2e (written with `.tap()`) went
+// green while the pre-existing mobile-shell.e2e.ts, which uses `.click()`, went
+// red. A gesture must not cost the app its buttons.
+//
+// So capture is deferred until the pointer has actually MOVED. A press that does
+// not move never captures, and every click behaves exactly as it did before the
+// gesture existed.
+const DRAG_SLOP = 8
+
 function SwitcherCard({ appId, title, onOpen, onClose }: SwitcherCardProps) {
   const ref = useRef<HTMLDivElement>(null)
   const start = useRef<number | null>(null)
+  const captured = useRef(false)
+  const moved = useRef(false)
   const [dy, setDy] = useState(0)
   const [dragging, setDragging] = useState(false)
 
@@ -143,16 +160,24 @@ function SwitcherCard({ appId, title, onOpen, onClose }: SwitcherCardProps) {
     // not hijack a card that is already moving.
     if (!e.isPrimary) return
     start.current = e.clientY
-    setDragging(true)
-    e.currentTarget.setPointerCapture(e.pointerId)
+    captured.current = false
+    moved.current = false
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (start.current === null) return
+    const delta = e.clientY - start.current
+    if (!captured.current) {
+      if (Math.abs(delta) < DRAG_SLOP) return
+      captured.current = true
+      moved.current = true
+      setDragging(true)
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
     // Upward only. Clamping downward travel to 0 keeps the card from being
     // dragged into the dock, and means a horizontal deck swipe (which carries a
     // little vertical noise) never visually disturbs the card.
-    setDy(Math.min(0, e.clientY - start.current))
+    setDy(Math.min(0, delta))
   }
 
   const finish = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -160,9 +185,19 @@ function SwitcherCard({ appId, title, onOpen, onClose }: SwitcherCardProps) {
     const travelled = -Math.min(0, e.clientY - start.current)
     const h = ref.current?.getBoundingClientRect().height ?? 0
     start.current = null
+    captured.current = false
     setDragging(false)
     if (travelled >= Math.max(DISMISS_FLOOR, h * DISMISS_RATIO)) onClose()
     else setDy(0)
+  }
+
+  // A drag that springs back must not also register as a tap on whatever was
+  // under the finger — otherwise an aborted dismissal opens the app instead.
+  const swallowClickAfterDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!moved.current) return
+    moved.current = false
+    e.preventDefault()
+    e.stopPropagation()
   }
 
   const progress = Math.min(1, -dy / 220)
@@ -178,6 +213,7 @@ function SwitcherCard({ appId, title, onOpen, onClose }: SwitcherCardProps) {
       onPointerMove={onPointerMove}
       onPointerUp={finish}
       onPointerCancel={finish}
+      onClickCapture={swallowClickAfterDrag}
     >
       <div className="flex items-center gap-2.5 px-3 h-12 shrink-0">
         <span className="text-[13px] font-medium text-[color:var(--text-secondary)] truncate flex-1">{title}</span>

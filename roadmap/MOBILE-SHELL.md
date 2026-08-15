@@ -211,23 +211,23 @@ outage must not be reported as "everything is fine" *or* as "everything is broke
 Each of these is real and measured. They are listed rather than patched because patching
 someone else's file locally hides the systemic version of the problem.
 
-**7.1 — The accent-on-white contrast floor fails by default.** The dock's window-count badge
-in `MobileStack.tsx` uses `.accent-bg` + `var(--accent-contrast)`. Both come from
-`src/index.css` (`--accent-contrast: #ffffff` at :46, `.accent-bg { background: var(--accent) }`
-at :841). Computed against the **shipped defaults**:
+**7.1 — The accent-on-white contrast floor — reported here, FIXED at the token level
+(`ef46ca1b`).** The dock's window-count badge in `MobileStack.tsx` uses `.accent-bg` with
+`var(--accent-contrast)` on top. Both tokens live in `src/index.css`, so this was never a
+badge problem. Measured white-on-raw-accent at **3.68:1 on both themes** with the default
+blue (App Hub workstream, running build); the shipped dark default `#5b6cff` computes to
+**4.17:1** on its own, i.e. below the 4.5:1 gate *before* any user accent is applied.
 
-| Theme | `--accent` | vs `#ffffff` | 4.5:1? |
-|---|---|---|---|
-| dark | `#5b6cff` | **4.17:1** | ✗ |
-| light | `#4d5efb` | 4.87:1 | ✓ (thin) |
+This was deliberately **not** patched in `MobileStack.tsx`. The same pair appears in the
+Settings nav rail's active pip and the window-chrome button hover fill — a local patch on the
+badge would have left the others and hidden the systemic version.
 
-The App Hub workstream independently measured **3.68:1 on both themes** on a running build,
-i.e. with a user accent applied — worse than the defaults. It appears for Settings and Files
-too, and ~12 files pair these two tokens. **This is a token problem, not a badge problem, and
-it belongs to whoever owns `index.css`.** The fix is one of: derive `--accent-contrast` per
-accent by luminance (white or near-black, whichever wins) rather than hard-coding white; or
-constrain the accent presets to values that clear 4.5:1 against white. Patching the badge
-locally would leave the other eleven.
+The customization workstream fixed it correctly: `src/core/accentContrast.ts` derives
+`--accent-solid` (the accent moved until white clears AA on it) and `--accent-text`
+separately, because the two move in *opposite* directions on a dark theme. `.accent-bg` now
+resolves to `var(--accent-solid, var(--accent))`. **This is the outcome the reporting
+convention is for** — an owner fixing it once, at the token, rather than three workstreams
+each patching their own instance.
 
 **7.2 — Touch leaks in builtins.** From a sweep of `src/builtin/**`, `src/core/**`,
 `src/apps/**`:
