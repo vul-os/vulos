@@ -244,8 +244,15 @@ scripts/verify-app-recipe.sh --sweep --limit N
 ```
 
 It spins a throwaway `debian:trixie` container (the suite `build.sh` builds the
-image from, `SUITE="trixie"`) with flatpak + the flathub remote configured
-exactly as the shipped image configures them, and then:
+image from, `SUITE="trixie"`) whose **package set is `scripts/image-packages.txt`
+verbatim** — the same pinned list `scripts/check-image-packages.sh` gates the
+shipped Dockerfile against — plus the flathub remote, plus four verifier-only
+tools (`gnupg`, `xz-utils`, `file`, `procps`) listed separately so the
+difference stays visible. Deriving that set by hand instead cost a false red:
+`cinny`'s recipe runs `python3 -m http.server`, python3 is in the shipped image,
+and it was missing from the first hand-written list. **A harness whose
+environment is thinner than the product's invents failures, which is the same
+disease as a thin assertion inventing passes.** Then:
 
 **It runs the product's own installer.** Not `flatpak install`, not
 `apt-get install` — a ~120-line generated driver whose entire body is
