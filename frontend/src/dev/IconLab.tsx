@@ -20,16 +20,64 @@ import { ART } from '../core/appArt'
 
 // Every art id, minus the aliases that point at an already-listed drawing —
 // reviewing the same artwork twice wastes screen and hides a real gap.
+//
+// A handful of drawings are keyed in appArt.tsx under an internal helper name
+// (`imageEditor`, `system`, `microphone`, `editor`) with the real,
+// hyphenated app id (`image-editor`, `system-info`, `voice-recorder`,
+// `text-editor`) added afterwards as `ART['image-editor'] = ART.imageEditor`.
+// `Object.keys()` visits insertion order, so a plain first-seen dedup always
+// keeps the internal name and drops the real one — the lab then renders and
+// labels the tile under an id no app ever actually passes to AppIconTile.
+// `calendar`/`contacts` have the opposite shape: the bare word was never a
+// real app id (retired — see AppRegistry.ts), only `vulos-calendar` /
+// `vulos-contacts` are. PREFERRED_ID corrects both directions so the label
+// always matches what a real app resolves, and the tile is rendered by that
+// same real id (not just the internal spec) — exercising the actual lookup.
+const PREFERRED_ID: Record<string, string> = {
+  imageEditor: 'image-editor',
+  system: 'system-info',
+  microphone: 'voice-recorder',
+  editor: 'text-editor',
+  calendar: 'vulos-calendar',
+  contacts: 'vulos-contacts',
+}
 const seen = new Set<unknown>()
-const ART_IDS = Object.keys(ART).filter((id) => {
-  if (seen.has(ART[id])) return false
-  seen.add(ART[id])
-  return true
-})
+const ART_IDS = Object.keys(ART)
+  .filter((id) => {
+    if (seen.has(ART[id])) return false
+    seen.add(ART[id])
+    return true
+  })
+  .map((id) => PREFERRED_ID[id] || id)
 
 // Non-art ids that share the launcher with the plates. `terminal` is the
 // quality bar the whole set is measured against, so it leads.
 const OTHER_IDS = ['terminal', 'lilmail', 'firefox', 'gitea', 'unknown-app']
+
+// FULL_CATALOG_IDS — every id that can actually reach AppIconTile at runtime:
+// every AppRegistry.ts builtin/default-web-app id, every registry.json catalog
+// id, and every APP_LOGOS key (product marks not in either list above). This
+// is what a "does every real app resolve a real icon, with no silent fallback
+// and no two apps sharing a tile" review has to look at — the ART-only list
+// above misses the ~70 brand-logo and plain-glyph apps entirely. Re-derive
+// with the one-liner in AppIcons.test.ts's coverage assertion if the roster
+// drifts; this literal snapshot keeps the lab importable without reaching
+// across the Vite root to registry.json.
+const FULL_CATALOG_IDS = [
+  'activity', 'android', 'apphub', 'aql', 'ardour', 'assistant', 'audacity', 'audiomass',
+  'authenticator', 'blender', 'browser', 'browser-stream', 'calculator', 'camera', 'chrome',
+  'cinny', 'clock', 'cockpit', 'code-server', 'conduit', 'darktable', 'dashboard', 'diagrams-net',
+  'disks', 'diwan', 'drawio', 'drive', 'drivers', 'element', 'element-call', 'envoir', 'excalidraw',
+  'files', 'filezilla', 'firefox', 'gallery', 'geany', 'gimp', 'gitea', 'gitstate', 'gnucash',
+  'grafana', 'home', 'hoppscotch', 'httpbin', 'image-editor', 'immich', 'inkscape', 'jellyfin',
+  'jitsi-meet', 'jupyter', 'kdenlive', 'keepassxc', 'kerf', 'kicad', 'kilio', 'kotva', 'library',
+  'libreoffice', 'libretranslate', 'lilmail', 'llmux', 'lmms', 'lutris', 'magnetite', 'mail',
+  'memos', 'messages', 'minio', 'minipaint', 'music', 'navidrome', 'nginx', 'obs-studio', 'octave',
+  'packages', 'persona', 'phone', 'qbittorrent', 'qgis', 'screenshot', 'shotcut', 'soko', 'steam',
+  'svg-edit', 'syncthing', 'system-info', 'terminal', 'text-editor', 'transmission', 'uptime-kuma',
+  'vault', 'vaultwarden', 'video', 'vlc', 'voice-recorder', 'vulos-calendar', 'vulos-contacts',
+  'vulos-phone', 'vuna', 'weather', 'wede', 'wine',
+]
 
 export function Grid({ ids, size, tile }: { ids: string[]; size: number; tile: boolean }) {
   return (
@@ -74,6 +122,9 @@ export function Lab() {
       </Section>
       <Section name="i16" label="Inline @ 16 — titlebar (hairline glyph fallback)">
         <Grid ids={ids} size={16} tile={false} />
+      </Section>
+      <Section name="full" label={`Full catalog @ 56 — every reachable app id (${FULL_CATALOG_IDS.length}) — a letter tile here is a real fallback, not a review artifact`}>
+        <Grid ids={FULL_CATALOG_IDS} size={56} tile />
       </Section>
     </div>
   )
