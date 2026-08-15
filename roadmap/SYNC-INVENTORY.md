@@ -230,3 +230,168 @@ encodings will not merge. Reported, not touched — `services/peering` is not
 mine.
 
 ---
+
+## 3. Evicting a compromised instance
+
+The directive is one robust engine, secure, able to kick out a compromised
+instance. This section is the design. The most useful finding first:
+
+> **The machinery is largely built and it is good. The sync layer does not
+> honour it, and the admission credential cannot be revoked at all.**
+
+### 3.1 What eviction is not
+
+**Eviction is not an ACL edit.** Three things follow, and every one of them is a
+place this system currently gets it wrong or has not decided:
+
+1. **An evicted instance keeps everything it already read.** Nothing can undo
+   that — not re-keying, not tombstones, not quorum. If it held a full replica
+   of `users`, it holds those bcrypt hashes forever. Eviction bounds the
+   *future*, never the past. Any design that implies otherwise is lying to the
+   user, and the UI must say "this box can no longer receive or change your
+   data" and never "your data has been removed from it".
+2. **Shared group keys make eviction meaningless without re-keying.** A member
+   evicted from a group whose key it still holds is not evicted; it is
+   inconvenienced. Real eviction requires generating a new group key and
+   re-wrapping every shared secret for the *remaining* members.
+3. **Revocation must be monotonic and enforced at admission.** A CRDT converges
+   on whatever peers write. If revocation state is itself replicated through a
+   CRDT with an edit primitive, a compromised peer writes its own un-revocation
+   and the fleet faithfully converges on it. Revocation must be a grow-only set,
+   and it must be checked *before* a peer's bytes are merged, not after.
+
+### 3.2 What exists, and it is better than expected
+
+`services/devicekey` gets all three right, and should be the model:
+
+| Property | Where | Verdict |
+|---|---|---|
+| Monotonic — no un-revoke path, the set only grows | `services/devicekey/revocation.go:3-6` | correct |
+| Persistent store keyed by fingerprint | `revocation.go:206` `RevocationStore` | correct |
+| Certs are quorum-signed or self-signed, verified on merge | `revocation.go:146` `Verify(roster, threshold, now)` | correct |
+| Propagates between boxes by pull loop, merging only what verifies | `services/devicekey/revsync.go`, wired `cmd/server/main.go:3191` | correct |
+| Fail-closed with no roster: entries skipped, never merged | `revsync.go:75` | correct |
+| Break-glass rotate/revoke requires fleet quorum | `cmd/server/routes_devicekey_lifecycle.go:22` | correct |
+
+`services/fleetid` supplies the roster, `VerifyQuorum`, and a **default-deny**
+policy (`policy.go:91` `DenyAllPolicy`). This is a genuinely well-built
+revocation subsystem. The gap is not here.
+
+### 3.3 Where it breaks
+
+**(a) The sync engines do not consult it.** `internal/crdtsync`,
+`internal/multiinstance` and `internal/fabric` contain **no reference to
+`devicekey`** — the grep is empty. The one revocation system that is monotonic
+and propagates is invisible to every replicator.
+
+**(b) There is a second, weaker revocation system, and that is the one the sync
+layer uses.** `multiinstance.Instance.Revoked` is a plain bool column
+(`internal/multiinstance/registry.go:86`). The roster check does honour it, is
+re-read per call, and fails closed (`cmd/server/crdtsync_wiring.go:54-81`) —
+that part is right. But:
+
+- **It is never set.** `RevokePeer` and `RestoreFromRevocation`
+  (`internal/multiinstance/rotation.go:121,145`) have **zero non-test callers**.
+  Enforcement is real; nothing triggers it. There is no operator path to evict
+  a box.
+- **It is not monotonic.** `RestoreFromRevocation` is an un-revoke primitive.
+  It exists in the same codebase as a package whose doc says "revoked forever…
+  no un-revoke path". Two revocation systems with opposite disciplines.
+- **It does not propagate.** The instances table is deliberately not replicated
+  (correctly — `crdtsync/peerauth.go:168` refuses the roster so no peer-facing
+  handler can write it). The consequence is that a revocation must be entered
+  by hand on every box, and there is no mechanism to do it once.
+
+**(c) The admission credential cannot be revoked. This is the hole.**
+
+`VULOS_FABRIC_SECRET` is a **single bearer secret, identical on every box**
+(`internal/multiinstance/appsync.go:26` says so in as many words). And:
+
+- `internal/fabric/handlers.go:43,57,99` gates **every** changeset endpoint on
+  that secret **alone**. No roster check at the door.
+- `cmd/server/crdtsync_wiring.go:186` composes
+  `AnyOfAuthorizer(sharedSecret, PeerKeyAuthorizer(verifier))` — an **OR**. The
+  per-peer signature path is sound, but a caller that presents the shared secret
+  satisfies a whole scheme on its own and never reaches the roster.
+
+So: **an evicted instance that still holds the fabric secret retains full CRDT
+pull and push and full fabric changeset access, no matter what any roster says.**
+Marking it `Revoked` changes nothing on the LAN path. And there is **no re-key
+path** — grep finds no rotation for `VULOS_FABRIC_SECRET` or for the cluster
+passphrase whose Argon2id derivation produces the SSE-C key protecting every S3
+object. Re-keying today means editing an environment variable on every surviving
+box by hand and re-encrypting the bucket, with no tooling and no coordination.
+
+This is the single most important security finding in this audit: **the system
+has a correct revocation subsystem, a correct roster check, and a group bearer
+secret that bypasses both.**
+
+### 3.4 The design
+
+**One revocation authority.** Retire `multiinstance.Instance.Revoked` and
+`RestoreFromRevocation`; make `devicekey`'s monotonic `RevocationStore` the only
+one, and derive the multiinstance roster's revoked flag from it. Deleting the
+un-revoke primitive is the important half — an un-revoke that exists will
+eventually be called, and quorum-gated re-admission of a *new* key is the safe
+way to express "that box is clean now".
+
+**Admission before merge, always.** Both sync transports must consult the
+revocation oracle in the handler, before any bytes are parsed or merged. The
+oracle already exists as an interface (`fleetid.RevocationOracle`, implemented
+at `cmd/server/routes_devicekey_lifecycle.go:79`); it is simply not wired into
+`fabric/handlers.go` or the crdtsync authorizer chain.
+
+**Replace the group bearer secret with per-peer identity.** The fabric secret
+should become a *bootstrap* credential only — good for joining, never for
+ongoing authorisation. Steady-state admission is the Ed25519 per-peer signature
+path that already exists and is already tested. Then `AnyOfAuthorizer` becomes
+`AllOf` for the roster dimension: a peer must present a valid signature **and**
+be rostered **and** not be revoked. That single change turns eviction from
+advisory into enforced.
+
+**Epoch the group keys, because some must remain shared.** SSE-C bucket
+encryption cannot be per-peer. So:
+
+1. Group keys carry an **epoch number**, monotonically increasing.
+2. Eviction increments the epoch and generates a fresh key.
+3. The new key is **wrapped once per remaining member** to that member's device
+   public key — the wrapping infrastructure this needs is the same one the
+   password vault needs (§4), which is why they should be built together.
+4. New writes use the new epoch; old objects stay readable at their old epoch
+   until re-encrypted lazily.
+5. The epoch floor is **monotonic and grow-only**, exactly like the revocation
+   set, so a compromised peer cannot roll the fleet back to an epoch it holds
+   the key for. `services/signing/epoch.go` already implements a monotonic epoch
+   floor and is the precedent to follow.
+
+**Quorum, with the 2-box case named.** Eviction should require the same
+`fleetid.VerifyQuorum` threshold as break-glass revocation, so one compromised
+box cannot evict the others. But a two-instance fleet cannot form a majority —
+`appsync` already special-cases `≤ 2` instances for uninstall quorum. For
+eviction the safe resolution is different from uninstall: fall back to
+**explicit owner authorisation with a step-up challenge** (`services/stepup`
+exists), not to unanimity-minus-one, because "the other box agrees" is exactly
+what a compromised other box will say.
+
+**What eviction can never undo, stated in the product.** The evicted box keeps
+every byte it already held. Therefore eviction must be *accompanied* by
+credential rotation for anything it could read: user passwords, API keys, and
+any app token in `profile_secrets`. The eviction flow should present that list —
+generated from the sync inventory, which is exactly what an inventory in code is
+useful for — and drive the rotations, rather than leaving the user to guess.
+
+### 3.5 Ordering
+
+1. Wire the existing `RevocationOracle` into `fabric/handlers.go` and the
+   crdtsync authorizer. Cheap, and it makes the roster mean something.
+2. Demote the fabric secret to bootstrap-only; require signature + roster for
+   steady state. This closes the hole.
+3. Give eviction an operator path at all (`RevokePeer` has no caller today).
+4. Unify on the monotonic store; delete `RestoreFromRevocation`.
+5. Group-key epochs and re-wrapping. Largest piece, and shares its machinery
+   with the password vault.
+
+Steps 1–3 are small and remove the ability of an evicted box to keep syncing.
+Steps 4–5 are what make the claim honest.
+
+---
