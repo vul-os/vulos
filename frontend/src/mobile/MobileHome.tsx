@@ -55,20 +55,39 @@ function useApps(): App[] {
   }, [version])
 }
 
-export default function MobileHome() {
+interface MobileHomeProps {
+  /**
+   * The mobile dock profile's `assistant` flag (src/desktop). On desktop that
+   * flag draws a dock button, because the assistant is a side PANEL there. On a
+   * phone the assistant is a full-screen surface reached from Home, so this is
+   * where "show the assistant" actually lands: the resting ask bar.
+   *
+   * Defaults to true so a caller that has no profile (a unit test, a future
+   * embedder) gets the shipped behaviour rather than a silently assistant-less
+   * home screen.
+   */
+  assistant?: boolean
+}
+
+export default function MobileHome({ assistant = true }: MobileHomeProps = {}) {
   const { openWindow, conversation } = useShell()
   const apps = useApps()
   const [asking, setAsking] = useState(false)
 
   // A conversation that already exists wins: coming back Home after asking
-  // something should show the answer, not an app grid that hides it.
-  const hasConversation = conversation.length > 0
+  // something should show the answer, not an app grid that hides it. Unless the
+  // profile has turned the assistant off — in which case restoring a chat the
+  // user cannot otherwise reach would put them on a surface with no entry point.
+  const hasConversation = assistant && conversation.length > 0
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (hasConversation) setAsking(true)
   }, [hasConversation])
 
-  if (asking) {
+  // Derived, not a second piece of state: turning the assistant off in the
+  // profile must close the surface immediately, and a `setAsking(false)` in an
+  // effect would render the stranded surface for a frame first.
+  if (asking && assistant) {
     return (
       <div data-mobile-home="assistant" className="absolute inset-0 flex flex-col">
         <div className="shrink-0 safe-px-4 pt-2 pb-1">
@@ -114,8 +133,9 @@ export default function MobileHome() {
 
       {/* The resting ask bar. It is a BUTTON, not an input: a real input here
           would summon the keyboard on every visit to Home and shove the grid off
-          screen. Tapping it swaps in Portal, which focuses its own field. */}
-      <div className="shrink-0 safe-px-4 pb-2 pt-1">
+          screen. Tapping it swaps in Portal, which focuses its own field.
+          Present only when the mobile dock profile's `assistant` flag is on. */}
+      {assistant && <div className="shrink-0 safe-px-4 pb-2 pt-1">
         <button
           onClick={() => setAsking(true)}
           className="focus-primary w-full h-12 px-4 flex items-center gap-2.5 rounded-full text-left text-[14px] text-[color:var(--text-tertiary)] active:bg-[color:var(--bg-hover)] transition-colors"
@@ -124,7 +144,7 @@ export default function MobileHome() {
           <svg viewBox="0 0 20 20" className="w-[18px] h-[18px] shrink-0 accent-text" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 2.6l1.7 4.3 4.3 1.7-4.3 1.7L10 14.6 8.3 10.3 4 8.6l4.3-1.7z" /></svg>
           Ask your assistant
         </button>
-      </div>
+      </div>}
     </div>
   )
 }

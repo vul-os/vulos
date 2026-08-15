@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useShell, type ShellWindow } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
-import AppIcon from '../core/AppIcons'
+import AppIcon, { AppIconTile } from '../core/AppIcons'
+import { getApps, getAppById, getAppsVersion, subscribeApps } from '../core/AppRegistry'
+import { launchApp } from '../shell/launchApp'
+import { useDockProfile } from '../desktop'
+import { MOBILE_TILE, mobileDockAutohide, mobileDockSlots, type MobileSlot } from '../mobile/mobileDock'
 import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
 import TrustBadge from '../shell/TrustBadge'
@@ -40,6 +44,21 @@ type MobileView = 'home' | 'app' | 'switcher'
 
 export default function MobileStack() {
   const { windows, activeWindow, focusWindow, toggleLaunchpad, openWindow } = useShell()
+  // MOBILE-DOCK: the phone dock is DATA now.
+  //
+  // 'mobile' is passed EXPLICITLY rather than letting the store pick the active
+  // form factor. desktop/store.ts's activeFormFactor() is a pure width test at
+  // 768px, but shell/useViewport.ts also mounts this shell on a coarse-pointer
+  // tablet up to 1024px — so at 768–1024 the touch shell is up while
+  // activeFormFactor() still says 'desktop'. A dock that read the "active"
+  // profile would render the DESKTOP dock's twelve-item, small-tile geometry on
+  // an iPad. Naming the form factor removes the disagreement entirely.
+  //
+  // For the same reason the geometry is stamped on THIS element's data-* rather
+  // than read off <html>: store.ts stamps the root from activeFormFactor(), so
+  // between 768 and 1024 the root carries the desktop profile's attributes.
+  const profile = useDockProfile('mobile')
+  const appsVersion = useSyncExternalStore(subscribeApps, getAppsVersion, getAppsVersion)
   // MOBILE-11: honour `?open=<appId>` so the manifest's launcher shortcuts
   // (long-press the Vulos icon → "Mail") actually open something.
   useLaunchIntent({ openWindow })
@@ -68,6 +87,91 @@ export default function MobileStack() {
   const showApp = view === 'app' && activeWin
 
   const openApp = (id: number) => { focusWindow(id); setView('app') }
+
+  // The dock's contents. getApps() is an external-store read, so appsVersion is
+  // the dependency that matters: the registry repopulates after boot and a
+  // profile item naming an app that was not installed yet must appear when it is.
+  // `void appsVersion` rather than an eslint-disable: getApps() is an
+  // external-store read, so the version counter is the only honest dependency,
+  // and referencing it makes the dep array truthful. It matters more than style
+  // — a `react-hooks/exhaustive-deps` suppression in this component makes the
+  // compiler-backed hook rules BAIL OUT of the whole file, which silently
+  // disarmed the `set-state-in-effect` check on the view effect above. Measured:
+  // with the suppression, eslint reported that effect's disable directive as
+  // unused; without it, the rule fires again.
+  const slots = useMemo(() => {
+    void appsVersion
+    return mobileDockSlots(profile, getApps().map(a => a.id))
+  }, [profile, appsVersion])
+
+  // appId → its open windows, so a dock tile knows whether it launches, focuses
+  // or dismisses.
+  const byApp = useMemo(() => {
+    const m = new Map<string, ShellWindow[]>()
+    for (const w of windows) {
+      const list = m.get(w.appId)
+      if (list) list.push(w)
+      else m.set(w.appId, [w])
+    }
+    return m
+  }, [windows])
+
+  // A docked app tile, with the phone's version of the desktop dock's contract:
+  //   · not running          → launch it
+  //   · running, not shown   → focus it and show it fullscreen
+  //   · running and shown    → back to Home
+  // That last branch is the phone analogue of the desktop's minimize-on-second-
+  // click. There are no windows to minimize here, so "put it away" means Home —
+  // and the app stays mounted, so nothing is lost by tapping it.
+  const activateApp = useCallback((appId: string) => {
+    const open = byApp.get(appId) ?? []
+    if (open.length === 0) {
+      const app = getAppById(appId)
+      if (app) void launchApp(app, { openWindow })
+      return
+    }
+    const target = open.find(w => w.id === activeWindow) ?? open[0]
+    if (view === 'app' && activeWin && activeWin.id === target.id) { setView('home'); return }
+    focusWindow(target.id)
+    setView('app')
+  }, [byApp, openWindow, activeWindow, activeWin, view, focusWindow])
+
+  const tile = MOBILE_TILE[profile.size]
+
+  const dock = (
+    <nav
+      aria-label="System navigation"
+      className="vmob-dock shrink-0"
+      data-edge={profile.edge}
+      data-dock-style={profile.style}
+      data-align={profile.align}
+      data-size={profile.size}
+      // Always 'off'. mobileDockAutohide() refuses every profile — there is no
+      // hover on touch to bring a hidden dock back, and this is the only
+      // navigation surface the phone shell has. See mobile/mobileDock.ts.
+      data-autohide={mobileDockAutohide(profile) ? 'on' : 'off'}
+      data-slots={slots.length}
+      style={{ ['--vmob-plate' as string]: `${tile.plate}px` }}
+    >
+      <div className="vmob-dock-strip">
+        {slots.map(slot => (
+          <DockSlot
+            key={slotKey(slot)}
+            slot={slot}
+            glyph={tile.glyph}
+            plate={tile.plate}
+            view={view}
+            windowCount={windows.length}
+            running={slot.kind === 'app' ? (byApp.get(slot.appId)?.length ?? 0) > 0 : false}
+            onHome={() => setView('home')}
+            onSwitcher={() => setView(v => (v === 'switcher' ? (activeWin ? 'app' : 'home') : 'switcher'))}
+            onLibrary={toggleLaunchpad}
+            onApp={activateApp}
+          />
+        ))}
+      </div>
+    </nav>
+  )
 
   return (
     <div data-shell="mobile" className="vmob-root fixed inset-0 flex flex-col overflow-hidden">
@@ -103,6 +207,14 @@ export default function MobileStack() {
         </div>
       </div>
 
+      {/* A TOP-edge dock sits directly under the status bar, never above it: the
+          status bar owns the notch inset, and the OS's own notification shade
+          owns the very top edge in both the PWA and the APK (no web API sees
+          that touch — roadmap/MOBILE-SHELL.md §2). A tap target here is still
+          reachable, which is why the profile may choose it; a top dock is simply
+          not the default, and nothing the shell NEEDS is placed above it. */}
+      {profile.edge === 'top' && dock}
+
       {/* Legible-trust transparency panel — opened from the TrustBadge */}
       <TransparencyPanel />
 
@@ -116,7 +228,11 @@ export default function MobileStack() {
             (hidden behind apps) so both the grid's scroll position and any
             assistant conversation survive app switches. */}
         <div className={`absolute inset-0 flex flex-col ${view === 'home' ? '' : 'hidden'}`}>
-          <MobileHome />
+          {/* profile.assistant lands HERE and not in the dock. On desktop the
+              flag shows a dock button because the assistant is a side panel;
+              on a phone it is a full-screen surface reached from Home, so the
+              honest expression of "show the assistant" is the resting ask bar. */}
+          <MobileHome assistant={profile.assistant} />
         </div>
 
         {/* APP STACK — every open window mounted; only the active one is shown.
@@ -141,37 +257,12 @@ export default function MobileStack() {
         )}
       </div>
 
-      {/* Bottom dock — the single navigation surface. Safe-area padded so the
-          home indicator never overlaps the targets; every target ≥44px. */}
-      <nav
-        aria-label="System navigation"
-        className="vmob-dock safe-pb safe-px shrink-0 flex items-stretch pt-1"
-      >
-        <DockButton
-          label="Home"
-          active={view === 'home'}
-          onClick={() => setView('home')}
-        >
-          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L10 3.5l7 6M5 8.5V16a.5.5 0 00.5.5H8v-4.5h4V16.5h2.5a.5.5 0 00.5-.5V8.5" /></svg>
-        </DockButton>
-        <DockButton
-          label="Apps"
-          active={view === 'switcher'}
-          badge={windows.length || null}
-          disabled={windows.length === 0}
-          onClick={() => setView(v => (v === 'switcher' ? (activeWin ? 'app' : 'home') : 'switcher'))}
-        >
-          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7">
-            <rect x="2.5" y="2.5" width="6.2" height="6.2" rx="1.8" />
-            <rect x="11.3" y="2.5" width="6.2" height="6.2" rx="1.8" />
-            <rect x="2.5" y="11.3" width="6.2" height="6.2" rx="1.8" />
-            <rect x="11.3" y="11.3" width="6.2" height="6.2" rx="1.8" />
-          </svg>
-        </DockButton>
-        <DockButton label="Library" onClick={toggleLaunchpad}>
-          <svg viewBox="0 0 20 20" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="10" cy="10" r="7.2" /><path d="M10 6.5v7M6.5 10h7" /></svg>
-        </DockButton>
-      </nav>
+      {/* The dock — the single navigation surface. Its edge, tile size, style,
+          alignment and app items all come from the MOBILE dock profile; the
+          safe-area padding follows the edge it lands on, so the home indicator
+          never overlaps a target. Every slot is ≥44px at 390px even with the
+          maximum eight (see mobileDock.ts MOBILE_MAX_SLOTS). */}
+      {profile.edge !== 'top' && dock}
 
       {/* Launchpad overlay */}
       <Launchpad />
@@ -209,35 +300,100 @@ function MobileAppFrame({ win }: { win: ShellWindow }) {
   )
 }
 
-interface DockButtonProps {
-  children: ReactNode
-  label: string
-  active?: boolean
-  badge?: number | null
-  disabled?: boolean
-  onClick: () => void
+function slotKey(slot: MobileSlot): string {
+  return slot.kind === 'app' ? `app:${slot.appId}` : slot.kind
 }
 
-function DockButton({ children, label, active, badge, disabled, onClick }: DockButtonProps) {
+interface DockSlotProps {
+  slot: MobileSlot
+  glyph: number
+  plate: number
+  view: MobileView
+  windowCount: number
+  running: boolean
+  onHome: () => void
+  onSwitcher: () => void
+  onLibrary: () => void
+  onApp: (appId: string) => void
+}
+
+// One dock slot. System destinations carry a glyph and a WORD; app tiles carry
+// the app's own mark and a running dot, with the name on the accessible name.
+//
+// That asymmetry is the point, not an oversight. A destination is recognised by
+// its label; an app is recognised by its mark — which is exactly how the desktop
+// dock draws app tiles too (shell/Dock.tsx has no visible captions on them). And
+// at the maximum eight slots a 390px phone gives each column ~48px, which is a
+// fine touch target and far too narrow for a legible app name; a truncated dock
+// label is worse than none (roadmap/MOBILE-SHELL.md §4.1). Both kinds reserve
+// the same caption row so the row of marks stays on one line.
+function DockSlot({ slot, glyph, plate, view, windowCount, running, onHome, onSwitcher, onLibrary, onApp }: DockSlotProps) {
+  if (slot.kind === 'app') {
+    const app = getAppById(slot.appId)
+    const name = app?.name || slot.appId
+    return (
+      <button
+        onClick={() => onApp(slot.appId)}
+        aria-label={name}
+        aria-pressed={running}
+        data-dock-slot={`app:${slot.appId}`}
+        className="vmob-dock-slot touch-target"
+      >
+        <span className="vmob-dock-plate" style={{ width: plate, height: plate }}>
+          <AppIconTile id={slot.appId} size={Math.round(plate * 0.88)} unicode={app?.icon} />
+        </span>
+        <span className="vmob-dock-caption">
+          <span className="vmob-dock-dot" data-running={running ? 'true' : 'false'} aria-hidden="true" />
+        </span>
+      </button>
+    )
+  }
+
+  const spec = SYSTEM_SLOTS[slot.kind]
+  const active = slot.kind === 'home' ? view === 'home' : slot.kind === 'switcher' ? view === 'switcher' : false
+  const disabled = slot.kind === 'switcher' && windowCount === 0
+  const badge = slot.kind === 'switcher' ? windowCount || null : null
+  const onClick = slot.kind === 'home' ? onHome : slot.kind === 'switcher' ? onSwitcher : onLibrary
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      aria-label={label}
+      aria-label={spec.label}
       aria-current={active ? 'page' : undefined}
-      className={`touch-target flex-1 flex flex-col items-center justify-center gap-1 py-1.5 select-none transition-colors duration-150
-        ${disabled ? 'opacity-30' : active ? 'text-[color:var(--accent-text,var(--accent))]' : 'text-[color:var(--text-tertiary)] active:text-[color:var(--text-primary)]'}`}
+      data-dock-slot={slot.kind}
+      data-active={active ? 'true' : undefined}
+      className="vmob-dock-slot touch-target"
     >
-      <span
-        className="relative flex items-center justify-center h-8 min-w-[3.25rem] rounded-full transition-colors duration-150"
-        style={active ? { background: 'var(--accent-soft)' } : undefined}
-      >
-        {children}
+      <span className="vmob-dock-plate vmob-dock-glyph" data-active={active ? 'true' : undefined} style={{ width: plate, height: plate }}>
+        <svg viewBox="0 0 20 20" width={glyph} height={glyph} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{spec.path}</svg>
         {badge ? (
-          <span className="absolute -top-1 right-1.5 min-w-[1rem] h-4 px-1 accent-bg rounded-full text-[12px] leading-none text-[color:var(--accent-contrast)] font-semibold flex items-center justify-center tabular-nums">{badge}</span>
+          <span className="vmob-dock-badge accent-bg tabular-nums">{badge}</span>
         ) : null}
       </span>
-      <span className="text-[12px] leading-none font-medium tracking-[0.01em]">{label}</span>
+      <span className="vmob-dock-caption">{spec.label}</span>
     </button>
   )
+}
+
+const SYSTEM_SLOTS: Record<'home' | 'switcher' | 'library', { label: string; path: ReactNode }> = {
+  home: {
+    label: 'Home',
+    path: <path d="M3 9.5L10 3.5l7 6M5 8.5V16a.5.5 0 00.5.5H8v-4.5h4V16.5h2.5a.5.5 0 00.5-.5V8.5" />,
+  },
+  switcher: {
+    label: 'Apps',
+    path: (
+      <>
+        <rect x="2.5" y="2.5" width="6.2" height="6.2" rx="1.8" />
+        <rect x="11.3" y="2.5" width="6.2" height="6.2" rx="1.8" />
+        <rect x="2.5" y="11.3" width="6.2" height="6.2" rx="1.8" />
+        <rect x="11.3" y="11.3" width="6.2" height="6.2" rx="1.8" />
+      </>
+    ),
+  },
+  library: {
+    label: 'Library',
+    path: <><circle cx="10" cy="10" r="7.2" /><path d="M10 6.5v7M6.5 10h7" /></>,
+  },
 }

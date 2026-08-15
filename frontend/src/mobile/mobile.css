@@ -59,6 +59,166 @@ html.vmob-active {
     var(--bg-subtle, var(--bg-secondary));
 }
 
+/* ── The dock ────────────────────────────────────────────────────────────────
+ * Every pixel of the geometry is keyed off the data-* attributes MobileStack
+ * stamps from the MOBILE dock profile — the same split shell-chrome.css uses for
+ * the desktop dock, and for the same reason: a new edge or style becomes a CSS
+ * rule plus an enum entry rather than a branch of JSX, and a Playwright test can
+ * read the applied geometry off the DOM instead of inferring it from classes.
+ *
+ * The attributes are on the <nav>, NOT on <html>. desktop/store.ts stamps the
+ * root from activeFormFactor(), which is a pure 768px width test, while
+ * shell/useViewport.ts mounts this shell on a coarse-pointer tablet up to
+ * 1024px — so between 768 and 1024 the root carries the DESKTOP profile's
+ * attributes while the phone shell is on screen. Reading them there would have
+ * put a twelve-item small-tile desktop dock on an iPad.
+ */
+.vmob-dock {
+  background: var(--bg-elevated, var(--bg-secondary));
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+/* The safe-area inset belongs to whichever edge the dock actually landed on.
+ * A bottom dock clears the home indicator; a top dock does not need to clear a
+ * notch because the status bar above it already owns that inset. */
+.vmob-dock[data-edge='bottom'] {
+  padding-bottom: var(--safe-bottom);
+  border-top: 1px solid var(--border-subtle, var(--border-emphasis));
+}
+.vmob-dock[data-edge='top'] {
+  border-bottom: 1px solid var(--border-subtle, var(--border-emphasis));
+}
+
+.vmob-dock-strip {
+  display: flex;
+  align-items: stretch;
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+
+/* `bar` — a full-span strip flush with the edge. Slots share the width equally,
+ * which is the phone tab-bar idiom and what keeps every target the same size. */
+.vmob-dock[data-dock-style='bar'] .vmob-dock-strip { width: 100%; }
+.vmob-dock[data-dock-style='bar'] .vmob-dock-slot { flex: 1 1 0; min-width: 0; }
+
+/* `floating` — an inset rounded island. Here the strip sizes to its contents, so
+ * `align` finally has something to mean: which end of the edge the island hugs.
+ * A full-span bar has no alignment to have, on any platform. The island still
+ * caps at the viewport, and its slots keep a 56px floor so a short dock does not
+ * collapse into unreachable slivers. */
+.vmob-dock[data-dock-style='floating'] {
+  background: transparent;
+  border: 0;
+  display: flex;
+  padding-bottom: calc(var(--safe-bottom) + 6px);
+}
+.vmob-dock[data-dock-style='floating'][data-edge='top'] {
+  padding-bottom: 0;
+  padding-top: 6px;
+}
+.vmob-dock[data-dock-style='floating'] .vmob-dock-strip {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: 8px;
+  padding-inline: 4px;
+  border-radius: var(--vd-dock-radius, 20px);
+  background: var(--bg-elevated, var(--bg-secondary));
+  border: 1px solid var(--border-subtle, var(--border-emphasis));
+  box-shadow: 0 6px 22px rgb(0 0 0 / 18%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vmob-dock[data-dock-style='floating'] .vmob-dock-strip::-webkit-scrollbar { display: none; }
+.vmob-dock[data-dock-style='floating'] .vmob-dock-slot { flex: 0 0 auto; min-width: 56px; }
+.vmob-dock[data-dock-style='floating'][data-align='start'] { justify-content: flex-start; }
+.vmob-dock[data-dock-style='floating'][data-align='center'] { justify-content: center; }
+.vmob-dock[data-dock-style='floating'][data-align='end'] { justify-content: flex-end; }
+
+/* One slot. `touch-target` supplies the 44px floor; this adds the layout. The
+ * caption row is reserved on BOTH kinds of slot — a word on a system
+ * destination, the running dot on an app tile — so the row of marks sits on one
+ * line instead of stepping up and down. */
+.vmob-dock-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 2px 2px 4px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-tertiary);
+  transition: color 150ms ease;
+}
+.vmob-dock-slot:disabled { opacity: 0.3; }
+.vmob-dock-slot[data-active='true'] { color: var(--accent-text, var(--accent)); }
+.vmob-dock-slot:not(:disabled):active { color: var(--text-primary); }
+
+.vmob-dock-plate {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* The plate is DECORATION; the button is the touch target. It has to be able
+   * to shrink, because eight `large` (56px) plates do not fit across 390px and
+   * a fixed square would have burst the row rather than the row absorbing it. */
+  max-width: 100%;
+  transition: background-color 150ms ease, transform 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+.vmob-dock-glyph { border-radius: 999px; }
+.vmob-dock-glyph[data-active='true'] { background: var(--accent-soft); }
+.vmob-dock-slot:not(:disabled):active .vmob-dock-plate { transform: scale(0.9); }
+@media (prefers-reduced-motion: reduce) {
+  .vmob-dock-plate { transition: none; }
+}
+
+.vmob-dock-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 13px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* The running indicator on a docked app tile. Same job as the desktop dock's
+ * `.vshell-dot`, in the caption row an app tile has no word for. It keeps its
+ * box when idle so the tile does not shift as apps start and stop. */
+.vmob-dock-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.vmob-dock-dot[data-running='true'] {
+  opacity: 1;
+  color: var(--accent-text, var(--accent));
+}
+
+.vmob-dock-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--accent-contrast);
+}
+
 /* ── Home app grid ───────────────────────────────────────────────────────── */
 .vmob-tile {
   -webkit-tap-highlight-color: transparent;
