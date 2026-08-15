@@ -201,25 +201,39 @@ func incrementBootCounter() (*osdist.SlotManager, *osdist.BootState) {
 			log.Printf("[slots] rollback failed: %v", rbErr)
 		} else {
 			bs = rolled
-			// OSDIST-FLIP-01: this records the intent in boot-state.json, and
-			// NOTHING ACTS ON IT YET. Do not log "active will be X on next
-			// boot" — it is not true, and an operator reading this during an
-			// incident would believe the box had protected itself.
+			// OSDIST-FLIP-01 IS CLOSED, and this log line said the opposite for
+			// as long as it was open. It used to read:
 			//
-			// The slot a machine actually boots is fixed on the kernel command
-			// line by the systemd-boot entry, which services/installer's
-			// writeSlotABootEntry writes ONCE at install time hardcoded to
-			// slot-a (vulos.slot=a, vulos.squashfs=.../slot-a/os-core.squashfs).
-			// scripts/initramfs/vulos-live reads only that cmdline; it never
-			// consults boot-state.json. So neither this rollback nor a staged
-			// OTA changes which slot boots.
+			//   "rollback RECORDED ... but the bootloader entry is pinned to
+			//    the install-time slot, so THIS HAS NO EFFECT on the next boot"
 			//
-			// Closing it needs either an entry rewriter that runs on flip (with
-			// the ESP mounted and writable) or an initramfs that reads
-			// boot-state.json and picks the slot itself — and either way it must
-			// be proven by actually rebooting, via
-			// scripts/netboot-install-smoke.sh. Tracked, not silently pending.
-			log.Printf("[slots] rollback RECORDED to %s in boot-state.json — but the bootloader entry is pinned to the install-time slot, so THIS HAS NO EFFECT on the next boot (OSDIST-FLIP-01)", bs.Active)
+			// That was true when nothing read boot-state.json at boot. It is
+			// not true now: scripts/initramfs/vulos-live reads the file at
+			// init-bottom (apply_active_slot) and boots the slot it names,
+			// treating the kernel cmdline as a DEFAULT rather than the answer.
+			// writeSlotABootEntry still writes a systemd-boot entry once at
+			// install time and it still says slot-a — that entry is simply no
+			// longer what decides.
+			//
+			// Proven by an actual reboot, which is the bar this was always held
+			// to: scripts/netboot-install-smoke.sh Phase 4 stages slot-b, flips
+			// "active", reboots the same disk, and requires BOTH a serving HTTP
+			// endpoint AND a /var/cache/vulos/booted-slot marker reading
+			// "slot=b via=boot-state" — HTTP alone would have passed had the box
+			// quietly booted slot-a.
+			//
+			// Fixing the line matters more than a stale comment usually does.
+			// This one is printed during exactly one event — a box that has
+			// failed to boot enough times to trigger rollback — so it is read by
+			// someone mid-incident, and it told them the machine had NOT
+			// protected itself at the moment it just had. docs/SECURITY.md
+			// carried it as a tracked code fix rather than a doc fix for this
+			// reason.
+			//
+			// It says "on the next reboot" and not "now" deliberately: the
+			// running boot is already up on the bad slot, and nothing here
+			// reboots the box.
+			log.Printf("[slots] rollback RECORDED to %s in boot-state.json — the initramfs reads this file and will boot slot %s on the next reboot (OSDIST-FLIP-01); this boot is still running the slot that failed", bs.Active, bs.Active)
 		}
 	}
 
