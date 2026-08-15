@@ -257,6 +257,113 @@ this note was written; flagging it in case it returns.
 
 ---
 
+## 8. The mobile dock is data now — what §4 asked for, and what it actually got
+
+§4 specified a contract for the customization workstream. That workstream shipped a
+*different* model, and the phone dock is built on the one that exists rather than the one that
+was requested. Both are recorded here because the difference is the interesting part.
+
+**What §4 asked for:** slots of `{ kind: 'system' | 'app', id }`, keyed by device profile.
+
+**What shipped** (`src/desktop/types.ts`): a `DockProfile` per FORM FACTOR — `edge`, `size`,
+`style`, `align`, `autohide`, `launcher`, `assistant`, `drawer`, and `items: string[]` of app
+ids — with `desktop` and `mobile` persisting under separate keys, and a validator that already
+rejects a vertical phone dock, a `small` tile, a sixth item and a drawerless phone dock.
+
+The two are close enough. `items` is the founder's "different items on the mobile dock";
+`system` slots are not expressible in `items`, which is *better* than §4.2 asked for — Home and
+Apps are emitted unconditionally by `src/mobile/mobileDock.ts` and there is no representable
+state in which either is missing, rather than a rule someone has to remember to enforce.
+
+**Consumed and observable in the rendered dock:** `items`, `edge`, `size`, `style`, `align`
+(which end a *floating* island hugs — a full-span bar has no alignment to have), `drawer`, and
+`assistant`, which lands on the phone home screen's ask bar because on a phone the assistant is
+a full-screen surface and not a side panel.
+
+**Refused, with the reason stated in code rather than silently dropped:**
+
+- `autohide` — there is no hover on touch to bring a hidden dock back, and this is the phone's
+  ONLY navigation surface. An autohidden phone dock is a UI you cannot navigate out of, which
+  is the same failure `--vd-dock-opacity`'s 0.6 floor exists to prevent.
+  `mobileDockAutohide()` returns false for every profile, so the refusal has a call site a test
+  can point at.
+- `launcher` — on a phone the launcher and the drawer are ONE surface. The Library slot opens
+  the Launchpad, which is itself the searchable app list, and the validator makes `drawer`
+  mandatory, so a launcher slot would be a second control for a surface that is always present.
+  It is subsumed: the library slot is emitted for `launcher || drawer`.
+
+**Two things the model could not have known:**
+
+1. **The profile is read as `useDockProfile('mobile')`, never the active form factor.**
+   `desktop/store.ts`'s `activeFormFactor()` is a pure 768px width test, but `useViewport.ts`
+   mounts this shell on a coarse-pointer tablet up to 1024px. **Between 768 and 1024 the touch
+   shell is up while the store reports `desktop`** — an iPad would have got the desktop dock's
+   twelve-item, `small`-tile geometry. The same disagreement means `<html>`'s `data-dock-*`
+   attributes carry the DESKTOP profile in that band, so the mobile dock stamps its geometry on
+   its own `<nav>` instead of reading the root. Worth fixing in `store.ts` (which this
+   workstream does not own) so the two agree: `activeFormFactor()` should consult the same
+   predicate `useViewport.ts` does, not width alone.
+
+2. **The stock mobile profile's `items` are `['home', 'lilmail', 'messages']`.** A docked
+   `home` folds into the system Home slot: two adjacent dock targets both labelled "Home" that
+   go to different places is a navigation defect, and two buttons with one accessible name in
+   one toolbar. The Home *app* stays launchable from the home grid and the Library.
+
+**Eight slots is the ceiling** — Home + Apps + `MOBILE_MAX_ITEMS` + Library. At 390px with the
+8px safe-area gutter that is 48.4px per column, over the 44px floor; a ninth would be 42.4px.
+It is also why app tiles carry no caption at that density (§4.1: a truncated dock label is
+worse than none) and why the plate is clamped to the MEASURED column minus an 8px gap —
+screenshotted before the clamp, five 56px marks in 48.7px columns drew as one continuous strip
+of colour, with every assertion correctly green because the touch target is the button.
+
+---
+
+## 9. The APK insets are still parse-checked only, and this shell now depends on them
+
+§6.1 recorded that `MainActivity.applyEdgeToEdgeInsets()` is not compiled and has never run on
+a device. That is unchanged — there is still no Android SDK in this environment, and nothing in
+this pass verified it. What has changed is that **more of the phone shell now rests on it**, so
+the consequence is worth stating precisely rather than leaving as a general caveat.
+
+**What depends on it.** `--safe-top`, `--safe-bottom`, `--safe-left` and `--safe-right` are
+defined in `src/index.css` as `env(safe-area-inset-*)`, and inside the APK `pushSafeAreaToShell()`
+**overwrites all four as INLINE styles on `<html>`**. Everything below consumes them:
+
+- the mobile status bar's notch padding (`.safe-pt`);
+- the dock's home-indicator padding — now edge-aware, so a `bottom` dock takes
+  `--safe-bottom` and a `top` dock does not;
+- the dock's horizontal gutter (`--safe-left` / `--safe-right`), which is the 8px in the
+  48.4px-per-slot arithmetic above;
+- the home grid's and the switcher's gutters.
+
+**Why the inline write makes it worse than an absent fix.** An inline style on the root element
+wins over the `:root { … env(…) }` declaration. So a wrong injected value does not degrade to
+the correct web fallback — it *replaces* it. Both of the two risks §6.1 named are handled in
+the source as written (the density division is present; the format uses `Locale.ROOT`), but
+"handled in source" and "verified on hardware" are different claims, and only the first one can
+be made here:
+
+- **Density.** `bars.top / density` is invisible on a 1× emulator and three times too large on
+  a real 3× phone. Wrong here means a dock inset roughly 100px too tall at the bottom of a
+  390×844 screen, eating the bottom row of the home grid.
+- **`Locale.ROOT`.** Without it, `%.2f` in a comma-decimal locale emits `"34,00px"`.
+  `setProperty` accepts it (custom properties take almost any token sequence), then
+  `padding-bottom: var(--safe-bottom)` is invalid at computed-value time and resolves to
+  **zero** — so the dock sits under the navigation bar on exactly the devices that cannot be
+  tested from here, while every screenshot taken in Chromium looks perfect.
+
+**What was verified, and where.** Everything in this pass was driven in Chromium at 390×844,
+768×1024, 834×1194 and 1280×800, where `env(safe-area-inset-*)` resolves to 0 and the injection
+does not exist. That is a complete check of the LAYOUT and no check at all of the INSET. The
+first person with a device should open the APK on a notched phone and on a phone with gesture
+navigation, and read `getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom')`
+in the WebView inspector — a plausible CSS length in CSS pixels is the whole test, and it takes
+a minute.
+
+**`clients/android/**` was not touched by this pass.**
+
+---
+
 ## Related
 
 - `clients/android/DECISIONS.md` — MOB-01…07, TEL-01, and **MOB-12** (edge-to-edge + insets,
@@ -267,3 +374,9 @@ this note was written; flagging it in case it returns.
 - `frontend/e2e/mobile-native.e2e.ts` — the regression guards for §1, at four device profiles
 - `frontend/src/shell/useViewport.ts` — MOBILE-07, the layout predicate and why it needs
   `pointer: coarse` *and* `hover: none`
+- `frontend/src/mobile/mobileDock.ts` — §8, what the phone dock contains and what it refuses
+- `frontend/src/mobile/useLongPress.ts` — the touch primitive §7.2 said did not exist anywhere
+- `frontend/src/core/touch-chrome.css` — the 44px floor for the status cluster, and why it is
+  a rule on the cluster rather than on five components
+- `frontend/e2e/mobile-dock.e2e.ts`, `mobile-files.e2e.ts`, `mobile-touch-targets.e2e.ts` —
+  the gates for §8, §7.2 and the 44px floor, all on real touch device profiles
