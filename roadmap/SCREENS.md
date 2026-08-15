@@ -28,6 +28,11 @@ never once worked on any boot. All three defects were found by booting it, and
 none could have been found any other way. See "Why the CI gate stayed green"
 below — the gate was honest, controlled, and testing the wrong client.
 
+That gate was rebuilt on 2026-08-15. It now drives `cog` itself, through the
+shipping config generator, and checks which browser landed on which output
+rather than only that each output holds one — see "What SCREENS-01 is now",
+including the list of what it still does not cover.
+
 This began as a design note, and the reasoning above the status sections is
 still the design argument rather than a report on shipped code. It was written
 because the question "what happens with two monitors" has an answer that is not
@@ -238,7 +243,13 @@ So labwc validates both the action name and the XML structure, and accepts
 ours. `MoveToOutput` is a real action in 0.8.3 and `output` is a valid argument
 to it — which was the specific thing taken from the manual and never run.
 
-**PLACEMENT VERIFIED 2026-08-13**, by `scripts/smoke-multiscreen.sh`. A real
+**PLACEMENT VERIFIED 2026-08-13**, by `scripts/smoke-multiscreen.sh` — **and
+the client it verified was not the one that ships. The whole of the next four
+paragraphs is kept exactly as written, because the wording is the evidence for
+the lesson two sections below.** The gate was rebuilt on 2026-08-15; what it
+covers now is in "What SCREENS-01 is now", at the end of this file.
+
+A real
 labwc runs against two headless wlroots outputs, two windows are launched with
 the titles the shell actually sets, and each output is photographed.
 
@@ -403,6 +414,11 @@ given rules that match, which is true and was never the question.
 
 ### Why the CI gate stayed green through a feature that never worked
 
+**This section describes `scripts/smoke-multiscreen.sh` as it was until
+2026-08-15, in the present tense it was written in. It was rebuilt that day —
+see "What SCREENS-01 is now" below. Nothing here is edited, because the
+diagnosis is the reason the rebuild took the shape it did.**
+
 `scripts/smoke-multiscreen.sh` is not a hollow gate. It runs labwc on two real
 headless wlroots outputs, with and without the placement rules, and the control
 is genuine: with rules, one window per output; without, both pile onto one. It
@@ -437,6 +453,123 @@ Applied here, that means a gate for placement has to exercise the client that
 ships, or at minimum assert the client's own contract — that `cog` puts the
 expected app_id on its toplevel — separately from asserting that labwc honours
 it. Those are two different claims and only the second was ever tested.
+
+## What SCREENS-01 is now (rebuilt 2026-08-15)
+
+It does both of the things the paragraph above asks for. There is no stand-in
+client left in the harness: it runs **`cog`**, launched by the **real
+`scripts/vulos-kiosk-genconfig.sh`** — copied into the container, not
+reimplemented — through the exact argv `scripts/vulos-kiosk.sh` execs,
+`labwc -C <cfg> -S "/bin/sh <cfg>/session.sh"`, interpreter and all.
+
+**Deleting it was a real option and was rejected for one reason.** `SCREENS-02`
+covers placement on a real boot with a control that goes red, so a container
+gate adds nothing on the "does it work" axis and costs maintenance. But
+`roadmap/SCREENS-QEMU.md` names something `SCREENS-02` explicitly **cannot**
+see: *"a configuration that put `Virtual-1`'s browser on `Virtual-2` and vice
+versa passes every assertion in the file. Closing that needs OCR or a
+per-screen colour, and neither exists."* In a container a per-screen colour is
+free — the stub server picks a solid background from the `?screen=` connector
+name that the generated URL already carries — so this gate checks **which**
+browser landed **where**, not just that each output holds one. It also runs on
+every push, where `SCREENS-02` needs an image build. Those two things are worth
+the maintenance; "one more green tick" would not have been.
+
+**Keeping a lightweight client was rejected too**, and this is the option the
+old gate chose. Any stand-in would have to be verified to set an app_id the way
+cog does — and once you are verifying the client's Wayland behaviour anyway,
+the only client worth verifying is the one that ships. The container cost turned
+out to be one `--privileged` flag.
+
+**The two contracts, asserted separately.**
+
+- **A — the client's.** The `wire` arm runs the session under `WAYLAND_DEBUG=1`
+  and reads the protocol itself. Every `identifier=` the generator wrote into
+  `rc.xml` must appear in a `set_app_id()` on the wire — both halves taken from
+  the run, so no literal in the harness can go stale — and **the only title cog
+  may ever send is `"Cog"`**. That second assertion is the anti-regression for
+  the original defect: if some future cog starts forwarding the document title,
+  the reasoning in `vulos-kiosk-genconfig.sh` is stale and this says so, instead
+  of quietly still passing.
+
+      -> xdg_toplevel#20.set_title("Cog")
+      -> xdg_toplevel#20.set_app_id("org.vulos.kiosk.out-HEADLESS-1")
+      -> xdg_toplevel#20.set_app_id("org.vulos.kiosk.out-HEADLESS-2")
+
+  Measured, not quoted from the cog source this time.
+
+- **B — the compositor's.** Both outputs are photographed with `grim -t ppm`
+  and reduced to a dominant colour and its share.
+
+**The measured result, labwc 0.8.3 / cog 0.18.4 / WPE WebKit, debian trixie:**
+
+    arm           HEADLESS-1               HEADLESS-2               loads
+    normal        S1 #ff0000 79%           S2 #0000ff 79%           2
+    same-app-id   none #000000 100%        S1 #ff0000 79%           2
+    no-rules      none #000000 100%        S1 #ff0000 79%           2
+
+Both controls pile the browsers onto one output and leave the other blank —
+`1 colour, 100%`, the same signature head 1 showed on the QEMU boots. Which of
+the two browsers ends up on top of the pile varies between runs, so the control
+assertion is "exactly one output is blank" and never "this colour is there".
+
+`no-rules` is kept from the old harness even though `same-app-id` is the
+shipping seam, because it answers a different question: it is the arm that
+proves labwc does **not** distribute windows across outputs by itself. If it
+ever stops going red, the `normal` arm's pass can no longer be attributed to
+the rules, and the script fails loudly rather than reporting a pass that rests
+on a compositor default.
+
+**Each control must still have loaded both pages** — the stub server counts the
+fetches, `loads=2` above — because a control that goes red for want of a
+browser controls nothing. That is not hypothetical: cog under `--cap-add
+SYS_ADMIN` alone gets far enough to die in its bubblewrap sandbox
+(`readPIDFromPeer: Unexpected short read from PID socket`) seconds after start,
+which would have produced two blank outputs and a very confident wrong answer.
+
+**Shown red, three ways, all exit 1:**
+
+    --break title         match on title="Vulos — HEADLESS-N" instead of the app
+                          id — i.e. the original defect, rebuilt — FAILED
+    --break same-app-id   collapse the app ids via the shipping seam    FAILED
+    --break rules         strip the windowRule elements                 FAILED
+
+    FAIL: normal: expected S1 on HEADLESS-1 and S2 on HEADLESS-2, got 'none' and 'S1'.
+    FAIL:       One output is blank: both browsers landed on the same screen.
+
+`--break title` is the one worth keeping in mind. It is the previous gate's
+premise, run against the real client, and it fails — which is the shortest
+statement of what was wrong before.
+
+**What this gate does NOT cover, precisely.**
+
+- **Not DRM.** `HEADLESS-1`/`HEADLESS-2` are wlroots' headless backend, not
+  connectors. Nothing here reads `/sys/class/drm`, so the launcher's connector
+  enumeration and name derivation are untested by it — those are
+  `scripts/smoke-kiosk-multiscreen.sh` (fake sysfs) and `SCREENS-02` (real).
+- **Not the shell.** The page is a stub serving one solid colour. Nothing in
+  the Vulos frontend runs, so the screen chip, `screenIdentity.ts` and the
+  leader/follower session are untouched by it.
+- **Not a boot.** No image, no initramfs, no systemd, no `/run` noexec. The
+  defect that made the multi-output kiosk fail on every boot lived exactly
+  there and this gate could not have found it. `SCREENS-02` is the one that
+  did, and it remains the only harness that boots an OS.
+- **Not hardware.** Software rendering (pixman), no GPU, no physical monitor —
+  the same standing limit as everything else in this file.
+- **Not mixed geometry or scale.** Two identical 1280x720 outputs. Item 2
+  above is untouched by it.
+- **Not hotplug.** Both outputs exist for the whole run.
+- **Not more than two screens.** Three-screen boxes are a supported
+  configuration per `roadmap/SCREENS-COST.md` and no gate exercises three.
+
+**Two stale cross-references, named rather than fixed** because they are in
+files this work did not own. `scripts/smoke-multiscreen-qemu.sh:9-10` describes
+SCREENS-01 as running "with a config the test wrote, `foot` terminals";
+`scripts/smoke-kiosk-multiscreen.sh:5` says "with a config written by the
+test". Neither is true any more: the config is the shipping generator's own
+output and the client is cog. `smoke-kiosk-multiscreen.sh`'s other reference,
+at line 40, still holds — SCREENS-01 does set the compositor's environment
+itself rather than inheriting the kiosk's.
 
 ---
 
