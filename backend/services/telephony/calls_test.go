@@ -16,9 +16,10 @@ import (
 // answers from files the test rewrites between calls to pollCalls().
 //
 // Files:
-//   $MMCLI_CALLS   — stdout for `--voice-list-calls` (empty file ⇒ no calls)
-//   $MMCLI_PROPS   — stdout for `-o <path> -K`
-//   $MMCLI_FAIL    — if it exists, `--voice-list-calls` exits 1 (transient error)
+//
+//	$MMCLI_CALLS   — stdout for `--voice-list-calls` (empty file ⇒ no calls)
+//	$MMCLI_PROPS   — stdout for `-o <path> -K`
+//	$MMCLI_FAIL    — if it exists, `--voice-list-calls` exits 1 (transient error)
 type callFake struct {
 	calls, props, fail string
 }

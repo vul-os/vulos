@@ -22,11 +22,11 @@ widget" meant "edit the shell", and a user could add nothing at all.
 
 It is now a **host**. A user-owned layout, a registry, and a public API
 (`src/widgets/index.ts`) that the OS's own widgets are held to as strictly as a
-stranger's — enforced, not asserted: `__tests__/publicApi.test.ts` reads every
+stranger's — enforced, not asserted: `src/widgets/__tests__/publicApi.test.ts` reads every
 builtin's source and fails if one imports anything but the public entry. That
 gate is the only reason we know the API is *sufficient*. If it weren't, a builtin
 would have had to cheat, and the test would name the file. (It did, once, on the
-first run: `builtin/logic.ts` was importing `../types`.)
+first run: `src/widgets/builtin/logic.ts` was importing `../types`.)
 
 ---
 
@@ -125,10 +125,10 @@ API, and a widget permission that existed only in a manifest and a settings
 switch would be the same lie in a new place. Every grant here is enforced in this
 code:
 
-- `host/context.ts` is a **pure function**, deliberately, and it is the single
+- `src/widgets/host/context.ts` is a **pure function**, deliberately, and it is the single
   place a `granted` array becomes a capability or a `null`. It is a function
   rather than a literal inside the rail's JSX precisely so it can be driven
-  directly by `__tests__/permissions.test.ts` — buried in a component the same
+  directly by `src/widgets/__tests__/permissions.test.ts` — buried in a component the same
   logic would be reachable only through a render, which in practice means
   untested, which in practice means a `granted.includes(…)` could be deleted and
   nothing would notice.
