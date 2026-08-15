@@ -625,6 +625,17 @@ const SG: Record<string, ReactNode> = {
     </>
   ),
   location: G.maps,
+  // Settings' "Widgets" section. SettingsIcon returns null for an unknown
+  // name, so a section without an entry here renders a bare nav row beside
+  // siblings that all carry a glyph.
+  widgets: (
+    <>
+      <rect x="3.6" y="3.6" width="7.2" height="7.2" rx="1.6" />
+      <rect x="13.2" y="3.6" width="7.2" height="7.2" rx="1.6" />
+      <rect x="3.6" y="13.2" width="7.2" height="7.2" rx="1.6" />
+      <rect x="13.2" y="13.2" width="7.2" height="7.2" rx="1.6" />
+    </>
+  ),
   vault: (
     <>
       <path d="M4.6 11.4a7.4 7.4 0 0112.5-4.9L19.6 9" />

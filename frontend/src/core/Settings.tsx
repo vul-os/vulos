@@ -25,6 +25,7 @@ import CDNPanel from './settings/CDNPanel'
 import LANPairingPanel from './settings/LANPairingPanel'
 import LocationPanel from './settings/LocationPanel'
 import DevicePanel from './settings/DevicePanel'
+import WidgetsPanel from './settings/WidgetsPanel'
 import { nativeBridge } from './nativeBridge'
 import { SettingsIcon } from './AppIcons'
 import {
@@ -165,6 +166,10 @@ const sectionGroups: SettingsSectionGroup[] = [
     items: [
       { id: 'appearance', label: 'Appearance' },
       { id: 'notifications', label: 'Notifications' },
+      // Grants live next to the thing they apply to. The widget rail is an
+      // Appearance-level choice, and a permission review nobody finds is a
+      // permission review nobody does.
+      { id: 'widgets', label: 'Widgets' },
     ],
   },
   {
@@ -486,6 +491,7 @@ export default function Settings({ initialSection }: SettingsProps) {
         {active === 'aiapps' && <AIAppsSettings />}
         {active === 'appearance' && <AppearanceSettings />}
         {active === 'notifications' && <NotificationsSettings />}
+        {active === 'widgets' && <WidgetsPanel />}
         {active === 'wifi' && <WiFiSettings />}
         {active === 'bluetooth' && <BluetoothSettings />}
         {active === 'audio' && <AudioSettings />}
