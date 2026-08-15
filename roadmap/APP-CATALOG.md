@@ -157,6 +157,46 @@ An entry built from API metadata therefore looks correct and fails at first
 click. QGIS is pinned `org.qgis.qgis//stable`. Wine publishes seven branches,
 none named plain `stable`.
 
+## The registry cannot express a per-architecture download
+
+Measured 2026-08-15, and it is the sharpest limitation found in the format.
+
+`VersionRecipe.DownloadURL` is a single static string with a single `Checksum`,
+and there is no `${ARCH}` substitution anywhere on the static-install path
+(`services/appnet/registry.go:219`, `:1245`). The per-recipe `arch` field inside
+a version block is **dead data** — `VersionRecipe` has no `Arch` field at all, so
+only the entry-level `arch` exists, and it describes the whole entry.
+
+**So every download-based app must pick one architecture**, and the consequence
+landed on Vulos's own products first:
+
+| App | Publishes | Staged entry | Result on an arm64 box |
+|---|---|---|---|
+| `diwan` | `linux-amd64` **and** `linux-arm64` | amd64 URL, `arch: ["amd64"]` | unavailable |
+| `wede` | `linux-amd64` **and** `linux-arm64` | amd64 URL, `arch: ["amd64"]` | unavailable |
+
+Both arm64 binaries exist and are published. Vulos ships an arm64 image. So a
+user on the arm64 build of this OS is told the OS's own office suite and IDE are
+not available for their machine — while the artefact sits in the release.
+
+That is also a direct collision with the standing directive that **everything
+syncs and each instance is almost a clone of the next**: a first-party app that
+cannot follow a user onto their arm64 instance forks the app set by
+architecture, which is precisely what emulation was meant to prevent. Here no
+emulation is needed — only the ability to name a second URL.
+
+**The fix is a format change, not an emulator**: per-architecture artefacts, each
+with its own checksum, chosen against the box's own arch (which
+`services/appnet/arch.go` already resolves and enforces at install time). The
+recipe-standard work specified a recipe-level `arch []string` for related
+reasons; this needs the URL and checksum to move with it. Until then, `diwan`
+and `wede` must not be merged as amd64-only entries — that ships a false
+"unavailable" to every arm64 owner.
+
+**Genuinely x86_64-only, and unaffected by the proprietary exclusion:** `lutris`,
+`obs-studio` and `wine` publish no aarch64 build on Flathub. These are the real
+population for any emulation question — three FOSS apps, not the proprietary set.
+
 ## The catalogue — 120 apps
 
 Legend: **✓** already in the registry as a Flatpak · **↻** in the registry via apt,
