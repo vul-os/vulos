@@ -56,6 +56,7 @@ rootfs bluez-tools
 rootfs brightnessctl
 rootfs ca-certificates
 rootfs cage
+rootfs chromium
 rootfs cog
 rootfs cryptsetup-bin
 rootfs curl
@@ -76,6 +77,7 @@ rootfs jq
 rootfs labwc
 rootfs libevdev2
 rootfs libva2
+rootfs matchbox-window-manager
 rootfs mesa-va-drivers
 rootfs mesa-vulkan-drivers
 rootfs openssh-server
@@ -98,3 +100,6 @@ rootfs wlopm
 rootfs wlr-randr
 rootfs wlrctl
 rootfs wpasupplicant
+rootfs x11-xserver-utils
+rootfs xdotool
+rootfs xvfb

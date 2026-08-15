@@ -709,6 +709,41 @@ chroot "$ROOTFS" apt-get update
 # that intent structurally rather than by policy — WPE WebKit has no password
 # manager, no autofill, no sync, no browser chrome and no bookmark bar to turn
 # off. The Dockerfile's chromium is a different target and still reads it.
+# The streamed-desktop trio, and why they are in the ROOTFS and not only the
+# Dockerfile.
+#
+#   chromium — the built-in browser. services/webbrowser/chrome.go's findBin
+#     looks for chromium-browser/chromium/google-chrome; the released
+#     v0.2.0-arm64 rootfs contained ./usr/bin/cog and ./usr/bin/cogctl and no
+#     browser at all, so POST /api/browser/launch answered 500
+#     {"error":"chromium not found"} on EVERY bare-metal box. The Dockerfile
+#     installed it (line 145), which is why it always worked in Docker.
+#     cog does not cover this: it is a single-surface WPE kiosk shell with no
+#     tabs, address bar or profile — it renders the Vulos UI, it is not a
+#     browser a user can browse with.
+#   Xvfb — services/stream/pool.go uses cage (headless Wayland) ONLY when the
+#     GPU tier is not software; every other box falls back to the Xvfb path.
+#     A bare-metal box with no VA-API/NVENC is the common case, so Xvfb is on
+#     the real execution path for the streamed browser and for the whole
+#     streamed desktop-app catalogue, not just a corner.
+#   xdotool — the X11 input injector's fallback when uinput is unavailable
+#     (pool.go:390) and the VNC path's only injector (stream/vnc.go:154).
+#     Without it a streamed window renders but cannot be typed into.
+#   x11-xserver-utils — for exactly one binary, xrandr. pool.go:384 starts Xvfb
+#     at a 3840x2160 maximum and then resizes it DOWN to the session's requested
+#     resolution. Without xrandr that resize logs a warning and continues, so
+#     every streamed window on bare metal is captured at 4K no matter what was
+#     asked for. The Dockerfile already installs it, with a comment naming
+#     xrandr; the rootfs did not.
+#   matchbox-window-manager — auto-maximizes the app window and constrains
+#     dialogs on the Xvfb path (pool.go:405). lookPath-guarded, so its absence
+#     is silent: the app renders unmanaged and unmaximized inside the stream.
+#     Also already in the Dockerfile only.
+#
+# Chromium and not Chrome: Chromium is open source with no redistribution
+# question. Chrome is proprietary, and shipping it inside an OS image is a
+# licensing matter, not a packaging one.
+#
 # PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
@@ -722,6 +757,7 @@ chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     joystick evtest libevdev2 \
     labwc cage \
     cog \
+    chromium xvfb xdotool x11-xserver-utils matchbox-window-manager \
     wlr-randr wlopm wlrctl brightnessctl \
     flatpak rsync systemd systemd-sysv \
     plymouth plymouth-themes \

@@ -19,6 +19,7 @@ import AssistantPanel from '../shell/AssistantPanel'
 import Dock from '../shell/Dock'
 import TopBar from '../shell/TopBar'
 import { useWindowShortcuts } from '../shell/useWindowShortcuts'
+import { launchStreamedBrowser } from './streamedBrowser'
 
 const StreamViewer = lazy(() => import('../builtin/stream/StreamViewer'))
 
@@ -61,30 +62,47 @@ export default function DesktopCanvas() {
           if (browserWin) {
             focusWindow(browserWin.id)
           } else {
-            // Create the per-user streaming Chrome session, then connect the
-            // viewer to the returned session ID. Previously this opened a
-            // StreamViewer for a hardcoded 'browser' session that nothing
-            // created (orphaned); now /api/browser/launch actually spawns it.
-            const fallback = createElement('div', { className: 'vwin-content flex items-center justify-center h-full text-[color:var(--text-tertiary)] text-sm' },
-              createElement('span', { className: 'flex items-center gap-2' },
-                createElement('span', { className: 'w-4 h-4 spinner' }),
-                'Starting Chrome...'
-              )
-            )
-            fetch('/api/browser/launch', { method: 'POST' })
-              .then(r => r.ok ? r.json() : null)
-              .catch(() => null)
-              .then(data => {
-                const sessionId = (data && data.id) || 'browser'
-                openWindow({
-                  appId: 'browser-stream',
-                  title: 'Chromium',
-                  icon: 'chrome',
-                  component: createElement(Suspense, { fallback },
-                    createElement(StreamViewer, { sessionId })
+            // Create the per-user streaming Chromium session, then connect the
+            // viewer to the returned session ID.
+            //
+            // A FAILED launch must say so, not spin forever.
+            //
+            // This used to be `r.ok ? r.json() : null`, then
+            // `(data && data.id) || 'browser'`: a 500 became null, null fell
+            // back to the literal session id 'browser' that nothing had
+            // created, and the window opened anyway. The user got a window
+            // titled Chromium with a "Starting…" spinner that never resolved
+            // and no error anywhere — the exact experience reported on a
+            // bare-metal box, where /api/browser/launch answers
+            // {"error":"chromium not found"} because the binary was never in
+            // the rootfs (see scripts/build-sh-packages.txt, now fixed).
+            //
+            // Shipping the binary does not retire this: a launch can still
+            // fail on a box with no free display, no GPU tier, or a killed
+            // stream pool. A non-ok response is an ERROR, never data.
+            void launchStreamedBrowser({
+              openWindow,
+              viewer: (sessionId: string) => createElement(
+                Suspense,
+                {
+                  fallback: createElement('div', { className: 'vwin-content flex items-center justify-center h-full text-[color:var(--text-tertiary)] text-sm' },
+                    createElement('span', { className: 'flex items-center gap-2' },
+                      createElement('span', { className: 'w-4 h-4 spinner' }),
+                      'Starting Chromium\u2026'
+                    )
                   ),
-                })
-              })
+                },
+                createElement(StreamViewer, { sessionId })
+              ),
+              errorView: (message: string) => createElement(
+                'div',
+                { className: 'vwin-content flex items-center justify-center h-full p-6 text-center text-[color:var(--text-secondary)] text-sm' },
+                createElement('div', { className: 'flex flex-col items-center gap-2 max-w-md' },
+                  createElement('span', { className: 'text-[color:var(--text-primary)] font-medium' }, 'Chromium could not start'),
+                  createElement('span', null, message)
+                )
+              ),
+            })
           }
         } catch { /* noop */ }
       }
