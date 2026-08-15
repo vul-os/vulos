@@ -1033,11 +1033,13 @@ func main() {
 		handleClusterHealth(datadir.Root(), clusterSyncer)(w, r)
 	})
 
-	// Setup status — public, no auth needed
-	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, r *http.Request) {
-		_, err := os.Stat("/var/lib/vulos/.setup-complete")
-		writeJSON(w, map[string]bool{"setup_complete": err == nil})
-	})
+	// First-boot setup: GET /api/setup/status (public) + POST /api/setup/complete
+	// (owner-only). The status probe used to be inline here and the marker it
+	// stats had no writer at all — the wizard touched the file through
+	// /api/exec, which is kill-switchable, so a box with exec disabled could
+	// never record that setup had finished. Both now live in routes_setup.go and
+	// share one marker path.
+	registerSetupRoutes(mux, authStore)
 
 	// Device profile — form-factor selection
 	mux.HandleFunc("GET /api/device-profile", func(w http.ResponseWriter, r *http.Request) {
