@@ -455,3 +455,45 @@ func TestProcessListFor_AnnotatesProtectionWhereItCanReadProc(t *testing.T) {
 		t.Error("no process carried a starttime — without it the client cannot form a safe kill request")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Wiring
+// ---------------------------------------------------------------------------
+
+// A handler nobody registered is a feature that does not exist. This drives the
+// real mux, so a typo'd path or a route left out of RegisterProcessRoutes shows
+// up as a 404 here rather than as a button that does nothing.
+func TestRegisterProcessRoutes_EveryRouteIsReachableAndTheMutatingOnesAreGated(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterProcessRoutes(mux, Deps{
+		IsAdmin:    func(*http.Request) bool { return false },
+		Controller: proctl.New(t.TempDir(), proctl.Self{PID: 1, PGID: 1, SID: 1}),
+		Apps:       func() []AppStatus { return nil },
+		CloseApp:   func(string, bool) error { return nil },
+	})
+
+	reads := []string{"/api/system/processes", "/api/system/network", "/api/proc/apps"}
+	for _, path := range reads {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code == 404 {
+			t.Errorf("GET %s is not registered", path)
+		}
+		if rec.Code == 403 {
+			t.Errorf("GET %s is admin-gated; reading what is running is not a privileged capability", path)
+		}
+	}
+
+	writes := []string{"/api/system/processes/signal", "/api/proc/apps/close"}
+	for _, path := range writes {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(`{"pid":1,"start":1,"app_id":"x"}`)))
+		if rec.Code == 404 {
+			t.Errorf("POST %s is not registered", path)
+			continue
+		}
+		if rec.Code != 403 {
+			t.Errorf("POST %s answered %d for a non-admin, want 403", path, rec.Code)
+		}
+	}
+}

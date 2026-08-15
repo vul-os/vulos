@@ -41,6 +41,7 @@ import (
 	"vulos/backend/internal/llmuxclient"
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/osroute"
+	"vulos/backend/internal/proctl"
 	"vulos/backend/internal/storage"
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/accountsecurity"
@@ -2140,9 +2141,60 @@ func main() {
 	mux.HandleFunc("GET /api/system/licenses", legalDocHandler(defaultLegalDirs, "THIRD_PARTY_NOTICES.md"))
 	mux.HandleFunc("GET /api/system/written-offer", legalDocHandler(defaultLegalDirs, "WRITTEN-OFFER.md"))
 
-	// System processes and network connections
-	mux.HandleFunc("GET /api/system/processes", telemetry.ProcessHandler())
-	mux.HandleFunc("GET /api/system/network", telemetry.NetworkHandler())
+	// System processes and network connections, plus the ability to END one.
+	//
+	// The founder's question was the macOS one — kill a process, and tell me
+	// when one is frozen — and until now the box could do neither: /api/apps/stop,
+	// /api/sandbox/stop and /api/stream/stop each stop one subsystem they
+	// spawned, and nothing could end an arbitrary process.
+	//
+	// Wiring lives here because this is the only place that can see appnet, the
+	// gateway and the stream pool at once, which is what it takes to answer
+	// "is this app responding" honestly for each kind of thing the box runs.
+	//
+	// proctlSelf is read ONCE. Reading it per request would let a setpgid race
+	// change the answer between the protect check and the signal, and the
+	// values are fixed for the life of the process anyway.
+	proctlSelf := proctl.CurrentSelf()
+	telemetry.RegisterProcessRoutes(mux, telemetry.Deps{
+		// Same role gate as /api/apps/launch and /api/apps/stop. On the
+		// bare-metal path cmd/init is PID 1 with no credential drop, so this
+		// endpoint can SIGKILL anything on the box as root; there is no
+		// per-user process ownership in Vulos to scope it more finely.
+		IsAdmin:      func(r *http.Request) bool { return secI_isAdmin(r, authStore) },
+		ExecDisabled: execDisabled,
+		Audit: func(r *http.Request, route, detail string) {
+			execAuditLog(r, route, detail)
+		},
+		Controller: proctl.New(proctl.DefaultRoot, proctlSelf),
+		Apps: func() []telemetry.AppStatus {
+			return collectAppStatus(launcher, appGateway, streamPool)
+		},
+		CloseApp: func(appID string, force bool) error {
+			// force shortens the wait, it does not change the mechanism:
+			// appnet.Launcher.Stop already does SIGTERM then SIGKILL on the
+			// app's process GROUP through its own guarded path. Reaching past
+			// it to signal the pid directly would bypass namespace and cgroup
+			// teardown and leave the app's netns behind.
+			stopCtx := ctx
+			if force {
+				var cancel context.CancelFunc
+				stopCtx, cancel = context.WithTimeout(ctx, 250*time.Millisecond)
+				defer cancel()
+			}
+			if err := launcher.Stop(stopCtx, appID); err != nil {
+				// Not an appnet app: it may be a streamed session.
+				if sess := streamPool.Get(appID); sess != nil {
+					return streamPool.Stop(appID)
+				}
+				return err
+			}
+			portPool.Release(appID)
+			trafficMon.Forget(appID)
+			appGateway.RemoveAppSecret(appID)
+			return nil
+		},
+	})
 
 	// Remote access config
 	mux.HandleFunc("GET /api/network/status", func(w http.ResponseWriter, r *http.Request) {
