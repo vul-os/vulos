@@ -111,8 +111,13 @@ run_probe() {
   out="$(timeout "$t" "$@" 2>&1 | head -c 4000)" || rc=$?
   rc="${rc:-0}"
   printf '%s' "$out" > /out/probe.log
-  if [[ "$rc" == "127" ]]; then return 127; fi
-  if grep -qiE 'command not found|no such file or directory|error while loading shared libraries|exec format error' <<<"$out"; then
+  if [[ "$rc" == "127" || "$rc" == "126" ]]; then return 127; fi
+  # Loader-level failures only.  We execve the binary directly rather than
+  # through a shell, so "command not found" / "no such file or directory" in the
+  # OUTPUT is the app complaining about something of its own (a missing config,
+  # a data dir) — matching on those would fail working apps, the same way a
+  # missing python3 failed a working cinny recipe.
+  if grep -qiE 'error while loading shared libraries|exec format error|cannot execute binary file' <<<"$out"; then
     return 126
   fi
   return 0
