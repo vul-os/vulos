@@ -188,6 +188,7 @@ export default function Packages() {
   const [tab, setTab] = useState<TabId>('installed')
   const [status, setStatus] = useState<PkgStatus | null>(null)
   const [installed, setInstalled] = useState<Pkg[] | null>(null)
+  const [installedError, setInstalledError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [searchResults, setSearchResults] = useState<SearchPkg[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -197,8 +198,29 @@ export default function Packages() {
   const [filter, setFilter] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const refreshStatus = () => fetch('/api/packages/status').then(r => r.json()).then((data: unknown) => setStatus(toPkgStatus(data))).catch(() => {})
-  const refreshInstalled = () => fetch('/api/packages/installed').then(r => r.json()).then((data: unknown) => setInstalled(toPkgList(data))).catch(() => {})
+  const refreshStatus = () => fetch('/api/packages/status')
+    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+    .then((data: unknown) => setStatus(toPkgStatus(data)))
+    .catch(() => {})
+
+  // BUILTIN-4: the old `.catch(() => {})` here swallowed the failure whole,
+  // leaving `installed` null forever — and `!installed` is the spinner's only
+  // condition, so a box with a dead package service showed "Loading
+  // packages..." for the life of the window. A spinner that can never resolve
+  // is a lie about what the app is doing.
+  const refreshInstalled = () => {
+    setInstalledError(null)
+    return fetch('/api/packages/installed')
+      .then(r => {
+        // Without this, a 500 carrying a JSON error body parses fine and
+        // toPkgList() answers [] for it, so an outage rendered as "this box
+        // has no packages installed".
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((data: unknown) => setInstalled(toPkgList(data)))
+      .catch((e: unknown) => setInstalledError(e instanceof Error ? e.message : String(e)))
+  }
 
   useEffect(() => { refreshStatus(); refreshInstalled() }, [])
 
@@ -397,13 +419,45 @@ export default function Packages() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-5">
-              {!installed && (
+              {!installed && !installedError && (
                 <div className="flex flex-col items-center justify-center py-16 text-neutral-500">
                   <svg className="w-8 h-8 animate-spin mb-3 text-neutral-600" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
                   </svg>
                   <span className="text-sm">Loading packages...</span>
+                </div>
+              )}
+
+              {/* Deliberately spinner-free: this replaces the spinner, it does
+                  not sit beside it. */}
+              {installedError && (
+                <div role="alert" className="flex flex-col items-center justify-center py-16 px-6 text-center text-neutral-500">
+                  <span aria-hidden="true" className="text-2xl leading-none mb-2 text-neutral-700">⚠</span>
+                  <span className="text-sm text-neutral-300">Could not list installed packages</span>
+                  <span className="text-xs text-neutral-500 mt-1 max-w-sm break-words">
+                    The package service did not answer ({installedError}). This is not the same as having no
+                    packages installed.
+                  </span>
+                  <button onClick={() => { refreshStatus(); refreshInstalled() }}
+                    className="mt-3 px-3 py-1.5 text-xs font-medium bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors duration-(--motion-fast)">
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {/* BUILTIN-3: with an empty list and no filter typed, none of the
+                  branches around this one matched and the pane rendered as a
+                  blank rectangle. */}
+              {installed && installed.length === 0 && !filter && (
+                <div className="flex flex-col items-center justify-center py-16 px-6 text-center text-neutral-500">
+                  <svg className="w-10 h-10 mb-3 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <span className="text-sm">No packages installed</span>
+                  <span className="text-xs text-neutral-600 mt-1">
+                    Anything you install from the Search tab will be listed here.
+                  </span>
                 </div>
               )}
 

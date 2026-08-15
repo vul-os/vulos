@@ -139,14 +139,30 @@ export default function DiskUsage() {
   const [breakdownPath, setBreakdownPath] = useState('/')
   const [loading, setLoading] = useState(true)
   const [breakdownLoading, setBreakdownLoading] = useState(false)
+  const [mountsError, setMountsError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/disks').then(r => r.json()).then((d: unknown) => {
-      const list = isRecord(d) && Array.isArray(d.mounts) ? d.mounts.filter(isMount) : []
-      setMounts(list)
-      if (list.length) setSelectedMount(list[0])
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    // BUILTIN-5: neither half of this was safe. A 500 with a JSON body parsed
+    // cleanly and produced an empty `mounts` list, so a dead disk service
+    // rendered "No volumes found" — telling the user their box has no
+    // filesystems. A rejected fetch took the `.catch`, which cleared `loading`
+    // but left `mounts` null, and `mounts?.length === 0` is false for null, so
+    // the rail rendered as nothing at all: no spinner, no message, no reason.
+    fetch('/api/disks')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((d: unknown) => {
+        const list = isRecord(d) && Array.isArray(d.mounts) ? d.mounts.filter(isMount) : []
+        setMounts(list)
+        if (list.length) setSelectedMount(list[0])
+        setLoading(false)
+      })
+      .catch((e: unknown) => {
+        setMountsError(e instanceof Error ? e.message : String(e))
+        setLoading(false)
+      })
   }, [])
 
   const loadBreakdown = (path: string) => {
@@ -198,13 +214,21 @@ export default function DiskUsage() {
             <h2 className="text-[12px] uppercase tracking-wider text-neutral-500 font-semibold">Volumes</h2>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {loading && !mounts && (
+            {loading && !mounts && !mountsError && (
               <div className="flex flex-col items-center gap-2 px-3 py-8 text-neutral-500">
                 <Spinner className="w-5 h-5" />
                 <span className="text-[12px]">Scanning...</span>
               </div>
             )}
-            {mounts?.length === 0 && !loading && (
+            {mountsError && (
+              <div role="alert" className="px-3 py-6 text-[12px] text-center">
+                <div className="text-neutral-300">Could not read volumes</div>
+                <div className="text-neutral-500 mt-1 break-words">
+                  The box did not answer ({mountsError}).
+                </div>
+              </div>
+            )}
+            {mounts?.length === 0 && !loading && !mountsError && (
               <div className="px-3 py-6 text-[12px] text-neutral-600 text-center">No volumes found</div>
             )}
             {mounts?.map(m => {

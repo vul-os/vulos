@@ -75,13 +75,34 @@ export default function Drivers() {
   const [tab, setTab] = useState('devices')
   const [modFilter, setModFilter] = useState('')
   const [actionMsg, setActionMsg] = useState<ActionMsg | null>(null)
+  // BUILTIN-2: a failed scan used to be indistinguishable from a finished one.
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const refresh = () => {
     setLoading(true)
-    fetch('/api/drivers').then(r => r.json()).then((s: unknown) => {
-      setStatus(toStatus(s))
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    setLoadError(null)
+    // The `!r.ok` check is the load-bearing half of this fix. /api/drivers
+    // answering 500 with a JSON error body used to parse cleanly, and
+    // toStatus() maps any unrecognised shape to { devices: [], modules: [] } —
+    // so a box whose driver service was down rendered "No devices detected",
+    // telling the user their hardware does not exist. A wrong answer stated
+    // confidently is worse than an error.
+    fetch('/api/drivers')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((s: unknown) => {
+        setStatus(toStatus(s))
+        setLoading(false)
+      })
+      .catch((e: unknown) => {
+        // Leaving `status` null with `loading` false made every content branch
+        // below false, so the body rendered as an empty rectangle under the
+        // header — no data, no message, no reason.
+        setLoadError(errMessage(e))
+        setLoading(false)
+      })
   }
 
   useEffect(() => { refresh() }, [])
@@ -185,10 +206,26 @@ export default function Drivers() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-        {loading && !status && (
+        {loading && !status && !loadError && (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-neutral-500">
             <span className="spinner w-7 h-7 rounded-full" />
             <span className="text-sm">Detecting hardware...</span>
+          </div>
+        )}
+
+        {/* No spinner here, deliberately: this is a verdict, not progress. */}
+        {loadError && !loading && (
+          <div role="alert" className="flex flex-col items-center justify-center gap-2 py-16 text-center px-6">
+            <span aria-hidden="true" className="text-2xl leading-none text-neutral-700">⚠</span>
+            <span className="text-sm text-neutral-300">Could not scan hardware</span>
+            <span className="text-xs text-neutral-500 max-w-sm break-words">
+              The box did not answer the driver scan ({loadError}). Your devices are still there — this is a
+              problem reading them.
+            </span>
+            <button onClick={refresh}
+              className="mt-2 px-3 py-1.5 text-xs font-medium bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors duration-(--motion-fast)">
+              Rescan
+            </button>
           </div>
         )}
 
