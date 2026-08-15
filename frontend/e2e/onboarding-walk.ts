@@ -56,6 +56,13 @@ export const FIRST_BOOT: Record<string, unknown> = {
   'GET /api/setup/mode': json({ mode: 'setup' }),
   'GET /api/auth/status': json({ has_users: false }),
   'GET /api/auth/me': json({}, 401),
+  // The device step reads the SETUP-time route, not the session-gated one: it
+  // runs four steps before the account exists, so /api/device-profile 401s on
+  // every real first boot. Mocking only the old path left detection empty, the
+  // step rendered 12 text nodes against a floor of >12, and the contrast
+  // suite's vacuity guard fired — correctly, on a step that had gone hollow.
+  'GET /api/setup/device-profile': json({ suggested: 'pc' }),
+  // Kept: the same walker drives post-setup states, where this is the route.
   'GET /api/device-profile': json({ suggested: 'pc' }),
   'GET /api/wifi/scan': json([
     { bssid: 'a1', ssid: 'Home-5G', signal: -42, band: '5GHz', security: 'WPA2' },
