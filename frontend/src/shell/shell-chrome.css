@@ -90,6 +90,34 @@
    TrustBadge, PublicAppBanner, SharedDesktopNotice) unreachable by a theme.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── How much room the dock takes on its edge ────────────────────────────────
+   Published as tokens on :root so any surface that must not sit UNDER the dock
+   can inset by exactly the right amount without re-deriving the geometry or
+   importing anything from the shell. Measured, not guessed: plate + the strip's
+   0.375rem×2 padding, plus the floating style's 0.625rem×2 margin.
+
+   The one that earns its keep today is --dock-reserve-right: the ambient widget
+   column is right-anchored desktop furniture, and a right-edge dock landed on
+   top of the world clock at 768px. It is a token rather than a hard-coded
+   offset because the widget column is another component's file. */
+:root {
+  --vdock-plate: 44px;
+  --vdock-float: 0px;
+  --vdock-thickness: calc(var(--vdock-plate) + 0.75rem + var(--vdock-float));
+  --dock-reserve-left: 0px;
+  --dock-reserve-right: 0px;
+  --dock-reserve-top: 0px;
+}
+:root[data-dock-size='small'] { --vdock-plate: 36px; }
+:root[data-dock-size='medium'] { --vdock-plate: 44px; }
+:root[data-dock-size='large'] { --vdock-plate: 56px; }
+:root[data-dock-style='floating'] { --vdock-float: 1.25rem; }
+:root[data-dock-edge='left'] { --dock-reserve-left: var(--vdock-thickness); }
+:root[data-dock-edge='right'] { --dock-reserve-right: var(--vdock-thickness); }
+:root[data-dock-edge='top'] { --dock-reserve-top: var(--vdock-thickness); }
+/* No --dock-reserve-bottom: nothing is bottom-anchored on the desktop today, and
+   a token nobody reads is a token that will be wrong by the time somebody does. */
+
 /* The layer spans its whole edge and is inert; only the strip takes pointer
    events, so the desktop underneath stays clickable right up to the dock. */
 .vdock-layer {

@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
-import { accentText, accentSolid, worstSurfaceFor, compositeOver } from './accentContrast'
+import {
+  accentText, accentSolid, worstSurfaceFor, compositeOver,
+  ACCENT_TINT_RANGE, AA_TARGET,
+} from './accentContrast'
 import { getLayout, subscribeLayout } from '../desktop'
 
 type ResolvedTheme = 'light' | 'dark'
@@ -267,11 +270,28 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     const opaque = ['--bg-base', '--bg-surface', '--bg-elevated']
       .map((v) => cs.getPropertyValue(v).trim())
       .filter(Boolean)
-    const soft = cs.getPropertyValue('--accent-soft').trim()
-    const surfaces = [...opaque, ...opaque.map((b) => compositeOver(soft, b) ?? b)]
+    // Sample the whole RANGE of accent tints, not just --accent-soft.
+    //
+    // The previous version composited one value (--accent-soft, 15%) and
+    // derived to exactly 4.5. That is correct for every surface it enumerated
+    // and silently wrong for every surface it did not: App Hub's install chip
+    // tints its own background at 13% and measured 4.21:1 dark / 4.28:1 light
+    // while --accent-text said it was compliant. The failure is not the value,
+    // it is that a control which paints its own accent-tinted background is a
+    // DIFFERENT pair from the one that was measured — and there are several of
+    // them across the OS.
+    //
+    // Contrast against a tint of the text's own hue degrades monotonically as
+    // the tint deepens, so sampling the deepest tint the OS uses (22%) bounds
+    // every lighter one, and AA_TARGET's headroom covers the gaps between the
+    // sampled points. Built from a literal color-mix() rather than the token so
+    // this does not depend on --accent-soft happening to be the deepest tint.
+    const tinted = ACCENT_TINT_RANGE.flatMap((pct) =>
+      opaque.map((b) => compositeOver(`color-mix(in srgb, ${accent} ${pct}%, transparent)`, b) ?? b))
+    const surfaces = [...opaque, ...tinted]
     const worst = worstSurfaceFor(accent, surfaces.length ? surfaces : ['#08090c'])
-    el.style.setProperty('--accent-text', accentText(accent, worst) ?? accent)
-    el.style.setProperty('--accent-solid', accentSolid(accent) ?? accent)
+    el.style.setProperty('--accent-text', accentText(accent, worst, AA_TARGET) ?? accent)
+    el.style.setProperty('--accent-solid', accentSolid(accent, '#ffffff', AA_TARGET) ?? accent)
   }, [accent, resolved])
 
   // Persisted setters

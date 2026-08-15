@@ -518,6 +518,26 @@ html, body, #root {
    own their internal scrolling; the shell frame is locked. */
 [data-shell="mobile"] { overflow-x: hidden; }
 
+/* Desktop furniture steps aside for a docked dock.
+   The ambient widget column (shell/DesktopWidgets, another component's file) is
+   right-anchored and top-offset by a hard-coded inline value. With the dock on
+   the RIGHT edge it landed across the world clock at 768px, and a TOP-edge dock
+   landed on the same card at 834px — both measured in a screenshot, neither
+   reasoned about.
+
+   Applied as MARGINS, deliberately. The column's `top` is an inline style, and
+   an inline style can only be beaten with !important — overriding another
+   component's inline constant that way is the kind of cross-file hack that
+   breaks silently the day they touch it. Margin is a property nothing else
+   sets, needs no !important, and composes with whatever offsets that file
+   chooses next. The reserves are published by shell-chrome.css and resolve to
+   0px unless a dock is actually on that edge, so this rule is inert in every
+   layout that does not need it. */
+[data-desktop-widgets] {
+  margin-right: var(--dock-reserve-right, 0px);
+  margin-top: var(--dock-reserve-top, 0px);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    RESPONSIVE FOUNDATION (WAVE-31)
    Token-driven utilities so app/shell components (owned by other agents) can go
@@ -828,7 +848,17 @@ textarea::placeholder {
    core/accentContrast.ts; ThemeProvider sets it whenever accent or theme
    changes, and it falls back to the raw accent if that has not run yet. */
 .accent-text        { color: var(--accent-text, var(--accent)); }
-.accent-bg          { background: var(--accent); }
+/* --accent-solid, not --accent — the same reasoning as .btn-primary above, and
+   the same measured number. `.accent-bg` is the "filled accent surface" utility,
+   and its callers put --accent-contrast (white) on it: the mobile shell's
+   window-count badge, the Settings nav rail's active pip, the hover fill on a
+   window chrome button. White on the RAW accent measured 3.68:1 on BOTH themes
+   with the default blue — the badge appears for Settings and Files too, so this
+   was three sub-AA labels, not one. --accent-solid is the accent moved until
+   white clears AA on it (core/accentContrast.ts), which is exactly this job.
+   The raw accent is still correct for borders, dots, rings and focus — nothing
+   is READ on top of those. */
+.accent-bg          { background: var(--accent-solid, var(--accent)); }
 .accent-bg-soft     { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .accent-bg-hover:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .accent-border      { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -836,7 +866,7 @@ textarea::placeholder {
 .hover-accent-text:hover   { color: var(--accent); }
 .hover-accent-border:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .group:hover .group-hover-accent-bg,
-.hover-accent-bg:hover { background: var(--accent); }
+.hover-accent-bg:hover { background: var(--accent-solid, var(--accent)); }
 .hover-accent-bg-soft:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
 /* @utility (not plain classes): the same hover:/focus: variant hole as the

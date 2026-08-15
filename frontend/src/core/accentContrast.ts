@@ -25,6 +25,42 @@
  * 3.46:1, and its "Save changes" button at 3.68:1 white-on-accent.
  */
 
+/**
+ * The ratio the accent derivation actually AIMS FOR, above the 4.5:1 it must
+ * meet.
+ *
+ * Deriving to exactly 4.5 lands on the first candidate that clears it — in
+ * practice 4.50–4.56 — which leaves no room for a surface that was not in the
+ * enumeration. That is not hypothetical: a control that tints its OWN
+ * background (App Hub's install chip, `color-mix(accent 13%, transparent)`)
+ * measures a DIFFERENT pair from the one the derivation targeted, and came out
+ * at 4.21:1 dark / 4.28:1 light while every token said it was fine.
+ *
+ * Two fixes, and this is the second one. The first is to enumerate the whole
+ * RANGE of accent-tinted surfaces rather than a single value (ThemeProvider
+ * composites ACCENT_TINT_RANGE); the headroom then covers everything between
+ * and either side of the sampled points, plus the 1% lightness step this search
+ * moves in.
+ *
+ * 6% is deliberately small. Every point of headroom pushes accent-coloured text
+ * further from the colour the user chose, and an accent nobody can recognise is
+ * its own kind of failure.
+ */
+export const AA_TEXT = 4.5
+export const AA_HEADROOM = 1.06
+export const AA_TARGET = AA_TEXT * AA_HEADROOM
+
+/**
+ * The accent-tint percentages the OS actually draws accent-coloured text on.
+ *
+ * From index.css: `.accent-bg-soft` is 14%, `--accent-soft` is 15%, and
+ * `.accent-bg-hover:hover` is 22%. Contrast against a tint of the text's own
+ * hue degrades monotonically as the tint deepens, so sampling the DEEPEST one
+ * bounds every lighter tint — including the 13% chip that started this. The
+ * 15% value is kept because it is the one token other files reference by name.
+ */
+export const ACCENT_TINT_RANGE = [15, 22] as const
+
 export interface Rgb { r: number; g: number; b: number }
 
 export function parseColor(input: string): Rgb | null {
