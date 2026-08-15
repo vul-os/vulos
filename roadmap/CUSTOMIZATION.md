@@ -350,6 +350,7 @@ overlap the ambient widget column, and nothing widens the document. Plus
 autohide (hidden → hover → keyboard focus), both revert routes, a hostile layout
 in storage applying nothing while the trust badge stays visible and unobscured,
 and composited-pixel contrast for all four presets on **both** themes.
+Screenshots land in `frontend/test-results/desktop-layout/`.
 
 Both suites are mutation-tested; the commits record which mutation killed which
 test.

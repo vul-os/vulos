@@ -24,7 +24,10 @@ import { installBackend } from './mock-backend.js'
 import { belowAA, textNodeCount } from './contrast-scan'
 import { mkdirSync } from 'node:fs'
 
-const SHOTS = 'e2e-shots/desktop-layout'
+// Under Playwright's own output directory, which .gitignore already covers.
+// A spec that writes into a fresh top-level folder leaves a dirty tree for
+// whoever commits next — and in this repo that is five other agents.
+const SHOTS = 'test-results/desktop-layout'
 mkdirSync(SHOTS, { recursive: true })
 
 const DESKTOP = { width: 1280, height: 800 }
