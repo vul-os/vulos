@@ -9,8 +9,15 @@ the glob matched nothing and the loop body never ran. Every process-backed app
 was absent from the image, `appStore.GetManifest()` 404'd, no namespace was
 ever registered, and the gateway answered `{"error":"app not running"}`
 (gateway.go). The product's screenshots were green because they were captured
-against a mocked backend (`e2e/_polish-shots.e2e.ts` installBackend), so no app
-had ever actually been launched.
+against a mocked backend (`frontend/scripts/screenshots.mjs` installs
+`e2e/mock-backend.js`, whose `POST /api/apps/launch` answers `{ok:true}` and
+starts nothing), so no app had ever actually been launched.
+
+Screenshots of the apps ACTUALLY RUNNING now exist alongside this check:
+`frontend/e2e/shots-live-apps.e2e.ts` -> `docs/screenshots/live-apps/`, split
+from the fixture-backed shots and enforced by
+`scripts/check-screenshot-provenance.py`. This script remains the load-bearing
+proof; those images are its visible counterpart.
 
 Two independent things are checked here, because either alone gives a false
 green:
