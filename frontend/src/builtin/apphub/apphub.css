@@ -30,9 +30,10 @@
        been bitten by that in four other places. `[data-hub-mode="narrow"] .x`
        out-specifies `.x` by construction.
 
-   Between the four structural modes NOTHING steps: gutters, type, icon and
+   Between the four structural modes NOTHING steps: gutters, headline type and
    column widths are `clamp()`ed against `cqi`, so dragging a frame is a
-   continuous resize rather than three jumps between three designs.
+   continuous resize rather than three jumps between three designs. The card
+   ICON is the one deliberate exception — see --hub-icon.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .hub {
@@ -60,14 +61,28 @@
      auto-fill, so column COUNT is a consequence of the hub's width rather than
      a number anybody wrote down. */
   --hub-card-min: 264px;
-  --hub-icon: clamp(38px, 3.4cqi, 44px);
+
+  /* The card icon size, and a FIXED number on purpose.
+     AppIconTile is a React component taking a pixel `size` prop, so the real
+     card icon is whatever AppHub.tsx passes it — CSS cannot make it fluid. This
+     variable is what the loading SKELETON is drawn at, so any value other than
+     the one the component is given means the skeleton tile and the icon that
+     replaces it are different sizes and every card jumps when the catalogue
+     lands. It was `clamp(38px, 3.4cqi, 44px)` against a hard-coded `size={42}`:
+     a 2px jolt across the whole grid at wide widths, on every load. */
+  --hub-icon: 42px;
   --hub-radius: var(--radius-lg);
 
-  /* Type scale. Floors are 12px — the suite's minimum legible size — so no
-     amount of narrowing can produce text below it. */
+  /* Type scale.
+     --hub-fs-micro is the FLOOR, and it is 12px because that is this suite's
+     minimum legible size. It exists as a token because the six places that
+     wanted "a bit smaller than meta" each wrote `font-size: 11px` inline —
+     under the header comment claiming a 12px floor. A floor stated in prose and
+     contradicted six times in the same file is not a floor. */
   --hub-fs-title: clamp(15px, 1.5cqi, 17px);
   --hub-fs-body: 13px;
   --hub-fs-meta: 12px;
+  --hub-fs-micro: 12px;
 }
 
 /* ── Structural modes ──────────────────────────────────────────────────────
@@ -136,10 +151,21 @@
   white-space: nowrap;
 }
 
-/* The brand block is the first thing to go when the frame gets tight — the
-   search field is the tool, the wordmark is decoration, and the window title
-   bar is already saying "App Hub" two centimetres above it. */
-.hub[data-hub-mode='compact'] .hub-brand p,
+/**
+ * The brand block is the first thing to go when the frame gets tight — the
+ * search field is the tool, the wordmark is decoration, and the window title
+ * bar is already saying "App Hub" two centimetres above it.
+ *
+ * It goes at COMPACT, not only at narrow. Dropping just the subtitle left the
+ * h1 in a `flex: 0 1 auto` box that kept shrinking: measured at a 448px hub,
+ * "App Hub" was laid out in a 55px box needing 61px, and since the h1 is
+ * `white-space: nowrap` with no `overflow: hidden`, the six overflowing pixels
+ * were PAINTED — the wordmark bled into the search field beside it rather than
+ * truncating. Truncating it instead would only trade an overlap for "App H…",
+ * so the honest answer at that width is to drop a decoration the title bar is
+ * already carrying.
+ */
+.hub[data-hub-mode='compact'] .hub-brand,
 .hub[data-hub-mode='narrow'] .hub-brand {
   display: none;
 }
@@ -194,7 +220,7 @@
   border: 1px solid var(--border-default);
   background: var(--bg-surface);
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--hub-fs-micro);
   line-height: 16px;
   pointer-events: none;
 }
@@ -271,7 +297,7 @@
   border-radius: var(--radius-full);
   background: var(--bg-elevated);
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--hub-fs-micro);
   line-height: 16px;
   text-align: center;
 }
@@ -308,15 +334,33 @@
 .hub[data-hub-mode='narrow'] .hub-rail { display: none; }
 
 .hub-rail-label {
+  /* flex:none — see .hub-rail-item below; a label that shrinks takes its
+     air with it and the two groups stop reading as groups. */
+  flex: none;
   padding: 10px 10px 4px;
-  font-size: 11px;
+  font-size: var(--hub-fs-micro);
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
 
+/**
+ * flex:none is load-bearing, not tidiness.
+ *
+ * .hub-rail is a COLUMN flex container with its own scrollbar. A flex item's
+ * default `flex-shrink: 1` applies along the main axis — which in a column is
+ * the HEIGHT — so when the rail's content is taller than the rail, every row
+ * compresses instead of the rail scrolling. `height: 30px` then means nothing.
+ *
+ * Measured on an 8-category catalogue in a 708px-wide, 467px-tall window: rows
+ * rendered 22px tall, not 30. The rail looked cramped and the twelve rows were
+ * 27% shorter than every other control in the hub, which is also how a 30px
+ * target quietly becomes a 22px one. It is invisible at a tall viewport, which
+ * is why a maximised screenshot never showed it.
+ */
 .hub-rail-item {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -505,6 +549,30 @@
   border-color: var(--bg-selected-border);
 }
 
+/**
+ * An app this box cannot run.
+ *
+ * Present, readable, and visibly secondary — NOT dimmed. `opacity` is the
+ * obvious way to say "lesser" and it is the wrong one twice over: it drops the
+ * card's text below AA (this repo's recorded trap is precisely that a contrast
+ * gate reading tokens cannot see an `opacity` beside them), and it makes a card
+ * the user may still want to read harder to read. The card is still fully
+ * legible; what changes is the SURFACE — no hover lift, a flatter background —
+ * so the eye sorts it out without the text paying for it.
+ *
+ * The "Needs amd64" badge is the actual signal, and it is words.
+ */
+.hub-card[data-compat='no'] {
+  background: var(--bg-base);
+  border-style: dashed;
+}
+
+.hub-card[data-compat='no']:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--bg-hover);
+}
+
 /* The whole card is the click target, but the DOM must not nest a button
    inside a button (invalid, and it breaks keyboard order). So the NAME is the
    real control and a stretched pseudo-element gives it the card's hit area;
@@ -612,7 +680,7 @@
   border: 1px solid var(--border-default);
   background: var(--bg-elevated);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--hub-fs-micro);
   line-height: 16px;
   font-weight: 550;
   white-space: nowrap;
@@ -628,6 +696,32 @@
 
 /* ═══ Install / installed affordances ═════════════════════════════════════ */
 
+/**
+ * The install button.
+ *
+ * ── Why the fill carries NO accent ──────────────────────────────────────────
+ *
+ * It used to be `--accent-text` over `color-mix(var(--accent) 13%, transparent)`,
+ * with a comment claiming --accent-text "promises AA for text drawn in it".
+ * That promise is real but CONDITIONAL: --accent-text is derived to clear 4.5:1
+ * against the OS SURFACE colours. Tinting the button's own background with 13%
+ * of the accent moves that background toward the text's hue and luminance, so
+ * the pair being measured is no longer the pair the token was derived for.
+ *
+ * Measured on composited pixels, on the button as it shipped:
+ *   dark   rgb(79,142,247) on rgb(34,47,69) → 4.21:1   (need 4.5)
+ *   dark   rgb(79,142,247) on rgb(29,46,79) → 4.22:1
+ *   light  4.28:1 and 4.25:1
+ *
+ * Under 4.5:1 in BOTH themes, on the most-repeated control in the app — one per
+ * card, thirty cards. It is exactly the trap this project has written down:
+ * a gate that reads tokens sees `var(--accent-text)` and calls it compliant,
+ * because the defect is not in either value, it is in the PAIR.
+ *
+ * So the fill is a neutral surface and the accent survives as the border and
+ * the text. That restores the token to the background it was derived against,
+ * and it is measured, not assumed — see e2e/apphub-contrast.e2e.ts.
+ */
 .hub-get {
   display: inline-flex;
   align-items: center;
@@ -636,10 +730,8 @@
   height: 30px;
   padding: 0 12px;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  /* --accent-text, never the raw accent: the accent is the USER's colour, and
-     only the derived value promises AA for text drawn in it. */
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border-default));
+  background: var(--bg-elevated);
   color: var(--accent-text, var(--accent));
   font: inherit;
   font-size: var(--hub-fs-meta);
@@ -650,9 +742,11 @@
               border-color var(--motion-fast) var(--ease-standard);
 }
 
+/* Hover moves the BORDER, not the fill — for the reason above, any accent in
+   the fill costs contrast on the label sitting on it. */
 .hub-get:hover {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border-default));
 }
 
 .hub-get:disabled { opacity: 0.55; cursor: default; }
@@ -971,7 +1065,7 @@
 
 .hub-field-label {
   margin-bottom: 7px;
-  font-size: 11px;
+  font-size: var(--hub-fs-micro);
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;

@@ -255,6 +255,45 @@ describe('states nobody designed', () => {
     expect(await screen.findByText('Conduit')).toBeInTheDocument()
   })
 
+  // An empty catalogue used to fall through to the FILTER dead end: with no
+  // search term and no filter set, the hub said "Nothing in this filter — try a
+  // different word, or widen the category and type filters" and offered a
+  // "Clear filters" button that could not change anything, because there was
+  // nothing set to clear. Every instruction on screen was for a state the user
+  // was not in.
+  it('says the catalogue is empty rather than blaming filters that are not set', async () => {
+    mockRegistry([])
+    render(<AppHub />)
+
+    expect(await screen.findByText('The catalogue is empty')).toBeInTheDocument()
+    expect(screen.queryByText(/Nothing in this filter/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull()
+  })
+
+  it('offers a refetch from the empty catalogue, and shows apps when they arrive', async () => {
+    // The registry answering empty is usually transient — it may still be
+    // syncing — so the action has to actually re-ask, not just re-render.
+    mockRegistry([])
+    render(<AppHub />)
+    await screen.findByText('The catalogue is empty')
+
+    mockRegistry(APPS)
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText('Conduit')).toBeInTheDocument()
+  })
+
+  // The empty-catalogue branch must not swallow the filter branch: an empty
+  // RESULT inside a non-empty catalogue is still the user's filter.
+  it('still blames the search when the catalogue has apps but the query matches none', async () => {
+    mockRegistry(APPS)
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    fireEvent.change(searchBox(), { target: { value: 'zzznomatch' } })
+    expect(await screen.findByText(/No apps match/)).toBeInTheDocument()
+    expect(screen.queryByText('The catalogue is empty')).toBeNull()
+  })
+
   it('renders an app with no description without leaving an empty line', async () => {
     mockRegistry([{ ...APPS[0], description: '' }])
     render(<AppHub />)
@@ -300,17 +339,176 @@ describe('install failures are visible', () => {
 })
 
 describe('architecture', () => {
-  it('marks an app this box cannot run instead of offering to install it', async () => {
+  /** A box of a given architecture, serving one app. */
+  function boxWith(boxArch: string, app: Partial<RegistryFixtureApp> & { arch: string[] }) {
     mockBackend({
-      '/api/store/registry': ok([{ ...APPS[0], arch: ['ppc64el'] }]),
+      '/api/store/registry': ok([{ ...APPS[0], ...app }]),
       '/api/store/installed': ok([]),
-      '/api/packages/cache': ok({ ready: true, arch: 'amd64' }),
+      // The apt-cache endpoint is the FALLBACK source of the box's
+      // architecture; /api/system/arch is preferred and does not exist yet, so
+      // it 404s through mockBackend's catch-all and this is what is read.
+      '/api/packages/cache': ok({ ready: true, arch: boxArch }),
+    })
+  }
+
+  it('marks an app this box cannot run instead of offering to install it', async () => {
+    boxWith('amd64', { arch: ['ppc64el'] })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    expect(within(cardFor('Conduit')).getByText(/Needs ppc64el/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Install Conduit' })).toBeNull()
+  })
+
+  // ── The spelling trap ─────────────────────────────────────────────────────
+  //
+  // Debian says amd64/arm64; Flatpak, `uname -m` and Flathub metadata say
+  // x86_64/aarch64. The comparison this replaced was a raw
+  // `app.arch.includes(systemArch)`, so an x86_64-only Flathub app read as
+  // INCOMPATIBLE on an amd64 box — silently, with no error, across most of the
+  // desktop catalogue. These two tests are the founder's requirement stated as
+  // assertions: an arm64 box must not offer an x86_64-only app, and an amd64
+  // box must.
+
+  it('offers an x86_64-only app on an amd64 box, despite the different spelling', async () => {
+    boxWith('amd64', { id: 'steam', name: 'Steam', arch: ['x86_64'] })
+    render(<AppHub />)
+    await screen.findByText('Steam')
+
+    expect(screen.getByRole('button', { name: 'Install Steam' })).toBeInTheDocument()
+    expect(within(cardFor('Steam')).queryByText(/Needs/)).toBeNull()
+  })
+
+  it('refuses an x86_64-only app on an arm64 box, and names what it needs', async () => {
+    boxWith('arm64', { id: 'steam', name: 'Steam', arch: ['x86_64'] })
+    render(<AppHub />)
+    await screen.findByText('Steam')
+
+    // Shown, not hidden — "why can't I find Steam?" is answered on the card.
+    expect(within(cardFor('Steam')).getByText('Needs amd64')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Install Steam' })).toBeNull()
+  })
+
+  it('reads the box architecture in uname spelling too', async () => {
+    // A backend answering `uname -m` rather than `dpkg --print-architecture`
+    // must not silently mark the whole catalogue incompatible.
+    boxWith('aarch64', { id: 'steam', name: 'Steam', arch: ['arm64'] })
+    render(<AppHub />)
+    await screen.findByText('Steam')
+
+    expect(screen.getByRole('button', { name: 'Install Steam' })).toBeInTheDocument()
+  })
+
+  it('shows the box architecture, so the user can see what decides this', async () => {
+    boxWith('arm64', { arch: ['arm64'] })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+    expect(screen.getByText('arm64')).toBeInTheDocument()
+  })
+
+  it('offers a filter to hide what this box cannot run, and it is off by default', async () => {
+    mockBackend({
+      '/api/store/registry': ok([
+        { ...APPS[0], id: 'steam', name: 'Steam', arch: ['x86_64'] },
+        { ...APPS[1], arch: ['arm64'] },
+      ]),
+      '/api/store/installed': ok([]),
+      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+    })
+    render(<AppHub />)
+    await screen.findByText('Darktable')
+
+    // Default: BOTH are on screen. An app that vanishes teaches nothing.
+    expect(screen.getByText('Steam')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Runs on/ })[0])
+    await waitFor(() => expect(screen.queryByText('Steam')).toBeNull())
+    expect(screen.getByText('Darktable')).toBeInTheDocument()
+  })
+
+  it('never hides a searched-for app behind the compatibility filter', async () => {
+    // Someone typing "steam" is asking about Steam specifically. Answering
+    // "no results" — on a box that simply cannot run it — is the exact failure
+    // that showing-with-a-reason exists to avoid.
+    mockBackend({
+      '/api/store/registry': ok([
+        { ...APPS[0], id: 'steam', name: 'Steam', arch: ['x86_64'] },
+        { ...APPS[1], arch: ['arm64'] },
+      ]),
+      '/api/store/installed': ok([]),
+      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+    })
+    render(<AppHub />)
+    await screen.findByText('Steam')
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Runs on/ })[0])
+    await waitFor(() => expect(screen.queryByText('Steam')).toBeNull())
+
+    fireEvent.change(searchBox(), { target: { value: 'steam' } })
+    expect(await screen.findByText('Steam')).toBeInTheDocument()
+    expect(within(cardFor('Steam')).getByText('Needs amd64')).toBeInTheDocument()
+  })
+
+  it('sorts what this box cannot run below what it can', async () => {
+    mockBackend({
+      '/api/store/registry': ok([
+        // Alphabetically first, but incompatible.
+        { ...APPS[0], id: 'aaa-steam', name: 'AAA Steam', arch: ['x86_64'] },
+        { ...APPS[1], id: 'zzz-ok', name: 'ZZZ Runs Here', arch: ['arm64'] },
+      ]),
+      '/api/store/installed': ok([]),
+      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+    })
+    render(<AppHub />)
+    await screen.findByText('AAA Steam')
+
+    // Read the GRID's own order. A role query by name also matches each card's
+    // "Install <name>" button, which is a different control and says nothing
+    // about card order.
+    const order = [...document.querySelectorAll('article.hub-card')]
+      .map(c => c.getAttribute('data-app-id'))
+    expect(order).toEqual(['zzz-ok', 'aaa-steam'])
+  })
+
+  it('makes no compatibility claim when the box has not reported an architecture', async () => {
+    // Claiming "yes" offers an install that fails in apt; claiming "no" marks
+    // the whole catalogue unavailable on every backend that does not report
+    // architecture — which is every backend today.
+    mockBackend({
+      '/api/store/registry': ok([{ ...APPS[0], arch: ['amd64'] }]),
+      '/api/store/installed': ok([]),
+      '/api/packages/cache': ok({ ready: true, arch: null }),
     })
     render(<AppHub />)
     await screen.findByText('Conduit')
 
-    expect(within(cardFor('Conduit')).getByText('Unavailable')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Install Conduit' })).toBeNull()
+    expect(within(cardFor('Conduit')).queryByText(/Needs/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+  })
+})
+
+describe('the detail panel', () => {
+  // jsdom has no ResizeObserver, so useHubMode holds its `wide` fallback and
+  // this exercises the DOCKED panel. The modal sheet's counterpart — that it is
+  // announced as a dialog and carries the back affordance instead — is asserted
+  // in e2e/apphub-responsive.e2e.ts, where a real browser can produce the width.
+  it('offers exactly one way to dismiss the docked panel', async () => {
+    // It had two, calling the identical handler: a "Back to the app list"
+    // chevron and a "Close details" cross, side by side in a 40px bar. Two
+    // controls for one action is not a convenience — a reader has to work out
+    // what the difference is, and there is none.
+    mockRegistry(APPS)
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Conduit' }))
+    const panel = await screen.findByRole('complementary')
+
+    expect(within(panel).queryByRole('button', { name: 'Back to the app list' })).toBeNull()
+    const close = within(panel).getByRole('button', { name: 'Close details' })
+
+    fireEvent.click(close)
+    await waitFor(() => expect(screen.queryByRole('complementary')).toBeNull())
   })
 })
 

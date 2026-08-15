@@ -3,6 +3,7 @@ import { refreshInstalled } from '../../core/AppRegistry'
 import { AppIconTile } from '../../core/AppIcons'
 import { useFocusTrap } from '../../shell/useFocusTrap'
 import { useHubMode } from './hubMode'
+import { archCompat, requiredArches, fetchBoxArch, type ArchCompat } from './arch'
 import './apphub.css'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -239,6 +240,10 @@ export default function AppHub() {
   const [success, setSuccess] = useState<string | null>(null)
   const [cacheReady, setCacheReady] = useState<boolean | null>(null)
   const [systemArch, setSystemArch] = useState<string | null>(null)
+  // Default OFF: see browseList — an app that vanishes teaches the user
+  // nothing, an app labelled "Needs amd64" teaches them something true about
+  // their hardware.
+  const [onlyCompatible, setOnlyCompatible] = useState(false)
   const [updatingCache, setUpdatingCache] = useState(false)
 
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -251,10 +256,11 @@ export default function AppHub() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [regRes, instRes, cacheRes] = await Promise.all([
+      const [regRes, instRes, cacheRes, dedicatedArch] = await Promise.all([
         fetch('/api/store/registry'),
         fetch('/api/store/installed'),
         fetch('/api/packages/cache'),
+        fetchBoxArch(),
       ])
       if (!regRes.ok) throw new Error(`registry unavailable (HTTP ${regRes.status})`)
       const regData = toStoreApps(await regRes.json())
@@ -263,7 +269,10 @@ export default function AppHub() {
       setApps(regData)
       setInstalled(instData)
       setCacheReady(cacheData.ready)
-      setSystemArch(cacheData.arch)
+      // The BOX's architecture, from the server, never from `navigator`.
+      // The dedicated endpoint wins; the apt-cache endpoint is the fallback
+      // that exists today. See arch.ts for the contract and why it is a seam.
+      setSystemArch(dedicatedArch ?? cacheData.arch)
       setLoadError(null)
     } catch (e) {
       setApps([])
@@ -338,10 +347,19 @@ export default function AppHub() {
     setUninstalling(null)
   }
 
-  const isArchCompatible = useCallback((app: StoreApp): boolean => {
-    if (!systemArch || !app.arch || app.arch.length === 0) return true
-    return app.arch.includes(systemArch)
-  }, [systemArch])
+  /**
+   * Can this box run this app?
+   *
+   * Delegated to arch.ts so the Debian/Flatpak spelling fold happens in ONE
+   * place. What used to be here was `app.arch.includes(systemArch)` — a raw
+   * string match, which means a Flathub entry declaring `x86_64` never matched
+   * an `amd64` box and every such app read as unavailable, silently and
+   * consistently. Three quarters of the desktop catalogue is Flathub.
+   */
+  const compatOf = useCallback(
+    (app: StoreApp): ArchCompat => archCompat(app.arch, systemArch),
+    [systemArch],
+  )
 
   const installedIds = useMemo(() => new Set(installed.map(a => a.id)), [installed])
   const isInstalled = useCallback(
@@ -358,7 +376,8 @@ export default function AppHub() {
   }), [apps, tab, appTypeFilter, isInstalled])
 
   const query = search.trim().toLowerCase()
-  const browseList = useMemo(() => scoped.filter(app => {
+
+  const matched = useMemo(() => scoped.filter(app => {
     if (category !== 'all' && app.category !== category) return false
     if (!query) return true
     return app.name.toLowerCase().includes(query) ||
@@ -367,6 +386,44 @@ export default function AppHub() {
       (app.author || '').toLowerCase().includes(query) ||
       (app.keywords || []).some(k => k.toLowerCase().includes(query))
   }), [scoped, category, query])
+
+  /** How many of the current matches this box cannot run. */
+  const incompatibleCount = useMemo(
+    () => matched.filter(a => compatOf(a) === 'no').length,
+    [matched, compatOf],
+  )
+
+  /**
+   * The list the grid renders.
+   *
+   * ── Shown-with-a-reason, not hidden ─────────────────────────────────────
+   *
+   * Vulos publishes both amd64 and arm64 images, and a large share of Flathub's
+   * desktop catalogue is x86_64-only — Steam, Chrome, Spotify, Zoom, VS Code,
+   * Discord and Slack among them. On an ARM box that is roughly a third of the
+   * catalogue, so the choice of what to do with it is not a detail.
+   *
+   * Hiding them silently produces the worst outcome: the user searches for
+   * Steam, finds nothing, and learns nothing. They cannot tell "this OS has
+   * never heard of Steam" from "your box cannot run Steam", and only one of
+   * those is true. So incompatible apps are always RENDERED, always LABELLED
+   * with the architecture they need, and sorted BELOW the ones that work —
+   * which gets the practical benefit of a filter (what you can install is at
+   * the top) without the cost of an app vanishing.
+   *
+   * `onlyCompatible` then exists for the user who wants the shorter list, and
+   * it deliberately does NOT apply while searching: a search is a question
+   * about a specific app, and answering "no results" to someone who typed
+   * "steam" — on a box that simply cannot run it — is the exact failure the
+   * default avoids.
+   */
+  const browseList = useMemo(() => {
+    const list = (onlyCompatible && !query)
+      ? matched.filter(a => compatOf(a) !== 'no')
+      : matched
+    // Stable: equal-rank apps keep the registry's alphabetical order.
+    return [...list].sort((a, b) => Number(compatOf(a) === 'no') - Number(compatOf(b) === 'no'))
+  }, [matched, onlyCompatible, query, compatOf])
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>()
@@ -514,7 +571,15 @@ export default function AppHub() {
           <div className="hub-head-row">
             <div className="hub-brand">
               <h1>App Hub</h1>
-              <p>{apps.length} available · {installedCount} installed</p>
+              {/* The box's architecture is stated here because it is the fact
+                  that decides what half the catalogue can do, and the user has
+                  no other way to learn it. It is the SERVER's answer — see
+                  arch.ts — so on a browser whose own CPU differs it still reads
+                  correctly. */}
+              <p>
+                {apps.length} available · {installedCount} installed
+                {systemArch ? <> · <span className="mono">{systemArch}</span> box</> : null}
+              </p>
             </div>
 
             <div className="hub-search">
@@ -558,6 +623,24 @@ export default function AppHub() {
               Rendered at every width and hidden by CSS at the wide ones, so the
               two lists cannot drift apart. */}
           <div className="hub-chips" role="group" aria-label="Filters">
+            {/* Only offered when this box actually cannot run something in the
+                current view. A toggle that can only ever hide zero apps is
+                furniture, and on an amd64 box browsing an amd64 catalogue that
+                is exactly what it would be. */}
+            {incompatibleCount > 0 && (
+              <>
+                <button
+                  className="hub-chip"
+                  aria-pressed={onlyCompatible}
+                  onClick={() => setOnlyCompatible(v => !v)}
+                  title={`${incompatibleCount} app(s) here need a different architecture`}
+                >
+                  Runs on this box
+                  <span className="hub-count">{incompatibleCount}</span>
+                </button>
+                <span className="hub-chip-sep" aria-hidden="true" />
+              </>
+            )}
             {categories.map(c => (
               <button
                 key={c.id}
@@ -588,6 +671,21 @@ export default function AppHub() {
 
         <div className="hub-body">
           <nav className="hub-rail" aria-label="Browse by type and category">
+            {incompatibleCount > 0 && (
+              <>
+                <div className="hub-rail-label">This box</div>
+                <button
+                  className="hub-rail-item"
+                  aria-pressed={onlyCompatible}
+                  onClick={() => setOnlyCompatible(v => !v)}
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={CATEGORY_ICONS.system} /></svg>
+                  <span>Runs on {systemArch || 'this box'}</span>
+                  <span className="hub-count">{incompatibleCount}</span>
+                </button>
+              </>
+            )}
+
             <div className="hub-rail-label">App type</div>
             {typeFilters.map(t => (
               <button
@@ -651,8 +749,10 @@ export default function AppHub() {
                 tab={tab}
                 query={search.trim()}
                 filtered={category !== 'all' || appTypeFilter !== 'all'}
+                catalogueEmpty={apps.length === 0}
                 onClear={() => { setSearch(''); setCategory('all'); setAppTypeFilter('all') }}
                 onBrowse={() => setTab('browse')}
+                onReload={fetchData}
               />
             ) : (
               <div className="hub-grid" ref={gridRef} onKeyDown={onGridKeyDown}>
@@ -664,7 +764,7 @@ export default function AppHub() {
                     installed={isInstalled(app)}
                     installing={installing === app.id}
                     removing={uninstalling === app.id}
-                    compatible={isArchCompatible(app)}
+                    compat={compatOf(app)}
                     busy={!!installing}
                     onOpen={() => selectApp(app)}
                     onInstall={() => installApp(app.id, app.latest)}
@@ -684,16 +784,36 @@ export default function AppHub() {
           aria-modal={modal || undefined}
           aria-label={`${liveSelected.name} details`}
         >
+          {/*
+            ONE dismiss control, and which one depends on what the panel is.
+
+            Both buttons called setSelectedApp(null); on the modal sheet that
+            put a "Back to the app list" chevron and a "Close details" cross in
+            the same 40px-tall bar, doing the identical thing under two
+            different names. Two controls for one action is not a convenience —
+            a reader has to work out what the difference is, and there isn't
+            one.
+
+            As a full-screen SHEET the gesture is "go back" (the list is
+            underneath it); as a DOCKED column beside a list that never went
+            away, it is "close this". Same handler, honest label.
+          */}
           <div className="hub-detail-bar">
-            {modal && (
-              <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Back to the app list">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={I.back} /></svg>
-              </button>
-            )}
+            {modal
+              ? (
+                <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Back to the app list">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={I.back} /></svg>
+                </button>
+              )
+              : null}
             <strong>{liveSelected.name}</strong>
-            <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Close details">
-              <Glyph d={I.cross} />
-            </button>
+            {modal
+              ? null
+              : (
+                <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Close details">
+                  <Glyph d={I.cross} />
+                </button>
+              )}
           </div>
 
           <div className="hub-detail-scroll">
@@ -732,13 +852,15 @@ export default function AppHub() {
                   </div>
                   <button className="hub-btn hub-btn-danger" onClick={() => uninstallApp(liveSelected.id)}>Remove</button>
                 </div>
-              ) : !isArchCompatible(liveSelected) ? (
+              ) : compatOf(liveSelected) === 'no' ? (
                 <div className="hub-notice" data-tone="danger" style={{ marginBottom: 0 }}>
                   <Glyph d={I.block} />
                   <div className="hub-notice-body">
                     <div className="hub-notice-title">Not available for this machine</div>
                     <p className="hub-notice-text">
-                      This box is {systemArch}; {liveSelected.name} ships for {(liveSelected.arch || []).join(', ') || 'other architectures'}.
+                      {liveSelected.name} is built for{' '}
+                      {requiredArches(liveSelected.arch).join(' or ') || 'other architectures'}, and
+                      this box is {systemArch}. Installing it here would fail.
                     </p>
                   </div>
                 </div>
@@ -781,7 +903,13 @@ export default function AppHub() {
                 <Fact label="Source" value={liveSelected.flatpak_id ? 'Flathub' : liveSelected.type === 'web' ? 'Web service' : 'Debian'} />
                 <Fact label="Category" value={categoryLabel(liveSelected.category)} />
                 <Fact label="License" value={liveSelected.license || 'Not stated'} />
-                <Fact label="Architecture" value={liveSelected.arch?.length ? liveSelected.arch.join(', ') : 'All'} />
+                {/* Canonicalised, so a Flathub entry saying `x86_64` and a
+                    Debian one saying `amd64` do not read as two different
+                    requirements for the same silicon. */}
+                <Fact
+                  label="Architecture"
+                  value={requiredArches(liveSelected.arch).join(', ') || 'Any'}
+                />
                 {liveSelected.homepage && <Fact label="Website" value={liveSelected.homepage} link />}
               </dl>
             </div>
@@ -800,15 +928,24 @@ interface AppCardProps {
   installed: boolean
   installing: boolean
   removing: boolean
-  compatible: boolean
+  compat: ArchCompat
   busy: boolean
   onOpen: () => void
   onInstall: () => void
 }
 
-function AppCard({ app, selected, installed, installing, removing, compatible, busy, onOpen, onInstall }: AppCardProps) {
+function AppCard({ app, selected, installed, installing, removing, compat, busy, onOpen, onInstall }: AppCardProps) {
+  const needs = requiredArches(app.arch)
   return (
-    <article className="hub-card" data-selected={selected} data-app-id={app.id}>
+    <article
+      className="hub-card"
+      data-selected={selected}
+      data-app-id={app.id}
+      // Drives the de-emphasis in CSS. An attribute rather than a class so the
+      // e2e gates can assert on the STATE the component decided, not on a
+      // styling detail that could be renamed underneath them.
+      data-compat={compat}
+    >
       <span className="hub-card-icon">
         <AppIconTile id={app.id} size={42} unicode={app.icon} />
       </span>
@@ -836,10 +973,18 @@ function AppCard({ app, selected, installed, installing, removing, compatible, b
             <Glyph d={I.check} />
             Installed
           </span>
-        ) : !compatible ? (
-          <span className="hub-state" data-tone="off" title={`Not available for this architecture`}>
+        ) : compat === 'no' ? (
+          // NAMES the architecture rather than saying "Unavailable". "Needs
+          // amd64" on an arm64 box tells the user something true about their
+          // hardware and about this app; "Unavailable" tells them the store is
+          // broken. The <title> carries the same fact for a screen reader,
+          // since the badge alone is terse by design.
+          <span
+            className="hub-state" data-tone="off"
+            title={`This app is built for ${needs.join(' or ')}; this box is a different architecture`}
+          >
             <Glyph d={I.block} />
-            Unavailable
+            {needs.length ? `Needs ${needs.join('/')}` : 'Unavailable'}
           </span>
         ) : (
           <button className="hub-get" disabled={busy} onClick={onInstall} aria-label={`Install ${app.name}`}>
@@ -857,16 +1002,41 @@ interface EmptyStateProps {
   tab: Tab
   query: string
   filtered: boolean
+  /** True when the CATALOGUE itself is empty, not just this view of it. */
+  catalogueEmpty: boolean
   onClear: () => void
   onBrowse: () => void
+  onReload: () => void
 }
 
 /**
- * Four distinct dead ends, because "nothing here" is four different situations
- * and only one of them is the user's fault. The previous version printed one of
- * two sentences and offered no way out of either.
+ * "Nothing here" is several different situations and only some of them are the
+ * user's fault. Each one gets the sentence that is true of it and an action that
+ * can actually resolve it.
  */
-function EmptyState({ tab, query, filtered, onClear, onBrowse }: EmptyStateProps) {
+function EmptyState({ tab, query, filtered, catalogueEmpty, onClear, onBrowse, onReload }: EmptyStateProps) {
+  /**
+   * The registry answered, and answered with nothing.
+   *
+   * This case used to fall through to the filter message below, so a hub with a
+   * genuinely empty catalogue said "Nothing in this filter — try a different
+   * word, or widen the category and type filters" and offered a "Clear filters"
+   * button, with no search term entered and no filter set. Every instruction on
+   * the screen was for a state the user was not in, and the one button did
+   * nothing observable. The distinction the whole component is built around —
+   * that a failed fetch must not read as an empty catalogue — was being drawn
+   * one branch too early.
+   */
+  if (catalogueEmpty && !query && !filtered) {
+    return (
+      <div className="hub-empty">
+        <div className="hub-empty-mark"><Glyph d={I.info} /></div>
+        <h3>The catalogue is empty</h3>
+        <p>The app registry answered, but offered nothing to install. It may still be syncing.</p>
+        <button className="hub-btn hub-btn-primary" onClick={onReload}>Check again</button>
+      </div>
+    )
+  }
   if (tab === 'installed' && !query && !filtered) {
     return (
       <div className="hub-empty">
