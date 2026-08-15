@@ -1,6 +1,33 @@
-import { useState, useEffect, useCallback, useRef, type ComponentType, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useLayoutEffect, useRef, type ComponentType, type FormEvent } from 'react'
 import AskAIButton from '../../core/AskAIButton'
 import SharePeerModal, { type ShareTarget } from './SharePeerModal.jsx'
+import { useLongPress, usePointerKind } from '../../mobile/useLongPress'
+import './files.css'
+
+// TOUCH (MOBILE-FILES). This was the worst file in the tree on touch, and the
+// two defects were the same defect: every way IN and every way TO THE ACTIONS
+// was a gesture a finger cannot make.
+//
+//   · `onDoubleClick` was the only trigger for entering a folder. The row's
+//     `onClick` merely selected it. A tap on a folder therefore did nothing a
+//     user would call "opening" it.
+//   · `onContextMenu` was the only path to "Ask AI about this" and "Share to
+//     peer…". There was no long-press handler anywhere in src/, so on a phone
+//     those two actions did not exist at all.
+//
+// THE IDIOM. Touch gets what every touch platform already means:
+//   · a single tap OPENS — a folder navigates into it, a file previews it;
+//   · a long press opens the SAME context menu, at the point the finger rested.
+// The pointer path is untouched: a mouse click still selects, a double-click
+// still opens, and right-click still opens the menu. Which one applies is
+// decided by the POINTER that produced the event, not by a `(pointer: coarse)`
+// media query — that query describes the device, so on a touchscreen laptop it
+// would answer for the mouse the user is actually holding.
+//
+// What was NOT done: adding a second, visible "…" button per row. It would have
+// put a permanent control on the desktop where right-click already works, and it
+// would have to be repeated in every list that grows a context menu. The gesture
+// costs no pixels and users arrive with it. See mobile/useLongPress.ts.
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -295,6 +322,149 @@ function FileIcon({ name, isDir, isLink, className = '' }: { name: string; isDir
   return <IconFile className={`text-neutral-400 ${className}`} />
 }
 
+/* ── One row of the directory listing ────────────────────────────────────────
+ *
+ * A component rather than inline JSX because each row owns a long-press gesture,
+ * and a hook cannot be called inside a `.map()`. That is the whole reason for the
+ * extraction — the markup is unchanged.
+ *
+ * The row is a BUTTON now, not a div. It was always the primary control of this
+ * app and it was never reachable by keyboard, never announced as actionable, and
+ * never focusable; making it a real button also gives `:focus-visible` and the
+ * shell's own focus ring for free. `text-left` and `w-full` keep it looking
+ * exactly as it did.
+ */
+interface FileRowProps {
+  entry: FileEntry
+  selected: boolean
+  filePath: string
+  onSelect: () => void
+  onOpen: () => void
+  onMenu: (x: number, y: number, filePath: string) => void
+}
+
+function FileRow({ entry, selected, filePath, onSelect, onOpen, onMenu }: FileRowProps) {
+  const pointer = usePointerKind()
+  const press = useLongPress({
+    onLongPress: ({ x, y }) => onMenu(x, y, filePath),
+  })
+
+  return (
+    <button
+      type="button"
+      data-file-row={entry.name}
+      data-is-dir={entry.isDir ? 'true' : 'false'}
+      aria-label={entry.isDir ? `Folder ${entry.name}` : entry.name}
+      aria-current={selected ? 'true' : undefined}
+      className={`vfm-row w-full text-left flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
+        ${selected ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
+      onPointerDown={(e) => { pointer.track(e); press.onPointerDown(e) }}
+      onPointerMove={press.onPointerMove}
+      onPointerUp={press.onPointerUp}
+      onPointerCancel={press.onPointerCancel}
+      onClick={() => {
+        // The click a touch synthesises after a long press must not also select
+        // or navigate — the menu is already open over the row.
+        if (press.consumed()) return
+        // Touch: one tap opens. A folder navigates into it; a file previews it,
+        // which is what selecting a file already does.
+        if (pointer.wasTouch() && entry.isDir) { onOpen(); return }
+        onSelect()
+      }}
+      onDoubleClick={onOpen}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        // Chrome on Android fires its own contextmenu after a long press; iOS
+        // Safari does not. Swallowing the echo is what keeps the menu from
+        // opening twice on Android without leaving iOS with no gesture at all.
+        if (press.suppressContextMenu()) return
+        onMenu(e.clientX, e.clientY, filePath)
+      }}
+    >
+      <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
+        <FileIcon name={entry.name} isDir={entry.isDir} isLink={entry.isLink} className="shrink-0" />
+        <span className={`truncate ${entry.isDir ? 'font-medium text-neutral-200' : ''}`}>
+          {entry.name}
+        </span>
+        {entry.linkTarget && (
+          <span className="text-neutral-400 text-[12px] ml-1 shrink-0 flex items-center gap-0.5">
+            <IconChevronRight className="text-neutral-400" /> {entry.linkTarget}
+          </span>
+        )}
+      </span>
+      <span className="w-16 shrink-0 text-right text-neutral-400 tabular-nums">
+        {entry.isDir ? '—' : fmtSize(entry.size)}
+      </span>
+      <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-400 truncate tabular-nums">
+        {entry.modified}
+      </span>
+    </button>
+  )
+}
+
+/* ── The row's context menu ──────────────────────────────────────────────────
+ *
+ * Its position is CLAMPED into the viewport. It used to be `left: clientX;
+ * top: clientY` with a 200px minimum width, which is correct for a right-click
+ * on a 1440px desktop and wrong the moment the same menu is opened by a long
+ * press: a press on the right-hand half of a 390px phone put the whole menu
+ * off the edge of the screen — present in the DOM, "open", and unreachable.
+ *
+ * Measured after mount rather than estimated from a constant: the header is the
+ * file's NAME, so the menu's width is data, and a hardcoded 200 would be right
+ * until someone had a long filename.
+ */
+function FileContextMenu({ x, y, name, onAskAI, onShare }: {
+  x: number
+  y: number
+  name: string
+  onAskAI: () => void
+  onShare: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ left: x, top: y })
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const m = 8
+    setPos({
+      left: Math.max(m, Math.min(x, window.innerWidth - r.width - m)),
+      top: Math.max(m, Math.min(y, window.innerHeight - r.height - m)),
+    })
+  }, [x, y])
+
+  return (
+    <div
+      ref={ref}
+      data-file-menu=""
+      className="fixed z-[9999]"
+      style={{ left: pos.left, top: pos.top }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[200px] max-w-[min(280px,calc(100vw-16px))] shadow-2xl shadow-black/60">
+        <div className="px-3 py-1.5 text-[12px] text-neutral-400 truncate border-b border-neutral-700/40 mb-1">
+          {name}
+        </div>
+        <button
+          onClick={onAskAI}
+          className="vfm-menu-item w-full text-left px-3 py-1.5 text-[13px] accent-text hover:bg-neutral-700/60 transition-colors"
+        >
+          Ask AI about this
+        </button>
+        <button
+          onClick={onShare}
+          className="vfm-menu-item w-full text-left px-3 py-1.5 text-[13px] text-neutral-200 hover:bg-neutral-700/60 transition-colors"
+        >
+          Share to peer…
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ── Sidebar places with icon components ── */
 
 const SIDEBAR_PLACES: SidebarPlace[] = [
@@ -368,6 +538,11 @@ export default function FileManager() {
   const [resolvedHome, setResolvedHome] = useState<string | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null)
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null) // for peer share
+  // Which pointer produced the click that is about to arrive on a SEARCH row.
+  // The listing rows own their own instance (each is a FileRow, and each needs
+  // a long press); the search rows have no context menu, so one shared tracker
+  // is enough and there is nothing per-row to keep.
+  const searchPointer = usePointerKind()
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Resolve actual home path once
@@ -439,6 +614,14 @@ export default function FileManager() {
   const navigate = (name: string) => {
     const target = cwd === '/' ? `/${name}` : `${cwd}/${name}`
     loadDir(target)
+  }
+
+  /** Open the folder a search hit lives in. One definition, three call sites
+   *  (touch tap, double-click, and both result shapes) so the touch path and
+   *  the pointer path cannot drift. */
+  const revealDir = (path: string) => {
+    const dir = path.split('/').slice(0, -1).join('/')
+    if (dir) loadDir(dir)
   }
 
   const goUp = () => {
@@ -811,13 +994,18 @@ export default function FileManager() {
                   return (
                     <div
                       key={i}
-                      className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
+                      className={`vfm-row flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
                         ${selected === `s${i}` ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
-                      onClick={() => { setSelected(`s${i}`); setPreview({ type: 'semantic', name: name || '', path: p, score: r.score || 0, content: r.content || '' }) }}
-                      onDoubleClick={() => {
-                        const dir = p.split('/').slice(0, -1).join('/')
-                        if (dir) loadDir(dir)
+                      onPointerDown={searchPointer.track}
+                      onClick={() => {
+                        setSelected(`s${i}`)
+                        setPreview({ type: 'semantic', name: name || '', path: p, score: r.score || 0, content: r.content || '' })
+                        // Touch: one tap opens, same rule as the listing rows.
+                        // Without it, the containing folder of a search hit was
+                        // reachable only by a gesture a finger cannot make.
+                        if (searchPointer.wasTouch()) revealDir(p)
                       }}
+                      onDoubleClick={() => revealDir(p)}
                     >
                       <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
                         <IconCode className="accent-text shrink-0" />
@@ -837,13 +1025,14 @@ export default function FileManager() {
                 searchResults.items.map((r, i) => (
                   <div
                     key={i}
-                    className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
+                    className={`vfm-row flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
                       ${selected === `f${i}` ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
-                    onClick={() => setSelected(`f${i}`)}
-                    onDoubleClick={() => {
-                      const dir = r.path.split('/').slice(0, -1).join('/')
-                      if (dir) loadDir(dir)
+                    onPointerDown={searchPointer.track}
+                    onClick={() => {
+                      setSelected(`f${i}`)
+                      if (searchPointer.wasTouch()) revealDir(r.path)
                     }}
+                    onDoubleClick={() => revealDir(r.path)}
                   >
                     <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
                       <FileIcon name={r.name} isDir={false} isLink={false} />
@@ -858,37 +1047,15 @@ export default function FileManager() {
               )
             ) : (
               sorted.map((entry, i) => (
-                <div
+                <FileRow
                   key={entry.name}
-                  className={`flex items-center px-3 py-[5px] cursor-pointer border-b border-neutral-800/20 transition-colors
-                    ${selected === i ? 'accent-bg-soft accent-border-soft' : 'hover:bg-neutral-800/30'}`}
-                  onClick={() => selectEntry(entry, i)}
-                  onDoubleClick={() => entry.isDir && navigate(entry.name)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    const filePath = cwd === '/' ? `/${entry.name}` : `${cwd}/${entry.name}`
-                    setCtxMenu({ x: e.clientX, y: e.clientY, entry, filePath })
-                  }}
-                >
-                  <span className="flex-1 flex items-center gap-2 min-w-0 overflow-hidden">
-                    <FileIcon name={entry.name} isDir={entry.isDir} isLink={entry.isLink} className="shrink-0" />
-                    <span className={`truncate ${entry.isDir ? 'font-medium text-neutral-200' : ''}`}>
-                      {entry.name}
-                    </span>
-                    {entry.linkTarget && (
-                      <span className="text-neutral-400 text-[12px] ml-1 shrink-0 flex items-center gap-0.5">
-                        <IconChevronRight className="text-neutral-400" /> {entry.linkTarget}
-                      </span>
-                    )}
-                  </span>
-                  <span className="w-16 shrink-0 text-right text-neutral-400 tabular-nums">
-                    {entry.isDir ? '—' : fmtSize(entry.size)}
-                  </span>
-                  <span className="hidden @md:block w-32 shrink-0 text-right text-neutral-400 truncate tabular-nums">
-                    {entry.modified}
-                  </span>
-                </div>
+                  entry={entry}
+                  selected={selected === i}
+                  filePath={cwd === '/' ? `/${entry.name}` : `${cwd}/${entry.name}`}
+                  onSelect={() => selectEntry(entry, i)}
+                  onOpen={() => entry.isDir && navigate(entry.name)}
+                  onMenu={(x, y, filePath) => setCtxMenu({ x, y, entry, filePath })}
+                />
               ))
             )}
 
@@ -1024,29 +1191,13 @@ export default function FileManager() {
 
       {/* File context menu */}
       {ctxMenu && (
-        <div
-          className="fixed z-[9999]"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <div className="bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/60 rounded-lg py-1 min-w-[200px] shadow-2xl shadow-black/60">
-            <div className="px-3 py-1.5 text-[12px] text-neutral-400 truncate border-b border-neutral-700/40 mb-1">
-              {ctxMenu.entry.name}
-            </div>
-            <button
-              onClick={handleAskAIAboutFile}
-              className="w-full text-left px-3 py-1.5 text-[13px] accent-text hover:bg-neutral-700/60 transition-colors"
-            >
-              Ask AI about this
-            </button>
-            <button
-              onClick={handleShareToPeer}
-              className="w-full text-left px-3 py-1.5 text-[13px] text-neutral-200 hover:bg-neutral-700/60 transition-colors"
-            >
-              Share to peer…
-            </button>
-          </div>
-        </div>
+        <FileContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          name={ctxMenu.entry.name}
+          onAskAI={handleAskAIAboutFile}
+          onShare={handleShareToPeer}
+        />
       )}
 
       {/* Share-to-peer sheet — hands the selection to the peering Drop transport */}

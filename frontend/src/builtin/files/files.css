@@ -1,0 +1,39 @@
+/* files.css — the file manager's touch affordances.
+ *
+ * Scoped to .vfm-* classes that only builtin/files emits, so nothing else in the
+ * shell sees any of it.
+ *
+ * Everything here is inside `@media (pointer: coarse)`. That is the right
+ * instrument for SIZE — how big a target has to be is a property of the input
+ * device, and a 44px row on a mouse-driven desktop would waste half the window
+ * on a list whose whole job is density. It is the WRONG instrument for deciding
+ * what a tap MEANS, which is why that decision is made from the pointer event
+ * itself in FileManager.tsx: on a touchscreen laptop this query is true while
+ * the user is holding a mouse.
+ */
+
+.vfm-row {
+  /* The long press must not also start a text selection or raise iOS's own
+   * "copy / look up" callout over the menu we are about to open. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  /* Measured before this rule: `py-[5px]` on a 13px line gave a 23px row. The
+   * primary control of the app was half the platform's minimum target, so
+   * every tap was a coin flip between two adjacent files. */
+  .vfm-row {
+    min-height: 44px;
+    user-select: none;
+  }
+
+  /* Same arithmetic for the menu the long press opens: py-1.5 on 13px text is a
+   * 26px item, and an action reached by a deliberate gesture is exactly the
+   * wrong place to make the user aim. */
+  .vfm-menu-item {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
