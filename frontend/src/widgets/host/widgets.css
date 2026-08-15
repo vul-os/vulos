@@ -1,0 +1,457 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   widgets.css — the widget rail's own layer of the OS design language.
+
+   STRICTLY TOKEN-DRIVEN. There is not one hex value in this file. Every colour
+   resolves through a semantic custom property from src/index.css, which is what
+   makes a widget correct in BOTH themes without a per-theme branch anywhere —
+   and what keeps the composited-pixel contrast gate green in both, since the
+   token values were tuned against exactly these surfaces.
+
+   Motion goes through --motion-* only. Those tokens collapse to 0.01ms under
+   `prefers-reduced-motion: reduce` (index.css), so every transition here is
+   already compliant by construction rather than by a media query per rule. The
+   two places that use a KEYFRAME rather than a transition carry an explicit
+   reduced-motion guard at the bottom of the file, because a keyframe's duration
+   is not read from a token at animation time in every engine.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── The rail ─────────────────────────────────────────────────────────────── */
+
+.vwidget-rail {
+  display: grid;
+  /* Two columns is the whole geometry. Small tiles pair up, medium and large
+     span both — which is why a widget declares a SIZE and never a pixel width:
+     the column is whatever the rail's width divided by two happens to be. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  grid-auto-rows: 128px;
+  align-content: start;
+}
+
+.vwidget-slot {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.vwidget-slot[data-size='small']  { grid-column: span 1; grid-row: span 1; }
+.vwidget-slot[data-size='medium'] { grid-column: span 2; grid-row: span 1; }
+.vwidget-slot[data-size='large']  { grid-column: span 2; grid-row: span 2; }
+
+/* ── The card ─────────────────────────────────────────────────────────────── */
+/* Mirrors .vshell-surface (shell-chrome.css) so a widget reads as the same
+   material as the Spotlight panel and the dock, rather than as a web page
+   pasted onto the desktop. */
+
+.vwidget-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  box-shadow:
+    0 32px 70px -28px rgba(0, 0, 0, 0.62),
+    0 8px 24px -14px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 9%, transparent);
+  text-align: left;
+}
+
+.vwidget-card-btn {
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+.vwidget-card-btn:hover {
+  border-color: color-mix(in srgb, var(--border-emphasis) 80%, transparent);
+}
+.vwidget-card-btn:active { transform: scale(0.985); }
+
+.vwidget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 13px;
+  overflow: hidden;
+}
+
+.vwidget-foot {
+  flex: 0 0 auto;
+  padding: 7px 13px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+}
+
+/* ── Type scale ───────────────────────────────────────────────────────────── */
+
+.vwidget-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.vwidget-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  /* --text-tertiary, not --text-faint. At 10.5px this is the smallest text in
+     the rail and it sits on the translucent card, where --text-faint measures
+     right at the AA line in light. Tertiary clears it in both themes with room
+     to spare, and the visual hierarchy still reads because of the size and the
+     weight rather than because of the dimness. */
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vwidget-title-right {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  flex: 0 0 auto;
+}
+
+.vwidget-big {
+  font-size: 30px;
+  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.vwidget-sub {
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.vwidget-label { font-size: 11.5px; line-height: 1.35; }
+.vwidget-label.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.vwidget-tone-primary   { color: var(--text-primary); }
+.vwidget-tone-secondary { color: var(--text-secondary); }
+.vwidget-tone-faint     { color: var(--text-tertiary); }
+.vwidget-tone-accent    { color: var(--accent-text, var(--accent)); }
+.vwidget-tone-success   { color: var(--status-success); }
+.vwidget-tone-warning   { color: var(--status-warning); }
+.vwidget-tone-danger    { color: var(--status-danger); }
+
+/* ── Empty / error ────────────────────────────────────────────────────────── */
+
+.vwidget-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  min-height: 0;
+}
+.vwidget-empty-text {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+.vwidget-empty-action { margin-top: 1px; }
+.vwidget-error-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--status-danger);
+}
+
+.vwidget-link {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent-text, var(--accent));
+  border-radius: var(--radius-xs);
+}
+.vwidget-link:hover { text-decoration: underline; }
+
+/* ── Rows ─────────────────────────────────────────────────────────────────── */
+
+.vwidget-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 5px;
+  margin: 0 -5px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.vwidget-row:hover { background: color-mix(in srgb, var(--bg-hover) 62%, transparent); }
+
+.vwidget-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.vwidget-scroll::-webkit-scrollbar { display: none; }
+
+/* ── World clock ──────────────────────────────────────────────────────────── */
+
+.vwidget-clocks {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+}
+.vwidget-clock-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.vwidget-clock-meta { min-width: 0; flex: 1 1 auto; }
+.vwidget-clock-city {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vwidget-clock-when {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vwidget-clock-time {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* The dial. Its face is tinted by local day/night so a rail of clocks is
+   scannable before any digit is read — the tint is REDUNDANT with the printed
+   time, never the only carrier of it, so nothing is lost to a colour-blind or
+   monochrome viewer. */
+.vwidget-dial { flex: 0 0 auto; display: block; }
+.vwidget-dial-face {
+  fill: color-mix(in srgb, var(--bg-hover) 80%, transparent);
+  stroke: color-mix(in srgb, var(--border-emphasis) 70%, transparent);
+  stroke-width: 1;
+}
+.vwidget-dial[data-phase='day'] .vwidget-dial-face {
+  fill: color-mix(in srgb, var(--status-warning) 16%, var(--bg-hover));
+}
+.vwidget-dial[data-phase='twilight'] .vwidget-dial-face {
+  fill: color-mix(in srgb, var(--accent) 14%, var(--bg-hover));
+}
+.vwidget-dial[data-phase='night'] .vwidget-dial-face {
+  fill: color-mix(in srgb, var(--bg-base) 62%, var(--bg-hover));
+}
+.vwidget-dial-tick { stroke: color-mix(in srgb, var(--text-primary) 26%, transparent); stroke-width: 1; }
+.vwidget-dial-hour { stroke: var(--text-primary); stroke-width: 1.7; stroke-linecap: round; }
+.vwidget-dial-min  { stroke: var(--text-secondary); stroke-width: 1.2; stroke-linecap: round; }
+.vwidget-dial-pin  { fill: var(--accent-text, var(--accent)); }
+
+/* ── Sparkline / meters ───────────────────────────────────────────────────── */
+
+.vwidget-meter {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bg-hover) 85%, transparent);
+  overflow: hidden;
+}
+.vwidget-meter-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid, var(--accent));
+  transition: width var(--motion-base) var(--ease-standard);
+}
+.vwidget-meter-fill[data-tone='warning'] { background: var(--status-warning); }
+.vwidget-meter-fill[data-tone='danger']  { background: var(--status-danger); }
+
+/* ── Rail chrome: edit mode, gallery, settings ────────────────────────────── */
+
+.vwidget-railbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 2px;
+}
+.vwidget-railbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 66%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.vwidget-railbtn:hover { color: var(--text-primary); background: color-mix(in srgb, var(--bg-hover) 88%, transparent); }
+.vwidget-railbtn[data-active='true'] {
+  color: var(--accent-text, var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Edit affordances sit ON the tile. They only exist in edit mode, so they never
+   compete with the widget's own content in the resting state. */
+.vwidget-edit-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 5px;
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-base) 46%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.vwidget-edit-strip { display: flex; gap: 4px; justify-content: flex-end; }
+.vwidget-edit-strip-left { display: flex; gap: 4px; justify-content: flex-start; }
+.vwidget-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-emphasis) 70%, transparent);
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.vwidget-chip:hover { color: var(--text-primary); background: var(--bg-hover); }
+.vwidget-chip[data-danger='true']:hover { color: var(--status-danger); background: var(--status-danger-soft); }
+.vwidget-chip[data-active='true'] { color: var(--accent-text, var(--accent)); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.vwidget-chip:disabled { opacity: 0.35; }
+
+/* ── Panel (gallery / settings / permissions) ─────────────────────────────── */
+
+.vwidget-panel {
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  box-shadow: 0 30px 66px -26px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: vwidgetPanelIn var(--motion-base) var(--ease-out);
+}
+.vwidget-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
+}
+.vwidget-panel-title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.vwidget-panel-body { padding: 8px; max-height: 340px; overflow-y: auto; }
+
+.vwidget-gallery-item {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.vwidget-gallery-item:hover { background: color-mix(in srgb, var(--bg-hover) 72%, transparent); }
+.vwidget-gallery-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.vwidget-gallery-desc { font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 2px; }
+.vwidget-gallery-meta { font-size: 10.5px; color: var(--text-tertiary); margin-top: 4px; }
+
+/* A permission line. `data-leaves` marks the ones that can send something off
+   the box — the only distinction that matters to a user of this product, so it
+   gets a colour and an icon rather than a footnote. */
+.vwidget-perm {
+  display: flex;
+  gap: 7px;
+  padding: 6px 0;
+  align-items: flex-start;
+}
+.vwidget-perm-dot {
+  width: 6px; height: 6px; margin-top: 5px; flex: 0 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--text-tertiary);
+}
+.vwidget-perm[data-leaves='true'] .vwidget-perm-dot { background: var(--status-warning); }
+.vwidget-perm-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.vwidget-perm-detail { font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 1px; }
+
+.vwidget-field { display: block; padding: 7px 2px; }
+.vwidget-field-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.vwidget-field-help { display: block; font-size: 11px; line-height: 1.4; color: var(--text-tertiary); margin-top: 4px; }
+.vwidget-input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 66%, transparent);
+}
+.vwidget-input::placeholder { color: var(--text-tertiary); }
+.vwidget-input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ── Sandbox frame ────────────────────────────────────────────────────────── */
+
+.vwidget-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+  color-scheme: normal;
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────────── */
+
+@keyframes vwidgetPanelIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The transitions above already collapse via --motion-*; a keyframe's duration
+   is resolved at animation start and does not always re-read the token, so the
+   animation is disabled explicitly rather than shortened. */
+@media (prefers-reduced-motion: reduce) {
+  .vwidget-panel { animation: none; }
+  .vwidget-card-btn,
+  .vwidget-row,
+  .vwidget-chip,
+  .vwidget-railbtn,
+  .vwidget-meter-fill { transition: none; }
+  .vwidget-card-btn:active { transform: none; }
+}
