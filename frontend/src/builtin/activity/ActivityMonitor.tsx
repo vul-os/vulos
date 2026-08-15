@@ -1,5 +1,10 @@
-import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useTelemetry } from '../../core/useTelemetry'
+import {
+  loadJSON, toProcesses, toNetConns, toAppList, signalProcess, closeApp,
+  type ProcessInfo, type NetConn, type AppStatus, type ApiFailure,
+  type Responsiveness, type SignalMode,
+} from './api'
 
 const HISTORY_LEN = 120
 
@@ -12,10 +17,10 @@ function fmtBytes(b: number | undefined): string {
 }
 
 // ── narrow-untrusted-JSON helpers ───────────────────────────────────────────
-// useTelemetry()'s `stats` and the raw fetch() responses below are all
-// `unknown` at the trust boundary (matches the isRecord() pattern in
-// src/lib/offlineAuth.ts and the fuller normalize*() helpers in
-// src/builtin/drive/Drive.tsx) — narrowed here rather than trusted.
+// useTelemetry()'s `stats` is `unknown` at the trust boundary (matches the
+// isRecord() pattern in src/lib/offlineAuth.ts and the fuller normalize*()
+// helpers in src/builtin/drive/Drive.tsx) — narrowed here rather than trusted.
+// The fetched payloads are narrowed in ./api alongside their error handling.
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
@@ -85,64 +90,8 @@ interface HistoryPoint {
   t: number
 }
 
-// ProcessInfo — a row from GET /api/system/processes.
-interface ProcessInfo {
-  pid: number
-  name?: string
-  command?: string
-  user?: string
-  state?: string
-  cpu?: number
-  mem_rss?: number
-  threads?: number
-}
-
-function toProcess(x: unknown): ProcessInfo {
-  const r = isRecord(x) ? x : {}
-  return {
-    pid: typeof r.pid === 'number' ? r.pid : 0,
-    name: typeof r.name === 'string' ? r.name : undefined,
-    command: typeof r.command === 'string' ? r.command : undefined,
-    user: typeof r.user === 'string' ? r.user : undefined,
-    state: typeof r.state === 'string' ? r.state : undefined,
-    cpu: typeof r.cpu === 'number' ? r.cpu : undefined,
-    mem_rss: typeof r.mem_rss === 'number' ? r.mem_rss : undefined,
-    threads: typeof r.threads === 'number' ? r.threads : undefined,
-  }
-}
-function toProcesses(x: unknown): ProcessInfo[] {
-  return Array.isArray(x) ? x.map(toProcess) : []
-}
-
 // ProcessSortKey — the ProcessTable columns that support click-to-sort.
 type ProcessSortKey = 'pid' | 'name' | 'user' | 'state' | 'cpu' | 'mem_rss' | 'threads'
-
-// NetConn — a row from GET /api/system/network.
-interface NetConn {
-  proto?: string
-  local_addr?: string
-  local_port?: number
-  remote_addr?: string
-  remote_port?: number
-  state?: string
-  process?: string
-}
-
-function toNetConn(x: unknown): NetConn {
-  const r = isRecord(x) ? x : {}
-  return {
-    proto: typeof r.proto === 'string' ? r.proto : undefined,
-    local_addr: typeof r.local_addr === 'string' ? r.local_addr : undefined,
-    local_port: typeof r.local_port === 'number' ? r.local_port : undefined,
-    remote_addr: typeof r.remote_addr === 'string' ? r.remote_addr : undefined,
-    remote_port: typeof r.remote_port === 'number' ? r.remote_port : undefined,
-    state: typeof r.state === 'string' ? r.state : undefined,
-    process: typeof r.process === 'string' ? r.process : undefined,
-  }
-}
-function toNetConns(x: unknown): NetConn[] {
-  return Array.isArray(x) ? x.map(toNetConn) : []
-}
 
 // GraphId — the four sparkline cards; also the `expanded` selection state.
 type GraphId = 'cpu' | 'memory' | 'network' | 'disk'
@@ -165,7 +114,19 @@ interface GraphSpec {
   autoScale?: boolean
 }
 
-const TABS: ('processes' | 'network')[] = ['processes', 'network']
+type Tab = 'processes' | 'apps' | 'network'
+const TABS: Tab[] = ['processes', 'apps', 'network']
+
+/** What a confirmation dialog is about to do. */
+interface PendingAction {
+  kind: 'process' | 'app'
+  mode: SignalMode
+  label: string
+  /** Set for kind === 'process'. */
+  proc?: ProcessInfo
+  /** Set for kind === 'app'. */
+  appID?: string
+}
 
 export default function ActivityMonitor() {
   const { stats: rawStats, connected } = useTelemetry()
@@ -173,11 +134,22 @@ export default function ActivityMonitor() {
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
   const [netConns, setNetConns] = useState<NetConn[]>([])
+  const [apps, setApps] = useState<AppStatus[]>([])
+  // One failure slot per feed. A single shared slot would let a healthy
+  // network poll clear the message from a failing process poll, which is the
+  // same class of bug as swallowing the error outright.
+  const [procError, setProcError] = useState<ApiFailure | null>(null)
+  const [netError, setNetError] = useState<ApiFailure | null>(null)
+  const [appError, setAppError] = useState<ApiFailure | null>(null)
   const [expanded, setExpanded] = useState<GraphId | null>(null)
-  const [tab, setTab] = useState<'processes' | 'network'>('processes')
+  const [tab, setTab] = useState<Tab>('processes')
   const [sortCol, setSortCol] = useState<ProcessSortKey>('cpu')
   const [sortAsc, setSortAsc] = useState(false)
   const [search, setSearch] = useState('')
+  const [selectedPid, setSelectedPid] = useState<number | null>(null)
+  const [pending, setPending] = useState<PendingAction | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
 
   useEffect(() => {
     if (stats) {
@@ -197,16 +169,61 @@ export default function ActivityMonitor() {
     }
   }, [stats])
 
-  // Poll processes + network
+  // Poll processes, apps and network.
+  //
+  // Each result is applied through its OWN success/failure pair. The previous
+  // version swallowed every failure with `.catch(() => {})` after calling
+  // r.json() unconditionally — and because every /api/* service answers 5xx
+  // with a body that parses cleanly, a dead backend produced a parsed error
+  // object, an empty list, and this app's designed "No processes found" panel.
+  const poll = useCallback(() => {
+    loadJSON('/api/system/processes', toProcesses).then(r => {
+      if (r.ok) { setProcesses(r.value); setProcError(null) } else { setProcError(r.error) }
+    })
+    loadJSON('/api/system/network', toNetConns).then(r => {
+      if (r.ok) { setNetConns(r.value); setNetError(null) } else { setNetError(r.error) }
+    })
+    loadJSON('/api/proc/apps', toAppList).then(r => {
+      if (r.ok) { setApps(r.value); setAppError(null) } else { setAppError(r.error) }
+    })
+  }, [])
+
   useEffect(() => {
-    const poll = () => {
-      fetch('/api/system/processes').then(r => r.json()).then((data: unknown) => setProcesses(toProcesses(data))).catch(() => {})
-      fetch('/api/system/network').then(r => r.json()).then((data: unknown) => setNetConns(toNetConns(data))).catch(() => {})
-    }
     poll()
     const id = setInterval(poll, 3000)
     return () => clearInterval(id)
-  }, [])
+  }, [poll])
+
+  // Plain function, not useCallback: it is passed to a dialog that only exists
+  // while an action is pending, so nothing downstream is memoized on it, and
+  // the React Compiler handles the rest.
+  const runPending = async () => {
+    if (!pending) return
+    setBusy(true)
+    const res = pending.kind === 'process' && pending.proc
+      ? await signalProcess(pending.proc, pending.mode)
+      : await closeApp(pending.appID || '', pending.mode === 'force')
+    setBusy(false)
+    setPending(null)
+    if (res.ok) {
+      const outcome = typeof res.value.outcome === 'string' ? res.value.outcome : 'done'
+      // OUTCOMES ARE NOT ALL SUCCESS. `survived` means the signal was
+      // delivered and the process is still there — a task in uninterruptible
+      // sleep cannot be killed until its I/O returns. Reporting that as a win
+      // would leave the user believing they fixed a stuck disk.
+      const survived = outcome === 'survived'
+      setNotice({
+        tone: survived ? 'bad' : 'ok',
+        text: survived
+          ? `${pending.label} could not be ended — it is blocked in the kernel (state ${String(res.value.state ?? '?')}), usually waiting on storage. Signals are not delivered until that returns.`
+          : `${pending.label}: ${outcome.replace(/_/g, ' ')}`,
+      })
+      setSelectedPid(null)
+    } else {
+      setNotice({ tone: 'bad', text: `${pending.label}: ${res.error.message}` })
+    }
+    poll()
+  }
 
   if (!connected) {
     return (
@@ -219,6 +236,7 @@ export default function ActivityMonitor() {
 
   const cpuVal = Math.round(stats?.cpu || 0)
   const memVal = Math.round(stats?.mem_percent || 0)
+  const selected = processes.find(p => p.pid === selectedPid) || null
 
   const graphsById: Record<GraphId, GraphSpec> = {
     cpu: {
@@ -281,22 +299,25 @@ export default function ActivityMonitor() {
   const expandedGraph = expanded ? graphsById[expanded] : null
   const otherGraphs = expanded ? graphs.filter(g => g.id !== expanded) : []
 
+  const tabError = tab === 'processes' ? procError : tab === 'apps' ? appError : netError
+  const tabCount = tab === 'processes' ? processes.length : tab === 'apps' ? apps.length : netConns.length
+
   return (
-    <div className="flex flex-col h-full bg-neutral-950 text-neutral-100 overflow-hidden">
+    <div className="flex flex-col h-full bg-neutral-950 text-neutral-100 overflow-hidden" data-app="activity">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-neutral-800/40">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-semibold tracking-tight">Activity Monitor</h1>
-          <span className="text-[12px] text-neutral-600 font-mono">{stats?.hostname || ''}</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-sm font-semibold tracking-tight shrink-0">Activity Monitor</h1>
+          <span className="text-[12px] text-neutral-500 font-mono truncate">{stats?.hostname || ''}</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           {(stats?.temp ?? 0) > 0 && (
-            <span className="text-[12px] text-neutral-500 font-mono">{Math.round(stats?.temp ?? 0)}{'°'}C</span>
+            <span className="text-[12px] text-neutral-500 font-mono hidden sm:inline">{Math.round(stats?.temp ?? 0)}{'°'}C</span>
           )}
           {(stats?.battery ?? -1) >= 0 && (
-            <span className="text-[12px] text-neutral-500 font-mono">{stats?.battery}%{stats?.charging ? ' +' : ''}</span>
+            <span className="text-[12px] text-neutral-500 font-mono hidden sm:inline">{stats?.battery}%{stats?.charging ? ' +' : ''}</span>
           )}
-          <span className="text-[12px] text-neutral-600 font-mono">up {stats?.uptime || '—'}</span>
+          <span className="text-[12px] text-neutral-500 font-mono">up {stats?.uptime || '—'}</span>
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
         </div>
       </div>
@@ -355,38 +376,210 @@ export default function ActivityMonitor() {
       </div>
 
       {/* Tabs + search */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-1.5 shrink-0">
-        <div className="flex items-center gap-0.5">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-1.5 shrink-0">
+        <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto">
           {TABS.map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               aria-pressed={tab === t}
-              className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/40'}`}
+              className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
               style={tab === t ? { boxShadow: 'inset 0 -2px 0 var(--accent)' } : undefined}
             >
-              {t === 'processes' ? `Processes (${processes.length})` : `Network (${netConns.length})`}
+              {t === 'processes' ? `Processes (${processes.length})`
+                : t === 'apps' ? `Apps (${apps.length})`
+                : `Network (${netConns.length})`}
             </button>
           ))}
         </div>
         <input
           type="text" placeholder="Filter..." value={search}
+          aria-label="Filter rows"
           onChange={e => setSearch(e.target.value)}
-          className="bg-neutral-900 border border-neutral-800/60 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-300 placeholder-neutral-400 w-28 sm:w-40 outline-none focus:border-neutral-600 transition-colors"
+          className="bg-neutral-900 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-200 placeholder-neutral-400 w-24 sm:w-40 shrink-0 outline-none focus:border-neutral-500 transition-colors"
         />
       </div>
 
+      {/* Action bar — only on the Processes tab, where an action is possible */}
+      {tab === 'processes' && (
+        <ActionBar
+          selected={selected}
+          onQuit={() => selected && setPending({
+            kind: 'process', mode: 'quit', proc: selected,
+            label: `${selected.name || 'process'} (${selected.pid})`,
+          })}
+          onForce={() => selected && setPending({
+            kind: 'process', mode: 'force', proc: selected,
+            label: `${selected.name || 'process'} (${selected.pid})`,
+          })}
+        />
+      )}
+
+      {notice && (
+        <div className="px-3 shrink-0">
+          <div
+            role="status"
+            className={`flex items-start gap-2 rounded-md px-3 py-2 text-[12px] mb-1 border ${
+              notice.tone === 'ok'
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                : 'border-red-500/40 bg-red-500/10 text-red-200'
+            }`}
+          >
+            <span className="flex-1">{notice.text}</span>
+            <button onClick={() => setNotice(null)} className="text-neutral-300 hover:text-neutral-100" aria-label="Dismiss">×</button>
+          </div>
+        </div>
+      )}
+
       {/* List */}
       <div className="flex-1 min-h-0 px-3 pb-3">
-        {tab === 'processes' ? (
+        {tabError ? (
+          <FeedError error={tabError} onRetry={poll} />
+        ) : tab === 'processes' ? (
           <ProcessTable
             processes={processes} search={search}
             sortCol={sortCol} setSortCol={setSortCol}
             sortAsc={sortAsc} setSortAsc={setSortAsc}
+            selectedPid={selectedPid} setSelectedPid={setSelectedPid}
+          />
+        ) : tab === 'apps' ? (
+          <AppTable
+            apps={apps} search={search}
+            onClose={(a, mode) => setPending({
+              kind: 'app', mode, appID: a.app_id, label: a.name || a.app_id,
+            })}
           />
         ) : (
           <NetworkTable conns={netConns} search={search} />
         )}
+        {tabError === null && tabCount === 0 && tab !== 'network' && null}
+      </div>
+
+      {pending && (
+        <ConfirmDialog
+          pending={pending}
+          busy={busy}
+          onCancel={() => setPending(null)}
+          onConfirm={runPending}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ── Failure panel ── */
+/**
+ * FeedError is what the user sees INSTEAD of an empty table when a feed fails.
+ *
+ * The distinction it exists to preserve: "your box is running nothing" and
+ * "this app could not read your box" are different sentences, and only one of
+ * them is ever true. The previous version could only say the first.
+ */
+function FeedError({ error, onRetry }: { error: ApiFailure; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-center">
+      <span className="text-red-300 text-sm font-medium">Could not read this from your box</span>
+      <span className="text-neutral-300 text-[12px] max-w-md">{error.message}</span>
+      <span className="text-neutral-400 text-[12px] font-mono">
+        {error.status > 0 ? `HTTP ${error.status}` : 'no response'}{error.code ? ` · ${error.code}` : ''}
+      </span>
+      <button
+        onClick={onRetry}
+        className="mt-1 px-3 py-1.5 text-[12px] rounded-md border border-neutral-600 text-neutral-200 hover:bg-neutral-800 transition-colors"
+      >
+        Try again
+      </button>
+    </div>
+  )
+}
+
+/* ── Action bar ── */
+function ActionBar({ selected, onQuit, onForce }: {
+  selected: ProcessInfo | null
+  onQuit: () => void
+  onForce: () => void
+}) {
+  // Three reasons a row cannot be ended, and each gets its own sentence. A
+  // single disabled button with no explanation reads as a broken feature.
+  const reason = !selected
+    ? 'Select a process to end it'
+    : selected.protected
+      ? selected.protected_reason || 'this process is protected'
+      : typeof selected.start !== 'number'
+        ? 'no start time recorded for this process — refresh the list'
+        : null
+  const canAct = selected !== null && reason === null
+
+  return (
+    <div className="flex items-center gap-2 px-4 pb-2 shrink-0 flex-wrap">
+      <button
+        onClick={onQuit}
+        disabled={!canAct}
+        title={reason || 'Ask the process to exit (SIGTERM), then force it after 5 seconds'}
+        className="px-3 py-1.5 text-[12px] font-medium rounded-md border border-neutral-600 text-neutral-100 enabled:hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        Quit
+      </button>
+      <button
+        onClick={onForce}
+        disabled={!canAct}
+        title={reason || 'End it immediately (SIGKILL). Unsaved work is lost.'}
+        className="px-3 py-1.5 text-[12px] font-medium rounded-md border border-red-500/50 text-red-200 enabled:hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        Force Quit
+      </button>
+      <span className="text-[12px] text-neutral-400 min-w-0 truncate">
+        {reason ?? `${selected?.name} (${selected?.pid})`}
+      </span>
+    </div>
+  )
+}
+
+/* ── Confirm dialog ── */
+function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
+  pending: PendingAction
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const force = pending.mode === 'force'
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'var(--overlay)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={force ? 'Confirm force quit' : 'Confirm quit'}
+    >
+      <div className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
+        <h2 className="text-sm font-semibold text-neutral-100">
+          {force ? 'Force quit' : 'Quit'} {pending.label}?
+        </h2>
+        <p className="mt-2 text-[12px] text-neutral-300 leading-relaxed">
+          {force
+            ? 'It will be ended immediately and will not get a chance to save. Anything unsaved is lost.'
+            : 'It will be asked to exit and given 5 seconds to finish up. If it has not exited by then it will be ended.'}
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-1.5 text-[12px] rounded-md border border-neutral-600 text-neutral-200 enabled:hover:bg-neutral-800 disabled:opacity-40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 ${
+              force
+                ? 'bg-red-500/20 border border-red-500/50 text-red-100 enabled:hover:bg-red-500/30'
+                : 'border border-neutral-500 text-neutral-100 enabled:hover:bg-neutral-800'
+            }`}
+          >
+            {busy ? 'Working…' : force ? 'Force quit' : 'Quit'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -400,9 +593,13 @@ interface ProcessTableProps {
   setSortCol: Dispatch<SetStateAction<ProcessSortKey>>
   sortAsc: boolean
   setSortAsc: Dispatch<SetStateAction<boolean>>
+  selectedPid: number | null
+  setSelectedPid: Dispatch<SetStateAction<number | null>>
 }
 
-function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSortAsc }: ProcessTableProps) {
+function ProcessTable({
+  processes, search, sortCol, setSortCol, sortAsc, setSortAsc, selectedPid, setSelectedPid,
+}: ProcessTableProps) {
   const handleSort = (col: ProcessSortKey) => {
     if (sortCol === col) setSortAsc(!sortAsc)
     else { setSortCol(col); setSortAsc(false) }
@@ -442,7 +639,7 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
     { key: 'pid', label: 'PID', w: '55px', align: '' },
     { key: 'name', label: 'Process Name', w: '1fr', align: '' },
     { key: 'user', label: 'User', w: '70px', align: '' },
-    { key: 'state', label: 'State', w: '65px', align: '' },
+    { key: 'state', label: 'State', w: '95px', align: '' },
     { key: 'cpu', label: 'CPU %', w: '60px', align: 'text-right' },
     { key: 'mem_rss', label: 'Memory', w: '70px', align: 'text-right' },
     { key: 'threads', label: 'Threads', w: '50px', align: 'text-right' },
@@ -450,61 +647,190 @@ function ProcessTable({ processes, search, sortCol, setSortCol, sortAsc, setSort
   const gridTemplate = cols.map(c => c.w).join(' ')
 
   return (
-    <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-800/60 bg-neutral-900/40 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-700 bg-neutral-900/40 overflow-hidden">
       {/* Scroll region — horizontal on narrow screens, vertical always */}
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-[560px]">
+        <div className="min-w-[590px]">
           {/* Header */}
-          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map(c => (
-              <span
+              <button
                 key={c.key}
-                className={`cursor-pointer select-none hover:text-neutral-400 transition-colors ${sortCol === c.key ? 'text-neutral-200' : ''} ${c.align}`}
+                type="button"
+                aria-label={`Sort by ${c.label}`}
+                className={`cursor-pointer select-none hover:text-neutral-200 transition-colors text-left ${sortCol === c.key ? 'text-neutral-100' : ''} ${c.align}`}
                 onClick={() => handleSort(c.key)}
               >
                 {c.label}{sortCol === c.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
-              </span>
+              </button>
             ))}
           </div>
           {/* Rows */}
           {sorted.length === 0 && (
-            <div className="text-xs text-neutral-600 p-6 text-center">No processes found</div>
+            <div className="text-xs text-neutral-400 p-6 text-center">
+              {processes.length === 0
+                ? 'No processes reported. A box always has processes, so this usually means the list has not loaded yet.'
+                : 'No processes match this filter'}
+            </div>
           )}
           {sorted.map(p => (
-            <div key={p.pid} className="grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-              <span className="text-neutral-500 font-mono">{p.pid}</span>
-              <span className="text-neutral-300 truncate" title={p.command}>{p.name}</span>
-              <span className="text-neutral-500 truncate">{p.user}</span>
+            <div
+              key={p.pid}
+              role="row"
+              tabIndex={0}
+              aria-selected={selectedPid === p.pid}
+              onClick={() => setSelectedPid(prev => (prev === p.pid ? null : p.pid))}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPid(prev => (prev === p.pid ? null : p.pid)) } }}
+              className={`grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/40 cursor-pointer transition-colors ${
+                selectedPid === p.pid ? 'bg-neutral-800' : 'hover:bg-neutral-800/40'
+              }`}
+              style={gridStyle(gridTemplate, selectedPid === p.pid)}
+            >
+              <span className="text-neutral-400 font-mono">{p.pid}</span>
+              <span className="text-neutral-200 truncate" title={p.command}>{p.name}</span>
+              <span className="text-neutral-400 truncate">{p.user}</span>
               <StateIndicator state={p.state} />
-              <span className="text-right font-mono text-neutral-400">{Number(p.cpu) < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
-              <span className="text-right text-neutral-500 font-mono">{fmtBytes(p.mem_rss)}</span>
-              <span className="text-right text-neutral-500">{p.threads}</span>
+              <span className="text-right font-mono text-neutral-300">{Number(p.cpu) < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
+              <span className="text-right text-neutral-400 font-mono">{fmtBytes(p.mem_rss)}</span>
+              <span className="text-right text-neutral-400">{p.threads}</span>
             </div>
           ))}
         </div>
       </div>
       {/* Footer */}
-      <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[12px] text-neutral-400 border-t border-neutral-700 shrink-0 bg-neutral-900/80">
         <span>{sorted.length} process{sorted.length !== 1 ? 'es' : ''}</span>
-        <span>Total threads: {sorted.reduce((s, p) => s + (p.threads || 0), 0)}</span>
+        <span className="truncate">Total threads: {sorted.reduce((s, p) => s + (p.threads || 0), 0)}</span>
       </div>
     </div>
   )
 }
 
+function gridStyle(gridTemplateColumns: string, selected: boolean) {
+  return selected
+    ? { gridTemplateColumns, boxShadow: 'inset 2px 0 0 var(--accent)' }
+    : { gridTemplateColumns }
+}
+
+/**
+ * StateIndicator shows the kernel's state letter for a process, expanded, with
+ * the honest caveat on hover.
+ *
+ * It deliberately does NOT say "Not Responding". A process state is not an
+ * event-loop measurement: a program pinning a core is running and responsive,
+ * and one at 0% blocked on a lock is neither. The state most often mistaken
+ * for frozen is D — uninterruptible sleep — which is usually a stalled disk or
+ * a wedged network mount rather than an application fault at all, and is also
+ * the one state where Force Quit genuinely cannot work, because the signal is
+ * not delivered until the I/O returns. So D gets a warning colour and an
+ * explanation, not a verdict.
+ */
 function StateIndicator({ state }: { state?: string }) {
-  const colors: Record<string, string> = {
-    running: 'bg-emerald-500',
-    sleeping: 'bg-blue-500/40',
-    'disk sleep': 'bg-amber-500',
-    zombie: 'bg-red-500',
-    stopped: 'bg-neutral-500',
-    idle: 'bg-neutral-700',
+  const meta: Record<string, { dot: string; note: string }> = {
+    running: { dot: 'bg-emerald-500', note: 'Running on a CPU' },
+    sleeping: { dot: 'bg-blue-400', note: 'Waiting on an event — the normal state for an idle program' },
+    'disk sleep': { dot: 'bg-amber-400', note: 'Uninterruptible sleep: blocked in the kernel, usually waiting on storage. Signals are not delivered until it returns, so it cannot be force-quit.' },
+    zombie: { dot: 'bg-red-500', note: 'Already exited, waiting for its parent to collect it. It cannot be killed again.' },
+    stopped: { dot: 'bg-neutral-400', note: 'Suspended by a signal or a debugger — not hung' },
+    idle: { dot: 'bg-neutral-500', note: 'Idle kernel task' },
   }
+  const m = meta[state ?? ''] || { dot: 'bg-neutral-500', note: `Kernel state ${state ?? '?'}` }
   return (
-    <span className="flex items-center gap-1">
-      <span className={`inline-block w-1.5 h-1.5 rounded-full ${colors[state ?? ''] || 'bg-neutral-600'}`} />
+    <span className="flex items-center gap-1 min-w-0" title={m.note}>
+      <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${m.dot}`} />
       <span className="text-[12px] truncate">{state}</span>
+    </span>
+  )
+}
+
+/* ── App Table ── */
+/**
+ * AppTable is the "not responding" surface, and the reason it is a separate
+ * tab from Processes: only SOME of what this box runs can be asked whether it
+ * is servicing its event loop, and the answer must carry how it was reached.
+ */
+function AppTable({ apps, search, onClose }: {
+  apps: AppStatus[]
+  search: string
+  onClose: (a: AppStatus, mode: SignalMode) => void
+}) {
+  const filtered = apps.filter(a => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return a.app_id.toLowerCase().includes(q) || (a.name || '').toLowerCase().includes(q) || a.kind.includes(q)
+  })
+  const cols = ['App', 'Kind', 'Responding', 'Memory', '']
+  const gridTemplate = '1fr 90px 150px 80px 130px'
+
+  return (
+    <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-700 bg-neutral-900/40 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-auto">
+        <div className="min-w-[560px]">
+          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900" style={{ gridTemplateColumns: gridTemplate }}>
+            {cols.map((c, i) => <span key={i}>{c}</span>)}
+          </div>
+          {filtered.length === 0 && (
+            <div className="text-xs text-neutral-400 p-6 text-center">
+              No apps are running on this box right now.
+            </div>
+          )}
+          {filtered.map(a => (
+            <div key={a.app_id} className="grid gap-2 items-center px-3 py-1.5 text-[12px] border-b border-neutral-800/40" style={{ gridTemplateColumns: gridTemplate }}>
+              <span className="text-neutral-200 truncate">{a.name || a.app_id}</span>
+              <span className="text-neutral-400">{a.kind}</span>
+              <RespBadge r={a.responding} />
+              <span className="text-right text-neutral-400 font-mono">{a.mem_rss ? fmtBytes(a.mem_rss) : '—'}</span>
+              <span className="flex justify-end gap-1.5">
+                {a.closable && (
+                  <>
+                    <button
+                      onClick={() => onClose(a, 'quit')}
+                      className="px-2 py-1 text-[12px] rounded border border-neutral-600 text-neutral-100 hover:bg-neutral-800 transition-colors"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => onClose(a, 'force')}
+                      className="px-2 py-1 text-[12px] rounded border border-red-500/50 text-red-200 hover:bg-red-500/15 transition-colors"
+                    >
+                      Force
+                    </button>
+                  </>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="px-3 py-1.5 text-[12px] text-neutral-400 border-t border-neutral-700 shrink-0 bg-neutral-900/80">
+        Built-in windows are not listed: they run inside this browser tab, so the box cannot probe them.
+      </div>
+    </div>
+  )
+}
+
+/**
+ * RespBadge renders a responsiveness answer WITHOUT flattening it.
+ *
+ * Four states, four appearances, and the two that are not measurements say so
+ * in plain words rather than borrowing the look of the two that are. A badge
+ * that guesses is worse than no badge: it is a confident claim about the one
+ * thing the user came here to find out.
+ */
+function RespBadge({ r }: { r: Responsiveness }) {
+  const look: Record<string, { cls: string; text: string }> = {
+    responding: { cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200', text: 'Responding' },
+    not_responding: { cls: 'border-red-500/50 bg-red-500/10 text-red-200', text: 'Not responding' },
+    unknown: { cls: 'border-neutral-600 text-neutral-300', text: 'Cannot tell' },
+    not_applicable: { cls: 'border-neutral-700 text-neutral-400', text: 'Not applicable' },
+  }
+  const l = look[r.status] || look.unknown
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 border text-[12px] w-fit ${l.cls}`}
+      title={r.detail ? `${r.detail} (method: ${r.method})` : `method: ${r.method}`}
+    >
+      {l.text}
     </span>
   )
 }
@@ -524,36 +850,41 @@ function NetworkTable({ conns, search }: { conns: NetConn[], search: string }) {
     { key: 'local', label: 'Local Address', w: '1fr' },
     { key: 'remote', label: 'Remote Address', w: '1fr' },
     { key: 'state', label: 'State', w: '90px' },
+    { key: 'pid', label: 'PID', w: '60px' },
     { key: 'process', label: 'Process', w: '1fr' },
   ]
   const gridTemplate = cols.map(c => c.w).join(' ')
 
   return (
-    <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-800/60 bg-neutral-900/40 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-700 bg-neutral-900/40 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-[560px]">
-          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-600 border-b border-neutral-800/40 sticky top-0 z-10 bg-neutral-900/95 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+        <div className="min-w-[620px]">
+          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map(c => <span key={c.key}>{c.label}</span>)}
           </div>
           {filtered.length === 0 && (
-            <div className="text-xs text-neutral-600 p-6 text-center">No connections</div>
+            <div className="text-xs text-neutral-400 p-6 text-center">No connections</div>
           )}
           {filtered.map((c, i) => (
-            <div key={i} className="grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/20 hover:bg-neutral-800/30 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
-              <span className="text-neutral-500 font-mono uppercase">{c.proto}</span>
-              <span className="text-neutral-300 font-mono truncate">{c.local_addr}:{c.local_port}</span>
-              <span className="text-neutral-500 font-mono truncate">
+            <div key={i} className="grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/40 hover:bg-neutral-800/40 transition-colors" style={{ gridTemplateColumns: gridTemplate }}>
+              <span className="text-neutral-400 font-mono uppercase">{c.proto}</span>
+              <span className="text-neutral-200 font-mono truncate">{c.local_addr}:{c.local_port}</span>
+              <span className="text-neutral-400 font-mono truncate">
                 {c.remote_addr === '0.0.0.0' && c.remote_port === 0 ? '*' : `${c.remote_addr}:${c.remote_port}`}
               </span>
-              <span className={`text-[12px] ${c.state === 'ESTABLISHED' ? 'text-emerald-400' : c.state === 'LISTEN' ? 'text-blue-400' : c.state === 'TIME_WAIT' ? 'text-amber-400' : 'text-neutral-500'}`}>
+              <span className={`text-[12px] ${c.state === 'ESTABLISHED' ? 'text-emerald-300' : c.state === 'LISTEN' ? 'text-blue-300' : c.state === 'TIME_WAIT' ? 'text-amber-300' : 'text-neutral-400'}`}>
                 {c.state}
               </span>
-              <span className="text-neutral-500 truncate">{c.process || '—'}</span>
+              {/* A socket with no owning process shows —, not a stand-in
+                  number. This column used to carry the socket INODE, which on
+                  a busy box looks exactly like a plausible pid. */}
+              <span className="text-neutral-400 font-mono">{c.pid ? c.pid : '—'}</span>
+              <span className="text-neutral-400 truncate">{c.process || '—'}</span>
             </div>
           ))}
         </div>
       </div>
-      <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-600 border-t border-neutral-800/40 shrink-0 bg-neutral-900/80">
+      <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-400 border-t border-neutral-700 shrink-0 bg-neutral-900/80">
         <span>{filtered.length} connection{filtered.length !== 1 ? 's' : ''}</span>
         <span>
           {filtered.filter(c => c.state === 'LISTEN').length} listening,{' '}
@@ -584,19 +915,19 @@ function GraphCard({ label, value, details, data, color, colorFill, borderColor,
   return (
     <div
       onClick={onClick}
-      className={`flex flex-col rounded-xl border ${borderColor} bg-gradient-to-b ${bgGlow} to-transparent overflow-hidden cursor-pointer transition-all hover:brightness-110 h-full ${expanded ? '' : ''}`}
+      className={`flex flex-col rounded-xl border ${borderColor} bg-gradient-to-b ${bgGlow} to-transparent overflow-hidden cursor-pointer transition-all hover:brightness-110 h-full`}
     >
       <div className={`flex ${expanded ? 'gap-6' : 'flex-col'} h-full`}>
         {/* Info side */}
         <div className={`flex flex-col ${expanded ? 'w-44 shrink-0 p-3 justify-center' : 'px-3 pt-2.5 pb-1 shrink-0'}`}>
-          <span className="text-[12px] text-neutral-500 uppercase tracking-widest font-medium">{label}</span>
+          <span className="text-[12px] text-neutral-400 uppercase tracking-widest font-medium">{label}</span>
           <span className={`font-semibold text-neutral-100 leading-tight ${expanded ? 'text-2xl mt-1' : compact ? 'text-base' : 'text-xl'}`}>{value}</span>
           {expanded && details && (
             <div className="mt-3 space-y-1">
               {details.map(d => (
                 <div key={d.label} className="flex justify-between text-[12px]">
-                  <span className="text-neutral-500">{d.label}</span>
-                  <span className="text-neutral-300 font-mono">{d.value}</span>
+                  <span className="text-neutral-400">{d.label}</span>
+                  <span className="text-neutral-200 font-mono">{d.value}</span>
                 </div>
               ))}
             </div>
