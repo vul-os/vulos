@@ -55,22 +55,34 @@
    the recovery-phrase screen — replaces the step body wholesale and imports
    this sheet itself. Scoped to the wizard shell alone it fell back to the raw
    --status-* values and measured 3.19:1 on light. */
+   These are now ALIASES of the OS status-text tokens rather than a second
+   palette. They used to hold their own hexes per theme — a duplicate that was
+   correct when written, because no OS token existed that was safe as text.
+   index.css now derives --status-*-text against the hardest surface the OS
+   actually composites (a 24% tint of the tone's own hue over --bg-hover), so
+   the OS values are strictly stronger here than the bespoke ones were:
+
+     tone     theme   was    now
+     success  dark    9.99   8.66
+     warning  dark   10.43   9.22
+     danger   dark    6.29   8.87
+     success  light   6.25   7.64
+     warning  light   6.00   7.69
+     danger   light   5.67   7.99
+
+   measured against this sheet's own panels (#171a21 / #eef0f4). Five of six
+   gain headroom; dark success and warning give some back and stay far above
+   AA. The point is not the ratios — it is that a second palette drifts the
+   first time either is edited, and only one of the two has a gate watching it.
+
+   The three theme blocks are gone with the hexes: --status-*-text is already
+   defined for the explicit-dark, explicit-light and System-Light-before-stamp
+   cases in index.css, which is the same three-state problem this file's own
+   comment above describes. */
 :root {
-  --ok-strong: #4ade80;     /* 10.9:1 on #171a21 */
-  --warn-strong: #fbbf24;   /* 10.4:1 on #171a21 */
-  --danger-strong: #f87171; /*  6.4:1 on #171a21 */
-}
-[data-theme="light"] {
-  --ok-strong: #166534;     /* 6.0:1 on #eef0f4 */
-  --warn-strong: #854d0e;   /* 5.8:1 on #eef0f4 */
-  --danger-strong: #b91c1c; /* 5.6:1 on #eef0f4 */
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) {
-    --ok-strong: #166534;
-    --warn-strong: #854d0e;
-    --danger-strong: #b91c1c;
-  }
+  --ok-strong: var(--status-success-text);
+  --warn-strong: var(--status-warning-text);
+  --danger-strong: var(--status-danger-text);
 }
 .wz-ok     { color: var(--ok-strong); }
 .wz-warn   { color: var(--warn-strong); }
