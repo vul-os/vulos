@@ -189,6 +189,49 @@ permission** grant (requested on first use, never at install).
 *Reverses if:* owning the in-call UI / dialer is ever justified — but only with a
 deliberate plan for emergency calls.
 
+## MOB-12 — edge-to-edge with native-measured insets; immersive mode NOT taken (2026-08-15)
+
+**Decided.** The APK draws edge to edge and pushes the *measured* window insets into the
+web shell. It does **not** hide the system bars.
+
+**The bug this fixes.** `targetSdk = 35`, so Android 15 draws this activity edge to edge
+whether it asks or not — the WebView fills the display and the status/navigation bars are
+painted over it. Meanwhile `themes.xml` set `android:statusBarColor` and
+`android:navigationBarColor`, both **deprecated no-ops on API 35**: they read as "the bars
+are handled" while doing nothing.
+
+The shell already pads itself out of unsafe areas — `.safe-pt` on its status bar, `.safe-pb`
+on its dock, both reading `--safe-top`/`--safe-bottom`, defined in `src/index.css` as
+`env(safe-area-inset-*)`. ⚠️ **The trap: `env(safe-area-inset-*)` in a WebView reports only
+the DISPLAY CUTOUT.** It never reports the status bar or the navigation bar. On a phone
+with no notch it is 0 at the top, and it is 0 at the *bottom* on every phone. So the dock's
+touch targets sit under the navigation bar and no CSS-only fix can help, because the
+information is not in CSS.
+
+`MainActivity.applyEdgeToEdgeInsets()` therefore reads `WindowInsetsCompat`
+(`systemBars() | displayCutout()`), divides by display density, and writes the result into
+the *same* custom properties the stylesheet already uses. Native measures, web consumes; no
+second inset system, and the `env()` value stays as the fallback for the PWA tier.
+Re-applied on `onPageFinished` — inline styles do not survive a document swap and the inset
+listener does not fire again on navigation.
+
+**Immersive mode is NOT taken, deliberately.** `WindowInsetsControllerCompat.hide(systemBars())`
+with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` would hide the bars and make a downward swipe
+reveal them *transiently* instead of opening the notification shade. It is one call. It is
+not taken because TEL-01 ships this APK as an **enabled launcher**: hiding the status bar
+hides the user's own clock, battery and notification icons on their phone's home screen.
+Taking the launcher role and then removing the phone's status bar is a bigger imposition
+than the problem it solves.
+
+*Reverses if:* a kiosk/single-purpose profile appears (signage, a wall panel), where there
+is no "user's own phone" to impose on. That is the case immersive is actually for.
+
+⚠️ **Not verified on hardware.** There is no Android SDK in the build environment, so this
+change is parse-checked only — not compiled, not run on a device or emulator. The density
+division and the `Locale.ROOT` number formatting are exactly the two things that look right
+in review and fail on a real device, so verify on hardware before relying on it. See
+`roadmap/MOBILE-SHELL.md` §6.
+
 ## Ruled out
 
 Do not revisit without new information.

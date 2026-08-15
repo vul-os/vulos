@@ -4,9 +4,35 @@
          shell-colored drawable so a cold start shows no white flash (MOB-05). -->
     <style name="Theme.Vulos" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@drawable/window_background</item>
-        <item name="android:statusBarColor">@color/vulos_bg</item>
-        <item name="android:navigationBarColor">@color/vulos_bg</item>
+
+        <!-- MOB-12. This app targets SDK 35, where `android:statusBarColor` and
+             `android:navigationBarColor` are DEPRECATED AND IGNORED: Android 15
+             draws the activity edge to edge and paints transparent system bars
+             over it regardless of what is set here. Those two attributes used to
+             be set to @color/vulos_bg, which read as "the bars are handled" while
+             doing nothing at all on the platform version we ship against.
+
+             They are now declared transparent, which is (a) what actually happens
+             on API 35 and (b) what makes API 26..34 behave the same way, since
+             MainActivity calls WindowCompat.setDecorFitsSystemWindows(false)
+             there too. The shell paints its own background under the bars, and
+             MainActivity pushes the measured insets into --safe-top/--safe-bottom
+             so the shell's status bar and dock pad themselves clear of them.
+             `env(safe-area-inset-*)` alone cannot do this: in a WebView it only
+             ever reports the display cutout, never the system bars. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- Light-on-dark bar icons. The shell is dark behind the bars, so the
+             system's clock/battery glyphs must stay light. -->
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+
+        <!-- NOT set here: android:windowLayoutInDisplayCutoutMode=shortEdges,
+             which would let the shell paint into the notch area instead of being
+             letterboxed beside it in landscape. It is API 28+ and minSdk is 26,
+             so it needs a values-v28/ override — and there is no Android SDK in
+             this environment to compile or lint that against. Left undone rather
+             than shipped unverified. See roadmap/MOBILE-SHELL.md §6. -->
     </style>
 </resources>

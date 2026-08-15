@@ -17,6 +17,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.ServiceWorkerClientCompat
 import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewAssetLoader
@@ -95,6 +98,85 @@ class MainActivity : AppCompatActivity() {
         requestPerm.launch(next.first)
     }
 
+    // ── MOB-12: edge-to-edge, and getting the insets INTO the web shell ─────────
+    //
+    // THE BUG. `targetSdk = 35`, so on Android 15 the system draws this activity
+    // edge to edge whether or not it asks: the WebView fills the display and the
+    // status bar and navigation bar are painted OVER it. At the same time,
+    // `themes.xml` still sets `android:statusBarColor` and
+    // `android:navigationBarColor`, both of which are DEPRECATED NO-OPS on API 35
+    // — they look like the bars are being handled, and they are not.
+    //
+    // The shell's own chrome already pads itself out of the unsafe areas: the
+    // status bar carries `.safe-pt` and the dock `.safe-pb`, which read
+    // `--safe-top` / `--safe-bottom`, which are defined in src/index.css as
+    // `env(safe-area-inset-*)`.
+    //
+    // The trap is that **`env(safe-area-inset-*)` in a WebView only ever reports
+    // the DISPLAY CUTOUT** — the notch. It does not report the status bar or the
+    // navigation bar. So on a phone with no notch (or any phone at all, for the
+    // bottom), those insets resolve to 0, the shell believes it has the whole
+    // screen, and the dock's targets sit underneath the navigation bar while the
+    // status bar covers the app title. Every CSS-only fix fails here for the same
+    // reason: the information is not in CSS.
+    //
+    // So native measures and the web consumes: the real inset is read from
+    // WindowInsetsCompat and written into the SAME two custom properties the
+    // stylesheet already uses. No new contract, no second inset system — the CSS
+    // `env()` value stays as the fallback for anything that is not this APK.
+    //
+    // Insets are in physical pixels and CSS wants CSS pixels, so everything is
+    // divided by the display density. Getting that wrong is invisible on a 1x
+    // emulator and three times too large on a real phone.
+    //
+    // The listener returns the insets unconsumed: the WebView is the whole window
+    // and nothing else needs them, and consuming them would break any future child
+    // view that does.
+    private fun applyEdgeToEdgeInsets() {
+        // Explicit, even though API 35 does it anyway — this is what makes the
+        // behaviour the same on API 26..34, where the system does not.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            val d = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+            pushSafeAreaToShell(
+                top = bars.top / d, bottom = bars.bottom / d,
+                left = bars.left / d, right = bars.right / d,
+            )
+            insets
+        }
+    }
+
+    /** Last inset values pushed, so a page (re)load can be re-primed without waiting
+     *  for the next inset change — which may never come. */
+    private var lastSafeArea: String? = null
+
+    private fun pushSafeAreaToShell(top: Float, bottom: Float, left: Float, right: Float) {
+        // Values are numbers derived from the framework, never user input, and are
+        // formatted with an explicit ROOT locale: in a comma-decimal locale
+        // ("34,0px") this would emit invalid CSS that fails silently, leaving the
+        // dock under the navigation bar on exactly the devices we cannot test on.
+        val js = String.format(
+            java.util.Locale.ROOT,
+            "(function(r){r.style.setProperty('--safe-top','%.2fpx');" +
+                "r.style.setProperty('--safe-bottom','%.2fpx');" +
+                "r.style.setProperty('--safe-left','%.2fpx');" +
+                "r.style.setProperty('--safe-right','%.2fpx');})(document.documentElement)",
+            top, bottom, left, right,
+        )
+        lastSafeArea = js
+        webView.evaluateJavascript(js, null)
+    }
+
+    /** Re-apply the cached insets after a navigation — inline styles do not survive
+     *  a document swap, and the inset listener does not fire again on its own. */
+    fun reapplySafeArea() {
+        lastSafeArea?.let { webView.evaluateJavascript(it, null) }
+    }
+
     // ── Shared startActivityForResult plumbing for the bridges ───────────────────
     // Camera capture, QR scan, SAF open/save and the launcher-role request all need
     // an Activity result. A single launcher serves them all; requests are SERIALIZED
@@ -168,6 +250,7 @@ class MainActivity : AppCompatActivity() {
             webChromeClient = VulosChromeClient()
         }
         setContentView(webView)
+        applyEdgeToEdgeInsets()
 
         // Expose the telephony bridge ONLY to trusted Vulos origins (framework-level
         // origin restriction — remote/untrusted content can't reach it). The shell
@@ -281,6 +364,16 @@ class MainActivity : AppCompatActivity() {
 
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
             loader.shouldInterceptRequest(request.url)
+
+        // MOB-12: the safe-area values are inline styles on <html>, so they do not
+        // survive a document swap. The inset listener fires on inset CHANGES, and a
+        // plain navigation is not one — without this the dock sits under the
+        // navigation bar from the second page load onward, which is worse than
+        // never working because it looks like an intermittent glitch.
+        override fun onPageFinished(view: WebView, url: String) {
+            super.onPageFinished(view, url)
+            reapplySafeArea()
+        }
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val url = request.url
