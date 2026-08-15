@@ -151,11 +151,15 @@
      hover:bg-[color-mix(--status-danger 24%,transparent)]` paints in Packages
      and Drivers. Contrast against a tint of your own hue degrades as the tint
      deepens, so bounding the deepest one bounds every lighter chip and every
-     plain surface. src/core/accentContrast.ts owns the enumeration
-     (STATUS_TEXT_SURFACES) and core/accentContrast.status.test.ts re-derives
-     these six values from it, so a hand-edit here fails a unit test; e2e/
-     status-surfaces.e2e.ts then measures the REAL composited pixels, which is
-     the only check that can see an `opacity` in the chain.
+     plain surface.
+
+     Nothing here is hand-picked. core/accentContrast.status.test.ts re-derives
+     all six by reading the --bg-* tokens out of THIS FILE, scanning src for
+     the tint percentages status text is actually drawn on, and running
+     accentContrast.ts's deriveTextVariant() — asserted for equality, so this
+     block is a ceiling as well as a floor and a hand-edit in either direction
+     fails. e2e/status-surfaces.e2e.ts then measures the REAL composited
+     pixels, which is the only check that can see an `opacity` in the chain.
 
      Dark, measured worst-case → canvas:
        success  #35c081 4.35 → #4bcd92 4.78  (9.90 on --bg-base)
