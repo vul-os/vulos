@@ -27,6 +27,8 @@
  * while checking nothing. A tint over an opaque base is a plain alpha blend, so
  * it is computed directly.
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   AA_TARGET, AA_TEXT, ACCENT_TINT_RANGE,
@@ -120,6 +122,46 @@ describe('a filled accent surface carries white text', () => {
     expect(raw).toBeCloseTo(3.68, 1)
     const fixed = contrast(parseColor(accentSolid('#3b82f6', '#ffffff', AA_TARGET)!)!, parseColor('#ffffff')!)
     expect(fixed).toBeGreaterThanOrEqual(AA_TEXT)
+  })
+})
+
+/**
+ * The numeric tests above prove `accentSolid()` produces a fill that white can
+ * be read on. They say nothing about whether the stylesheet actually USES it —
+ * and that gap is exactly where the defect lived: `.accent-bg` painted the raw
+ * accent for months while `.btn-primary` two hundred lines away had already
+ * been fixed and documented.
+ *
+ * So this reads the shipped CSS. It is a weak check on its own (it inspects a
+ * token, not a pixel) and a strong one in combination: the pair "the derivation
+ * is correct" + "the utility uses the derivation" is what makes the composited
+ * e2e contrast gates able to stay green for the right reason.
+ */
+describe('the accent-fill utilities use the derived fill, not the raw accent', () => {
+  // Resolved from the vitest root (frontend/), not from import.meta.url —
+  // under Vite that is an http: URL and readFileSync rejects it.
+  const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+
+  // Utilities whose callers put --accent-contrast (white) on top of them.
+  const FILL_UTILITIES = ['.accent-bg ', '.hover-accent-bg:hover ']
+
+  for (const selector of FILL_UTILITIES) {
+    it(`${selector.trim()} paints --accent-solid`, () => {
+      const line = css.split('\n').find((l) => l.startsWith(selector))
+      expect(line, `${selector} is missing from index.css`).toBeTruthy()
+      expect(line).toContain('var(--accent-solid')
+      // The raw accent may only appear as the fallback inside that var().
+      expect(line!.replace(/var\(--accent-solid,\s*var\(--accent\)\)/g, ''))
+        .not.toContain('var(--accent)')
+    })
+  }
+
+  it('leaves the raw accent in place where nothing is read on top of it', () => {
+    // Borders, rings and dots carry no text, so they keep the user's exact
+    // colour. Deriving those too would drift the accent for no legibility gain.
+    const border = css.split('\n').find((l) => l.startsWith('.accent-border '))
+    expect(border).toContain('var(--accent)')
+    expect(border).not.toContain('--accent-solid')
   })
 })
 
