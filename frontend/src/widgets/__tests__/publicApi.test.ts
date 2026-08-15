@@ -114,8 +114,16 @@ describe('the public entry point', () => {
     }
   })
 
-  it('points a developer at the documentation', () => {
-    expect(entry).toMatch(/docs\/WIDGETS\.md/)
+  it('points a developer at the documentation, and it exists', async () => {
+    expect(entry).toMatch(/WIDGETS\.md/)
+    // The doc is the deliverable, not the pointer. A guide that was deleted or
+    // never written would leave this reference dangling and a third-party
+    // developer with nothing.
+    const doc = readFileSync('src/widgets/WIDGETS.md', 'utf8')
+    expect(doc.length).toBeGreaterThan(4000)
+    for (const heading of ['The manifest', 'Permissions', 'What a widget cannot do', 'Network']) {
+      expect(doc, `WIDGETS.md is missing the "${heading}" section`).toContain(heading)
+    }
   })
 })
 

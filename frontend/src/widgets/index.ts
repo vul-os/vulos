@@ -12,7 +12,8 @@
 // actually sufficient to build a widget with: if it weren't, a builtin would have
 // had to cheat, and the test would say so.
 //
-// Developer documentation: docs/WIDGETS.md
+// Developer documentation: src/widgets/WIDGETS.md (kept beside the API it
+// documents, so the two are edited together)
 // Design rationale + security model: roadmap/WIDGETS.md
 
 export { defineWidget, defineSandboxedWidget, registerWidget } from './registry'
