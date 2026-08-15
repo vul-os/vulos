@@ -32,13 +32,20 @@ have published releases (`diwan v0.1.0`, `kerf v0.1.9`, `wede v0.1.3`).
 ## Policy decisions
 
 **1 — Filter Flathub. Do not mirror it.**
-Proprietary apps on Flathub are packaged as **extra-data**: the Flathub package is a
-thin manifest that downloads the vendor's real binary at install time. Chrome,
-Spotify, Discord, Slack, Zoom, Steam, Obsidian and Vivaldi all work this way.
-Mirroring them into a Vulos-run repo therefore does not carry the payload — the
-client still contacts the vendor's servers and the vendor's terms still govern.
-Vulos curates **which apps appear**, not where the bytes come from, and Flathub's own
-signing stays intact.
+Some proprietary apps on Flathub are packaged as **extra-data**: the package is a thin
+manifest that downloads the vendor's real binary at install time, so mirroring it into
+a Vulos-run repo carries no payload — the client still contacts the vendor's servers
+and the vendor's terms still govern. Vulos curates **which apps appear**, not where the
+bytes come from, and Flathub's own signing stays intact.
+
+**Corrected 2026-08-15, by reading the manifests rather than assuming.** Of the apps
+suspected of this, only **Chrome** is genuinely extra-data (`com.google.Chrome.yaml`
+lines 98, 112). **Vivaldi, Brave and Bitwarden are not** — their manifests use
+`type: file` against the vendor's download host per architecture, consumed at Flathub
+*build* time, so Flathub does hold and sign those payloads. Spotify, Discord, Slack,
+Zoom, Steam and Obsidian are **unverified either way** and must not be flagged as
+extra-data until someone reads their manifests. The distinction matters: it decides
+whether an app is redistributable and whether a mirror would ever work for it.
 
 **2 — `verified` is a first-class field.**
 Roughly a third of this catalogue has no verified publisher. Flathub exposes the flag
@@ -126,7 +133,7 @@ verification unconfirmed.
 
 **Browsers (6)**
 `org.mozilla.firefox` ✓ · `com.google.Chrome` + P X · `org.chromium.Chromium` + ·
-`com.brave.Browser` + · `io.gitlab.librewolf-community` + · `com.vivaldi.Vivaldi` + P X
+`com.brave.Browser` + · `io.gitlab.librewolf-community` + · `com.vivaldi.Vivaldi` + P
 
 **Communication (9)**
 `org.signal.Signal` + · `org.telegram.desktop` + · `im.riot.Riot` ✓ ·
@@ -188,9 +195,9 @@ verification unconfirmed.
 `org.qbittorrent.qBittorrent` ✓ · `de.haeckerfelix.Fragments` + ·
 `com.bitwarden.desktop` + · `org.keepassxc.KeePassXC` ✓ ·
 `org.gnome.World.PikaBackup` + · `com.github.qarmin.czkawka` + ·
-`io.github.peazip.PeaZip` + · `org.cryptomator.Crypt` + ·
-`io.gitlab.adhami3310.Impression` + · `org.raspberrypi.rpi-imager` + ·
-`fr.romainvigier.MetadataCleaner` + · `com.github.tenderowl.frog` +
+`io.github.peazip.PeaZip` + · `org.cryptomator.Cryptomator` + ·
+`io.gitlab.adhami3310.Impression` + · 
+`io.gitlab.metadatacleaner.metadatacleaner` + · `com.github.tenderowl.frog` +
 
 **Networking & remote (6)**
 `org.remmina.Remmina` + · `com.rustdesk.RustDesk` + ·
