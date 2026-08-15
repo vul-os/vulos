@@ -54,7 +54,8 @@
    Declared at :root rather than scoped to .wz-root because MasterKeyReveal —
    the recovery-phrase screen — replaces the step body wholesale and imports
    this sheet itself. Scoped to the wizard shell alone it fell back to the raw
-   --status-* values and measured 3.19:1 on light. */
+   --status-* values and measured 3.19:1 on light.
+
    These are now ALIASES of the OS status-text tokens rather than a second
    palette. They used to hold their own hexes per theme — a duplicate that was
    correct when written, because no OS token existed that was safe as text.
