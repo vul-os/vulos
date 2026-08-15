@@ -109,12 +109,30 @@ func (realBackend) pull(ctx context.Context, cfg cluster.S3Config, passphrase st
 	progress("bootstrap", 20)
 
 	// noopInstall is a no-op DBInstaller: on the join path we do not yet have a
-	// local SQLite DB to restore into.  The live services/sync engine will apply
-	// the snapshot and changesets to the real DB once the server boots.
-	// Bootstrap is called here to (a) validate that the snapshot + changesets are
-	// fully readable with the derived key, (b) drive progress reporting so the
-	// setup UI advances, and (c) honour the SYNC-03 contract that Bootstrap is
-	// wired into the join flow.
+	// local SQLite DB to restore into.  Bootstrap is called here to (a) validate
+	// that the snapshot + changesets are fully readable with the derived key,
+	// (b) drive progress reporting so the setup UI advances, and (c) honour the
+	// SYNC-03 contract that Bootstrap is wired into the join flow.
+	//
+	// CORRECTED 2026-08-15 (sync audit).  This comment used to end "the live
+	// services/sync engine will apply the snapshot and changesets to the real DB
+	// once the server boots", and that is NOT TRUE.  Nothing applies them, at
+	// boot or ever.  The only two call sites of sync.Restorer are an admin HTTP
+	// endpoint (cmd/server/routes_backup.go) and a CLI subcommand
+	// (cmd/server/cmd_backup.go); neither is on the boot path, and the syncer
+	// started by sync.NewFromCluster is a FILE watcher over ~/.vulos/data, which
+	// does not touch the SQLite databases this snapshot contains.
+	//
+	// So the honest description of this function is: it downloads the cluster
+	// snapshot, proves it decrypts, and throws it away.  A user who joins a new
+	// box watches the wizard reach 100% "complete" and gets an empty machine —
+	// the progress bar is measuring a readability check.  The deferral named a
+	// component that would do the work later, which is exactly the shape of
+	// claim this project has had to retract repeatedly; the work is specified in
+	// roadmap/SYNC-INVENTORY.md rather than asserted here.
+	//
+	// Pinned by sqlcrdt.TestJoinPullInstallsNothing, which fails when this
+	// changes so the roadmap is updated in the same commit.
 	noopInstall := func(_ context.Context, _ []byte, _ int64) error {
 		log.Printf("[joinsync] snapshot readable (install deferred to services/sync engine)")
 		return nil
