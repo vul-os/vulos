@@ -3,17 +3,26 @@
 
 import { type ReactNode, type CSSProperties } from 'react'
 import { initials, avatarHue } from './phoneUtils'
-import { TABS, type TabId } from './phoneLayout'
+import { TABS, ACCENT_FILL, type TabId } from './phoneLayout'
 import type { Line, LineId } from './usePhoneData'
 
 // ─── avatar ────────────────────────────────────────────────────────────────
 
 export function Avatar({ name, number, size = 40, photo }: { name: string; number?: string; size?: number; photo?: string }) {
   const hue = avatarHue(name || number || '?')
+  // A SOLID fill, not a translucent tint, and a fixed lightness low enough that
+  // white initials clear AA on it.
+  //
+  // The first version was `oklch(0.72 …)` initials on a 22%-alpha tint of the
+  // same hue. In dark that composited over near-black and read fine; in light it
+  // composited over near-white and measured 1.68-1.94:1 — invisible. That is the
+  // exact shape of a theme-blind defect: neither colour is wrong on its own, the
+  // PAIR is, and only one of the two themes ever shows it. An opaque chip owns
+  // both halves of its own pair and cannot be broken by the surface beneath it.
   const style: CSSProperties = {
     width: size, height: size,
-    background: `oklch(0.62 0.13 ${hue} / 0.22)`,
-    color: `oklch(0.72 0.15 ${hue})`,
+    background: `oklch(0.45 0.13 ${hue})`,
+    color: '#fff',
     fontSize: Math.round(size * 0.36),
   }
   if (photo) {
@@ -83,16 +92,29 @@ export function EmptyNote({ glyph, title, body, action }: { glyph: string; title
 export function NoLineState({ serviceError, onRetry, children }: { serviceError: string; onRetry: () => void; children?: ReactNode }) {
   if (serviceError) {
     return (
+      // The raw server message is a SEPARATE line, not a clause spliced into a
+      // sentence. Concatenated, a one-word error body rendered as
+      // "boom This is a problem with the box" — a server's vocabulary glued to
+      // ours, with no punctuation between them. The prose is ours and fixed;
+      // the detail is theirs and quoted.
       <EmptyNote
         glyph="⚠"
         title="Telephony isn’t answering"
-        body={`${serviceError} This is a problem with the box, not a missing modem — your calls and messages are not lost.`}
+        body="This is a problem with the box, not a missing modem — your calls and messages are not lost."
         action={
-          <button type="button" onClick={onRetry}
-            className="px-3.5 py-2 rounded-lg text-[13px] font-medium focus-primary transition-colors"
-            style={{ background: 'var(--accent)', color: 'var(--accent-contrast, #fff)' }}>
-            Try again
-          </button>
+          <div className="flex flex-col items-center gap-3">
+            <button type="button" onClick={onRetry}
+              className="px-3.5 py-2 rounded-lg text-[13px] font-medium focus-primary transition-colors"
+              style={{ background: ACCENT_FILL, color: 'var(--accent-contrast, #fff)' }}>
+              Try again
+            </button>
+            {serviceError && (
+              <code className="text-[12px] px-2 py-1 rounded max-w-full break-words"
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)', border: '1px solid var(--border-default)' }}>
+                {serviceError}
+              </code>
+            )}
+          </div>
         }
       />
     )
@@ -186,9 +208,16 @@ export function BottomTabs({ tab, onPick }: { tab: TabId; onPick: (t: TabId) => 
       {TABS.map((t) => {
         const on = t.id === tab
         return (
+          // The selected tab is marked by an accent BAR (a graphic, held to 3:1)
+          // plus weight, not by accent-coloured text. `--accent` as text on
+          // `--bg-elevated` measures 3.22:1 in the light theme — this app's own
+          // gate caught it — and the accent is user-customisable, so it can only
+          // get worse. The top tabs already used exactly this pattern.
           <button key={t.id} type="button" role="tab" aria-selected={on} onClick={() => onPick(t.id)}
-            className="flex flex-col items-center gap-1 py-2 text-[11.5px] font-medium transition-colors focus-primary"
-            style={{ color: on ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+            className="relative flex flex-col items-center gap-1 py-2 text-[11.5px] transition-colors focus-primary"
+            style={{ color: on ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: on ? 600 : 500 }}>
+            {on && <span aria-hidden="true" className="absolute inset-x-4 top-0 h-[2px] rounded-b"
+              style={{ background: 'var(--accent)' }} />}
             <span aria-hidden="true" className="text-[15px] leading-none">{t.glyph}</span>
             {t.label}
           </button>

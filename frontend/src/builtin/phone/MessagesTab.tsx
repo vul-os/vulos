@@ -17,7 +17,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, type FormEvent } fro
 import { nativeBridge } from '../../core/nativeBridge'
 import { getThreads, getThread, sendSms, type SmsThread, type SmsMessage } from './telephonyApi'
 import { Avatar, ErrorNotice, EmptyNote } from './PhoneChrome'
-import type { Size } from './phoneLayout'
+import { ACCENT_FILL, type Size } from './phoneLayout'
 import { formatRelative, formatClock, friendlyError, isRecord, displayNumber, secondsToMs } from './phoneUtils'
 import type { LineId } from './usePhoneData'
 
@@ -196,7 +196,7 @@ export default function MessagesTab({ lineId, size, names, canSms, composeTo, on
                   </span>
                   {t.unread > 0 && (
                     <span className="shrink-0 min-w-[1.15rem] h-[1.15rem] px-1 grid place-items-center rounded-full text-[11px] font-semibold"
-                      style={{ background: 'var(--accent)', color: 'var(--accent-contrast, #fff)' }}>{t.unread}</span>
+                      style={{ background: ACCENT_FILL, color: 'var(--accent-contrast, #fff)' }}>{t.unread}</span>
                   )}
                 </button>
               </li>
@@ -230,12 +230,15 @@ export default function MessagesTab({ lineId, size, names, canSms, composeTo, on
           return (
             <div key={i} className={`max-w-[80%] px-3 py-2 rounded-2xl ${out ? 'self-end' : 'self-start'}`}
               style={{
-                background: out ? 'var(--accent)' : 'var(--bg-elevated)',
+                background: out ? ACCENT_FILL : 'var(--bg-elevated)',
                 color: out ? 'var(--accent-contrast, #fff)' : 'var(--text-primary)',
                 border: out ? 'none' : '1px solid var(--border-default)',
               }}>
               <div className="text-[13px] whitespace-pre-wrap break-words">{m.body}</div>
-              <div className="text-[11px] mt-1 text-right" style={{ opacity: 0.75 }}>{formatClock(secondsToMs(m.ts))}</div>
+              <div className="text-[11px] mt-1 text-right"
+                style={{ color: out ? 'var(--accent-contrast, #fff)' : 'var(--text-tertiary)' }}>
+                {formatClock(secondsToMs(m.ts))}
+              </div>
             </div>
           )
         })}
@@ -248,7 +251,7 @@ export default function MessagesTab({ lineId, size, names, canSms, composeTo, on
           style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' }} />
         <button type="submit" disabled={sending || !draft.trim() || !canSms}
           className="shrink-0 px-3.5 py-2 rounded-full text-[13px] font-medium disabled:opacity-40 hover:brightness-110 active:scale-95 focus-primary transition-all"
-          style={{ background: 'var(--accent)', color: 'var(--accent-contrast, #fff)' }}>
+          style={{ background: ACCENT_FILL, color: 'var(--accent-contrast, #fff)' }}>
           {sending ? 'Sending…' : 'Send'}
         </button>
       </form>

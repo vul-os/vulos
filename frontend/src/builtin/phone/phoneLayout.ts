@@ -48,3 +48,15 @@ export const TABS: { id: TabId; label: string; glyph: string }[] = [
   { id: 'keypad', label: 'Keypad', glyph: '⌨' },
   { id: 'messages', label: 'Messages', glyph: '💬' },
 ]
+
+/**
+ * A fill for small white text.
+ *
+ * `--accent-contrast` (white) on a raw `--accent` fill measures 3.68:1 with this
+ * theme's default accent — under the 4.5:1 floor for the unread count and the
+ * outgoing message bubble, in BOTH themes, because a fill carries its own pair
+ * and the surface underneath never enters into it. Darkening the fill is the
+ * half that can be fixed here; `--accent` itself is shared, user-customisable
+ * and not this app's to redefine.
+ */
+export const ACCENT_FILL = 'color-mix(in srgb, var(--accent) 76%, #000)'

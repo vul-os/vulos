@@ -95,19 +95,23 @@ export function avatarHue(key: string): number {
 }
 
 /**
- * Group numbers for readability without pretending to know the country's
- * formatting rules. We deliberately do NOT reformat into a national pattern:
- * this box may be on any network in any country, and a wrong "+1 (555)"-shaped
- * guess is worse than the digits the user actually dialled. E.164 numbers get
- * their country code split off; everything else is returned untouched.
+ * Show the number the way it was given, tidied of stray whitespace — and
+ * nothing else.
+ *
+ * The previous version split the country code off and regrouped the rest in
+ * threes. On screen "+27 83 111 2222" came back as "+27 831 112 222": the same
+ * digits, regrouped into a pattern that exists in no numbering plan, shown to a
+ * reader who knows exactly what their own country's numbers look like. That is
+ * precisely the "a wrong +1 (555)-shaped guess is worse than the digits the
+ * user actually dialled" failure its own docstring warned about — committed by
+ * the code underneath the warning, and invisible to every test until the
+ * rendered screenshots were read.
+ *
+ * This box may be on any network in any country and this app carries no
+ * numbering-plan data, so it does not guess. Contacts and SIM phonebooks
+ * already hold numbers spaced the way their owner wrote them; preserving that
+ * is strictly better than overriding it.
  */
 export function displayNumber(raw: string): string {
-  const s = (raw || '').trim()
-  if (!s.startsWith('+')) return s
-  const d = s.slice(1).replace(/\D/g, '')
-  if (d.length < 8 || d.length > 15) return s
-  const cc = d.length > 11 ? d.slice(0, 3) : d.length > 10 ? d.slice(0, 2) : d.slice(0, 1)
-  const rest = d.slice(cc.length)
-  const groups = rest.replace(/(\d{1,3})(?=(\d{3})+$)/g, '$1 ')
-  return `+${cc} ${groups}`.replace(/\s+/g, ' ').trim()
+  return (raw || '').trim().replace(/\s+/g, ' ')
 }

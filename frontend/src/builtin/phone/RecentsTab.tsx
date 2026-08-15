@@ -25,10 +25,27 @@ import { formatRelative, formatDuration, displayNumber } from './phoneUtils'
 import { callTimeMs } from './usePhoneData'
 import type { CallEntry } from './telephonyApi'
 
-const DIRECTION: Record<string, { glyph: string; cls: string; label: string }> = {
-  incoming: { glyph: '↙', cls: 'text-success', label: 'Incoming' },
-  outgoing: { glyph: '↗', cls: 'accent-text', label: 'Outgoing' },
-  missed: { glyph: '↘', cls: 'text-danger', label: 'Missed' },
+// The arrow is a GRAPHIC (an inline SVG), not a text glyph, and the outcome is
+// always spelled out beside it.
+//
+// As coloured text at 12.5px these needed 4.5:1 and measured 3.1 (incoming) and
+// 3.97 (missed on a selected row) — and colouring the contact's NAME red for a
+// missed call put a person's name at 3.97:1 in light. Colour is now a second
+// cue on a graphic, which is held to 3:1, while every word in the row sits on
+// the normal text ramp. Nothing is conveyed by colour alone.
+const DIRECTION: Record<string, { path: string; color: string; label: string; emphasis: boolean }> = {
+  incoming: { path: 'M17 7 L7 17 M7 11 v6 h6', color: 'var(--status-success)', label: 'Incoming', emphasis: false },
+  outgoing: { path: 'M7 17 L17 7 M11 7 h6 v6', color: 'var(--accent)', label: 'Outgoing', emphasis: false },
+  missed: { path: 'M7 7 L17 17 M17 11 v6 h-6', color: 'var(--status-danger)', label: 'Missed', emphasis: true },
+}
+
+function DirectionMark({ path, color }: { path: string; color: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" fill="none"
+      stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      <path d={path} />
+    </svg>
+  )
 }
 
 interface RecentsTabProps {
@@ -83,12 +100,12 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
                     className="min-w-0 flex-1 flex items-center gap-3 text-left focus-primary rounded-md">
                     <Avatar name={c.name || ''} number={c.number} size={38} />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[13.5px] font-medium truncate"
-                        style={{ color: c.direction === 'missed' ? 'var(--status-danger)' : 'var(--text-primary)' }}>
+                      <span data-recent-name className="block text-[13.5px] truncate"
+                        style={{ color: 'var(--text-primary)', fontWeight: meta.emphasis ? 600 : 500 }}>
                         {label(c)}
                       </span>
                       <span className="flex items-center gap-1.5 text-[12.5px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                        <span aria-hidden="true" className={meta.cls}>{meta.glyph}</span>
+                        <DirectionMark path={meta.path} color={meta.color} />
                         <span className="truncate">
                           {meta.label}
                           {c.duration > 0 ? ` · ${formatDuration(c.duration)}` : ''}
@@ -149,7 +166,7 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
           const meta = DIRECTION[c.direction] ?? DIRECTION.incoming
           return (
             <li key={c.id} className="flex items-center gap-2 py-2 text-[13px]" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-              <span aria-hidden="true" className={meta.cls}>{meta.glyph}</span>
+              <DirectionMark path={meta.path} color={meta.color} />
               <span style={{ color: 'var(--text-primary)' }}>{meta.label}</span>
               {c.duration > 0 && <span style={{ color: 'var(--text-tertiary)' }}>· {formatDuration(c.duration)}</span>}
               <span className="ml-auto" style={{ color: 'var(--text-tertiary)' }}>{formatRelative(callTimeMs(c))}</span>

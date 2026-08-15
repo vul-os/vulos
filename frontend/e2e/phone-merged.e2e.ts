@@ -139,7 +139,11 @@ test.describe('Recents is one list', () => {
     await expect(app(page)).toContainText('over Vulos')
 
     // Newest first, across BOTH sources: missed (5m) → peer (30m) → outgoing (2h).
-    const names = await app(page).locator('li button span.font-medium').allInnerTexts()
+    // A data hook, not a utility class: the row's font weight is now a
+    // meaningful signal (missed calls are heavier), so a class-based selector
+    // would silently stop matching the moment that changed — which is exactly
+    // what it did.
+    const names = await app(page).locator('[data-recent-name]').allInnerTexts()
     const order = names.filter((n) => /Priya|Thandi|Sipho/.test(n))
     expect(order[0]).toContain('Priya')
     expect(order[1]).toContain('Thandi')

@@ -55,7 +55,7 @@ export default function Keypad({ contacts, canCall, callBlockedReason, canSms, o
       <div className="flex-1 min-h-0 flex flex-col items-center justify-end px-4 pt-5 pb-3 gap-1">
         <div className="w-full max-w-[19rem] text-center">
           <div aria-live="polite" className="min-h-[2.5rem] text-[26px] font-light tracking-wide break-all leading-tight"
-            style={{ color: value ? 'var(--text-primary)' : 'var(--text-ghost)' }}>
+            style={{ color: value ? 'var(--text-primary)' : 'var(--text-muted)' }}>
             {value ? displayNumber(value) : 'Enter a number'}
           </div>
           <div className="min-h-[1.25rem] text-[13px] truncate" style={{ color: 'var(--accent)' }}>
