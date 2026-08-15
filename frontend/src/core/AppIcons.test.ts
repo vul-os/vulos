@@ -5,6 +5,7 @@ import { createElement } from 'react'
 import { render, cleanup } from '@testing-library/react'
 
 import { APP_LOGOS, INSET_LOGOS, ART_RADIUS, AppIconTile } from './AppIcons'
+import { hasArt } from './appArt'
 
 // AppIcons.test.ts — keeps INSET_LOGOS honest.
 //
@@ -109,6 +110,93 @@ describe('APP_LOGOS / INSET_LOGOS', () => {
 // produce, so a future edit that reintroduces a fixed 70%-inset render (or
 // drops the edge-to-edge one) fails here even though the classification
 // tests above would stay green.
+// ── Coverage guard: every reachable app id resolves a real icon, and no two
+// share one ──────────────────────────────────────────────────────────────
+//
+// The founder's report was "app logos some are wrong": on inspection, two
+// simultaneously-registered apps (the legacy `phone` ModemManager app and the
+// `vulos-phone` Android SIM bridge — both literally named "Phone" and both
+// visible in the launcher at once) were pixel-identical everywhere, because
+// appArt.tsx aliased `ART['vulos-phone'] = ART.phone`. Nothing was "broken" —
+// every existing check passed — the two apps just looked like one. This
+// block re-derives the actual reachable-id roster the same way the rest of
+// this file re-derives INSET_LOGOS: by PARSING the files that declare it
+// (AppRegistry.ts's builtinRegistry/defaultWebApps, registry.json's catalog),
+// not by hand-copying a list that drifts the moment an id is added or
+// renamed. It renders the real AppIconTile for every one of them (not the
+// underlying maps) so a regression anywhere in the resolution chain — ART,
+// APP_LOGOS, the glyph map, or AppIconTile's own precedence — fails here.
+describe('icon coverage — every reachable app id resolves, and none collide', () => {
+  afterEach(cleanup)
+
+  function idsBetween(source: string, startMarker: string, endMarker: string): string[] {
+    const start = source.indexOf(startMarker)
+    if (start === -1) throw new Error(`AppRegistry.ts shape changed — marker not found: ${startMarker}`)
+    const end = source.indexOf(endMarker, start)
+    if (end === -1) throw new Error(`AppRegistry.ts shape changed — marker not found: ${endMarker}`)
+    return [...source.slice(start, end).matchAll(/\bid: '([\w-]+)'/g)].map((m) => m[1])
+  }
+
+  const registrySrc = readFileSync(join('src', 'core', 'AppRegistry.ts'), 'utf8')
+  const builtinIds = idsBetween(registrySrc, 'const builtinRegistry: App[] = [', 'const defaultWebApps: App[] = [')
+  const webAppIds = idsBetween(registrySrc, 'const defaultWebApps: App[] = [', 'const suiteBundleOf')
+  const registry = JSON.parse(readFileSync(join('..', 'registry.json'), 'utf8')) as { apps: Record<string, unknown> }
+  const catalogIds = Object.keys(registry.apps)
+  const STATIC_APP_IDS = [...builtinIds, ...webAppIds, ...catalogIds]
+
+  // Guard the guard: if the markers stop matching (a rename, a reformat) each
+  // parse silently returns [] and every test below would pass by examining
+  // nothing. These pin the roster to roughly its current shape so a parser
+  // that goes quiet fails loudly instead of green.
+  it('the parsed roster is non-trivially large in each source (guards the guard)', () => {
+    expect(builtinIds.length, 'builtinRegistry ids').toBeGreaterThanOrEqual(20)
+    expect(webAppIds.length, 'defaultWebApps ids').toBeGreaterThanOrEqual(10)
+    expect(catalogIds.length, 'registry.json catalog ids').toBeGreaterThanOrEqual(50)
+    expect(STATIC_APP_IDS.length, 'total statically-reachable app ids').toBeGreaterThanOrEqual(85)
+  })
+
+  it('every statically-registered app id resolves real art, a bundled logo, or a first-party glyph — never the bare-letter fallback', () => {
+    const lettered: string[] = []
+    for (const id of STATIC_APP_IDS) {
+      const { container, unmount } = render(createElement(AppIconTile, { id, size: 48 }))
+      const resolved = !!container.querySelector('svg') || !!container.querySelector('img')
+      if (!resolved) lettered.push(id)
+      unmount()
+    }
+    expect(lettered, 'ids with no bundled art/logo/glyph — AppIconTile renders these as a bare letter tile').toEqual([])
+  })
+
+  // The DOM check above is necessary but not sufficient: an id with NO
+  // bundled logo still renders an <img> — AppIconTile's tier-3 fallback to
+  // the locally-installed desktop icon (/api/desktop/icon/<id>) — and jsdom
+  // never actually loads it, so a missing bundled logo doesn't fail the DOM
+  // check (a mutation deleting `APP_LOGOS.android` was verified NOT to flip
+  // it red). That fallback is legitimate for a genuinely unbundled
+  // third-party app, but every id in THIS roster ships a bundled tile today,
+  // so the guard is tightened to the actual data source: an id must resolve
+  // via ART or APP_LOGOS specifically, not merely "AppIconTile produced some
+  // element."
+  it('every statically-registered app id has its OWN bundled art or logo (not just the network-dependent desktop-icon fallback)', () => {
+    const unbundled = STATIC_APP_IDS.filter((id) => !hasArt(id) && !Object.prototype.hasOwnProperty.call(APP_LOGOS, id))
+    expect(unbundled, 'ids relying on the desktop-icon/letter fallback instead of shipping their own art or logo').toEqual([])
+  })
+
+  it('no two statically-registered ids render the identical icon', () => {
+    const firstIdFor = new Map<string, string>()
+    const collisions: string[] = []
+    for (const id of STATIC_APP_IDS) {
+      const { container, unmount } = render(createElement(AppIconTile, { id, size: 48 }))
+      const tile = container.querySelector('.vulos-itile')
+      const fingerprint = tile ? tile.innerHTML : `NO-TILE:${id}`
+      const prior = firstIdFor.get(fingerprint)
+      if (prior === undefined) firstIdFor.set(fingerprint, id)
+      else if (prior !== id) collisions.push(`${id} renders identically to ${prior}`)
+      unmount()
+    }
+    expect(collisions, 'two different, simultaneously-reachable apps must never render the exact same icon').toEqual([])
+  })
+})
+
 describe('AppIconTile renders full-bleed logos edge-to-edge, inset logos on the neutral tile', () => {
   afterEach(cleanup)
 
