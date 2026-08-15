@@ -569,9 +569,45 @@ func (s *AppStore) hasApp(appID string) bool {
 	return false
 }
 
-// GetManifest loads and validates the manifest for an installed app by ID.
-// Returns an error if the app is not installed or the manifest is invalid.
+// GetManifest loads and validates the manifest for an app by ID, searching the
+// SAME set of directories the box considers "installed": the local install dir
+// first, then the bundled dirs the image ships (/opt/vulos/apps).
+//
+// The bundled fallback is not optional. POST /api/apps/launch resolves an app's
+// command through this method, and it used to read s.appsDir
+// ($HOME/.vulos/apps) alone. Bundled apps are never "installed" into that
+// directory — they ship in /opt/vulos/apps — so launching ANY app the OS ships
+// failed with "app not found or invalid manifest", no namespace was registered,
+// and the gateway then answered {"error":"app not running"}.
+//
+// Installed() and hasApp() already merged both locations; this method was the
+// one that did not, which is why the box could LIST every bundled app while
+// being unable to START any of them.
+//
+// Precedence matches Installed(): a store-installed app of the same ID shadows
+// the bundled copy, so an update is never ignored in favour of the shipped
+// version. Validation applies identically on both paths — being bundled does
+// not exempt a manifest from Validate.
 func (s *AppStore) GetManifest(appID string) (*AppManifest, error) {
 	manifestPath := filepath.Join(s.appsDir, appID, "app.json")
-	return LoadAndValidateManifest(manifestPath)
+	m, err := LoadAndValidateManifest(manifestPath)
+	if err == nil {
+		return m, nil
+	}
+	// Only fall back when the app is genuinely absent here. An app that IS
+	// installed locally but has a broken manifest must keep reporting its own
+	// error rather than silently resolving to the bundled copy.
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+	for _, dir := range s.bundledDirs {
+		if bm, bErr := LoadAndValidateManifest(filepath.Join(dir, appID, "app.json")); bErr == nil {
+			return bm, nil
+		} else if !os.IsNotExist(bErr) {
+			// A present-but-invalid bundled manifest is the most useful error
+			// to surface: the app exists on disk and still cannot start.
+			err = bErr
+		}
+	}
+	return nil, err
 }
