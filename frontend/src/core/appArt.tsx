@@ -344,13 +344,36 @@ const ART: Record<string, ArtSpec> = {
     ),
   },
 
-  // Phone — a handset that rings (shakes) on hover.
+  // Phone — the legacy box-attached modem (ModemManager). A handset that
+  // rings (shakes) on hover — this is the ONLY id that gets the handset; see
+  // vulos-phone below for why the two are deliberately different drawings.
   phone: {
     a: '#4ADE80', b: '#166534',
     glyph: (
       <>
         <path d="M12.5 7.5h5.6l2.7 7.6-3.9 2.9a20.5 20.5 0 0 0 9.6 9.6l2.9-3.9 7.6 2.7v5.6a3.8 3.8 0 0 1-4.2 3.8C19.5 34.4 10 24.9 8.7 11.7a3.8 3.8 0 0 1 3.8-4.2z" fill={WHITE} data-a="shake" />
         <path d="M28.5 12.5a8 8 0 0 1 7 7" fill="none" stroke="#FDE047" strokeWidth="3" strokeLinecap="round" data-a="pulse" />
+      </>
+    ),
+  },
+
+  // Vulos Phone — the Android telephony bridge (SMS + calls on the GSM SIM in
+  // your Vulos Android phone; see AppRegistry.ts `vulos-phone`). This USED TO
+  // alias `phone` (`ART['vulos-phone'] = ART.phone`), so the two apps — a
+  // legacy box modem and an Android SIM bridge, both literally named "Phone"
+  // and both registered and visible in the launcher AT THE SAME TIME — were
+  // pixel-identical everywhere (Dock, Launchpad, App Hub, Home). A user could
+  // not tell them apart. This is a real smartphone body (not a handset,
+  // because the app bridges an actual Android phone, not a curly-cord
+  // telephone) with a cellular-signal accent that fans out on hover.
+  'vulos-phone': {
+    a: '#4ADE80', b: '#166534',
+    glyph: (
+      <>
+        <rect x="15" y="5" width="18" height="38" rx="5.5" fill={WHITE} />
+        <rect x="18.2" y="10.2" width="11.6" height="23" rx="1.6" fill="#166534" />
+        <circle cx="24" cy="38.6" r="1.7" fill="#166534" />
+        <path d="M33.5 24.5a7 7 0 0 0 0-9M36.8 27.8a11.4 11.4 0 0 0 0-15.6" fill="none" stroke="#FDE047" strokeWidth="2.6" strokeLinecap="round" data-a="pulse" />
       </>
     ),
   },
@@ -534,7 +557,7 @@ ART.chat = ART.messages
 ART.peering = ART.relay
 ART['vulos-calendar'] = ART.calendar
 ART['vulos-contacts'] = ART.contacts
-ART['vulos-phone'] = ART.phone
+// vulos-phone is DELIBERATELY NOT aliased to `phone` — see the entry above.
 ART['text-editor'] = ART.editor
 ART['image-editor'] = ART.imageEditor
 ART['system-info'] = ART.system

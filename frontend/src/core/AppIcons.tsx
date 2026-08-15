@@ -515,6 +515,17 @@ const G: Record<string, ReactNode> = {
   phone: (
     <path d="M6.4 3.6h3l1.4 3.9-2 1.5a11 11 0 005 5l1.5-2 3.9 1.4v3a2 2 0 01-2.2 2A15.6 15.6 0 014.4 5.8 2 2 0 016.4 3.6z" />
   ),
+  // Distinct from `phone` (a handset) — this is the smartphone body the
+  // Android SIM bridge (vulos-phone) actually bridges to. Same reasoning as
+  // the ArtPlate split above: two simultaneously-registered apps both named
+  // "Phone" must not share a silhouette at ANY size, not just the art plate.
+  smartphone: (
+    <>
+      <rect x="7.8" y="2.8" width="8.4" height="18.4" rx="2.6" />
+      <circle cx="12" cy="18.3" r=".85" fill="currentColor" stroke="none" />
+      <path d="M17.6 8.3a4.2 4.2 0 010 4.6" />
+    </>
+  ),
   screenshot: (
     <>
       <path d="M8 4H6a2 2 0 00-2 2v2M16 4h2a2 2 0 012 2v2M8 20H6a2 2 0 01-2-2v-2M16 20h2a2 2 0 002-2v-2" />
@@ -537,6 +548,18 @@ const G: Record<string, ReactNode> = {
     <>
       <rect x="9" y="3.5" width="6" height="10" rx="3" />
       <path d="M6 11a6 6 0 0012 0M12 17.2v3.3M9 20.5h6" />
+    </>
+  ),
+  // Home had NO hairline glyph at all — only the ART sunrise plate — so any
+  // surface below ART_MIN_SIZE (the Home window's own titlebar at 12px,
+  // Mission Control thumbnails at 12px) fell all the way through AppIcon's
+  // `icons[id]` lookup to the bare-letter "H" fallback. Every other builtin
+  // app has a real glyph here; Home was the one silent gap. Same sunrise
+  // grammar as ART.home and the Appearance panel's `sun` theme chip.
+  home: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 3.6v2.6M12 17.8v2.6M4.3 12h2.6M17.1 12h2.6M6.5 6.5l1.8 1.8M15.7 15.7l1.8 1.8M17.5 6.5l-1.8 1.8M8.3 15.7l-1.8 1.8" />
     </>
   ),
   globe: (
@@ -766,6 +789,7 @@ const icons: Record<string, ReactNode> = {
   drivers: G.drivers,
   chat: G.chat,
   // Broadened builtin coverage.
+  home: G.home,
   drive: G.drive,
   assistant: G.assistant,
   settings: G.settings,
@@ -791,7 +815,7 @@ const icons: Record<string, ReactNode> = {
   camera: G.camera,
   music: G.music,
   phone: G.phone,
-  'vulos-phone': G.phone,
+  'vulos-phone': G.smartphone,
   screenshot: G.screenshot,
   'system-info': G.system,
   video: G.video,
