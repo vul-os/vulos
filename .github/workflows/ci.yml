@@ -1181,6 +1181,28 @@ jobs:
       - name: Every bundled app starts and serves, and build.sh ships it
         run: python3 scripts/check-apps-run.py
 
+  screenshot-provenance:
+    name: SHOTS-PROV — Every shipped screenshot declares how it was made
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The other half of the same incident as APPS-RUN above. The apps could
+      # not run, and the screenshots were green anyway, because every product
+      # screenshot is captured against the mocked backend — so the founder,
+      # looking at images of a working desktop, had no way to tell that nothing
+      # behind them had ever launched.
+      #
+      # Fixtures are legitimate for the built-in React surfaces: there is no
+      # process behind Settings, so a fixture stands in for DATA. What is not
+      # legitimate is being unable to tell. This gate keeps the two classes
+      # honest by checking each label against the code that produces it: the
+      # live spec must import no mock and keep its kill-then-refetch proof, the
+      # fixture generator must still actually mock, and every process-backed app
+      # must have a live shot. Needs nothing but python3 and git.
+      - name: Screenshot labels match how the shots are actually produced
+        run: python3 scripts/check-screenshot-provenance.py
+
   licenses:
     name: LICENCES — THIRD_PARTY_NOTICES.md matches the dependency graph
     runs-on: ubuntu-latest
