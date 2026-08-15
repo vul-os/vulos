@@ -82,9 +82,19 @@ and launchable — not that a command exited 0. The harness exercises the produc
 installer rather than re-implementing it, and ships a self-test proving it goes red on
 a bad Flathub id, a wrong checksum and a missing command.
 
-Honest limits, stated up front: this Mac is **arm64**, so x86_64-only apps are
-install-tested in CI on `ubuntu-latest`, not locally. Desktop apps are gigabytes, so
-the harness runs one at a time.
+**Testing is local and sequential — deliberately not CI.** One app at a time,
+**smallest first** by real measured download size, **deleted immediately after** its
+assertions run so the next app starts from a known disk state. Progress is recorded in
+a durable, resumable ledger — one row per app with the source, the date, the size, the
+result, and what was actually asserted — so a later session skips what is already
+verified instead of starting over.
+
+**The arm64 limit is stated, not worked around.** This Mac is arm64, so x86_64-only
+apps — Steam, Chrome, Spotify, Zoom, VS Code among them — cannot be install-tested
+here, and with CI off the table they stay **untested**. The ledger records that as
+`untestable-on-arm64`, distinct from `untested` and from `passed`. No emulation, no
+pass inferred from metadata: a row saying "not tested, and here is why" is worth more
+than a green tick that means nothing.
 
 ## The catalogue — 120 apps
 
