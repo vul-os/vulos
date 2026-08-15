@@ -13,13 +13,20 @@
 >
 > **Two decisions already taken by the founder, which this standard encodes:**
 >
-> 1. **Filter Flathub, do not mirror it.** Proprietary apps on Flathub are
+> 1. **Filter Flathub, do not mirror it.** Some proprietary apps on Flathub are
 >    `extra-data`: the Flathub package is a thin manifest that downloads the
->    vendor's real binary at install time (Chrome, Spotify, Discord, Slack, Zoom,
->    Steam, Obsidian…). Mirroring Flathub into a Vulos-run repo would therefore
->    not carry those payloads — the client still contacts vendor servers and the
->    vendor's terms still govern. So Vulos curates *which* Flathub apps appear,
->    and runs no repository of its own.
+>    vendor's real binary at install time, so a mirror would carry no payload —
+>    the client still contacts vendor servers and the vendor's terms still
+>    govern. So Vulos curates *which* Flathub apps appear and runs no repository
+>    of its own. **Which apps are actually extra-data is a manifest-reading
+>    question, not an assumption** — of the suspected set only Chrome is
+>    confirmed; see [`APP-CATALOG.md`](APP-CATALOG.md) policy 1.
+> 1a. **Proprietary apps are excluded for now** (founder call, 2026-08-15,
+>    `APP-CATALOG.md` policy 1a). `proprietary` stays a required field: it is
+>    what the exclusion is enforced on, and the call is explicitly reversible.
+>    It also removes most of the x86_64-only set, so the share of the catalogue
+>    that can actually be install-tested on the founder's arm64 machine is much
+>    higher than it first looked.
 > 2. **Flathub is not always the right vehicle.** Because the catalogue is
 >    curated per app, an official Debian package or an official vendor repository
 >    is sometimes the better source. §2 makes that choice explicit and forces the
@@ -126,6 +133,11 @@ is a reason. "Flathub because it was first in the search results" is not.
   reaches the **vendor's** servers (not Flathub's), the vendor's terms govern,
   and the app can break when the vendor moves a URL. Mark it, surface it, and
   never describe such an app as "from Flathub" in the UI without that caveat.
+  **Set it only after reading the app's Flathub manifest** — a `type: extra-data`
+  source consumed at *install* time is extra-data; a `type: file` against the
+  vendor's host consumed at Flathub *build* time is not, and Flathub does hold
+  and sign those bytes. Guessing here gets the redistributability question
+  backwards.
 - **`verified` is Flathub's publisher flag**, read from
   `https://flathub.org/api/v2/verification/<id>/status`. Roughly a third of
   Flathub has no verified publisher. It is a first-class field, not a footnote,
