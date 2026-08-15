@@ -27,6 +27,7 @@ import { startAttentionNotifier } from './core/notifiers/attentionNotifier'
 import { refreshInstalled, refreshAIApps } from './core/AppRegistry'
 import { startLocationReporting, stopLocationReporting } from './core/location/reporter'
 import { applyScreenWindowTitle } from './providers/screenIdentity'
+import { probeSetupComplete } from './lib/setupProbe'
 
 // SCREENS-01: announce which physical output this browser instance belongs to,
 // at MODULE SCOPE, before React is involved at all.
@@ -234,21 +235,93 @@ function toOfflineIdentity(x: unknown): OfflineIdentity | null {
   return { name: typeof x.name === 'string' ? x.name : undefined }
 }
 
+// SetupUnknown — the box did not answer "have you been set up?", so the shell
+// asks the person in front of it instead of guessing.
+//
+// Both guesses are bad, which is why this screen exists rather than a default:
+//
+//   • guessing "set up" (what the shell did before) drops a brand-new box at a
+//     sign-in screen for an account nobody has created, and the fifteen steps —
+//     timezone, network, identity keypair, SSH keys, recovery kit — never run;
+//   • guessing "not set up" drops an already-configured box into the wizard,
+//     whose account step then fails on a duplicate username.
+//
+// The user knows which box this is. Nothing else here does.
+function SetupUnknown({ onRunSetup, onSignIn, onRetry }: {
+  onRunSetup: () => void
+  onSignIn: () => void
+  onRetry: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center p-6">
+      <div role="alertdialog" aria-labelledby="setup-unknown-title" className="max-w-md w-full text-center">
+        <h1 id="setup-unknown-title" className="text-white text-xl font-semibold mb-3">
+          This box did not say whether it has been set up
+        </h1>
+        <p className="text-neutral-300 text-sm leading-relaxed mb-6">
+          We asked four times over about seven seconds and got no usable answer.
+          That usually means the box is still starting. Continuing either way is
+          a guess, so pick the one you know is right — you can reload this page
+          once the box is up if you would rather not choose.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={onRunSetup}
+            className="px-5 py-2.5 rounded-lg bg-white text-neutral-950 text-sm font-medium hover:bg-neutral-200"
+          >
+            Run setup
+          </button>
+          <button
+            onClick={onSignIn}
+            className="px-5 py-2.5 rounded-lg border border-neutral-600 text-neutral-100 text-sm font-medium hover:bg-neutral-800"
+          >
+            Go to sign-in
+          </button>
+        </div>
+        <button
+          onClick={onRetry}
+          className="mt-5 text-neutral-300 text-sm underline underline-offset-4 hover:text-white"
+        >
+          Ask the box again
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AuthGate() {
   const { user, loading, offline, unlockOffline } = useAuth()
   const [setupDone, setSetupDone] = useState<boolean | null>(null)
+  // The probe ran out of attempts without an answer. NOT a synonym for "setup
+  // is complete" — that conflation is exactly the defect this replaces.
+  const [setupProbeFailed, setSetupProbeFailed] = useState(false)
+  const [probeAttempt, setProbeAttempt] = useState(0)
   // OFFLINE-AUTH-01: can this device attempt an offline unlock, and who for?
   // null = still checking; false = not enrolled (fall back to online login).
   const [offlineEnrolled, setOfflineEnrolled] = useState<boolean | null>(null)
   const [offlineIdentity, setOfflineIdentity] = useState<OfflineIdentity | null>(null)
 
-  // Check if first-boot setup has been completed (public endpoint, no auth needed)
+  // Has first-boot setup been completed? (public endpoint, no auth needed)
+  //
+  // This used to be a single fetch that treated ANY failure as "yes":
+  //
+  //   .then(r => r.ok ? r.json() : { setup_complete: true })
+  //   .catch(() => setSetupDone(true))
+  //
+  // A box that is still starting answers exactly that way, and a box that is
+  // still starting is the normal condition on a first boot — so the failure
+  // that skipped the wizard was the likely case, not the unlikely one. See
+  // lib/setupProbe.ts for the retry budget; 'unknown' is a third answer here,
+  // never folded into either boolean.
   useEffect(() => {
-    fetch('/api/setup/status')
-      .then(r => r.ok ? r.json() : { setup_complete: true })
-      .then((d: unknown) => setSetupDone((isRecord(d) ? d.setup_complete : true) !== false))
-      .catch(() => setSetupDone(true))
-  }, [])
+    let alive = true
+    probeSetupComplete().then(result => {
+      if (!alive) return
+      if (result === 'unknown') setSetupProbeFailed(true)
+      else setSetupDone(result)
+    })
+    return () => { alive = false }
+  }, [probeAttempt])
 
   useEffect(() => {
     let alive = true
@@ -276,6 +349,19 @@ function AuthGate() {
     window.addEventListener('vulos:offline-wipe', onWipe)
     return () => { alive = false; window.removeEventListener('vulos:offline-wipe', onWipe) }
   }, [])
+
+  // The box never answered. Ask, rather than pick a default that is wrong half
+  // the time. Checked BEFORE the loading gate: setupDone stays null in this
+  // state, so the loading gate would otherwise spin forever.
+  if (setupProbeFailed) {
+    return (
+      <SetupUnknown
+        onRunSetup={() => { setSetupProbeFailed(false); setSetupDone(false) }}
+        onSignIn={() => { setSetupProbeFailed(false); setSetupDone(true) }}
+        onRetry={() => { setSetupProbeFailed(false); setProbeAttempt(n => n + 1) }}
+      />
+    )
+  }
 
   if (loading || setupDone === null || offlineEnrolled === null) {
     return (

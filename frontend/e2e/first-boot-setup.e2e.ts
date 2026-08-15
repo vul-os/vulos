@@ -51,22 +51,28 @@ test('a machine that has not been set up shows the setup wizard, not the login f
   await expect(page.getByText('Create your account')).toHaveCount(0)
 })
 
-test('setup status failing does not silently skip the wizard on a fresh box', async ({ page }) => {
+test('setup status failing asks the user instead of guessing', async ({ page }) => {
   test.setTimeout(90_000)
 
-  // App.tsx defaults setup_complete to TRUE when the request fails:
+  // CHANGED DELIBERATELY. This test used to pin the opposite behaviour, and the
+  // reason for the flip is the whole point of the change.
+  //
+  // App.tsx defaulted setup_complete to TRUE whenever the probe failed:
   //   .then(r => r.ok ? r.json() : { setup_complete: true })
   //   .catch(() => setSetupDone(true))
   //
-  // That is fail-open on the one screen where failing open means the user
-  // never sets up their machine. It is defensible — trapping someone in a
-  // wizard they cannot leave is worse — but it MUST be a deliberate, visible
-  // choice rather than an accident, because it is a second way for the wizard
-  // to vanish on a real box with a slow or unhealthy backend.
+  // The old comment here called that "defensible — trapping someone in a wizard
+  // they cannot leave is worse". What it missed is WHEN a probe fails: a box
+  // that is still starting, which is the normal condition on a first boot. So
+  // the fail-open path was not the rare case being tolerated for the sake of
+  // the common one; on a first boot it was the likely case, and it skipped the
+  // fifteen steps — timezone, network, identity keypair, SSH keys, recovery kit
+  // — on the machine that had never had them.
   //
-  // This test pins the CURRENT behaviour so a change is a decision. If the
-  // product decides fail-closed is right, this expectation flips and the
-  // comment above should say why.
+  // The other default is no better: re-running the wizard on a box that IS set
+  // up fails at the account step on a duplicate username. Since neither guess is
+  // safe, the shell now retries (4 attempts, ~7s — lib/setupProbe.ts) and then
+  // asks the person in front of the machine, who knows which box this is.
   await installBackend(page, {
     ...FIRST_BOOT,
     'GET /api/setup/status': json({ error: 'unavailable' }, 500),
@@ -74,8 +80,19 @@ test('setup status failing does not silently skip the wizard on a fresh box', as
   await page.goto('/')
 
   await expect(
-    page.getByText('Create your account'),
-    'setup status returned 500 and the shell rendered something other than the ' +
-      'documented fail-open create-account screen — behaviour changed, update this test deliberately',
+    page.getByRole('button', { name: /run setup/i }),
+    'setup status returned 500 and the shell did not offer the run-setup / sign-in choice',
+  ).toBeVisible({ timeout: 40_000 })
+  await expect(page.getByRole('button', { name: /go to sign-in/i })).toBeVisible()
+
+  // It must not have quietly picked one on the way past. Both were reachable
+  // failure modes of the code this replaces.
+  await expect(page.getByText('Create your account')).toHaveCount(0)
+
+  // And the choice must be real: taking it lands on the wizard.
+  await page.getByRole('button', { name: /run setup/i }).click()
+  await expect(
+    page.getByRole('button', { name: /get started|begin|continue|next/i }).first(),
+    'choosing "Run setup" after an unanswered probe did not open the wizard',
   ).toBeVisible({ timeout: 30_000 })
 })
