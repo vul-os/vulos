@@ -12,6 +12,7 @@ import { attachAppBridge, appFrameSrc } from '../core/AppBridge'
 import MobileHome from '../mobile/MobileHome'
 import AppSwitcher from '../mobile/AppSwitcher'
 import { useMobileEdgeGuards } from '../mobile/useMobileEdgeGuards'
+import { useLaunchIntent } from '../mobile/useLaunchIntent'
 import '../shell/shell-chrome.css'
 import '../mobile/mobile.css'
 
@@ -38,7 +39,10 @@ import '../mobile/mobile.css'
 type MobileView = 'home' | 'app' | 'switcher'
 
 export default function MobileStack() {
-  const { windows, activeWindow, focusWindow, toggleLaunchpad } = useShell()
+  const { windows, activeWindow, focusWindow, toggleLaunchpad, openWindow } = useShell()
+  // MOBILE-11: honour `?open=<appId>` so the manifest's launcher shortcuts
+  // (long-press the Vulos icon → "Mail") actually open something.
+  useLaunchIntent({ openWindow })
   // MOBILE-08: disarm Chrome's pull-to-refresh for as long as the mobile shell
   // is mounted. Measured armed ('auto') on the shipping build — a downward drag
   // near the top of the OS reloaded the whole shell. See useMobileEdgeGuards.
