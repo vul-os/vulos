@@ -14,12 +14,15 @@ a pass and **not** a claim the app works. `disabled` = the entry carries
 | status | apps |
 | --- | --- |
 | 🚫 disabled | 2 |
-| ✅ passed | 3 |
+| ✅ passed | 6 |
 
 | App | Source | Arch | Verified | Status | Disk MB | Mins | Date | Asserted / why not |
 | --- | --- | --- | --- | --- | ---: | ---: | --- | --- |
 | `memos` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
 | `vaultwarden` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
+| `cinny` | unclassified | arm64 | - | ✅ passed | 80 | 0 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, command-executes |
 | `filezilla` | flathub | arm64 | - | ✅ passed | 2059 | 29 | 2026-08-15 | install-path, manifest-written, command-declared, flatpak-present, flatpak-deployed, flatpak-runtime, command-resolves, command-executes, uninstall |
+| `gitea` | unclassified | arm64 | - | ✅ passed | 157 | 1 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |
 | `nginx` | unclassified | arm64 | - | ✅ passed | 29 | 1 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |
 | `syncthing` | unclassified | arm64 | - | ✅ passed | 45 | 1 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |
+| `transmission` | unclassified | arm64 | - | ✅ passed | 25 | 0 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, artifact-provenance, command-executes |

@@ -7,6 +7,28 @@
         "install-path",
         "manifest-written",
         "command-declared",
+        "command-resolves",
+        "command-executes"
+      ],
+      "date": "2026-08-15T02:55:06Z",
+      "disk_delta_mb": 80,
+      "download_mb": 0,
+      "flathub_verified": null,
+      "flatpak_id": "",
+      "harness": "2",
+      "id": "cinny",
+      "installed_mb": 0,
+      "note": "",
+      "seconds": 13,
+      "source": "unclassified",
+      "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
         "flatpak-present",
         "flatpak-deployed",
         "flatpak-runtime",
@@ -25,6 +47,29 @@
       "note": "",
       "seconds": 1765,
       "source": "flathub",
+      "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
+        "command-resolves",
+        "artifact-provenance",
+        "command-executes"
+      ],
+      "date": "2026-08-15T03:31:48Z",
+      "disk_delta_mb": 157,
+      "download_mb": 0,
+      "flathub_verified": null,
+      "flatpak_id": "",
+      "harness": "2",
+      "id": "gitea",
+      "installed_mb": 0,
+      "note": "",
+      "seconds": 56,
+      "source": "unclassified",
       "status": "passed"
     },
     {
@@ -80,6 +125,29 @@
       "installed_mb": 0,
       "note": "",
       "seconds": 33,
+      "source": "unclassified",
+      "status": "passed"
+    },
+    {
+      "arch": "arm64",
+      "assertions": [
+        "install-path",
+        "manifest-written",
+        "command-declared",
+        "command-resolves",
+        "artifact-provenance",
+        "command-executes"
+      ],
+      "date": "2026-08-15T03:28:17Z",
+      "disk_delta_mb": 25,
+      "download_mb": 0,
+      "flathub_verified": null,
+      "flatpak_id": "",
+      "harness": "2",
+      "id": "transmission",
+      "installed_mb": 0,
+      "note": "",
+      "seconds": 12,
       "source": "unclassified",
       "status": "passed"
     },

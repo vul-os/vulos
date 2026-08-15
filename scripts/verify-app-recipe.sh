@@ -73,7 +73,11 @@ fi
 
 REPO_ROOT="${VULOS_REPO_ROOT:-$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)}"
 IMAGE="${VULOS_VERIFY_IMAGE:-vulos-recipe-verify:trixie-v2}"
+# TMPDIR on macOS ends in a slash, which produced paths like "…/T//vulos-verify".
+# Docker accepts them, but a bind mount whose source path is re-created under a
+# doubled separator can come back stale — see the note in verify_one.
 WORKDIR="${VULOS_VERIFY_WORKDIR:-${TMPDIR:-/tmp}/vulos-verify}"
+WORKDIR="$(printf '%s' "$WORKDIR" | sed 's|//*|/|g; s|/$||')"
 LEDGER_JSON="$REPO_ROOT/roadmap/app-verification-ledger.json"
 LEDGER_MD="$REPO_ROOT/roadmap/APP-VERIFICATION-LEDGER.md"
 
@@ -214,14 +218,20 @@ assert_native() {
     else
       record FAIL artifact-provenance "download_url recipe but $real is outside $app_dir"
     fi
-  elif grep -qE '\bapt(-get)?\b' <<<"$inst"; then
+  else
+    # Every native recipe gets a provenance line, including the curl-into-bin/
+    # shape (gitea): without this branch those apps were asserted on only by
+    # "the command resolves", and an assertion nobody notices is missing is the
+    # same as one that never ran.
     local owner
     if owner="$(dpkg -S "$real" 2>/dev/null | head -1)"; then
       record OK artifact-provenance "dpkg owns it: $owner"
     elif [[ "$real" == "$app_dir"/* ]]; then
-      record OK artifact-provenance "produced into the app dir by the recipe"
+      record OK artifact-provenance "the recipe produced it into the app dir: $real"
+    elif grep -qE '\bapt(-get)?\b' <<<"$inst"; then
+      record FAIL artifact-provenance "an apt recipe, but no dpkg package owns $real and it is not under $app_dir"
     else
-      record FAIL artifact-provenance "no dpkg package owns $real and it is not under $app_dir"
+      record INFO artifact-provenance "$real comes from the base image, not from this recipe"
     fi
   fi
 
@@ -712,8 +722,17 @@ print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"arch":sys.argv[3],
   fi
 
   ensure_image
-  local stage="$WORKDIR/stage-$app" out="$WORKDIR/out-$app"
-  rm -rf "$out"
+  # A FRESH results directory per run, never a re-used path.  Deleting and
+  # re-creating a bind-mount source leaves OrbStack's file sharing holding the
+  # old inode: every write inside the container then fails ENOENT on a path that
+  # plainly exists on the host, and it surfaces as a bogus "install path failed"
+  # for an app that installed fine an hour earlier.  Chasing that as a recipe
+  # defect would have been an hour wasted on the wrong layer.
+  local stage="$WORKDIR/stage-$app"
+  local out="$WORKDIR/out/$app/$(date -u +%Y%m%d-%H%M%S)"
+  mkdir -p "$out"
+  # keep the last three runs per app, discard older ones
+  ls -1dt "$WORKDIR/out/$app"/* 2>/dev/null | tail -n +4 | while read -r old; do rm -rf "$old"; done
   stage_common "$stage"
 
   local rc=0
@@ -1051,8 +1070,9 @@ self_test() {
   need docker; need python3; need go
   mkdir -p "$WORKDIR"
   ensure_image
-  local stage="$WORKDIR/stage-selftest" out="$WORKDIR/out-selftest"
-  rm -rf "$out"
+  local stage="$WORKDIR/stage-selftest"
+  local out="$WORKDIR/out/selftest/$(date -u +%Y%m%d-%H%M%S)"
+  mkdir -p "$out"
   stage_common "$stage"
   step "self-test: five synthetic recipes — one must go green, four must go red"
   run_container "$stage" "$out" selftest
