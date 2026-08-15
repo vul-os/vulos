@@ -293,10 +293,18 @@ describe('Dashboard', () => {
     expectNotBlank(container, 'Dashboard')
     expect(screen.getByRole('button', { name: 'Web' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Instances' })).toBeInTheDocument()
-    // The lazy child must actually have resolved — the shared Suspense fallback
-    // is the literal string "Loading...".
-    await waitFor(() => expect(container.textContent).not.toMatch(/Loading\.\.\./))
-  })
+
+    // The lazy chunk must actually have resolved to its OWN surface. Waiting on
+    // AppPublishCard's real heading is strictly stronger than waiting for the
+    // Suspense fallback ("Loading...") to disappear — a chunk that resolved to
+    // an empty shell would satisfy the latter — and it is also what makes this
+    // robust: findBy* polls, so a slow dynamic import is waited out rather than
+    // raced. The generous timeout is for the machine, not the assertion; these
+    // runs share a host sitting at load ~130-190.
+    const heading = await screen.findByText('Web Publishing', {}, { timeout: 15_000 })
+    expect(heading).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/Loading\.\.\./)
+  }, 30_000)
 
   it('survives the dashboard backend being down', async () => {
     fetchRig = installFailingFetch()
@@ -304,5 +312,8 @@ describe('Dashboard', () => {
     await settle(8)
     expectNotBlank(container, 'Dashboard (backend down)')
     expect(screen.getByRole('button', { name: 'Web' })).toBeInTheDocument()
-  })
+    // Even with every call 500ing, the lazy chunk still resolves and shows its
+    // own chrome rather than leaving the tab body on the Suspense fallback.
+    expect(await screen.findByText('Web Publishing', {}, { timeout: 15_000 })).toBeInTheDocument()
+  }, 30_000)
 })

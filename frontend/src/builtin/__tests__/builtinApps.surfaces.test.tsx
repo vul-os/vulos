@@ -25,6 +25,7 @@ import FileManager from '../files/FileManager'
 import Messages from '../peering/Messages'
 import Terminal from '../terminal/Terminal'
 import Drive from '../drive/Drive'
+import Assistant from '../assistant/Assistant'
 
 let fetchRig: FetchRig | null = null
 let socketRig: ReturnType<typeof installWebSocket> | null = null
@@ -422,6 +423,51 @@ describe('Drive', () => {
     expectNotBlank(container, 'Drive (backend down)')
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(container.querySelector('[data-drive-skel]')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Assistant
+//
+// Assistant has no loading state at all — its empty transcript IS its primary
+// surface — so the questions "does it mount past a spinner" and "is its error
+// distinguishable from loading" are answered structurally. What is worth
+// pinning is that its surface survives the backend being gone, and what is
+// worth flagging is the last test: it does so a little too quietly.
+// ---------------------------------------------------------------------------
+
+describe('Assistant', () => {
+  it('mounts straight to its real surface, with no spinner in the way', async () => {
+    fetchRig = installFetch({
+      '/api/assistant/status': { body: { tier: 'local', sovereignty: { allowed: true } } },
+    })
+    const { container } = render(<Assistant />)
+    await settle(6)
+
+    expectNotBlank(container, 'Assistant')
+    expect(screen.getByText('An assistant that knows your day')).toBeInTheDocument()
+    // The composer is the thing the user came for, and it is live immediately.
+    expect(screen.getByPlaceholderText(/Ask about your mail/i)).toBeEnabled()
+    expectOwnSurface(container, /No mail leaves your instance/, 'Assistant')
+  })
+
+  // Assistant's whole claim is that your mail stays on your box, and its status
+  // fetch is what backs that claim with a badge and an instance rail. When the
+  // fetch fails, `r.ok ? r.json() : null` plus `.catch(() => {})` leaves status
+  // null, and both of those surfaces return null and simply vanish — no error,
+  // no "couldn't verify". Declining to invent a value is right; saying nothing
+  // is not. This test pins what actually happens today rather than asserting
+  // the behaviour is correct; see the report.
+  it('keeps a usable surface when /api/assistant/status is down (but says nothing about it)', async () => {
+    fetchRig = installFailingFetch()
+    const { container } = render(<Assistant />)
+    await settle(6)
+
+    expectNotBlank(container, 'Assistant (backend down)')
+    expect(screen.getByText('An assistant that knows your day')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Ask about your mail/i)).toBeEnabled()
+    // Documented gap: no sovereignty badge, and no statement that it is missing.
+    expect(screen.queryByText(/Where it runs/i)).not.toBeInTheDocument()
   })
 })
 
