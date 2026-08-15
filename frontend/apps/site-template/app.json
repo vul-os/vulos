@@ -2,7 +2,6 @@
   "id": "site-template",
   "name": "Static Site Template",
   "icon": "◍",
-  "icon_path": "icon.svg",
   "description": "Hello-world static SPA — the canonical shape for `vulos web deploy` with client-side routing and SPA fallback",
   "version": "0.1.0",
   "type": "web",

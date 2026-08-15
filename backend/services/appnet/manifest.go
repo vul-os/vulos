@@ -33,6 +33,16 @@ var ValidPermissions = []string{
 // appIDMaxLen is the maximum length of an app ID (63 chars to fit in a DNS label).
 const appIDMaxLen = 63
 
+// App manifest "type" values. Only AppTypeWeb is load-bearing today: it marks
+// an app with no process of its own — a directory of static files the gateway
+// serves — which is why such an app is exempt from the command requirement and
+// must instead ship an index.html.
+const (
+	AppTypeWeb     = "web"
+	AppTypeDesktop = "desktop"
+	AppTypeService = "service"
+)
+
 // Concurrency constants for cluster-wide app scheduling policy.
 // These declare how the app behaves when the owning profile is live in multiple
 // locations simultaneously (see CONCURRENCY.md).
@@ -100,7 +110,7 @@ type AppManifest struct {
 	Version     string            `json:"version"`
 	Command     string            `json:"command"`  // relative to app dir: "bin/server" or "python3 server.py"
 	Port        int               `json:"port"`     // port the app listens on inside namespace (web apps only)
-	Type        string            `json:"type"`     // "web", "desktop", or "service"
+	Type        string            `json:"type"`     // AppTypeWeb / AppTypeDesktop / AppTypeService
 	Category    string            `json:"category"` // core, productivity, media, developer, system, network, database
 	Keywords    []string          `json:"keywords"`
 	Env         map[string]string `json:"env"`         // extra env vars
@@ -141,7 +151,21 @@ func (m *AppManifest) Validate(appDir string) error {
 	if m.Version == "" {
 		return fmt.Errorf("app %s: version is required", m.ID)
 	}
-	if m.Command == "" {
+	// A process-backed app must declare the command that starts it. A static
+	// web app (type "web") has no process — it is a directory of files the
+	// gateway serves — so requiring a command made every static app's manifest
+	// INVALID, which ScanApps drops, which makes the app 404 "app not running"
+	// exactly as if it had never been shipped. site-template, the canonical
+	// `vulos web deploy` example, was unusable on every image for this reason.
+	//
+	// This is not a relaxation: a static app must instead prove it has
+	// something to serve, so each app type carries an equally strong
+	// obligation.
+	if m.Type == AppTypeWeb && m.Command == "" {
+		if _, err := os.Stat(filepath.Join(appDir, "index.html")); err != nil {
+			return fmt.Errorf("app %s: a static web app must contain index.html to serve: %w", m.ID, err)
+		}
+	} else if m.Command == "" {
 		return fmt.Errorf("app %s: command is required", m.ID)
 	}
 	if m.Port <= 0 || m.Port > 65535 {
