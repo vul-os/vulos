@@ -39,7 +39,7 @@ import { describe, it, expect } from 'vitest'
 
 import {
   AA_TEXT, AA_TARGET, STATUS_TINT_RANGE,
-  parseColor, toHex, contrast, tintOver, deriveTextVariant, type Rgb,
+  parseColor, toHex, toHsl, contrast, tintOver, deriveTextVariant, type Rgb,
 } from './accentContrast'
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -204,6 +204,29 @@ describe('--status-*-text is derived, not picked', () => {
             'This is a ceiling as well as a floor: a darker value than the derivation ' +
             'asks for is contrast bought by making danger stop looking like danger.',
           ).toBe(toHex(expected))
+        })
+
+        it(`--status-${tone} stays a FILL`, () => {
+          // The split only holds while the two values are allowed to differ.
+          // The obvious "fix" to a future contrast failure is to darken the
+          // fill until the text passes — and that goes green everywhere: the
+          // derivation above would then return the fill unchanged, so setting
+          // text := fill satisfies it, while every badge, dot, progress bar and
+          // 34% border in the OS quietly turns to mud.
+          //
+          // What that regression actually is, is the fill leaving the vivid
+          // band. Measured, today: light L 0.363-0.506 / S 0.72-0.95, dark
+          // L 0.480-0.643 / S 0.57-0.86. The text variants sit far outside it
+          // (light danger L 0.325, warning 0.227, success 0.194).
+          const raw = tokenIn(text, `status-${tone}`)
+          const [, s, l] = toHsl(parseColor(raw!)!)
+          const band = theme.light ? { lMin: 0.33, lMax: 0.60 } : { lMin: 0.42, lMax: 0.70 }
+          const why = `--status-${tone} is ${raw} (saturation ${s.toFixed(3)}, lightness ${l.toFixed(3)}) ` +
+            `in ${theme.name}. If this moved so that TEXT would read, that is what ` +
+            `--status-${tone}-text is for — the fill is what the dot, the bar and the badge are drawn in.`
+          expect(s, why).toBeGreaterThanOrEqual(0.50)
+          expect(l, why).toBeGreaterThanOrEqual(band.lMin)
+          expect(l, why).toBeLessThanOrEqual(band.lMax)
         })
 
         it(`--status-${tone}-text clears AA on every surface it is drawn on`, () => {

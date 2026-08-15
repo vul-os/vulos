@@ -167,7 +167,7 @@ export function contrast(a: Rgb, b: Rgb): number {
 
 /* ── HSL, so adjustments keep the user's hue ─────────────────────────────── */
 
-function toHsl({ r, g, b }: Rgb): [number, number, number] {
+export function toHsl({ r, g, b }: Rgb): [number, number, number] {
   const R = r / 255, G = g / 255, B = b / 255
   const max = Math.max(R, G, B), min = Math.min(R, G, B)
   const l = (max + min) / 2
