@@ -650,6 +650,22 @@ print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"arch":sys.argv[3],"stat
     fh_verified="$(python3 -c 'import json,sys;v=json.load(sys.stdin).get("verified");print("" if v is None else ("true" if v else "false"))' <<<"$fh")"
     say "  flathub: arches=[$arches] download=${dl_mb}MB installed=${inst_mb}MB runtime=${rt_mb}MB verified=$fh_verified"
 
+    # The registry may not claim a publisher attestation the source does not
+    # make.  `verified` is a trust claim shown in the UI; an entry asserting it
+    # over Flathub's "not verified" is worse than an entry that says nothing.
+    if [[ "$(meta_get verified)" == "True" && "$fh_verified" == "false" ]]; then
+      say "  ${c_red}FAIL${c_off} — registry says verified:true, flathub's verification API says NOT verified"
+      ledger_put "$(python3 -c '
+import json,sys
+print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"flatpak_id":sys.argv[3],"arch":sys.argv[4],
+ "status":"failed","date":sys.argv[5],"flathub_verified":False,
+ "note":"registry claims verified:true but flathub/api/v2/verification/"+sys.argv[3]+"/status reports NOT verified — nothing was installed",
+ "harness":sys.argv[6],"assertions":[]}))' \
+        "$app" "$src" "$fpid" "$host_arch" "$date_now" "$HARNESS_VERSION")"
+      ledger_render >/dev/null
+      return 1
+    fi
+
     if [[ -n "$arches" ]]; then
       # DEFECT CHECK: the registry must not offer an app on an arch Flathub does
       # not build.  An entry that appears on an arm64 box and cannot install is
@@ -658,15 +674,19 @@ print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"arch":sys.argv[3],"stat
         if [[ ",$arch_decl," == *",$host_arch,"* || -z "$arch_decl" ]]; then
           say "  ${c_yel}registry defect:${c_off} entry offers $host_arch (arch=${arch_decl:-<unset> = all}) but flathub builds only [$arches]"
         fi
+        local defect=""
+        if [[ ",$arch_decl," == *",$host_arch,"* || -z "$arch_decl" ]]; then
+          defect=" REGISTRY DEFECT: the entry offers $host_arch (arch=${arch_decl:-unset, meaning all}) and cannot install there — set arch to the set flathub actually builds."
+        fi
         say "  ${c_yel}SKIP${c_off} — no $fh_arch build upstream; cannot be install-tested on this machine"
         ledger_put "$(python3 -c '
 import json,sys
 print(json.dumps({"id":sys.argv[1],"source":sys.argv[2],"flatpak_id":sys.argv[3],"arch":sys.argv[4],
  "status":"untestable-on-arm64" if sys.argv[4]=="arm64" else "skipped","date":sys.argv[5],
- "note":"flathub publishes only ["+sys.argv[6]+"] — no "+sys.argv[7]+" build exists to install",
+ "note":"flathub publishes only ["+sys.argv[6]+"] — no "+sys.argv[7]+" build exists to install."+sys.argv[10],
  "flathub_verified":{"true":True,"false":False}.get(sys.argv[8]),
  "harness":sys.argv[9],"assertions":[]}))' \
-          "$app" "$src" "$fpid" "$host_arch" "$date_now" "$arches" "$fh_arch" "$fh_verified" "$HARNESS_VERSION")"
+          "$app" "$src" "$fpid" "$host_arch" "$date_now" "$arches" "$fh_arch" "$fh_verified" "$HARNESS_VERSION" "$defect")"
         ledger_render >/dev/null
         return 3
       fi
