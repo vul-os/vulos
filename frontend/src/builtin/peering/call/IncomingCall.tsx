@@ -24,16 +24,11 @@ import { notify } from '../../../core/notificationStore'
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/peering/stream`
 
-// isRecord/errMessage narrow `unknown` boundary values (fetch JSON bodies,
-// the peering WS frame, caught errors under strict's useUnknownInCatchVariables)
-// without any/casts — same pattern as src/lib/offlineAuth.ts and
+// isRecord narrows `unknown` boundary values (the peering WS frame) without
+// any/casts — same pattern as src/lib/offlineAuth.ts and
 // src/builtin/peering/Messages.tsx.
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
-}
-
-function errMessage(e: unknown, fallback: string): string {
-  return (isRecord(e) && typeof e.message === 'string' && e.message) || fallback
 }
 
 // window.webkitAudioContext is the vendor-prefixed constructor Safari still
@@ -104,176 +99,23 @@ function useRingtone(ringing: boolean): void {
   }, [ringing, playBell, stopRing])
 }
 
-// ---------- call history fetcher ------------------------------------------
-
-// Backend shape (GET /api/peering/call/history) — narrowed field-by-field
-// from `unknown` rather than trusted, since it comes straight off the wire.
-interface CallHistoryEntry {
-  id: string
-  direction: string // 'inbound' | 'outbound'
-  started_at: string | null
-  duration_sec: number
-  peer_display?: string
-  peer_id?: string
-  status: string // 'completed' | 'missed' | 'rejected' | 'outgoing' | other
-}
-
-function toCallHistoryEntry(x: unknown): CallHistoryEntry | null {
-  if (!isRecord(x)) return null
-  return {
-    id: typeof x.id === 'string' ? x.id : '',
-    direction: typeof x.direction === 'string' ? x.direction : '',
-    started_at: typeof x.started_at === 'string' ? x.started_at : null,
-    duration_sec: typeof x.duration_sec === 'number' ? x.duration_sec : 0,
-    peer_display: typeof x.peer_display === 'string' ? x.peer_display : undefined,
-    peer_id: typeof x.peer_id === 'string' ? x.peer_id : undefined,
-    status: typeof x.status === 'string' ? x.status : '',
-  }
-}
-
-function useCallHistory() {
-  const [history, setHistory] = useState<CallHistoryEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/peering/call/history?limit=50')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: unknown = await res.json()
-      const list = Array.isArray(data) ? data : []
-      setHistory(list.map(toCallHistoryEntry).filter((e): e is CallHistoryEntry => e !== null))
-    } catch (err) {
-      setError(errMessage(err, 'Failed to load history'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { refresh() }, [refresh])
-
-  return { history, loading, error, refresh }
-}
-
-// ---------- status badge --------------------------------------------------
-
-const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  completed: { label: 'Completed', cls: 'text-success' },
-  missed:    { label: 'Missed',    cls: 'text-danger' },
-  rejected:  { label: 'Rejected',  cls: 'text-warning' },
-  outgoing:  { label: 'Outgoing',  cls: 'accent-text' },
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status] || { label: status, cls: 'text-[var(--text-tertiary)]' }
-
-  return <span className={`text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>
-}
-
-// ---------- call history panel --------------------------------------------
-
-function CallHistoryPanel({ onClose }: { onClose: () => void }) {
-  const { history, loading, error, refresh } = useCallHistory()
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 bg-neutral-900 border border-neutral-700/60 rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800">
-          <h2 className="text-sm font-semibold text-neutral-100">Call History</h2>
-          <button
-            onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded-full text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/60 transition-colors text-lg leading-none"
-            aria-label="Close call history"
-          >
-            {'×'}
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="max-h-[60vh] overflow-y-auto">
-          {loading && (
-            <div className="flex justify-center items-center py-10">
-              <span className="w-5 h-5 spinner" />
-            </div>
-          )}
-          {error && (
-            <div className="px-5 py-4 text-sm text-danger">
-              Failed to load history: {error}
-              <button onClick={refresh} className="ml-2 underline hover:no-underline">Retry</button>
-            </div>
-          )}
-          {!loading && !error && history.length === 0 && (
-            <div className="px-5 py-10 text-center text-sm text-neutral-500">No call history yet.</div>
-          )}
-          {!loading && !error && history.map((entry) => (
-            <CallHistoryRow key={entry.id} entry={entry} />
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-neutral-800 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-sm bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function CallHistoryRow({ entry }: { entry: CallHistoryEntry }) {
-  const isInbound = entry.direction === 'inbound'
-  const started = entry.started_at ? new Date(entry.started_at) : null
-  const dateStr = started
-    ? started.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '--'
-  const durStr = entry.duration_sec > 0
-    ? formatDuration(entry.duration_sec)
-    : null
-
-  return (
-    <div className="flex items-center gap-3 px-5 py-3 border-b border-neutral-800/60 hover:bg-neutral-800/30 transition-colors">
-      {/* Direction arrow */}
-      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isInbound ? 'accent-bg-soft' : 'bg-neutral-800'}`}>
-        {isInbound ? (
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 accent-text" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M3 3l10 10M13 3v10H3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M13 13L3 3M3 13V3h10" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-neutral-200 truncate font-medium">
-          {entry.peer_display || entry.peer_id || 'Unknown'}
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <StatusBadge status={entry.status} />
-          {durStr && <span className="text-xs text-neutral-500">{durStr}</span>}
-        </div>
-      </div>
-
-      {/* Date */}
-      <div className="text-xs text-neutral-500 shrink-0">{dateStr}</div>
-    </div>
-  )
-}
-
-function formatDuration(secs: number): string {
-  const m = Math.floor(secs / 60)
-  const s = secs % 60
-  return m > 0 ? `${m}m ${s}s` : `${s}s`
-}
+// The call history that used to live here — a fetcher, a status badge, a modal
+// panel and a permanently-visible round button pinned to the bottom-right
+// corner of the desktop — has moved into the Phone app's Recents tab
+// (src/builtin/phone/RecentsTab.tsx), where it sits beside the GSM call log in
+// one merged, time-ordered list.
+//
+// The button was the "floating action button" the founder asked to be an app
+// instead. It was `fixed bottom-4 right-4 z-[100]`, rendered unconditionally on
+// every desktop session — not gated on a call, a peering capability or a flag —
+// and its only job was to open a modal over whatever you were doing. Worse, it
+// fronted a subsystem that cannot complete a call: nothing in this codebase
+// initiates a peer call, and handleAccept below rejects on the wire rather than
+// strand the user with no media UI. A permanent piece of shell chrome pointing
+// at that is exactly the thing to delete.
+//
+// What remains here is the one thing that must be shell-wide: the incoming-call
+// banner, which has to intercept a signal no matter which app has focus.
 
 // ---------- incoming call modal -------------------------------------------
 
@@ -388,7 +230,6 @@ function IncomingCallModal({ call, onAccept, onReject }: IncomingCallModalProps)
  */
 export default function IncomingCall() {
   const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
 
   // Connect to the notification stream and watch for peering call signals.
@@ -445,17 +286,20 @@ export default function IncomingCall() {
 
   // KNOWN BREAKAGE (peer calling is non-functional end-to-end).
   //
-  // This accepts the call on the wire and then dismisses the banner without
-  // mounting any media UI, so the user answers and sees nothing happen. The
-  // media surface is CallView (./CallView.jsx), which still exists but is
-  // orphaned: its only importer was Peering.jsx, and Peering.jsx was dropped
-  // from the builtin registry when Messages replaced it. Nothing renders a
-  // call.
+  // There is NO media surface at all. This comment used to say the surface was
+  // CallView (./CallView.jsx) and that it "still exists but is orphaned" — it
+  // does not exist; neither does Peering.jsx. Both are gone, and so is
+  // useMeshCall. Accepting a call would dismiss the banner and mount nothing.
   //
-  // Fixing this is a product decision — restore the peering surface, or mount
-  // CallView from DesktopCanvas alongside this banner, or retire peer calling
-  // and remove this component. Do NOT "fix" it by deleting CallView; that
-  // makes the breakage permanent rather than latent.
+  // Nothing initiates a peer call either: no code anywhere in frontend/ posts
+  // to /api/peering/call/{initiate,signal,hangup}, and there is no
+  // RTCPeerConnection. Peer calling is a signalling backend with no client.
+  //
+  // Fixing this is a product decision — build the media surface, or retire peer
+  // calling and remove this component. Until then the honest behaviour is
+  // below: decline on the wire so the caller sees a real decline rather than a
+  // call that rings forever, and say why. The call HISTORY this feature does
+  // produce is rendered in the Phone app's Recents tab.
   //
   // Interim honesty fix: until CallView is remounted, "Answer" must not
   // silently accept-then-strand the user with no media UI. Decline on the
@@ -506,24 +350,6 @@ export default function IncomingCall() {
         />
       )}
 
-      {/* Call history toggle — small persistent button in the shell (bottom-right area) */}
-      <button
-        onClick={() => setHistoryOpen(true)}
-        title="Call history"
-        aria-label="View call history"
-        className="fixed bottom-4 right-4 z-[100] w-9 h-9 rounded-full bg-neutral-800/80 hover:bg-neutral-700/90 border border-neutral-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg transition-colors"
-      >
-        <svg viewBox="0 0 24 24" className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
-          <polyline points="8 12 12 12 12 16" />
-          <line x1="3" y1="3" x2="12" y2="12" />
-        </svg>
-      </button>
-
-      {/* Call history panel */}
-      {historyOpen && (
-        <CallHistoryPanel onClose={() => setHistoryOpen(false)} />
-      )}
     </>
   )
 }
