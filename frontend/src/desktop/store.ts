@@ -52,7 +52,7 @@ import {
 } from './types'
 import { validateLayout, validatePack, validateTokens } from './validate'
 import { DEFAULT_PRESET_ID, LAYOUT_PRESETS, getPreset, presetLayout, stockLayout } from './presets'
-import { resolveViewportLayout } from '../shell/useViewport'
+import { resolveViewportLayout } from '../shell/viewportRule'
 
 const KEY_LAYOUT = 'vulos.desktop.layout'
 const KEY_PACKS = 'vulos.desktop.packs'
