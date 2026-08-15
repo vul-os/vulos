@@ -669,6 +669,15 @@ func main() {
 	// App auth gateway — all app traffic proxied through here
 	appGateway := gateway.New(authStore, netMgr, portPool)
 
+	// LAUNCH-01: start an installed-but-not-running app on the request that
+	// needs it. Without this nothing on the box ever started a bundled app —
+	// every app ships auto_start:false, nothing reads AutoStart, and the shell's
+	// WebApp lane opens the window without calling /api/apps/launch — so every
+	// app open ended at the gateway's {"error":"app not running"}.
+	// See services/gateway/activate.go for the reasoning and activate_apps.go
+	// for the implementation.
+	appGateway.SetActivator(newAppActivator(appStore, launcher, portPool, appGateway))
+
 	// INTEG-04: cloud OAuth integration injection. Apps that declare
 	// `integrations: ["google", ...]` in their manifest get a short-lived
 	// provider access token injected as X-Vulos-Integration-<Provider> by the

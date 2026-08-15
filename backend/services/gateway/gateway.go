@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -113,6 +114,17 @@ type Gateway struct {
 	// pool — reused across every request. All security transforms live in its
 	// Director / ModifyResponse.
 	reverseProxy *httputil.ReverseProxy
+
+	// activator (LAUNCH-01), when set, starts an app that is installed but not
+	// running, on the request that needs it. nil keeps the pre-LAUNCH-01
+	// behaviour: a namespace miss is a flat 404. See activate.go for why the
+	// launch lives here rather than in the shell.
+	activator Activator
+	// activeMu/activeFlights single-flight concurrent activations of the same
+	// (app, user, profile). Held on its own mutex, never g.mu, so a launch in
+	// progress cannot block reads of the grant maps on the request hot path.
+	activeMu      sync.Mutex
+	activeFlights map[string]*inFlight
 }
 
 // rateBucket tracks request count per window for per-app rate limiting.
@@ -590,8 +602,39 @@ func (g *Gateway) Handler() http.HandlerFunc {
 		// normalises "" to "default", which keeps backwards-compat behaviour.
 		ns, ok := g.netMgr.GetForProfile(appID, session.UserID, net02Profile)
 		if !ok {
-			http.Error(w, `{"error":"app not running"}`, 404)
-			return
+			// LAUNCH-01: nothing on the box ever started a bundled app — the shell's
+			// WebApp lane opens the window without calling launch, auto_start is
+			// false everywhere, and this lookup is pure. So this branch was the
+			// terminal state for every app open: {"error":"app not running"}.
+			//
+			// Start it on the request that needs it. See activate.go for the
+			// single-flight, the bound, and why this is the gateway's job.
+			attempted, aErr := g.activate(r.Context(), appID, session.UserID, net02Profile)
+			if !attempted {
+				http.Error(w, `{"error":"app not running"}`, 404)
+				return
+			}
+			if aErr != nil {
+				log.Printf("[gateway] activate %s for %s/%s failed: %v", appID, session.UserID, net02Profile, aErr)
+				w.Header().Set("Content-Type", "application/json")
+				// A static app has nothing to start, ever — that is a permanent
+				// 404, not a timeout a retry could clear.
+				if errors.Is(aErr, ErrNoProcess) {
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprintf(w, `{"error":"app not running","detail":%q}`, aErr.Error())
+					return
+				}
+				w.WriteHeader(http.StatusGatewayTimeout)
+				fmt.Fprintf(w, `{"error":"app failed to start","detail":%q}`, aErr.Error())
+				return
+			}
+			// The activator reports success only once the app is reachable, so a
+			// miss here means it came up and went away again in between.
+			ns, ok = g.netMgr.GetForProfile(appID, session.UserID, net02Profile)
+			if !ok {
+				http.Error(w, `{"error":"app not running"}`, 404)
+				return
+			}
 		}
 
 		// --- WebSocket upgrade ---
