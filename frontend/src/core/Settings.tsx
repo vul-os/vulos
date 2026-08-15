@@ -1386,7 +1386,7 @@ function BluetoothSettings() {
                     {!d.paired && <button onClick={() => pair(d.address)} aria-label={`Pair with ${dn}`} className="btn-secondary text-sm">Pair</button>}
                     {d.paired && !d.connected && <button onClick={() => connect(d.address)} aria-label={`Connect to ${dn}`} className="btn-secondary text-sm">Connect</button>}
                     {d.connected && <button onClick={() => disconnect(d.address)} aria-label={`Disconnect from ${dn}`} className="btn-ghost text-sm">Disconnect</button>}
-                    {d.paired && <button onClick={() => remove(d.address)} aria-label={`Forget ${dn}`} className="btn-ghost text-sm text-[var(--status-danger)]">Remove</button>}
+                    {d.paired && <button onClick={() => remove(d.address)} aria-label={`Forget ${dn}`} className="btn-ghost text-sm text-danger">Remove</button>}
                   </div>
                 }
               />
@@ -1512,7 +1512,7 @@ function AudioDevice({ device, type, onVolume, onMute, onDefault }: AudioDeviceP
           onClick={() => onMute(device.id, type, !device.muted)}
           aria-label={device.muted ? `Unmute ${device.name}` : `Mute ${device.name}`}
           aria-pressed={!!device.muted}
-          className={`shrink-0 text-xs ${device.muted ? 'text-[var(--status-danger)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+          className={`shrink-0 text-xs ${device.muted ? 'text-danger' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
         >
           {device.muted ? 'Muted' : 'Mute'}
         </button>
@@ -1828,13 +1828,13 @@ function NET9_ConnectionModeSettings() {
       <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">Active mode</span>
-          <span className={`text-sm font-medium ${current ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
+          <span className={`text-sm font-medium ${current ? 'text-success' : 'text-[var(--text-muted)]'}`}>
             {loading ? '…' : (current || 'unknown')}
           </span>
         </div>
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">External listener</span>
-          <span className={`text-sm font-medium ${blocked ? 'text-[var(--status-warning)]' : 'text-[var(--text-secondary)]'}`}>
+          <span className={`text-sm font-medium ${blocked ? 'text-warning' : 'text-[var(--text-secondary)]'}`}>
             {blocked ? 'blocked (local-only)' : 'enabled'}
           </span>
         </div>
@@ -1878,7 +1878,7 @@ function NET9_ConnectionModeSettings() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
                   {current === m.id && (
-                    <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">
+                    <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-success">
                       Active
                     </span>
                   )}
@@ -2080,7 +2080,7 @@ function TURNSettingsSection() {
       </p>
 
       {configured && (
-        <div className="text-xs text-[var(--status-success)] mb-3">TURN server configured</div>
+        <div className="text-xs text-success mb-3">TURN server configured</div>
       )}
 
       <Field label="TURN Host">
@@ -2217,7 +2217,7 @@ function AccountSettings({ profile, updateProfile, logout }: AccountSettingsProp
 
       <Card title="Session" desc="Ends this browser session. Your data stays on the box.">
         <Actions>
-          <button onClick={logout} className="btn-secondary text-sm text-[var(--status-danger)]">Log Out</button>
+          <button onClick={logout} className="btn-secondary text-sm text-danger">Log Out</button>
         </Actions>
       </Card>
     </Section>
@@ -2345,7 +2345,7 @@ function DevicePINSettings() {
       <div className="mb-6 rounded-xl border border-[var(--border-default)] overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">PIN status</span>
-          <span className={`text-sm font-medium ${hasPIN ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
+          <span className={`text-sm font-medium ${hasPIN ? 'text-success' : 'text-[var(--text-muted)]'}`}>
             {hasPIN === null ? '—' : hasPIN ? 'Set' : 'Not set'}
           </span>
         </div>
@@ -2354,8 +2354,8 @@ function DevicePINSettings() {
             <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
               <span className="text-xs text-[var(--text-muted)]">Lockout state</span>
               <span className={`text-sm ${
-                status.permanent_lock ? 'text-[var(--status-danger)]' :
-                status.locked ? 'text-[var(--status-warning)]' :
+                status.permanent_lock ? 'text-danger' :
+                status.locked ? 'text-warning' :
                 'text-[var(--text-tertiary)]'
               }`}>
                 {status.permanent_lock ? 'Permanently locked — re-auth required' :
@@ -2432,7 +2432,7 @@ function DevicePINSettings() {
           <button
             onClick={handleDisable}
             disabled={busy}
-            className="btn-ghost text-[var(--status-danger)] disabled:opacity-50"
+            className="btn-ghost text-danger disabled:opacity-50"
           >
             Remove PIN
           </button>
@@ -2441,7 +2441,7 @@ function DevicePINSettings() {
 
       {/* Status message */}
       {msg && (
-        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'}`}>
+        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-success' : 'text-danger'}`}>
           {msg.text}
         </p>
       )}
@@ -2598,7 +2598,7 @@ function FingerprintSettings() {
       <div className="mb-5 rounded-xl border border-[var(--border-default)] overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">Status</span>
-          <span className={`text-sm font-medium ${status.enrolled ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
+          <span className={`text-sm font-medium ${status.enrolled ? 'text-success' : 'text-[var(--text-muted)]'}`}>
             {status.enrolled ? 'Enrolled' : 'Not enrolled'}
           </span>
         </div>
@@ -2611,7 +2611,7 @@ function FingerprintSettings() {
         {status.enrolled && (
           <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
             <span className="text-xs text-[var(--text-muted)]">Unlock attempts left</span>
-            <span className={`text-sm ${(status.failures_left ?? 0) <= 1 ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
+            <span className={`text-sm ${(status.failures_left ?? 0) <= 1 ? 'text-warning' : 'text-[var(--text-tertiary)]'}`}>
               {status.failures_left} of 3
             </span>
           </div>
@@ -2673,7 +2673,7 @@ function FingerprintSettings() {
           <button
             onClick={handleRemove}
             disabled={busy}
-            className="btn-ghost text-[var(--status-danger)] disabled:opacity-50"
+            className="btn-ghost text-danger disabled:opacity-50"
           >
             Remove fingerprint
           </button>
@@ -2701,7 +2701,7 @@ function FingerprintSettings() {
 
       {/* Status message */}
       {msg && (
-        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'}`}>
+        <p className={`mt-4 text-sm ${msg.type === 'ok' ? 'text-success' : 'text-danger'}`}>
           {msg.text}
         </p>
       )}
@@ -2833,7 +2833,7 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
         <span className="text-xs font-semibold text-[var(--text-secondary)]">Version History</span>
         <button onClick={onClose} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Close</button>
       </div>
-      {loadErr && <p role="alert" className="text-xs text-[var(--status-danger)]">Could not load the version list: {loadErr}</p>}
+      {loadErr && <p role="alert" className="text-xs text-danger">Could not load the version list: {loadErr}</p>}
       {!loadErr && versions.length === 0 && <p className="text-xs text-[var(--text-muted)]">No snapshots yet.</p>}
       {versions.map(v => (
         <div key={v.version} className="flex items-center justify-between py-1 border-b border-[var(--border-default)]">
@@ -2845,13 +2845,13 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
             onClick={() => rollback(v.version)}
             disabled={busy || editDisabled}
             title={editDisabled ? 'Editing disabled by administrator' : 'Restore this version'}
-            className="text-[12px] text-[var(--status-warning)] hover:text-[var(--status-warning)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-[12px] text-warning hover:text-warning disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Restore
           </button>
         </div>
       ))}
-      {msg && <p className="text-xs mt-2 text-[var(--status-success)]">{msg}</p>}
+      {msg && <p className="text-xs mt-2 text-success">{msg}</p>}
     </div>
   )
 }
@@ -2887,7 +2887,7 @@ function AIAppsSettings() {
     <Section title="AI-Generated Apps">
       <p className="text-xs text-[var(--text-faint)] mb-4">Apps created by the AI assistant. Open runs each app in an isolated sandbox.</p>
       {editDisabled && (
-        <div className="mb-4 rounded border border-warning-soft bg-[var(--status-warning-soft)] px-3 py-2 text-xs text-[var(--status-warning)]">
+        <div className="mb-4 rounded border border-warning-soft bg-[var(--status-warning-soft)] px-3 py-2 text-xs text-warning">
           AI-app editing is disabled by the administrator (DISABLE_AI_APP_EDIT). You can still open existing apps, but saving, updating, deleting, snapshotting and rollback are turned off.
         </div>
       )}
@@ -2907,7 +2907,7 @@ function AIAppsSettings() {
               onClick={() => remove(app.id)}
               disabled={editDisabled}
               title={editDisabled ? 'Editing disabled by administrator' : 'Delete app'}
-              className="text-xs text-[var(--status-danger)] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="text-xs text-danger disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Delete
             </button>
@@ -2980,7 +2980,7 @@ function VaultSettings() {
     <Section title="Backup & Sync">
       {error && <Banner tone="danger" title="Backup failed">{error}</Banner>}
       {msg && <Banner tone="success">{msg}</Banner>}
-      <div className={`text-sm mb-3 ${status?.initialized ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
+      <div className={`text-sm mb-3 ${status?.initialized ? 'text-success' : 'text-[var(--text-muted)]'}`}>
         {status?.initialized ? 'Vault initialized' : 'Vault not configured'}
       </div>
       {status?.initialized && (
@@ -3056,7 +3056,7 @@ function RecallSettings() {
           <p>Files indexed: <span className="text-[var(--text-secondary)]">{status.indexed_files || 0}</span></p>
           <p>Total scanned: <span className="text-[var(--text-secondary)]">{status.total_files || 0}</span></p>
           <p>Last index: <span className="text-[var(--text-secondary)]">{status.last_index || 'never'}</span></p>
-          <p>Status: <span className={status.indexing ? 'text-[var(--status-warning)]' : 'text-[var(--status-success)]'}>{status.indexing ? 'Indexing...' : 'Ready'}</span></p>
+          <p>Status: <span className={status.indexing ? 'text-warning' : 'text-success'}>{status.indexing ? 'Indexing...' : 'Ready'}</span></p>
         </div>
       )}
       <button onClick={reindex} className="btn">Re-index Now</button>
@@ -3392,7 +3392,7 @@ function UsersSettings({ profile }: UsersSettingsProps) {
           </button>
         </div>
         {pinMsg && (
-          <p className={`mt-2 text-xs ${pinMsg.type === 'ok' ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'}`}>
+          <p className={`mt-2 text-xs ${pinMsg.type === 'ok' ? 'text-success' : 'text-danger'}`}>
             {pinMsg.text}
           </p>
         )}
@@ -3429,8 +3429,8 @@ function UsersSettings({ profile }: UsersSettingsProps) {
               />
               <button type="submit" className="btn">Add</button>
             </div>
-            {addError && <p className="text-xs text-[var(--status-danger)]">{addError}</p>}
-            {addSuccess && <p className="text-xs text-[var(--status-success)]">{addSuccess}</p>}
+            {addError && <p className="text-xs text-danger">{addError}</p>}
+            {addSuccess && <p className="text-xs text-success">{addSuccess}</p>}
           </form>
         </div>
       )}
@@ -3441,7 +3441,7 @@ function UsersSettings({ profile }: UsersSettingsProps) {
           echoing the bare server message: "boom" on its own tells the reader
           nothing about which of the several things on this panel broke. */}
       {listError && (
-        <p role="alert" className="text-xs text-[var(--status-danger)] mb-2">
+        <p role="alert" className="text-xs text-danger mb-2">
           Could not load the user list: {listError}
         </p>
       )}
@@ -3464,7 +3464,7 @@ function UsersSettings({ profile }: UsersSettingsProps) {
                 <option value="user">User</option>
                 <option value="guest">Guest</option>
               </select>
-              <button onClick={() => removeUser(p.user_id)} aria-label={`Remove ${p.display_name || 'user'}`} className="text-xs text-[var(--status-danger)] hover:text-[var(--status-danger)]">Remove</button>
+              <button onClick={() => removeUser(p.user_id)} aria-label={`Remove ${p.display_name || 'user'}`} className="text-xs text-danger hover:text-danger">Remove</button>
             </div>
           )}
         </div>
@@ -3566,10 +3566,10 @@ function OSUpdateSettings() {
         <div className="mb-4 flex items-start gap-2.5 rounded-lg px-3.5 py-3 bg-[var(--status-danger-soft)] border border-[var(--status-danger)]/30">
           <span className="text-base leading-none mt-0.5">⚠</span>
           <div>
-            <p className="text-sm font-semibold text-[var(--status-danger)]">
+            <p className="text-sm font-semibold text-danger">
               Security update{status?.severity ? ` — ${status.severity}` : ''}
             </p>
-            <p className="text-xs text-[var(--status-danger)]/90 mt-0.5">
+            <p className="text-xs text-danger/90 mt-0.5">
               Version {status?.latest_version} addresses a security issue. Staging and rebooting soon is recommended.
             </p>
           </div>
@@ -3586,7 +3586,7 @@ function OSUpdateSettings() {
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">Latest available</span>
           {status?.available ? (
-            <span className="flex items-center gap-1.5 text-sm font-mono text-[var(--status-success)]">
+            <span className="flex items-center gap-1.5 text-sm font-mono text-success">
               {status.latest_version}
               {isSecurity && (
                 <span className="px-1.5 py-0.5 rounded text-[12px] font-semibold tracking-wide bg-[var(--status-danger)] text-white">
@@ -3629,13 +3629,13 @@ function OSUpdateSettings() {
       )}
 
       {status?.last_error && (
-        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-danger">
           Last check error: {status.last_error}
         </div>
       )}
 
       {stageResult && (
-        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)]">
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-success-soft)] text-success">
           {stageResult}
         </div>
       )}
@@ -3663,7 +3663,7 @@ function OSUpdateSettings() {
       )}
 
       {error && (
-        <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+        <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-danger">
           {error}
         </div>
       )}

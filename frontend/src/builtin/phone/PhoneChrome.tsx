@@ -156,7 +156,7 @@ export function LineBar({ lines, active, onPick }: { lines: Line[]; active: Line
       </span>
       {!active.voice && (
         <span className="shrink-0 px-1.5 py-0.5 rounded text-[11.5px] font-medium"
-          style={{ background: 'color-mix(in srgb, var(--status-warning) 18%, transparent)', color: 'var(--status-warning)' }}
+          style={{ background: 'color-mix(in srgb, var(--status-warning) 18%, transparent)', color: 'var(--status-warning-text)' }}
           title="This modem reports no voice support — SMS only">
           SMS only
         </span>

@@ -187,7 +187,7 @@ export default function DeveloperPanel() {
       {/* ------------------------------------------------------------------ */}
       {newKey && (
         <div className="mb-6 p-4 rounded-lg bg-[var(--status-warning-soft)] border border-warning-soft">
-          <p className="text-xs font-medium text-[var(--status-warning)] mb-2">
+          <p className="text-xs font-medium text-warning mb-2">
             Copy this key now — it will not be shown again.
           </p>
           <div className="flex items-center gap-2">
@@ -250,7 +250,7 @@ export default function DeveloperPanel() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-[var(--text-primary)] truncate">{k.name}</span>
                       {revoked && (
-                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-danger-soft)] text-danger">
                           Revoked
                         </span>
                       )}
@@ -265,7 +265,7 @@ export default function DeveloperPanel() {
                       onClick={() => revokeKey(k.id)}
                       disabled={revokingId === k.id}
                       aria-label={`Revoke ${k.name}`}
-                      className="shrink-0 text-xs text-[var(--status-danger)] hover:text-[var(--status-danger)] disabled:opacity-50"
+                      className="shrink-0 text-xs text-danger hover:text-danger disabled:opacity-50"
                     >
                       {revokingId === k.id ? 'Revoking…' : 'Revoke'}
                     </button>
@@ -278,7 +278,7 @@ export default function DeveloperPanel() {
       </div>
 
       {error && (
-        <div className="mt-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+        <div className="mt-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-danger">
           {error}
         </div>
       )}

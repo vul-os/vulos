@@ -114,8 +114,8 @@ function StatusBadge({ status }: { status?: string }) {
     <span
       className={`text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
         verified
-          ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]'
-          : 'bg-[var(--status-warning-soft)] text-[var(--status-warning)]'
+          ? 'bg-[var(--status-success-soft)] text-success'
+          : 'bg-[var(--status-warning-soft)] text-warning'
       }`}
     >
       {verified ? 'Verified' : 'Pending'}
@@ -314,7 +314,7 @@ export default function DomainPanel() {
 
       {appsError && (
         <div className="p-3 rounded-lg bg-[var(--status-danger-soft)] border border-danger-soft mb-4">
-          <p className="text-xs text-[var(--status-danger)]">{appsError}</p>
+          <p className="text-xs text-danger">{appsError}</p>
         </div>
       )}
 
@@ -354,7 +354,7 @@ export default function DomainPanel() {
 
           {recordError && (
             <div className="p-3 rounded-lg bg-[var(--status-danger-soft)] border border-danger-soft mb-4">
-              <p className="text-xs text-[var(--status-danger)]">{recordError}</p>
+              <p className="text-xs text-danger">{recordError}</p>
             </div>
           )}
 
@@ -377,7 +377,7 @@ export default function DomainPanel() {
                 {attaching ? 'Attaching…' : 'Attach Domain'}
               </button>
               {attachError && (
-                <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]">
+                <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-danger">
                   {attachError}
                 </div>
               )}
@@ -431,7 +431,7 @@ export default function DomainPanel() {
                 {!confirmRemove ? (
                   <button
                     onClick={() => setConfirmRemove(true)}
-                    className="text-xs text-[var(--status-danger)] hover:text-[var(--status-danger)] ml-auto"
+                    className="text-xs text-danger hover:text-danger ml-auto"
                   >
                     Remove domain
                   </button>
@@ -441,7 +441,7 @@ export default function DomainPanel() {
                     <button
                       onClick={handleRemove}
                       disabled={removing}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-[var(--status-danger-soft)] text-[var(--status-danger)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      className="text-xs px-2.5 py-1 rounded-lg bg-[var(--status-danger-soft)] text-danger hover:opacity-80 transition-opacity disabled:opacity-50"
                     >
                       {removing ? 'Removing…' : 'Confirm'}
                     </button>
@@ -457,7 +457,7 @@ export default function DomainPanel() {
               </div>
 
               {verifyError && (
-                <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)]">
+                <div className="mt-3 text-xs rounded px-3 py-2 bg-[var(--status-warning-soft)] text-warning">
                   Not verified yet: {verifyError}
                 </div>
               )}

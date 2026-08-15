@@ -2076,7 +2076,7 @@ export default function Drive() {
                     onMouseEnter={(e) => { if (view !== v) e.currentTarget.style.background = T.hover }}
                     onMouseLeave={(e) => { if (view !== v) e.currentTarget.style.background = 'transparent' }}
                   >
-                    <span style={{ fontSize: 9, color: 'var(--status-success)', flexShrink: 0 }} aria-hidden="true">●</span>
+                    <span style={{ fontSize: 9, color: 'var(--status-success-text)', flexShrink: 0 }} aria-hidden="true">●</span>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
                   </button>
                   <button
@@ -2231,7 +2231,7 @@ export default function Drive() {
                   <span style={{ color: T.textFaint, fontSize: 12, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{item.is_dir ? 'folder' : fmtSize(item.size)}</span>
                   <Btn small onClick={() => { setBusy(`Downloading ${item.name}…`); downloadReceived(item).catch((e: unknown) => setError(errMessage(e) || 'Download failed')).finally(() => setBusy(null)) }}>Download</Btn>
                   {item.saved_node_id
-                    ? <span style={{ color: 'var(--status-success)', fontSize: 12, minWidth: 90, textAlign: 'center', flexShrink: 0 }}>Saved ✓</span>
+                    ? <span style={{ color: 'var(--status-success-text)', fontSize: 12, minWidth: 90, textAlign: 'center', flexShrink: 0 }}>Saved ✓</span>
                     : <Btn small primary onClick={() => saveReceived(item)}>Save to Drive</Btn>}
                 </div>
               ))}

@@ -541,7 +541,7 @@ export default function Home() {
                 {snoozing === item.uid ? (
                   <>
                     <button onClick={() => snooze(item)}
-                      style={{ background: 'color-mix(in srgb, var(--status-warning) 20%, transparent)', color: 'var(--status-warning)', border: '1px solid color-mix(in srgb, var(--status-warning) 40%, transparent)' }}
+                      style={{ background: 'color-mix(in srgb, var(--status-warning) 20%, transparent)', color: 'var(--status-warning-text)', border: '1px solid color-mix(in srgb, var(--status-warning) 40%, transparent)' }}
                       className="text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110">Confirm snooze</button>
                     <button onClick={() => setSnoozing(null)} className="text-[12px] px-2 py-1 rounded-[var(--radius-sm)] text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)] transition-colors">Cancel</button>
                   </>
@@ -630,7 +630,7 @@ export default function Home() {
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                   <button onClick={() => rsvpInvite(inv, 'accept')} disabled={busy}
-                    style={{ background: 'color-mix(in srgb, var(--status-success) 18%, transparent)', color: 'var(--status-success)', border: '1px solid color-mix(in srgb, var(--status-success) 38%, transparent)' }}
+                    style={{ background: 'color-mix(in srgb, var(--status-success) 18%, transparent)', color: 'var(--status-success-text)', border: '1px solid color-mix(in srgb, var(--status-success) 38%, transparent)' }}
                     className="text-[12px] font-medium px-2.5 py-1 rounded-[var(--radius-sm)] transition-[filter] hover:brightness-110 disabled:opacity-40">Accept</button>
                   <button onClick={() => rsvpInvite(inv, 'tentative')} disabled={busy} className={BTN}>Tentative</button>
                   <button onClick={() => rsvpInvite(inv, 'decline')} disabled={busy} className={BTN}>Decline</button>

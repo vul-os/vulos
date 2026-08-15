@@ -187,13 +187,13 @@ function toDownloadResponse(x: unknown): DownloadResponse {
 const RAG_MODES: Record<RagMode, { label: string; tone: string; dot: string; desc: string }> = {
   semantic: {
     label: 'Semantic RAG active',
-    tone: 'text-[var(--status-success)] bg-[var(--status-success-soft)] border-success-soft',
+    tone: 'text-success bg-[var(--status-success-soft)] border-success-soft',
     dot: 'bg-[var(--status-success)]',
     desc: 'A local embedding model and its real tokenizer.json are installed. Your assistant retrieves mail by meaning — genuine semantic search, entirely on your box.',
   },
   degraded: {
     label: 'Degraded fallback',
-    tone: 'text-[var(--status-warning)] bg-[var(--status-warning-soft)] border-warning-soft',
+    tone: 'text-warning bg-[var(--status-warning-soft)] border-warning-soft',
     dot: 'bg-[var(--status-warning)]',
     desc: 'A local model is installed but its tokenizer.json is missing, so embeddings use a deterministic hash fallback. Vectors are reproducible but only weakly meaningful — retrieval quality is reduced. Import the model’s tokenizer.json below to upgrade to real semantic RAG.',
   },
@@ -228,7 +228,7 @@ function PythonDepsNotice({ deps }: { deps: PythonDepsStatus | undefined }) {
   const hint = deps.install_hint || 'pip install onnxruntime tokenizers numpy'
   if (deps.ready) {
     return (
-      <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-success-soft)] text-[var(--status-success)] border border-success-soft">
+      <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-success-soft)] text-success border border-success-soft">
         On-box embedding runtime detected (python3 + onnxruntime + tokenizers). Semantic embeddings can run locally.
       </div>
     )
@@ -238,10 +238,10 @@ function PythonDepsNotice({ deps }: { deps: PythonDepsStatus | undefined }) {
   if (!deps.onnxruntime) missing.push('onnxruntime')
   if (!deps.tokenizers) missing.push('tokenizers')
   return (
-    <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-[var(--status-warning)] border border-warning-soft">
+    <div className="mb-3 text-[12px] leading-relaxed rounded-lg px-3 py-2 bg-[var(--status-warning-soft)] text-warning border border-warning-soft">
       The on-box embedding runtime is missing ({missing.join(', ') || 'dependencies'}). A model can be installed, but
       embeddings will not run until you install the <strong>vulos-embed</strong> Python deps on the box:
-      <code className="block mt-1.5 font-mono text-[var(--status-warning)] bg-[var(--bg-base)] rounded px-2 py-1 select-all">{hint}</code>
+      <code className="block mt-1.5 font-mono text-warning bg-[var(--bg-base)] rounded px-2 py-1 select-all">{hint}</code>
       This is never installed automatically — run it yourself on the box.
     </div>
   )
@@ -298,8 +298,8 @@ function CatalogRow({ entry, onDownloaded }: { entry: CatalogEntry; onDownloaded
         </button>
       </div>
       {busy && <div className="mt-2 text-[12px] text-[var(--text-muted)]" role="status">Fetching + verifying the pinned model — this can take a minute on first install.</div>}
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-[var(--status-success)]" role="status">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{err}</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-success" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-danger" role="alert">{err}</div>}
     </div>
   )
 }
@@ -364,8 +364,8 @@ function ImportRow({ kind, label, accept, hint, onImported }: {
         className="hidden"
         aria-label={`Import ${label}`}
       />
-      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-[var(--status-success)]" role="status">{ok}</div>}
-      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{err}</div>}
+      {ok && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-success-soft)] text-success" role="status">{ok}</div>}
+      {err && <div className="mt-2 text-xs rounded px-3 py-1.5 bg-[var(--status-danger-soft)] text-danger" role="alert">{err}</div>}
     </div>
   )
 }
@@ -434,7 +434,7 @@ function ModelsPanelOwner() {
         </p>
       )}
       {error && (
-        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-[var(--status-danger)]" role="alert">{error}</div>
+        <div className="mb-4 text-xs rounded px-3 py-2 bg-[var(--status-danger-soft)] text-danger" role="alert">{error}</div>
       )}
 
       {emb && (
@@ -452,11 +452,11 @@ function ModelsPanelOwner() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-[var(--text-primary)] font-mono">{mm.name}</span>
                       {mm.active && (
-                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">Active</span>
+                        <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-success">Active</span>
                       )}
                       {mm.has_tokenizer
-                        ? <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-[var(--status-success)]">tokenizer ✓</span>
-                        : <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-warning-soft)] text-[var(--status-warning)]">no tokenizer</span>}
+                        ? <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-success-soft)] text-success">tokenizer ✓</span>
+                        : <span className="text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--status-warning-soft)] text-warning">no tokenizer</span>}
                     </div>
                     <div className="text-xs text-[var(--text-muted)] mt-1">
                       {humanBytes(mm.size_bytes)}

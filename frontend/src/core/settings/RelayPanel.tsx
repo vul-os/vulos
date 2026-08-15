@@ -562,7 +562,7 @@ export default function RelayPanel() {
       )}
 
       {saveMsg && (
-        <div className={`flex items-start gap-2 text-xs mb-3 ${saveMsg.ok ? 'text-[var(--status-success)]' : 'text-danger'}`} role={saveMsg.ok ? 'status' : 'alert'}>
+        <div className={`flex items-start gap-2 text-xs mb-3 ${saveMsg.ok ? 'text-success' : 'text-danger'}`} role={saveMsg.ok ? 'status' : 'alert'}>
           <span className={`inline-block w-2 h-2 rounded-full mt-1 ${saveMsg.ok ? 'bg-[var(--status-success)]' : 'bg-[var(--status-danger)]'}`} aria-hidden="true" />
           <span>
             {saveMsg.text}
@@ -588,7 +588,7 @@ export default function RelayPanel() {
       </div>
 
       {testResult && (
-        <div className={`mt-3 text-xs rounded px-3 py-2 ${testResult.success ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]' : 'bg-[var(--status-danger-soft)] text-[var(--status-danger)]'}`}>
+        <div className={`mt-3 text-xs rounded px-3 py-2 ${testResult.success ? 'bg-[var(--status-success-soft)] text-success' : 'bg-[var(--status-danger-soft)] text-danger'}`}>
           {testResult.success ? 'Reachable' : 'Unreachable'}
           {typeof testResult.latency_ms === 'number' ? ` — latency ${testResult.latency_ms} ms` : ''}
           {testResult.detail ? ` — ${testResult.detail}` : ''}
@@ -664,7 +664,7 @@ function RelayNodes({ reach, showAdd, setShowAdd, draft, setDraft }: RelayNodesP
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] text-[var(--text-muted)]">
                     {ep.region && <span>region {ep.region}</span>}
                     {link.public_url && <span className="mono truncate">→ {link.public_url}</span>}
-                    {st.last_error && <span className="text-[var(--status-danger)] truncate">last error: {st.last_error}</span>}
+                    {st.last_error && <span className="text-danger truncate">last error: {st.last_error}</span>}
                   </div>
                 </div>
               )

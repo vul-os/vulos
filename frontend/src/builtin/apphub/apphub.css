@@ -923,8 +923,8 @@
   color: #fff;
 }
 
-.hub-btn-danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
-.hub-btn-danger:hover { background: var(--status-danger-soft); color: var(--status-danger); }
+.hub-btn-danger { color: var(--status-danger-text); border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
+.hub-btn-danger:hover { background: var(--status-danger-soft); color: var(--status-danger-text); }
 
 /* A notice narrower than ~360px cannot hold text and a button side by side. */
 .hub[data-hub-mode='narrow'] .hub-notice { flex-wrap: wrap; }

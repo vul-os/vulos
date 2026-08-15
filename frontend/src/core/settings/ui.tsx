@@ -254,9 +254,9 @@ export type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
 const PILL_TONES: Record<Tone, string> = {
   neutral: 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] ring-[var(--border-strong)]',
   accent: 'accent-bg-soft accent-text ring-transparent',
-  success: 'text-[var(--status-success)] ring-transparent',
-  warning: 'text-[var(--status-warning)] ring-transparent',
-  danger: 'text-[var(--status-danger)] ring-transparent',
+  success: 'text-success ring-transparent',
+  warning: 'text-warning ring-transparent',
+  danger: 'text-danger ring-transparent',
 }
 const PILL_DOT: Record<Tone, string> = {
   neutral: 'bg-[var(--text-muted)]',
@@ -341,9 +341,9 @@ interface StatTileProps {
 // ── StatTile — a compact metric cell: big value + label + optional sub/pill.
 // Group several in a grid for an at-a-glance readout row. ────────────────────
 export function StatTile({ label, value, sub, tone, icon }: StatTileProps) {
-  const valueTone = tone === 'success' ? 'text-[var(--status-success)]'
-    : tone === 'warning' ? 'text-[var(--status-warning)]'
-    : tone === 'danger' ? 'text-[var(--status-danger)]'
+  const valueTone = tone === 'success' ? 'text-success'
+    : tone === 'warning' ? 'text-warning'
+    : tone === 'danger' ? 'text-danger'
     : tone === 'accent' ? 'accent-text'
     : 'text-[var(--text-primary)]'
   return (
@@ -381,7 +381,7 @@ interface InfoRowProps {
 
 export function InfoRow({ label, value, mono = false, ok }: InfoRowProps) {
   const tone = ok == null ? 'text-[var(--text-secondary)]'
-    : ok ? 'text-[var(--status-success)]' : 'text-[var(--status-danger)]'
+    : ok ? 'text-success' : 'text-danger'
   return (
     // A definition grid, not a justify-between row. Pushing the value hard
     // right worked at a 42rem measure and fell apart as the pane grew: on a
@@ -429,9 +429,9 @@ interface BannerProps {
 export function Banner({ tone = 'info', title, children, icon = true }: BannerProps) {
   const map: Record<BannerTone, { wrap: string; dot: string }> = {
     info: { wrap: 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]', dot: 'bg-[var(--text-muted)]' },
-    success: { wrap: 'border-success-soft bg-[var(--status-success-soft)] text-[var(--status-success)]', dot: 'bg-[var(--status-success)]' },
-    warning: { wrap: 'border-warning-soft bg-[var(--status-warning-soft)] text-[var(--status-warning)]', dot: 'bg-[var(--status-warning)]' },
-    danger: { wrap: 'border-danger-soft bg-[var(--status-danger-soft)] text-[var(--status-danger)]', dot: 'bg-[var(--status-danger)]' },
+    success: { wrap: 'border-success-soft bg-[var(--status-success-soft)] text-success', dot: 'bg-[var(--status-success)]' },
+    warning: { wrap: 'border-warning-soft bg-[var(--status-warning-soft)] text-warning', dot: 'bg-[var(--status-warning)]' },
+    danger: { wrap: 'border-danger-soft bg-[var(--status-danger-soft)] text-danger', dot: 'bg-[var(--status-danger)]' },
   }
   const t = map[tone] || map.info
   return (

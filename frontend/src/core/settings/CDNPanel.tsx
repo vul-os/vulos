@@ -380,7 +380,7 @@ export default function CDNPanel() {
         </div>
 
         {saveError && <p className="text-xs text-danger" role="alert">{saveError}</p>}
-        {saveOk && !saveError && <p className="text-xs text-[var(--status-success)]">Saved.</p>}
+        {saveOk && !saveError && <p className="text-xs text-success">Saved.</p>}
         <button
           onClick={save}
           disabled={saving || !originHost.trim()}

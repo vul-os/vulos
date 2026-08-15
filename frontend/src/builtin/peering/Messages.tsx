@@ -577,7 +577,7 @@ const S: Styles = {
     borderRadius: 8,
     padding: '8px 12px',
     fontSize: 12,
-    color: 'var(--status-danger)',
+    color: 'var(--status-danger-text)',
     margin: '8px 18px 0',
   },
 }

@@ -450,7 +450,7 @@ function AddAccountForm({ onAdd, onCancel }: { onAdd: (account: TotpAccount) => 
       )}
 
       {err && (
-        <div style={{ fontSize: 12, color: 'var(--status-danger)', padding: '8px 10px', background: 'var(--status-danger-soft)', borderRadius: 8, border: '1px solid var(--status-danger-soft)' }}>
+        <div style={{ fontSize: 12, color: 'var(--status-danger-text)', padding: '8px 10px', background: 'var(--status-danger-soft)', borderRadius: 8, border: '1px solid var(--status-danger-soft)' }}>
           {err}
         </div>
       )}
@@ -531,12 +531,12 @@ function TransferPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () 
     transition: 'all var(--motion-fast, 0.15s) var(--ease-out, ease)',
   })
   const noteStyle: CSSProperties = {
-    fontSize: 11, lineHeight: 1.5, color: 'var(--status-warning)',
+    fontSize: 11, lineHeight: 1.5, color: 'var(--status-warning-text)',
     background: 'var(--status-warning-soft)', border: '1px solid var(--status-warning-soft)',
     borderRadius: 8, padding: '8px 10px',
   }
   const errStyle: CSSProperties = {
-    fontSize: 12, color: 'var(--status-danger)', background: 'var(--status-danger-soft)',
+    fontSize: 12, color: 'var(--status-danger-text)', background: 'var(--status-danger-soft)',
     border: '1px solid var(--status-danger-soft)', borderRadius: 8, padding: '8px 10px',
   }
   const tabStyle = (t: 'import' | 'export'): CSSProperties => ({
@@ -686,7 +686,7 @@ function TransferPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () 
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Import finished</div>
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--status-success)' }}>{result.imported ?? 0}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--status-success-text)' }}>{result.imported ?? 0}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Imported</div>
                 </div>
                 <div>
@@ -705,7 +705,7 @@ function TransferPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () 
               {Array.isArray(result.warnings) && result.warnings.length > 0 && (
                 <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {result.warnings.map((wmsg, i) => (
-                    <li key={i} style={{ fontSize: 11, color: 'var(--status-warning)' }}>{wmsg}</li>
+                    <li key={i} style={{ fontSize: 11, color: 'var(--status-warning-text)' }}>{wmsg}</li>
                   ))}
                 </ul>
               )}
@@ -781,7 +781,7 @@ function TransferPanel({ onDone, onCancel }: { onDone: () => void; onCancel: () 
           {exportErr && <div role="alert" style={errStyle}>{exportErr}</div>}
           {exportDone && (
             <div role="status" style={{
-              fontSize: 12, color: 'var(--status-success)', background: 'var(--status-success-soft)',
+              fontSize: 12, color: 'var(--status-success-text)', background: 'var(--status-success-soft)',
               border: '1px solid var(--status-success-soft)', borderRadius: 8, padding: '8px 10px',
             }}>
               Backup downloaded.
@@ -975,7 +975,7 @@ export default function Authenticator() {
           </div>
         ) : fetchErr ? (
           <div style={{
-            textAlign: 'center', color: 'var(--status-danger)', fontSize: 13, padding: 24,
+            textAlign: 'center', color: 'var(--status-danger-text)', fontSize: 13, padding: 24,
             background: 'var(--status-danger-soft)', borderRadius: 12,
             border: '1px solid var(--status-danger-soft)',
           }}>
@@ -986,7 +986,7 @@ export default function Authenticator() {
               onClick={loadAccounts}
               style={{
                 marginTop: 12, minHeight: 36, padding: '8px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-                background: 'var(--status-danger-soft)', border: '1px solid var(--status-danger)', color: 'var(--status-danger)',
+                background: 'var(--status-danger-soft)', border: '1px solid var(--status-danger)', color: 'var(--status-danger-text)',
               }}
             >
               Retry

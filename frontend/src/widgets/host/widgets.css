@@ -186,9 +186,9 @@
 .vwidget-tone-secondary { color: var(--text-secondary); }
 .vwidget-tone-faint     { color: var(--text-tertiary); }
 .vwidget-tone-accent    { color: var(--accent-text, var(--accent)); }
-.vwidget-tone-success   { color: var(--status-success); }
-.vwidget-tone-warning   { color: var(--status-warning); }
-.vwidget-tone-danger    { color: var(--status-danger); }
+.vwidget-tone-success   { color: var(--status-success-text); }
+.vwidget-tone-warning   { color: var(--status-warning-text); }
+.vwidget-tone-danger    { color: var(--status-danger-text); }
 
 /* ── Empty / error ────────────────────────────────────────────────────────── */
 
@@ -408,7 +408,7 @@
               background var(--motion-fast) var(--ease-standard);
 }
 .vwidget-chip:hover { color: var(--text-primary); background: var(--bg-hover); }
-.vwidget-chip[data-danger='true']:hover { color: var(--status-danger); background: var(--status-danger-soft); }
+.vwidget-chip[data-danger='true']:hover { color: var(--status-danger-text); background: var(--status-danger-soft); }
 .vwidget-chip[data-active='true'] { color: var(--accent-text, var(--accent)); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .vwidget-chip:disabled { opacity: 0.35; }
 

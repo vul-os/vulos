@@ -132,7 +132,7 @@ function ApmAdoptForm({ onAdopted }: ApmAdoptFormProps) {
           Adopt
         </button>
       </div>
-      {err && <p className="text-[12px] text-[var(--status-danger)]">{err}</p>}
+      {err && <p className="text-[12px] text-danger">{err}</p>}
       <p className="text-[12px] text-[var(--text-faint)]">
         The service must be listening on 127.0.0.1. It stays behind your sign-in — it is never exposed to the public web.
       </p>
@@ -177,7 +177,7 @@ function ApmRow({ item, onRevoke }: ApmRowProps) {
         <button
           onClick={revoke}
           disabled={busy}
-          className="text-[12px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--status-danger-soft)] hover:text-[var(--status-danger)] transition-colors disabled:opacity-40"
+          className="text-[12px] px-2 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:bg-[var(--status-danger-soft)] hover:text-danger transition-colors disabled:opacity-40"
         >
           Revoke
         </button>
@@ -252,7 +252,7 @@ function ApmPopover({ onClose }: ApmPopoverProps) {
                 <span className="w-3 h-3 spinner" /> Loading...
               </div>
             )}
-            {error && <p className="text-xs text-[var(--status-danger)] py-4 text-center">{error}</p>}
+            {error && <p className="text-xs text-danger py-4 text-center">{error}</p>}
             {items !== null && items.length === 0 && !error && (
               <p className="text-xs text-[var(--text-muted)] py-6 text-center">No adopted ports yet.</p>
             )}

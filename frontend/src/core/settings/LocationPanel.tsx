@@ -89,11 +89,11 @@ export default function LocationPanel() {
         {enabled && (
           <p className="mt-3 pt-3 border-t border-[var(--border-subtle)] text-xs leading-relaxed">
             {status.lastError ? (
-              <span className="text-[var(--status-warning)]">
+              <span className="text-warning">
                 {isLocationErrorCode(status.lastError) ? ERROR_LABEL[status.lastError] : `Reporting issue: ${status.lastError}`}
               </span>
             ) : status.active ? (
-              <span className="text-[var(--status-success)]">
+              <span className="text-success">
                 Reporting your location to your box{status.lastSentTs ? ' — last update just now.' : '…'}
               </span>
             ) : (

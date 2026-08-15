@@ -376,7 +376,7 @@ function SubscriptionRow({ sub, allTopics, onChanged, onSecret }: {
         )}
 
         {testResult && (
-          <p className={`mt-2 text-xs ${testResult.delivered ? 'text-[var(--status-success)]' : 'text-danger'}`}>
+          <p className={`mt-2 text-xs ${testResult.delivered ? 'text-success' : 'text-danger'}`}>
             {testResult.delivered
               ? `Test delivered (HTTP ${testResult.status_code}).`
               : `Test failed${testResult.status_code ? ` (HTTP ${testResult.status_code})` : ''}${testResult.error ? `: ${testResult.error}` : '.'}`}

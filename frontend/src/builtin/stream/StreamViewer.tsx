@@ -238,15 +238,15 @@ function StreamToolbar({
 
   const streamToolbarRttColor =
     streamToolbarRtt == null ? 'text-white/40' :
-    streamToolbarRtt < 50   ? 'text-[var(--status-success)]' :
-    streamToolbarRtt < 120  ? 'text-[var(--status-warning)]' :
-                               'text-[var(--status-danger)]'
+    streamToolbarRtt < 50   ? 'text-success' :
+    streamToolbarRtt < 120  ? 'text-warning' :
+                               'text-danger'
 
   const streamToolbarQualityColor =
-    quality === 'max'    ? 'text-[var(--status-success)]' :
-    quality === 'high'   ? 'text-[var(--status-success)]' :
-    quality === 'medium' ? 'text-[var(--status-warning)]' :
-    quality === 'low'    ? 'text-[var(--status-danger)]' :
+    quality === 'max'    ? 'text-success' :
+    quality === 'high'   ? 'text-success' :
+    quality === 'medium' ? 'text-warning' :
+    quality === 'low'    ? 'text-danger' :
                            'text-white/40'
 
   if (streamToolbarCollapsed) {

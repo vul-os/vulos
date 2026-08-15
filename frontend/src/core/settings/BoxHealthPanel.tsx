@@ -207,8 +207,8 @@ export default function BoxHealthPanel() {
         aria-live="polite"
         className={`rounded-xl border px-4 py-3 mb-5 ${
         healthErr ? 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
-          : degraded ? 'border-danger-soft bg-[var(--status-danger-soft)] text-[var(--status-danger)]'
-          : 'border-success-soft bg-[var(--status-success-soft)] text-[var(--status-success)]'
+          : degraded ? 'border-danger-soft bg-[var(--status-danger-soft)] text-danger'
+          : 'border-success-soft bg-[var(--status-success-soft)] text-success'
       }`}>
         <div className="flex items-center gap-2">
           <span className={`inline-block w-2 h-2 rounded-full ${
@@ -227,7 +227,7 @@ export default function BoxHealthPanel() {
       <h3 className="text-sm font-medium text-[var(--text-secondary)] mb-2">
         Resources
         <span className={`ml-2 text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
-          connected ? 'bg-[var(--status-success-soft)] text-[var(--status-success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+          connected ? 'bg-[var(--status-success-soft)] text-success' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
         }`}>{connected ? 'live' : 'offline'}</span>
       </h3>
       <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-5">

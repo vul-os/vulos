@@ -157,8 +157,11 @@ function useCopy() {
 
 // ── Password strength estimate (presentational only) ─────────────────────────
 // Rough, on-device heuristic used purely to colour the generator's strength bar.
-function estimateStrength(pw: string): { score: number; label: string; color: string } {
-  if (!pw) return { score: 0, label: '', color: 'var(--text-muted)' }
+// `bar` fills the four segments; `text` labels them. They are two colours on
+// purpose: one value cannot be both, and this component was drawing the fill
+// hue as a 12px label — "Weak" in --status-danger measured 3.69:1 on light.
+function estimateStrength(pw: string): { score: number; label: string; bar: string; text: string } {
+  if (!pw) return { score: 0, label: '', bar: 'var(--text-muted)', text: 'var(--text-muted)' }
   let variety = 0
   if (/[a-z]/.test(pw)) variety++
   if (/[A-Z]/.test(pw)) variety++
@@ -170,13 +173,13 @@ function estimateStrength(pw: string): { score: number; label: string; color: st
   else if (len >= 10 && variety >= 2) score = 2
   if (len >= 16 && variety >= 3) score = 4
   const meta = [
-    { label: '', color: 'var(--text-muted)' },
-    { label: 'Weak', color: 'var(--status-danger)' },
-    { label: 'Fair', color: 'var(--status-warning)' },
-    { label: 'Strong', color: 'var(--status-success)' },
-    { label: 'Excellent', color: 'var(--status-success)' },
+    { label: '', bar: 'var(--text-muted)', text: 'var(--text-muted)' },
+    { label: 'Weak', bar: 'var(--status-danger)', text: 'var(--status-danger-text)' },
+    { label: 'Fair', bar: 'var(--status-warning)', text: 'var(--status-warning-text)' },
+    { label: 'Strong', bar: 'var(--status-success)', text: 'var(--status-success-text)' },
+    { label: 'Excellent', bar: 'var(--status-success)', text: 'var(--status-success-text)' },
   ][score]
-  return { score, label: meta.label, color: meta.color }
+  return { score, label: meta.label, bar: meta.bar, text: meta.text }
 }
 
 // ── Small icon components ─────────────────────────────────────────────────────
@@ -472,7 +475,7 @@ function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported:
             )}
 
             {importErr && (
-              <p role="alert" className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
+              <p role="alert" className="text-danger text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
                 {importErr}
               </p>
             )}
@@ -483,7 +486,7 @@ function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported:
                 <span className="text-xs font-medium text-neutral-300">Import finished</span>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="bg-neutral-900 rounded-lg py-2">
-                    <div className="text-[var(--status-success)] text-sm font-semibold">{result.imported ?? 0}</div>
+                    <div className="text-success text-sm font-semibold">{result.imported ?? 0}</div>
                     <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Imported</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
@@ -491,7 +494,7 @@ function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported:
                     <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Skipped</div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg py-2">
-                    <div className={`text-sm font-semibold ${result.errors ? 'text-[var(--status-danger)]' : 'text-neutral-300'}`}>
+                    <div className={`text-sm font-semibold ${result.errors ? 'text-danger' : 'text-neutral-300'}`}>
                       {result.errors ?? 0}
                     </div>
                     <div className="text-neutral-600 text-[12px] uppercase tracking-wide">Failed</div>
@@ -504,7 +507,7 @@ function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported:
                 {Array.isArray(result.warnings) && result.warnings.length > 0 && (
                   <ul className="flex flex-col gap-1 mt-1">
                     {result.warnings.map((wmsg, i) => (
-                      <li key={i} className="text-[12px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-md px-2 py-1">
+                      <li key={i} className="text-[12px] text-warning bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-md px-2 py-1">
                         {wmsg}
                       </li>
                     ))}
@@ -565,18 +568,18 @@ function TransferPanel({ onBack, onImported }: { onBack: () => void; onImported:
               />
             </Field>
 
-            <p className="text-[12px] text-[var(--status-warning)] bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-lg px-3 py-2">
+            <p className="text-[12px] text-warning bg-[var(--status-warning-soft)] border border-[var(--status-warning-soft)] rounded-lg px-3 py-2">
               This password is not stored anywhere. If you lose it, the backup
               cannot be opened — not even by us.
             </p>
 
             {exportErr && (
-              <p role="alert" className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
+              <p role="alert" className="text-danger text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">
                 {exportErr}
               </p>
             )}
             {exportDone && (
-              <p role="status" className="text-[var(--status-success)] text-xs bg-[var(--status-success-soft)] border border-[var(--status-success-soft)] rounded-lg px-3 py-2">
+              <p role="status" className="text-success text-xs bg-[var(--status-success-soft)] border border-[var(--status-success-soft)] rounded-lg px-3 py-2">
                 Backup downloaded.
               </p>
             )}
@@ -648,7 +651,7 @@ function UnlockScreen({ onUnlock }: { onUnlock: () => void }) {
           autoComplete="current-password"
         />
         {error && (
-          <p className="text-[var(--status-danger)] text-xs text-center">{error}</p>
+          <p className="text-danger text-xs text-center">{error}</p>
         )}
         <button
           type="submit"
@@ -727,13 +730,13 @@ function GeneratorPanel({ onInsert, onClose }: { onInsert?: (pwd: string) => voi
       {gen.result && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-700/50 rounded-lg px-3 py-2">
-            <span className="flex-1 min-w-0 font-mono text-xs text-[var(--status-success)] break-all">{gen.result}</span>
+            <span className="flex-1 min-w-0 font-mono text-xs text-success break-all">{gen.result}</span>
             <button
               onClick={() => copy(gen.result, 'gen')}
               className="text-neutral-500 hover:text-neutral-200 shrink-0 transition-colors w-9 h-9 flex items-center justify-center"
               title="Copy"
             >
-              {copied === 'gen' ? <span className="text-[var(--status-success)] text-xs">Copied!</span> : <IconCopy />}
+              {copied === 'gen' ? <span className="text-success text-xs">Copied!</span> : <IconCopy />}
             </button>
             {onInsert && (
               <button
@@ -751,12 +754,12 @@ function GeneratorPanel({ onInsert, onClose }: { onInsert?: (pwd: string) => voi
                 <div
                   key={i}
                   className="h-1 flex-1 rounded-full transition-colors"
-                  style={{ background: i <= strength.score ? strength.color : 'var(--border-default)' }}
+                  style={{ background: i <= strength.score ? strength.bar : 'var(--border-default)' }}
                 />
               ))}
             </div>
             {strength.label && (
-              <span className="text-[12px] font-medium shrink-0" style={{ color: strength.color }}>
+              <span className="text-[12px] font-medium shrink-0" style={{ color: strength.text }}>
                 {strength.label}
               </span>
             )}
@@ -846,7 +849,7 @@ function EntryForm({ existing, onSave, onCancel }: { existing?: VaultEntry; onSa
       </div>
 
       <div className="flex flex-col gap-3 px-4 py-3">
-        {error && <p className="text-[var(--status-danger)] text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">{error}</p>}
+        {error && <p className="text-danger text-xs bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2">{error}</p>}
 
         <Field label="Title" required>
           <input
@@ -940,7 +943,7 @@ function Field({ label, required, children }: { label: ReactNode; required?: boo
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-neutral-500 font-medium">
-        {label}{required && <span className="text-[var(--status-danger)] ml-0.5">*</span>}
+        {label}{required && <span className="text-danger ml-0.5">*</span>}
       </span>
       {children}
     </label>
@@ -1017,8 +1020,8 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
           onClick={handleDelete}
           className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
             delConfirm
-              ? 'text-[var(--status-danger)] bg-[var(--status-danger-soft)] hover:bg-[var(--status-danger-soft)]'
-              : 'text-neutral-500 hover:text-[var(--status-danger)] hover:bg-[var(--bg-hover)]'
+              ? 'text-danger bg-[var(--status-danger-soft)] hover:bg-[var(--status-danger-soft)]'
+              : 'text-neutral-500 hover:text-danger hover:bg-[var(--bg-hover)]'
           }`}
           title={delConfirm ? 'Click again to confirm' : 'Delete'}
         >
@@ -1064,7 +1067,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
                   title="Copy"
                 >
                   {copied === 'password'
-                    ? <span className="text-[var(--status-success)] text-xs font-medium">Copied!</span>
+                    ? <span className="text-success text-xs font-medium">Copied!</span>
                     : <IconCopy />
                   }
                 </button>
@@ -1084,7 +1087,7 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
       </div>
 
       {delConfirm && (
-        <div className="mx-4 mb-4 bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2 text-xs text-[var(--status-danger)]">
+        <div className="mx-4 mb-4 bg-[var(--status-danger-soft)] border border-[var(--status-danger-soft)] rounded-lg px-3 py-2 text-xs text-danger">
           Click the trash icon again to permanently delete this entry.
         </div>
       )}
@@ -1109,7 +1112,7 @@ function DetailRow({ label, value, copyKey, copied, copy }: {
           title="Copy"
         >
           {copied === copyKey
-            ? <span className="text-[var(--status-success)] text-xs font-medium">Copied!</span>
+            ? <span className="text-success text-xs font-medium">Copied!</span>
             : <IconCopy />
           }
         </button>

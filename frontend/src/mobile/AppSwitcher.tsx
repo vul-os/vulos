@@ -80,7 +80,7 @@ export default function AppSwitcher({ onOpen, onHome }: AppSwitcherProps) {
           {windows.length > 1 ? (
             <button
               onClick={closeAll}
-              className="focus-primary touch-target -mr-2 px-2 flex items-center justify-center rounded-[var(--radius-md)] text-[13px] font-medium text-[color:var(--text-tertiary)] active:text-[color:var(--status-danger)] active:bg-[color:var(--status-danger-soft)] transition-colors"
+              className="focus-primary touch-target -mr-2 px-2 flex items-center justify-center rounded-[var(--radius-md)] text-[13px] font-medium text-[color:var(--text-tertiary)] active:text-danger active:bg-[color:var(--status-danger-soft)] transition-colors"
             >
               Close all
             </button>
@@ -220,7 +220,7 @@ function SwitcherCard({ appId, title, onOpen, onClose }: SwitcherCardProps) {
         <button
           onClick={onClose}
           aria-label={`Close ${title}`}
-          className="focus-primary touch-target -mr-1.5 flex items-center justify-center rounded-full text-[color:var(--text-tertiary)] active:text-[color:var(--status-danger)] active:bg-[color:var(--status-danger-soft)] transition-colors"
+          className="focus-primary touch-target -mr-1.5 flex items-center justify-center rounded-full text-[color:var(--text-tertiary)] active:text-danger active:bg-[color:var(--status-danger-soft)] transition-colors"
         >
           <svg viewBox="0 0 16 16" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><path d="M4 4l8 8M12 4l-8 8" /></svg>
         </button>

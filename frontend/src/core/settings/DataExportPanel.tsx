@@ -137,7 +137,7 @@ export default function DataExportPanel() {
                   token is the real repair; index.css belongs to the
                   customization pass, so this is a local mitigation and the
                   token is reported rather than edited here. */}
-              <span aria-hidden="true" className="text-[color-mix(in_srgb,var(--status-success)_65%,var(--text-primary))] text-xs">✓</span>
+              <span aria-hidden="true" className="text-success text-xs">✓</span>
               <span className="text-sm font-medium text-[var(--text-primary)]">{item.label}</span>
             </div>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">{item.detail}</p>

@@ -136,7 +136,7 @@ function ResourceBar({ label, pct, warn }: ResourceBarProps) {
           style={{ width: `${clamp}%` }}
         />
       </div>
-      <span className={`text-[12px] w-9 text-right shrink-0 mono tabular-nums ${warn ? 'text-[var(--status-warning)]' : 'text-[var(--text-tertiary)]'}`}>
+      <span className={`text-[12px] w-9 text-right shrink-0 mono tabular-nums ${warn ? 'text-warning' : 'text-[var(--text-tertiary)]'}`}>
         {Math.round(clamp)}%
       </span>
     </div>
