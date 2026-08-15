@@ -405,7 +405,78 @@ Notes for whoever applies it:
 
 ---
 
-## 8. Curator checklist
+## 8. Contract for a per-app agent
+
+Copy-pasteable. This is the whole job for one app.
+
+```bash
+cd /Users/pc/code/vulos/vulos
+./scripts/verify-app-recipe.sh <app-id>          # ~30 min, ~2 GB, one at a time
+```
+
+**Run one app at a time.** The host is saturated and the harness installs
+gigabytes; two concurrent runs make both slower and make the disk numbers
+meaningless. `--sweep --limit N` exists and does them sequentially, smallest
+first, if you have several.
+
+**Exit codes are the verdict.** `0` pass · `1` fail · `2` harness/infra problem
+· `3` skip (this machine cannot install it). The script writes the ledger row
+itself — you do not hand-write ledger entries, ever.
+
+**Measured cost** (arm64 Mac, host load 70–260, 2026-08-15):
+
+| | wall clock | disk during run | disk after |
+| --- | ---: | ---: | ---: |
+| Flatpak app, runtime not yet cached | ~30 min | ~2.0 GB | ~0 — the container is `--rm` |
+| Flatpak app, second app sharing a runtime | less, unmeasured | app size + repo copy | ~0 |
+| apt / static-download app | ~1–3 min | tens–hundreds of MB | ~0 |
+| harness self-test (all five cases) | ~40 s | ~5 MB | 0 |
+| base image, once for everything | ~15 min | 242 MB, kept | 242 MB |
+
+The disk cost lives inside the container and goes away when it exits. What
+persists is the 242 MB base image. Flathub's own "installed size" figure is
+roughly a third of the truth: FileZilla reports 35 MB and cost 2059 MB, because
+the runtime (629 MB) and ostree's repo copy dominate.
+
+**A pass means** — and you may state exactly this and nothing more:
+
+> `appnet.InstallFromRegistry` installed it in a debian:trixie container, the
+> `app.json` manifest was written, the Flatpak deployed with a non-empty tree,
+> its runtime was installed, its entry-point command resolved inside its own
+> sandbox and was really `execve`'d, and the product's own uninstall removed it.
+
+**A pass does not mean** the GUI starts. There is no display, no D-Bus session
+and no GPU in the container. Do not write "works" or "launches" — write what
+the assertions say.
+
+**Put in your report:** the app id, the exit code, the ledger row verbatim,
+the measured minutes and MB, and — if it failed — the failing assertion name
+and the harness's message, unedited.
+
+**Never:**
+
+- weaken, skip or special-case an assertion to get an app green. A failing
+  check is fixed by fixing the recipe, or by recording the failure;
+- mark an app `verified` without the evidence — for Flathub that is
+  `https://flathub.org/api/v2/verification/<flatpak-id>/status` returning
+  `"verified": true`, quoted in your report;
+- claim an install you did not run, or convert a `3` (skip) into a pass. An
+  `untestable-on-arm64` row is a good outcome; a fake green one is the exact
+  failure this harness was built to stop;
+- hand-edit `roadmap/app-verification-ledger.json` or the rendered `.md`. A
+  Go guard (`backend/internal/docsref/appledger_test.go`) fails the build on a
+  row a real run could not have produced;
+- edit `registry.json` — there is a single writer for it;
+- set `VULOS_REGISTRY_INSECURE`, or touch the signing keys or `verify-registry`.
+
+**If it fails**, that is a result, not a blocker: report it with the assertion
+name. `flatpak-runtime` failing means the app would install and never start;
+`command-resolves` failing means the recipe's `command` is wrong; `install-path`
+failing means the recipe does not install at all.
+
+---
+
+## 9. Curator checklist
 
 Before proposing an entry:
 
