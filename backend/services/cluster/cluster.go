@@ -55,6 +55,28 @@ type NodeMeta struct {
 	Hostname string    `json:"hostname"`
 	LastSeen time.Time `json:"last_seen"`
 	Storage  bool      `json:"storage"` // true when this node runs MinIO
+
+	// Arch is this node's CPU architecture, so peers can tell a heterogeneous
+	// cluster apart (ARCH-SYNC, roadmap/ARCH-PLACEMENT.md). Vulos publishes
+	// amd64 AND arm64 images and ~14% of the desktop catalogue is x86_64-only,
+	// so "which of my instances could run this app" is a question the fleet
+	// must be able to answer — and it could not, because NodeMeta carried no
+	// capability of any kind.
+	//
+	// This is ADVERTISEMENT, not placement. Nothing schedules on it: the OS
+	// cannot run an app on one node and stream it to another (stream.LaunchOpts
+	// has no node field, and the streaming pipeline is loopback-only). What this
+	// enables is telling a user the truth — "Blender is installed on studio-box,
+	// which is amd64; this box is arm64" — instead of the app silently missing.
+	//
+	// Deliberately NOT overridable by an environment variable, unlike
+	// appnet.BoxArch's VULOS_BOX_ARCH test hook. That value stays inside one
+	// process; THIS value is replicated to peers and shown to a user as a fact
+	// about another machine. A box must not be able to advertise an
+	// architecture it does not have.
+	//
+	// Empty means "a node that predates this field" — see nodeArch.
+	Arch string `json:"arch"`
 }
 
 // Node is the view of a cluster peer as returned by Peers().
@@ -94,6 +116,7 @@ func New(cfg S3Config, passphrase string) (*Cluster, error) {
 		Mode:     mode,
 		Hostname: hostname(),
 		Storage:  hasStorage,
+		Arch:     nodeArch(),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -159,6 +182,9 @@ func newDisabled() *Cluster {
 			ID:       getenvOrDefault("VULOS_NODE_ID", hostname()),
 			Mode:     getenvOrDefault("VULOS_MODE", "local"),
 			Hostname: hostname(),
+			// A single-box install is still a node with an architecture, and
+			// Health() is the one surface that reports it in that case.
+			Arch: nodeArch(),
 		},
 	}
 }
@@ -248,6 +274,7 @@ func (c *Cluster) Health() map[string]any {
 			"enabled": false,
 			"node_id": c.meta.ID,
 			"mode":    c.meta.Mode,
+			"arch":    c.meta.Arch,
 		}
 	}
 
@@ -271,6 +298,7 @@ func (c *Cluster) Health() map[string]any {
 		"mode":         c.meta.Mode,
 		"hostname":     c.meta.Hostname,
 		"storage":      c.meta.Storage,
+		"arch":         c.meta.Arch,
 		"peers_total":  total,
 		"peers_stale":  stale,
 		"peers_online": total - stale,
