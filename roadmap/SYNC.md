@@ -4,6 +4,8 @@ How a leaderless, multi-location cluster keeps its data **redundant and load-bal
 
 For the underlying S3 model, schema, and conflict copies see CLUSTER.md. For the exclusion lease that guards compaction see COORDINATION.md. For per-app concurrency see CONCURRENCY.md.
 
+> **Scope — read this before reading the rest.** This document describes **one engine** and is accurate about it. It is **not** the answer to "does my OS sync". Measured against the standing directive that everything syncs and each instance is almost a direct clone of the next, **5 of 35 inventoried OS states sync**, 4 are partial, 12 are argued exceptions and 14 are gaps — and there are **twelve** distinct sync mechanisms in this repo, three of them independent CRDT implementations. The installed app set, the Drive, the password vault, the wallpaper and the dock are **not** carried by anything. That audit is **SYNC-INVENTORY.md**, and the inventory is enforced in code at `backend/internal/sqlcrdt/osstate.go`. Added 2026-08-15.
+
 > **Goal.** Make data redundant by construction (no failover election) and let a new or recovering instance join without replaying an unbounded changeset log: bootstrap from a recent snapshot + a short tail.
 > **Non-goals.** A primary node. A central database. Hot-replicating the running OS (that's OS-DISTRIBUTION.md).
 >
@@ -64,7 +66,7 @@ A deny-list would be the wrong shape because it fails **open**: every table adde
 | `sessions` | no | Per-**device** auth state. Replicating bearer tokens multiplies the blast radius of any one box, and revoking on one box could not be relied on to revoke elsewhere. A session is usable directly; a bcrypt hash still has to be cracked. |
 | `recovery_blobs`, `master_key_blobs`, `local_api_keys` | no | Key material and credentials that are usable as-is. The point of an enveloped key is that it exists in few places. |
 | `push_subscriptions` | no | Per-device endpoints and their keys. Meaningless on another box and credential-bearing. |
-| `app_registry` | no | Already replicated by `multiinstance/appsync` over the same fabric. Two engines converging one table would observe each other's writes as local edits, restamp them, and never settle. The fix is retiring the duplicate, not running both. |
+| `app_registry` | no — **and this refusal is now known to be wrong** | This said "already replicated by `multiinstance/appsync` over the same fabric", and the reasoning that two engines converging one table would fight is sound. The premise is not. **Nothing writes `app_registry`**: `AppSync.LocalInstall`/`LocalUninstall` have no non-test caller anywhere under `backend/`, and `POST /api/store/install` goes to `AppStore.Install`, which creates a directory and writes no row. So this engine declines to carry app state because a second engine already does, and the second engine converges an empty table — each defers to the other and neither moves anything. Corrected 2026-08-15; see SYNC-INVENTORY.md §1. The fix is still "retire the duplicate", but it must be paired with adding `app_registry` here **and** giving it a producer. |
 | `storagemode`, `cgroup_slices` | no | Node-local hardware configuration. Boxes deliberately differ; replicating one box's storage mode describes hardware another does not have. This is a correctness refusal, not a security one. |
 
 Approved domains are bound to their table and **explicit column list** in `sqlcrdt.ReplicatedTables()`. A test fails if the policy and the wiring disagree in either direction, and another fails if a real column of a replicated table is left undeclared — so a column added later cannot start leaving the box without someone deciding.
@@ -77,14 +79,16 @@ Approved domains are bound to their table and **explicit column list** in `sqlcr
 |---|---|---|---|---|
 | **Hot** | instance ↔ instance CRDT delta exchange over the **LAN fabric** (mDNS + authenticated HTTPS) | low | none (transient) | **real, four domains, LAN only** — `crdtsync` + `sqlcrdt`, wired for `users`, `profiles`, `reminders` and `acctsec_sensitive_actions` |
 | **Hot (WAN)** | the same exchange via **relay rendezvous** for NAT / cross-location | low | none | **authenticated, not reachable** — signed per-instance transport is built and tested (see §1 below); no relay is operated and NAT traversal is not done, so two boxes in different places still cannot find each other |
-| **Cold** | periodic **durable checkpoint** to the shared S3 bucket | high | durable | **real** — whole-DB-file `VACUUM INTO` snapshot, not a cross-node merge |
+| **Cold** | periodic **durable checkpoint** to the shared S3 bucket | high | durable | **real, but far narrower than "the database"** — a whole-DB-file `VACUUM INTO` snapshot of **one** file, defaulting to `auth.db`, and **off unless `VULOS_BACKUP_INTERVAL` is set** (`cmd/server/main.go:3711-3723`). Not a cross-node merge. |
 
 - **Hot path (LAN, real):** each box pulls a delta from a peer, merges it, then pushes back the ops that peer is missing — using the sender's version vector returned on the pull, so the reverse direction costs no extra round trip. Rounds are bounded per peer; a truncated delta is never a correctness problem because merge is idempotent and order-independent.
-- **Cold path (real, unchanged):** every instance periodically snapshots its local database file to S3 as the durable record.
+- **Cold path (real, and narrower than this used to imply):** an instance snapshots **one** local database file to S3 — `backupDBPath`, defaulting to `auth.db` — and only when `VULOS_BACKUP_INTERVAL` is set, which it is not by default. "Its local database file" was literally true and read as "the database". `reminders.db`, `files.db`, `accountsecurity.db`, every loose JSON file in `<root>/db`, and the whole of `<root>/auth` (password vault, TOTP, passkeys) are **outside it**. A box restored from this comes back with accounts and settings and without reminders, Drive, audit history or any stored password. Corrected 2026-08-15.
 
 The hot path is for *liveness between active peers*; the cold path is for *durability and catch-up*. They complement each other — the hot path doesn't replace the bucket, and the bucket isn't on the critical path for live convergence.
 
-**Redundancy without failover.** For a replicated domain this is now literally true: every instance holds a full mergeable copy, concurrent writes converge with no leader, and there is no split-brain to resolve because there is no authority to lose. For everything *not* on the allow-list, redundancy still rests on the S3 snapshot below — durable, but single-writer-at-a-time in effect.
+**Redundancy without failover.** For a replicated domain this is now literally true: every instance holds a full mergeable copy, concurrent writes converge with no leader, and there is no split-brain to resolve because there is no authority to lose.
+
+For everything *not* on the allow-list, this used to say redundancy "still rests on the S3 snapshot below — durable, but single-writer-at-a-time in effect". That was too generous, and the generosity was load-bearing: it implied a safety net under the unreplicated majority. **There is no net under most of it.** The snapshot covers one database file and is off by default (see the cold-path row above), so for `files.db`, `reminders.db`, `<root>/db/*.json` and all of `<root>/auth`, unreplicated means **single-copy** — one disk, no redundancy of any kind. Corrected 2026-08-15.
 
 ---
 
