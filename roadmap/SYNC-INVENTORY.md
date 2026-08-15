@@ -395,3 +395,110 @@ Steps 1–3 are small and remove the ability of an evicted box to keep syncing.
 Steps 4–5 are what make the claim honest.
 
 ---
+
+## 4. The legitimate exceptions
+
+The directive allows "few exceptions". These are them, decided rather than
+inherited. The bar: **an exception is state where syncing would be *wrong*** — a
+security defect, or a description of hardware the other box does not have. "We
+never got to it" is a gap and appears in §5 instead.
+
+Twelve of thirty-five entries. `TestGapsAreNotQuietlyReclassified` fails if
+exceptions ever become the majority, because an inventory where everything is
+excepted has stopped applying the directive.
+
+### Category A — identity, which must differ or the fleet cannot count itself
+
+| State | Why |
+|---|---|
+| Per-instance signing key, `instance.json`, peering identity key | An instance's identity is the one thing that *must* differ, or quorum, attribution and eviction have nothing to distinguish. The strongest exception here. |
+| Device key (`<root>/auth/tpm/device_key.priv`, or TPM-sealed) | A device key on two machines stops being a device key. Boxes vouch for one another on the strength of it. Its **revocation record** is the opposite case and correctly does propagate. |
+
+*Caveat found while auditing:* `fabric_instance_key` lives under `<root>/data`,
+which the file syncer watches. It is sealed under `VULOS_FABRIC_KEY_HEX`, so
+what would cross is ciphertext — but a per-instance key inside a replicated
+directory is a placement that should be changed rather than a seal to rely on.
+
+### Category B — credentials whose value is being in few places
+
+| State | Why |
+|---|---|
+| Login sessions | A bearer token is usable directly; replicating one multiplies the blast radius of any single box, and revoking on one box could not be relied on elsewhere. |
+| Recovery blobs, master-key envelopes, API-key hashes | The entire point of an enveloped key is that it exists in few places. |
+| `profile_secrets` (AI API key, device PIN hash) | This table exists *so that* `profiles` can replicate. A PIN belongs to a machine someone is standing at; an API key is a bearer secret that can be spent. |
+| Passkeys (the private half) | Bound to the authenticator holding them. A syncing passkey is a security defect. **Note the split:** TOTP seeds in the same directory are *not* device-bound and are a gap, not an exception. |
+
+### Category C — descriptions of hardware the other box does not have
+
+| State | Why |
+|---|---|
+| Storage mode, cgroup slices | Replicating one box's storage mode or CPU/memory limits describes hardware another machine does not have. A correctness refusal, not a security one. |
+| WiFi credentials | Written straight to `/etc/wpa_supplicant`, with no Vulos-side record. Also correct on the merits: networks in range differ by location. |
+
+### Category D — already identical, so replication would add risk not value
+
+| State | Why |
+|---|---|
+| App catalogue (`registry.json`) | Ships with the release and is signed by the release key. Replicating it would let one box's copy overwrite another's — a downgrade path. |
+| Calendar and mail | Not on the box: both instances are clients of the same remote service and already see the same data. |
+| Contacts (unified view) | Derived in memory from external sources. Replicating a projection creates a second, staler authority for data whose home is elsewhere. |
+
+### Category E — the arguable ones, decided
+
+**Window geometry: exception.** A window rectangle is a statement about a
+particular screen. This OS explicitly targets phones as thin clients to the same
+box, so replicating a 2560×1440 layout onto a phone produces windows partly or
+wholly off-screen. The right shape is per-device-class geometry keyed off a
+synced identity, not one global rectangle. Until that exists, not syncing is
+correct behaviour rather than a missing feature.
+
+*But the exception is narrow and must stay narrow.* Only the **geometry** is
+excepted. Which windows were **open** is not obviously device-specific and is
+left as specified work, not claimed as decided.
+
+**Dock arrangement: NOT an exception — it is a gap.** This is the call worth
+recording, because dock pins and window geometry look like the same class and
+are not. A pinned app is a **choice about what you use**; a window rectangle is
+a **fact about a screen**. The mobile dock being deliberately different is an
+argument for a *presentation* that differs per device class, not for the
+underlying set of pinned apps to differ. Same for wallpaper, theme, desktop
+layout and the widget rail: all are choices, none describes hardware, and all
+are gaps.
+
+**Password vault: NOT an exception.** It is the one gap that cannot be resolved
+by declaring it one. A password manager that exists on one machine is a password
+manager people stop using. The **contents** should follow the user; what must
+not follow is `vault.key`, the per-device wrapping key. The correct shape is
+replicated ciphertext with per-device key wrapping — the same shape the eviction
+re-keying in §3.4 needs, which is why they should be built together.
+
+---
+
+## 5. The gaps, ranked by user impact
+
+Fourteen gaps and four partials. Ranked by what a user loses, not by
+implementation cost. Each is pinned by name in
+`sqlcrdt.TestTheKnownGapsAreStillRecorded`, so removing one requires either
+fixing it or arguing it down in the same commit.
+
+| # | Gap | What the user experiences |
+|---|---|---|
+| 1 | **Password vault** does not sync, and `<root>/auth` is in **no backup path** | Save a password on one box, it is not on the other. Lose that box and every stored password is gone permanently. |
+| 2 | **Joining a cluster installs nothing** (§1 correction, `joinsync/backend.go`) | The wizard reaches 100% "complete" against an empty machine. The progress bar is measuring a readability check. |
+| 3 | **Installed app set** does not sync | Install on the laptop box; the other never learns. Nothing is queued or retried. |
+| 4 | **Drive metadata and bytes** do not sync; `files.db` is in no policy at all | Your Drive is a different Drive on each box. A file is not merely unopenable on the other — it is not in the tree. |
+| 5 | **Durable backup covers one DB file**, `auth.db`, and is off by default | A restored box comes back with accounts and settings and without reminders, Drive, audit history or passwords. |
+| 6 | **TOTP keychain** does not sync and is in no backup | Second-factor codes work at one desk only, and vanish with the box. |
+| 7 | **Wallpaper, theme, desktop layout, dock pins, widget rail** are browser localStorage | None of it follows you — and it is not even per-box: open the *same* box in another browser and it is gone. |
+| 8 | **Two themes exist**; the replicated one is not the one in use | `profiles.Theme` syncs and the shell neither reads nor writes it. The setting that syncs is not the setting that governs. |
+| 9 | **Notification history and DND** do not sync | Dismiss on one box, it still waits on the other. Set DND before bed; the other box notifies anyway. |
+| 10 | **appfs sandbox storage** is outside the synced directory | What an app saves for you is on one box or both, depending on which of two storage APIs its author used. |
+| 11 | **Launcher visibility and suite selection** do not sync | Hide an app on one box, it is still there on the other. |
+| 12 | **Relay and TURN config** are per-box | Point one box at your relay; the others do not know. |
+| 13 | **Per-app data syncs while the app does not** | An app's saved data can arrive on a box that cannot open it. |
+
+The top two are the sharpest because both present as *success*: the join wizard
+reports completion, and the app-registry replicator reports healthy convergence.
+Neither surfaces as an error anywhere.
+
+---
