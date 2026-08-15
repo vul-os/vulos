@@ -321,8 +321,11 @@ const builtinRegistry: App[] = [
     id: 'vulos-phone',
     name: 'Phone',
     icon: '📱',
-    description: 'SMS + calls on the GSM SIM in your Vulos Android phone',
-    keywords: ['phone', 'sms', 'text', 'calls', 'dial', 'telephony', 'sim', 'android'],
+    // Not Android-only, and never was on the box side: services/telephony drives
+    // ModemManager's mmcli, so any USB LTE stick, M.2 or PCIe modem works. The
+    // old wording described the one client that happened to be wired up.
+    description: 'Calls, SMS and contacts on the SIM in your box — any GSM modem',
+    keywords: ['phone', 'sms', 'text', 'calls', 'dial', 'dialer', 'telephony', 'sim', 'gsm', 'modem', 'contacts'],
     category: 'internet',
     builtin: true,
   },
