@@ -61,7 +61,7 @@
 # Agent-generated, machine-verified, NOT human-reviewed.
 set -euo pipefail
 
-HARNESS_VERSION="1"
+HARNESS_VERSION="2"
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 # ─── in-container phases dispatch early (no repo, no docker in there) ─────────
@@ -72,7 +72,7 @@ if [[ "${1:-}" == "--in-container" ]]; then
 fi
 
 REPO_ROOT="${VULOS_REPO_ROOT:-$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)}"
-IMAGE="${VULOS_VERIFY_IMAGE:-vulos-recipe-verify:trixie}"
+IMAGE="${VULOS_VERIFY_IMAGE:-vulos-recipe-verify:trixie-v2}"
 WORKDIR="${VULOS_VERIFY_WORKDIR:-${TMPDIR:-/tmp}/vulos-verify}"
 LEDGER_JSON="$REPO_ROOT/roadmap/app-verification-ledger.json"
 LEDGER_MD="$REPO_ROOT/roadmap/APP-VERIFICATION-LEDGER.md"
@@ -380,30 +380,49 @@ build_driver() {
       go build -trimpath -o "$dest" . ) || die "driver build failed (GOARCH=$goarch)"
 }
 
-# ensure_image builds the install-test base ONCE and commits it, so the ~10
+# ensure_image builds the install-test base ONCE and commits it, so the ~20
 # minutes of apt setup is paid once for a whole sweep.
 #
-# It deliberately does NOT use `docker build`: on this machine buildkit sat for
-# 25 minutes on this exact Dockerfile with no output and no progress (OrbStack's
-# btrfs store is degraded and the host runs at load 130-260).  run + exec +
-# commit does the same work with visible progress and no builder daemon.
+# THE PACKAGE SET IS NOT INVENTED HERE.  It is scripts/image-packages.txt — the
+# same pinned list scripts/check-image-packages.sh gates the shipped
+# Dockerfile against — so the container a recipe is tested in has the same
+# userland the recipe will meet on a real box.  Deriving it any other way is how
+# the first version of this harness reported `cinny` as broken: its recipe runs
+# `python3 -m http.server`, python3 is in the shipped image, and it was not in
+# my hand-written list.  A harness whose environment is thinner than the
+# product's invents failures, which is the same disease as inventing passes.
 #
-# The image mirrors the shipped one: debian:trixie (build.sh SUITE="trixie"),
-# flatpak + the flathub remote (Dockerfile:154,163).  Nothing here installs an
-# app — that is the product's job.
+# `intel-media-va-driver-non-free` is amd64-only, exactly as the Dockerfile has
+# it.  flatpak + the flathub remote match Dockerfile:154,163.  The extra four
+# (gnupg, xz-utils, file, procps) are the verifier's own tools, not the
+# product's, and are listed separately so the difference stays visible.
+#
+# It deliberately does NOT use `docker build`: on this machine buildkit sat for
+# 25 minutes on the equivalent Dockerfile with no output and no progress
+# (OrbStack's btrfs store is degraded and the host runs at load 70-260).
+# run + exec + commit does the same work with visible progress.
 ensure_image() {
   if docker image inspect "$IMAGE" >/dev/null 2>&1; then return; fi
-  step "building the verification base image $IMAGE (once; 5-15 min under load)"
+  local pkglist="$REPO_ROOT/scripts/image-packages.txt"
+  [[ -f "$pkglist" ]] || die "missing $pkglist — that file is the package set, not a suggestion"
+  local arch; arch="$(docker_arch)"
+  local pkgs
+  pkgs="$(grep -v '^[[:space:]]*$' "$pkglist" | tr '\n' ' ')"
+  if [[ "$arch" != "amd64" ]]; then
+    pkgs="${pkgs//intel-media-va-driver-non-free/}"
+  fi
+  step "building the verification base image $IMAGE (once; 15-30 min under load)"
+  say "  package set: $(wc -w <<<"$pkgs") packages from scripts/image-packages.txt + 4 verifier tools"
   local c="vulos-verify-base-$$"
   docker rm -f "$c" >/dev/null 2>&1 || true
-  docker run -d --name "$c" debian:trixie sleep 7200 >/dev/null || die "cannot start debian:trixie"
-  if ! docker exec "$c" bash -c '
+  docker run -d --name "$c" debian:trixie sleep 10800 >/dev/null || die "cannot start debian:trixie"
+  if ! docker exec -e PKGS="$pkgs" "$c" bash -c '
       set -e
+      export DEBIAN_FRONTEND=noninteractive
       printf "force-unsafe-io\n" > /etc/dpkg/dpkg.cfg.d/99-unsafe-io
       printf "Acquire::Languages \"none\";\n" > /etc/apt/apt.conf.d/99-no-languages
       apt-get update -qq
-      apt-get install -y --no-install-recommends \
-        ca-certificates curl wget gnupg jq xz-utils file procps flatpak
+      apt-get install -y --no-install-recommends $PKGS gnupg xz-utils file procps
       rm -rf /var/lib/apt/lists/*
       flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
       echo SETUP_DONE'; then
