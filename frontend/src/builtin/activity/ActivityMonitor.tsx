@@ -151,23 +151,42 @@ export default function ActivityMonitor() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
 
+  // Keyed on rawStats — the WEBSOCKET PAYLOAD — not on the narrowed `stats`.
+  //
+  // `stats` is toTelemetryStats(rawStats), a fresh object built on every
+  // render. As an effect dependency it is never Object.is-equal to the
+  // previous one, so the effect ran after EVERY render, appended a sample,
+  // and the state change re-rendered, which ran the effect again. A
+  // self-sustaining loop, and the same shape as the ResizeObserver bug
+  // documented on nextGraphSize below — which was found, fixed, and then
+  // survived here in the component's other effect.
+  //
+  // It was visible in a screenshot only as graphs that looked a little wrong:
+  // the 120-sample history saturated within about two seconds of opening the
+  // app, so all four sparklines drew a full-width FLAT line at whatever the
+  // current value happened to be. That reads as "a quiet box", not as a bug.
+  //
+  // rawStats is the parsed frame from the socket: a new object per MESSAGE and
+  // stable between messages, which is precisely the cadence a sample should
+  // follow.
   useEffect(() => {
-    if (stats) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHistory(prev => {
-        const next = [...prev, {
-          cpu: stats.cpu || 0,
-          mem: stats.mem_percent || 0,
-          rx: stats.net_rx || 0,
-          tx: stats.net_tx || 0,
-          disk_r: stats.disk_read || 0,
-          disk_w: stats.disk_write || 0,
-          t: Date.now(),
-        }]
-        return next.slice(-HISTORY_LEN)
-      })
-    }
-  }, [stats])
+    if (!isRecord(rawStats)) return
+    const s = toTelemetryStats(rawStats)
+    if (!s) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHistory(prev => {
+      const next = [...prev, {
+        cpu: s.cpu || 0,
+        mem: s.mem_percent || 0,
+        rx: s.net_rx || 0,
+        tx: s.net_tx || 0,
+        disk_r: s.disk_read || 0,
+        disk_w: s.disk_write || 0,
+        t: Date.now(),
+      }]
+      return next.slice(-HISTORY_LEN)
+    })
+  }, [rawStats])
 
   // Poll processes, apps and network.
   //
@@ -225,15 +244,18 @@ export default function ActivityMonitor() {
     poll()
   }
 
-  if (!connected) {
-    return (
-      <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
-        <span className="w-4 h-4 spinner mr-2" />
-        Connecting to system telemetry...
-      </div>
-    )
-  }
-
+  // NOT gated on `connected`.
+  //
+  // This used to return a full-window "Connecting to system telemetry..."
+  // spinner whenever the WebSocket was down, which made the whole app unusable
+  // for a reason that affects only the four graphs. Processes, apps and
+  // network arrive over ordinary HTTP and are unaffected — and the moment a
+  // user most wants a process list is when something on the box has stopped
+  // answering, which is also when the telemetry socket is most likely to be
+  // the thing that stopped. The one screen that could have told them what was
+  // wrong was the screen that refused to render.
+  //
+  // The graphs say so for themselves below; the tables carry on.
   const cpuVal = Math.round(stats?.cpu || 0)
   const memVal = Math.round(stats?.mem_percent || 0)
   const selected = processes.find(p => p.pid === selectedPid) || null
@@ -302,28 +324,55 @@ export default function ActivityMonitor() {
   const tabError = tab === 'processes' ? procError : tab === 'apps' ? appError : netError
   const tabCount = tab === 'processes' ? processes.length : tab === 'apps' ? apps.length : netConns.length
 
+  // `relative` on the root: the confirmation overlay is absolute inset-0 and
+  // must be contained by THIS app, not by whatever positioned ancestor the
+  // window manager happens to provide. It looked right either way, which is
+  // the kind of accident that stops being right when the frame changes.
   return (
-    <div className="flex flex-col h-full bg-neutral-950 text-neutral-100 overflow-hidden" data-app="activity">
+    <div className="relative flex flex-col h-full bg-neutral-950 text-neutral-100 overflow-hidden" data-app="activity">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0 border-b border-neutral-800/40">
+        {/* neutral-400, not neutral-500. The header sits on bg-neutral-950,
+            which is #0a0a0a on dark, and neutral-500 measured 4.18:1 there —
+            under the 4.5 floor for the hostname, temperature, battery and
+            uptime, all of which are real copy a user reads. The neutral scale
+            is remapped per theme, so one class holds in both. */}
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-sm font-semibold tracking-tight shrink-0">Activity Monitor</h1>
-          <span className="text-[12px] text-neutral-500 font-mono truncate">{stats?.hostname || ''}</span>
+          <span className="text-[12px] text-neutral-400 font-mono truncate">{stats?.hostname || ''}</span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {(stats?.temp ?? 0) > 0 && (
-            <span className="text-[12px] text-neutral-500 font-mono hidden sm:inline">{Math.round(stats?.temp ?? 0)}{'°'}C</span>
+            <span className="text-[12px] text-neutral-400 font-mono hidden sm:inline">{Math.round(stats?.temp ?? 0)}{'°'}C</span>
           )}
           {(stats?.battery ?? -1) >= 0 && (
-            <span className="text-[12px] text-neutral-500 font-mono hidden sm:inline">{stats?.battery}%{stats?.charging ? ' +' : ''}</span>
+            <span className="text-[12px] text-neutral-400 font-mono hidden sm:inline">{stats?.battery}%{stats?.charging ? ' +' : ''}</span>
           )}
-          <span className="text-[12px] text-neutral-500 font-mono">up {stats?.uptime || '—'}</span>
+          <span className="text-[12px] text-neutral-400 font-mono">up {stats?.uptime || '—'}</span>
           <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
         </div>
       </div>
 
-      {/* Graphs section */}
-      <div className="shrink-0 p-3 pb-0">
+      {!connected && (
+        <div className="shrink-0 px-3 pt-3">
+          <div
+            role="status"
+            className="rounded-md border px-3 py-2 text-[12px]"
+            style={{ borderColor: 'var(--status-warning)', color: 'var(--text-primary)' }}
+          >
+            Live resource graphs are not updating — the telemetry connection to your box is down.
+            The lists below are fetched separately and are still current.
+          </div>
+        </div>
+      )}
+
+      {/* Graphs section.
+          data-samples is a TEST SEAM, and it exists because the defect it
+          guards is invisible in a screenshot except as a graph that looks
+          slightly wrong: a saturated history renders as a full-width flat
+          line, which is exactly what a quiet box also looks like. Exposing
+          the count makes "the history filled up in two seconds" assertable. */}
+      <div className="shrink-0 p-3 pb-0" data-samples={history.length}>
         {!expanded ? (
           /* Default: 4 compact graph cards — 2×2 on mobile, single row on desktop */
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 auto-rows-[118px] sm:auto-rows-auto sm:h-[140px]">
@@ -376,7 +425,13 @@ export default function ActivityMonitor() {
       </div>
 
       {/* Tabs + search */}
-      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-1.5 shrink-0">
+      {/* Stacked below sm.
+          Side by side, the filter input took a fixed 96px off a 390px row and
+          the Network tab rendered as "Network (6" with its closing bracket
+          under the input. It was still reachable by scrolling the tab strip,
+          which is exactly why it read as a rendering fault rather than a
+          layout one — the control worked and looked broken. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 pt-3 pb-1.5 shrink-0">
         <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto">
           {TABS.map(t => (
             <button
@@ -386,9 +441,12 @@ export default function ActivityMonitor() {
               className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors whitespace-nowrap ${tab === t ? 'text-neutral-100 bg-neutral-800' : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/40'}`}
               style={tab === t ? { boxShadow: 'inset 0 -2px 0 var(--accent)' } : undefined}
             >
-              {t === 'processes' ? `Processes (${processes.length})`
-                : t === 'apps' ? `Apps (${apps.length})`
-                : `Network (${netConns.length})`}
+              {/* A count of 0 beside a failed feed is a claim the app cannot
+                  support — it is the same "no processes" lie in miniature. A
+                  failed tab shows a dash instead. */}
+              {t === 'processes' ? `Processes ${procError ? '(—)' : `(${processes.length})`}`
+                : t === 'apps' ? `Apps ${appError ? '(—)' : `(${apps.length})`}`
+                : `Network ${netError ? '(—)' : `(${netConns.length})`}`}
             </button>
           ))}
         </div>
@@ -396,7 +454,7 @@ export default function ActivityMonitor() {
           type="text" placeholder="Filter..." value={search}
           aria-label="Filter rows"
           onChange={e => setSearch(e.target.value)}
-          className="bg-neutral-900 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-200 placeholder-neutral-400 w-24 sm:w-40 shrink-0 outline-none focus:border-neutral-500 transition-colors"
+          className="bg-neutral-900 border border-neutral-700 rounded-md px-2.5 py-1.5 text-[12px] text-neutral-200 placeholder-neutral-400 w-full sm:w-40 shrink-0 outline-none focus:border-neutral-500 transition-colors"
         />
       </div>
 
@@ -417,16 +475,27 @@ export default function ActivityMonitor() {
 
       {notice && (
         <div className="px-3 shrink-0">
+          {/* Colour lives in the BORDER and the dot, never in the text.
+              --status-success and --status-warning are 3.0:1 against this
+              theme's light surfaces, so a coloured label here fails WCAG AA on
+              light while looking fine on dark — which is how a contrast bug
+              ships. The text uses --text-primary, which the theme derives
+              against its own surfaces and holds at ~17:1 in both. */}
           <div
             role="status"
-            className={`flex items-start gap-2 rounded-md px-3 py-2 text-[12px] mb-1 border ${
-              notice.tone === 'ok'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                : 'border-red-500/40 bg-red-500/10 text-red-200'
-            }`}
+            className="flex items-start gap-2 rounded-md px-3 py-2 text-[12px] mb-1 border"
+            style={{
+              borderColor: notice.tone === 'ok' ? 'var(--status-success)' : 'var(--status-danger)',
+              color: 'var(--text-primary)',
+            }}
           >
+            <span
+              className="mt-1 inline-block w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: notice.tone === 'ok' ? 'var(--status-success)' : 'var(--status-danger)' }}
+              aria-hidden="true"
+            />
             <span className="flex-1">{notice.text}</span>
-            <button onClick={() => setNotice(null)} className="text-neutral-300 hover:text-neutral-100" aria-label="Dismiss">×</button>
+            <button onClick={() => setNotice(null)} style={{ color: 'var(--text-secondary)' }} aria-label="Dismiss">×</button>
           </div>
         </div>
       )}
@@ -477,8 +546,11 @@ export default function ActivityMonitor() {
  */
 function FeedError({ error, onRetry }: { error: ApiFailure; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-center">
-      <span className="text-red-300 text-sm font-medium">Could not read this from your box</span>
+    <div
+      className="flex flex-col items-center justify-center h-full gap-3 rounded-lg border p-6 text-center"
+      style={{ borderColor: 'var(--status-danger)' }}
+    >
+      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Could not read this from your box</span>
       <span className="text-neutral-300 text-[12px] max-w-md">{error.message}</span>
       <span className="text-neutral-400 text-[12px] font-mono">
         {error.status > 0 ? `HTTP ${error.status}` : 'no response'}{error.code ? ` · ${error.code}` : ''}
@@ -524,7 +596,8 @@ function ActionBar({ selected, onQuit, onForce }: {
         onClick={onForce}
         disabled={!canAct}
         title={reason || 'End it immediately (SIGKILL). Unsaved work is lost.'}
-        className="px-3 py-1.5 text-[12px] font-medium rounded-md border border-red-500/50 text-red-200 enabled:hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="px-3 py-1.5 text-[12px] font-medium rounded-md border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
       >
         Force Quit
       </button>
@@ -568,14 +641,20 @@ function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
           >
             Cancel
           </button>
+          {/* A SOLID fill, not a tint, and a fixed pair.
+              A destructive confirmation is the one control that must not lose
+              its emphasis to a theme, and a translucent red tint composites
+              differently over a dark and a light surface — the same pair that
+              measured 5.6:1 on dark measured 1.4:1 on light. #b91c1c with
+              white is 6.47:1 regardless of what is behind it, because nothing
+              shows through. */}
           <button
             onClick={onConfirm}
             disabled={busy}
-            className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 ${
-              force
-                ? 'bg-red-500/20 border border-red-500/50 text-red-100 enabled:hover:bg-red-500/30'
-                : 'border border-neutral-500 text-neutral-100 enabled:hover:bg-neutral-800'
-            }`}
+            className="px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 border"
+            style={force
+              ? { background: '#b91c1c', borderColor: '#b91c1c', color: '#ffffff' }
+              : { borderColor: 'var(--border-emphasis)', color: 'var(--text-primary)' }}
           >
             {busy ? 'Working…' : force ? 'Force quit' : 'Quit'}
           </button>
@@ -759,7 +838,10 @@ function AppTable({ apps, search, onClose }: {
     const q = search.toLowerCase()
     return a.app_id.toLowerCase().includes(q) || (a.name || '').toLowerCase().includes(q) || a.kind.includes(q)
   })
-  const cols = ['App', 'Kind', 'Responding', 'Memory', '']
+  const cols: { label: string, align?: string }[] = [
+    { label: 'App' }, { label: 'Kind' }, { label: 'Responding' },
+    { label: 'Memory', align: 'text-right' }, { label: '' },
+  ]
   const gridTemplate = '1fr 90px 150px 80px 130px'
 
   return (
@@ -767,7 +849,7 @@ function AppTable({ apps, search, onClose }: {
       <div className="flex-1 min-h-0 overflow-auto">
         <div className="min-w-[560px]">
           <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900" style={{ gridTemplateColumns: gridTemplate }}>
-            {cols.map((c, i) => <span key={i}>{c}</span>)}
+            {cols.map((c, i) => <span key={i} className={c.align}>{c.label}</span>)}
           </div>
           {filtered.length === 0 && (
             <div className="text-xs text-neutral-400 p-6 text-center">
@@ -791,7 +873,8 @@ function AppTable({ apps, search, onClose }: {
                     </button>
                     <button
                       onClick={() => onClose(a, 'force')}
-                      className="px-2 py-1 text-[12px] rounded border border-red-500/50 text-red-200 hover:bg-red-500/15 transition-colors"
+                      className="px-2 py-1 text-[12px] rounded border transition-colors"
+                      style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
                     >
                       Force
                     </button>
@@ -818,18 +901,20 @@ function AppTable({ apps, search, onClose }: {
  * thing the user came here to find out.
  */
 function RespBadge({ r }: { r: Responsiveness }) {
-  const look: Record<string, { cls: string; text: string }> = {
-    responding: { cls: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200', text: 'Responding' },
-    not_responding: { cls: 'border-red-500/50 bg-red-500/10 text-red-200', text: 'Not responding' },
-    unknown: { cls: 'border-neutral-600 text-neutral-300', text: 'Cannot tell' },
-    not_applicable: { cls: 'border-neutral-700 text-neutral-400', text: 'Not applicable' },
+  const look: Record<string, { edge: string; text: string }> = {
+    responding: { edge: 'var(--status-success)', text: 'Responding' },
+    not_responding: { edge: 'var(--status-danger)', text: 'Not responding' },
+    unknown: { edge: 'var(--border-emphasis)', text: 'Cannot tell' },
+    not_applicable: { edge: 'var(--border-default)', text: 'Not applicable' },
   }
   const l = look[r.status] || look.unknown
   return (
     <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 border text-[12px] w-fit ${l.cls}`}
+      className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 border text-[12px] w-fit"
+      style={{ borderColor: l.edge, color: 'var(--text-primary)' }}
       title={r.detail ? `${r.detail} (method: ${r.method})` : `method: ${r.method}`}
     >
+      <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: l.edge }} aria-hidden="true" />
       {l.text}
     </span>
   )
@@ -849,7 +934,7 @@ function NetworkTable({ conns, search }: { conns: NetConn[], search: string }) {
     { key: 'proto', label: 'Protocol', w: '76px' },
     { key: 'local', label: 'Local Address', w: '1fr' },
     { key: 'remote', label: 'Remote Address', w: '1fr' },
-    { key: 'state', label: 'State', w: '90px' },
+    { key: 'state', label: 'State', w: '118px' },
     { key: 'pid', label: 'PID', w: '60px' },
     { key: 'process', label: 'Process', w: '1fr' },
   ]
@@ -872,8 +957,22 @@ function NetworkTable({ conns, search }: { conns: NetConn[], search: string }) {
               <span className="text-neutral-400 font-mono truncate">
                 {c.remote_addr === '0.0.0.0' && c.remote_port === 0 ? '*' : `${c.remote_addr}:${c.remote_port}`}
               </span>
-              <span className={`text-[12px] ${c.state === 'ESTABLISHED' ? 'text-emerald-300' : c.state === 'LISTEN' ? 'text-blue-300' : c.state === 'TIME_WAIT' ? 'text-amber-300' : 'text-neutral-400'}`}>
-                {c.state}
+              {/* Same rule as the badges: the colour is a dot, the label is
+                  --text-primary. Tailwind's emerald-300/blue-300/amber-300 are
+                  pale by design and were never remapped for the light theme —
+                  only the neutral scale is — so they measured fine on dark and
+                  would have failed on light. */}
+              <span className="text-[12px] flex items-center gap-1.5 min-w-0" style={{ color: 'var(--text-primary)' }}>
+                <span
+                  className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background:
+                    c.state === 'ESTABLISHED' ? 'var(--status-success)'
+                    : c.state === 'LISTEN' ? 'var(--accent)'
+                    : c.state === 'TIME_WAIT' ? 'var(--status-warning)'
+                    : 'var(--text-ghost)' }}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{c.state}</span>
               </span>
               {/* A socket with no owning process shows —, not a stand-in
                   number. This column used to carry the socket INODE, which on
@@ -995,8 +1094,16 @@ function AreaGraph({ data, color, fill, autoScale }: { data: number[], color: st
   const maxVal = autoScale ? Math.max(...data, 1) : 100
   const pts: [number, number][] = []
 
+  // Newest sample at the RIGHT edge, history extending left, which is how
+  // every system monitor scrolls and what a reader expects "now" to mean.
+  //
+  // Left-anchored, a freshly opened window drew its handful of samples as a
+  // stub in the leftmost few percent with the rest of the card blank, which
+  // reads as a broken graph rather than as a graph that has not filled yet.
+  // The empty region is still honest — it is time this window has not
+  // observed — it is now on the side where "the past" belongs.
   for (let i = 0; i < data.length; i++) {
-    const x = (i / (HISTORY_LEN - 1)) * w
+    const x = w - ((data.length - 1 - i) / (HISTORY_LEN - 1)) * w
     const y = padTop + graphH - (Math.min(data[i], maxVal) / maxVal) * graphH
     pts.push([x, y])
   }

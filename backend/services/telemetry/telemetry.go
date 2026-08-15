@@ -613,9 +613,18 @@ func parseNetFile(path, proto string) []NetConn {
 		localAddr, localPort := parseHexAddr(fields[1], strings.Contains(proto, "6"))
 		remoteAddr, remotePort := parseHexAddr(fields[2], strings.Contains(proto, "6"))
 
-		state := fields[3]
-		if s, ok := tcpStates[state]; ok {
-			state = s
+		// UDP HAS NO CONNECTION STATE. The st column exists in /proc/net/udp
+		// because the file shares a layout with /proc/net/tcp, and it reads 07
+		// — TCP_CLOSE — for an ordinary unconnected socket. Running it through
+		// the TCP table produced rows labelled "CLOSE" for sockets that were
+		// working fine, and leaving it raw produced a bare "7" in the UI, which
+		// looks like a value the reader is supposed to understand.
+		state := ""
+		if !strings.HasPrefix(proto, "udp") {
+			state = fields[3]
+			if s, ok := tcpStates[state]; ok {
+				state = s
+			}
 		}
 
 		inode, _ := strconv.Atoi(fields[9])
