@@ -18,8 +18,8 @@ import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
 import { notify as shellNotify } from '../../core/notificationStore'
 import { getWidget, listWidgets } from '../registry'
-import { storageFor } from '../storage'
-import { probeProxy, widgetNet } from '../net'
+import { probeProxy } from '../net'
+import { buildContext, seamsNeeded } from './context'
 import {
   addWidget, loadLayout, moveWidget, removeWidget, resizeWidget,
   saveLayout, setGrants, setInstanceSetting,
@@ -94,9 +94,9 @@ export default function WidgetRail() {
     return out
   }, [layout])
 
-  const needTelemetry = mounted.some((m) => m.instance.granted.includes('telemetry'))
-  const needCalendar = mounted.some((m) => m.instance.granted.includes('calendar'))
-  const needNotifications = mounted.some((m) => m.instance.granted.includes('notifications'))
+  // Which seams to OPEN at all. A denied permission must stop the box doing the
+  // work, not merely stop the widget seeing the result — see seamsNeeded().
+  const seams = seamsNeeded(mounted.map((m) => m.instance))
 
   const ticker = useTicker(finestTick(mounted.map((m) => m.def.manifest.tick)))
 
@@ -137,9 +137,9 @@ export default function WidgetRail() {
 
   return (
     <div className="flex flex-col gap-2.5">
-      {needTelemetry && <TelemetrySource onChange={setTelemetry} />}
-      {needCalendar && <CalendarSource onChange={setCalendar} />}
-      {needNotifications && <NotificationSource onChange={setNotifications} />}
+      {seams.telemetry && <TelemetrySource onChange={setTelemetry} />}
+      {seams.calendar && <CalendarSource onChange={setCalendar} />}
+      {seams.notifications && <NotificationSource onChange={setNotifications} />}
 
       <div className="vwidget-railbar">
         <button
@@ -212,23 +212,23 @@ export default function WidgetRail() {
         {mounted.map(({ instance, def }, i) => {
           const m = def.manifest
           const granted = instance.granted
-          const net = widgetNet(m.hosts ?? [], { granted: granted.includes('network') })
-          const ctx: WidgetContext = {
-            size: instance.size,
+          // EVERY permission gate lives in buildContext — see host/context.ts for
+          // why it is a pure function rather than a literal here.
+          const ctx: WidgetContext = buildContext({
+            manifest: m,
+            instance,
             now: nowFor(ticker, m.tick),
-            settings: instance.settings,
-            setSetting: (k, v) => setSetting(instance.instanceId, k, v),
             reducedMotion,
-            storage: granted.includes('storage') ? storageFor(instance.instanceId) : null,
-            net,
-            telemetry: granted.includes('telemetry') ? telemetry : null,
-            calendar: granted.includes('calendar') ? calendar : null,
-            notifications: granted.includes('notifications') ? notifications : null,
-            notify: granted.includes('notify')
-              ? (title: string, body?: string) => { shellNotify({ title, body, source: m.name, app: m.id, level: 'info' }) }
-              : null,
-            openApp: granted.includes('launch') ? openApp : null,
-          }
+            telemetry,
+            calendar,
+            notifications,
+            setSetting: (k, v) => setSetting(instance.instanceId, k, v),
+            notify: (title: string, body?: string) => {
+              shellNotify({ title, body, source: m.name, app: m.id, level: 'info' })
+            },
+            openApp,
+          })
+          const net = ctx.net
           const bridgeHost: BridgeHost = {
             instanceId: instance.instanceId,
             granted,
