@@ -120,6 +120,31 @@ function served(path: string, routes: string[]): boolean {
   })
 }
 
+/**
+ * Paths the frontend deliberately PROBES rather than calls — a capability the
+ * box may or may not expose, where absence is a designed, handled outcome
+ * rather than a broken affordance.
+ *
+ * This is deliberately not a general escape hatch, and the test below is built
+ * so it cannot become one. Two rules keep it honest:
+ *
+ *   1. A declaration must carry a reason naming where the design is recorded.
+ *   2. A declared path must be GENUINELY UNSERVED. The moment the box registers
+ *      it, this entry is stale and the suite fails until it is deleted — so the
+ *      list cannot quietly outlive the gap it documents.
+ *
+ * The distinction being drawn is real: "calls a route the box does not serve"
+ * is a lying button, while "asks whether the box can do X, and does nothing
+ * when it cannot" is how an optional capability has to be written. Collapsing
+ * the two would either forbid capability probes or excuse dead affordances.
+ */
+const OPTIONAL_CAPABILITIES: Record<string, string> = {
+  '/api/widgets/fetch':
+    'Widget network broker. widgetNet() returns null when the box does not ' +
+    'expose it and never falls back to a direct browser call, so no box today ' +
+    'reaches a third party. See roadmap/WIDGETS.md § "Stocks and the network".',
+}
+
 describe('frontend → box API contract', () => {
   it('parses a plausible number of routes from both sides', () => {
     // Guards the parser itself: a regex that silently stops matching would make
@@ -132,8 +157,28 @@ describe('frontend → box API contract', () => {
     const routes = backendRoutes()
     const missing = []
     for (const [path, files] of frontendPaths()) {
+      if (path in OPTIONAL_CAPABILITIES) continue
       if (!served(path, routes)) missing.push(`${path}  ← ${[...files].join(', ')}`)
     }
     expect(missing.sort()).toEqual([])
+  })
+
+  // The two guards that stop OPTIONAL_CAPABILITIES becoming a place to hide a
+  // missing route. Without them the list above would weaken the suite it sits
+  // in — which is this repo's single most common defect shape.
+  it('every optional capability carries a reason', () => {
+    for (const [path, reason] of Object.entries(OPTIONAL_CAPABILITIES)) {
+      expect(reason.length, `${path} needs a reason naming where it is designed`)
+        .toBeGreaterThan(40)
+    }
+  })
+
+  it('no optional capability is actually served — a shipped one must be deleted from the list', () => {
+    const routes = backendRoutes()
+    const stale = Object.keys(OPTIONAL_CAPABILITIES).filter(p => served(p, routes))
+    expect(
+      stale.sort(),
+      'the box now registers these, so they are ordinary routes: delete the OPTIONAL_CAPABILITIES entries',
+    ).toEqual([])
   })
 })
