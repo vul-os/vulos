@@ -193,6 +193,19 @@ describe('writes whose failure the user most needs to see', () => {
   })
 })
 
+describe('a button that claimed success for a write that failed', () => {
+  it('Remote Access: a refused Save does not flash "Saved"', async () => {
+    // The sharpest of the family. saveConfig read no status and set `saved`
+    // unconditionally, so a 403 or 500 still showed "Saved" — not a quiet
+    // failure but an active assertion that a write had happened.
+    backend(['/api/network/configure'], 403)
+    const user = await openSection('Remote Access')
+    await user.click(await screen.findByRole('button', { name: /^Save$/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/bluetoothd is not running/)
+    expect(screen.queryByRole('button', { name: 'Saved' })).not.toBeInTheDocument()
+  })
+})
+
 describe('Display — a label that read "undefined"', () => {
   it('never renders a brightness percentage before the box has reported one', async () => {
     // The gate was `status?.brightness?.device !== 'none'`, which is TRUE while

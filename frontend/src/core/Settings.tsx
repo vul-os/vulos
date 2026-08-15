@@ -1922,6 +1922,7 @@ function NetworkSettings() {
   const [config, setConfig] = useState<NetworkConfig>({ app_url: 'http://localhost:8080' })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const { error, attempt } = useApiError()
 
   useEffect(() => {
     fetch('/api/network/config').then(r => r.ok ? r.json() : null).then((raw: unknown) => {
@@ -1930,22 +1931,29 @@ function NetworkSettings() {
     }).catch(() => {})
   }, [])
 
-  const saveConfig = () => {
+  // This read no status and set `saved` unconditionally, so a 403 (not owner)
+  // or a 500 still flashed "Saved" — the button did not merely fail quietly, it
+  // actively asserted a write that had not happened.
+  const saveConfig = async () => {
     setSaving(true)
-    fetch('/api/network/configure', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
-    }).then(r => r.json()).then((raw: unknown) => {
-      setConfig(d => toNetworkConfig(raw) ?? d)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    }).finally(() => setSaving(false))
+    const ok = await attempt(async () => {
+      const next = toNetworkConfig(await apiSend('/api/network/configure', {
+        body: JSON.stringify(config),
+      }))
+      if (next) setConfig(next)
+      return true
+    })
+    setSaving(false)
+    if (!ok) return
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
     <Section title="Remote Access">
       <p className="text-xs text-[var(--text-faint)] mb-5">Configure how this device is reached from the network. If you're accessing remotely, set the URL to your public IP or domain.</p>
+
+      {error && <Banner tone="danger" title="Could not save the access URL">{error}</Banner>}
 
       <label className="block text-sm text-[var(--text-tertiary)] mb-1">Access URL</label>
       <input
@@ -2781,11 +2789,16 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
+  const [loadErr, setLoadErr] = useState<string | null>(null)
+
+  // `.catch(() => setVersions([]))` turned a failed read into "this app has no
+  // previous versions" — a fabricated empty state on the one panel whose whole
+  // purpose is to let a user roll back. Failing to LIST versions and having
+  // none to list must not look the same.
   useEffect(() => {
-    fetch(`/api/ai-apps/${appId}/versions`)
-      .then(r => r.json())
-      .then((raw: unknown) => setVersions(toAiAppVersions(raw)))
-      .catch(() => setVersions([]))
+    apiGet(`/api/ai-apps/${appId}/versions`)
+      .then((raw: unknown) => { setVersions(toAiAppVersions(raw)); setLoadErr(null) })
+      .catch((e: unknown) => setLoadErr(errorMessage(e)))
   }, [appId])
 
   const rollback = async (version: string) => {
@@ -2814,7 +2827,8 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
         <span className="text-xs font-semibold text-[var(--text-secondary)]">Version History</span>
         <button onClick={onClose} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">Close</button>
       </div>
-      {versions.length === 0 && <p className="text-xs text-[var(--text-muted)]">No snapshots yet.</p>}
+      {loadErr && <p role="alert" className="text-xs text-[var(--status-danger)]">Could not load the version list: {loadErr}</p>}
+      {!loadErr && versions.length === 0 && <p className="text-xs text-[var(--text-muted)]">No snapshots yet.</p>}
       {versions.map(v => (
         <div key={v.version} className="flex items-center justify-between py-1 border-b border-[var(--border-default)]">
           <div>
