@@ -179,7 +179,7 @@ func (m *Manager) Create(ctx context.Context, appID, ownerID string, hostPort, a
 // ordering relative to the ACCEPT rules — is unit-testable without root or
 // iproute2.
 func namespaceSteps(ns *Namespace) []nsStep {
-	return []nsStep{
+	steps := []nsStep{
 		// 1. Create the namespace
 		{"create netns", []string{"ip", "netns", "add", ns.Name}},
 
@@ -239,6 +239,36 @@ func namespaceSteps(ns *Namespace) []nsStep {
 			"iptables", "-I", "OUTPUT",
 			"-d", ns.HostIP, "-p", "tcp", "--dport", "8080", "-j", "ACCEPT"}},
 	}
+
+	// PORTBIND-01: let the app bind the port its own manifest declares.
+	//
+	// Every bundled app declares port 80, and the launcher runs it through
+	// `setpriv --reuid=65534 --regid=65534` (nobody) AFTER entering this
+	// namespace.  Dropping to a non-root uid clears the process's capability
+	// set, so it holds no CAP_NET_BIND_SERVICE — and a FRESH network namespace
+	// resets net.ipv4.ip_unprivileged_port_start to the kernel default of 1024
+	// regardless of what the host is set to.  (Docker sets the host value to 0,
+	// which is why this never showed up in a container: `ip netns add` gets
+	// 1024 back.)  bind(0.0.0.0, 80) therefore fails with EACCES, the process
+	// exits within milliseconds of launch, and the gateway proxies to nothing.
+	//
+	// Lowering the floor to the app's own port re-permits exactly the range the
+	// manifest asked for and nothing below it.  The blast radius is this one
+	// throwaway namespace, which contains a single unprivileged process and one
+	// veth whose only inbound path is a DNAT from 127.0.0.1 (see "localhost
+	// DNAT" / "block external" above) — the host's own value is untouched.
+	//
+	// This is a hard step, not best-effort: if the floor cannot be lowered the
+	// app cannot bind, and failing namespace creation with the real reason beats
+	// starting a process that dies instantly and surfacing as a mystery 502.
+	if ns.AppPort > 0 && ns.AppPort < 1024 {
+		steps = append(steps, nsStep{"unprivileged port floor", []string{
+			"ip", "netns", "exec", ns.Name,
+			"sysctl", "-w", fmt.Sprintf("net.ipv4.ip_unprivileged_port_start=%d", ns.AppPort),
+		}})
+	}
+
+	return steps
 }
 
 // Destroy tears down a namespace and its networking.
