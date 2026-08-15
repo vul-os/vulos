@@ -555,7 +555,14 @@ function AISettings({ profile, updateProfile }: AISettingsProps) {
   const [status, setStatus] = useState<AiStatus | null>(null)
 
   useEffect(() => {
-    fetch('/api/ai/status').then(r => r.json()).then((d: unknown) => setStatus(toAiStatus(d))).catch(() => {})
+    // NOTE: GET /api/ai/status cannot currently fail — none of the three
+    // backends' Status() has an error path — but it is read through apiGet
+    // anyway so this call site does not model "any answer is the truth". A
+    // separate honesty gap lives on the box side and is NOT visible from here:
+    // a CONFIGURED but unreachable remote gateway still answers
+    // {"status":"ok"} because Status() never dials it (backend.go's
+    // remoteBackend.Status). Only the wholly-unconfigured case is flagged.
+    apiGet('/api/ai/status').then((d: unknown) => setStatus(toAiStatus(d))).catch(() => {})
   }, [])
 
   const save = () => updateProfile({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined })
@@ -2824,7 +2831,7 @@ function AIAppsSettings() {
   const [versionsOpen, setVersionsOpen] = useState<string | null>(null)
   const [preview, setPreview] = useState<AiApp | null>(null)
   const [editDisabled, setEditDisabled] = useState(false)
-  const refresh = useCallback(() => fetch('/api/ai-apps').then(r => r.json()).then((raw: unknown) => setApps(toAiApps(raw))).catch(() => {}), [])
+  const refresh = useCallback(() => apiGet('/api/ai-apps').then((raw: unknown) => setApps(toAiApps(raw))).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
   // Surface the DISABLE_AI_APP_EDIT kill-switch so mutating actions render as
   // clearly-disabled controls + a banner, not just a failure toast on click.
