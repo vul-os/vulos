@@ -437,12 +437,14 @@ itself — you do not hand-write ledger entries, ever.
 | --- | ---: | ---: | ---: |
 | Flatpak app, runtime not yet cached | ~30 min | ~2.0 GB | ~0 — the container is `--rm` |
 | Flatpak app, second app sharing a runtime | less, unmeasured | app size + repo copy | ~0 |
-| apt / static-download app | ~1–3 min | tens–hundreds of MB | ~0 |
+| apt / static-download app | 12 s – 1 min | 25–160 MB | ~0 |
 | harness self-test (all five cases) | ~40 s | ~5 MB | 0 |
-| base image, once for everything | ~15 min | 242 MB, kept | 242 MB |
+| base image, once for everything | ~90 min at load 90 | 1.6 GB, kept | 1.6 GB |
 
 The disk cost lives inside the container and goes away when it exits. What
-persists is the 242 MB base image. Flathub's own "installed size" figure is
+persists is the 1.6 GB base image — it carries the full shipped package set
+(chromium, xvfb, gstreamer, mesa, pipewire…) because a thinner one invents
+failures, and it is built once for the whole catalogue. Flathub's own "installed size" figure is
 roughly a third of the truth: FileZilla reports 35 MB and cost 2059 MB, because
 the runtime (629 MB) and ostree's repo copy dominate.
 
