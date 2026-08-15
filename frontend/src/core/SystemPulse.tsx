@@ -4,6 +4,7 @@ import { useTelemetry } from './useTelemetry'
 import { useTheme } from './ThemeProvider'
 import { useAuth, type AuthProfile } from '../auth/AuthProvider'
 import NotificationCenter from '../shell/NotificationCenter'
+import './touch-chrome.css'
 
 // isRecord narrows the `unknown` telemetry/wifi payloads (parsed straight off
 // a WebSocket/fetch response — a trust boundary) before any property access,
@@ -531,7 +532,13 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
 
   if (compact) {
     return (
-      <div className={`flex items-center gap-0.5 ${className}`}>
+      // `vsp-compact` is the hook core/touch-chrome.css uses to put a 44px floor
+      // under EVERY control in this cluster on a coarse pointer — including the
+      // Notifications trigger, which shell/NotificationCenter.tsx draws and this
+      // workstream does not own. A rule on the cluster reaches it without
+      // editing someone else's file, and leaves no hole in the floor shaped like
+      // whoever happens to own which control.
+      <div className={`vsp-compact flex items-center gap-0.5 ${className}`}>
         {/* WiFi */}
         <div className="relative" ref={wifiRef}>
           <StatusButton onClick={() => toggleDropdown('wifi')} active={openDropdown === 'wifi'} label="Network">
@@ -548,7 +555,17 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
             <StatusButton onClick={() => toggleDropdown('battery')} active={openDropdown === 'battery'} label="Battery">
               <div className="flex items-center gap-1">
                 <BatteryIcon percent={battery} charging={charging} size={16} />
-                <span className="text-[12px] font-mono text-neutral-400">{battery}%</span>
+                {/* The percentage is hidden at phone widths, exactly as the date
+                    is on the clock below and for the same measured reason. With
+                    every control in this cluster at its 44px touch size, the row
+                    came to 398px at a 390px viewport — an 8px horizontal
+                    overflow across the whole OS. This is the cheapest 26px in
+                    the bar: native phone status bars show the battery GLYPH and
+                    not the number, the glyph is already a proportional gauge,
+                    and the exact figure is one tap away in the dropdown. It
+                    returns at >=640px where there is room, so nothing is lost on
+                    a tablet or a desktop. */}
+                <span className="hidden sm:inline text-[12px] font-mono text-neutral-400">{battery}%</span>
               </div>
             </StatusButton>
             <Dropdown open={openDropdown === 'battery'} onClose={closeDropdown} containerRef={batteryRef}>

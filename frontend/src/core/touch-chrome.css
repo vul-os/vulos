@@ -1,0 +1,73 @@
+/* touch-chrome.css — the 44px floor for the shell's status chrome.
+ *
+ * Imported by core/SystemPulse.tsx and shell/TrustBadge.tsx, the two components
+ * that draw the always-on status cluster. Everything here is inside
+ * `@media (pointer: coarse)`: how big a target must be is a property of the
+ * INPUT DEVICE, not of the app, and forcing 44px onto a mouse-driven desktop
+ * would inflate the menu bar for no one's benefit. A touchscreen LAPTOP reports
+ * `pointer: fine` because its mouse is the primary pointer, so it correctly
+ * keeps the dense chrome.
+ *
+ * # What this fixes, measured
+ *
+ * The mobile workstream took the phone from 51 sub-44px targets to 5. These are
+ * those 5, measured at 390×844 on the shipping build:
+ *
+ *   Sovereignty and privacy status (TrustBadge)   40 × 24
+ *   Network                                       26 × 32
+ *   Notifications                                 26 × 32
+ *   Switch to the dark theme                      26 × 32
+ *   Clock                                       71.8 × 32
+ *
+ * # Why a stylesheet and not five components
+ *
+ * "Notifications" is drawn by shell/NotificationCenter.tsx, which this
+ * workstream does not own — but it renders INSIDE SystemPulse's compact cluster.
+ * A rule on the cluster reaches it without editing someone else's file, and
+ * without the floor having a hole in it shaped like whoever happened to own
+ * which control. Any control added to this cluster later inherits the floor for
+ * free, which is the opposite of the usual outcome.
+ *
+ * # The bar does not get taller
+ *
+ * The mobile status bar row is already 44px (`h-11` in layouts/MobileStack).
+ * These controls grow to FILL it rather than to exceed it, so a phone gives up
+ * no additional screen for chrome.
+ */
+
+@media (pointer: coarse) {
+  /* Every control in the compact status cluster, including ones drawn by
+   * components this file does not import. */
+  .vsp-compact button,
+  .vsp-compact [role='button'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* The trust badge's HIT AREA. The visible pill is a child, so the target grows
+   * without the chrome turning into a 44px block — and the pill itself still
+   * grows (below), because this is a trust surface and the instruction was to
+   * make it bigger without making it quieter. */
+  .vtrust-hit {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Bigger, and more legible: a 28px pill instead of 24px, a 9px tier dot
+   * instead of 8px, and the egress/lock glyphs up from 12/11px. Nothing is
+   * removed and nothing is hidden — a trust surface that got quieter in exchange
+   * for being easier to hit would be a bad trade at any target size. */
+  .vtrust-pill {
+    height: 28px;
+    padding-inline: 8px;
+    gap: 7px;
+  }
+  .vtrust-dot {
+    width: 9px;
+    height: 9px;
+  }
+  .vtrust-glyph {
+    width: 14px;
+    height: 14px;
+  }
+}
