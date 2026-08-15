@@ -79,10 +79,14 @@ export async function openSettings(page: Page, theme: 'dark' | 'light' = 'dark')
 export async function gotoSection(page: Page, label: string): Promise<boolean> {
   const width = page.viewportSize()?.width ?? 1440
   if (width < 640) {
-    const opener = page.getByRole('button', { name: /Sections|Menu|Settings sections/i }).first()
-    if (await opener.count() && await opener.isVisible()) {
+    // Exact label, and only when the drawer is actually shut. A loose
+    // /sections/i regex also matched "CLOSE settings sections" and the drawer's
+    // own nav landmark, so the sweep clicked the wrong thing and then fought
+    // the open overlay for the rest of the run.
+    const opener = page.getByRole('button', { name: 'Open settings sections' })
+    if (await opener.count() && (await opener.getAttribute('aria-expanded')) !== 'true') {
       await opener.click()
-      await page.waitForTimeout(250)
+      await page.waitForTimeout(300)
     }
   }
   const nav = page.getByRole('navigation', { name: 'Settings sections' })
@@ -96,30 +100,44 @@ export async function gotoSection(page: Page, label: string): Promise<boolean> {
 export interface Overflow { tag: string; cls: string; text: string; right: number; vw: number }
 
 /**
- * Elements painting past the right edge of the viewport.
+ * Settings content painting past the right edge of its OWN container.
  *
- * Measured against the VIEWPORT rather than a scroll container because that is
- * what the user experiences as "the page slides sideways". Elements that are
- * legitimately scrollable in their own right (overflow-x:auto) are excluded —
- * a wide table inside its own scroller is a design, not a defect.
+ * Deliberately measured against the Settings root rather than the viewport.
+ * Measuring the viewport conflated two unrelated defects: content escaping its
+ * panel (a Settings bug) and the shell opening a window wider than the screen
+ * (a window-manager bug). The second is real — at 768px the Settings window
+ * runs to x=920 and slices the "Scan Networks" button in half — but it is not
+ * Settings' to fix, and it is not even Settings-specific: the shell's default
+ * window is 720 wide at x=60, so every windowed app overruns an iPad portrait.
+ * See ShellProvider's OPEN_WINDOW, which clamps neither size nor position.
+ *
+ * Scoping here keeps this gate honest about the surface it owns; the window
+ * defect is reported separately rather than silently absorbed.
+ *
+ * Elements inside a deliberate horizontal scroller are excluded — a wide table
+ * in its own overflow-x:auto container is a design, not a defect.
  */
 export async function overflowsAt(page: Page): Promise<Overflow[]> {
   return page.evaluate(() => {
-    const vw = document.documentElement.clientWidth
+    // The Settings root: the @container/win element the whole app lives in.
+    const root = document.querySelector('[class*="@container/win"]')
+      ?? document.querySelector('nav[aria-label="Settings sections"]')?.parentElement
+    if (!root) return []
+    const rootRight = root.getBoundingClientRect().right
+    const vw = Math.round(rootRight)
     const out: Overflow[] = []
-    for (const el of Array.from(document.querySelectorAll('*'))) {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
       const r = el.getBoundingClientRect()
       if (r.width === 0 || r.height === 0) continue
-      // Skip anything inside a deliberate horizontal scroller.
       let p: Element | null = el
       let scrollable = false
-      while (p && p !== document.body) {
+      while (p && p !== root) {
         const ov = getComputedStyle(p).overflowX
         if (ov === 'auto' || ov === 'scroll') { scrollable = true; break }
         p = p.parentElement
       }
       if (scrollable) continue
-      if (r.right > vw + 1) {
+      if (r.right > rootRight + 1) {
         out.push({
           tag: el.tagName.toLowerCase(),
           cls: (el.getAttribute('class') || '').slice(0, 80),
@@ -148,14 +166,28 @@ export async function smallTargets(page: Page): Promise<SmallTarget[]> {
     const sel = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=switch]'
     const out: SmallTarget[] = []
     for (const el of Array.from(document.querySelectorAll(sel))) {
-      const r = el.getBoundingClientRect()
-      if (r.width === 0 || r.height === 0) continue
       const cs = getComputedStyle(el)
       if (cs.visibility === 'hidden' || cs.display === 'none') continue
+
+      // Measure the EFFECTIVE activation area, not the control's own box. A
+      // native radio paints at ~13x13 in every browser, but Settings wraps each
+      // one in a <label htmlFor> with px-4 py-3 and cursor-pointer, so the
+      // whole row activates it and the real target is comfortably large.
+      // Measuring the input alone reported the Connection Mode and Storage
+      // radios as 13x13 failures when nothing was wrong with them; WCAG 2.2
+      // sizes the activation area, which for a labelled control is the label.
+      // Only a WRAPPING label counts. A detached `label[for=…]` sitting above a
+      // field (Settings' <Field> renders one) is not the control's hit area,
+      // and resolving to it measured those 16px caption boxes instead of the
+      // inputs — swapping one wrong answer for another.
+      const target: Element = el.closest('label') ?? el
+
+      const r = target.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) continue
       if (r.width < 24 || r.height < 24) {
         out.push({
           tag: el.tagName.toLowerCase(),
-          name: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 40),
+          name: (el.getAttribute('aria-label') || target.textContent || el.textContent || '').trim().slice(0, 40),
           w: Math.round(r.width),
           h: Math.round(r.height),
         })

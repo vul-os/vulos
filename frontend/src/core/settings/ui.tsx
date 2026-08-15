@@ -75,7 +75,13 @@ export function Actions({ hint, children, className = '' }: ActionsProps) {
   return (
     <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ${className}`}>
       {hint ? <p className="text-xs text-[var(--text-tertiary)] leading-relaxed min-w-0 flex-1">{hint}</p> : <span className="flex-1" />}
-      <div className="flex items-center gap-2.5 shrink-0">{children}</div>
+      {/* `flex-wrap` and no `shrink-0`: the button group was unshrinkable, so
+          two side-by-side buttons overran a 320px screen — About's "View
+          licences" + "View written offer" reached x=339 and the second was
+          cut off by the screen edge. The outer row already wraps; the inner
+          group has to be allowed to as well, or it wraps as one rigid block
+          that is itself too wide. */}
+      <div className="flex flex-wrap items-center justify-end gap-2.5">{children}</div>
     </div>
   )
 }

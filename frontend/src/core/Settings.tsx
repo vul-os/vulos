@@ -1449,7 +1449,12 @@ function AudioSettings() {
   return (
     <Section title="Sound">
       {error && <Banner tone="danger" title="Sound is not responding">{error}</Banner>}
-      {status && <p className="text-xs text-[var(--text-faint)] mb-4 mt-3">Backend: {status.backend}</p>}
+      {/* Gated on the VALUE, not on `status` being present: with a status body
+          that omits `backend` this rendered the label "Backend:" followed by
+          nothing — the same shape as Display's "Compositor:" and its
+          "Brightness (undefined%)". Caught by looking at the render, not by a
+          test. */}
+      {status?.backend && <p className="text-xs text-[var(--text-faint)] mb-4 mt-3">Backend: {status.backend}</p>}
       <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Output</h3>
       {/* Both lists previously rendered a bare heading with nothing under it
           when the box reported no devices — no empty state, no explanation,

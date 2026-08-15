@@ -21,8 +21,16 @@ import { openSettings, gotoSection, overflowsAt, smallTargets, SECTIONS } from '
 
 const WIDTHS = [320, 390, 428, 768, 834, 1024, 1440]
 
+// These sweeps genuinely visit 34 panels apiece, and below the `sm:` breakpoint
+// each visit also opens the drawer — around a second of real work per section.
+// At the 30s default they sat exactly on the boundary and tipped over under
+// host load, reporting a timeout that reads like an overflow failure. The work
+// is real, so the budget is raised rather than the sweep narrowed.
+const SWEEP_TIMEOUT = 180_000
+
 for (const width of WIDTHS) {
   test(`no horizontal overflow anywhere in Settings at ${width}px`, async ({ page }) => {
+    test.setTimeout(SWEEP_TIMEOUT)
     await page.setViewportSize({ width, height: 900 })
     await openSettings(page)
 
@@ -44,6 +52,7 @@ for (const width of WIDTHS) {
 }
 
 test('every interactive control in Settings meets the 24px touch minimum at 390px', async ({ page }) => {
+  test.setTimeout(SWEEP_TIMEOUT)
   await page.setViewportSize({ width: 390, height: 844 })
   await openSettings(page)
 
@@ -67,5 +76,8 @@ test('the section rail is reachable on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 })
   await openSettings(page)
   expect(await gotoSection(page, 'About')).toBe(true)
-  await expect(page.getByRole('heading', { name: 'About' }).first()).toBeVisible()
+  // The About panel's heading is the product name, not the nav label — asserting
+  // on "About" matched the nav button and would have passed without the panel
+  // ever rendering.
+  await expect(page.getByRole('heading', { name: 'Vulos OS' }).first()).toBeVisible()
 })
