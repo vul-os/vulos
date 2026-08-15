@@ -2,7 +2,30 @@
 /**
  * Vulos OS marketing screenshot generator.
  *
+ * WHAT THESE IMAGES PROVE, AND WHAT THEY DO NOT:
+ *   They prove the shipping shell RENDERS GIVEN DATA. They prove NOTHING about
+ *   whether anything RUNS. No process is ever started here: `POST
+ *   /api/apps/launch` is answered `{ok:true}` by the mock and nothing happens.
+ *
+ *   This is not hypothetical. v0.2.0 shipped with /opt/vulos/apps/ empty, every
+ *   bundled app answered {"error":"app not running"}, and these screenshots
+ *   were green throughout — which is how the founder came to boot a real box,
+ *   find the apps failing, and ask "in screenshots these all work, why when I'm
+ *   trying is it not?".
+ *
+ *   That is a legitimate use of fixtures — the surfaces shot here are built-in
+ *   React views with no process behind them, so the fixture stands in for DATA,
+ *   not for a running app. But the output must never be read as evidence that a
+ *   box works. Process-backed apps (frontend/apps/*) are shot separately and
+ *   for real by frontend/e2e/shots-live-apps.e2e.ts, into
+ *   docs/screenshots/live-apps/, with a liveness proof per image.
+ *
+ *   The split is enforced by scripts/check-screenshot-provenance.py and
+ *   documented in docs/screenshots/PROVENANCE.md.
+ *
  * PHILOSOPHY (privacy-first, no faking):
+ *   "No faking" below is about PRIVACY — no real user data can reach a shot —
+ *   and about not hand-drawing UI. It is not a claim that anything is running.
  *   This drives the REAL shipping React shell (the production `vite build`
  *   bundle served by `vite preview`) and mocks the entire backend at the
  *   browser network layer — exactly like the Playwright E2E suite

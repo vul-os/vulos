@@ -73,6 +73,8 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
 
 <sub>More screens and a full walkthrough live in the <a href="docs/USER-GUIDE.md">User Guide</a>.</sub>
 
+<sub>The shots above are the real shipping UI rendered against <b>fixture data</b> — they show how Vulos looks, not a live box. Screenshots of the bundled apps <b>actually running</b> are in <a href="docs/screenshots/live-apps/">docs/screenshots/live-apps/</a>; <a href="docs/screenshots/PROVENANCE.md">PROVENANCE.md</a> records how every image was captured, and CI enforces it.</sub>
+
 ---
 
 ## One person, many instances
