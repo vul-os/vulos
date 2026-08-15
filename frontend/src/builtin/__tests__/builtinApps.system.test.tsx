@@ -245,6 +245,25 @@ describe('Disk Usage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/Could not read volumes/i)
   })
 
+  // The same shape one level down: /api/disks answers, a volume is selected,
+  // and then /api/disks/breakdown fails. `breakdown` stayed null with
+  // `breakdownLoading` false, and all three branches of the detail pane test
+  // `breakdown &&`, so it rendered as nothing. A non-ok response was worse: it
+  // parsed, failed Array.isArray, became [], and read as "Empty or not
+  // accessible" — a claim about the user's disk, made from an outage.
+  it('says the directory could not be measured when the breakdown call fails', async () => {
+    fetchRig = installFetch({
+      '/api/disks': { body: DISKS_OK },
+      '/api/disks/breakdown': { status: 500, body: { error: 'du failed' } },
+    })
+    render(<DiskUsage />)
+    await settle(6)
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Could not measure this directory/i))
+    expect(screen.queryByText('Empty or not accessible')).not.toBeInTheDocument()
+    expect(screen.queryByText('Scanning directory...')).not.toBeInTheDocument()
+  })
+
   it('does not claim "No volumes found" when the box failed to answer', async () => {
     fetchRig = installFailingFetch()
     render(<DiskUsage />)

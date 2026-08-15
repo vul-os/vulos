@@ -140,6 +140,7 @@ export default function DiskUsage() {
   const [loading, setLoading] = useState(true)
   const [breakdownLoading, setBreakdownLoading] = useState(false)
   const [mountsError, setMountsError] = useState<string | null>(null)
+  const [breakdownError, setBreakdownError] = useState<string | null>(null)
 
   useEffect(() => {
     // BUILTIN-5: neither half of this was safe. A 500 with a JSON body parsed
@@ -168,13 +169,25 @@ export default function DiskUsage() {
   const loadBreakdown = (path: string) => {
     setBreakdownPath(path)
     setBreakdownLoading(true)
+    setBreakdownError(null)
+    // Same shape as the mounts fetch above: a rejected request left `breakdown`
+    // null with `breakdownLoading` false, and all three render branches below
+    // test `breakdown &&` — so the pane rendered as nothing at all. A non-ok
+    // response fared no better: it parsed, failed Array.isArray, and became []
+    // which reads as "Empty or not accessible".
     fetch('/api/disks/breakdown?path=' + encodeURIComponent(path))
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then((d: unknown) => {
         setBreakdown(Array.isArray(d) ? d.filter(isBreakdownEntry) : [])
         setBreakdownLoading(false)
       })
-      .catch(() => setBreakdownLoading(false))
+      .catch((e: unknown) => {
+        setBreakdownError(e instanceof Error ? e.message : String(e))
+        setBreakdownLoading(false)
+      })
   }
 
   useEffect(() => {
@@ -348,7 +361,16 @@ export default function DiskUsage() {
                     <span className="text-xs">Scanning directory...</span>
                   </div>
                 )}
-                {!breakdownLoading && breakdown && breakdown.length === 0 && (
+                {!breakdownLoading && breakdownError && (
+                  <div role="alert" className="flex flex-col items-center gap-2 text-neutral-500 py-8 px-4 text-center">
+                    <span aria-hidden="true" className="text-xl leading-none text-neutral-700">⚠</span>
+                    <span className="text-xs text-neutral-300">Could not measure this directory</span>
+                    <span className="text-[11px] text-neutral-500 break-words">
+                      The box did not answer ({breakdownError}).
+                    </span>
+                  </div>
+                )}
+                {!breakdownLoading && !breakdownError && breakdown && breakdown.length === 0 && (
                   <div className="flex flex-col items-center gap-2 text-neutral-600 py-8">
                     <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.4}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -356,7 +378,7 @@ export default function DiskUsage() {
                     <span className="text-xs">Empty or not accessible</span>
                   </div>
                 )}
-                {!breakdownLoading && breakdown && breakdown.length > 0 && (
+                {!breakdownLoading && !breakdownError && breakdown && breakdown.length > 0 && (
                   <div className="space-y-px rounded-lg overflow-hidden border border-neutral-800/40">
                     {breakdown.map((d, i) => {
                       const pct = selectedMount.total_mb > 0
