@@ -51,12 +51,28 @@ export const VIEWPORT_QUERIES = {
   touchTablet: TOUCH_QUERY,
 }
 
-function resolve(): ViewportLayout {
+/**
+ * The single answer to "is the touch shell up right now".
+ *
+ * Exported because `desktop/store.ts` needs the same answer to pick a dock
+ * profile, and it used to compute its own — `innerWidth < 768`, with a comment
+ * claiming it mirrored this file exactly. It did not: this file ALSO treats a
+ * coarse-pointer tablet up to 1024px as mobile, so between 768 and 1024 the
+ * touch shell was up while the layout store said `desktop`. An iPad in portrait
+ * got the desktop dock's twelve-item, small-tile geometry inside the mobile
+ * shell.
+ *
+ * Two rules that agree by comment drift the moment one of them is edited, and
+ * this one had already drifted. One function, imported by both.
+ */
+export function resolveViewportLayout(): ViewportLayout {
   if (typeof window === 'undefined') return 'desktop'
   if (window.innerWidth < MOBILE_BREAKPOINT) return 'mobile'
   if (window.matchMedia?.(TOUCH_QUERY).matches) return 'mobile'
   return 'desktop'
 }
+
+const resolve = resolveViewportLayout
 
 export function useViewport(): ViewportLayout {
   const [layout, setLayout] = useState<ViewportLayout>(resolve)

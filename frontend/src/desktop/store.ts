@@ -19,10 +19,18 @@
  *
  * A phone dock is a different dock, so the two profiles persist under two keys.
  * Rearranging the desktop dock writes only KEY_DOCK.desktop; a user's phone
- * arrangement is never collateral damage. `activeFormFactor()` mirrors
- * shell/useViewport.ts's 768px breakpoint exactly, so the JS layout switch and
- * the dock profile flip in lockstep — there is no width at which DesktopCanvas
- * is up while the mobile dock profile is applied.
+ * arrangement is never collateral damage.
+ *
+ * `activeFormFactor()` CALLS shell/useViewport.ts's resolver rather than
+ * reproducing it. It used to reproduce it, under a comment claiming the two
+ * mirrored each other exactly — and they did not: that file also treats a
+ * coarse-pointer, hover-less viewport up to 1024px as mobile, so between 768
+ * and 1024 the touch shell was up while this store answered `desktop`. An iPad
+ * in portrait ran MobileStack and was handed the desktop dock's twelve-item,
+ * small-tile geometry.
+ *
+ * The comment was the defect, not the width: two rules that agree by assertion
+ * drift the first time either is edited, and one of them had already been.
  *
  * # Revert
  *
@@ -44,6 +52,7 @@ import {
 } from './types'
 import { validateLayout, validatePack, validateTokens } from './validate'
 import { DEFAULT_PRESET_ID, LAYOUT_PRESETS, getPreset, presetLayout, stockLayout } from './presets'
+import { resolveViewportLayout } from '../shell/useViewport'
 
 const KEY_LAYOUT = 'vulos.desktop.layout'
 const KEY_PACKS = 'vulos.desktop.packs'
@@ -109,8 +118,12 @@ export function findPreset(id: string): LayoutPreset | null {
 /* ── Form factor ──────────────────────────────────────────────────────────── */
 
 export function activeFormFactor(): FormFactor {
-  if (typeof window === 'undefined') return 'desktop'
-  return window.innerWidth < MOBILE_BREAKPOINT ? 'mobile' : 'desktop'
+  // Delegated, not duplicated. This used to be `innerWidth < MOBILE_BREAKPOINT`
+  // under a comment saying it mirrored useViewport.ts exactly — but that file
+  // also treats a coarse-pointer tablet up to 1024px as mobile, so an iPad in
+  // portrait ran the touch shell while this said `desktop` and handed it the
+  // desktop dock's twelve-item, small-tile geometry.
+  return resolveViewportLayout()
 }
 
 /**
