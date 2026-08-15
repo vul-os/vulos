@@ -1,0 +1,1063 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   apphub.css — the App Hub's layout and surface language.
+   ───────────────────────────────────────────────────────────────────────────
+   Every colour here is an OS token from src/index.css. Nothing in this file
+   picks a colour; it only decides which of the OS's colours a part is made of,
+   which is what keeps the hub looking like the rest of the system in both
+   themes and under a user-chosen accent.
+
+   ── Why this is CSS and not Tailwind utilities ──────────────────────────────
+
+   The hub is a WINDOW. Its width is whatever the user has dragged the frame to,
+   which on a 1440px screen is routinely 400px. Tailwind's responsive prefixes
+   (`md:`, `xl:`) are VIEWPORT media queries, so the previous version of this
+   component laid out `xl:grid-cols-3` inside a 442px window — three columns,
+   cards 50px wide, the third column rendered outside the window frame. Every
+   name was clipped to a single letter and an ellipsis. Maximised at 1440 the
+   very same code looked correct, which is exactly why it shipped.
+
+   So the hub sizes itself from its OWN box:
+
+     - `container-type: inline-size` on .hub, so `cqi` units below are
+       percentages of the HUB's width, not the screen's.
+     - `[data-hub-mode]` on the same element for the four structural layouts.
+       The attribute is written by a ResizeObserver in AppHub.tsx from the same
+       measurement CSS is reading, so there is no width at which JS believes one
+       layout and CSS paints another — and the ARIA the panel needs (a docked
+       region vs. a modal dialog) follows the real layout instead of guessing.
+     - Attribute selectors, not media queries. A media query adds ZERO
+       specificity, so a later rule wins regardless of viewport; this repo has
+       been bitten by that in four other places. `[data-hub-mode="narrow"] .x`
+       out-specifies `.x` by construction.
+
+   Between the four structural modes NOTHING steps: gutters, type, icon and
+   column widths are `clamp()`ed against `cqi`, so dragging a frame is a
+   continuous resize rather than three jumps between three designs.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.hub {
+  /* Reading the hub's own width, so everything below is relative to the frame
+     the user is dragging. */
+  container-type: inline-size;
+
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+
+  /* ── Spacing scale ────────────────────────────────────────────────────────
+     One scale, derived from the OS --space-* steps, fluid between them. Every
+     margin and pad in this file is one of these; nothing is a loose number. */
+  --hub-gutter: clamp(12px, 2.4cqi, 24px);
+  --hub-gap: clamp(8px, 1.1cqi, 12px);
+  --hub-rail-w: clamp(180px, 19cqi, 232px);
+  --hub-detail-w: clamp(300px, 30cqi, 360px);
+
+  /* Card metrics. --hub-card-min is the grid's minimum track: the grid is
+     auto-fill, so column COUNT is a consequence of the hub's width rather than
+     a number anybody wrote down. */
+  --hub-card-min: 264px;
+  --hub-icon: clamp(38px, 3.4cqi, 44px);
+  --hub-radius: var(--radius-lg);
+
+  /* Type scale. Floors are 12px — the suite's minimum legible size — so no
+     amount of narrowing can produce text below it. */
+  --hub-fs-title: clamp(15px, 1.5cqi, 17px);
+  --hub-fs-body: 13px;
+  --hub-fs-meta: 12px;
+}
+
+/* ── Structural modes ──────────────────────────────────────────────────────
+   wide    ≥1080  rail + grid + docked detail column
+   mid     ≥ 700  rail + grid, detail as an overlay sheet
+   compact ≥ 440  no rail (filters become a scrolling chip rail), multi-column
+   narrow  < 440  single column, finger-sized targets
+   ────────────────────────────────────────────────────────────────────────── */
+
+.hub[data-hub-mode='narrow'] {
+  --hub-card-min: 100%;
+  --hub-gap: 8px;
+}
+
+/* ═══ Frame ═══════════════════════════════════════════════════════════════ */
+
+.hub-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* min-width:0 — WITHOUT this a flex child refuses to shrink below its content
+     and the grid inside pushes the whole hub wider than its frame. It is the
+     same defect as a grid track missing minmax(0,1fr), one box out. */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hub-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hub-gap);
+  padding: var(--hub-gutter) var(--hub-gutter) calc(var(--hub-gutter) * 0.6);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-base);
+}
+
+.hub-head-row {
+  display: flex;
+  align-items: center;
+  gap: var(--hub-gap);
+  min-width: 0;
+}
+
+.hub-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.hub-brand h1 {
+  margin: 0;
+  font-size: var(--hub-fs-title);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.hub-brand p {
+  margin: 0;
+  font-size: var(--hub-fs-meta);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* The brand block is the first thing to go when the frame gets tight — the
+   search field is the tool, the wordmark is decoration, and the window title
+   bar is already saying "App Hub" two centimetres above it. */
+.hub[data-hub-mode='compact'] .hub-brand p,
+.hub[data-hub-mode='narrow'] .hub-brand {
+  display: none;
+}
+
+/* ═══ Search ══════════════════════════════════════════════════════════════ */
+
+.hub-search {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.hub-search-icon {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.hub-search input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 34px 0 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--hub-fs-body);
+  outline: none;
+  transition: border-color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+
+.hub-search input:hover { border-color: var(--border-strong); }
+
+.hub-search input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-emphasis));
+  background: var(--bg-hover);
+}
+
+.hub-search-kbd {
+  position: absolute;
+  right: 8px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+/* The shortcut hint is a nicety; it is the first thing to cede space, and it
+   would otherwise sit under the clear button. */
+.hub[data-hub-mode='compact'] .hub-search-kbd,
+.hub[data-hub-mode='narrow'] .hub-search-kbd { display: none; }
+
+.hub-search-clear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+
+.hub-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+/* ═══ Segmented control (Browse / Installed) ══════════════════════════════ */
+
+.hub-seg {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.hub-seg button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 30px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--hub-fs-meta);
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-seg button:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.hub-seg button[aria-selected='true'] {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.hub-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.hub-seg button[aria-selected='true'] .hub-count {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+/* ═══ Body: rail + scroller ═══════════════════════════════════════════════ */
+
+.hub-body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.hub-rail {
+  flex: none;
+  width: var(--hub-rail-w);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--hub-gap) 8px var(--hub-gutter);
+  overflow-y: auto;
+  border-right: 1px solid var(--border-subtle);
+}
+
+/* Below `mid` there is no room for a rail that is still a rail rather than a
+   sliver, so the same filters become a horizontally scrolling chip row. */
+.hub[data-hub-mode='compact'] .hub-rail,
+.hub[data-hub-mode='narrow'] .hub-rail { display: none; }
+
+.hub-rail-label {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.hub-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--hub-fs-meta);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-rail-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.hub-rail-item[aria-pressed='true'],
+.hub-rail-item[aria-selected='true'] {
+  background: var(--bg-selected);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.hub-rail-item > svg { flex: none; width: 14px; height: 14px; opacity: 0.65; }
+.hub-rail-item > span:first-of-type { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-rail-item .hub-count { flex: none; }
+
+/* ── Chip rail (compact / narrow) ─────────────────────────────────────────
+   A single horizontal scroller carrying everything the vertical rail carries,
+   so nothing becomes unreachable at small sizes — the alternative, hiding
+   filters behind a menu, removes a whole axis of the UI from anyone on a
+   phone. */
+.hub-chips {
+  display: none;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.hub-chips::-webkit-scrollbar { display: none; }
+
+.hub[data-hub-mode='compact'] .hub-chips,
+.hub[data-hub-mode='narrow'] .hub-chips { display: flex; }
+
+.hub-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--hub-fs-meta);
+  white-space: nowrap;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-chip:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
+.hub-chip[aria-pressed='true'] {
+  background: var(--bg-selected);
+  border-color: var(--bg-selected-border);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.hub-chip-sep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border-default);
+}
+
+/* Notices live BETWEEN the header and the scroller rather than inside it, so an
+   install failure is visible whether or not the list happens to be scrolled to
+   the top. The previous version rendered install errors only inside the detail
+   panel: pressing Get on a card with no panel open and having it fail showed
+   the user absolutely nothing. */
+.hub-notices {
+  flex: none;
+  min-width: 0;
+  padding: var(--hub-gap) var(--hub-gutter) 0;
+}
+
+.hub-notices .hub-notice:last-child { margin-bottom: 0; }
+
+.hub-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--hub-gap) var(--hub-gutter) var(--hub-gutter);
+  scroll-behavior: smooth;
+}
+
+/* ═══ Section header ══════════════════════════════════════════════════════ */
+
+.hub-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--hub-gap);
+  min-width: 0;
+  padding: 4px 2px 10px;
+}
+
+.hub-section h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--hub-fs-body);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.hub-section span {
+  flex: none;
+  font-size: var(--hub-fs-meta);
+  color: var(--text-tertiary);
+}
+
+/* ═══ Grid ════════════════════════════════════════════════════════════════
+   auto-fill with a `min(100%, …)` track floor. The `min(100%, …)` is the part
+   that matters: a bare `minmax(264px, 1fr)` track cannot shrink below 264px, so
+   in a 240px frame the single column is wider than its container and the whole
+   grid overflows. Wrapping the floor in min(100%, …) lets the last column
+   collapse to the frame instead. */
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--hub-card-min)), 1fr));
+  gap: var(--hub-gap);
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* ═══ Card ════════════════════════════════════════════════════════════════ */
+
+.hub-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  height: 100%;
+  padding: 12px;
+  border-radius: var(--hub-radius);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  transition: background var(--motion-base) var(--ease-out),
+              border-color var(--motion-base) var(--ease-out),
+              box-shadow var(--motion-base) var(--ease-out),
+              transform var(--motion-base) var(--ease-out);
+}
+
+.hub-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.hub-card[data-selected='true'] {
+  background: var(--bg-selected);
+  border-color: var(--bg-selected-border);
+}
+
+/* The whole card is the click target, but the DOM must not nest a button
+   inside a button (invalid, and it breaks keyboard order). So the NAME is the
+   real control and a stretched pseudo-element gives it the card's hit area;
+   the install button sits above it on its own stacking level. */
+.hub-card-open {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--hub-fs-body);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hub-card-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* The stretched hit area swallows the ring, so the ring is drawn on the CARD. */
+.hub-card:has(.hub-card-open:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hub-card-icon {
+  flex: none;
+  display: block;
+  line-height: 0;
+}
+
+.hub-card-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.hub-card-desc {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--hub-fs-meta);
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  /* Two lines, not one. A single truncated line rendered "Pr…" at 390px, which
+     tells the reader nothing at all; two clamped lines still say what the app
+     is in the narrowest frame the hub supports. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* margin-top:auto pins the tag row to the card's foot, so tags line up across a
+   row whatever length the descriptions above them happen to be. */
+.hub-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.hub-card-action {
+  /* Above the stretched hit area, so clicking Get does not also open the panel. */
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 30px;
+  min-height: 30px;
+}
+
+/* ═══ Badges ══════════════════════════════════════════════════════════════
+   Neutral pills with a coloured dot, NOT coloured text.
+
+   The previous badges were `text-sky-400` / `text-amber-400` / `text-emerald-400`
+   on a 10%-alpha fill of the same hue. Measured against this theme's light
+   surfaces those land between 1.6:1 and 2.9:1 — the chart tokens they most
+   resemble measure 1.78–2.90:1 on --bg-surface in light. Moving the hue onto a
+   6px dot and the text onto --text-secondary keeps the colour coding and puts
+   the reading back above AA on both themes. */
+.hub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.hub-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--hub-dot-color, var(--text-tertiary));
+}
+
+/* ═══ Install / installed affordances ═════════════════════════════════════ */
+
+.hub-get {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  /* --accent-text, never the raw accent: the accent is the USER's colour, and
+     only the derived value promises AA for text drawn in it. */
+  color: var(--accent-text, var(--accent));
+  font: inherit;
+  font-size: var(--hub-fs-meta);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-get:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+.hub-get:disabled { opacity: 0.55; cursor: default; }
+
+.hub-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px;
+  font-size: var(--hub-fs-meta);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.hub-state svg { flex: none; width: 16px; height: 16px; }
+.hub-state[data-tone='ok'] svg { color: var(--status-success); }
+.hub-state[data-tone='off'] svg { color: var(--text-ghost); }
+
+/* ═══ Notices (cache banner, load error, install error, success) ══════════ */
+
+.hub-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: var(--hub-gap);
+  padding: 11px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.hub-notice > svg { flex: none; width: 17px; height: 17px; margin-top: 1px; color: var(--text-tertiary); }
+.hub-notice[data-tone='accent'] > svg { color: var(--accent-text, var(--accent)); }
+.hub-notice[data-tone='danger'] > svg { color: var(--status-danger); }
+.hub-notice[data-tone='success'] > svg { color: var(--status-success); }
+
+.hub-notice[data-tone='danger'] { border-color: color-mix(in srgb, var(--status-danger) 30%, transparent); }
+.hub-notice[data-tone='success'] { border-color: color-mix(in srgb, var(--status-success) 30%, transparent); }
+.hub-notice[data-tone='accent'] { border-color: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+.hub-notice-body { flex: 1 1 auto; min-width: 0; }
+
+.hub-notice-title {
+  font-size: var(--hub-fs-meta);
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.hub-notice-text {
+  margin: 2px 0 0;
+  font-size: var(--hub-fs-meta);
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.hub-notice pre {
+  margin: 6px 0 0;
+  max-height: 6.5em;
+  overflow: auto;
+  font-size: var(--hub-fs-meta);
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.hub-notice-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+
+.hub-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--hub-fs-meta);
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hub-btn:disabled { opacity: 0.55; cursor: default; }
+
+.hub-btn-primary {
+  border-color: transparent;
+  background: var(--accent-solid, var(--accent));
+  color: #fff;
+  font-weight: 650;
+}
+
+.hub-btn-primary:hover {
+  background: color-mix(in srgb, var(--accent-solid, var(--accent)) 88%, white 12%);
+  color: #fff;
+}
+
+.hub-btn-danger { color: var(--status-danger); border-color: color-mix(in srgb, var(--status-danger) 34%, transparent); }
+.hub-btn-danger:hover { background: var(--status-danger-soft); color: var(--status-danger); }
+
+/* A notice narrower than ~360px cannot hold text and a button side by side. */
+.hub[data-hub-mode='narrow'] .hub-notice { flex-wrap: wrap; }
+.hub[data-hub-mode='narrow'] .hub-notice-actions { width: 100%; justify-content: flex-end; }
+
+/* ═══ Empty / loading / error states ══════════════════════════════════════ */
+
+.hub-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: clamp(32px, 9cqi, 72px) var(--hub-gutter);
+  text-align: center;
+}
+
+.hub-empty-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+}
+
+.hub-empty-mark svg { width: 24px; height: 24px; }
+
+.hub-empty h3 {
+  margin: 0;
+  font-size: var(--hub-fs-body);
+  font-weight: 650;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.hub-empty p {
+  margin: 0;
+  max-width: 34ch;
+  font-size: var(--hub-fs-meta);
+  line-height: 1.55;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.hub-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--hub-radius);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.hub-skeleton-tile {
+  flex: none;
+  width: var(--hub-icon);
+  height: var(--hub-icon);
+  border-radius: calc(var(--hub-icon) * 0.222);
+  background: var(--bg-elevated);
+}
+
+.hub-skeleton-lines { flex: 1 1 auto; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.hub-skeleton-lines i { display: block; height: 9px; border-radius: var(--radius-xs); background: var(--bg-elevated); }
+.hub-skeleton-lines i:first-child { width: 46%; }
+.hub-skeleton-lines i:last-child { width: 78%; height: 8px; }
+
+.hub-pulse { animation: hub-pulse 1.5s var(--ease-standard) infinite; }
+
+@keyframes hub-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ═══ Detail panel ════════════════════════════════════════════════════════ */
+
+.hub-detail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--hub-detail-w);
+  min-width: 0;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+/* Anything narrower than `wide` cannot hold a third column, so the panel
+   becomes a sheet over the hub — and, being modal, says so in ARIA. */
+.hub[data-hub-mode='mid'] .hub-detail,
+.hub[data-hub-mode='compact'] .hub-detail,
+.hub[data-hub-mode='narrow'] .hub-detail {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  width: auto;
+  border-left: 0;
+  box-shadow: var(--shadow-xl);
+  animation: hub-sheet var(--motion-base) var(--ease-out);
+}
+
+@keyframes hub-sheet {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hub-detail-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px var(--hub-gutter);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hub-detail-bar strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--hub-fs-meta);
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.hub-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+
+.hub-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hub-icon-btn svg { width: 16px; height: 16px; }
+
+.hub-detail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--hub-gutter);
+  display: flex;
+  flex-direction: column;
+  gap: var(--hub-gutter);
+}
+
+.hub-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  min-width: 0;
+}
+
+.hub-hero h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  font-size: clamp(16px, 1.7cqi, 19px);
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.hub-hero h2 svg { flex: none; width: 16px; height: 16px; color: var(--accent-text, var(--accent)); }
+
+.hub-hero-by {
+  font-size: var(--hub-fs-meta);
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.hub-hero-tags { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+
+.hub-actions { display: flex; gap: 8px; min-width: 0; }
+.hub-actions > * { min-width: 0; }
+.hub-actions .hub-btn { flex: 1 1 auto; height: 38px; }
+.hub-actions .hub-btn-danger { flex: 0 0 auto; }
+
+.hub-body-text {
+  margin: 0;
+  font-size: var(--hub-fs-meta);
+  line-height: 1.65;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.hub-field-label {
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.hub-versions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.hub-facts {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.hub-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hub-fact:last-child { border-bottom: 0; }
+.hub-fact dt { flex: none; font-size: var(--hub-fs-meta); color: var(--text-tertiary); }
+.hub-fact dd {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  font-size: var(--hub-fs-meta);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.hub-fact a { color: var(--accent-text, var(--accent)); text-decoration: none; }
+.hub-fact a:hover { text-decoration: underline; }
+
+/* ═══ Progress ════════════════════════════════════════════════════════════ */
+
+.hub-progress {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.hub-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-solid, var(--accent));
+  animation: hub-fill 30s var(--ease-out) forwards;
+}
+
+@keyframes hub-fill {
+  0% { width: 4%; }
+  20% { width: 18%; }
+  55% { width: 48%; }
+  85% { width: 78%; }
+  100% { width: 92%; }
+}
+
+/* ═══ Touch ergonomics ════════════════════════════════════════════════════
+   At the narrowest mode the hub is on a phone or a sliver of a window; every
+   control grows to a comfortable target rather than staying desktop-sized. */
+.hub[data-hub-mode='narrow'] .hub-get,
+.hub[data-hub-mode='narrow'] .hub-btn,
+.hub[data-hub-mode='narrow'] .hub-chip,
+.hub[data-hub-mode='narrow'] .hub-seg button { height: 34px; }
+
+.hub[data-hub-mode='narrow'] .hub-icon-btn { width: 34px; height: 34px; }
+.hub[data-hub-mode='narrow'] .hub-search input { height: 40px; }
+.hub[data-hub-mode='narrow'] .hub-card { padding: 13px; }
+
+/* ═══ Motion ══════════════════════════════════════════════════════════════
+   Everything above moves for at most --motion-base (180ms). Under a reduced
+   motion preference nothing moves at all: no lift on hover, no sheet entrance,
+   no pulse, and the install bar parks at a resting position rather than
+   crawling for thirty seconds. */
+@media (prefers-reduced-motion: reduce) {
+  .hub-card,
+  .hub-card:hover { transition: none; transform: none; }
+  .hub-detail { animation: none; }
+  .hub-pulse { animation: none; }
+  .hub-progress i { animation: none; width: 45%; }
+  .hub-scroll { scroll-behavior: auto; }
+}

@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { refreshInstalled } from '../../core/AppRegistry'
 import { AppIconTile } from '../../core/AppIcons'
-import { useTheme } from '../../core/ThemeProvider'
+import { useFocusTrap } from '../../shell/useFocusTrap'
+import { useHubMode } from './hubMode'
+import './apphub.css'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -13,7 +15,7 @@ function errorMessage(err: unknown): string {
 
 // ── Wire shapes (untyped JSON in, narrowed before use) ─────────────────────────
 //
-// The App Store browses a RICHER shape than core/AppRegistry.ts's `App` (the
+// The App Hub browses a RICHER shape than core/AppRegistry.ts's `App` (the
 // shell-launcher-tile type): GET /api/store/registry returns backend's
 // RegistryListEntry (services/appnet/registry.go), which carries store-only
 // fields — flatpak_id, versions, latest, vetted, author, homepage, license —
@@ -70,12 +72,10 @@ interface InstalledAppRef {
   id: string
 }
 
-function toInstalledAppRef(x: unknown): InstalledAppRef | null {
-  return isRecord(x) && typeof x.id === 'string' ? { id: x.id } : null
-}
-
 function toInstalledAppRefs(x: unknown): InstalledAppRef[] {
-  return Array.isArray(x) ? x.map(toInstalledAppRef).filter((a): a is InstalledAppRef => a !== null) : []
+  return Array.isArray(x)
+    ? x.filter((a): a is InstalledAppRef => isRecord(a) && typeof a.id === 'string').map(a => ({ id: a.id }))
+    : []
 }
 
 // GET /api/packages/cache returns {"ready": bool, "arch": string}.
@@ -91,15 +91,10 @@ function toPackageCacheStatus(x: unknown): PackageCacheStatus {
   }
 }
 
-interface BadgeStyle {
-  label: string
-  bg: string
-  text: string
-  border: string
-}
+// ── Labels ────────────────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<string, string> = {
-  all: 'All Apps',
+  all: 'All apps',
   internet: 'Internet',
   media: 'Media',
   developer: 'Developer',
@@ -109,141 +104,149 @@ const CATEGORY_LABELS: Record<string, string> = {
   system: 'System',
 }
 
+/**
+ * A registry category the label table has never heard of still has to render.
+ *
+ * The shipped catalogue contains `games`, `storage` and `development`, none of
+ * which are in the table, so the sidebar listed them as bare lowercase slugs
+ * with no icon, wedged between "Productivity" and "System". Three of eight rows
+ * looked like a rendering fault. Title-casing the slug is not as good as a
+ * curated label, but it is a correct one for every value the registry can ever
+ * invent, and it is what makes the list read as a list.
+ */
+function categoryLabel(slug: string): string {
+  return CATEGORY_LABELS[slug] || slug.charAt(0).toUpperCase() + slug.slice(1)
+}
+
 const CATEGORY_ICONS: Record<string, string> = {
   all: 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z',
   internet: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z',
   media: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
   developer: 'M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
+  development: 'M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
   productivity: 'M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z',
   network: 'M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z',
   database: 'M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zM6 17v-1.29c1.58.74 3.74 1.29 6 1.29s4.42-.55 6-1.29V17c0 .5-2.13 2-6 2s-6-1.5-6-2z',
+  storage: 'M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm0 2c3.87 0 6 1.5 6 2s-2.13 2-6 2-6-1.5-6-2 2.13-2 6-2zM6 17v-1.29c1.58.74 3.74 1.29 6 1.29s4.42-.55 6-1.29V17c0 .5-2.13 2-6 2s-6-1.5-6-2z',
+  games: 'M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zM11 13H9v2H7v-2H5v-2h2V9h2v2h2v2zm4.5 2a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm3-3a1.5 1.5 0 110-3 1.5 1.5 0 010 3z',
   system: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
 }
 
-const SOURCE_BADGE: Record<'flatpak' | 'apt' | 'web', BadgeStyle> = {
-  flatpak: { label: 'Flatpak', bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/20' },
-  apt: { label: 'Apt', bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
-  web: { label: 'Web', bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
+const FALLBACK_CATEGORY_ICON = 'M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z'
+
+type SourceKey = 'flatpak' | 'apt' | 'web'
+type TypeKey = 'web' | 'desktop' | 'service'
+
+const SOURCE_LABEL: Record<SourceKey, string> = { flatpak: 'Flatpak', apt: 'Apt', web: 'Web' }
+const APPTYPE_LABEL: Record<TypeKey, string> = { web: 'Web', desktop: 'Streamed', service: 'Service' }
+
+/**
+ * Badge hues.
+ *
+ * These are the OS chart tokens, and they are used ONLY as a 6px dot — never as
+ * text colour. The badges this replaced were `text-sky-400` / `text-amber-400` /
+ * `text-emerald-400` over a 10%-alpha fill of the same hue, which on the light
+ * theme's surfaces measures between 1.6:1 and 2.9:1 against a 4.5:1 requirement.
+ * The colour coding was worth keeping; drawing words in it was not.
+ */
+const TYPE_DOT: Record<TypeKey, string> = {
+  web: 'var(--chart-1)',
+  desktop: 'var(--chart-4)',
+  service: 'var(--chart-2)',
 }
 
-// APPSTORE-08: type badge config — maps the `type` field values to display labels + styles
-const APPTYPE_BADGE: Record<'web' | 'desktop' | 'service', BadgeStyle> = {
-  web:     { label: 'Web',      bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20' },
-  desktop: { label: 'Streamed', bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
-  service: { label: 'Service',  bg: 'bg-slate-500/10',  text: 'text-slate-400',  border: 'border-slate-500/20'  },
-}
-
-// APPSTORE-08: derive a normalised app-type key for filtering and badge rendering
-function appTypeKey(app: StoreApp): 'web' | 'desktop' | 'service' | null {
-  if (!app.type) return null
-  if (app.type === 'web') return 'web'
-  if (app.type === 'desktop') return 'desktop'
-  if (app.type === 'service') return 'service'
+function appTypeKey(app: StoreApp): TypeKey | null {
+  if (app.type === 'web' || app.type === 'desktop' || app.type === 'service') return app.type
   return null
 }
 
-// APPSTORE-08: small per-card badge derived from the `type` field.
-//
-// The two badges answer different questions — SourceBadge is where the app
-// comes FROM (Apt / Flatpak / Web), AppTypeBadge is how it RUNS (Web /
-// Streamed / Service) — and for most apps that reads well: "APT · STREAMED"
-// tells you both things at once.
-//
-// For a web app the two axes collapse onto the same word, and every web card in
-// the catalogue rendered "WEB WEB" side by side. That is not a second fact, it
-// is the same fact twice, and on a 63-app grid it was the most repeated text on
-// the screen. When the labels coincide the type badge is suppressed and the
-// source badge carries it alone.
-function AppTypeBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
-  const key = appTypeKey(app)
-  if (!key) return null
-  const s = APPTYPE_BADGE[key]
-  if (s.label.toLowerCase() === SOURCE_BADGE[getSourceType(app)].label.toLowerCase()) return null
-  return (
-    <span className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
-      {s.label}
-    </span>
-  )
-}
-
-function getSourceType(app: StoreApp): 'flatpak' | 'web' | 'apt' {
+function getSourceType(app: StoreApp): SourceKey {
   if (app.flatpak_id) return 'flatpak'
   if (app.type === 'web') return 'web'
   return 'apt'
 }
 
-function SourceBadge({ app, className = '' }: { app: StoreApp; className?: string }) {
-  const src = getSourceType(app)
-  const s = SOURCE_BADGE[src]
+function SourceBadge({ app }: { app: StoreApp }) {
+  return <span className="hub-badge">{SOURCE_LABEL[getSourceType(app)]}</span>
+}
+
+/**
+ * The per-card badge derived from the `type` field.
+ *
+ * The two badges answer different questions — SourceBadge is where the app comes
+ * FROM (Apt / Flatpak / Web), AppTypeBadge is how it RUNS (Web / Streamed /
+ * Service) — and for most apps that reads well: "Apt · Streamed" tells you both
+ * things at once.
+ *
+ * For a web app the two axes collapse onto the same word, and every web card in
+ * the catalogue rendered "WEB WEB" side by side. That is not a second fact, it is
+ * the same fact twice, and on a 63-app grid it was the most repeated text on the
+ * screen. When the labels coincide the type badge is suppressed and the source
+ * badge carries it alone.
+ */
+function AppTypeBadge({ app }: { app: StoreApp }) {
+  const key = appTypeKey(app)
+  if (!key) return null
+  const label = APPTYPE_LABEL[key]
+  if (label.toLowerCase() === SOURCE_LABEL[getSourceType(app)].toLowerCase()) return null
   return (
-    <span className={`inline-flex items-center text-[12px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${s.bg} ${s.text} border ${s.border} ${className}`}>
-      {s.label}
+    <span className="hub-badge">
+      <i className="hub-dot" style={{ '--hub-dot-color': TYPE_DOT[key] } as React.CSSProperties} aria-hidden="true" />
+      {label}
     </span>
   )
 }
 
-// Animated install progress bar
-function InstallProgress({ label }: { label?: string }) {
-  return (
-    <div className="flex flex-col gap-2.5">
-      <div className="flex items-center gap-2.5">
-        <span className="w-4 h-4 spinner flex-shrink-0" />
-        <span className="text-[13px] font-medium text-[var(--accent)]">{label || 'Installing...'}</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-        <div className="h-full rounded-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent)] animate-progress" />
-      </div>
-      <style>{`
-        @keyframes progress {
-          0% { width: 0%; }
-          20% { width: 15%; }
-          50% { width: 45%; }
-          80% { width: 75%; }
-          95% { width: 90%; }
-          100% { width: 90%; }
-        }
-        .animate-progress { animation: progress 30s ease-out forwards; }
-        @media (prefers-reduced-motion: reduce) {
-          .animate-progress { animation: none; width: 45%; }
-        }
-      `}</style>
-    </div>
-  )
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+const I = {
+  search: 'M11 11l3.2 3.2',
+  check: 'M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z',
+  cross: 'M5.28 4.22a.75.75 0 00-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 101.06 1.06L8 9.06l2.72 2.72a.75.75 0 101.06-1.06L9.06 8l2.72-2.72a.75.75 0 00-1.06-1.06L8 6.94 5.28 4.22z',
+  block: 'M8 16A8 8 0 108 0a8 8 0 000 16zM4.22 4.22a.75.75 0 011.06 0L8 6.94l2.72-2.72a.75.75 0 111.06 1.06L9.06 8l2.72 2.72a.75.75 0 11-1.06 1.06L8 9.06l-2.72 2.72a.75.75 0 01-1.06-1.06L6.94 8 4.22 5.28a.75.75 0 010-1.06z',
+  alert: 'M8 16A8 8 0 108 0a8 8 0 000 16zM8.75 4.5a.75.75 0 00-1.5 0v4.25a.75.75 0 001.5 0V4.5zM8 12.5a1 1 0 100-2 1 1 0 000 2z',
+  info: 'M8 16A8 8 0 108 0a8 8 0 000 16zM8.75 7a.75.75 0 00-1.5 0v4.5a.75.75 0 001.5 0V7zM8 5.5a1 1 0 100-2 1 1 0 000 2z',
+  back: 'M10 3L5 8l5 5',
 }
 
-// Loading skeleton card — mirrors the real card footprint for a calm, intentional load state
-function SkeletonCard() {
-  return (
-    <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-      <div className="w-[42px] h-[42px] rounded-[10px] bg-[var(--bg-elevated)] animate-pulse flex-shrink-0 motion-reduce:animate-none" />
-      <div className="flex-1 min-w-0 flex flex-col gap-2">
-        <div className="h-3 w-1/2 rounded bg-[var(--bg-elevated)] animate-pulse motion-reduce:animate-none" />
-        <div className="h-2.5 w-4/5 rounded bg-[var(--bg-elevated)] animate-pulse motion-reduce:animate-none" />
-      </div>
-    </div>
-  )
+function Glyph({ d, viewBox = '0 0 16 16' }: { d: string; viewBox?: string }) {
+  return <svg viewBox={viewBox} fill="currentColor" aria-hidden="true"><path fillRule="evenodd" d={d} clipRule="evenodd" /></svg>
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+type Tab = 'browse' | 'installed'
+type TypeFilter = 'all' | TypeKey
 
 export default function AppHub() {
-  const { isDark } = useTheme()
   const [apps, setApps] = useState<StoreApp[]>([])
   const [installed, setInstalled] = useState<InstalledAppRef[]>([])
   const [loading, setLoading] = useState(true)
-  const [installing, setInstalling] = useState<string | null>(null) // appID being installed
-  const [installPhase, setInstallPhase] = useState('') // phase label
+  // A failed registry fetch used to be indistinguishable from an empty
+  // catalogue: the catch set `apps` to [] and the grid rendered "No apps match
+  // your search". A box with no network told the user its store was empty.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [installing, setInstalling] = useState<string | null>(null)
+  const [installPhase, setInstallPhase] = useState('')
   const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
-  const [appTypeFilter, setAppTypeFilter] = useState<'all' | 'web' | 'desktop' | 'service'>('all') // APPSTORE-08
+  const [appTypeFilter, setAppTypeFilter] = useState<TypeFilter>('all')
   const [selectedApp, setSelectedApp] = useState<StoreApp | null>(null)
   const [selectedVersion, setSelectedVersion] = useState('')
-  const [tab, setTab] = useState<'browse' | 'installed'>('browse')
+  const [tab, setTab] = useState<Tab>('browse')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [cacheReady, setCacheReady] = useState<boolean | null>(null)
   const [systemArch, setSystemArch] = useState<string | null>(null)
   const [updatingCache, setUpdatingCache] = useState(false)
-  const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const searchRef = useRef<HTMLInputElement | null>(null)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+  const mode = useHubMode(rootRef)
+  const modal = mode !== 'wide'
+  const trapRef = useFocusTrap(!!selectedApp && modal)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -253,19 +256,24 @@ export default function AppHub() {
         fetch('/api/store/installed'),
         fetch('/api/packages/cache'),
       ])
+      if (!regRes.ok) throw new Error(`registry unavailable (HTTP ${regRes.status})`)
       const regData = toStoreApps(await regRes.json())
-      const instData = toInstalledAppRefs(await instRes.json())
-      const cacheData = toPackageCacheStatus(await cacheRes.json())
+      const instData = toInstalledAppRefs(await instRes.json().catch(() => []))
+      const cacheData = toPackageCacheStatus(await cacheRes.json().catch(() => ({})))
       setApps(regData)
       setInstalled(instData)
       setCacheReady(cacheData.ready)
       setSystemArch(cacheData.arch)
-    } catch {
+      setLoadError(null)
+    } catch (e) {
       setApps([])
       setInstalled([])
+      setLoadError(errorMessage(e))
     }
     setLoading(false)
   }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
 
   const updateAptCache = async () => {
     setUpdatingCache(true)
@@ -280,13 +288,11 @@ export default function AppHub() {
     setUpdatingCache(false)
   }
 
-  useEffect(() => { fetchData() }, [fetchData])
-
   const installApp = async (appId: string, version?: string) => {
     if (installing) return
     setInstalling(appId)
     const app = apps.find(a => a.id === appId)
-    setInstallPhase(app?.flatpak_id ? 'Downloading from Flathub...' : 'Installing packages...')
+    setInstallPhase(app?.flatpak_id ? 'Downloading from Flathub…' : 'Installing packages…')
     setError(null)
     setSuccess(null)
     try {
@@ -301,8 +307,7 @@ export default function AppHub() {
         const detail = isRecord(data) && typeof data.detail === 'string' ? data.detail : ''
         throw new Error(detail ? `${msg}\n${detail}` : msg)
       }
-      setSuccess(`${app?.name || appId} installed successfully`)
-      setTimeout(() => setSuccess(null), 5000)
+      setSuccess(`${app?.name || appId} installed`)
       await refreshInstalled()
       await fetchData()
     } catch (e) {
@@ -324,7 +329,6 @@ export default function AppHub() {
       })
       if (!res.ok) throw new Error('Uninstall failed')
       setSuccess(`${apps.find(a => a.id === appId)?.name || appId} removed`)
-      setTimeout(() => setSuccess(null), 5000)
       await refreshInstalled()
       await fetchData()
       if (selectedApp?.id === appId) setSelectedApp(null)
@@ -334,28 +338,51 @@ export default function AppHub() {
     setUninstalling(null)
   }
 
-  const isArchCompatible = (app: StoreApp): boolean => {
+  const isArchCompatible = useCallback((app: StoreApp): boolean => {
     if (!systemArch || !app.arch || app.arch.length === 0) return true
     return app.arch.includes(systemArch)
-  }
+  }, [systemArch])
 
-  const filtered = apps.filter(app => {
-    if (category !== 'all' && app.category !== category) return false
-    // APPSTORE-08: type filter composes with category + search
+  const installedIds = useMemo(() => new Set(installed.map(a => a.id)), [installed])
+  const isInstalled = useCallback(
+    (app: StoreApp) => !!app.installed || installedIds.has(app.id),
+    [installedIds],
+  )
+
+  /** Apps in the current TAB and TYPE filter — the population the category
+   *  counts are drawn from, so a count never promises rows a click cannot show. */
+  const scoped = useMemo(() => apps.filter(app => {
+    if (tab === 'installed' && !isInstalled(app)) return false
     if (appTypeFilter !== 'all' && appTypeKey(app) !== appTypeFilter) return false
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      return app.name.toLowerCase().includes(q) ||
-        app.description.toLowerCase().includes(q) ||
-        app.id.toLowerCase().includes(q) ||
-        (app.keywords || []).some(k => k.toLowerCase().includes(q))
-    }
     return true
-  })
+  }), [apps, tab, appTypeFilter, isInstalled])
 
-  const categories = ['all', ...new Set(apps.map(a => a.category).filter(Boolean).sort())]
-  const installedIds = new Set(installed.map(a => a.id))
-  const browseList = tab === 'installed' ? filtered.filter(a => a.installed || installedIds.has(a.id)) : filtered
+  const query = search.trim().toLowerCase()
+  const browseList = useMemo(() => scoped.filter(app => {
+    if (category !== 'all' && app.category !== category) return false
+    if (!query) return true
+    return app.name.toLowerCase().includes(query) ||
+      app.description.toLowerCase().includes(query) ||
+      app.id.toLowerCase().includes(query) ||
+      (app.author || '').toLowerCase().includes(query) ||
+      (app.keywords || []).some(k => k.toLowerCase().includes(query))
+  }), [scoped, category, query])
+
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const a of scoped) if (a.category) counts.set(a.category, (counts.get(a.category) || 0) + 1)
+    return [
+      { id: 'all', count: scoped.length },
+      ...[...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([id, count]) => ({ id, count })),
+    ]
+  }, [scoped])
+
+  // A category can go empty when the tab or type filter changes underneath it,
+  // which would leave the user staring at "no apps" with no clue why. Fall back
+  // to All rather than showing a dead end.
+  useEffect(() => {
+    if (category !== 'all' && !categories.some(c => c.id === category)) setCategory('all')
+  }, [categories, category])
 
   const selectApp = (app: StoreApp) => {
     setSelectedApp(app)
@@ -363,370 +390,382 @@ export default function AppHub() {
     setError(null)
   }
 
-  const tabs: { id: 'browse' | 'installed'; label: string; icon: string; count?: number }[] = [
-    { id: 'browse', label: 'Browse', icon: 'M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z' },
-    { id: 'installed', label: 'Installed', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z', count: installed.length },
-  ]
+  // Keep the open panel in step with refetched data (install/uninstall rewrite
+  // `installed`), so the panel's own action button is never a frame behind the
+  // card's.
+  const liveSelected = selectedApp ? apps.find(a => a.id === selectedApp.id) || selectedApp : null
 
-  const appTypeFilterOptions: { id: 'all' | 'web' | 'desktop' | 'service'; label: string }[] = [
-    { id: 'all',     label: 'All Types' },
-    { id: 'web',     label: 'Web' },
+  /**
+   * Keyboard navigation for the grid.
+   *
+   * Arrow keys move between cards along the REAL column count, read from the
+   * resolved `grid-template-columns` rather than recomputed from a breakpoint —
+   * the grid is `auto-fill`, so nothing in JS knows how many columns there are
+   * until the browser has laid it out.
+   */
+  const onGridKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const keys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']
+    if (!keys.includes(e.key)) return
+    const grid = gridRef.current
+    if (!grid) return
+    const cards = Array.from(grid.querySelectorAll<HTMLButtonElement>('.hub-card-open'))
+    const here = cards.indexOf(document.activeElement as HTMLButtonElement)
+    if (here < 0) return
+    const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length)
+    let next = here
+    if (e.key === 'ArrowRight') next = here + 1
+    else if (e.key === 'ArrowLeft') next = here - 1
+    else if (e.key === 'ArrowDown') next = here + cols
+    else if (e.key === 'ArrowUp') next = here - cols
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = cards.length - 1
+    if (next < 0 || next >= cards.length) return
+    e.preventDefault()
+    cards[next].focus()
+  }
+
+  /**
+   * Hub-scoped shortcuts. Bound to the hub's own element, never to window: a
+   * builtin that steals ⌘F from the whole OS is a worse bug than not having the
+   * shortcut, and the shell already owns ⌘K.
+   */
+  const onRootKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+      return
+    }
+    if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault()
+      searchRef.current?.focus()
+      return
+    }
+    if (e.key === 'Escape') {
+      if (selectedApp) { e.stopPropagation(); setSelectedApp(null) }
+      else if (search) { e.stopPropagation(); setSearch('') }
+    }
+  }
+
+  const installedCount = useMemo(() => apps.filter(isInstalled).length, [apps, isInstalled])
+  const heading = tab === 'installed' ? 'Installed' : categoryLabel(category)
+
+  const typeFilters: { id: TypeFilter; label: string }[] = [
+    { id: 'all', label: 'All types' },
+    { id: 'web', label: 'Web' },
     { id: 'desktop', label: 'Streamed' },
     { id: 'service', label: 'Service' },
   ]
 
-  return (
-    <div className={`relative flex h-full overflow-hidden bg-[var(--bg-base)] ${isDark ? 'text-neutral-300' : 'text-neutral-700'}`}>
-      {/* Sidebar */}
-      <div className="w-44 sm:w-52 lg:w-56 flex-shrink-0 border-r border-[var(--border-default)] flex flex-col bg-[var(--bg-base)]">
-        <div className="px-4 sm:px-5 pt-5 pb-4">
-          <h1 className="text-[17px] font-bold text-[var(--text-primary)] tracking-tight">App Store</h1>
-          <p className="text-[12px] text-neutral-600 mt-1">{apps.length} apps available</p>
-        </div>
-
-        {/* Search */}
-        <div className="px-3 pb-3">
-          <div className="relative">
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="6.5" cy="6.5" r="4.5" /><path d="M10 10l4 4" strokeLinecap="round" />
-            </svg>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search..."
-              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg pl-9 pr-3 py-2 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-neutral-400 focus:border-[var(--border-strong)] focus:bg-[var(--bg-hover)] transition-colors [transition-duration:var(--motion-fast)]"
-            />
+  const notices = (
+    <>
+      {cacheReady === false && (
+        <div className="hub-notice" data-tone="accent">
+          <Glyph d={I.info} />
+          <div className="hub-notice-body">
+            <div className="hub-notice-title">Package index required</div>
+            <p className="hub-notice-text">Update it to install apps from the Debian repositories.</p>
+          </div>
+          <div className="hub-notice-actions">
+            <button className="hub-btn hub-btn-primary" onClick={updateAptCache} disabled={updatingCache}>
+              {updatingCache ? <><span className="spinner" style={{ width: 12, height: 12 }} />Updating…</> : 'Update'}
+            </button>
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="px-3 pb-2 flex flex-col gap-0.5">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-colors [transition-duration:var(--motion-fast)] text-left ${
-                tab === t.id ? 'bg-[var(--bg-selected)] text-[var(--text-primary)]' : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
-              }`}
-              onClick={() => setTab(t.id)}
-            >
-              <svg viewBox="0 0 24 24" className="w-[15px] h-[15px] flex-shrink-0" fill="currentColor" opacity={0.7}><path d={t.icon} /></svg>
-              {t.label}
-              {(t.count ?? 0) > 0 && (
-                <span className="ml-auto text-[12px] bg-[var(--bg-elevated)] text-neutral-400 px-1.5 py-0.5 rounded-full min-w-[20px] text-center font-medium">
-                  {t.count}
-                </span>
-              )}
-            </button>
-          ))}
+      )}
+      {success && (
+        <div className="hub-notice" data-tone="success">
+          <Glyph d={I.check} />
+          <div className="hub-notice-body">
+            <div className="hub-notice-title">{success}</div>
+          </div>
+          <div className="hub-notice-actions">
+            <button className="hub-icon-btn" onClick={() => setSuccess(null)} aria-label="Dismiss message"><Glyph d={I.cross} /></button>
+          </div>
         </div>
+      )}
+      {error && (
+        <div className="hub-notice" data-tone="danger">
+          <Glyph d={I.alert} />
+          <div className="hub-notice-body">
+            <div className="hub-notice-title">Something went wrong</div>
+            <pre>{error}</pre>
+          </div>
+          <div className="hub-notice-actions">
+            <button className="hub-icon-btn" onClick={() => setError(null)} aria-label="Dismiss error"><Glyph d={I.cross} /></button>
+          </div>
+        </div>
+      )}
+    </>
+  )
 
-        {/* APPSTORE-08: Type filter */}
-        <div className="px-3 pt-3 border-t border-[var(--border-subtle)]">
-          <div className="text-[12px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">App Type</div>
-          <div className="flex flex-col gap-0.5">
-            {appTypeFilterOptions.map(t => (
+  return (
+    <div
+      className="hub"
+      data-app="apphub"
+      data-hub-mode={mode}
+      ref={rootRef}
+      onKeyDown={onRootKeyDown}
+    >
+      <div className="hub-main">
+        <header className="hub-head">
+          <div className="hub-head-row">
+            <div className="hub-brand">
+              <h1>App Hub</h1>
+              <p>{apps.length} available · {installedCount} installed</p>
+            </div>
+
+            <div className="hub-search">
+              <svg className="hub-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.6" /><path d={I.search} strokeLinecap="round" />
+              </svg>
+              <input
+                ref={searchRef}
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search apps"
+                aria-label="Search apps"
+                aria-describedby="hub-result-count"
+              />
+              {search
+                ? (
+                  <button className="hub-search-clear" onClick={() => { setSearch(''); searchRef.current?.focus() }} aria-label="Clear search">
+                    <Glyph d={I.cross} />
+                  </button>
+                )
+                : <span className="hub-search-kbd mono" aria-hidden="true">/</span>}
+            </div>
+
+            <div className="hub-seg" role="tablist" aria-label="Library">
+              {([['browse', 'Browse'], ['installed', 'Installed']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                >
+                  {label}
+                  {id === 'installed' && installedCount > 0 && <span className="hub-count">{installedCount}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Compact + narrow: the rail's contents as one horizontal scroller.
+              Rendered at every width and hidden by CSS at the wide ones, so the
+              two lists cannot drift apart. */}
+          <div className="hub-chips" role="group" aria-label="Filters">
+            {categories.map(c => (
+              <button
+                key={c.id}
+                className="hub-chip"
+                aria-pressed={category === c.id}
+                onClick={() => setCategory(c.id)}
+              >
+                {categoryLabel(c.id)}
+                <span className="hub-count">{c.count}</span>
+              </button>
+            ))}
+            <span className="hub-chip-sep" aria-hidden="true" />
+            {typeFilters.filter(t => t.id !== 'all').map(t => (
               <button
                 key={t.id}
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors [transition-duration:var(--motion-fast)] text-left ${
-                  appTypeFilter === t.id
-                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
-                }`}
-                onClick={() => setAppTypeFilter(t.id)}
+                className="hub-chip"
+                aria-pressed={appTypeFilter === t.id}
+                onClick={() => setAppTypeFilter(appTypeFilter === t.id ? 'all' : t.id)}
               >
-                {t.id !== 'all' && (
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${APPTYPE_BADGE[t.id].bg} border ${APPTYPE_BADGE[t.id].border}`} />
-                )}
+                <i className="hub-dot" style={{ '--hub-dot-color': TYPE_DOT[t.id as TypeKey] } as React.CSSProperties} aria-hidden="true" />
                 {t.label}
               </button>
             ))}
           </div>
-        </div>
+        </header>
 
-        {/* Categories */}
-        <div className="px-3 pt-3 border-t border-[var(--border-subtle)] flex-1 overflow-y-auto">
-          <div className="text-[12px] uppercase tracking-widest text-neutral-600 font-semibold px-3 py-2">Categories</div>
-          <div className="flex flex-col gap-0.5">
-            {categories.map(cat => (
+        <div className="hub-notices" aria-live="polite">{notices}</div>
+
+        <div className="hub-body">
+          <nav className="hub-rail" aria-label="Browse by type and category">
+            <div className="hub-rail-label">App type</div>
+            {typeFilters.map(t => (
               <button
-                key={cat}
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[12px] transition-colors [transition-duration:var(--motion-fast)] text-left ${
-                  category === cat
-                    ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] font-medium'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-[var(--bg-hover)]'
-                }`}
-                onClick={() => setCategory(cat)}
+                key={t.id}
+                className="hub-rail-item"
+                aria-pressed={appTypeFilter === t.id}
+                onClick={() => setAppTypeFilter(t.id)}
               >
-                {CATEGORY_ICONS[cat] && (
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 flex-shrink-0 opacity-50" fill="currentColor"><path d={CATEGORY_ICONS[cat]} /></svg>
-                )}
-                {CATEGORY_LABELS[cat] || cat}
+                {t.id === 'all'
+                  ? <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={CATEGORY_ICONS.all} /></svg>
+                  : <i className="hub-dot" style={{ '--hub-dot-color': TYPE_DOT[t.id as TypeKey], width: 8, height: 8, margin: '0 3px' } as React.CSSProperties} aria-hidden="true" />}
+                <span>{t.label}</span>
               </button>
             ))}
-          </div>
-        </div>
-      </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Apt cache banner */}
-        {cacheReady === false && (
-          <div className="mx-4 sm:mx-6 mt-4 px-4 py-3.5 rounded-xl bg-[var(--accent-soft)] border accent-border-soft flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center flex-shrink-0">
-              <svg viewBox="0 0 20 20" className="w-4.5 h-4.5 text-[var(--accent)]" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-semibold text-[var(--accent)]">Package index required</div>
-              <div className="text-[12px] text-[var(--text-tertiary)] mt-0.5">Update to install apps from Debian repositories</div>
-            </div>
-            <button
-              onClick={updateAptCache}
-              disabled={updatingCache}
-              className="px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-colors [transition-duration:var(--motion-fast)] flex-shrink-0 disabled:opacity-50"
-            >
-              {updatingCache ? (
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Updating...
-                </span>
-              ) : 'Update'}
-            </button>
-          </div>
-        )}
-
-        {/* Toast notifications */}
-        <div className="absolute top-3 right-3 z-50 flex flex-col gap-2 max-w-[calc(100%-1.5rem)] sm:max-w-sm" style={{ right: selectedApp ? '340px' : '16px' }}>
-          {success && (
-            <div className="px-4 py-3 rounded-xl bg-[var(--status-success-soft)] border border-success-soft backdrop-blur-sm flex items-center gap-2.5 animate-[slideIn_0.2s_ease-out]">
-              <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--status-success)] flex-shrink-0" fill="currentColor">
-                <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span className="text-[12px] text-[var(--status-success)] font-medium">{success}</span>
-            </div>
-          )}
-        </div>
-
-        {/* App grid */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-8" ref={scrollRef}>
-          {/* Section header */}
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-[14px] font-semibold text-[var(--text-primary)] min-w-0 truncate">
-              {tab === 'installed' ? 'Installed Apps' : category !== 'all' ? CATEGORY_LABELS[category] || category : 'All Apps'}
-            </h2>
-            <span className="text-[12px] text-neutral-600 flex-shrink-0">{browseList.length} {browseList.length === 1 ? 'app' : 'apps'}</span>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-              {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-            </div>
-          ) : browseList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-neutral-600 gap-4 text-center px-6">
-              <div className="w-16 h-16 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-8 h-8 text-neutral-700" fill="currentColor">
-                  <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z" />
+            <div className="hub-rail-label">Categories</div>
+            {categories.map(c => (
+              <button
+                key={c.id}
+                className="hub-rail-item"
+                aria-pressed={category === c.id}
+                onClick={() => setCategory(c.id)}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d={CATEGORY_ICONS[c.id] || FALLBACK_CATEGORY_ICON} />
                 </svg>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[13px] font-medium text-[var(--text-secondary)]">{tab === 'installed' ? 'No apps installed yet' : 'No apps match your search'}</span>
-                <span className="text-[12px] text-neutral-600">{tab === 'installed' ? 'Browse the store to add your first app' : 'Try a different search or category'}</span>
-              </div>
+                <span>{categoryLabel(c.id)}</span>
+                <span className="hub-count">{c.count}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="hub-scroll" data-hub-ready={loading ? '0' : '1'}>
+            <div className="hub-section">
+              <h2>{heading}</h2>
+              <span id="hub-result-count">
+                {loading ? 'Loading…' : `${browseList.length} ${browseList.length === 1 ? 'app' : 'apps'}`}
+              </span>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
-              {browseList.map(app => {
-                const isInstalled = app.installed || installedIds.has(app.id)
-                const isBeingInstalled = installing === app.id
-                const isBeingRemoved = uninstalling === app.id
-                const isSelected = selectedApp?.id === app.id
-                return (
-                  <div
+
+            {loading ? (
+              <div className="hub-grid" aria-hidden="true">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div className="hub-skeleton" key={i}>
+                    <div className="hub-skeleton-tile hub-pulse" />
+                    <div className="hub-skeleton-lines">
+                      <i className="hub-pulse" /><i className="hub-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : loadError ? (
+              <div className="hub-empty">
+                <div className="hub-empty-mark"><Glyph d={I.alert} /></div>
+                <h3>The app catalogue could not be loaded</h3>
+                <p>{loadError}</p>
+                <button className="hub-btn hub-btn-primary" onClick={fetchData}>Try again</button>
+              </div>
+            ) : browseList.length === 0 ? (
+              <EmptyState
+                tab={tab}
+                query={search.trim()}
+                filtered={category !== 'all' || appTypeFilter !== 'all'}
+                onClear={() => { setSearch(''); setCategory('all'); setAppTypeFilter('all') }}
+                onBrowse={() => setTab('browse')}
+              />
+            ) : (
+              <div className="hub-grid" ref={gridRef} onKeyDown={onGridKeyDown}>
+                {browseList.map(app => (
+                  <AppCard
                     key={app.id}
-                    className={`group relative flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer transition-[background-color,border-color,box-shadow,transform] [transition-duration:var(--motion-base)] [transition-timing-function:var(--ease-out)] motion-reduce:transition-none ${
-                      isSelected
-                        ? 'bg-[var(--bg-selected)] ring-1 ring-[var(--bg-selected-border)] border border-transparent'
-                        : 'bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border-subtle)] hover:border-[var(--border-default)] hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none'
-                    }`}
-                    onClick={() => selectApp(app)}
-                  >
-                    <AppIconTile id={app.id} size={42} unicode={app.icon} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[13px] font-medium text-[var(--text-primary)] truncate">{app.name}</span>
-                        <SourceBadge app={app} />
-                        <AppTypeBadge app={app} />{/* APPSTORE-08 */}
-                      </div>
-                      <p className="text-[12px] text-neutral-500 mt-0.5 truncate">{app.description}</p>
-                    </div>
-                    <div className="flex-shrink-0 ml-1">
-                      {isBeingInstalled ? (
-                        <span className="w-7 h-7 flex items-center justify-center">
-                          <span className="w-4 h-4 spinner" />
-                        </span>
-                      ) : isBeingRemoved ? (
-                        <span className="w-7 h-7 flex items-center justify-center">
-                          <span className="w-4 h-4 rounded-full animate-spin border-2 border-[var(--status-danger-soft)] border-t-[var(--status-danger)]" />
-                        </span>
-                      ) : isInstalled ? (
-                        <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-[var(--status-success)]" fill="currentColor">
-                          <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      ) : !isArchCompatible(app) ? (
-                        <svg viewBox="0 0 16 16" className="w-4 h-4 text-neutral-700" fill="currentColor">
-                          <path d="M8 16A8 8 0 108 0a8 8 0 000 16zM4.22 4.22a.75.75 0 011.06 0L8 6.94l2.72-2.72a.75.75 0 111.06 1.06L9.06 8l2.72 2.72a.75.75 0 11-1.06 1.06L8 9.06l-2.72 2.72a.75.75 0 01-1.06-1.06L6.94 8 4.22 5.28a.75.75 0 010-1.06z" />
-                        </svg>
-                      ) : (
-                        <button
-                          className="px-3.5 py-2 min-h-[36px] rounded-lg text-[12px] font-semibold text-[var(--accent)] accent-bg-soft accent-bg-hover border accent-border-soft transition-colors [transition-duration:var(--motion-fast)]"
-                          onClick={e => { e.stopPropagation(); installApp(app.id, app.latest) }}
-                        >
-                          Get
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Detail panel — slide in from right */}
-      {selectedApp && (
-        <div className="absolute sm:relative inset-y-0 right-0 z-30 w-full max-w-sm sm:w-[340px] sm:max-w-none flex-shrink-0 border-l border-[var(--border-default)] flex flex-col bg-[var(--bg-surface)] overflow-hidden shadow-2xl sm:shadow-none animate-[slideIn_0.2s_ease-out] sm:animate-none">
-          {/* Close */}
-          <div className="flex justify-end p-3 pb-0">
-            <button
-              className="text-neutral-600 hover:text-neutral-400 transition-colors p-1.5 rounded-lg hover:bg-[var(--bg-hover)]"
-              onClick={() => setSelectedApp(null)}
-            >
-              <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
-                <path d="M5.28 4.22a.75.75 0 00-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 101.06 1.06L8 9.06l2.72 2.72a.75.75 0 101.06-1.06L9.06 8l2.72-2.72a.75.75 0 00-1.06-1.06L8 6.94 5.28 4.22z" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {/* Hero section */}
-            <div className="px-6 pb-5 flex flex-col items-center text-center">
-              <AppIconTile id={selectedApp.id} size={80} unicode={selectedApp.icon} />
-              <h2 className="text-[18px] font-bold text-[var(--text-primary)] mt-4 flex items-center gap-2">
-                {selectedApp.name}
-                {selectedApp.vetted && (
-                  <svg viewBox="0 0 16 16" className="w-4.5 h-4.5 text-[var(--accent)]" fill="currentColor">
-                    <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </h2>
-              <div className="text-[12px] text-neutral-500 mt-1">{selectedApp.author || 'Unknown'}</div>
-              <div className="mt-2.5">
-                <SourceBadge app={selectedApp} />
-              </div>
-            </div>
-
-            {/* Install / Uninstall action */}
-            <div className="px-6 pb-5">
-              {installing === selectedApp.id ? (
-                <div className="p-4 rounded-xl bg-[var(--accent-soft)] border accent-border-soft">
-                  <InstallProgress label={installPhase} />
-                </div>
-              ) : uninstalling === selectedApp.id ? (
-                <div className="p-4 rounded-xl bg-[var(--status-danger-soft)] border border-danger-soft">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-4 h-4 rounded-full animate-spin flex-shrink-0 border-2 border-[var(--status-danger-soft)] border-t-[var(--status-danger)]" />
-                    <span className="text-[13px] font-medium text-[var(--status-danger)]">Removing...</span>
-                  </div>
-                </div>
-              ) : (selectedApp.installed || installedIds.has(selectedApp.id)) ? (
-                <div className="flex gap-2.5">
-                  <div className="flex-1 py-3 rounded-xl text-[13px] font-semibold text-[var(--status-success)] bg-[var(--status-success-soft)] border border-success-soft flex items-center justify-center gap-2">
-                    <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
-                      <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L7 8.94 5.28 7.22a.75.75 0 00-1.06 1.06l2.5 2.5a.75.75 0 001.06 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    Installed
-                  </div>
-                  <button
-                    className="px-5 py-3 rounded-xl text-[12px] font-semibold text-[var(--status-danger)] border border-danger-soft hover:bg-[var(--status-danger-soft)] transition-colors [transition-duration:var(--motion-fast)]"
-                    onClick={() => uninstallApp(selectedApp.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : !isArchCompatible(selectedApp) ? (
-                <div className="py-3.5 rounded-xl text-[12px] font-medium text-[var(--status-danger)] bg-[var(--status-danger-soft)] border border-danger-soft text-center">
-                  Not available for {systemArch === 'arm64' ? 'ARM64' : systemArch}
-                </div>
-              ) : (
-                <button
-                  className="w-full py-3.5 rounded-xl text-[13px] font-bold text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-transform [transition-duration:var(--motion-fast)] shadow-lg shadow-[var(--accent)]/10 active:scale-[0.98] motion-reduce:active:scale-100"
-                  onClick={() => installApp(selectedApp.id, selectedVersion)}
-                >
-                  Install{selectedVersion && selectedVersion !== 'latest' ? ` ${selectedVersion}` : ''}
-                </button>
-              )}
-
-              {/* Error shown in panel */}
-              {error && installing !== selectedApp.id && (
-                <div className="mt-3 p-3.5 rounded-xl bg-[var(--status-danger-soft)] border border-danger-soft">
-                  <div className="flex items-start gap-2.5">
-                    <svg viewBox="0 0 16 16" className="w-4 h-4 text-[var(--status-danger)] mt-0.5 flex-shrink-0" fill="currentColor">
-                      <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zM6.25 5.5a.75.75 0 00-1.5 0v4a.75.75 0 001.5 0v-4zm4.25-.75a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4a.75.75 0 01.75-.75zM8 13a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-semibold text-[var(--status-danger)] mb-1">Installation failed</div>
-                      <pre className="text-[12px] text-[var(--text-tertiary)] whitespace-pre-wrap break-words font-mono leading-relaxed max-h-24 overflow-y-auto">{error}</pre>
-                    </div>
-                    <button onClick={() => setError(null)} className="text-neutral-600 hover:text-[var(--status-danger)] transition-colors flex-shrink-0">
-                      <svg viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="currentColor">
-                        <path d="M5.28 4.22a.75.75 0 00-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 101.06 1.06L8 9.06l2.72 2.72a.75.75 0 101.06-1.06L9.06 8l2.72-2.72a.75.75 0 00-1.06-1.06L8 6.94 5.28 4.22z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Description */}
-            <div className="px-6 pb-5">
-              <p className="text-[12px] text-neutral-400 leading-[1.7]">{selectedApp.description}</p>
-            </div>
-
-            {/* Source info */}
-            {selectedApp.type === 'desktop' && (
-              <div className="px-6 pb-5">
-                <div className={`flex items-start gap-2.5 px-4 py-3 rounded-xl ${
-                  selectedApp.flatpak_id
-                    ? 'bg-sky-500/[0.04] border border-sky-500/[0.08]'
-                    : 'bg-amber-500/[0.04] border border-amber-500/[0.08]'
-                }`}>
-                  <svg viewBox="0 0 24 24" className={`w-4 h-4 mt-0.5 flex-shrink-0 ${selectedApp.flatpak_id ? 'text-sky-400/60' : 'text-amber-400/60'}`} fill="currentColor">
-                    <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
-                  </svg>
-                  <p className={`text-[12px] leading-relaxed ${selectedApp.flatpak_id ? 'text-sky-300/60' : 'text-amber-300/60'}`}>
-                    {selectedApp.flatpak_id
-                      ? 'Via Flatpak — latest version, sandboxed, independent of system packages.'
-                      : 'Via Apt — Debian system package. Version depends on repository.'}
-                  </p>
-                </div>
+                    app={app}
+                    selected={selectedApp?.id === app.id}
+                    installed={isInstalled(app)}
+                    installing={installing === app.id}
+                    removing={uninstalling === app.id}
+                    compatible={isArchCompatible(app)}
+                    busy={!!installing}
+                    onOpen={() => selectApp(app)}
+                    onInstall={() => installApp(app.id, app.latest)}
+                  />
+                ))}
               </div>
             )}
+          </div>
+        </div>
+      </div>
 
-            {/* Version picker */}
-            {(selectedApp.versions || []).length > 1 && (
-              <div className="px-6 pb-5">
-                <div className="text-[12px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Version</div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {(selectedApp.versions || []).map(v => (
+      {liveSelected && (
+        <aside
+          className="hub-detail"
+          ref={trapRef}
+          role={modal ? 'dialog' : 'complementary'}
+          aria-modal={modal || undefined}
+          aria-label={`${liveSelected.name} details`}
+        >
+          <div className="hub-detail-bar">
+            {modal && (
+              <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Back to the app list">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={I.back} /></svg>
+              </button>
+            )}
+            <strong>{liveSelected.name}</strong>
+            <button className="hub-icon-btn" onClick={() => setSelectedApp(null)} aria-label="Close details">
+              <Glyph d={I.cross} />
+            </button>
+          </div>
+
+          <div className="hub-detail-scroll">
+            <div className="hub-hero">
+              <AppIconTile id={liveSelected.id} size={72} unicode={liveSelected.icon} />
+              <h2>
+                {liveSelected.name}
+                {liveSelected.vetted && <Glyph d={I.check} />}
+              </h2>
+              {liveSelected.author && <div className="hub-hero-by">{liveSelected.author}</div>}
+              <div className="hub-hero-tags">
+                <SourceBadge app={liveSelected} />
+                <AppTypeBadge app={liveSelected} />
+              </div>
+            </div>
+
+            <div>
+              {installing === liveSelected.id ? (
+                <div className="hub-notice" data-tone="accent" style={{ marginBottom: 0, flexDirection: 'column', alignItems: 'stretch' }}>
+                  <div className="hub-state" style={{ justifyContent: 'flex-start' }}>
+                    <span className="spinner" style={{ width: 14, height: 14 }} />
+                    {installPhase || 'Installing…'}
+                  </div>
+                  <div className="hub-progress"><i /></div>
+                </div>
+              ) : uninstalling === liveSelected.id ? (
+                <div className="hub-state" style={{ justifyContent: 'flex-start' }}>
+                  <span className="spinner" style={{ width: 14, height: 14 }} />
+                  Removing…
+                </div>
+              ) : isInstalled(liveSelected) ? (
+                <div className="hub-actions">
+                  <div className="hub-btn" aria-live="polite" style={{ pointerEvents: 'none' }}>
+                    <Glyph d={I.check} />
+                    Installed
+                  </div>
+                  <button className="hub-btn hub-btn-danger" onClick={() => uninstallApp(liveSelected.id)}>Remove</button>
+                </div>
+              ) : !isArchCompatible(liveSelected) ? (
+                <div className="hub-notice" data-tone="danger" style={{ marginBottom: 0 }}>
+                  <Glyph d={I.block} />
+                  <div className="hub-notice-body">
+                    <div className="hub-notice-title">Not available for this machine</div>
+                    <p className="hub-notice-text">
+                      This box is {systemArch}; {liveSelected.name} ships for {(liveSelected.arch || []).join(', ') || 'other architectures'}.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="hub-actions">
+                  <button
+                    className="hub-btn hub-btn-primary"
+                    disabled={!!installing}
+                    onClick={() => installApp(liveSelected.id, selectedVersion)}
+                  >
+                    Install{selectedVersion && selectedVersion !== 'latest' ? ` ${selectedVersion}` : ''}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {liveSelected.description && <p className="hub-body-text">{liveSelected.description}</p>}
+
+            {(liveSelected.versions || []).length > 1 && (
+              <div>
+                <div className="hub-field-label">Version</div>
+                <div className="hub-versions">
+                  {(liveSelected.versions || []).map(v => (
                     <button
                       key={v}
-                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors [transition-duration:var(--motion-fast)] ${
-                        selectedVersion === v
-                          ? 'bg-[var(--bg-selected)] text-[var(--text-primary)] border border-[var(--bg-selected-border)]'
-                          : 'bg-[var(--bg-elevated)] text-neutral-500 border border-[var(--border-subtle)] hover:border-[var(--border-strong)] hover:text-neutral-300'
-                      }`}
+                      className="hub-chip"
+                      aria-pressed={selectedVersion === v}
                       onClick={() => setSelectedVersion(v)}
                     >
                       {v}
@@ -736,40 +775,137 @@ export default function AppHub() {
               </div>
             )}
 
-            {/* Details table */}
-            <div className="px-6 pb-6">
-              <div className="text-[12px] uppercase tracking-widest text-neutral-600 mb-2 font-semibold">Details</div>
-              <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden divide-y divide-[var(--border-subtle)]">
-                <DetailRow label="Source" value={selectedApp.flatpak_id ? 'Flathub' : selectedApp.type === 'web' ? 'Web Service' : 'Debian'} />
-                <DetailRow label="Category" value={CATEGORY_LABELS[selectedApp.category] || selectedApp.category} />
-                <DetailRow label="License" value={selectedApp.license || '—'} />
-                <DetailRow label="Arch" value={selectedApp.arch?.length ? selectedApp.arch.join(', ') : 'All'} />
-                {selectedApp.homepage && <DetailRow label="Website" value={selectedApp.homepage} link />}
-              </div>
+            <div>
+              <div className="hub-field-label">Details</div>
+              <dl className="hub-facts">
+                <Fact label="Source" value={liveSelected.flatpak_id ? 'Flathub' : liveSelected.type === 'web' ? 'Web service' : 'Debian'} />
+                <Fact label="Category" value={categoryLabel(liveSelected.category)} />
+                <Fact label="License" value={liveSelected.license || 'Not stated'} />
+                <Fact label="Architecture" value={liveSelected.arch?.length ? liveSelected.arch.join(', ') : 'All'} />
+                {liveSelected.homepage && <Fact label="Website" value={liveSelected.homepage} link />}
+              </dl>
             </div>
           </div>
-        </div>
+        </aside>
       )}
     </div>
   )
 }
 
-function DetailRow({ label, value, link }: { label: string; value: string; link?: boolean }) {
+// ── Card ──────────────────────────────────────────────────────────────────────
+
+interface AppCardProps {
+  app: StoreApp
+  selected: boolean
+  installed: boolean
+  installing: boolean
+  removing: boolean
+  compatible: boolean
+  busy: boolean
+  onOpen: () => void
+  onInstall: () => void
+}
+
+function AppCard({ app, selected, installed, installing, removing, compatible, busy, onOpen, onInstall }: AppCardProps) {
   return (
-    <div className="flex justify-between items-center gap-3 px-4 py-2.5 bg-[var(--bg-base)]">
-      <span className="text-[12px] text-neutral-600 font-medium flex-shrink-0">{label}</span>
-      {link ? (
-        <a
-          href={value}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[12px] text-[var(--accent)] hover:text-[var(--accent-hover)] truncate max-w-[170px] transition-colors"
-        >
-          {value.replace(/^https?:\/\/(www\.)?/, '')}
-        </a>
-      ) : (
-        <span className="text-[12px] text-neutral-400 truncate max-w-[170px]">{value}</span>
-      )}
+    <article className="hub-card" data-selected={selected} data-app-id={app.id}>
+      <span className="hub-card-icon">
+        <AppIconTile id={app.id} size={42} unicode={app.icon} />
+      </span>
+      <div className="hub-card-body">
+        <button className="hub-card-open" onClick={onOpen}>{app.name}</button>
+        {app.description && <p className="hub-card-desc">{app.description}</p>}
+        <div className="hub-card-tags">
+          <SourceBadge app={app} />
+          <AppTypeBadge app={app} />
+        </div>
+      </div>
+      <div className="hub-card-action">
+        {installing ? (
+          <span className="hub-state" role="status">
+            <span className="spinner" style={{ width: 14, height: 14 }} />
+            Installing…
+          </span>
+        ) : removing ? (
+          <span className="hub-state" role="status">
+            <span className="spinner" style={{ width: 14, height: 14 }} />
+            Removing…
+          </span>
+        ) : installed ? (
+          <span className="hub-state" data-tone="ok">
+            <Glyph d={I.check} />
+            Installed
+          </span>
+        ) : !compatible ? (
+          <span className="hub-state" data-tone="off" title={`Not available for this architecture`}>
+            <Glyph d={I.block} />
+            Unavailable
+          </span>
+        ) : (
+          <button className="hub-get" disabled={busy} onClick={onInstall} aria-label={`Install ${app.name}`}>
+            Get
+          </button>
+        )}
+      </div>
+    </article>
+  )
+}
+
+// ── Empty states ──────────────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  tab: Tab
+  query: string
+  filtered: boolean
+  onClear: () => void
+  onBrowse: () => void
+}
+
+/**
+ * Four distinct dead ends, because "nothing here" is four different situations
+ * and only one of them is the user's fault. The previous version printed one of
+ * two sentences and offered no way out of either.
+ */
+function EmptyState({ tab, query, filtered, onClear, onBrowse }: EmptyStateProps) {
+  if (tab === 'installed' && !query && !filtered) {
+    return (
+      <div className="hub-empty">
+        <div className="hub-empty-mark"><Glyph d={I.check} /></div>
+        <h3>Nothing installed yet</h3>
+        <p>Apps you install appear here, ready to launch from the dock.</p>
+        <button className="hub-btn hub-btn-primary" onClick={onBrowse}>Browse the catalogue</button>
+      </div>
+    )
+  }
+  return (
+    <div className="hub-empty">
+      <div className="hub-empty-mark">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.6" /><path d="M11 11l3.2 3.2" strokeLinecap="round" />
+        </svg>
+      </div>
+      <h3>{query ? `No apps match “${query}”` : 'Nothing in this filter'}</h3>
+      <p>
+        {tab === 'installed'
+          ? 'None of your installed apps match. Clear the filters to see them all.'
+          : 'Try a different word, or widen the category and type filters.'}
+      </p>
+      <button className="hub-btn" onClick={onClear}>Clear filters</button>
+    </div>
+  )
+}
+
+// ── Detail rows ───────────────────────────────────────────────────────────────
+
+function Fact({ label, value, link }: { label: string; value: string; link?: boolean }) {
+  return (
+    <div className="hub-fact">
+      <dt>{label}</dt>
+      <dd>
+        {link
+          ? <a href={value} target="_blank" rel="noopener noreferrer">{value.replace(/^https?:\/\/(www\.)?/, '')}</a>
+          : value}
+      </dd>
     </div>
   )
 }
