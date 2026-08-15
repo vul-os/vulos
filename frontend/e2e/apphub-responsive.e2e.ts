@@ -84,8 +84,26 @@ async function assertLaysOut(page: import('@playwright/test').Page, label: strin
   expect(await overflowing(page), `${label}: content wider than its box at hub width ${w}`).toEqual([])
   expect(await childrenEscaping(page), `${label}: element painted outside the hub at width ${w}`).toEqual([])
 
+  /**
+   * Vacuity guard: count TEXT NODES, not distinct font sizes.
+   *
+   * This asserted `fontSizes(page).length > 3`, which is a count of how many
+   * DIFFERENT sizes the hub uses — a property of the type scale, not evidence
+   * that anything rendered. Consolidating six stray `font-size: 11px`
+   * declarations into one 12px token took the hub from four distinct sizes to
+   * three and turned eighteen passing cases red, on a hub that was rendering
+   * perfectly. A guard that fails when the design gets MORE consistent is
+   * measuring the wrong thing.
+   */
+  const painted = await page.locator(HUB).evaluate(
+    (el) => [...el.querySelectorAll('*')].filter(
+      (n) => !n.children.length && (n.textContent || '').trim() && n.getBoundingClientRect().width > 0,
+    ).length,
+  )
+  expect(painted, `${label}: the hub painted ${painted} text nodes at ${w}px — it did not render`).toBeGreaterThan(10)
+
   const fonts = await fontSizes(page)
-  expect(fonts.length, `${label}: no text measured at ${w}px — the hub did not render`).toBeGreaterThan(3)
+  expect(fonts.length, `${label}: no text measured at ${w}px`).toBeGreaterThan(0)
   expect(
     fonts.filter((f) => f < MIN_FONT_PX),
     `${label}: text below ${MIN_FONT_PX}px at hub width ${w} (all sizes: ${fonts.join(', ')})`,
@@ -298,16 +316,26 @@ test('an app with no natural break point in its name does not push the grid open
   await assertLaysOut(page, 'phone 320, unbreakable name')
 })
 
-test('the detail panel is a docked column when wide and a modal sheet when not', async ({ page }) => {
+/**
+ * The ARIA has to follow the real layout: a sheet covering the list IS modal,
+ * and announcing a docked column as a dialog is just as wrong the other way.
+ *
+ * Two tests, not one. Booting the hub twice in a single test opens a SECOND
+ * window rather than replacing the first, so `[data-app="apphub"]` resolves to
+ * two elements and every locator in the file goes ambiguous — which is what the
+ * first version did, and it failed on its own second half.
+ */
+test('the detail panel is a docked column when the hub is wide', async ({ page }) => {
   test.setTimeout(150_000)
-  // The ARIA has to follow the real layout: a sheet covering the list IS modal,
-  // and announcing a docked column as a dialog is just as wrong the other way.
   await bootHub(page, { width: 1440, height: 900 })
   await page.getByRole('button', { name: 'Conduit', exact: true }).click()
   await settle(page)
   await expect(page.locator('.hub-detail')).toHaveAttribute('role', 'complementary')
   await assertLaysOut(page, 'wide with panel open')
+})
 
+test('the detail panel is a modal sheet when the hub is not wide', async ({ page }) => {
+  test.setTimeout(150_000)
   await bootHubDraggedTo(page, 520)
   await page.getByRole('button', { name: 'Conduit', exact: true }).click()
   await settle(page)

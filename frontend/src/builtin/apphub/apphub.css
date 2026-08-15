@@ -759,6 +759,10 @@
   background: var(--hub-dot-color, var(--text-tertiary));
 }
 
+/* The "Needs amd64" badge. Same pill as the others so it reads as one of the
+   card's facts, with the block glyph carrying the difference. */
+.hub-badge[data-tone='off'] svg { flex: none; width: 13px; height: 13px; color: var(--text-tertiary); }
+
 /* ═══ Install / installed affordances ═════════════════════════════════════ */
 
 /**

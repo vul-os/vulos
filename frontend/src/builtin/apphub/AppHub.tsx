@@ -957,9 +957,31 @@ function AppCard({ app, selected, installed, installing, removing, compat, busy,
         <div className="hub-card-tags">
           <SourceBadge app={app} />
           <AppTypeBadge app={app} />
+          {/*
+            "Needs amd64" lives in the TAG ROW, not in the action column.
+
+            It is a fact about the app, like the source and type beside it —
+            and, decisively, the action column is `flex: none`, so a status put
+            there claims its full intrinsic width from the card. Measured with
+            it in the action column: an app needing `ppc64el` squeezed
+            .hub-card-body to 74px at EVERY width from 768 to 1600, and the two
+            badges it still had to hold overflowed it by 9px. The tag row wraps,
+            so a long architecture name costs a line instead of the layout.
+          */}
+          {compat === 'no' && (
+            <span
+              className="hub-badge" data-tone="off"
+              title={`This app is built for ${needs.join(' or ')}; this box is a different architecture`}
+            >
+              <Glyph d={I.block} />
+              {needs.length ? `Needs ${needs.join('/')}` : 'Unavailable'}
+            </span>
+          )}
         </div>
       </div>
-      <div className="hub-card-action">
+      {/* No action column at all when there is no action: an empty 30px slot
+          beside a card that cannot be installed is just a hole in the row. */}
+      {compat !== 'no' && <div className="hub-card-action">
         {installing ? (
           <span className="hub-state" role="status">
             <span className="spinner" style={{ width: 14, height: 14 }} />
@@ -975,25 +997,12 @@ function AppCard({ app, selected, installed, installing, removing, compat, busy,
             <Glyph d={I.check} />
             Installed
           </span>
-        ) : compat === 'no' ? (
-          // NAMES the architecture rather than saying "Unavailable". "Needs
-          // amd64" on an arm64 box tells the user something true about their
-          // hardware and about this app; "Unavailable" tells them the store is
-          // broken. The <title> carries the same fact for a screen reader,
-          // since the badge alone is terse by design.
-          <span
-            className="hub-state" data-tone="off"
-            title={`This app is built for ${needs.join(' or ')}; this box is a different architecture`}
-          >
-            <Glyph d={I.block} />
-            {needs.length ? `Needs ${needs.join('/')}` : 'Unavailable'}
-          </span>
         ) : (
           <button className="hub-get" disabled={busy} onClick={onInstall} aria-label={`Install ${app.name}`}>
             Get
           </button>
         )}
-      </div>
+      </div>}
     </article>
   )
 }
