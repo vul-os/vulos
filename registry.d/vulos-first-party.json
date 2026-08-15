@@ -1,0 +1,123 @@
+{
+  "_source": "First-party Vulos products (source: vulos, per roadmap/APP-RECIPE-STANDARD.md section 2). Produced 2026-08-15. Two entries: diwan (NEW - absent from registry.json entirely) and wede (REPLACEMENT - the existing entry installs nothing). KERF IS DELIBERATELY ABSENT: vul-os/kerf v0.1.9 publishes no artefact that can be installed unattended into a working app, and the entry currently in registry.json installs a placeholder HTML page while reporting success. It must be DELETED from registry.json, not repaired. The reasoning and the evidence are in roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+  "_verification": [
+    "Every download_url was fetched on 2026-08-15 and sha256'd locally; each digest matches BOTH the digest GitHub publishes for the asset AND the line for that asset in the release's own checksums.txt.",
+    "Both binaries were installed and launched exactly as their recipe specifies (binary at bin/<basename-of-download_url>, post_install run first, then the command string) in a debian:trixie-slim container, on linux/amd64 and linux/arm64, and both served real HTTP 200 application responses.",
+    "Re-check the pinned artefacts at any time with: scripts/verify-firstparty-artifacts.sh",
+    "SIGNATURES ARE INTENTIONALLY EMPTY. These entries are inert until a maintainer runs `make sign-registry RELEASE_PRIV=<release private key>` on the merged registry.json. That is a human, offline operation (docs/KEY-CEREMONY.md); an agent must not mint production trust material, because the signature IS the act of vetting. VerifyEntrySignature fails closed on an empty signature, so an unsigned entry cannot be installed by accident."
+  ],
+  "apps": {
+    "diwan": {
+      "_note": "SOURCE vulos (first-party). Pinned to the vul-os/diwan v0.1.0 release asset diwan-linux-amd64. CHECKSUM EVIDENCE 2026-08-15: the asset was downloaded fresh and sha256'd locally to 467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293, which equals BOTH the digest GitHub publishes for the asset and the line for it in the release's own checksums.txt - three independent statements of the same hash. `file` reports a statically linked stripped ELF x86-64, so there is no shared-library surface beyond ca-certificates. BOOT EVIDENCE: installed and started exactly as this recipe specifies (binary at bin/diwan-linux-amd64, config written by post_install, launched with -config data/diwan.yaml) inside a debian:trixie-slim container matching the box runtime image, on both linux/amd64 and linux/arm64: `GET /` returned the real Diwan SPA (HTTP 200, 4863 bytes, <title>Diwan</title>) and `GET /api/files` returned HTTP 200, with the SQLite state (userauth.db, fileacl.db, notify.db, invites.db, audit.db) created under data/. PORT: diwan v0.1.0 has no port flag and no env override for server.addr, so the port is written as a literal into data/diwan.yaml by post_install. That is correct rather than fragile because appPort is taken verbatim from this recipe's `port` field (backend/cmd/server/main.go:1853) and is NOT pool-allocated - only the HOST port is - so ${PORT} at launch is always exactly 8080. It must be written as a literal because ${PORT} is NOT expanded during post_install (it is substituted only into `command`, at launch, launcher.go:248); scripts/verify-firstparty-artifacts.sh asserts the literal and the `port` field agree. CHOWN: apps are exec'd as nobody (uid/gid 65534, launcher.go:52-53) but InstallFromRegistry creates the app directory 0755 root-owned and never chowns it, so post_install hands data/ and uploads/ to the runtime uid; without that diwan cannot create its SQLite files. ARCH: v0.1.0 also publishes diwan-linux-arm64 (sha256 2e92fc0713227f7e3380a4ebe292768930b54e6d3e5d167aa2117ef3d7891ce5, boot-verified identically), but a VersionRecipe carries a single download_url so one recipe cannot serve two architectures. This entry therefore declares amd64 only, which InstallFromRegistry enforces at install time (registry.go:964, ArchSupported) and the App Hub surfaces as \"requires amd64; this box is arm64\" - a refusal, never a binary the box cannot exec. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+      "arch": [
+        "amd64"
+      ],
+      "author": "Vulos",
+      "category": "productivity",
+      "description": "Self-hostable collaborative office suite - documents, spreadsheets, slides and whiteboards, CRDT-native and peer-to-peer, served from a single binary on your own storage.",
+      "homepage": "https://github.com/vul-os/diwan",
+      "icon": "D",
+      "icon_url": "",
+      "keywords": [
+        "office",
+        "documents",
+        "docs",
+        "spreadsheets",
+        "sheets",
+        "slides",
+        "whiteboard",
+        "pdf",
+        "collaboration",
+        "crdt",
+        "productivity"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "name": "Diwan",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
+      "versions": {
+        "0.1.0": {
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293",
+          "command": "bin/diwan-linux-amd64 -config data/diwan.yaml",
+          "deps": [
+            "ca-certificates"
+          ],
+          "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-amd64",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p data uploads && printf 'server:\\n  addr: \":8080\"\\n  data_dir: \"%s/data\"\\n  uploads_dir: \"%s/uploads\"\\nauth:\\n  enabled: false\\nstorage:\\n  type: \"local\"\\n' \"$APP_DIR\" \"$APP_DIR\" > data/diwan.yaml && chown -R 65534:65534 data uploads",
+          "singleton": true
+        }
+      }
+    },
+    "wede": {
+      "_note": "SOURCE vulos (first-party). REPLACES the previous entry, which had no install step and no download_url at all: nothing ever placed /root/.local/bin/wede, so the app could not start. Pinned to the vul-os/wede v0.1.3 release asset wede-linux-amd64. CHECKSUM EVIDENCE 2026-08-15: downloaded fresh and sha256'd locally to 275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7, equal to both GitHub's published asset digest and the release's own checksums.txt. Statically linked stripped ELF x86-64. BOOT EVIDENCE: installed and started exactly as this recipe specifies, in a debian:trixie-slim container on both linux/amd64 and linux/arm64: the binary reports `wede v0.1.3`, logs `loaded config from $APP_DIR/wede.config.json` and `running on http://0.0.0.0:9090`, `GET /` returns the real IDE (HTTP 200, <title>WEDE | Web Development Environment</title>), and POST /api/auth/login with the generated password returns {\"role\":\"owner\"} - so the credential this recipe mints actually authenticates. CONFIG IS MANDATORY: wede v0.1.3 calls log.Fatal when it cannot find wede.config.json and rejects an empty password, so it fails loudly rather than starting half-configured. post_install therefore mints a 32-char random password from /dev/urandom and REFUSES (exit 1) if it cannot produce 32 characters, instead of writing a weak or empty one. The owner reads the password from wede-password.txt in the app directory; no credential is baked into this registry. PORT: the port arrives via `-port ${PORT}` on the command line, which the launcher does expand (launcher.go:248); the \"9090\" inside the config is only the file's own self-consistent default and the flag overrides it. CHOWN: as for diwan - apps run as uid 65534 and the installer leaves the app dir root-owned, so the config, the password file and workspace/ are handed to the runtime uid. DEPS: `git` is a genuine runtime dependency, not decoration - wede shells out to the git binary (backend/internal/chat/chat.go:509), so the git panel the README headlines is inert without it. ARCH: v0.1.3 also publishes wede-linux-arm64 (sha256 73800e85e9577e2def5d62d59847e8333a3c030c07651c748675277aaeed6ae8, boot-verified identically); one recipe cannot carry two download URLs, so this entry declares amd64 only and an arm64 box is told so rather than being handed a binary it cannot exec. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+      "arch": [
+        "amd64"
+      ],
+      "author": "Vulos",
+      "category": "developer",
+      "description": "Self-hosted collaborative web IDE - real-time multi-user editing, shared terminals, git and per-workspace chat, from a single binary in your browser.",
+      "homepage": "https://github.com/vul-os/wede",
+      "icon": "W",
+      "icon_url": "",
+      "keywords": [
+        "editor",
+        "ide",
+        "code",
+        "web",
+        "collaboration",
+        "terminal",
+        "git",
+        "files",
+        "syntax",
+        "developer"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "name": "Wede",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
+      "versions": {
+        "0.1.3": {
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7",
+          "command": "bin/wede-linux-amd64 -port ${PORT} workspace",
+          "deps": [
+            "ca-certificates",
+            "git"
+          ],
+          "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-amd64",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 9090,
+          "post_install": "mkdir -p workspace && PW=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#PW} -ne 32 ]; then echo \"wede post-install: could not generate a 32-character password from /dev/urandom - refusing to write a config with a weak or empty password\" >&2; exit 1; fi; printf '{\"password\":\"%s\",\"port\":\"9090\",\"host\":\"0.0.0.0\",\"workspace_root\":\"%s\"}\\n' \"$PW\" \"$APP_DIR\" > wede.config.json && printf '%s\\n' \"$PW\" > wede-password.txt && chmod 640 wede.config.json wede-password.txt && chown -R 65534:65534 wede.config.json wede-password.txt workspace",
+          "singleton": true
+        }
+      }
+    }
+  }
+}
