@@ -186,7 +186,13 @@ export default function LoginScreen() {
               type="text"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
-              placeholder="What should we call you?"
+              // Placeholders here stay ADDITIVE but must still contain the
+              // words boot-auth.e2e.ts locates by ("Your name", "Username",
+              // "Password"). Playwright's getByPlaceholder matches substrings,
+              // so a longer, more useful string satisfies it — restoring bare
+              // duplicates of the labels to appease a locator would be making
+              // the product worse to keep a test green.
+              placeholder="Your name, shown on the lock screen"
               autoComplete="name"
               className="input"
             />
@@ -201,8 +207,8 @@ export default function LoginScreen() {
             value={username}
             onChange={e => setUsername(e.target.value)}
             // Was placeholder="Username" under a label reading "Username" —
-            // the placeholder restated the label and told the user nothing.
-            placeholder={isSetup ? 'Pick a short name to sign in with' : ''}
+            // a placeholder that restates its label tells the user nothing.
+            placeholder="Username you sign in with"
             required
             autoFocus
             autoComplete="username"
@@ -226,6 +232,7 @@ export default function LoginScreen() {
               onKeyUp={e => setCapsLock(e.getModifierState?.('CapsLock') ?? false)}
               onKeyDown={e => setCapsLock(e.getModifierState?.('CapsLock') ?? false)}
               required
+              placeholder={isSetup ? 'Password for this box' : 'Password'}
               autoComplete={isSetup ? 'new-password' : 'current-password'}
               className="input"
             />

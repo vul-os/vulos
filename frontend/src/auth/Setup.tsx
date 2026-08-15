@@ -5,6 +5,7 @@ import { useTheme } from '../core/ThemeProvider'
 import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
 import { nativeBridge } from '../core/nativeBridge'
+import { LAYOUT_PRESETS, DEFAULT_PRESET_ID, applyPreset } from '../desktop'
 import './setup.css'
 
 // Setup wizard config — every field the wizard steps read/write via
@@ -284,19 +285,8 @@ const LANGUAGES = [
   { code: 'ja', name: 'Japanese', native: '日本語', flag: '🇯🇵' },
 ]
 
-export default function Setup({ onComplete, desktopLayouts }: {
-  onComplete: () => void
-  /**
-   * Desktop layout presets for the appearance step (see DesktopLayoutModule).
-   * Optional — when absent the layout section is not rendered at all. Passing
-   * this and calling registerDesktopLayouts() are equivalent; the prop is the
-   * tidier of the two if App.tsx is being edited anyway.
-   */
-  desktopLayouts?: DesktopLayoutModule | null
-}) {
+export default function Setup({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0)
-  // Register before first paint, so the appearance step sees it on mount.
-  if (desktopLayouts !== undefined) registerDesktopLayouts(desktopLayouts)
   const [config, setConfig] = useState<SetupConfig>({
     deviceProfile: '',
     locale: 'en',
@@ -1999,8 +1989,7 @@ function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => 
         </div>
       </div>
 
-      {/* DESKTOP LAYOUT — renders only when a preset module has been supplied.
-          See DesktopLayoutModule below. */}
+      {/* DESKTOP LAYOUT — presets from src/desktop. See DesktopLayoutChoice. */}
       <DesktopLayoutChoice />
 
       {/* Everything on this step is written to localStorage by ThemeProvider and
@@ -2018,79 +2007,42 @@ function AppearanceStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => 
 }
 
 // ═══════════════════════════════════
-// Desktop layout presets — INJECTION SEAM
+// Desktop layout
 // ═══════════════════════════════════
 //
-// The founder wants first boot to offer a familiar desktop LAYOUT, so someone
-// arriving from Windows, macOS or Ubuntu lands in an arrangement their muscle
-// memory expects. The preset model itself is being built separately under
-// src/desktop/**; this file must not invent the list, and does not.
+// Lets someone arriving from Windows, macOS or Ubuntu land in an arrangement
+// their muscle memory expects, on the step where they are already choosing how
+// the machine looks.
 //
-// What lives here is the seam and the UI contract:
+// ERGONOMICS, NOT IMITATION. What transfers is convention — where the dock
+// sits, which side the window controls are on. What must never transfer is
+// trade dress. src/desktop/presets.ts names each preset for what it DOES
+// ("Taskbar", "Menu bar and dock") and carries the platform habit as a plain
+// separate note ("Matches Windows habits"), so this step can describe the
+// ergonomics without wearing anyone's clothes. No icons, skins, wallpapers or
+// vendor branding cross this boundary; Vulos looks like Vulos in every preset.
 //
-//   - registerDesktopLayouts(module), or the equivalent `desktopLayouts` prop
-//     on <Setup>. Either wiring works; the prop is tidier if App.tsx is being
-//     edited anyway.
-//   - Until something supplies a module, DesktopLayoutChoice renders NOTHING.
-//     A seam with no data must not render a teaser card: this suite's dominant
-//     defect is UI that looks like a working feature and is not, and a
-//     "coming soon" panel on first boot would be exactly that.
+// REVERTIBLE. Vulos is DEFAULT_PRESET_ID and is always in the list, so the way
+// back is on this screen and not somewhere the user has to hunt for. The
+// desktop module additionally keeps two escape routes of its own, one of them a
+// module-scope hotkey, precisely so a layout someone dislikes cannot make the
+// exit unreachable.
 //
-// Two constraints are encoded in the types rather than left to convention:
-//
-//   ERGONOMICS, NOT IMITATION. A preset carries `label` (what it DOES — where
-//   the dock sits, which side the window controls are on) and `habit` (a plain
-//   note about whose habits it matches). There is deliberately NO field for a
-//   skin, an icon set, a wallpaper, a font or a vendor name, because none of
-//   that may transfer. Vulos looks like Vulos in every preset; what moves is
-//   convention. A preset that needed to ship trade dress could not be expressed
-//   in this interface, which is the point.
-//
-//   REVERTIBLE. `stockId` is required, so the step can always offer the way
-//   back without each caller remembering to include one, and it defaults to
-//   stock rather than to whatever happens to be first in the array.
-export interface DesktopLayoutPreset {
-  id: string
-  /** Named for what it does, e.g. "Dock at the bottom, window buttons right". */
-  label: string
-  /** Preview-safe description of the arrangement. No trade dress. */
-  description: string
-  /** Plain note about whose habits this matches, e.g. "Familiar from Windows". */
-  habit?: string
-  /** Optional schematic: a diagram of regions, never a screenshot or a skin. */
-  preview?: ReactNode
-}
-
-export interface DesktopLayoutModule {
-  presets: DesktopLayoutPreset[]
-  /** The Vulos layout. Always offered, always the default, always revertible. */
-  stockId: string
-  apply: (id: string) => void | Promise<void>
-}
-
-let registeredLayouts: DesktopLayoutModule | null = null
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function registerDesktopLayouts(mod: DesktopLayoutModule | null): void {
-  registeredLayouts = mod
-}
-
+// applyPreset() persists and applies immediately: there is nothing to plumb
+// back into the wizard config and no save step, so a user who skips this
+// section keeps the stock layout by doing nothing.
 function DesktopLayoutChoice() {
-  const mod = registeredLayouts
-  const [chosen, setChosen] = useState<string>(mod?.stockId ?? '')
+  const [picked, setPicked] = useState<string>(DEFAULT_PRESET_ID)
   const [error, setError] = useState('')
 
-  // Nothing supplied → nothing rendered. Deliberate; see the note above.
-  if (!mod || mod.presets.length === 0) return null
-
-  const pick = async (id: string) => {
-    const previous = chosen
-    setChosen(id)
+  const pick = (id: string) => {
+    const previous = picked
+    setPicked(id)
     setError('')
     try {
-      await mod.apply(id)
+      applyPreset(id)
     } catch {
-      setChosen(previous)
+      setPicked(previous)
       setError('That layout could not be applied, so your current layout is unchanged.')
     }
   }
@@ -2099,31 +2051,30 @@ function DesktopLayoutChoice() {
     <div className="mt-6">
       <h3 className="wz-eyebrow mb-1">Desktop layout</h3>
       <p className="wz-hint mb-3">
-        Where things sit — the dock, the launcher, the window buttons. Pick whichever matches the
+        Where things sit — the dock, the menu bar, the window buttons. Pick whichever matches the
         habits you already have. Vulos looks the same either way; only the arrangement changes, and
-        you can return to the Vulos layout at any time, here or in Settings.
+        you can come back to the Vulos layout at any time, here or in Settings.
       </p>
       <div className="wz-grid wz-grid--2" role="radiogroup" aria-label="Desktop layout">
-        {mod.presets.map(preset => (
+        {LAYOUT_PRESETS.map(preset => (
           <button
             key={preset.id}
             type="button"
             role="radio"
-            aria-checked={chosen === preset.id}
+            aria-checked={picked === preset.id}
             onClick={() => pick(preset.id)}
             className="wz-choice"
           >
             <span className="min-w-0">
-              {preset.preview}
-              <span className="wz-choice-title">{preset.label}</span>
-              <span className="wz-choice-desc">{preset.description}</span>
-              {preset.habit && <span className="wz-choice-desc">{preset.habit}</span>}
+              <span className="wz-choice-title">{preset.name}</span>
+              <span className="wz-choice-desc">{preset.familiar}</span>
+              <span className="wz-choice-desc">{preset.summary}</span>
             </span>
           </button>
         ))}
       </div>
-      {chosen !== mod.stockId && (
-        <button type="button" onClick={() => pick(mod.stockId)} className="wz-quiet mt-2">
+      {picked !== DEFAULT_PRESET_ID && (
+        <button type="button" onClick={() => pick(DEFAULT_PRESET_ID)} className="wz-quiet mt-2">
           Back to the Vulos layout
         </button>
       )}
@@ -2244,10 +2195,15 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
           <p className="text-[12px] wz-dim mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
         </div>
 
-        {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
+        {IS05_error && (
+          <p role="alert" className="wz-note wz-note--danger">
+            <span className="wz-note-icon" aria-hidden="true">!</span>
+            <span>{IS05_error}</span>
+          </p>
+        )}
       </div>
 
-      <NavBar onPrev={onPrev} onNext={handleNext} nextLabel={IS05_saving ? t('Saving...') : t('Continue')} />
+      <NavBar onPrev={onPrev} onNext={handleNext} nextLabel={IS05_saving ? t('Saving…') : t('Continue')} />
     </div>
   )
 }
@@ -2480,14 +2436,26 @@ function IS05_StorageStep({ config, update, onNext, onPrev }: StepProps) {
             />
           </div>
 
-          {IS05_error && <p className="text-sm wz-danger">{IS05_error}</p>}
         </div>
+      )}
+
+      {/* OUTSIDE the `storageEnabled` block. It used to be inside it, so with
+          cluster sync switched OFF — the default, and the path most people take
+          — every error this step can raise was rendered into a branch that was
+          not on screen. The save could fail and say nothing at all. Found by
+          onboarding-flow.e2e.ts, which asserts the wizard both STOPS and
+          EXPLAINS; the stop was already working and the explaining was not. */}
+      {IS05_error && (
+        <p role="alert" className="wz-note wz-note--danger mt-3">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{IS05_error}</span>
+        </p>
       )}
 
       <NavBar
         onPrev={onPrev}
         onNext={handleNext}
-        nextLabel={IS05_saving ? t('Saving...') : t('Continue')}
+        nextLabel={IS05_saving ? t('Saving…') : t('Continue')}
         skipLabel={config.IS05_storageEnabled ? undefined : t('Skip for now')}
         onSkip={config.IS05_storageEnabled ? undefined : handleSkip}
       />

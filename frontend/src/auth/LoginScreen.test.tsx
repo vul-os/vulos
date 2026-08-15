@@ -49,16 +49,25 @@ async function mountSignIn(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   render(<LoginScreen />)
   // Wait for the auth/status check to flip out of the loading splash.
-  await screen.findByPlaceholderText('Username')
+  await screen.findByLabelText('Username')
 }
 
+// Fields are located by their LABEL, not their placeholder.
+//
+// They used to be getByPlaceholderText('Username') / ('Password'), which
+// worked only because the placeholders restated the labels word for word —
+// while every <label> on this screen was associated with NOTHING (no htmlFor,
+// no id). The first screen of the product announced three unlabelled boxes and
+// these tests passed anyway, by reading the decoration instead of the label.
+// getByLabelText goes red if that association is ever lost again, which is the
+// property actually worth guarding: a placeholder is not a label.
 describe('LoginScreen submit state', () => {
   it('shows a pending label and disables the button while the login is in flight', async () => {
     const { fetchMock } = makeControllableFetch()
     await mountSignIn(fetchMock)
 
-    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'ada' } })
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'hunter2' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'ada' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2' } })
 
     const btn = screen.getByRole('button', { name: 'Sign In' })
     fireEvent.click(btn)
@@ -72,8 +81,8 @@ describe('LoginScreen submit state', () => {
     const { fetchMock } = makeControllableFetch()
     await mountSignIn(fetchMock)
 
-    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'ada' } })
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'hunter2' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'ada' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'hunter2' } })
 
     const btn = screen.getByRole('button', { name: 'Sign In' })
     fireEvent.click(btn)
@@ -94,8 +103,8 @@ describe('LoginScreen submit state', () => {
     })
     await mountSignIn(fetchMock)
 
-    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'ada' } })
-    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'wrong' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'ada' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
     const alert = await screen.findByRole('alert')
