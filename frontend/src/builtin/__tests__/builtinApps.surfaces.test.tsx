@@ -24,6 +24,7 @@ import StreamViewer from '../stream/StreamViewer'
 import FileManager from '../files/FileManager'
 import Messages from '../peering/Messages'
 import Terminal from '../terminal/Terminal'
+import Drive from '../drive/Drive'
 
 let fetchRig: FetchRig | null = null
 let socketRig: ReturnType<typeof installWebSocket> | null = null
@@ -350,6 +351,77 @@ describe('Terminal', () => {
 
     expectNotBlank(container, 'Terminal (slow box)')
     expect(screen.getByText(/Opening terminal/i)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Drive
+//
+// Drive is the one app in this sweep that already routes through lib/api's
+// request(), which throws on a non-2xx — so it never had the false-empty bug.
+// Its failure mode is subtler and is pinned rather than repaired: see the
+// dismissible-alert note on the last test.
+// ---------------------------------------------------------------------------
+
+const DRIVE_NODES = [
+  { id: 'n1', name: 'budget.xlsx', is_dir: false, size: 20480, content_type: 'application/vnd.ms-excel', updated_at: new Date().toISOString() },
+  { id: 'n2', name: 'Photos', is_dir: true, size: 0, updated_at: new Date().toISOString() },
+]
+
+function mountDrive(opts: { nodes?: unknown; fail?: boolean } = {}) {
+  fetchRig = opts.fail
+    ? installFailingFetch()
+    : installFetch({
+      '/api/files/list': { body: { nodes: opts.nodes ?? DRIVE_NODES } },
+      '/api/files/external/status': { body: { available: false } },
+      '/api/files/import/status': { body: { available: false } },
+    })
+  return render(<Drive />)
+}
+
+describe('Drive', () => {
+  // Anchors the two `querySelector('[data-drive-skel]')).toBeNull()` assertions
+  // below. Without this, a Drive that had silently stopped rendering a skeleton
+  // at all would satisfy both of them, and they would be checking nothing.
+  it('really does show a skeleton while the listing is in flight', async () => {
+    fetchRig = installFetch({
+      '/api/files/list': { hang: true },
+      '/api/files/external/status': { body: { available: false } },
+      '/api/files/import/status': { body: { available: false } },
+    })
+    const { container } = render(<Drive />)
+    await settle(6)
+    expect(container.querySelector('[data-drive-skel]')).not.toBeNull()
+  })
+
+  it('mounts, resolves past its skeleton and lists the real files', async () => {
+    const { container } = mountDrive()
+    await settle(10)
+
+    expectNotBlank(container, 'Drive')
+    await waitFor(() => expect(screen.getByText('budget.xlsx')).toBeInTheDocument())
+    expect(screen.getByText('Photos')).toBeInTheDocument()
+    // The loading skeleton must be gone, not merely covered.
+    expect(container.querySelector('[data-drive-skel]')).toBeNull()
+  })
+
+  it('has a deliberate empty state, with a way out of it', async () => {
+    mountDrive({ nodes: [] })
+    await settle(10)
+
+    await waitFor(() => expect(screen.getByText('Your Drive is empty')).toBeInTheDocument())
+    // An empty state that only says "empty" is a dead end; this one offers the
+    // two things that fill a Drive.
+    expect(screen.getByText(/Drag files here, or upload to get started/i)).toBeInTheDocument()
+  })
+
+  it('reports a failure rather than sitting on the skeleton', async () => {
+    const { container } = mountDrive({ fail: true })
+    await settle(10)
+
+    expectNotBlank(container, 'Drive (backend down)')
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(container.querySelector('[data-drive-skel]')).toBeNull()
   })
 })
 
