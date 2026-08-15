@@ -58,6 +58,82 @@ function errField(x: unknown): string | undefined {
   return isRecord(x) && typeof x.error === 'string' ? x.error : undefined
 }
 
+/**
+ * apiGet — read a JSON `/api` route, insisting the box actually ANSWERED it.
+ *
+ * `fetch(p).then(r => r.json())` — the shape a dozen sections in this file used
+ * — cannot tell a reply apart from a refusal. Every `/api` service on this box
+ * answers 5xx with a JSON error body, so that body parses cleanly and is handed
+ * straight to a `toX()` narrower, which keeps the fields it recognises (none of
+ * them) and returns a well-formed record of `undefined`s. The section then
+ * renders that as a confident, WRONG answer — "Not connected", "No networks
+ * found", "Vault not configured", zero audio devices — with nothing to say the
+ * box never replied. A dead backend is drawn as a designed empty state.
+ *
+ * Throwing on non-2xx is what lets a caller tell the two apart and say so.
+ */
+async function apiGet(path: string): Promise<unknown> {
+  const res = await fetch(path)
+  const body: unknown = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(errField(body) || `The box could not answer (${res.status})`)
+  return body
+}
+
+/**
+ * apiSend — perform a WRITE and insist it landed.
+ *
+ * Checks three things that a bare `fetch(...).then(refresh)` checks none of:
+ *   • the request reached the box at all (a rejected fetch),
+ *   • the box accepted it (non-2xx),
+ *   • the box did not answer 200 WITH an error body — a real shape in this
+ *     codebase (`POST /telephony/call` and `/sms/send` both do it), where
+ *     `res.ok` alone reports success for something that never happened.
+ *
+ * Defaults to POST + JSON because that is what every write in this file is;
+ * pass `method` for the DELETE/PUT call sites.
+ */
+async function apiSend(path: string, init: RequestInit = {}): Promise<unknown> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  })
+  const body: unknown = await res.json().catch(() => null)
+  const err = errField(body)
+  if (!res.ok) throw new Error(err || `The box refused the change (${res.status})`)
+  if (err) throw new Error(err)
+  return body
+}
+
+/**
+ * useApiError — the piece of state every hardware section in this file was
+ * missing.
+ *
+ * Returns the current failure message (null once an operation succeeds) and
+ * `attempt`, which runs an apiGet/apiSend and turns a throw into a message the
+ * section can RENDER, rather than a swallowed `.catch(() => {})`. Sections show
+ * it in a `<Banner tone="danger">`, which carries role="alert".
+ *
+ * `attempt` resolves to `undefined` on failure, so a caller can also decline to
+ * apply an optimistic state change — the difference between a "Connect" dialog
+ * that closes on a 500 as though it worked and one that stays open with the
+ * reason.
+ */
+function useApiError() {
+  const [error, setError] = useState<string | null>(null)
+  const attempt = useCallback(async <T,>(op: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      const out = await op()
+      setError(null)
+      return out
+    } catch (e) {
+      setError(errorMessage(e))
+      return undefined
+    }
+  }, [])
+  return { error, attempt, setError }
+}
+
 // sectionGroups organise the settings sections into labelled clusters for a
 // clear, scannable nav. Each item carries an id + label (+ owner:true for
 // owner-only sections) and a compact glyph used as a subtle nav affordance.
@@ -1075,21 +1151,40 @@ function WiFiSettings() {
   const [connectSSID, setConnectSSID] = useState<string | null>(null)
   const [password, setPassword] = useState('')
 
-  const refresh = () => fetch('/api/wifi/status').then(r => r.json()).then((d: unknown) => setStatus(toWifiStatus(d))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const [connecting, setConnecting] = useState(false)
+  const { error, attempt } = useApiError()
+
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toWifiStatus(await apiGet('/api/wifi/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
 
   const scan = async () => {
     setScanning(true)
-    const res: WifiNetwork[] = await fetch('/api/wifi/scan')
-      .then(r => r.json())
-      .then((d: unknown) => toWifiNetworks(d))
-      .catch(() => [])
-    setNetworks(res)
+    // A failed scan must NOT fall back to []. It used to, and the empty list
+    // rendered the "No networks found — move closer to your router, or try
+    // scanning again" empty state, which tells the user to go fix their router
+    // when what actually happened is that the box's wifi service did not
+    // answer. Leaving `networks` untouched keeps the banner as the only claim.
+    const nets = await attempt(async () => toWifiNetworks(await apiGet('/api/wifi/scan')))
+    if (nets) setNetworks(nets)
     setScanning(false)
   }
 
   const connect = async () => {
-    await fetch('/api/wifi/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ssid: connectSSID, password }) })
+    // This posted a network password and then closed the dialog, cleared the
+    // field and scheduled a refresh WHATEVER came back — 200, 403 or 500 all
+    // looked identical to the user, who was left believing they had joined a
+    // network they had not. On failure the dialog now stays open, with the
+    // password still in it, and says why.
+    setConnecting(true)
+    const ok = await attempt(async () => {
+      await apiSend('/api/wifi/connect', { body: JSON.stringify({ ssid: connectSSID, password }) })
+      return true
+    })
+    setConnecting(false)
+    if (!ok) return
     setConnectSSID(null)
     setPassword('')
     setTimeout(refresh, 3000)
@@ -1106,6 +1201,8 @@ function WiFiSettings() {
         </Pill>
       )}
     >
+      {error && <Banner tone="danger" title="WiFi is not responding">{error}</Banner>}
+
       {status?.connected && (
         <Card title="Current network">
           <InfoList>
@@ -1156,7 +1253,9 @@ function WiFiSettings() {
           footer={
             <Actions>
               <button onClick={() => setConnectSSID(null)} className="btn-ghost text-sm">Cancel</button>
-              <button onClick={connect} className="btn-primary text-sm">Connect</button>
+              <button onClick={connect} disabled={connecting} className="btn-primary text-sm">
+                {connecting ? 'Connecting…' : 'Connect'}
+              </button>
             </Actions>
           }
         >
@@ -1203,15 +1302,31 @@ function toBluetoothStatus(x: unknown): BluetoothStatus | null {
 
 function BluetoothSettings() {
   const [status, setStatus] = useState<BluetoothStatus | null>(null)
-  const refresh = () => fetch('/api/bluetooth/status').then(r => r.json()).then((d: unknown) => setStatus(toBluetoothStatus(d))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
 
-  const setPower = (on: boolean) => fetch('/api/bluetooth/power', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(refresh)
-  const scan = (on: boolean) => fetch('/api/bluetooth/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on }) }).then(() => setTimeout(refresh, 3000))
-  const pair = (addr: string) => fetch('/api/bluetooth/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const connect = (addr: string) => fetch('/api/bluetooth/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const disconnect = (addr: string) => fetch('/api/bluetooth/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
-  const remove = (addr: string) => fetch('/api/bluetooth/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) }).then(refresh)
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toBluetoothStatus(await apiGet('/api/bluetooth/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
+
+  // Every one of these six was `fetch(…).then(refresh)`: the response was never
+  // looked at, so a refused pair, a failed connect or a radio that would not
+  // power on produced exactly the same thing as success — a silent re-read that
+  // redrew the unchanged state. `send` routes them all through apiSend, so a
+  // failure reaches the banner instead of vanishing.
+  const send = (path: string, body: unknown, after: () => void = refresh) =>
+    attempt(async () => {
+      await apiSend(path, { body: JSON.stringify(body) })
+      after()
+    })
+
+  const setPower = (on: boolean) => send('/api/bluetooth/power', { on })
+  const scan = (on: boolean) => send('/api/bluetooth/scan', { on }, () => setTimeout(refresh, 3000))
+  const pair = (addr: string) => send('/api/bluetooth/pair', { address: addr })
+  const connect = (addr: string) => send('/api/bluetooth/connect', { address: addr })
+  const disconnect = (addr: string) => send('/api/bluetooth/disconnect', { address: addr })
+  const remove = (addr: string) => send('/api/bluetooth/remove', { address: addr })
 
   return (
     <Section
@@ -1220,6 +1335,8 @@ function BluetoothSettings() {
       desc="Pair keyboards, headsets and other peripherals with this box."
       actions={<Pill tone={status?.powered ? 'success' : 'neutral'}>{status?.powered ? 'On' : 'Off'}</Pill>}
     >
+      {error && <Banner tone="danger" title="Bluetooth is not responding">{error}</Banner>}
+
       <Card title="Radio">
         <SettingRow
           label="Bluetooth"
