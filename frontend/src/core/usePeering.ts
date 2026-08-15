@@ -1,6 +1,6 @@
 /**
- * usePeering — thin React hook that manages the single multiplexed WebSocket
- * connection to /api/peering/stream.
+ * usePeering — React hook that manages the multiplexed WebSocket connection
+ * to /api/peering/stream.
  *
  * The server sends channel-tagged JSON frames:
  *   { channel: "message|signal|collab|notification|presence", from, payload }
@@ -13,8 +13,29 @@
  *
  *   // push a frame from the browser
  *   send({ channel: 'collab', payload: { op: 'cursor', x: 10, y: 20 } })
+ *
+ * LIFECYCLE. The connection is owned by the component that calls this hook and
+ * is torn down completely when that component unmounts — socket closed, retry
+ * timer cleared, reconnect loop latched off. No caller has to remember to do
+ * anything.
+ *
+ * This used to be false. The effect's cleanup was an explicit no-op comment,
+ * the alive flag was only cleared by the exported `close()` (which no consumer
+ * ever called), and the retry handle was never stored, so every mount left
+ * behind an open socket AND a reconnect loop that ran for the rest of the page's
+ * life. The docstring claimed the hook was "singleton-like" and opened its
+ * socket "once per page lifecycle"; it was not and it did not — the refs are
+ * per-call, so each mount opened its own, and none of them ever went away.
+ * `close()` is still exported for explicit teardown (logout), but nothing
+ * depends on it being called.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
+import {
+  openReconnectingSocket,
+  boxSocketUrl,
+  type ReconnectingSocket,
+  type SocketStatus,
+} from './reconnectingSocket'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -37,10 +58,7 @@ function toPeerFrame(x: unknown): PeerFrame | null {
 
 export type PeerFrameHandler = (frame: PeerFrame) => void
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/peering/stream`
-
-/** Maximum exponential-backoff delay in milliseconds. */
-const MAX_BACKOFF_MS = 30_000
+export const PEERING_PATH = '/api/peering/stream'
 
 interface ChannelMap {
   MESSAGE: 'message'
@@ -59,93 +77,68 @@ export const Channel: ChannelMap = {
   PRESENCE:     'presence',
 }
 
-/**
- * usePeering — singleton-like hook.  Safe to call from multiple components;
- * the WebSocket is opened once per page lifecycle (the hook does NOT close on
- * component unmount — use the returned `close` if you need explicit teardown).
- */
-export function usePeering() {
+export interface PeeringResult {
+  connected: boolean
+  /**
+   * Finer-grained than `connected`: 'unavailable' means the peering service
+   * has never answered on this box (render a designed empty state), while
+   * 'reconnecting' means it did and the link dropped (keep the last view).
+   */
+  status: SocketStatus
+  subscribe: (channel: string, handler: PeerFrameHandler) => () => void
+  send: (frame: PeerFrame) => void
+  close: () => void
+}
+
+export function usePeering(): PeeringResult {
   const [connected, setConnected] = useState(false)
-  const wsRef       = useRef<WebSocket | null>(null)
-  const retryRef    = useRef(0)
-  const aliveRef    = useRef(true)
+  const [status, setStatus] = useState<SocketStatus>('connecting')
+  const sockRef = useRef<ReconnectingSocket | null>(null)
   // Map<channel, Set<handler>>
   const listenersRef = useRef(new Map<string, Set<PeerFrameHandler>>())
 
-  // ------------------------------------------------------------------
-  // Connection lifecycle
-  // ------------------------------------------------------------------
-  // connectRef lets the onclose handler schedule a reconnect without
-  // the linter flagging a "variable accessed before declaration" on `connect`.
-  const connectRef = useRef<(() => void) | null>(null)
-
-  const connect = useCallback(() => {
-    if (!aliveRef.current) return
-    if (wsRef.current && wsRef.current.readyState < WebSocket.CLOSING) return
-
-    const ws = new WebSocket(WS_URL)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setConnected(true)
-      retryRef.current = 0
+  const dispatch = useCallback((event: MessageEvent) => {
+    let frame: PeerFrame | null
+    try {
+      frame = typeof event.data === 'string' ? toPeerFrame(JSON.parse(event.data)) : null
+    } catch {
+      return
     }
+    if (!frame) return
 
-    ws.onmessage = (event: MessageEvent) => {
-      let frame: PeerFrame | null
-      try {
-        frame = typeof event.data === 'string' ? toPeerFrame(JSON.parse(event.data)) : null
-      } catch {
-        return
-      }
-      if (!frame) return
-
-      // Notify channel-specific subscribers
-      const handlers = listenersRef.current.get(frame.channel)
-      if (handlers) {
-        for (const fn of handlers) {
-          try { fn(frame) } catch (err) {
-            console.error('[usePeering] subscriber error', err)
-          }
-        }
-      }
-
-      // Also notify wildcard subscribers ('*')
-      const wildcards = listenersRef.current.get('*')
-      if (wildcards) {
-        for (const fn of wildcards) {
-          try { fn(frame) } catch (err) {
-            console.error('[usePeering] wildcard subscriber error', err)
-          }
+    // Notify channel-specific subscribers, then wildcard ('*') subscribers.
+    // Iterate a copy: a handler that unsubscribes itself (a common pattern for
+    // one-shot listeners) would otherwise mutate the Set mid-iteration.
+    for (const key of [frame.channel, '*']) {
+      const handlers = listenersRef.current.get(key)
+      if (!handlers) continue
+      for (const fn of [...handlers]) {
+        try { fn(frame) } catch (err) {
+          console.error('[usePeering] subscriber error', err)
         }
       }
     }
-
-    ws.onclose = () => {
-      setConnected(false)
-      wsRef.current = null
-      if (!aliveRef.current) return
-      // Exponential back-off: 1s, 2s, 4s … capped at MAX_BACKOFF_MS
-      const delay = Math.min(1000 * 2 ** retryRef.current, MAX_BACKOFF_MS)
-      retryRef.current = Math.min(retryRef.current + 1, 10)
-      setTimeout(() => connectRef.current?.(), delay)
-    }
-
-    ws.onerror = () => ws.close()
   }, [])
 
   useEffect(() => {
-    connectRef.current = connect
-  }, [connect])
+    const sock = openReconnectingSocket(boxSocketUrl(PEERING_PATH), {
+      onMessage: dispatch,
+      onStatus: s => {
+        setStatus(s)
+        setConnected(s === 'open')
+      },
+    }, { label: 'peering' })
+    sockRef.current = sock
 
-  useEffect(() => {
-    aliveRef.current = true
-    connect()
+    // THE FIX. This cleanup used to be an empty comment. It now closes the
+    // socket, clears the pending retry timer and latches the reconnect loop
+    // off — unconditionally, on every unmount.
     return () => {
-      // Hook is intentionally long-lived; we do not close on unmount of any
-      // individual consumer.  Call the returned `close()` for explicit teardown.
+      sock.stop()
+      if (sockRef.current === sock) sockRef.current = null
+      // No setState here: the component is unmounting and the socket is gone.
     }
-  }, [connect])
+  }, [dispatch])
 
   // ------------------------------------------------------------------
   // Public API
@@ -159,37 +152,35 @@ export function usePeering() {
    */
   const subscribe = useCallback((channel: string, handler: PeerFrameHandler) => {
     const map = listenersRef.current
-    if (!map.has(channel)) map.set(channel, new Set())
-    map.get(channel)?.add(handler)
+    let set = map.get(channel)
+    if (!set) {
+      set = new Set()
+      map.set(channel, set)
+    }
+    set.add(handler)
     return () => {
-      const set = map.get(channel)
-      if (set) set.delete(handler)
+      map.get(channel)?.delete(handler)
     }
   }, [])
 
   /**
    * send(frame) — deliver a frame to the server.
    * frame must include at least { channel, payload }.
-   * Silently drops if the socket is not yet open.
+   * Silently drops if the socket is not open.
    */
   const send = useCallback((frame: PeerFrame) => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    try {
-      ws.send(JSON.stringify(frame))
-    } catch (err) {
-      console.error('[usePeering] send error', err)
-    }
+    sockRef.current?.send(JSON.stringify(frame))
   }, [])
 
   /**
-   * close() — permanently close the connection and stop reconnecting.
-   * Useful when logging out.
+   * close() — tear the connection down early and stop reconnecting, without
+   * waiting for unmount (e.g. on logout). Unmount already does this; nothing
+   * is required to call it.
    */
   const close = useCallback(() => {
-    aliveRef.current = false
-    wsRef.current?.close()
+    sockRef.current?.stop()
+    sockRef.current = null
   }, [])
 
-  return { connected, subscribe, send, close }
+  return { connected, status, subscribe, send, close }
 }

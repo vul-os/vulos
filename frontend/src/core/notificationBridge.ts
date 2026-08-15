@@ -15,6 +15,9 @@
 // store simply stays client-only. NO NEW EGRESS — same-origin box API only.
 
 import { ingest, setRemoteSink } from './notificationStore'
+import { openReconnectingSocket, boxSocketUrl } from './reconnectingSocket'
+
+export const NOTIFICATIONS_STREAM_PATH = '/api/notifications/stream'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -90,25 +93,24 @@ async function hydrateHistory(): Promise<void> {
   } catch { /* offline / no backend → client-only feed */ }
 }
 
+// The live notification stream. This used to hand-roll its own retry loop with
+// a fixed 3s delay and an unstored setTimeout handle: stop() could close the
+// socket but could not clear a pending retry, and a box with the notify service
+// down was polled every 3s forever. It now shares the one reconnect policy with
+// /api/telemetry and /api/peering/stream — bounded exponential backoff, jitter
+// so the three do not retry in lockstep after a box restart, and a stop() that
+// actually stops.
 function connectStream(): () => void {
-  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/notifications/stream`
-  let alive = true
-  let ws: WebSocket | null = null
-  function open() {
-    if (!alive) return
-    try { ws = new WebSocket(url) } catch { return }
-    ws.onmessage = (e: MessageEvent) => {
+  const sock = openReconnectingSocket(boxSocketUrl(NOTIFICATIONS_STREAM_PATH), {
+    onMessage: (e: MessageEvent) => {
       try {
         const n: unknown = typeof e.data === 'string' ? JSON.parse(e.data) : null
         if (!isRecord(n) || n.source === 'xdg-open') return // desktop browser focus, not a toast
         ingest(fromBackend(n))
-      } catch { /* noop */ }
-    }
-    ws.onclose = () => { if (alive) setTimeout(open, 3000) }
-    ws.onerror = () => { try { ws?.close() } catch { /* noop */ } }
-  }
-  open()
-  return () => { alive = false; try { ws?.close() } catch { /* noop */ } }
+      } catch { /* malformed frame */ }
+    },
+  }, { label: 'notifications' })
+  return () => sock.stop()
 }
 
 // Proxy remote-item mutations to the backend. Best-effort — a failed sync only
