@@ -736,11 +736,58 @@ if ! mount -t overlay -o "lowerdir=$LOWER,upperdir=$UPPER,workdir=$WORK" overlay
 fi
 
 # Move the merged overlay to $rootmnt so the standard pivot_root works.
-# Bind-mount /run/vulos into the new root so our sub-mounts remain visible.
-mkdir -p "${rootmnt}/run/vulos"
-mount -o bind /run/vulos "${rootmnt}/run/vulos"
+#
+# There used to be two lines here, before the rebind below:
+#
+#   mkdir -p "${rootmnt}/run/vulos"
+#   mount -o bind /run/vulos "${rootmnt}/run/vulos"
+#
+# with the comment "bind-mount /run/vulos into the new root so our sub-mounts
+# remain visible". They could not do that, and never did. They are the third and
+# fourth lines of EVERY boot this project has ever produced:
+#
+#   mkdir: /root/run: Read-only file system
+#   mount: No such file or directory
+#
+# — visible even under `quiet splash`, because those are the raw stderr of
+# klibc's mkdir and mount, while initramfs-tools' log_*_msg helpers return
+# immediately when quiet=y. Four years of boot logs opening with errors is how a
+# log stops being read.
+#
+# WHY THEY COULD NOT WORK. At this point $rootmnt is still the DATA PARTITION —
+# the ext4 that root=LABEL=VULOS-LIVE-DATA named, mounted `ro` per the cmdline,
+# holding image.squashfs and nothing resembling a root filesystem. It has no
+# /run, and it cannot be given one: it is read-only. So the mkdir failed, and
+# the bind then failed for want of its target.
+#
+# Reordering would not have saved them either. Put after the rebind below,
+# $rootmnt is the writable overlay and both commands succeed — and the result is
+# still discarded, because initramfs-tools' own /init does this a few lines after
+# it runs us (init:281, read out of this image's initrd, not assumed):
+#
+#   mount -n -o move /run ${rootmnt}/run
+#
+# MS_MOVE takes the whole subtree, so /run/vulos/lower, /run/vulos/rw and
+# /run/vulos/merged travel to the real root with it, and anything we had bound
+# under ${rootmnt}/run would be shadowed by that move regardless. The stated goal
+# is already met by the stock boot path.
+#
+# That /run really is the initramfs's own tmpfs, moved rather than recreated, was
+# measured rather than reasoned: the multi-screen kiosk failed with EACCES
+# exec'ing /run/vulos-kiosk/session.sh on a real boot, because the mount carries
+# the initramfs's noexec flag for the life of the system (roadmap/SCREENS-QEMU.md).
+#
+# So the two lines are deleted, not moved. Pinned by
+# TestLiveHookNeverWritesIntoTheReadOnlyDataPartition in
+# backend/internal/docsref/livehook_test.go, which runs THIS file against a
+# fabricated read-only $rootmnt with klibc-shaped mount/mkdir stubs and fails on
+# any write to $rootmnt before the rebind below.
 
-# Rebind $rootmnt to the merged overlay view
+# Rebind $rootmnt to the merged overlay view.
+#
+# This is the one write to $rootmnt that belongs here, and it is a mount ONTO
+# the directory, not a write INTO the filesystem — which is why it works on a
+# read-only ext4 while the mkdir above did not.
 mount -o bind "$MERGED" "$rootmnt"
 
 if [ -n "$LOWER_DEV" ]; then
