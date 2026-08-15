@@ -23,6 +23,7 @@ import {
 import StreamViewer from '../stream/StreamViewer'
 import FileManager from '../files/FileManager'
 import Messages from '../peering/Messages'
+import Terminal from '../terminal/Terminal'
 
 let fetchRig: FetchRig | null = null
 let socketRig: ReturnType<typeof installWebSocket> | null = null
@@ -277,6 +278,78 @@ describe('Messages', () => {
 
     expect(screen.getByText('Offline')).toBeInTheDocument()
     expect(screen.getByText(/Not receiving live messages/i)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Terminal
+//
+// xterm.js does mount under jsdom (DOM renderer), so these exercise the real
+// component rather than a stand-in.
+// ---------------------------------------------------------------------------
+
+const PTY_SESSIONS = [
+  { id: 'pty-1', alive: true, title: 'zsh', created_at: new Date().toISOString() },
+]
+
+describe('Terminal', () => {
+  it('mounts straight into a live terminal when the box has no existing sessions', async () => {
+    socketRig = installWebSocket('open')
+    fetchRig = installFetch({ '/api/pty/sessions': { body: [] } })
+    const { container } = render(<Terminal />)
+    await settle(8)
+
+    // Its own surface: an xterm screen, and the pty socket opened with the
+    // geometry it measured.
+    expect(container.querySelector('.xterm')).toBeTruthy()
+    const ws = socketRig.last('/api/pty')
+    expect(ws, 'Terminal never opened the pty socket').toBeTruthy()
+    expect(ws.url).toMatch(/cols=\d+&rows=\d+/)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('offers the session picker when the box already has a live session', async () => {
+    socketRig = installWebSocket('open')
+    fetchRig = installFetch({ '/api/pty/sessions': { body: PTY_SESSIONS } })
+    const { container } = render(<Terminal />)
+    await settle(8)
+
+    expectNotBlank(container, 'Terminal (picker)')
+    expect(screen.getByText(/pty-1|zsh/)).toBeInTheDocument()
+  })
+
+  // REGRESSION (defect BUILTIN-8): a refused /api/pty upgrade — one of the four
+  // in the founder's console — fired error-then-close, and the close handler
+  // wrote "[session ended]" in dim grey for a session that never began. No
+  // explanation, no way to try again, and a lie about what happened.
+  it('says the shell is unavailable when the pty upgrade is refused', async () => {
+    socketRig = installWebSocket('fail')
+    fetchRig = installFetch({ '/api/pty/sessions': { body: [] } })
+    const { container } = render(<Terminal />)
+    await settle(8)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/Shell unavailable/i)
+    expect(screen.getByRole('button', { name: /reconnect/i })).toBeEnabled()
+    expect(
+      container.textContent,
+      'a connection that was refused never had a session to end',
+    ).not.toMatch(/session ended/)
+  })
+
+  // REGRESSION (defect BUILTIN-9): while /api/pty/sessions was in flight the
+  // root rendered `<div style={{background, height:'100%'}} />` — a coloured
+  // rectangle with no text at all, indistinguishable from an app that failed to
+  // mount. Only visible on a slow or unreachable box, which is precisely when
+  // it matters.
+  it('is readable, not a blank rectangle, while the session list is still loading', async () => {
+    socketRig = installWebSocket('open')
+    fetchRig = installFetch({ '/api/pty/sessions': { hang: true } })
+    const { container } = render(<Terminal />)
+    await settle(4)
+
+    expectNotBlank(container, 'Terminal (slow box)')
+    expect(screen.getByText(/Opening terminal/i)).toBeInTheDocument()
   })
 })
 

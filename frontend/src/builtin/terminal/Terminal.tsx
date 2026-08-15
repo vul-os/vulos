@@ -385,6 +385,9 @@ function TerminalView({ sessionID, prefs }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [currentPrefs, setCurrentPrefs] = useState<TerminalPrefs>(prefs)
+  const [connError, setConnError] = useState<string | null>(null)
+  // Bumped by Reconnect to re-run the socket effect.
+  const [attempt, setAttempt] = useState(0)
 
   // Keep ref up-to-date for the resize observer closure
   const currentPrefsRef = useRef(currentPrefs)
@@ -443,15 +446,30 @@ function TerminalView({ sessionID, prefs }: TerminalViewProps) {
     const ws = new WebSocket(url)
     ws.binaryType = 'arraybuffer'
 
-    ws.onopen = () => term.focus()
+    // A refused /api/pty upgrade fires error-then-close, and the close handler
+    // used to write "[session ended]" for it — reporting the end of a session
+    // that never began, with no hint that the shell service is down and no way
+    // to try again. Track whether the socket ever opened so the two cases can
+    // be told apart (BUILTIN-8).
+    let everOpened = false
+
+    ws.onopen = () => { everOpened = true; term.focus() }
 
     ws.onmessage = (e: MessageEvent<string | ArrayBuffer>) => {
       const data = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data)
       term.write(data)
     }
 
+    ws.onerror = () => {
+      if (!everOpened) setConnError('refused')
+    }
+
     ws.onclose = () => {
-      term.write('\r\n\x1b[90m[session ended]\x1b[0m\r\n')
+      if (everOpened) {
+        term.write('\r\n\x1b[90m[session ended]\x1b[0m\r\n')
+      } else {
+        setConnError('refused')
+      }
     }
 
     term.onData((data) => {
@@ -477,7 +495,7 @@ function TerminalView({ sessionID, prefs }: TerminalViewProps) {
       termRef.current = null
       fitAddonRef.current = null
     }
-  }, [sessionID])
+  }, [sessionID, attempt])
 
   const theme = THEMES[currentPrefs.theme]
 
@@ -519,6 +537,38 @@ function TerminalView({ sessionID, prefs }: TerminalViewProps) {
           onChange={handlePrefsChange}
           onClose={() => setShowSettings(false)}
         />
+      )}
+
+      {/* Shell unreachable — an overlay, not a spinner, and it offers a way
+          back. Without this a refused /api/pty upgrade left a black rectangle
+          whose only clue was a dim "[session ended]" for a session that never
+          started. */}
+      {connError && (
+        <div
+          role="alert"
+          style={{
+            position: 'absolute', inset: 0, zIndex: 100,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 8, padding: 24, textAlign: 'center',
+            background: theme.background, color: theme.foreground,
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 22, opacity: 0.5 }}>⚠</span>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Shell unavailable</div>
+          <div style={{ fontSize: 12, opacity: 0.7, maxWidth: 360 }}>
+            The box refused the terminal connection. The shell service may not be running.
+          </div>
+          <button
+            onClick={() => { setConnError(null); setAttempt(a => a + 1) }}
+            style={{
+              marginTop: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+              borderRadius: 6, border: `1px solid ${theme.brightBlack ?? '#555'}`,
+              background: 'transparent', color: theme.foreground,
+            }}
+          >
+            Reconnect
+          </button>
+        </div>
       )}
 
       {/* xterm container */}
@@ -582,7 +632,20 @@ export default function Terminal() {
   }
 
   if (mode === 'loading') {
-    return <div style={{ background: THEMES[prefs.theme].background, height: '100%' }} />
+    // Was a bare coloured rectangle with no text whatsoever. /api/pty/sessions
+    // normally answers instantly, so nobody saw it — but on a loaded or
+    // unreachable box it is a black void with nothing to read, which is
+    // indistinguishable from an app that failed to mount.
+    return (
+      <div style={{
+        background: THEMES[prefs.theme].background, height: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: THEMES[prefs.theme].brightBlack, fontSize: 12,
+        fontFamily: prefs.fontFamily,
+      }}>
+        Opening terminal…
+      </div>
+    )
   }
 
   if (mode === 'pick') {

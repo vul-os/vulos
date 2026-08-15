@@ -30,6 +30,14 @@ export interface RouteSpec {
   text?: string
   /** Reject the fetch promise instead of answering — a network-level failure. */
   networkError?: boolean
+  /**
+   * Never settle. This is the "slow box" case, and it is the only way to
+   * observe an app's first-paint loading state: with a mock that resolves on
+   * the next microtask, most of these apps have already swapped to their real
+   * surface before the first assertion runs, so a loading state that is a blank
+   * rectangle would never be noticed.
+   */
+  hang?: boolean
 }
 
 export type RouteHandler = RouteSpec | ((url: URL, init: RequestInit | undefined) => RouteSpec)
@@ -80,6 +88,7 @@ export function installFetch(
     const spec = typeof handler === 'function' ? handler(url, init) : handler
 
     if (spec.networkError) return Promise.reject(new TypeError('Failed to fetch'))
+    if (spec.hang) return new Promise<Response>(() => { /* never settles */ })
     return Promise.resolve(specToResponse(spec))
   }
 
