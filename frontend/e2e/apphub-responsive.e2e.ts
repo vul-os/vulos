@@ -9,17 +9,26 @@ import { manyApps, APPS } from './apphub-fixture'
 /**
  * An arm64 box browsing a catalogue that contains x86_64-only Flathub apps.
  *
- * Steam is the canonical one: it is the app a user is most likely to search
- * for and be unable to install, and "why can't I find Steam?" is the exact
- * complaint that showing-with-a-reason exists to prevent.
+ * Lutris rather than Steam, deliberately. Steam is the obvious example and it
+ * is NOT in this catalogue: roadmap/APP-CATALOG.md policy 1a excludes
+ * proprietary apps for now, which takes Steam, Chrome, Spotify, Discord, Slack
+ * and Zoom with it. Writing a fixture around one of those would model a
+ * catalogue this product does not ship and quietly teach the next reader that
+ * it does.
+ *
+ * Lutris is the honest stand-in: open source, kept by policy 1a's own list of
+ * what remains in gaming, and genuinely x86_64-only on Flathub. Policy 1a notes
+ * that removing proprietary apps shrinks the x86_64-only set — it does not empty
+ * it, which is exactly why this comparison still has to work.
  */
 const ARM_BOX_CATALOGUE = [
   ...APPS,
   {
     ...APPS[0],
-    id: 'steam', name: 'Steam', type: 'desktop',
-    flatpak_id: 'com.valvesoftware.Steam', arch: ['x86_64'],
-    description: 'Game distribution platform and store', category: 'games',
+    id: 'lutris', name: 'Lutris', type: 'desktop',
+    flatpak_id: 'net.lutris.Lutris', arch: ['x86_64'],
+    description: 'Open gaming platform — install and manage games from many sources',
+    category: 'games',
   },
 ]
 

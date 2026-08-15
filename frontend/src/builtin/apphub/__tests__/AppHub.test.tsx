@@ -371,32 +371,32 @@ describe('architecture', () => {
   // box must.
 
   it('offers an x86_64-only app on an amd64 box, despite the different spelling', async () => {
-    boxWith('amd64', { id: 'steam', name: 'Steam', arch: ['x86_64'] })
+    boxWith('amd64', { id: 'lutris', name: 'Lutris', arch: ['x86_64'] })
     render(<AppHub />)
-    await screen.findByText('Steam')
+    await screen.findByText('Lutris')
 
-    expect(screen.getByRole('button', { name: 'Install Steam' })).toBeInTheDocument()
-    expect(within(cardFor('Steam')).queryByText(/Needs/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Install Lutris' })).toBeInTheDocument()
+    expect(within(cardFor('Lutris')).queryByText(/Needs/)).toBeNull()
   })
 
   it('refuses an x86_64-only app on an arm64 box, and names what it needs', async () => {
-    boxWith('arm64', { id: 'steam', name: 'Steam', arch: ['x86_64'] })
+    boxWith('arm64', { id: 'lutris', name: 'Lutris', arch: ['x86_64'] })
     render(<AppHub />)
-    await screen.findByText('Steam')
+    await screen.findByText('Lutris')
 
-    // Shown, not hidden — "why can't I find Steam?" is answered on the card.
-    expect(within(cardFor('Steam')).getByText('Needs amd64')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Install Steam' })).toBeNull()
+    // Shown, not hidden — "why can't I find Lutris?" is answered on the card.
+    expect(within(cardFor('Lutris')).getByText('Needs amd64')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Install Lutris' })).toBeNull()
   })
 
   it('reads the box architecture in uname spelling too', async () => {
     // A backend answering `uname -m` rather than `dpkg --print-architecture`
     // must not silently mark the whole catalogue incompatible.
-    boxWith('aarch64', { id: 'steam', name: 'Steam', arch: ['arm64'] })
+    boxWith('aarch64', { id: 'lutris', name: 'Lutris', arch: ['arm64'] })
     render(<AppHub />)
-    await screen.findByText('Steam')
+    await screen.findByText('Lutris')
 
-    expect(screen.getByRole('button', { name: 'Install Steam' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Install Lutris' })).toBeInTheDocument()
   })
 
   it('shows the box architecture, so the user can see what decides this', async () => {
@@ -409,7 +409,7 @@ describe('architecture', () => {
   it('offers a filter to hide what this box cannot run, and it is off by default', async () => {
     mockBackend({
       '/api/store/registry': ok([
-        { ...APPS[0], id: 'steam', name: 'Steam', arch: ['x86_64'] },
+        { ...APPS[0], id: 'lutris', name: 'Lutris', arch: ['x86_64'] },
         { ...APPS[1], arch: ['arm64'] },
       ]),
       '/api/store/installed': ok([]),
@@ -419,55 +419,55 @@ describe('architecture', () => {
     await screen.findByText('Darktable')
 
     // Default: BOTH are on screen. An app that vanishes teaches nothing.
-    expect(screen.getByText('Steam')).toBeInTheDocument()
+    expect(screen.getByText('Lutris')).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: /Runs on/ })[0])
-    await waitFor(() => expect(screen.queryByText('Steam')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('Lutris')).toBeNull())
     expect(screen.getByText('Darktable')).toBeInTheDocument()
   })
 
   it('never hides a searched-for app behind the compatibility filter', async () => {
-    // Someone typing "steam" is asking about Steam specifically. Answering
+    // Someone typing "lutris" is asking about Lutris specifically. Answering
     // "no results" — on a box that simply cannot run it — is the exact failure
     // that showing-with-a-reason exists to avoid.
     mockBackend({
       '/api/store/registry': ok([
-        { ...APPS[0], id: 'steam', name: 'Steam', arch: ['x86_64'] },
+        { ...APPS[0], id: 'lutris', name: 'Lutris', arch: ['x86_64'] },
         { ...APPS[1], arch: ['arm64'] },
       ]),
       '/api/store/installed': ok([]),
       '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
     })
     render(<AppHub />)
-    await screen.findByText('Steam')
+    await screen.findByText('Lutris')
 
     fireEvent.click(screen.getAllByRole('button', { name: /Runs on/ })[0])
-    await waitFor(() => expect(screen.queryByText('Steam')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('Lutris')).toBeNull())
 
-    fireEvent.change(searchBox(), { target: { value: 'steam' } })
-    expect(await screen.findByText('Steam')).toBeInTheDocument()
-    expect(within(cardFor('Steam')).getByText('Needs amd64')).toBeInTheDocument()
+    fireEvent.change(searchBox(), { target: { value: 'lutris' } })
+    expect(await screen.findByText('Lutris')).toBeInTheDocument()
+    expect(within(cardFor('Lutris')).getByText('Needs amd64')).toBeInTheDocument()
   })
 
   it('sorts what this box cannot run below what it can', async () => {
     mockBackend({
       '/api/store/registry': ok([
         // Alphabetically first, but incompatible.
-        { ...APPS[0], id: 'aaa-steam', name: 'AAA Steam', arch: ['x86_64'] },
+        { ...APPS[0], id: 'aaa-lutris', name: 'AAA Lutris', arch: ['x86_64'] },
         { ...APPS[1], id: 'zzz-ok', name: 'ZZZ Runs Here', arch: ['arm64'] },
       ]),
       '/api/store/installed': ok([]),
       '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
     })
     render(<AppHub />)
-    await screen.findByText('AAA Steam')
+    await screen.findByText('AAA Lutris')
 
     // Read the GRID's own order. A role query by name also matches each card's
     // "Install <name>" button, which is a different control and says nothing
     // about card order.
     const order = [...document.querySelectorAll('article.hub-card')]
       .map(c => c.getAttribute('data-app-id'))
-    expect(order).toEqual(['zzz-ok', 'aaa-steam'])
+    expect(order).toEqual(['zzz-ok', 'aaa-lutris'])
   })
 
   it('makes no compatibility claim when the box has not reported an architecture', async () => {

@@ -398,15 +398,17 @@ export default function AppHub() {
    *
    * ── Shown-with-a-reason, not hidden ─────────────────────────────────────
    *
-   * Vulos publishes both amd64 and arm64 images, and a large share of Flathub's
-   * desktop catalogue is x86_64-only — Steam, Chrome, Spotify, Zoom, VS Code,
-   * Discord and Slack among them. On an ARM box that is roughly a third of the
-   * catalogue, so the choice of what to do with it is not a detail.
+   * Vulos publishes both amd64 and arm64 images, and a share of Flathub's
+   * desktop catalogue is x86_64-only — Lutris, Bottles, Heroic and ProtonUp-Qt
+   * among what this product actually ships. (The most famous x86_64-only names
+   * are proprietary and therefore out of the catalogue entirely for now, under
+   * roadmap/APP-CATALOG.md policy 1a; that shrinks the incompatible set without
+   * emptying it, which is why this still has to be got right.)
    *
    * Hiding them silently produces the worst outcome: the user searches for
-   * Steam, finds nothing, and learns nothing. They cannot tell "this OS has
-   * never heard of Steam" from "your box cannot run Steam", and only one of
-   * those is true. So incompatible apps are always RENDERED, always LABELLED
+   * Lutris, finds nothing, and learns nothing. They cannot tell "this OS has
+   * never heard of it" from "your box cannot run it", and only one of those is
+   * true. So incompatible apps are always RENDERED, always LABELLED
    * with the architecture they need, and sorted BELOW the ones that work —
    * which gets the practical benefit of a filter (what you can install is at
    * the top) without the cost of an app vanishing.
