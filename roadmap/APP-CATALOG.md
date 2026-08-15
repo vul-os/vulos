@@ -53,10 +53,25 @@ Flathub, an official Debian repository, an official vendor package, a web app, o
 Vulos first-party release — recorded with the reason. Flathub is the default, not the
 rule.
 
-**4 — Architecture is explicit.**
+**4 — Architecture is explicit, and the hub shows what *this* box can install.**
 Vulos publishes **amd64 and arm64** images. Many Flathub apps are `x86_64`-only. An
 entry that appears in the App Hub on an arm64 box and cannot install is a defect, so
-`arch` is set from measurement, never assumption.
+`arch` is set from measurement, never assumption — and the hub compares it against the
+box's own architecture and makes the result visible.
+
+The architecture that governs is **the box's, not the browser's**. Desktop apps are
+streamed from the box, so a user on an ARM Mac connected to an amd64 box must be
+offered amd64 apps. Anything derived from `navigator` or a client-controlled header is
+wrong in exactly the way that looks right when tested on one machine.
+
+Three naming schemes collide here and a comparison that mixes them matches nothing and
+fails silently: Debian `amd64`/`arm64`, Flatpak `x86_64`/`aarch64`, Go's
+`runtime.GOARCH` `amd64`/`arm64`. The registry uses the Debian spelling; normalisation
+happens in exactly one place.
+
+Unavailable apps are **shown with a reason rather than hidden**. An app that silently
+vanishes produces "why can't I find Steam?"; an app marked unavailable for a stated
+reason teaches the user something true about their hardware.
 
 **5 — Icons are never invented.**
 Founder directive. Icon resolution is keyed by app **id** into `ART`/`appArt.tsx` and
