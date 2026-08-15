@@ -218,35 +218,54 @@ test('the search field offers exactly one clear button', async ({ page }) => {
    * first version of this test used exactly that hit-test and PASSED with the
    * fix reverted, which is the defect class this repository has the most of.
    *
-   * What does discriminate is what the pixel does. The hub's own button spans
-   * roughly [right-30, right-6]; the native one renders in the padding beyond
-   * it. So a click 3px from the inner right edge lands on the native button if
-   * it exists and on inert input padding if it does not — and only one of those
-   * two clears the field.
+   * What does discriminate is what the pixel does. Measured with the fix
+   * reverted, on a 390px phone, against a build served from a PRIVATE output
+   * directory (the shared dist/ is rebuilt by other agents mid-run and is not
+   * evidence of anything):
+   *
+   *   input box [12, 206], padding-right 34px, so content box ends at 171
+   *   hub's own button        [176, 200]   -> clicks here clear, by design
+   *   native cancel button    ~[160, 171]  -> clicks here clear ONLY if present
+   *   inert padding           [200, 206]   -> clicks here never clear
+   *
+   * The native button sits INSIDE the content box, to the LEFT of the hub's
+   * own. The first version of this test clicked 3px from the outer right edge —
+   * inert padding — and therefore passed whether or not the native button
+   * existed. Aiming at the content-box edge instead is what makes it a test.
+   *
+   * With the fix in place that point is ordinary text area: clicking it places
+   * a caret and leaves the value alone.
    */
   await bootHub(page, { width: 390, height: 844 })
   const input = page.getByPlaceholder('Search apps')
   await input.fill('matrix')
   await settle(page)
 
-  const box = await input.boundingBox()
-  if (!box) throw new Error('the search field did not render')
-
-  // Prove the probe is aimed at empty space, not at the hub's own button.
-  const onOwnButton = await input.evaluate((el) => {
+  // The native button hugs the inner (content-box) right edge, so derive the
+  // probe point from that rather than from a hard-coded offset.
+  const probe = await input.evaluate((el) => {
     const r = el.getBoundingClientRect()
-    const t = document.elementFromPoint(Math.round(r.right) - 3, Math.round(r.top + r.height / 2))
-    return !!(t as Element | null)?.closest('.hub-search-clear')
+    const cs = getComputedStyle(el)
+    const contentRight = r.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth)
+    return { x: contentRight - 6, y: r.top + r.height / 2 }
   })
-  expect(onOwnButton, "the probe point is on the hub's own clear button — it proves nothing there").toBe(false)
 
-  await page.mouse.click(box.x + box.width - 3, box.y + box.height / 2)
+  // Guard the guard: if the probe point were on the hub's OWN clear button, the
+  // click below would clear the field for a legitimate reason and this test
+  // would fail forever instead of measuring anything.
+  const onOwnButton = await page.evaluate(
+    ([x, y]) => !!(document.elementFromPoint(x, y) as Element | null)?.closest('.hub-search-clear'),
+    [probe.x, probe.y] as const,
+  )
+  expect(onOwnButton, "the probe point landed on the hub's own clear button — it proves nothing there").toBe(false)
+
+  await page.mouse.click(probe.x, probe.y)
   await settle(page)
 
   await expect(
     input,
-    'clicking the far right of the field cleared it, so a second, native clear ' +
-      'button is rendered there alongside the hub\'s own',
+    'clicking the inner right edge of the field cleared it, so Chromium is ' +
+      "drawing its own search-cancel button there alongside the hub's",
   ).toHaveValue('matrix')
 })
 
