@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useAuth } from './AuthProvider'
+import './setup.css'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -25,6 +26,11 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [capsLock, setCapsLock] = useState(false)
+  // WAVE2-RECOVERY: the phrase-based reset flow. See RecoverPanel below for why
+  // this had to be built rather than merely wired up.
+  const [recovering, setRecovering] = useState(false)
 
   // Check if this is first-time setup (no users yet)
   useEffect(() => {
@@ -161,6 +167,9 @@ export default function LoginScreen() {
       {/* Auth card */}
       <div className="relative w-full max-w-sm rounded-2xl glass elevate-xl p-6 sm:p-7 animate-[fadeIn_0.5s_ease-out]" style={{ border: '1px solid var(--glass-border)' }}>
 
+      {recovering ? (
+        <RecoverPanel initialUsername={username} onCancel={() => setRecovering(false)} />
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
         <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>
           {isSetup ? 'Create your account' : 'Sign in'}
@@ -168,44 +177,78 @@ export default function LoginScreen() {
 
         {isSetup && (
           <div>
-            <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Display Name</label>
+            {/* htmlFor/id throughout. Every field on this screen had a <label>
+                associated with nothing, so the first screen of the product
+                announced three unlabelled boxes. */}
+            <label className="wz-label" htmlFor="login-display-name">Your name</label>
             <input
+              id="login-display-name"
               type="text"
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
-              placeholder="Your name"
+              placeholder="What should we call you?"
+              autoComplete="name"
               className="input"
             />
           </div>
         )}
 
         <div>
-          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Username</label>
+          <label className="wz-label" htmlFor="login-username">Username</label>
           <input
+            id="login-username"
             type="text"
             value={username}
             onChange={e => setUsername(e.target.value)}
-            placeholder="Username"
+            // Was placeholder="Username" under a label reading "Username" —
+            // the placeholder restated the label and told the user nothing.
+            placeholder={isSetup ? 'Pick a short name to sign in with' : ''}
             required
             autoFocus
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             className="input"
           />
         </div>
 
         <div>
-          <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Password"
-            required
-            className="input"
-          />
+          <label className="wz-label" htmlFor="login-password">Password</label>
+          <div className="login-pw">
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              // Caps Lock is the single most common cause of "my password
+              // stopped working", and a password field shows dots either way,
+              // so there is nothing for the user to notice on their own.
+              onKeyUp={e => setCapsLock(e.getModifierState?.('CapsLock') ?? false)}
+              onKeyDown={e => setCapsLock(e.getModifierState?.('CapsLock') ?? false)}
+              required
+              autoComplete={isSetup ? 'new-password' : 'current-password'}
+              className="input"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              aria-pressed={showPassword}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="login-pw-toggle"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {capsLock && (
+            <p className="wz-hint wz-warn mt-1.5" role="status">Caps Lock is on.</p>
+          )}
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-center" style={{ color: 'var(--status-danger)' }}>{error}</p>
+          <p role="alert" className="wz-note wz-note--danger">
+            <span className="wz-note-icon" aria-hidden="true">!</span>
+            <span>{error}</span>
+          </p>
         )}
 
         <button
@@ -223,20 +266,32 @@ export default function LoginScreen() {
             ? (isSetup ? 'Creating account…' : 'Signing in…')
             : (isSetup ? 'Create Account' : 'Sign In')}
         </button>
+
+        {!isSetup && (
+          <div className="text-center">
+            <button type="button" onClick={() => setRecovering(true)} className="wz-linkish text-sm">
+              Forgot your password?
+            </button>
+          </div>
+        )}
       </form>
+      )}
       </div>
 
       {/* Top-right controls */}
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+      <div className="absolute top-4 right-4 flex items-center gap-2 safe-pt safe-px">
+        {/* Was a 32px button in text-neutral-600 — 2.2:1 against the page in
+            dark, 2.3:1 in light. An icon-only control nobody could see. */}
         <button
           onClick={() => setShowHelp(!showHelp)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-neutral-600 hover:text-neutral-300 hover:bg-neutral-800/60 transition-colors"
-          title="Help"
+          aria-expanded={showHelp}
+          aria-label="Help"
+          className="login-iconbtn"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
-            <path d="M6 6.5a2 2 0 013.5 1.3c0 1.2-1.5 1.2-1.5 2.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <circle cx="8" cy="12" r="0.5" fill="currentColor"/>
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M6 6.5a2 2 0 013.5 1.3c0 1.2-1.5 1.2-1.5 2.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <circle cx="8" cy="12" r="0.6" fill="currentColor"/>
           </svg>
         </button>
         <ThemeToggle />
@@ -244,12 +299,10 @@ export default function LoginScreen() {
 
       {/* Help panel */}
       {showHelp && (
-        <div className="absolute top-14 right-4 w-80 bg-neutral-900/95 backdrop-blur-xl border border-neutral-700/50 rounded-xl shadow-2xl shadow-black/50 overflow-hidden animate-[fadeIn_0.12s_ease-out] z-50">
-          <div className="px-4 pt-3 pb-2 border-b border-neutral-800/60">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-neutral-200">Help</span>
-              <button onClick={() => setShowHelp(false)} className="text-neutral-600 hover:text-neutral-300 text-xs">Close</button>
-            </div>
+        <div className="login-help glass elevate-xl">
+          <div className="login-help-head">
+            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Help</span>
+            <button onClick={() => setShowHelp(false)} className="wz-quiet text-xs">Close</button>
           </div>
           <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
             <HelpSection title="Getting Started" items={[
@@ -283,19 +336,206 @@ export default function LoginScreen() {
         </div>
       )}
 
-      {/* Bottom branding */}
+      {/* The fullscreen affordance was IMPORTED and never rendered — dead since
+          whenever the "bottom branding" block it sat beside was removed. It is
+          genuinely useful on this screen (the OS wants to be fullscreen and
+          this is the first screen anyone meets), so it is rendered rather than
+          having its import deleted.
+
+          The founder removed the "an open operating system" tagline and the
+          "Vulos OS" foot line on 2026-08-15 (27d607d7). Not reinstated. */}
+      <div className="relative mt-8">
+        <FullscreenHint />
+      </div>
     </div>
+  )
+}
+
+/**
+ * Password reset using the 24-word master recovery phrase.
+ *
+ * POST /api/auth/masterkey/recover has existed, unauthenticated (it is in the
+ * backend's publicPaths — "user is locked out"), rate-limited, and with a
+ * deliberately uniform failure message so it cannot be used to probe usernames.
+ * NOTHING IN THE FRONTEND CALLED IT. Grepped: this was the only reference in
+ * src/ to that path, and it was absent.
+ *
+ * So the master recovery phrase was a credential with no lock. Setup minted it,
+ * MasterKeyReveal made the user attest in writing that they had stored it
+ * safely, the recovery kit now ships it — and a user who actually forgot their
+ * password had no way to spend it. Building this is what makes the rest of that
+ * ceremony honest.
+ *
+ * Contract (services/auth/handlers.go): { username, mnemonic, new_password }.
+ * The server's error text is shown verbatim precisely BECAUSE it is uniform;
+ * substituting a friendlier message here that distinguished "no such user" from
+ * "wrong phrase" would reintroduce the enumeration oracle the backend avoids.
+ */
+function RecoverPanel({ initialUsername, onCancel }: { initialUsername: string; onCancel: () => void }) {
+  const [username, setUsername] = useState(initialUsername)
+  const [phrase, setPhrase] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+
+  const words = phrase.trim().split(/\s+/).filter(Boolean).length
+  const MIN_PW = 8
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (busy) return
+    setError('')
+    if (newPassword.length < MIN_PW) { setError(`Your new password must be at least ${MIN_PW} characters.`); return }
+    if (newPassword !== confirm) { setError('The two new passwords do not match.'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/auth/masterkey/recover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          // Normalised, because a phrase pasted out of the recovery kit JSON
+          // arrives with whatever whitespace the file had.
+          mnemonic: phrase.trim().replace(/\s+/g, ' ').toLowerCase(),
+          new_password: newPassword,
+        }),
+      })
+      const raw: unknown = await res.json().catch(() => ({}))
+      const data = isRecord(raw) ? raw : {}
+      if (!res.ok) {
+        setError(
+          (typeof data.error === 'string' && data.error)
+            || (res.status === 429
+              ? 'Too many attempts from this device. Wait a few minutes and try again.'
+              : `Recovery failed (${res.status}).`),
+        )
+        setBusy(false)
+        return
+      }
+      setDone(true)
+    } catch {
+      setError('Could not reach this box. Check your connection and try again.')
+    }
+    setBusy(false)
+  }
+
+  if (done) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-medium text-center" style={{ color: 'var(--text-secondary)' }}>
+          Password changed
+        </h2>
+        <p className="wz-note wz-note--ok">
+          <span className="wz-note-icon" aria-hidden="true">✓</span>
+          <span>Your password has been reset. Sign in with the new one.</span>
+        </p>
+        <button onClick={onCancel} className="btn-primary w-full py-3">Back to sign in</button>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <h2 className="text-lg font-medium text-center mb-2" style={{ color: 'var(--text-secondary)' }}>
+        Reset with your recovery phrase
+      </h2>
+      <p className="wz-hint">
+        The 24 words from the recovery kit you saved when you set this box up. This resets your
+        password on the box itself — nothing is sent anywhere else.
+      </p>
+
+      <div>
+        <label className="wz-label" htmlFor="rec-username">Username</label>
+        <input
+          id="rec-username"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          required
+          autoFocus
+          autoCapitalize="none"
+          spellCheck={false}
+          className="input"
+        />
+      </div>
+
+      <div>
+        <label className="wz-label" htmlFor="rec-phrase">Recovery phrase</label>
+        <textarea
+          id="rec-phrase"
+          value={phrase}
+          onChange={e => setPhrase(e.target.value)}
+          rows={3}
+          required
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="ridge acid lumber velvet …"
+          className="input login-phrase"
+        />
+        {/* A live word count, because 24 words typed by hand is the step people
+            get wrong, and a uniform server error cannot tell them which half
+            was wrong. */}
+        <p className={`wz-hint mt-1.5 ${words === 24 ? 'wz-ok' : ''}`}>
+          {words === 0 ? '24 words' : `${words} of 24 words`}
+        </p>
+      </div>
+
+      <div>
+        <label className="wz-label" htmlFor="rec-new">New password</label>
+        <input
+          id="rec-new"
+          type="password"
+          value={newPassword}
+          onChange={e => setNewPassword(e.target.value)}
+          required
+          autoComplete="new-password"
+          className="input"
+        />
+        <p className="wz-hint mt-1.5">At least {MIN_PW} characters.</p>
+      </div>
+
+      <div>
+        <label className="wz-label" htmlFor="rec-confirm">Confirm new password</label>
+        <input
+          id="rec-confirm"
+          type="password"
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          required
+          autoComplete="new-password"
+          className="input"
+        />
+      </div>
+
+      {error && (
+        <p role="alert" className="wz-note wz-note--danger">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{error}</span>
+        </p>
+      )}
+
+      <button type="submit" disabled={busy || words !== 24} className="btn-primary w-full py-3">
+        {busy ? 'Checking…' : 'Reset password'}
+      </button>
+      <div className="text-center">
+        <button type="button" onClick={onCancel} className="wz-linkish text-sm">Back to sign in</button>
+      </div>
+    </form>
   )
 }
 
 function HelpSection({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
-      <h3 className="text-xs font-medium text-neutral-400 mb-1.5">{title}</h3>
-      <ul className="space-y-1">
+      <h3 className="wz-eyebrow mb-1.5">{title}</h3>
+      <ul className="space-y-1.5">
         {items.map((item, i) => (
-          <li key={i} className="text-[12px] leading-relaxed flex gap-2" style={{ color: 'var(--text-muted)' }}>
-            <span className="text-neutral-700 mt-0.5 shrink-0">{'\u2022'}</span>
+          // The bullet was text-neutral-700: 1.6:1 dark, 1.4:1 light. It was
+          // not a contrast failure the scanner would report, because a lone
+          // "\u2022" in its own <span> reads as text \u2014 it simply could not be seen.
+          <li key={i} className="wz-hint flex gap-2">
+            <span aria-hidden="true" className="shrink-0" style={{ color: 'var(--text-tertiary)' }}>{'\u2022'}</span>
             <span>{item}</span>
           </li>
         ))}

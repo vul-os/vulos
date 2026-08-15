@@ -75,6 +75,11 @@
 .wz-ok     { color: var(--ok-strong); }
 .wz-warn   { color: var(--warn-strong); }
 .wz-danger { color: var(--danger-strong); }
+/* Compound forms: .wz-hint also sets `color`, and it is declared later in this
+   file, so `class="wz-hint wz-ok"` lost to it on source order alone. */
+.wz-hint.wz-ok     { color: var(--ok-strong); }
+.wz-hint.wz-warn   { color: var(--warn-strong); }
+.wz-hint.wz-danger { color: var(--danger-strong); }
 
 /* ── Text tiers ───────────────────────────────────────────────────────────
    Three, deliberately. --text-faint/--text-ghost/--text-dim exist in the token
@@ -522,17 +527,22 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
 
 /* Recovery-kit contents list. */
 .wz-kitrow {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.25rem 1rem;
+  gap: 0.125rem 1rem;
   padding: 0.4375rem 0;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 0.8125rem;
 }
 .wz-kitrow:last-child { border-bottom: 0; }
-.wz-kitrow > span:last-child { text-align: right; min-width: 0; word-break: break-all; }
+.wz-kitrow > span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* On a phone the two columns become two lines rather than a 7rem label column
+   squeezing a 64-character checksum into a sliver. */
+@media (max-width: 30rem) {
+  .wz-kitrow { grid-template-columns: 1fr; }
+  .wz-kitrow > span:last-child { text-align: left; }
+}
 
 .wz-code {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -622,6 +632,81 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
 @media (max-width: 24rem) {
   .wz-header-inner > :nth-child(2) { display: none; }
   .wz-header-inner { gap: 0.5rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   The sign-in / create-account screen shares this sheet because it shares the
+   vocabulary — same labels, same notes, same quiet buttons. It is the same
+   moment in the product as the wizard, and it should not look like a different
+   application.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Password field with an inline reveal. */
+.login-pw { position: relative; display: flex; }
+.login-pw .input { padding-right: 4.25rem; width: 100%; }
+.login-pw-toggle {
+  position: absolute;
+  right: 0.375rem;
+  top: 50%;
+  transform: translateY(-50%);
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.login-pw-toggle:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* The recovery phrase box: monospace, because 24 words are checked character by
+   character against a printed kit. */
+.login-phrase {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 5rem;
+}
+
+/* Icon-only controls in the corner. 40px, and a token colour that is visible. */
+.login-iconbtn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.login-iconbtn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.login-iconbtn:focus-visible { outline: 2px solid var(--accent-text, var(--accent)); outline-offset: 2px; }
+
+.login-help {
+  position: absolute;
+  top: 3.75rem;
+  right: 1rem;
+  width: min(22rem, calc(100vw - 2rem));
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--glass-border);
+  overflow: hidden;
+  z-index: 50;
+}
+.login-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
 }
 
 /* ── Focus ───────────────────────────────────────────────────────────────

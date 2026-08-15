@@ -3058,9 +3058,35 @@ function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
         </p>
       )}
 
+      {/* Download button. FIRST, because it is the action of the step — it sat
+          below a full panel of details, which at 1440x900 put it under the
+          action bar and made the user scroll past everything to reach the one
+          thing they came here to do. */}
+      <button
+        onClick={IS05_downloadKit}
+        disabled={IS05_downloading || IK06_buildingPayload}
+        className={`btn-primary w-full ${IS05_downloaded ? 'wz-downloaded' : ''}`}
+      >
+        {IS05_downloading ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="spinner w-4 h-4" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} />
+            {t('Preparing download…')}
+          </span>
+        ) : IS05_downloaded
+          ? t('✓ Downloaded — download again')
+          : t('Download recovery kit')}
+      </button>
+
+      {IS05_error && (
+        <p role="alert" className="wz-note wz-note--danger mt-3">
+          <span className="wz-note-icon" aria-hidden="true">!</span>
+          <span>{IS05_error}</span>
+        </p>
+      )}
+
       {/* What's inside — stated plainly, so nobody has to open the JSON to find
           out whether it is worth protecting. */}
-      <div className="wz-panel">
+      <div className="wz-panel mt-3">
         <div className="wz-eyebrow mb-3">In this kit</div>
         <KitRow label="Recovery phrase" value={masterPhrase ? '24 words — the credential that restores access' : 'Not included'} ok={Boolean(masterPhrase)} />
         <KitRow label="Instance ID" value={config.IS05_ulid || '—'} mono />
@@ -3084,29 +3110,6 @@ function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
           <KitRow label="Checksum (SHA-256)" value={IK06_payload.checksum_sha256} mono />
         )}
       </div>
-
-      {/* Download button */}
-      <button
-        onClick={IS05_downloadKit}
-        disabled={IS05_downloading || IK06_buildingPayload}
-        className={`btn-primary w-full mt-4 ${IS05_downloaded ? 'wz-downloaded' : ''}`}
-      >
-        {IS05_downloading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="spinner w-4 h-4" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} />
-            {t('Preparing download…')}
-          </span>
-        ) : IS05_downloaded
-          ? t('✓ Downloaded — download again')
-          : t('Download recovery kit')}
-      </button>
-
-      {IS05_error && (
-        <p role="alert" className="wz-note wz-note--danger mt-3">
-          <span className="wz-note-icon" aria-hidden="true">!</span>
-          <span>{IS05_error}</span>
-        </p>
-      )}
 
       {/* Type-to-confirm gate. Now gated on the download HAVING HAPPENED as
           well: attesting "I have saved my recovery kit" while the button above
