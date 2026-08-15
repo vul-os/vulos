@@ -124,7 +124,20 @@ export default function DataExportPanel() {
         {COVERED.map(item => (
           <div key={item.label} className="px-4 py-3 bg-[var(--bg-surface)]">
             <div className="flex items-center gap-2 mb-0.5">
-              <span aria-hidden="true" className="text-success text-xs">✓</span>
+              {/* Mixed toward the primary text colour rather than painted with
+                  --status-success directly. That token is #16a34a in light,
+                  which lands at 3.1:1 on this surface — sub-AA, and
+                  aria-hidden is not an exemption because a sighted reader
+                  still has to see it. The mix keeps the tick green while
+                  clearing AA in both palettes.
+
+                  NOTE: --status-success itself is sub-AA for TEXT use in the
+                  light theme, and it is used as text elsewhere in the OS
+                  ("Vault initialized", "TURN server configured"). Fixing the
+                  token is the real repair; index.css belongs to the
+                  customization pass, so this is a local mitigation and the
+                  token is reported rather than edited here. */}
+              <span aria-hidden="true" className="text-[color-mix(in_srgb,var(--status-success)_65%,var(--text-primary))] text-xs">✓</span>
               <span className="text-sm font-medium text-[var(--text-primary)]">{item.label}</span>
             </div>
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">{item.detail}</p>

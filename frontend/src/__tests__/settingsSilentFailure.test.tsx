@@ -26,7 +26,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('../shell/useViewport', () => ({ useViewport: () => 'desktop' }))
+// Both exports are required: Settings pulls in ../desktop, whose store.ts
+// imports resolveViewportLayout from this same module to pick a dock profile.
+// A mock that returns only useViewport makes the whole file fail to load.
+vi.mock('../shell/useViewport', () => ({
+  useViewport: () => 'desktop',
+  resolveViewportLayout: () => 'desktop',
+}))
 vi.mock('../auth/AuthProvider', () => ({
   useAuth: () => ({ profile: { display_name: 'Ada', role: 'admin' }, updateProfile: vi.fn(), logout: vi.fn() }),
 }))

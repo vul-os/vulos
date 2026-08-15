@@ -5,6 +5,7 @@ import {
 import { useAuth } from '../auth/AuthProvider'
 import type { AuthProfile } from '../auth/AuthProvider'
 import { useTheme, DEFAULT_ACCENT } from './ThemeProvider'
+import { accentSolid } from './accentContrast'
 import { useWallpaper, DEFAULT_WALLPAPER } from './useWallpaper'
 import { PamVisibilityControl } from './PublicAppsManager'
 import { useFocusTrap } from '../shell/useFocusTrap'
@@ -1102,9 +1103,14 @@ function AccentPicker({ accent, setAccent }: AccentPickerProps) {
 
       {/* Live preview */}
       <div className="mt-3 flex items-center gap-3">
+        {/* accentSolid() darkens the chosen accent just enough that the white
+            label on it clears 4.5:1. Painting the raw accent here rendered the
+            default #3b82f6 with white text at 3.68:1 — and this is the swatch
+            the user judges every accent by, so it was the one button in
+            Settings guaranteed to be looked at closely. */}
         <button
           className="btn-primary text-sm"
-          style={{ background: accent }}
+          style={{ background: accentSolid(accent) || accent }}
           tabIndex={-1}
         >
           Preview button
@@ -2562,7 +2568,7 @@ function FingerprintSettings() {
               <li>DigitalPersona (USB 05ba:xxxx)</li>
               <li>Validity Sensors (USB 138a:xxxx)</li>
             </ul>
-            <p className="text-[12px] text-[var(--text-ghost)] mt-2">
+            <p className="text-[12px] text-[var(--text-tertiary)] mt-2">
               Virtual machines without USB passthrough and macOS/Windows are not supported.
               Install fprintd and libfprint2 to enable this feature.
             </p>
@@ -2672,7 +2678,7 @@ function FingerprintSettings() {
             <li>DigitalPersona (USB 05ba:xxxx)</li>
             <li>Validity Sensors (USB 138a:xxxx)</li>
           </ul>
-          <p className="text-[12px] text-[var(--text-ghost)] mt-2">
+          <p className="text-[12px] text-[var(--text-tertiary)] mt-2">
             Requires fprintd + libfprint2 on Linux.
             Virtual machines without USB passthrough are not supported.
           </p>

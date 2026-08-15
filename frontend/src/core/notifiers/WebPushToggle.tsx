@@ -141,7 +141,10 @@ function ExplainRow({ label, hint, muted }: ExplainRowProps) {
     <div className="flex items-center justify-between py-2">
       <span className="text-sm">
         {label}
-        <span className="block text-[12px] text-neutral-500">{hint}</span>
+        {/* Was `text-neutral-500`, a raw Tailwind grey that is theme-blind and
+            measured 3.98:1 against the dark surface. The theme token tracks
+            both palettes. */}
+        <span className="block text-[12px] text-[var(--text-tertiary)]">{hint}</span>
       </span>
       <span
         aria-hidden="true"
