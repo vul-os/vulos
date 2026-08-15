@@ -309,6 +309,7 @@ Statuses are deliberately distinct:
 | `passed` | a container really ran, the product's installer installed it, every assertion held, it was removed again |
 | `failed` | it ran and something did not hold — the row says which assertion |
 | `untestable-on-arm64` | upstream publishes no aarch64 build, so **this machine cannot install it at all**. Not a pass. Not a claim it works. |
+| `disabled` | the entry or its latest recipe carries `_disabled`, which `appnet` refuses by design. Nothing was run. **11 of the 55 entries are in this state**, and calling them `failed` would assert something much louder — that the recipe is broken — about apps nobody has turned on yet. |
 | *(absent)* | untested |
 
 **Architecture is a stated limit, not a workaround.** Verification runs on the
