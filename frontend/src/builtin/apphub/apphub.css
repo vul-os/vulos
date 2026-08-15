@@ -222,6 +222,25 @@
   appearance: none;
 }
 
+/**
+ * The placeholder is TEXT, and it is the text most likely to be read.
+ *
+ * Inherited from the OS default it measured 4.41:1 on --bg-elevated in dark —
+ * rgb(127,135,152) on rgb(30,34,43) — against AA's 4.5:1. Close enough to look
+ * deliberate and still a failure, and it is the single string in this component
+ * that a first-time user is guaranteed to look at, because it is the label on
+ * the field they came here to use.
+ *
+ * `opacity: 1` is not decoration: several browsers apply their own alpha to
+ * ::placeholder, and this repository has the trap recorded — a contrast gate
+ * that reads tokens is blind to an opacity sitting beside them. Pinning it
+ * means the measured pixel is the declared colour.
+ */
+.hub-search input::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
 .hub-search input:hover { border-color: var(--border-strong); }
 
 .hub-search input:focus {

@@ -148,16 +148,49 @@ async function attribute(page: Page, findings: string[]): Promise<{ hub: string[
   const hub: string[] = []
   const foreign: string[] = []
   for (const f of findings) {
-    // belowAA formats every finding as `... "<text>"`; take the last quoted run.
-    const m = /"([^"]*)"$/.exec(f)
-    const text = m?.[1]
-    if (!text) { hub.push(f); continue }
-    const where = await page.evaluate(([t, sel]) => {
-      const hits = [...document.querySelectorAll('*')].filter(
-        (e) => !e.children.length && (e.textContent || '').trim() === t,
-      )
+    // belowAA's format: `<ratio> (need <n>) <color> on <bg> <size>px "<text>"`.
+    const m = /^[\d.]+ \(need [\d.]+\) (.+?) on rgb\([^)]*\) ([\d.]+)px "(.*)"$/.exec(f)
+    if (!m) { hub.push(f); continue }
+    const [, color, size, label] = m
+
+    /**
+     * Match on the COLOUR as well as the text.
+     *
+     * Text alone is not an identifier and the first version of this proved it:
+     * the mobile dock's window-count badge reads "1", and so does the hub's own
+     * "Internet 1" category count. Looking up by text found both, one of them
+     * inside the hub, so the dock's failure was attributed to the hub and every
+     * phone case failed on a defect it does not own.
+     *
+     * The pair (text, computed colour, font-size) is what belowAA actually
+     * measured, so matching on it identifies the element that produced the
+     * finding rather than anything that merely says the same word.
+     */
+    const where = await page.evaluate(([lbl, col, px, sel]) => {
+      const ph = /^placeholder: (.*)$/.exec(lbl as string)
+      const hits: Element[] = []
+      if (ph) {
+        for (const el of document.querySelectorAll('input[placeholder], textarea[placeholder]')) {
+          if ((el as HTMLInputElement).placeholder !== ph[1]) continue
+          if (getComputedStyle(el, '::placeholder').color !== col) continue
+          hits.push(el)
+        }
+      } else {
+        for (const el of document.querySelectorAll('*')) {
+          if (el.children.length) continue
+          if ((el.textContent || '').trim() !== lbl) continue
+          const cs = getComputedStyle(el)
+          if (cs.color !== col) continue
+          if (Math.abs(parseFloat(cs.fontSize) - Number(px)) > 0.6) continue
+          hits.push(el)
+        }
+      }
       return { found: hits.length, inHub: hits.some((e) => !!e.closest(sel as string)) }
-    }, [text, HUB] as const)
+    }, [label, color, size, HUB] as const)
+
+    // Unresolvable findings (::before/::after content, input values) count as
+    // the hub's and fail loudly — the safe direction for a check whose job is
+    // to not miss things.
     if (where.found > 0 && !where.inHub) foreign.push(f)
     else hub.push(f)
   }
