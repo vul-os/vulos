@@ -90,14 +90,27 @@ type Self struct {
 // CurrentSelf reads this process's own identity. Called once at startup: the
 // values are fixed for the life of the process, and reading them per-request
 // would let a setpgid race change the answer between check and signal.
+// The session id comes from /proc/self/stat rather than syscall.Getsid, which
+// exists on Darwin and NOT on Linux — the platform this actually ships to. The
+// build passed on the developer's Mac and failed in CI on the target, which is
+// the same shape as three other defects found the same day: verified in one
+// environment, absent in the one that runs. Reading field 6 also keeps every
+// identity in this package sourced from /proc, the way Read and ParseStat
+// already are, instead of one value arriving by a different route.
+//
+// Where /proc is unreadable — a non-Linux dev machine — SID stays at pid. That
+// fallback is deliberately conservative: Protect compares against it, so a
+// wrong-but-self value can only ever refuse a kill, never permit one.
 func CurrentSelf() Self {
 	pid := os.Getpid()
 	s := Self{PID: pid, PGID: pid, SID: pid}
 	if pgid, err := syscall.Getpgid(pid); err == nil {
 		s.PGID = pgid
 	}
-	if sid, err := syscall.Getsid(pid); err == nil {
-		s.SID = sid
+	if data, err := os.ReadFile("/proc/self/stat"); err == nil {
+		if snap, ok := ParseStat(string(data), pid); ok && snap.SID > 0 {
+			s.SID = snap.SID
+		}
 	}
 	return s
 }
