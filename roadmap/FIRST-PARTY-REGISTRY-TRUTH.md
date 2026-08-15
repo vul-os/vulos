@@ -388,7 +388,7 @@ Established by reading `Makefile` (targets `sign-registry`, `check-release-key`,
    #    (and delete the kerf entry — §4)
    scripts/verify-firstparty-artifacts.sh          # artefacts still match
    make sign-registry RELEASE_PRIV=/Users/pc/code/vulos/vulos-cloud/signing-vault/release.priv.json
-   make verify-registry-prod                       # must report 56/56, 0 skipped
+   make verify-registry-prod                       # must report 55/55, 0 skipped
    make publish-feed RELEASE_PRIV=<same key>
    scripts/verify-app-recipe.sh diwan              # product's own installer, in a container
    scripts/verify-app-recipe.sh wede
@@ -432,11 +432,51 @@ an SVG `<text>` element**, so none is subject to the per-machine font hazard.
 All three draw their own full-bleed plate, so correctly none is in `INSET_LOGOS`.
 
 **Required action: none.** Nothing is to be drawn, refined or regenerated.
-Adding `diwan` to `registry.json` does not break
-`frontend/src/core/AppIcons.test.ts:180` (*every statically-registered app id has
-its own bundled art or logo* — that test parses `registry.json`'s app ids
-directly), because `APP_LOGOS.diwan` already exists — today it is a key with no
-registered app, which that test permits.
+
+### 8.1 Proven against the gate, not assumed
+
+`frontend/src/core/AppIcons.test.ts` is a hard gate on exactly this: it re-derives
+its roster as `builtinRegistry ∪ defaultWebApps ∪ Object.keys(registry.json.apps)`
+(line 144), then asserts a coverage floor, that **every** id resolves via `ART` or
+`APP_LOGOS` specifically (line 180), and that no two simultaneously-reachable ids
+render the identical icon. Merging a first-party entry without a real mark turns
+that suite red. So the claim was tested rather than reasoned about:
+
+The suite was run against a **simulated future `registry.json`** — `kerf` removed,
+`diwan` added, `wede` replaced — without modifying the tracked file, by running
+vitest from a scratch tree whose `../registry.json` is the simulated one.
+
+```
+baseline (registry.json as tracked)             Tests  9 passed (9)
+future   (kerf removed, diwan+wede staged)      Tests  9 passed (9)
+```
+
+**The simulation was itself verified before it was trusted.** A control run
+injected an extra app id carrying no art or logo; it must go red, and did:
+
+```
+× every statically-registered app id has its OWN bundled art or logo …
+AssertionError: expected [ 'zzz-no-icon-fixture' ] to deeply equal []
+```
+
+Had the control passed, the simulation would have been reading the tracked
+registry and proving nothing.
+
+Two consequences worth recording:
+
+- **Removing `kerf` from `registry.json` is safe.** `APP_LOGOS.kerf` becomes a key
+  with no registered app. The `every referenced logo file exists` test iterates
+  `APP_LOGOS` and only requires the *file* to exist, which it does, so the
+  orphaned key is harmless. Leave the mark in place for when Kerf ships an
+  installable artefact.
+- **The catalog count after the merge is 55, not 56** — 55 today, minus `kerf`,
+  plus `diwan`; `wede` is a replacement, not an addition. Well clear of the
+  `catalogIds >= 50` floor.
+
+The three marks were also checked against the test's own `ownPlateRadius`
+predicate: each draws its own full-bleed plate (diwan 0.219, wede 0.219, kerf
+0.188 of viewBox width), so correctly **none** belongs in `INSET_LOGOS`, and none
+is listed there.
 
 One optional tidy-up for whoever owns the frontend: `FULL_CATALOG_IDS` in
 `frontend/src/dev/IconLab.tsx:65-83` is a hand-maintained snapshot of catalog ids
@@ -502,7 +542,8 @@ honest.
 
 1. **`registry.json`** — merge the two entries from
    `registry.d/vulos-first-party.json`; **delete** the `kerf` entry (§4); re-sign
-   (§7). Expected count afterwards: **56**.
+   (§7). Expected count afterwards: **55** (55 today, minus kerf, plus diwan;
+   wede is a replacement, not an addition) — verified in §8.1.
 2. **`frontend/src/core/AppIcons.tsx` / `appArt.tsx`** — **no change required**
    (§8). Optionally add `diwan` to `IconLab.tsx`'s `FULL_CATALOG_IDS`.
 3. **`backend/services/appnet/registry.go`** — §6.1 (fatal `post_install`), §6.7
