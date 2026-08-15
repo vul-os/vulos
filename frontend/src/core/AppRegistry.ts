@@ -200,7 +200,7 @@ const builtinRegistry: App[] = [
   //
   //  1. "Smart Browser" (id: browser) — the client-side web app (apps/browser/),
   //     opens in the host browser as a WebApp lane entry, zero stream.Session.
-  //  2. "Chrome" (id: browser-stream) — a REAL Chromium instance
+  //  2. "Chromium" (id: browser-stream) — a REAL Chromium instance
   //     running on the box, streamed over WebRTC (Xvfb + GStreamer + pion), with
   //     a persistent PER-USER profile (cookies/history/logins). Restored from
   //     the services/webbrowser package; launched via POST /api/browser/launch.
@@ -217,7 +217,10 @@ const builtinRegistry: App[] = [
   },
   {
     id: 'browser-stream',
-    name: 'Chrome',
+    // Named for what actually runs. services/webbrowser/chrome.go resolves
+    // chromium first and the image ships Chromium, not Chrome — calling it
+    // "Chrome" in the UI was both inaccurate and someone else's trademark.
+    name: 'Chromium',
     icon: 'chrome',
     description: 'Real Chromium streamed from your box, with your own persistent profile',
     keywords: ['browser', 'web', 'internet', 'chrome', 'chromium', 'streaming', 'stream', 'remote'],
