@@ -47,7 +47,9 @@ set -uo pipefail
 
 REPS="${1:-5}"
 
-docker run --rm --platform linux/arm64 debian:trixie-slim sh -s -- "$REPS" <<'INNER'
+# -i is REQUIRED: without it docker does not attach stdin, `sh -s` reads EOF
+# immediately, and the whole script exits 0 having run nothing at all.
+docker run --rm -i --platform linux/arm64 debian:trixie-slim sh -s -- "$REPS" <<'INNER'
 set -u
 REPS="$1"
 
