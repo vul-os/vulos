@@ -20,6 +20,7 @@ import { useNarrow } from '../../shell/useNarrow'
 import { listContacts, createContact, updateContact, deleteContact } from './contactsApi'
 import type { Contact, ContactAddress, ContactFormInput } from './contactsApi'
 import { nativeBridge } from '../../core/nativeBridge'
+import { usePlaceCall } from '../phone/usePlaceCall'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -577,6 +578,7 @@ interface ContactDetailProps {
 }
 
 function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps) {
+  const dialler = usePlaceCall()
   const subtitle = [contact.title, contact.org].filter(Boolean).join(' · ')
   const websites = contact.websites || []
   const addresses = contact.addresses || []
@@ -651,12 +653,14 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
             {contact.phones.length > 0 && (
               <Field label="Phone">
                 {contact.phones.map((p, i) => (
-                  <a key={i} href={`tel:${p}`}
-                    className="flex items-center gap-2.5 text-[13.5px] text-neutral-200 px-2.5 py-2 -mx-2.5 rounded-lg hover:bg-neutral-800/60 transition-colors focus-primary">
-                    <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round"/></svg>
-                    <span className="truncate">{p}</span>
-                  </a>
+                  <PhoneRow key={i} number={p} dialler={dialler} />
                 ))}
+                {dialler.error && (
+                  <div role="alert" className="text-[12.5px] mt-1 text-danger">{dialler.error}</div>
+                )}
+                {!dialler.canCall && dialler.blockedReason && (
+                  <div className="text-[12px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{dialler.blockedReason}</div>
+                )}
               </Field>
             )}
             {addresses.length > 0 && (
@@ -738,6 +742,37 @@ function ContactDetail({ contact, onEdit, onDelete, saving }: ContactDetailProps
 // A labelled block inside the detail card. The label is a narrow left column on
 // desktop (so the values line up in one readable rail) and stacks above the
 // value once the pane is too narrow for two columns.
+// A phone number that can actually be CALLED.
+//
+// This used to be `<a href="tel:…">`. On a box, the browser hands a tel: URL to
+// the host OS and the host OS has no dialler — the modem lives behind
+// /api/telephony. So the one affordance that made Contacts feel connected to
+// the phone did nothing at all. It now places the call on whichever line the
+// box has, and when there is no line it is a disabled control that says why
+// instead of a link that silently goes nowhere.
+function PhoneRow({ number, dialler }: { number: string; dialler: ReturnType<typeof usePlaceCall> }) {
+  const busy = dialler.dialling === number
+  return (
+    <div className="flex items-center gap-2.5 text-[13.5px] px-2.5 py-2 -mx-2.5 rounded-lg"
+      style={{ color: 'var(--text-primary)' }}>
+      <svg aria-hidden="true" viewBox="0 0 16 16" className="w-4 h-4 shrink-0" style={{ color: 'var(--text-tertiary)' }}
+        fill="none" stroke="currentColor" strokeWidth="1.3">
+        <path d="M3 2.5h2.5l1 3-1.5 1a8 8 0 0 0 3.5 3.5l1-1.5 3 1V15c-6 0-11-5-11-11z" strokeLinejoin="round" />
+      </svg>
+      <span className="truncate flex-1 min-w-0">{number}</span>
+      <button type="button" data-call-number={number}
+        onClick={() => dialler.call(number)}
+        disabled={!dialler.canCall || busy}
+        aria-label={`Call ${number}`}
+        title={dialler.canCall ? `Call ${number}` : dialler.blockedReason}
+        className="shrink-0 px-2.5 py-1 rounded-md text-[12.5px] font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 active:scale-95 focus-primary transition-all"
+        style={{ background: dialler.canCall ? 'var(--status-success)' : 'var(--bg-active)', color: dialler.canCall ? '#fff' : 'var(--text-tertiary)' }}>
+        {busy ? 'Calling…' : 'Call'}
+      </button>
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="px-4 sm:px-5 py-4 sm:flex sm:gap-4">
