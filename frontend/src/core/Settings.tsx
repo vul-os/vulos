@@ -1415,21 +1415,48 @@ function toAudioStatus(x: unknown): AudioStatus | null {
 
 function AudioSettings() {
   const [status, setStatus] = useState<AudioStatus | null>(null)
-  const refresh = () => fetch('/api/audio/status').then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
 
-  const setVol = (id: string | number, type: string, volume: number) => fetch('/api/audio/volume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, volume }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
-  const setMute = (id: string | number, type: string, muted: boolean) => fetch('/api/audio/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type, muted }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
-  const setDef = (id: string | number, type: string) => fetch('/api/audio/default', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_id: id, type }) }).then(r => r.json()).then((d: unknown) => setStatus(toAudioStatus(d)))
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toAudioStatus(await apiGet('/api/audio/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
+
+  // These three did `.then(r => r.json()).then(d => setStatus(toAudioStatus(d)))`
+  // with no res.ok and no catch, which failed in two ways at once. The parsed
+  // 500 body `{"error": …}` passed through toAudioStatus and came back a record
+  // of undefineds, so a failed volume nudge WIPED THE WHOLE DEVICE LIST off the
+  // panel; and with no .catch, a network drop raised an unhandled rejection.
+  // Now the status is only replaced when the box actually returned one.
+  const write = (path: string, body: unknown) =>
+    attempt(async () => {
+      const next = toAudioStatus(await apiSend(path, { body: JSON.stringify(body) }))
+      if (next) setStatus(next)
+    })
+
+  const setVol = (id: string | number, type: string, volume: number) => write('/api/audio/volume', { device_id: id, type, volume })
+  const setMute = (id: string | number, type: string, muted: boolean) => write('/api/audio/mute', { device_id: id, type, muted })
+  const setDef = (id: string | number, type: string) => write('/api/audio/default', { device_id: id, type })
 
   return (
     <Section title="Sound">
-      {status && <p className="text-xs text-[var(--text-faint)] mb-4">Backend: {status.backend}</p>}
+      {error && <Banner tone="danger" title="Sound is not responding">{error}</Banner>}
+      {status && <p className="text-xs text-[var(--text-faint)] mb-4 mt-3">Backend: {status.backend}</p>}
       <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">Output</h3>
+      {/* Both lists previously rendered a bare heading with nothing under it
+          when the box reported no devices — no empty state, no explanation,
+          just a label over blank space that read as a half-drawn panel. */}
+      {!error && !status?.outputs?.length && (
+        <EmptyState icon="audio" title="No output devices" hint="This box is not reporting any speakers or headphones." />
+      )}
       {status?.outputs?.map(d => (
         <AudioDevice key={d.id} device={d} type="output" onVolume={setVol} onMute={setMute} onDefault={setDef} />
       ))}
       <h3 className="text-xs uppercase text-[var(--text-muted)] tracking-wider mt-4 mb-2">Input</h3>
+      {!error && !status?.inputs?.length && (
+        <EmptyState icon="audio" title="No input devices" hint="This box is not reporting any microphones." />
+      )}
       {status?.inputs?.map(d => (
         <AudioDevice key={d.id} device={d} type="input" onVolume={setVol} onMute={setMute} onDefault={setDef} />
       ))}
@@ -1518,21 +1545,43 @@ function toDisplayStatus(x: unknown): DisplayStatus | null {
 
 function DisplaySettings() {
   const [status, setStatus] = useState<DisplayStatus | null>(null)
-  const refresh = () => fetch('/api/display/status').then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
 
-  const setBrightness = (v: number) => fetch('/api/display/brightness', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brightness: v }) }).then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d)))
-  const setRes = (output: string, res: string) => fetch('/api/display/resolution', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ output, resolution: res }) }).then(r => r.json()).then((d: unknown) => setStatus(toDisplayStatus(d)))
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toDisplayStatus(await apiGet('/api/display/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
+
+  // Same wipe-on-failure as Sound: the parsed error body narrowed to a record
+  // of undefineds and blanked every output off the panel.
+  const write = (path: string, body: unknown) =>
+    attempt(async () => {
+      const next = toDisplayStatus(await apiSend(path, { body: JSON.stringify(body) }))
+      if (next) setStatus(next)
+    })
+
+  const setBrightness = (v: number) => write('/api/display/brightness', { brightness: v })
+  const setRes = (output: string, res: string) => write('/api/display/resolution', { output, resolution: res })
 
   return (
     <Section title="Display">
-      {status?.brightness?.device !== 'none' && (
-        <Field label={`Brightness (${status?.brightness?.current}%)`}>
-          <input type="range" min="5" max="100" value={status?.brightness?.current || 100} onChange={e => setBrightness(parseInt(e.target.value))}
+      {error && <Banner tone="danger" title="Display is not responding">{error}</Banner>}
+      {/* Gated on a brightness reading actually existing. The test was
+          `status?.brightness?.device !== 'none'`, which is TRUE while status is
+          still null — so on first paint, and on every failure, this rendered a
+          slider labelled literally "Brightness (undefined%)". */}
+      {status?.brightness && status.brightness.device !== 'none' && (
+        <Field label={`Brightness (${status.brightness.current ?? 100}%)`}>
+          <input type="range" min="5" max="100" value={status.brightness.current || 100} onChange={e => setBrightness(parseInt(e.target.value))}
+            aria-label="Screen brightness"
             className="w-full h-1 appearance-none bg-[var(--bg-elevated)] rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--text-primary)]" />
         </Field>
       )}
-      <p className="text-xs text-[var(--text-faint)] mb-3">Compositor: {status?.compositor}</p>
+      {status?.compositor && <p className="text-xs text-[var(--text-faint)] mb-3">Compositor: {status.compositor}</p>}
+      {!error && !status?.outputs?.length && (
+        <EmptyState icon="display" title="No displays detected" hint="This box is not reporting any connected outputs." />
+      )}
       {status?.outputs?.map(o => (
         <div key={o.name} className="py-3 border-b border-[var(--border-default)]">
           <div className="flex items-center gap-2 mb-1">
@@ -1576,15 +1625,29 @@ function toEnergyStatus(x: unknown): EnergyStatus | null {
 
 function EnergySettings() {
   const [status, setStatus] = useState<EnergyStatus | null>(null)
-  const refresh = () => fetch('/api/energy/status').then(r => r.json()).then((d: unknown) => setStatus(toEnergyStatus(d))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
 
-  const setMode = (mode: string) => fetch('/api/energy/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) }).then(r => r.json()).then((d: unknown) => setStatus(toEnergyStatus(d)))
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toEnergyStatus(await apiGet('/api/energy/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
+
+  // POST /api/energy/mode answers 400 on a mode the box will not accept. The
+  // old call read the body without checking the status, so a rejected mode
+  // narrowed to undefineds and cleared the panel — and the three mode buttons
+  // all went unselected, which reads as "no mode set" rather than "refused".
+  const setMode = (mode: string) =>
+    attempt(async () => {
+      const next = toEnergyStatus(await apiSend('/api/energy/mode', { body: JSON.stringify({ mode }) }))
+      if (next) setStatus(next)
+    })
 
   const batteryPercent = status?.battery_percent
 
   return (
     <Section title="Battery & Energy">
+      {error && <Banner tone="danger" title="Power settings are not responding">{error}</Banner>}
       {batteryPercent !== undefined && batteryPercent >= 0 && (
         <div className="mb-4">
           <span className="text-2xl font-light">{batteryPercent}%</span>
@@ -1928,6 +1991,7 @@ function TURNSettingsSection() {
   const [saved, setSaved] = useState(false)
   const [testResult, setTestResult] = useState<TurnTestResult | null>(null)
   const [testing, setTesting] = useState(false)
+  const { error, attempt } = useApiError()
 
   useEffect(() => {
     fetch('/api/turn/config')
@@ -1943,25 +2007,26 @@ function TURNSettingsSection() {
       .catch(() => {})
   }, [])
 
-  const turnSettings_save = () => {
+  // Saving a rejected TURN config used to be entirely silent: there was no
+  // res.ok check, and a body carrying `error` simply failed the `!d.error`
+  // guard, so the whole success block was skipped and the button slid back from
+  // "Saving…" to "Save" with nothing said. A 403 (not owner) and a 400 (bad
+  // host) both looked exactly like never having pressed the button.
+  const turnSettings_save = async () => {
     setSaving(true)
     setSaved(false)
-    fetch('/api/turn/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, port: Number(port), realm, secret: secret || undefined }),
+    const ok = await attempt(async () => {
+      const d = toTurnConfig(await apiSend('/api/turn/config', {
+        body: JSON.stringify({ host, port: Number(port), realm, secret: secret || undefined }),
+      }))
+      setConfigured(!!d?.configured)
+      return true
     })
-      .then(r => r.json())
-      .then((raw: unknown) => {
-        const d = toTurnConfig(raw)
-        if (d && !d.error) {
-          setConfigured(!!d.configured)
-          setSecret('')
-          setSaved(true)
-          setTimeout(() => setSaved(false), 2000)
-        }
-      })
-      .finally(() => setSaving(false))
+    setSaving(false)
+    if (!ok) return
+    setSecret('')
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   const turnSettings_test = () => {
@@ -2034,6 +2099,14 @@ function TURNSettingsSection() {
         </button>
       </div>
 
+      {error && <Banner tone="danger" title="Could not save the TURN settings">{error}</Banner>}
+
+      {/* NOTE: POST /api/turn/test deliberately answers HTTP 200 whether the
+          relay was reachable or not, and puts the outcome in `success` —
+          routes_turn.go says so in a comment. Reading `success` here rather
+          than trusting the status code is therefore load-bearing, not
+          defensive: `res.ok` alone would report every unreachable relay as
+          reachable. */}
       {testResult && (
         <Banner tone={testResult.success ? 'success' : 'danger'}>
           {testResult.success
@@ -2838,17 +2911,37 @@ function toVaultSync(x: unknown): VaultSync | null {
 function VaultSettings() {
   const [status, setStatus] = useState<VaultStatus | null>(null)
   const [sync, setSync] = useState<VaultSync | null>(null)
-  const refresh = () => {
-    fetch('/api/vault/status').then(r => r.json()).then((raw: unknown) => setStatus(toVaultStatus(raw))).catch(() => {})
-    fetch('/api/vault/sync').then(r => r.json()).then((raw: unknown) => setSync(toVaultSync(raw))).catch(() => {})
-  }
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
+  const [msg, setMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  const backup = () => fetch('/api/vault/backup', { method: 'POST' }).then(refresh)
-  const syncDevice = () => fetch('/api/vault/sync', { method: 'POST' }).then(refresh)
+  const refresh = useCallback(() => attempt(async () => {
+    setStatus(toVaultStatus(await apiGet('/api/vault/status')))
+    setSync(toVaultSync(await apiGet('/api/vault/sync')))
+  }), [attempt])
+  useEffect(() => { refresh() }, [refresh])
+
+  // "Backup Now" was `fetch(…).then(refresh)`. Of every silent write found in
+  // this file this is the one that matters most: a backup button that reports
+  // nothing is a backup button the user believes in, and the failure only
+  // surfaces on the day they try to restore. The box answers 403/500 here.
+  const run = async (path: string, done: string) => {
+    setBusy(true)
+    setMsg(null)
+    const ok = await attempt(async () => { await apiSend(path); return true })
+    setBusy(false)
+    if (!ok) return
+    setMsg(done)
+    setTimeout(() => setMsg(null), 4000)
+    refresh()
+  }
+  const backup = () => run('/api/vault/backup', 'Backup complete')
+  const syncDevice = () => run('/api/vault/sync', 'Synced to this device')
 
   return (
     <Section title="Backup & Sync">
+      {error && <Banner tone="danger" title="Backup failed">{error}</Banner>}
+      {msg && <Banner tone="success">{msg}</Banner>}
       <div className={`text-sm mb-3 ${status?.initialized ? 'text-[var(--status-success)]' : 'text-[var(--text-muted)]'}`}>
         {status?.initialized ? 'Vault initialized' : 'Vault not configured'}
       </div>
@@ -2857,8 +2950,8 @@ function VaultSettings() {
           <p className="text-xs text-[var(--text-muted)] mb-1">Last backup: {status?.last_backup || 'never'}</p>
           <p className="text-xs text-[var(--text-muted)] mb-3">Snapshots: {sync?.total_snapshots || 0}</p>
           <div className="flex gap-2 mb-4">
-            <button onClick={backup} className="btn">Backup Now</button>
-            <button onClick={syncDevice} className="btn">Sync to This Device</button>
+            <button onClick={backup} disabled={busy} className="btn">{busy ? 'Working…' : 'Backup Now'}</button>
+            <button onClick={syncDevice} disabled={busy} className="btn">Sync to This Device</button>
           </div>
           {(sync?.other_devices?.length ?? 0) > 0 && (
             <>
@@ -2894,13 +2987,31 @@ function toRecallStatus(x: unknown): RecallStatus | null {
 
 function RecallSettings() {
   const [status, setStatus] = useState<RecallStatus | null>(null)
-  const refresh = () => fetch('/api/recall/status').then(r => r.json()).then((raw: unknown) => setStatus(toRecallStatus(raw))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  const { error, attempt } = useApiError()
+  const [msg, setMsg] = useState<string | null>(null)
 
-  const reindex = () => fetch('/api/recall/index', { method: 'POST' }).then(refresh)
+  const refresh = useCallback(
+    () => attempt(async () => setStatus(toRecallStatus(await apiGet('/api/recall/status')))),
+    [attempt],
+  )
+  useEffect(() => { refresh() }, [refresh])
+
+  // The box answers 503 here when the recall service is not running at all —
+  // which the old code read as JSON and threw away, leaving "Files indexed: 0 /
+  // Status: Ready". A box with no search service claimed to be ready.
+  const reindex = async () => {
+    setMsg(null)
+    const ok = await attempt(async () => { await apiSend('/api/recall/index'); return true })
+    if (!ok) return
+    setMsg('Indexing started')
+    setTimeout(() => setMsg(null), 4000)
+    refresh()
+  }
 
   return (
     <Section title="Search & Index">
+      {error && <Banner tone="danger" title="Search index is not available">{error}</Banner>}
+      {msg && <Banner tone="success">{msg}</Banner>}
       <p className="text-xs text-[var(--text-faint)] mb-3">Recall indexes your files for semantic search. The AI uses this to answer questions about your data.</p>
       {status && (
         <div className="space-y-1 text-sm mb-4">
@@ -3131,24 +3242,45 @@ function UsersSettings({ profile }: UsersSettingsProps) {
   const [newUser, setNewUser] = useState<NewUserDraft>({ username: '', password: '', displayName: '' })
   const [addError, setAddError] = useState('')
   const [addSuccess, setAddSuccess] = useState('')
-  const refresh = () => fetch('/api/profiles').then(r => r.json()).then((raw: unknown) => setProfiles(toProfileEntries(raw))).catch(() => {})
-  useEffect(() => { refresh() }, [])
+  // Two separate error slots, because these are two different failures and
+  // collapsing them would report the wrong one. `listError` is "the user list
+  // could not be loaded"; `error` is "the change you just made was refused".
+  // Sharing one slot also let a re-read quietly overwrite a write failure.
+  const { error, attempt } = useApiError()
+  const { error: listError, attempt: attemptList } = useApiError()
+
+  const refresh = useCallback(
+    () => attemptList(async () => setProfiles(toProfileEntries(await apiGet('/api/profiles')))),
+    [attemptList],
+  )
+  useEffect(() => { refresh() }, [refresh])
 
   const isAdmin = profile?.role === 'admin'
 
+  // Both of these are privilege operations and both ignored their response
+  // entirely. The box answers 403 to a non-admin, 400 to a self-delete and 404
+  // to an unknown id — and every one of those came back as a silent re-read of
+  // an unchanged list, so "make this person an admin" and "remove this user"
+  // reported exactly the same thing whether they happened or not.
+  // Note the `if (ok)` guard on the re-read rather than an unconditional
+  // refresh(): a refresh that succeeds resolves the shared error state back to
+  // null, so re-reading the list straight after a REFUSED write erased the
+  // banner explaining the refusal before it could be seen.
   const setRole = async (userId: string, role: string) => {
-    await fetch(`/api/profiles/${userId}/role`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
+    const ok = await attempt(async () => {
+      await apiSend(`/api/profiles/${userId}/role`, { method: 'PUT', body: JSON.stringify({ role }) })
+      return true
     })
-    refresh()
+    if (ok) refresh()
   }
 
   const removeUser = async (userId: string) => {
     if (!confirm('Remove this user? This cannot be undone.')) return
-    await fetch(`/api/profiles/${userId}`, { method: 'DELETE' })
-    refresh()
+    const ok = await attempt(async () => {
+      await apiSend(`/api/profiles/${userId}`, { method: 'DELETE' })
+      return true
+    })
+    if (ok) refresh()
   }
 
   const addUser = async (e: FormEvent<HTMLFormElement>) => {
@@ -3209,6 +3341,7 @@ function UsersSettings({ profile }: UsersSettingsProps) {
 
   return (
     <Section title="Users & Profiles">
+      {error && <Banner tone="danger" title="That change did not go through">{error}</Banner>}
       {/* PIN */}
       <div className="mb-6 pb-4 border-b border-[var(--border-default)]">
         <h3 className="text-sm font-medium mb-2">Lock Screen PIN</h3>
@@ -3266,6 +3399,14 @@ function UsersSettings({ profile }: UsersSettingsProps) {
 
       {/* User list */}
       <h3 className="text-sm font-medium mb-2">All Users</h3>
+      {/* The failure is stated WITH its context in one string rather than
+          echoing the bare server message: "boom" on its own tells the reader
+          nothing about which of the several things on this panel broke. */}
+      {listError && (
+        <p role="alert" className="text-xs text-[var(--status-danger)] mb-2">
+          Could not load the user list: {listError}
+        </p>
+      )}
       {profiles.map(p => (
         <div key={p.user_id} className="flex items-center justify-between py-2 border-b border-[var(--border-default)]">
           <div>

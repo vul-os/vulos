@@ -150,6 +150,57 @@ describe('Bluetooth — six writes that never checked their response', () => {
   })
 })
 
+describe('writes whose failure the user most needs to see', () => {
+  it('Backup & Sync: a failed "Backup Now" says so instead of reporting nothing', async () => {
+    // The highest-stakes silent write in the file. A backup button that reports
+    // nothing is a backup button the user believes in, and the failure would
+    // otherwise only surface on the day they try to restore.
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('/api/vault/backup')) {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'S3 credentials rejected' }) })
+      }
+      if (url.includes('/api/vault/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ initialized: true }) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    }))
+    const user = await openSection('Backup & Sync')
+    await user.click(await screen.findByRole('button', { name: 'Backup Now' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/S3 credentials rejected/)
+  })
+
+  it('Users & Profiles: a refused role change is reported', async () => {
+    // A privilege operation that ignored its response: 403 to a non-admin and
+    // success both produced a silent re-read of an unchanged list.
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/role')) {
+        return Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'not permitted' }) })
+      }
+      if (url.endsWith('/api/profiles') && (!init || (init.method ?? 'GET') === 'GET')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ user_id: 'u2', username: 'bob', display_name: 'Bob', role: 'user' }]) })
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
+    }))
+    const user = await openSection('Users & Profiles')
+    await user.selectOptions(await screen.findByLabelText('Role for Bob'), 'admin')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not permitted/)
+  })
+})
+
+describe('Display — a label that read "undefined"', () => {
+  it('never renders a brightness percentage before the box has reported one', async () => {
+    // The gate was `status?.brightness?.device !== 'none'`, which is TRUE while
+    // status is still null, so first paint (and every failure) drew a slider
+    // labelled literally "Brightness (undefined%)".
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {}))) // never resolves: first-paint state
+    await openSection('Display')
+    // The panel is genuinely on screen (its own heading, not the nav item), so
+    // this cannot pass by measuring an unrendered section.
+    expect(await screen.findByRole('heading', { name: 'Display' })).toBeInTheDocument()
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument()
+  })
+})
+
 describe('a 200 carrying an error body is a failure, not a success', () => {
   it('reports a write the box answered 200 OK with {"error"} — res.ok alone believes it', async () => {
     // This shape is live in this codebase: POST /telephony/call and /sms/send
