@@ -205,6 +205,23 @@
               background var(--motion-fast) var(--ease-standard);
 }
 
+/**
+ * Chromium draws its OWN clear button inside `input[type=search]`, and the hub
+ * draws one too (.hub-search-clear, which also returns focus to the field).
+ * The result was two × glyphs side by side in a 36px-tall field, doing almost
+ * the same thing — visible in any screenshot with a query typed into it, and in
+ * none without. The native one goes; the styled one is the real control.
+ *
+ * type=search is kept rather than swapped for type=text: it is what tells
+ * assistive technology and mobile keyboards this is a search field, and that is
+ * worth more than the decoration being removed here.
+ */
+.hub-search input::-webkit-search-cancel-button,
+.hub-search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .hub-search input:hover { border-color: var(--border-strong); }
 
 .hub-search input:focus {
@@ -407,7 +424,37 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  scroll-snap-type: x proximity;
+
+  /**
+   * NO scroll snapping, and no scroll anchoring. The rail must not scroll
+   * itself.
+   *
+   * Both features exist to preserve what you were looking at when content
+   * changes around it, and both are wrong for a filter bar whose contents
+   * appear asynchronously.
+   *
+   * The rail's first chip — "Runs on this box" — only exists once the
+   * catalogue has loaded AND something in it turns out to be incompatible, so
+   * it is inserted at the HEAD of an already-laid-out scroller. With
+   * `scroll-snap-type: x proximity` and `scroll-snap-align: start` on each
+   * chip, the scroller re-snaps after that layout change to keep the
+   * previously-snapped chip ("All apps") where it was — which means scrolling
+   * right by exactly the width of the chip just inserted.
+   *
+   * Measured on a 390px phone against an arm64 box: scrollLeft settled at
+   * 157px and the architecture filter sat off the left edge of its own
+   * scroller, on the one width where the chip rail is the ONLY way to reach
+   * that filter. Nothing overflowed and nothing errored; the control was
+   * simply not there. Setting scrollLeft back to 0 stuck, which is what
+   * identified it as a one-time re-snap rather than a continuous force.
+   *
+   * Snapping bought very little here — the chips are 30px tall and a few dozen
+   * pixels wide, so free scrolling reads no worse — and it cost the visibility
+   * of a control. overflow-anchor is pinned off alongside it because it is the
+   * same class of behaviour and would produce the same defect on its own.
+   */
+  overscroll-behavior-x: contain;
+  overflow-anchor: none;
 }
 
 .hub-chips::-webkit-scrollbar { display: none; }
@@ -430,7 +477,6 @@
   font-size: var(--hub-fs-meta);
   white-space: nowrap;
   cursor: pointer;
-  scroll-snap-align: start;
   transition: background var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard),
               border-color var(--motion-fast) var(--ease-standard);

@@ -43,7 +43,7 @@ export function hubBackend(
  *  silently stops finding its subject the first time a utility is reordered. */
 export const HUB = '[data-app="apphub"]'
 
-async function bootShell(
+export async function bootShell(
   page: Page,
   theme: 'dark' | 'light',
   size: { width: number; height: number },
@@ -95,12 +95,26 @@ export async function bootHub(page: Page, opts: BootOptions = {}): Promise<numbe
   const width = opts.width ?? 1440
   const height = opts.height ?? 900
   await bootShell(page, opts.theme ?? 'dark', { width, height }, opts.backend ?? HUB_BACKEND)
+  await openHubHere(page, width, opts.maximize ?? true)
+  return hubWidth(page)
+}
+
+/**
+ * Open the hub in an ALREADY-BOOTED shell.
+ *
+ * Split out of bootHub so a spec can measure the shell BEFORE the hub exists.
+ * The contrast gate needs exactly that: the phone shell carries a sub-AA dock
+ * badge that belongs to the mobile layout, not to the hub, and a whole-document
+ * scan cannot tell the two apart. Measuring before and after and comparing the
+ * two sets attributes each failure to whatever actually introduced it, using
+ * the one shared scanner rather than a second, divergent copy of it.
+ */
+export async function openHubHere(page: Page, width: number, maximize = true): Promise<void> {
   await launchHub(page)
-  if (width >= 768 && (opts.maximize ?? true)) {
+  if (width >= 768 && maximize) {
     await page.getByLabel('Maximize window').first().click()
   }
   await settle(page)
-  return hubWidth(page)
 }
 
 /**
@@ -215,6 +229,19 @@ export async function overflowing(page: Page, root = HUB): Promise<Overflowing[]
  * escapes, so the only honest measurement is the child's own rectangle against
  * the container's. On the pre-wave hub this is what caught the third grid
  * column rendering outside the window frame.
+ *
+ * ── The exclusion that makes this usable ────────────────────────────────────
+ *
+ * Anything inside a horizontal SCROLLER is skipped. The hub's filter chips live
+ * in an `overflow-x: auto` rail, so the off-screen chips are not escaping
+ * anything — being wider than the viewport and scrollable is the entire design.
+ * Without this, the first run of this helper reported 15 "spills" at every
+ * width below 700px, on a rail that was working exactly as intended: a gate
+ * that fires on correct behaviour teaches people to ignore it, and the real
+ * defect it was written for hides in the noise.
+ *
+ * Note that the scroller's OWN box is still checked — a chip rail that itself
+ * escaped the hub would still be reported.
  */
 export async function childrenEscaping(page: Page, root = HUB): Promise<string[]> {
   return page.evaluate((sel) => {
@@ -222,11 +249,24 @@ export async function childrenEscaping(page: Page, root = HUB): Promise<string[]
     if (!el) throw new Error(`childrenEscaping(): no element matches ${sel}`)
     const box = el.getBoundingClientRect()
     const out: string[] = []
+
+    /** Is some ancestor between `n` (exclusive) and the root a horizontal scroller? */
+    const insideScroller = (n: HTMLElement): boolean => {
+      let a = n.parentElement
+      while (a && a !== el) {
+        const ox = getComputedStyle(a).overflowX
+        if (ox === 'auto' || ox === 'scroll') return true
+        a = a.parentElement
+      }
+      return false
+    }
+
     for (const n of el.querySelectorAll<HTMLElement>('*')) {
       const cs = getComputedStyle(n)
       if (cs.position === 'fixed') continue
       const r = n.getBoundingClientRect()
       if (r.width < 1 || r.height < 1) continue
+      if (insideScroller(n)) continue
       const spill = Math.max(box.left - r.left, r.right - box.right)
       if (spill > 1) {
         out.push(
@@ -256,15 +296,47 @@ export async function fontSizes(page: Page, root = HUB): Promise<number[]> {
   }, root)
 }
 
-/** Interactive targets smaller than the given box, as readable strings. */
+/**
+ * Interactive targets whose EFFECTIVE hit area is smaller than `min`, as
+ * readable strings.
+ *
+ * "Effective" is the whole point. The card's app-name button is 20px tall and
+ * is nonetheless the easiest thing in the hub to hit, because it carries a
+ * `::after { position: absolute; inset: 0 }` that stretches its hit area over
+ * the entire card — the standard way to make a whole card clickable without
+ * nesting a button inside a button. Measuring `getBoundingClientRect()` alone
+ * reported all thirty of them as 20px failures at every width, which is a gate
+ * that fails on correct code.
+ *
+ * So where a control has a stretched absolutely-positioned pseudo-element, the
+ * measurement is taken from the box that pseudo-element actually covers — its
+ * offsetParent, the nearest positioned ancestor. Remove the `::after` and each
+ * name reverts to a 20px target and this reports it, which is what makes the
+ * exemption a measurement rather than a blanket excuse.
+ */
 export async function smallTargets(page: Page, min = 24, root = HUB): Promise<string[]> {
   return page.evaluate(([sel, m]) => {
     const el = document.querySelector(sel as string)
     if (!el) throw new Error('smallTargets(): hub not found')
     const out: string[] = []
+
+    /** The rect a click on this control can actually land in. */
+    const hitRect = (n: HTMLElement): DOMRect => {
+      for (const pseudo of ['::after', '::before']) {
+        const cs = getComputedStyle(n, pseudo)
+        if (cs.content === 'none' || cs.position !== 'absolute') continue
+        // inset:0 resolves to four computed lengths of 0px.
+        if (cs.top !== '0px' || cs.right !== '0px' || cs.bottom !== '0px' || cs.left !== '0px') continue
+        const host = n.offsetParent as HTMLElement | null
+        if (host) return host.getBoundingClientRect()
+      }
+      return n.getBoundingClientRect()
+    }
+
     for (const n of el.querySelectorAll<HTMLElement>('button, a[href], input, [role="button"], [role="tab"], [role="option"]')) {
-      const r = n.getBoundingClientRect()
-      if (r.width < 1 || r.height < 1) continue
+      const box = n.getBoundingClientRect()
+      if (box.width < 1 || box.height < 1) continue
+      const r = hitRect(n)
       if (r.height + 0.5 < (m as number) || r.width + 0.5 < (m as number)) {
         out.push(`${n.tagName} ${Math.round(r.width)}x${Math.round(r.height)} "${(n.textContent || n.getAttribute('aria-label') || '').trim().slice(0, 28)}"`)
       }
