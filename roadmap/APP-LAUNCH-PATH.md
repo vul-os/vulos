@@ -185,6 +185,55 @@ Both are in `frontend/src/core/AppRegistry.ts`, which this wave does not own. Th
 
 ---
 
+## 6a. The built-in browser: absent from the image, and failing silently
+
+The founder's second report — the browser does not work on a real box — is two defects.
+
+### It was never in the image
+
+`services/webbrowser/chrome.go`'s `findBin` looks for `chromium-browser`, `chromium`, `google-chrome`, `google-chrome-stable`. `build.sh`'s debootstrap rootfs installed **none of them**; `Dockerfile:145` installs `chromium`. The released `v0.2.0-arm64` rootfs contains `./usr/bin/cog` and `./usr/bin/cogctl` and no browser at all.
+
+`cog` does not substitute: it is a single-surface WPE kiosk shell with no tabs, address bar or profile. It renders the Vulos UI; it is not a browser a user can browse with.
+
+Two further binaries on the same execution path were also Dockerfile-only. `pool.go:281` uses `cage` (headless Wayland) **only** when `gpuInfo.Tier != TierSoftware`; every other box falls back to Xvfb — the common bare-metal case. The rootfs had no `xvfb` (no display for *any* streamed app) and no `xdotool` (the X11 injector's fallback when uinput is unavailable, and the VNC path's only injector — the window renders but cannot be typed into).
+
+**Decision: ship Chromium, not Chrome.** Chromium is open source and redistributable inside an image; Chrome is proprietary, and shipping it is a licensing decision rather than a packaging one. `findBin` prefers `chromium` anyway, and the gate now *fails* if a `google-chrome*` package appears in the rootfs list.
+
+**Cost.** Measured on `debian:trixie-slim` arm64 — `chromium xvfb xdotool` pulled in **176 packages, +662 MB on disk, +251 MB gzipped**. That is an upper bound: it was measured against a bare slim base, and the real Vulos rootfs already carries several of those packages (`systemd`, `mesa-*`, `gstreamer*`, `fonts-noto`, `flatpak`). The largest single items are `chromium` (292 MB), `libllvm19` (120 MB) and `chromium-common` (84 MB). Against a 2 GB image floor this is a material but affordable share, and it buys a headline feature that was entirely non-functional on the target hardware.
+
+### The failure was silent
+
+`DesktopCanvas.tsx` launched it as `r.ok ? r.json() : null`, then `(data && data.id) || 'browser'`. Every failure collapsed to one value: the 500 became `null`, `null` fell back to the literal session id `'browser'` that nothing had created, and the window opened regardless — titled Chromium, spinning forever, with no error in the UI or the console.
+
+Shipping the binary does not retire that: a launch can still fail on a box with no free display or a killed stream pool. `frontend/src/layouts/streamedBrowser.ts` now treats a non-ok response as an error carrying the server's own reason, and treats a 200 with no session id as a failure too — that is the same defect in a different disguise.
+
+---
+
+## 6b. The defect class: verified in Docker, broken on bare metal
+
+Four defects in one session share a single cause, and they are worth naming as a class rather than listing as four unrelated bugs.
+
+**A check that only ever runs against the Docker image is structurally blind to all four.** Docker has the file, the binary, the credential drop — so the check passes, and the product is still broken on the hardware it ships to.
+
+| # | Defect | Docker | Bare metal |
+|---|---|---|---|
+| 1 | `/opt/vulos/apps` shipped empty — `build.sh` copied from `$ROOT_DIR/apps` after the tree moved to `frontend/apps/` (`dbebd593`) | apps present | **zero apps**, two releases running |
+| 2 | `scripts/vulos.service` sets `User=vulos`, but on the bare-metal path `cmd/init/main.go` is PID 1 and performs no credential drop | streamed apps run as `vulos` | streamed apps run as **root** |
+| 3 | The built-in browser binary. `services/webbrowser/chrome.go` execs chromium; `Dockerfile:145` installs it; the debootstrap rootfs never did | Chrome works | `500 {"error":"chromium not found"}` on every box |
+| 4 | `xrandr` (`x11-xserver-utils`). `pool.go:384` resizes the Xvfb display from its 3840×2160 maximum down to the requested resolution; `Dockerfile:153` installs it **with a comment naming that exact binary**; the rootfs did not | correct resolution | every streamed window captured at **4K regardless of the size requested** — a logged warning, not an error |
+
+Nos. 3 and 4 also cover `xvfb`, `xdotool` and `matchbox-window-manager`, all Dockerfile-only and all on the streamed-app execution path (`pool.go` uses cage **only** when the GPU tier is not software; every other box takes the Xvfb path).
+
+**The gate:** `backend/internal/docsref/imagebins_test.go` reads the *source* against the *rootfs package list*, so the container it happens to run in is irrelevant. It scans `services/{webbrowser,stream,desktop}` for every literal binary handed to `exec.Command` / `lookPath` / `findBin`, and requires each to be either mapped to the package that provides it or exempted **with a reason**. An unclassified binary is a hard failure naming the binary and the file that execs it.
+
+It found no. 4 on its first run, having been written for no. 3.
+
+Coverage assertions, because this check's own failure mode is examining nothing: minimum total files scanned (9, the real count), minimum binaries found (8), and **per-directory** coverage — a total alone would stay green if one service were renamed away while another grew.
+
+**Where to look next:** anything else that is true of the container and assumed of the image — file paths, users and credential drops, unit files that the init path does not read, kernel and sysctl defaults (PORTBIND-01 in §3.2 is the same shape one layer down: Docker sets `ip_unprivileged_port_start=0`, a fresh `ip netns` gets 1024 back), and device nodes.
+
+---
+
 ## 7. Open defects, not fixed
 
 | Defect | Where | Why not fixed here |
@@ -192,6 +241,7 @@ Both are in `frontend/src/core/AppRegistry.ts`, which this wave does not own. Th
 | `POST /api/apps/launch` allocates host ports keyed on the bare `appID` (`main.go:1866`), while namespaces are keyed `(user, profile, app)`. Two users launching the same app via the API share one host port and therefore one `127.0.0.1` DNAT rule. | `main.go` | Pre-existing; changing the key also changes `/api/apps/stop`'s release semantics. The **activator** allocates per-instance and is correct. |
 | No static-serving lane in the gateway. | `services/gateway` | §4. Security surface in the wrong wave. |
 | `AutoStart` is declared in two structs and read nowhere. | `appnet` | Now moot — on-demand activation is strictly better than boot-time start for these apps. Worth deleting or implementing, not both. |
+| The installed app set does not sync between instances by any mechanism. A fully-wired replicator carries an `app_registry` table nothing ever writes: `AppSync.LocalInstall`/`LocalUninstall` have zero non-test callers, and `crdtsync/policy.go:135` refuses the table on the grounds that appsync handles it. | `appsync`, `crdtsync` | Established by the concurrent sync audit, not this wave. **Relevant here:** on-demand activation reads the manifest off the local filesystem and writes nothing, so it neither depends on nor worsens this. But an app installed on one instance does not become launchable on another — activation can only start what the local disk already has. |
 | `/api/mail/url` is served but read by nothing. | `routes_mail.go` | Dead endpoint; removal is a separate call. |
 
 ---
