@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MOBILE_MAX_SLOTS, MOBILE_TILE, NARROWEST_PHONE, SYSTEM_DESTINATION_APP_IDS,
-  mobileDockAutohide, mobileDockSlots, mobileSlotWidth, type MobileSlot,
+  DOCK_PLATE_GAP, DOCK_PLATE_MIN, MOBILE_MAX_SLOTS, MOBILE_TILE, NARROWEST_PHONE,
+  SYSTEM_DESTINATION_APP_IDS, mobileDockAutohide, mobileDockGlyph, mobileDockPlate,
+  mobileDockSlots, mobileSlotWidth, type MobileSlot,
 } from '../mobileDock'
 import { MOBILE_MAX_ITEMS, stockLayout, type DockProfile } from '../../desktop'
 
@@ -129,6 +130,43 @@ describe('the 44px arithmetic', () => {
 
   it('a ninth slot would NOT clear it — which is why the cap exists', () => {
     expect(mobileSlotWidth(MOBILE_MAX_SLOTS + 1, NARROWEST_PHONE, 8)).toBeLessThan(44)
+  })
+})
+
+describe('mobileDockPlate', () => {
+  it('gives the profile the size it asked for when the column is wide enough', () => {
+    expect(mobileDockPlate('large', 97)).toBe(56)
+    expect(mobileDockPlate('medium', 97)).toBe(44)
+  })
+
+  it('shrinks the plate so two adjacent marks cannot touch', () => {
+    // The defect this exists for, measured off a 390×844 screenshot: eight slots
+    // of 48.7px with a fixed 56px plate drew five app marks edge to edge, as one
+    // continuous strip of colour. The touch target was fine — the BUTTON is the
+    // target and it measured 48.7px — so only the picture showed it.
+    const column = mobileSlotWidth(MOBILE_MAX_SLOTS, NARROWEST_PHONE, 0)
+    const plate = mobileDockPlate('large', column)
+    expect(plate).toBeLessThan(MOBILE_TILE.large.plate)
+    expect(column - plate).toBeGreaterThanOrEqual(DOCK_PLATE_GAP)
+  })
+
+  it('never goes below the floor where a mark stops being identifiable', () => {
+    expect(mobileDockPlate('large', 10)).toBe(DOCK_PLATE_MIN)
+    expect(mobileDockPlate('medium', 0.5)).toBe(DOCK_PLATE_MIN)
+  })
+
+  it('falls back to the requested size before anything has been measured', () => {
+    // First paint runs before the layout effect: a 0 here must not collapse
+    // every mark to the floor for a frame.
+    expect(mobileDockPlate('large', 0)).toBe(56)
+    expect(mobileDockPlate('medium', Number.NaN)).toBe(44)
+  })
+})
+
+describe('mobileDockGlyph', () => {
+  it('is half the plate, as on the desktop dock', () => {
+    expect(mobileDockGlyph(44)).toBe(22)
+    expect(mobileDockGlyph(56)).toBe(28)
   })
 })
 

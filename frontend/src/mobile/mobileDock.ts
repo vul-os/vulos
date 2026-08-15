@@ -104,6 +104,45 @@ export const MOBILE_TILE: Readonly<Record<DockSize, { plate: number; glyph: numb
 })
 
 /**
+ * The gap that has to survive between two adjacent marks, in px.
+ *
+ * Not decoration. Screenshotted at 390×844 with the maximum eight slots and the
+ * `large` tile: each column is 48.7px wide, the plate was a fixed 56px, and the
+ * five app marks rendered edge-to-edge as one continuous strip of colour with no
+ * separation at all — five apps that read as one object. The touch targets were
+ * fine (the BUTTON is the target, and it measured 48.7px); it was only visible
+ * by looking at the picture.
+ */
+export const DOCK_PLATE_GAP = 8
+
+/**
+ * The plate floor. Below this the mark stops being identifiable, and at that
+ * point a dock is better off with fewer items than with unrecognisable ones —
+ * which is what MOBILE_MAX_ITEMS is for.
+ */
+export const DOCK_PLATE_MIN = 28
+
+/**
+ * How big the plate may actually be drawn, given the column it has to sit in.
+ *
+ * `size` is the profile's REQUEST; this is what fits. AppIconTile takes a
+ * numeric px size and writes it as an inline width/height, so a mark cannot be
+ * shrunk by CSS after the fact — the number has to be right before it renders,
+ * which is why this is arithmetic over a measured column rather than a
+ * max-width.
+ */
+export function mobileDockPlate(size: DockSize, slotWidth: number): number {
+  const requested = MOBILE_TILE[size].plate
+  if (!Number.isFinite(slotWidth) || slotWidth <= 0) return requested
+  return Math.max(DOCK_PLATE_MIN, Math.min(requested, Math.floor(slotWidth) - DOCK_PLATE_GAP))
+}
+
+/** The glyph inside a system slot's plate. Half the plate, as on the desktop. */
+export function mobileDockGlyph(plate: number): number {
+  return Math.round(plate * 0.5)
+}
+
+/**
  * Build the dock's slots for a validated mobile profile.
  *
  * `knownAppIds` is the live app registry. An item naming an app that is not

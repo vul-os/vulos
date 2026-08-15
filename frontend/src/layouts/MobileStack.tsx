@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useShell, type ShellWindow } from '../providers/ShellProvider'
 import LifePulse from '../core/SystemPulse'
 import AppIcon, { AppIconTile } from '../core/AppIcons'
 import { getApps, getAppById, getAppsVersion, subscribeApps } from '../core/AppRegistry'
 import { launchApp } from '../shell/launchApp'
 import { useDockProfile } from '../desktop'
-import { MOBILE_TILE, mobileDockAutohide, mobileDockSlots, type MobileSlot } from '../mobile/mobileDock'
+import { mobileDockAutohide, mobileDockGlyph, mobileDockPlate, mobileDockSlots, type MobileSlot } from '../mobile/mobileDock'
 import Launchpad from '../shell/Launchpad'
 import Toasts from '../shell/Toasts'
 import TrustBadge from '../shell/TrustBadge'
@@ -136,7 +136,33 @@ export default function MobileStack() {
     setView('app')
   }, [byApp, openWindow, activeWindow, activeWin, view, focusWindow])
 
-  const tile = MOBILE_TILE[profile.size]
+  // The plate is MEASURED, not assumed. Screenshotted at 390×844 with eight
+  // slots and the `large` tile, the fixed 56px marks rendered edge-to-edge as
+  // one continuous strip of colour — five apps reading as one object. Nothing
+  // caught it: the touch target is the BUTTON, and that measured 48.7px.
+  // AppIconTile writes its size as an inline width/height, so CSS cannot shrink
+  // a mark after the fact; the number has to be right before it renders.
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [slotWidth, setSlotWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = stripRef.current
+    if (!el) return undefined
+    const measure = () => setSlotWidth(el.clientWidth / Math.max(1, slots.length))
+    measure()
+    // ResizeObserver catches the dock's own content changing; the window
+    // listener catches the viewport and is the fallback where RO is absent
+    // (jsdom) — without it the measurement would simply never run there.
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    ro?.observe(el)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [slots.length, profile.size, profile.style])
+
+  const plate = mobileDockPlate(profile.size, slotWidth)
+  const glyph = mobileDockGlyph(plate)
 
   const dock = (
     <nav
@@ -151,15 +177,14 @@ export default function MobileStack() {
       // navigation surface the phone shell has. See mobile/mobileDock.ts.
       data-autohide={mobileDockAutohide(profile) ? 'on' : 'off'}
       data-slots={slots.length}
-      style={{ ['--vmob-plate' as string]: `${tile.plate}px` }}
     >
-      <div className="vmob-dock-strip">
+      <div className="vmob-dock-strip" ref={stripRef}>
         {slots.map(slot => (
           <DockSlot
             key={slotKey(slot)}
             slot={slot}
-            glyph={tile.glyph}
-            plate={tile.plate}
+            glyph={glyph}
+            plate={plate}
             view={view}
             windowCount={windows.length}
             running={slot.kind === 'app' ? (byApp.get(slot.appId)?.length ?? 0) > 0 : false}
@@ -340,7 +365,7 @@ function DockSlot({ slot, glyph, plate, view, windowCount, running, onHome, onSw
         className="vmob-dock-slot touch-target"
       >
         <span className="vmob-dock-plate" style={{ width: plate, height: plate }}>
-          <AppIconTile id={slot.appId} size={Math.round(plate * 0.88)} unicode={app?.icon} />
+          <AppIconTile id={slot.appId} size={plate} unicode={app?.icon} />
         </span>
         <span className="vmob-dock-caption">
           <span className="vmob-dock-dot" data-running={running ? 'true' : 'false'} aria-hidden="true" />
