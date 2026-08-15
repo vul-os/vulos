@@ -748,10 +748,14 @@ def summary(fid):
     except Exception: return None
 rows=[]
 for aid,e in reg.items():
-    if done.get(aid) in ("passed","untestable-on-arm64"): continue
+    if done.get(aid) in ("passed","untestable-on-arm64","disabled"): continue
     vers=e.get("versions") or {}
     if not vers: continue
     r=vers[sorted(vers,reverse=True)[0]]
+    # _disabled entries are refused by the product by design — planning a
+    # container for them wastes ~20s each and produces a row saying nothing.
+    if e.get("_disabled") or r.get("_disabled"):
+        continue
     fid=r.get("flatpak_id") or ""
     if fid:
         s=summary(fid)
