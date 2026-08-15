@@ -17,6 +17,43 @@
 
 /* ── The rail ─────────────────────────────────────────────────────────────── */
 
+/* The scroll region.
+
+   THE RAIL MUST BE BOUNDED. Left to grow with its content it ran straight off
+   the bottom of the screen: the shipped five-widget default is ~950px tall and a
+   1280x720 desktop has ~600px of usable column, so the last widget and its edit
+   controls were simply not on the screen — reachable by no scroll, because the
+   container was `position: fixed` and had nothing to scroll.
+
+   That defect passed a per-tile overflow check and a left/right viewport check,
+   which is the lesson: a bound that is not measured in the axis the content
+   grows in is not a bound.
+
+   `max-height` rather than `bottom`, so the container stays CONTENT-SIZED when
+   the rail is short. A full-height fixed element would sit over the wallpaper
+   and swallow every desktop click in its column even where it draws nothing. */
+.vwidget-scrollport {
+  /* 2.75rem top inset + the rail bar + clearance for the dock. */
+  max-height: calc(100vh - 9.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  /* The tiles' shadows are drawn outside their borders; without the padding the
+     scrollport clips them into hard edges along the right side. */
+  padding: 2px;
+  margin: -2px;
+}
+.vwidget-scrollport::-webkit-scrollbar { display: none; }
+
+/* A card cut off by a hard edge reads as a rendering bug; the same card fading
+   out reads as "scroll for more". The mask is applied only when the port is
+   actually scrollable (the host sets data-more), so a short rail keeps a crisp
+   bottom edge. */
+.vwidget-scrollport[data-more='true'] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent 100%);
+}
+
 .vwidget-rail {
   display: grid;
   /* Two columns is the whole geometry. Small tiles pair up, medium and large
@@ -24,8 +61,11 @@
      the column is whatever the rail's width divided by two happens to be. */
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  grid-auto-rows: 128px;
+  grid-auto-rows: 112px;
   align-content: start;
+  /* Same reason as .vwidget-panel: a flex child in the scrollport column must
+     not be shrunk below its content, or the tiles compress instead of scroll. */
+  flex: 0 0 auto;
 }
 
 .vwidget-slot {
@@ -79,6 +119,13 @@
   padding: 11px 13px;
   overflow: hidden;
 }
+
+/* A tile whose body holds ONE thing centres it. The clock rendered its time
+   hard against the top with 40px of dead space beneath, which reads as a tile
+   that failed to finish loading rather than a tile with room to breathe.
+   `:has` degrades to "top aligned" where unsupported, which is the old
+   behaviour — never a broken layout. */
+.vwidget-body:has(> :only-child) { justify-content: center; }
 
 .vwidget-foot {
   flex: 0 0 auto;
@@ -204,6 +251,11 @@
   display: grid;
   gap: 8px;
   min-height: 0;
+  /* Fill the tile. Left to its natural height a three-city list sat in the top
+     third of a large widget with a void beneath it, which reads as a broken
+     tile rather than a spacious one. */
+  height: 100%;
+  align-content: space-evenly;
 }
 .vwidget-clock-row {
   display: flex;
@@ -212,6 +264,10 @@
 }
 .vwidget-clock-meta { min-width: 0; flex: 1 1 auto; }
 .vwidget-clock-city {
+  /* BLOCK. Both of these live inside a <span>, and a span's children lay out
+     INLINE — so "New York" and "Yesterday · -4" rendered as
+     "New YorkYesterday · -4", with no space, in both themes. */
+  display: block;
   font-size: 12.5px;
   font-weight: 550;
   color: var(--text-primary);
@@ -220,6 +276,7 @@
   text-overflow: ellipsis;
 }
 .vwidget-clock-when {
+  display: block;
   font-size: 10.5px;
   color: var(--text-tertiary);
   white-space: nowrap;
@@ -314,16 +371,25 @@
   inset: 0;
   z-index: 2;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 5px;
+  align-items: flex-end;
+  padding: 6px;
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--bg-base) 46%, transparent);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  /* Dimmed enough to read as "this tile is being edited, not being used". The
+     first version sat at 46% and was indistinguishable from the resting tile. */
+  background: color-mix(in srgb, var(--bg-base) 68%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
-.vwidget-edit-strip { display: flex; gap: 4px; justify-content: flex-end; }
-.vwidget-edit-strip-left { display: flex; gap: 4px; justify-content: flex-start; }
+/* One row, along the bottom. The controls used to straddle the tile — remove at
+   the top right, the rest at the bottom left — and the top-right chip landed
+   squarely on the world clock's home-zone label and the agenda's live dot. */
+.vwidget-edit-strip {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  align-items: center;
+}
+.vwidget-edit-spacer { flex: 1 1 auto; }
 .vwidget-chip {
   display: inline-flex;
   align-items: center;
@@ -349,6 +415,24 @@
 /* ── Panel (gallery / settings / permissions) ─────────────────────────────── */
 
 .vwidget-panel {
+  /* POSITIONED, with a z-index above the tiles' edit overlays.
+
+     Without this the gallery rendered completely INVISIBLY: .vwidget-slot is
+     `position: relative` and its edit overlay carries z-index 2, so both paint
+     above a non-positioned sibling no matter what the DOM order says. The panel
+     was in the tree, its buttons were focusable and clickable by name, and a
+     screenshot showed nothing at all — which is exactly the class of defect that
+     survives a green DOM assertion. */
+  position: relative;
+  z-index: 5;
+  /* FLEX-NONE. The scrollport is a flex column, so its children shrink by
+     default once the content exceeds the port's max-height — and the gallery,
+     having no intrinsic minimum, was squashed to a ~1px sliver. It was in the
+     DOM, its buttons were findable by accessible name, and the panel was
+     invisible on screen and unclickable. Two separate defects (this and the
+     z-index above) produced the identical symptom, which is why the first fix
+     looked like it had not worked. */
+  flex: 0 0 auto;
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
@@ -384,9 +468,14 @@
   transition: background var(--motion-fast) var(--ease-standard);
 }
 .vwidget-gallery-item:hover { background: color-mix(in srgb, var(--bg-hover) 72%, transparent); }
-.vwidget-gallery-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
-.vwidget-gallery-desc { font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 2px; }
-.vwidget-gallery-meta { font-size: 10.5px; color: var(--text-tertiary); margin-top: 4px; }
+/* BLOCK, all three. They are <span>s inside a <button>, so without this the
+   name, the description and the size/permission line ran together as one
+   paragraph — "ClockThe time and date on this box.small · medium · Vulos".
+   Identical in kind to the world-clock defect, and identically invisible to
+   every DOM assertion, which is why both were only found by looking. */
+.vwidget-gallery-name { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.vwidget-gallery-desc { display: block; font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 2px; }
+.vwidget-gallery-meta { display: block; font-size: 10.5px; color: var(--text-tertiary); margin-top: 4px; }
 
 /* A permission line. `data-leaves` marks the ones that can send something off
    the box — the only distinction that matters to a user of this product, so it
@@ -403,8 +492,8 @@
   background: var(--text-tertiary);
 }
 .vwidget-perm[data-leaves='true'] .vwidget-perm-dot { background: var(--status-warning); }
-.vwidget-perm-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.vwidget-perm-detail { font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 1px; }
+.vwidget-perm-title { display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.vwidget-perm-detail { display: block; font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 1px; }
 
 .vwidget-field { display: block; padding: 7px 2px; }
 .vwidget-field-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }

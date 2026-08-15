@@ -110,13 +110,24 @@ export function parseLayout(raw: unknown): WidgetLayout | null {
  * request, and nothing here shows an empty frame — every one of these has real
  * local state or an honest empty.
  */
+// A NOTE ON THE GRANTS BELOW. Widgets the OS ships in its own default rail come
+// with the permissions their manifest requests already granted; widgets the USER
+// adds from the gallery start with every permission denied (see WidgetRail's
+// 'add' case). The line is deliberate: the box's own widgets are covered by the
+// decision to install the OS, and a fresh desktop whose shipped widgets all read
+// "Allow …" looks broken rather than careful. Anything from outside that
+// decision asks. Every grant here is still intersected with what the manifest
+// requests, and every one of them is revocable per placement.
 export function defaultLayout(): WidgetLayout {
   const want: { id: string; size: WidgetSize; granted?: WidgetPermission[] }[] = [
     { id: 'vulos.clock', size: 'medium' },
     { id: 'vulos.worldclock', size: 'large' },
-    { id: 'vulos.agenda', size: 'large', granted: ['calendar', 'launch'] },
+    // MEDIUM, not large. Collapsed, the agenda is a date header and one event —
+    // at 'large' that sat in the top third of the tile with a void beneath it,
+    // and the widget expands on click anyway.
+    { id: 'vulos.agenda', size: 'medium', granted: ['calendar', 'launch'] },
     { id: 'vulos.pulse', size: 'medium', granted: ['telemetry'] },
-    { id: 'vulos.notifications', size: 'medium' },
+    { id: 'vulos.notifications', size: 'medium', granted: ['notifications'] },
   ]
   const instances: WidgetInstance[] = []
   for (const w of want) {

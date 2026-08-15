@@ -68,14 +68,22 @@ export default function WidgetTile({
   const name = def.manifest.name
   const body = useMemo(() => {
     if (isSandboxed(def)) {
+      // The frame is wrapped in the OS card rather than being one. A sandboxed
+      // widget rendered bare had no background, no border and no rounded corner,
+      // so a third-party tile read as a hole in the rail next to the builtins —
+      // and, worse, the HOST is the only thing that can guarantee the shape:
+      // inside an opaque frame the widget cannot draw the card, and it must not
+      // be able to escape it either.
       return (
-        <SandboxFrame
-          instanceId={instance.instanceId}
-          source={def.source}
-          host={bridgeHost}
-          ctx={ctx}
-          title={name}
-        />
+        <section className="vwidget-card" aria-label={name}>
+          <SandboxFrame
+            instanceId={instance.instanceId}
+            source={def.source}
+            host={bridgeHost}
+            ctx={ctx}
+            title={name}
+          />
+        </section>
       )
     }
     return def.render(ctx)

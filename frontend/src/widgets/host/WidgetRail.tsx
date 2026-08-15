@@ -12,7 +12,7 @@
 // what makes a third-party widget indistinguishable from a builtin here, and is
 // the actual test of whether the API is real.
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
@@ -111,6 +111,30 @@ export default function WidgetRail() {
 
   const railEmpty = mounted.length === 0
 
+  // Whether the scrollport actually overflows. Measured from the DOM rather than
+  // guessed from the widget count, because the same five widgets overflow a
+  // 1280x800 desktop and do not overflow a 1680x1050 one — and a fade drawn over
+  // a rail that does not scroll is just a tile with its bottom faded off.
+  const portRef = useRef<HTMLDivElement | null>(null)
+  // Opening a panel scrolls the port back to the top. Without this, a user who
+  // scrolled down to a tile's gear would open a panel that is off-screen ABOVE
+  // them — the same defect as before, mirrored.
+  useEffect(() => {
+    if (gallery || configuring) portRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [gallery, configuring])
+  const [hasMore, setHasMore] = useState(false)
+  useEffect(() => {
+    const el = portRef.current
+    if (!el) return
+    const measure = () => setHasMore(el.scrollHeight - el.scrollTop > el.clientHeight + 2)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    el.addEventListener('scroll', measure, { passive: true })
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); el.removeEventListener('scroll', measure); window.removeEventListener('resize', measure) }
+  }, [mounted.length, gallery, configuring])
+
   return (
     <div className="flex flex-col gap-2.5">
       {needTelemetry && <TelemetrySource onChange={setTelemetry} />}
@@ -139,6 +163,29 @@ export default function WidgetRail() {
           </button>
         )}
       </div>
+
+      {/* Everything below the bar scrolls together, so a rail taller than the
+          screen stays reachable instead of running off the bottom of it. */}
+      <div ref={portRef} className="vwidget-scrollport flex flex-col gap-2.5" data-more={hasMore ? 'true' : undefined}>
+      {/* Panels sit at the TOP of the scrollport, not beside or beneath the tile
+          they belong to. Rendered after the tiles, the settings panel for the
+          second widget in a five-widget rail landed below the fold: the gear lit
+          up and nothing appeared to happen. A panel must open where the user is
+          looking. */}
+      {configuring && (() => {
+        const found = mounted.find((m) => m.instance.instanceId === configuring)
+        if (!found) return null
+        return (
+          <WidgetConfig
+            manifest={found.def.manifest}
+            instance={found.instance}
+            onSetting={(k, v) => setSetting(configuring, k, v)}
+            onGrants={(g) => dispatch({ t: 'grants', instanceId: configuring, granted: g })}
+            onClose={() => setConfiguring(null)}
+            proxyProbed={proxyReady > 0}
+          />
+        )
+      })()}
 
       {gallery && (
         <WidgetGallery
@@ -200,15 +247,12 @@ export default function WidgetRail() {
             >
               <WidgetTile def={def} instance={instance} ctx={ctx} bridgeHost={bridgeHost} />
               {editing && (
+                // ONE row along the bottom. Split across the tile's corners the
+                // remove chip landed on the world clock's home-zone label and on
+                // the agenda's live dot — an edit affordance must not cover the
+                // thing you are deciding whether to keep.
                 <div className="vwidget-edit-overlay">
                   <div className="vwidget-edit-strip">
-                    <button
-                      type="button" className="vwidget-chip focus-primary" data-danger="true"
-                      aria-label={`Remove ${m.name}`}
-                      onClick={() => { dispatch({ t: 'remove', instanceId: instance.instanceId }); setConfiguring(null) }}
-                    >×</button>
-                  </div>
-                  <div className="vwidget-edit-strip-left">
                     <button
                       type="button" className="vwidget-chip focus-primary" disabled={i === 0}
                       aria-label={`Move ${m.name} earlier`}
@@ -237,6 +281,12 @@ export default function WidgetRail() {
                       aria-expanded={configuring === instance.instanceId}
                       onClick={() => setConfiguring((c) => (c === instance.instanceId ? null : instance.instanceId))}
                     >⚙</button>
+                    <span className="vwidget-edit-spacer" />
+                    <button
+                      type="button" className="vwidget-chip focus-primary" data-danger="true"
+                      aria-label={`Remove ${m.name}`}
+                      onClick={() => { dispatch({ t: 'remove', instanceId: instance.instanceId }); setConfiguring(null) }}
+                    >×</button>
                   </div>
                 </div>
               )}
@@ -245,20 +295,7 @@ export default function WidgetRail() {
         })}
       </div>
 
-      {configuring && (() => {
-        const found = mounted.find((m) => m.instance.instanceId === configuring)
-        if (!found) return null
-        return (
-          <WidgetConfig
-            manifest={found.def.manifest}
-            instance={found.instance}
-            onSetting={(k, v) => setSetting(configuring, k, v)}
-            onGrants={(g) => dispatch({ t: 'grants', instanceId: configuring, granted: g })}
-            onClose={() => setConfiguring(null)}
-            proxyProbed={proxyReady > 0}
-          />
-        )
-      })()}
+      </div>
     </div>
   )
 }
