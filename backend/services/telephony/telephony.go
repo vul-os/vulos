@@ -61,6 +61,16 @@ type Service struct {
 	// threads view. Bounded to maxVirtualMsgs.
 	vmu   sync.Mutex
 	vmsgs []sms
+
+	// cmu guards the call log and the in-flight-call tracking map. ModemManager
+	// keeps NO call history of its own — a Call object exists only for as long as
+	// the call does — so unless the box records its own calls there is nothing for
+	// the phone app's Recents list to show, ever. clog is that record (bounded to
+	// maxCallLog); seenCall tracks the call objects currently on the modem so that
+	// one vanishing can be turned into a history entry. See calls.go.
+	cmu      sync.Mutex
+	clog     []Call
+	seenCall map[string]liveCall
 }
 
 // New creates the service. notifier may be nil (no notifications fired). ownerID
@@ -183,6 +193,12 @@ type Status struct {
 	Signal    int    `json:"signal_quality,omitempty"` // 0-100
 	Operator  string `json:"operator,omitempty"`
 	Number    string `json:"number,omitempty"` // own number (often blank; SIMs seldom expose it)
+
+	// Voice reports whether this modem can carry CALLS as well as data/SMS. Many
+	// USB LTE sticks are data/SMS-only, and on those a dialler is a button that
+	// can only ever fail. Exposing the capability lets the phone app say so up
+	// front instead of offering a dial pad that errors on every press.
+	Voice bool `json:"voice"`
 }
 
 // Status returns the current modem state, or {Available:false} when no GSM.
@@ -205,5 +221,6 @@ func (s *Service) Status() Status {
 		Signal:    atoiSafe(kv["modem.generic.signal-quality.value"]),
 		Operator:  firstNonEmpty(kv["modem.3gpp.operator-name"], kv["modem.3gpp.operator-code"]),
 		Number:    kv["modem.generic.own-numbers.value[1]"],
+		Voice:     s.HasVoice(),
 	}
 }

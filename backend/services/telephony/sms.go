@@ -145,9 +145,15 @@ type Message struct {
 }
 
 // Thread returns the messages exchanged with `number`, oldest first.
+//
+// Never nil: an empty (or modem-less) result must serialise as `[]`, not `null`,
+// so the client's "is this a list?" narrowing succeeds and it renders an empty
+// thread instead of falling into its unrecognised-shape branch. Threads() and
+// CallLog() already guarantee this; ThreadFor did not, and was the one endpoint
+// on the surface that answered `null`.
 func (s *Service) ThreadFor(number string) []Message {
 	msgs, _ := s.allSMS()
-	var out []Message
+	out := []Message{}
 	for _, m := range msgs {
 		if m.Number != number {
 			continue
@@ -236,6 +242,11 @@ func (s *Service) pollLoop(stop <-chan struct{}) {
 		if !s.IsAvailable() {
 			continue
 		}
+		// Calls are tracked on the same tick as SMS: both are "what arrived on
+		// this line while you weren't looking", and both feed the same WS hub and
+		// notifier. pollCalls is self-contained and fails closed on any mmcli
+		// hiccup, so it cannot disturb the SMS scan below.
+		s.pollCalls()
 		msgs, ok := s.allSMS()
 		if !ok {
 			// Transient mmcli failure — do NOT wipe seenSMS or advance `primed`,
