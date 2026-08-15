@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vulos.org/schema/desktop-pack-v1.json",
+  "title": "Vulos desktop layout pack, version 1",
+  "description": "A layout pack describes where the dock lives, what it holds on a desktop and on a phone, which side the window controls sit on, and up to five allowlisted appearance tokens. It cannot contain CSS, URLs, scripts or selectors — see roadmap/CUSTOMIZATION.md. This schema documents the format; src/desktop/validate.ts is the enforcing implementation and is stricter (it also range-checks token values and rejects unknown keys).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "id", "name", "familiar", "summary", "layout"],
+  "properties": {
+    "format": { "const": "vulos.desktop.pack" },
+    "version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+      "description": "Lowercase slug. Must not collide with a built-in preset id."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 48, "description": "Named for what the layout does, not for whose desktop it resembles." },
+    "familiar": { "type": "string", "minLength": 1, "maxLength": 120, "description": "Which platform's habits this matches, in plain words. Ergonomics, not imitation." },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 240, "description": "One preview-safe sentence. Rendered verbatim in the first-boot picker." },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dock", "windowControls"],
+      "properties": {
+        "dock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["desktop", "mobile"],
+          "description": "One profile per form factor. A phone dock is not a narrow desktop dock: it may hold different items and is held to stricter limits.",
+          "properties": {
+            "desktop": { "$ref": "#/$defs/desktopDock" },
+            "mobile": { "$ref": "#/$defs/mobileDock" }
+          }
+        },
+        "windowControls": { "enum": ["left", "right"] },
+        "tokens": { "$ref": "#/$defs/tokens" }
+      }
+    }
+  },
+  "$defs": {
+    "dockBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge", "size", "style", "align", "autohide", "launcher", "assistant", "drawer", "items"],
+      "properties": {
+        "edge": { "enum": ["bottom", "top", "left", "right"] },
+        "size": { "enum": ["small", "medium", "large"] },
+        "style": { "enum": ["floating", "bar"], "description": "floating = rounded island inset from the edge; bar = full-span strip flush with it." },
+        "align": { "enum": ["start", "center", "end"] },
+        "autohide": { "type": "boolean" },
+        "launcher": { "type": "boolean", "description": "Show the search/launcher affordance in the strip." },
+        "assistant": { "type": "boolean", "description": "Show the assistant panel toggle in the strip." },
+        "drawer": { "type": "boolean", "description": "Show a persistent app-drawer affordance. Required on mobile." },
+        "items": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+          "description": "Ordered app ids the dock offers by default. Seeds the user's pins; never overwrites them."
+        }
+      }
+    },
+    "desktopDock": {
+      "allOf": [
+        { "$ref": "#/$defs/dockBase" },
+        { "properties": { "items": { "maxItems": 12 } } }
+      ]
+    },
+    "mobileDock": {
+      "allOf": [
+        { "$ref": "#/$defs/dockBase" },
+        {
+          "properties": {
+            "edge": { "enum": ["bottom", "top"], "description": "A phone dock may only sit on a horizontal edge — a vertical strip costs 17% of a 390px screen on the axis it has least of." },
+            "drawer": { "const": true },
+            "size": { "enum": ["medium", "large"], "description": "A phone dock may not use the 36px small tile — every target is hit with a thumb." },
+            "items": { "maxItems": 5, "description": "Five items plus the drawer gives ~62px slots at 390px, clearing the 44px touch target." }
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The complete allowlist. Values are also RANGE-checked by the implementation; the floors exist so no pack can make a control invisible or untappable.",
+      "properties": {
+        "--vd-dock-radius": { "type": "string", "pattern": "^(0|[0-9]{1,3}(\\.[0-9]{1,2})?)px$", "description": "0px – 28px. Corner radius of the dock strip." },
+        "--vd-dock-opacity": { "type": "string", "pattern": "^(0|1|0\\.[0-9]{1,3})$", "description": "0.6 – 1. Dock surface opacity; floors at 0.6 so the dock can never be made invisible." },
+        "--vd-window-radius": { "type": "string", "pattern": "^(0|[0-9]{1,3}(\\.[0-9]{1,2})?)px$", "description": "0px – 24px. Corner radius of a window frame." },
+        "--vd-accent": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$", "description": "Accent colour. Legibility-corrected against the active theme before it is drawn as text." }
+      }
+    }
+  }
+}

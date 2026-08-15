@@ -1,0 +1,39 @@
+{
+  "format": "vulos.desktop.pack",
+  "version": 1,
+  "id": "side-dock",
+  "name": "Side dock",
+  "familiar": "Matches Ubuntu habits",
+  "summary": "A vertical launcher pinned down the left edge, window controls on the right, and a phone dock that stays on the bottom edge where a thumb can reach it.",
+  "layout": {
+    "dock": {
+      "desktop": {
+        "edge": "left",
+        "size": "medium",
+        "style": "bar",
+        "align": "start",
+        "autohide": false,
+        "launcher": true,
+        "assistant": true,
+        "drawer": true,
+        "items": ["home", "lilmail", "files", "drive", "vulos-calendar", "terminal", "persona"]
+      },
+      "mobile": {
+        "edge": "bottom",
+        "size": "large",
+        "style": "bar",
+        "align": "center",
+        "autohide": false,
+        "launcher": false,
+        "assistant": true,
+        "drawer": true,
+        "items": ["home", "lilmail", "messages", "vulos-calendar"]
+      }
+    },
+    "windowControls": "right",
+    "tokens": {
+      "--vd-dock-radius": "0px",
+      "--vd-window-radius": "8px"
+    }
+  }
+}

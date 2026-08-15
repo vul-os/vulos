@@ -481,6 +481,15 @@ html, body, #root {
   /* Minimum comfortable touch target — WCAG 2.5.8 (Target Size, 24px min) with
      headroom to the platform-recommended 44px. */
   --touch-min: 44px;
+
+  /* Height of the desktop menu bar (shell/TopBar renders h-8 = 2rem).
+     Declared as a token because more than one surface has to sit BELOW the bar
+     rather than over it: the shared-desktop notice already read --menubar-h with
+     a 28px fallback and was landing 4px too high because nothing defined it, and
+     a top- or side-docked Dock has to start beneath it. The bar carries the
+     TrustBadge and the clock; chrome that can cover it is chrome that can hide a
+     live warning, so the offset is a token and not a magic number per file. */
+  --menubar-h: 2rem;
 }
 
 /* Padding helpers that add the device's safe-area inset on top of any existing

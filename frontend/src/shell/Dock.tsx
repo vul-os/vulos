@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { AppIconTile } from '../core/AppIcons'
 import { getApps, getAppById, subscribeApps, getAppsVersion } from '../core/AppRegistry'
 import { launchApp } from './launchApp'
+import { useDockProfile } from '../desktop'
+import type { DockProfile } from '../desktop'
 import type { ShellWindow } from '../providers/ShellProvider'
 import './shell-chrome.css'
 
@@ -10,42 +12,65 @@ import './shell-chrome.css'
 //
 // It used to render ONLY the windows already open, and to vanish entirely on an
 // empty desktop, which is the opposite of what a dock is for: on a fresh boot
-// there was nothing to click. It is now always present and has three bands,
-// separated by hairlines, in the order a Mac user expects:
+// there was nothing to click. It is now always present and has four bands,
+// separated by hairlines:
 //
-//   1. Spotlight            — open the launcher (⌘Space).
+//   1. Launcher             — open Spotlight (⌘Space).            [profile.launcher]
 //   2. Pinned apps          — the user's kept-in-dock apps, running or not.
 //   3. Running-not-pinned   — every other open window, so nothing is lost.
-//   4. Assistant + Glance   — the two always-there shell panels.
+//   4. Drawer + Assistant   — the app grid and the assistant panel.
+//                                            [profile.drawer / profile.assistant]
 //
-// Behaviour on an app tile mirrors macOS:
+// Behaviour on an app tile mirrors every desktop:
 //   · not running            → launch it
 //   · running, not focused   → focus/raise it
 //   · running and focused    → minimize it (toggle)
 //   · minimized              → restore + focus
 //
-// Pins persist in localStorage; the tile's context menu adds/removes them. On
-// narrow screens the strip scrolls horizontally instead of overflowing, and it
-// lifts clear of the home indicator via the safe-area inset.
+// # Where it sits is DATA now
+//
+// Edge, size, style, alignment, autohide and which affordances are present all
+// come from src/desktop's dock profile for the ACTIVE form factor — see
+// roadmap/CUSTOMIZATION.md. This component reads the profile and stamps it onto
+// the layer element as data-* attributes; every pixel of the geometry lives in
+// shell-chrome.css, keyed off those attributes. That split is deliberate: a new
+// edge or style becomes a CSS rule plus an enum entry rather than a new branch
+// of JSX, and a Playwright test can read the applied geometry off the DOM
+// instead of inferring it from class strings.
+//
+// Nothing here can be set to an arbitrary value: the profile has already been
+// through src/desktop/validate.ts, which is why this file does no clamping of
+// its own, and why it has no path that turns data into styling.
+//
+// Pins persist in localStorage; the tile's context menu adds/removes them. The
+// preset's `items` list is the DEFAULT — it seeds an untouched box and is
+// ignored the moment the user has pinned anything themselves.
 
 const PIN_KEY = 'vulos-dock-pins'
 
-// The default keep-in-dock set: the apps a fresh box should offer before the
-// user has expressed any preference. Ids that no longer exist in the registry
-// are skipped at render, so this list can never produce a dead tile.
-const DEFAULT_PINS = ['drive', 'lilmail', 'vulos-calendar', 'messages', 'terminal', 'persona']
-
-function loadPins(): string[] {
+function loadPins(): string[] | null {
   try {
     const raw = localStorage.getItem(PIN_KEY)
-    if (!raw) return DEFAULT_PINS
+    if (!raw) return null
     const ids: unknown = JSON.parse(raw)
-    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : DEFAULT_PINS
-  } catch { return DEFAULT_PINS }
+    return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : null
+  } catch { return null }
 }
 
 function savePins(ids: string[]): void {
   try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)) } catch { /* noop */ }
+}
+
+/**
+ * Plate and glyph geometry per size. ONE source of truth, shared by the CSS
+ * (which reads the plate off the inline width/height) and by AppIconTile's
+ * numeric `size` prop — which is exactly why tile size is an enum and not a
+ * customizable length token (see desktop/types.ts).
+ */
+const TILE: Record<DockProfile['size'], { plate: number; icon: number }> = {
+  small: { plate: 36, icon: 30 },
+  medium: { plate: 44, icon: 40 },
+  large: { plate: 56, icon: 50 },
 }
 
 /** One dock slot: an app id, plus whichever of its windows exist. */
@@ -56,11 +81,25 @@ interface Slot {
   pinned: boolean
 }
 
+/** An open tile context menu, anchored to the rect the tile occupied. */
+interface OpenMenu {
+  appId: string
+  rect: { top: number; bottom: number; left: number; right: number; width: number }
+}
+
 export default function Dock() {
   const { windows, activeWindow, focusWindow, minimizeWindow, openWindow, setLaunchpad, launchpadOpen, chatOpen, toggleChat } = useShell()
-  const [pins, setPins] = useState<string[]>(loadPins)
-  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const profile = useDockProfile()
+  const [storedPins, setStoredPins] = useState<string[] | null>(loadPins)
+  const [menu, setMenu] = useState<OpenMenu | null>(null)
   const appsVersion = useSyncExternalStore(subscribeApps, getAppsVersion, getAppsVersion)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+
+  // The user's own pins win whenever they exist; otherwise the preset seeds the
+  // dock. Switching preset on a box where someone has already curated their dock
+  // must not silently rearrange it.
+  const pins = storedPins ?? profile.items
 
   // appId → its open windows on the active desktop.
   const byApp = useMemo(() => {
@@ -94,8 +133,61 @@ export default function Dock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pins, windows, byApp, appsVersion])
 
+  const vertical = profile.edge === 'left' || profile.edge === 'right'
+
+  // ── Overflow ───────────────────────────────────────────────────────────────
+  // The strip is capped at the viewport (max-width/max-height: 100% in CSS) and
+  // draws with `overflow: visible` so hover labels are not clipped. That is the
+  // right default and the wrong one the moment the content no longer fits: it
+  // would push the document sideways, which on a 768px shell is a horizontal
+  // scrollbar across the whole OS.
+  //
+  // So overflow is MEASURED and the strip switches to a scroll container only
+  // when it genuinely does not fit. Measured rather than guessed from an item
+  // count, because the count is not the input — tile size, the launcher, the
+  // drawer, the running-not-pinned apps and the viewport all move it.
+  useLayoutEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const measure = () => {
+      // Compare against the cap, which is why this works with overflow:visible:
+      // clientWidth is the capped box, scrollWidth is the content.
+      const over = vertical
+        ? el.scrollHeight > el.clientHeight + 1
+        : el.scrollWidth > el.clientWidth + 1
+      setOverflowing(over)
+    }
+    measure()
+    // ResizeObserver catches the dock's own content changing; the window
+    // listener catches the viewport changing and is the fallback where RO is
+    // absent (jsdom, and any engine old enough to lack it) — without it the
+    // measurement would simply never run there and the dock would silently keep
+    // whatever overflow state it started with.
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    ro?.observe(el)
+    if (el.parentElement) ro?.observe(el.parentElement)
+    window.addEventListener('resize', measure)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [vertical, slots.length, profile.size, profile.style, profile.launcher, profile.drawer, profile.assistant])
+
+  // The anchored menu is positioned in viewport coordinates, so it has to close
+  // when the page moves under it rather than float away from its tile.
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    window.addEventListener('resize', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('resize', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [menu])
+
   const activate = useCallback((slot: Slot) => {
-    setMenuFor(null)
+    setMenu(null)
     const open = slot.windows
     if (open.length === 0) {
       const app = getAppById(slot.appId)
@@ -110,38 +202,53 @@ export default function Dock() {
   }, [activeWindow, focusWindow, minimizeWindow, openWindow])
 
   const togglePin = useCallback((appId: string) => {
-    setPins(prev => {
-      const next = prev.includes(appId) ? prev.filter(p => p !== appId) : [...prev, appId]
+    setStoredPins(prev => {
+      const base = prev ?? profile.items
+      const next = base.includes(appId) ? base.filter(p => p !== appId) : [...base, appId]
       savePins(next)
       return next
     })
-    setMenuFor(null)
-  }, [])
+    setMenu(null)
+  }, [profile.items])
+
+  const tile = TILE[profile.size]
+  const menuSlot = menu ? slots.find(s => s.appId === menu.appId) : null
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-30 pointer-events-none max-w-[calc(100vw-1.25rem)]"
-      style={{ bottom: 'max(0.625rem, calc(env(safe-area-inset-bottom, 0px) + 0.375rem))' }}
-      onMouseLeave={() => setMenuFor(null)}
+      className="vdock-layer"
+      data-edge={profile.edge}
+      data-dock-style={profile.style}
+      data-align={profile.align}
+      data-size={profile.size}
+      data-autohide={profile.autohide ? 'on' : 'off'}
+      onMouseLeave={() => setMenu(null)}
     >
       <div
+        ref={stripRef}
         role="toolbar"
         aria-label="Dock"
-        className="vshell-dock flex items-end gap-1 px-2 py-1.5 rounded-[20px] backdrop-blur-xl pointer-events-auto overflow-x-auto no-scrollbar"
+        aria-orientation={vertical ? 'vertical' : 'horizontal'}
+        data-overflow={overflowing ? 'true' : undefined}
+        className="vshell-dock no-scrollbar"
       >
-        {/* 1 — Spotlight */}
-        <DockButton
-          label="Search apps"
-          hint="Search apps  ⌘Space"
-          active={launchpadOpen}
-          onClick={() => setLaunchpad(!launchpadOpen)}
-        >
-          <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-            <circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L21 21" />
-          </svg>
-        </DockButton>
-
-        <span className="vshell-dock-sep" aria-hidden="true" />
+        {/* 1 — Launcher */}
+        {profile.launcher && (
+          <>
+            <DockButton
+              label="Search apps"
+              hint="Search apps  ⌘Space"
+              plate={tile.plate}
+              active={launchpadOpen}
+              onClick={() => setLaunchpad(!launchpadOpen)}
+            >
+              <svg viewBox="0 0 24 24" className="vdock-glyph-svg" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L21 21" />
+              </svg>
+            </DockButton>
+            <span className="vshell-dock-sep" aria-hidden="true" />
+          </>
+        )}
 
         {/* 2 + 3 — pinned apps, then anything else that is running */}
         {slots.map(slot => {
@@ -160,64 +267,103 @@ export default function Dock() {
           const state = !running ? '' : focused ? 'focused' : allMinimized ? 'minimized' : 'running'
           const stateId = state ? `dock-state-${slot.appId}` : undefined
           return (
-            <div key={slot.appId} className="relative shrink-0">
-              <button
-                onClick={() => activate(slot)}
-                onContextMenu={(e) => { e.preventDefault(); setMenuFor(slot.appId) }}
-                title={slot.title}
-                aria-label={slot.title}
-                aria-describedby={stateId}
-                aria-pressed={focused}
-                className="vshell-dock-item focus-primary rounded-2xl group relative flex flex-col items-center"
+            <button
+              key={slot.appId}
+              onClick={() => activate(slot)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                const r = e.currentTarget.getBoundingClientRect()
+                setMenu({ appId: slot.appId, rect: { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width } })
+              }}
+              title={slot.title}
+              aria-label={slot.title}
+              aria-describedby={stateId}
+              aria-pressed={focused}
+              className="vshell-dock-item focus-primary group"
+            >
+              {stateId && <span id={stateId} className="sr-only">{state}</span>}
+              <span
+                data-active={focused ? 'true' : undefined}
+                className={`vshell-dock-tile ${allMinimized ? 'opacity-55' : ''}`}
+                style={{ width: tile.plate, height: tile.plate }}
               >
-                {stateId && <span id={stateId} className="sr-only">{state}</span>}
-                <span
-                  data-active={focused ? 'true' : undefined}
-                  className={`vshell-dock-tile flex items-center justify-center w-11 h-11 rounded-[13px] ${allMinimized ? 'opacity-55' : ''}`}
-                >
-                  <AppIconTile id={slot.appId} size={40} unicode={getAppById(slot.appId)?.icon} />
-                </span>
-                <span
-                  data-active={focused ? 'true' : undefined}
-                  className="vshell-dot absolute -bottom-0.5 w-1 h-1 rounded-full"
-                  style={{ opacity: running ? undefined : 0 }}
-                />
-                <DockTip>{slot.title}</DockTip>
-              </button>
-              {menuFor === slot.appId && (
-                <div className="vshell-pop vshell-surface absolute bottom-full mb-3 left-1/2 -translate-x-1/2 rounded-xl py-1 min-w-[168px] z-10">
-                  <button className="vshell-menu-item w-full text-left" onClick={() => togglePin(slot.appId)}>
-                    {slot.pinned ? 'Remove from Dock' : 'Keep in Dock'}
-                  </button>
-                  {slot.windows.length > 0 && (
-                    <button className="vshell-menu-item w-full text-left" onClick={() => { slot.windows.forEach(w => { if (!w.minimized) minimizeWindow(w.id) }); setMenuFor(null) }}>
-                      Hide
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                <AppIconTile id={slot.appId} size={tile.icon} unicode={getAppById(slot.appId)?.icon} />
+              </span>
+              <span data-active={focused ? 'true' : undefined} className="vshell-dot" style={{ opacity: running ? undefined : 0 }} />
+              <DockTip>{slot.title}</DockTip>
+            </button>
           )
         })}
 
-        <span className="vshell-dock-sep" aria-hidden="true" />
+        {(profile.drawer || profile.assistant) && <span className="vshell-dock-sep" aria-hidden="true" />}
 
-        {/* 4 — the always-there shell panels */}
-        <DockButton label="Assistant" hint="Assistant" active={chatOpen} onClick={toggleChat}>
-          <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v6A2.5 2.5 0 0117.5 15H9l-4 3.2V15h-.2A.8.8 0 014 14.2z" />
-          </svg>
-        </DockButton>
+        {/* 4 — the app drawer and the assistant panel */}
+        {profile.drawer && (
+          <DockButton
+            label="All apps"
+            hint="All apps"
+            plate={tile.plate}
+            active={launchpadOpen}
+            onClick={() => setLaunchpad(!launchpadOpen)}
+          >
+            <svg viewBox="0 0 24 24" className="vdock-glyph-svg" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+              <rect x="4" y="4" width="6.2" height="6.2" rx="1.9" />
+              <rect x="13.8" y="4" width="6.2" height="6.2" rx="1.9" />
+              <rect x="4" y="13.8" width="6.2" height="6.2" rx="1.9" />
+              <rect x="13.8" y="13.8" width="6.2" height="6.2" rx="1.9" />
+            </svg>
+          </DockButton>
+        )}
+        {profile.assistant && (
+          <DockButton label="Assistant" hint="Assistant" plate={tile.plate} active={chatOpen} onClick={toggleChat}>
+            <svg viewBox="0 0 24 24" className="vdock-glyph-svg" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6.5A2.5 2.5 0 016.5 4h11A2.5 2.5 0 0120 6.5v6A2.5 2.5 0 0117.5 15H9l-4 3.2V15h-.2A.8.8 0 014 14.2z" />
+            </svg>
+          </DockButton>
+        )}
       </div>
+
+      {/* The tile context menu is a SIBLING of the strip, positioned in viewport
+          coordinates. It used to be a child, which meant that the moment the
+          strip became a scroll container (a narrow shell, a full dock) the only
+          route to "Remove from Dock" was clipped out of existence. */}
+      {menu && menuSlot && (
+        <div
+          className="vshell-pop vshell-surface vdock-menu rounded-xl py-1 min-w-[168px]"
+          style={menuStyle(profile.edge, menu.rect)}
+        >
+          <button className="vshell-menu-item w-full text-left" onClick={() => togglePin(menu.appId)}>
+            {menuSlot.pinned ? 'Remove from Dock' : 'Keep in Dock'}
+          </button>
+          {menuSlot.windows.length > 0 && (
+            <button
+              className="vshell-menu-item w-full text-left"
+              onClick={() => { menuSlot.windows.forEach(w => { if (!w.minimized) minimizeWindow(w.id) }); setMenu(null) }}
+            >
+              Hide
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-// A non-app dock affordance (Spotlight, Assistant). Same footprint and hover
-// behaviour as an app tile so the strip reads as one row.
-function DockButton({ label, hint, active, onClick, children }: {
+/** Place the anchored menu on the side of the tile that is on screen. */
+function menuStyle(edge: DockProfile['edge'], rect: OpenMenu['rect']): React.CSSProperties {
+  const gap = 10
+  if (edge === 'bottom') return { position: 'fixed', bottom: window.innerHeight - rect.top + gap, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+  if (edge === 'top') return { position: 'fixed', top: rect.bottom + gap, left: rect.left + rect.width / 2, transform: 'translateX(-50%)' }
+  if (edge === 'left') return { position: 'fixed', left: rect.right + gap, top: rect.top }
+  return { position: 'fixed', right: window.innerWidth - rect.left + gap, top: rect.top }
+}
+
+// A non-app dock affordance (Search, All apps, Assistant). Same footprint and
+// hover behaviour as an app tile so the strip reads as one row.
+function DockButton({ label, hint, plate, active, onClick, children }: {
   label: string
   hint: string
+  plate: number
   active?: boolean
   onClick: () => void
   children: React.ReactNode
@@ -228,11 +374,12 @@ function DockButton({ label, hint, active, onClick, children }: {
       title={hint}
       aria-label={label}
       aria-pressed={active}
-      className="vshell-dock-item focus-primary rounded-2xl group relative flex flex-col items-center shrink-0"
+      className="vshell-dock-item focus-primary group"
     >
       <span
         data-active={active ? 'true' : undefined}
-        className="vshell-dock-tile vshell-dock-glyph flex items-center justify-center w-11 h-11 rounded-[13px]"
+        className="vshell-dock-tile vshell-dock-glyph"
+        style={{ width: plate, height: plate }}
       >
         {children}
       </span>
@@ -241,18 +388,9 @@ function DockButton({ label, hint, active, onClick, children }: {
   )
 }
 
+// The hover label. Which side it appears on is driven entirely by the layer's
+// data-edge in CSS — a label drawn above a TOP-edge dock, or to the left of a
+// LEFT-edge dock, is drawn off-screen.
 function DockTip({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      className="pointer-events-none absolute bottom-full mb-2.5 whitespace-nowrap px-2.5 py-1 rounded-lg text-[12px] font-medium opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150"
-      style={{
-        background: 'color-mix(in srgb, var(--bg-elevated) 94%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--border-strong) 65%, transparent)',
-        color: 'var(--text-secondary)',
-        boxShadow: 'var(--shadow-md)',
-      }}
-    >
-      {children}
-    </span>
-  )
+  return <span className="vdock-tip" aria-hidden="true">{children}</span>
 }

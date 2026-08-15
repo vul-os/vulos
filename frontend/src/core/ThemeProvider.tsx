@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { accentText, accentSolid, worstSurfaceFor, compositeOver } from './accentContrast'
+import { getLayout, subscribeLayout } from '../desktop'
 
 type ResolvedTheme = 'light' | 'dark'
 
@@ -49,6 +50,31 @@ function ls(key: string, fallback: string): string {
 
 function lsSet(key: string, val: string): void {
   try { localStorage.setItem(key, val) } catch { /* noop */ }
+}
+
+/**
+ * The accent a layout preset or an installed pack asks for, if any.
+ *
+ * `--vd-accent` is one of the four allowlisted pack tokens. It deliberately does
+ * NOT go straight to the DOM as a colour: it comes through here so it lands on
+ * the same legibility derivation every user-picked accent gets (--accent-text /
+ * --accent-solid below). A pack can choose a hue; it cannot choose to be
+ * unreadable, because it never touches the value that is drawn as text.
+ *
+ * An accent the USER has explicitly chosen always wins — a layout preset is a
+ * starting point, not an override of a decision already made.
+ */
+function layoutAccent(): string | null {
+  try { return getLayout().tokens['--vd-accent'] ?? null } catch { return null }
+}
+
+function hasExplicitAccent(): boolean {
+  try { return !!localStorage.getItem(STORAGE_KEYS.accent) } catch { return false }
+}
+
+function initialAccent(): string {
+  if (hasExplicitAccent()) return ls(STORAGE_KEYS.accent, DEFAULT_ACCENT)
+  return layoutAccent() ?? DEFAULT_ACCENT
 }
 
 function getSystemTheme(): ResolvedTheme {
@@ -149,7 +175,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [nightShiftFrom, setNightShiftFromState] = useState(() => ls(STORAGE_KEYS.nightShiftFrom, '20:00'))
   const [nightShiftTo, setNightShiftToState] = useState(() => ls(STORAGE_KEYS.nightShiftTo, '07:00'))
   const [nightShiftWarmth, setNightShiftWarmthState] = useState(() => parseInt(ls(STORAGE_KEYS.nightShiftWarmth, '40'), 10))
-  const [accent, setAccentState] = useState(() => ls(STORAGE_KEYS.accent, DEFAULT_ACCENT))
+  const [accent, setAccentState] = useState(initialAccent)
+
+  // Track the desktop layout's accent while the user has not picked one of their
+  // own, so applying a preset or installing a pack retints the shell live.
+  useEffect(() => subscribeLayout(() => {
+    if (hasExplicitAccent()) return
+    setAccentState(layoutAccent() ?? DEFAULT_ACCENT)
+  }), [])
 
   // Re-evaluate time-based modes every minute
   const [tick, setTick] = useState(0)

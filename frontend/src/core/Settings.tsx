@@ -27,6 +27,10 @@ import DevicePanel from './settings/DevicePanel'
 import { nativeBridge } from './nativeBridge'
 import { SettingsIcon } from './AppIcons'
 import {
+  DOCK_ALIGNS, DOCK_EDGES, DOCK_SIZES, LAYOUT_PRESETS, MOBILE_EDGES, MOBILE_SIZES,
+  applyPreset, isStock, resetToStock, setWindowControls, updateDock, useDesktopLayout,
+} from '../desktop'
+import {
   Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
   StatTile, InfoList, InfoRow, EmptyState, Banner, Actions, Narrow,
 } from './settings/ui'
@@ -673,6 +677,14 @@ function AppearanceSettings() {
         )}
       </Card>
 
+      <Card
+        icon="display"
+        title="Desktop layout"
+        desc="Where the dock lives, what it holds, and which side the window controls sit on. Presets match the habits people bring from other desktops — Vulos still looks like Vulos in every one."
+      >
+        <DesktopLayoutSettings />
+      </Card>
+
       <Card title="Accent colour" desc="Applied to primary buttons and focus rings across the system.">
         <AccentPicker accent={accent} setAccent={setAccent} />
       </Card>
@@ -685,6 +697,166 @@ function AppearanceSettings() {
         <WallpaperPicker />
       </Card>
     </Section>
+  )
+}
+
+/* ── Desktop layout ───────────────────────────────────────────────────────────
+   The Settings face of src/desktop. Every control here writes through the
+   store's validated mutations — this component cannot construct a layout the
+   validator would reject, and if it tried, the store would refuse it rather
+   than apply it. The UI is not the boundary; store.ts is.
+
+   Note what is NOT here: any field that accepts CSS, a URL, a selector or a
+   free-form colour beyond a hex accent. See roadmap/CUSTOMIZATION.md for why a
+   theme that can restyle chrome is a theme that can spoof the trust badge. */
+
+interface ChoiceRowProps<T extends string> {
+  label: string
+  hint?: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
+}
+function ChoiceRow<T extends string>({ label, hint, value, options, onChange }: ChoiceRowProps<T>) {
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            role="radio"
+            aria-checked={value === opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-all border
+              ${value === opt.value
+                ? 'accent-bg-soft accent-border accent-text font-medium'
+                : 'bg-[var(--bg-elevated)]/50 border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-emphasis)] hover:text-[var(--text-primary)]'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </Field>
+  )
+}
+
+function DesktopLayoutSettings() {
+  const layout = useDesktopLayout()
+  const desktopDock = layout.dock.desktop
+  const mobileDock = layout.dock.mobile
+  const stock = isStock()
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* 1 — the preset. Presented as full cards, because the reason to pick one
+             is the sentence, not the name. */}
+      <Field label="Preset" hint="Pick the arrangement closest to what you are used to, then adjust anything below.">
+        <div className="grid gap-2 sm:grid-cols-2 max-w-[46rem]" role="radiogroup" aria-label="Desktop layout preset">
+          {LAYOUT_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              role="radio"
+              aria-checked={layout.presetId === preset.id}
+              onClick={() => applyPreset(preset.id)}
+              className={`text-left p-3 rounded-xl border transition-all
+                ${layout.presetId === preset.id
+                  ? 'accent-bg-soft accent-border'
+                  : 'bg-[var(--bg-elevated)]/50 border-[var(--border-default)] hover:border-[var(--border-emphasis)]'}`}
+            >
+              <div className={`text-sm font-medium ${layout.presetId === preset.id ? 'accent-text' : 'text-[var(--text-primary)]'}`}>
+                {preset.name}
+              </div>
+              <div className="text-[12px] mt-0.5 text-[var(--text-tertiary)]">{preset.familiar}</div>
+              <div className="text-[12px] mt-1.5 leading-snug text-[var(--text-secondary)]">{preset.summary}</div>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {/* 2 — this machine's dock. */}
+      <div className="flex flex-col gap-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">Dock on this desktop</div>
+        <ChoiceRow
+          label="Position"
+          value={desktopDock.edge}
+          options={DOCK_EDGES.map(e => ({ value: e, label: e[0].toUpperCase() + e.slice(1) }))}
+          onChange={(edge) => updateDock('desktop', { edge })}
+        />
+        <ChoiceRow
+          label="Style"
+          hint="A floating island inset from the edge, or a full-width bar flush with it."
+          value={desktopDock.style}
+          options={[{ value: 'floating' as const, label: 'Floating' }, { value: 'bar' as const, label: 'Bar' }]}
+          onChange={(style) => updateDock('desktop', { style })}
+        />
+        <ChoiceRow
+          label="Size"
+          value={desktopDock.size}
+          options={DOCK_SIZES.map(s => ({ value: s, label: s[0].toUpperCase() + s.slice(1) }))}
+          onChange={(size) => updateDock('desktop', { size })}
+        />
+        <ChoiceRow
+          label="Alignment"
+          value={desktopDock.align}
+          options={DOCK_ALIGNS.map(a => ({ value: a, label: a === 'start' ? 'Start' : a === 'end' ? 'End' : 'Centre' }))}
+          onChange={(align) => updateDock('desktop', { align })}
+        />
+        <Toggle
+          label="Hide until pointed at"
+          checked={desktopDock.autohide}
+          onChange={(autohide) => updateDock('desktop', { autohide })}
+        />
+        <Toggle
+          label="Show the app-drawer button"
+          checked={desktopDock.drawer}
+          onChange={(drawer) => updateDock('desktop', { drawer })}
+        />
+      </div>
+
+      {/* 3 — the PHONE dock, edited separately on purpose. */}
+      <div className="flex flex-col gap-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-faint)]">Dock on a phone</div>
+        <p className="text-[12px] -mt-2 text-[var(--text-tertiary)]">
+          A phone dock is its own arrangement, not a narrow copy of this one — it holds fewer items, always keeps the
+          app drawer, and stays on a horizontal edge. Editing it here never changes your desktop dock, and editing your
+          desktop dock never changes it.
+        </p>
+        <ChoiceRow
+          label="Position"
+          value={mobileDock.edge}
+          options={MOBILE_EDGES.map(e => ({ value: e, label: e[0].toUpperCase() + e.slice(1) }))}
+          onChange={(edge) => updateDock('mobile', { edge })}
+        />
+        <ChoiceRow
+          label="Size"
+          value={mobileDock.size}
+          options={MOBILE_SIZES.map(s => ({ value: s, label: s[0].toUpperCase() + s.slice(1) }))}
+          onChange={(size) => updateDock('mobile', { size })}
+        />
+      </div>
+
+      {/* 4 — window controls. */}
+      <ChoiceRow
+        label="Window controls"
+        hint="Which side of a window's title bar the close, minimise and maximise buttons sit on."
+        value={layout.windowControls}
+        options={[{ value: 'left' as const, label: 'Left' }, { value: 'right' as const, label: 'Right' }]}
+        onChange={(side) => setWindowControls(side)}
+      />
+
+      {/* 5 — the way back. Always visible, drawn from stock tokens only, so no
+             layout choice can affect how legible it is. */}
+      <div className="flex flex-wrap items-center gap-3 pt-1">
+        <button onClick={() => resetToStock()} className="btn-secondary text-sm" disabled={stock}>
+          Reset to stock layout
+        </button>
+        <span className="text-[12px] text-[var(--text-faint)]">
+          {stock
+            ? 'This is the stock Vulos layout.'
+            : 'Also available anywhere with Ctrl + Alt + Shift + Backspace, or by loading the shell with ?desktop-layout=stock.'}
+        </span>
+      </div>
+    </div>
   )
 }
 

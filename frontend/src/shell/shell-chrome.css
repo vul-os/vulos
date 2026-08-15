@@ -73,20 +73,184 @@
   }
 }
 
-/* ── Dock ────────────────────────────────────────────────────────────────────
-   Floating, blurred taskbar. Items lift on hover for a tactile, premium feel. */
-.vshell-dock {
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
-  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+/* ═══════════════════════════════════════════════════════════════════════════
+   DOCK — geometry driven entirely by the layer's data-* attributes.
+
+   shell/Dock.tsx renders ONE markup shape and stamps the validated dock profile
+   (src/desktop) onto `.vdock-layer` as data-edge / data-dock-style / data-align
+   / data-size / data-autohide. Everything below is that geometry. Keeping it
+   here rather than in JSX means a new edge is a rule, not a branch, and a
+   Playwright test can read the applied geometry off the DOM.
+
+   The only user-settable values that reach this file are the four allowlisted
+   `--vd-*` custom properties, each already range-checked. They are consumed with
+   an explicit fallback so a missing one is the stock look, never a broken box.
+   No rule in this file is reachable by anything a pack can name — packs cannot
+   express a selector, which is what keeps the trust chrome (the top bar's
+   TrustBadge, PublicAppBanner, SharedDesktopNotice) unreachable by a theme.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The layer spans its whole edge and is inert; only the strip takes pointer
+   events, so the desktop underneath stays clickable right up to the dock. */
+.vdock-layer {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  pointer-events: none;
+  --vdock-gap: 0.625rem; /* inset from the edge, floating style only */
 }
+
+/* Horizontal edges — the strip is a row, the layer runs the screen's width. */
+.vdock-layer[data-edge='bottom'],
+.vdock-layer[data-edge='top'] {
+  left: 0;
+  right: 0;
+  flex-direction: row;
+}
+.vdock-layer[data-edge='bottom'] {
+  bottom: 0;
+  align-items: flex-end;
+  /* Lift clear of the home indicator on a device that has one. */
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+}
+/* A top dock sits BELOW the menu bar, never over it: the bar carries the trust
+   badge and the clock, and chrome that can cover it is chrome that can hide a
+   live warning. --menubar-h is defined in index.css. */
+.vdock-layer[data-edge='top'] {
+  top: var(--menubar-h, 32px);
+  align-items: flex-start;
+}
+
+/* Vertical edges — the strip is a column between the menu bar and the bottom. */
+.vdock-layer[data-edge='left'],
+.vdock-layer[data-edge='right'] {
+  top: var(--menubar-h, 32px);
+  bottom: 0;
+  flex-direction: column;
+  padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+}
+.vdock-layer[data-edge='left'] {
+  left: 0;
+  align-items: flex-start;
+  padding-left: max(0px, env(safe-area-inset-left, 0px));
+}
+.vdock-layer[data-edge='right'] {
+  right: 0;
+  align-items: flex-end;
+  padding-right: max(0px, env(safe-area-inset-right, 0px));
+}
+
+/* Alignment along the edge. */
+.vdock-layer[data-align='center'] { justify-content: center; }
+.vdock-layer[data-align='start'] { justify-content: flex-start; }
+.vdock-layer[data-align='end'] { justify-content: flex-end; }
+
+/* ── The strip ───────────────────────────────────────────────────────────────
+   Blurred glass, tokenised throughout. Items lift on hover for a tactile feel. */
+.vshell-dock {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  background: color-mix(in srgb, var(--bg-elevated) calc(var(--vd-dock-opacity, 0.72) * 100%), transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.6);
+  transition: transform var(--motion-slow) var(--ease-out);
+  /* Capped at the viewport so the strip can never widen the document. The
+     overflow SWITCH is measured in Dock.tsx (see its note) rather than set
+     here, because `overflow: auto` clips the hover labels and the default has
+     to be the case that is true almost always. */
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.vdock-layer[data-edge='left'] .vshell-dock,
+.vdock-layer[data-edge='right'] .vshell-dock {
+  flex-direction: column;
+  padding: 0.5rem 0.375rem;
+}
+.vshell-dock[data-overflow='true'] {
+  overflow: auto;
+}
+
+/* Floating — a rounded island inset from its edge. */
+.vdock-layer[data-dock-style='floating'] .vshell-dock {
+  border-radius: var(--vd-dock-radius, 20px);
+  margin: var(--vdock-gap);
+}
+/* Bar — a full-span strip flush with its edge; only the inner border remains. */
+.vdock-layer[data-dock-style='bar'] .vshell-dock {
+  border-radius: 0;
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+.vdock-layer[data-dock-style='bar'][data-edge='bottom'] .vshell-dock,
+.vdock-layer[data-dock-style='bar'][data-edge='top'] .vshell-dock {
+  width: 100%;
+  max-width: 100%;
+}
+.vdock-layer[data-dock-style='bar'][data-edge='left'] .vshell-dock,
+.vdock-layer[data-dock-style='bar'][data-edge='right'] .vshell-dock {
+  height: 100%;
+  max-height: 100%;
+}
+/* The bar's single edge-facing hairline, so it reads as a surface boundary
+   rather than a floating slab with no edge at all. */
+.vdock-layer[data-dock-style='bar'][data-edge='bottom'] .vshell-dock { border-top: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent); }
+.vdock-layer[data-dock-style='bar'][data-edge='top'] .vshell-dock { border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent); }
+.vdock-layer[data-dock-style='bar'][data-edge='left'] .vshell-dock { border-right: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent); }
+.vdock-layer[data-dock-style='bar'][data-edge='right'] .vshell-dock { border-left: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent); }
+
+/* A `bar` that is start/end aligned still spans its whole edge — a taskbar
+   pinned to the left of the screen is a full-width bar whose ITEMS start left,
+   not a short stub. `floating` is the one that hugs its content. */
+.vdock-layer[data-dock-style='bar'][data-align='start'] .vshell-dock { justify-content: flex-start; }
+.vdock-layer[data-dock-style='bar'][data-align='center'] .vshell-dock { justify-content: center; }
+.vdock-layer[data-dock-style='bar'][data-align='end'] .vshell-dock { justify-content: flex-end; }
+
+/* ── Autohide ────────────────────────────────────────────────────────────────
+   The strip slides off its edge leaving a 6px lip. The lip is a real hover
+   target and the strip stays in the DOM and in the tab order, so :focus-within
+   reveals it — a hidden dock must never be unreachable from the keyboard, which
+   is the difference between a preference and a trap. */
+.vdock-layer[data-autohide='on'] .vshell-dock {
+  transition: transform var(--motion-slow) var(--ease-out);
+}
+.vdock-layer[data-autohide='on'][data-edge='bottom'] .vshell-dock { transform: translateY(calc(100% - 6px)); }
+.vdock-layer[data-autohide='on'][data-edge='top'] .vshell-dock { transform: translateY(calc(-100% + 6px)); }
+.vdock-layer[data-autohide='on'][data-edge='left'] .vshell-dock { transform: translateX(calc(-100% + 6px)); }
+.vdock-layer[data-autohide='on'][data-edge='right'] .vshell-dock { transform: translateX(calc(100% - 6px)); }
+.vdock-layer[data-autohide='on'] .vshell-dock:hover,
+.vdock-layer[data-autohide='on'] .vshell-dock:focus-within {
+  transform: none;
+}
+
+/* ── Tiles ───────────────────────────────────────────────────────────────────*/
 .vshell-dock-item {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
   transition: transform var(--motion-base) var(--ease-out);
 }
-.vshell-dock-item:hover {
-  transform: translateY(-4px);
-}
+/* The hover lift points AWAY from the edge the dock is docked to. */
+.vdock-layer[data-edge='bottom'] .vshell-dock-item:hover { transform: translateY(-4px); }
+.vdock-layer[data-edge='top'] .vshell-dock-item:hover { transform: translateY(4px); }
+.vdock-layer[data-edge='left'] .vshell-dock-item:hover { transform: translateX(4px); }
+.vdock-layer[data-edge='right'] .vshell-dock-item:hover { transform: translateX(-4px); }
+
 .vshell-dock-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
   transition: background var(--motion-fast) var(--ease-standard);
 }
 .vshell-dock-tile:hover {
@@ -95,10 +259,20 @@
 .vshell-dock-tile[data-active='true'] {
   background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
+
+/* Running indicator — a pip on the edge-facing side of the tile. */
 .vshell-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
   background: var(--text-faint);
   transition: background var(--motion-fast) var(--ease-standard);
 }
+.vdock-layer[data-edge='bottom'] .vshell-dot { bottom: -3px; left: 50%; margin-left: -2px; }
+.vdock-layer[data-edge='top'] .vshell-dot { top: -3px; left: 50%; margin-left: -2px; }
+.vdock-layer[data-edge='left'] .vshell-dot { left: -3px; top: 50%; margin-top: -2px; }
+.vdock-layer[data-edge='right'] .vshell-dot { right: -3px; top: 50%; margin-top: -2px; }
 .vshell-dock-item:hover .vshell-dot {
   background: var(--text-tertiary);
 }
@@ -106,21 +280,79 @@
   background: var(--accent);
 }
 
+.vdock-glyph-svg {
+  width: 22px;
+  height: 22px;
+}
+.vdock-layer[data-size='small'] .vdock-glyph-svg { width: 18px; height: 18px; }
+.vdock-layer[data-size='large'] .vdock-glyph-svg { width: 26px; height: 26px; }
+
+/* ── Hover label ─────────────────────────────────────────────────────────────
+   Drawn on the side of the tile that faces AWAY from the edge, so a top-edge
+   dock does not caption itself off the top of the screen. */
+.vdock-tip {
+  position: absolute;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 65%, transparent);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-md);
+  transition: opacity var(--motion-fast) var(--ease-standard);
+  z-index: 2;
+}
+.vshell-dock-item:hover .vdock-tip {
+  opacity: 1;
+}
+.vdock-layer[data-edge='bottom'] .vdock-tip { bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); }
+.vdock-layer[data-edge='top'] .vdock-tip { top: calc(100% + 10px); left: 50%; transform: translateX(-50%); }
+.vdock-layer[data-edge='left'] .vdock-tip { left: calc(100% + 10px); top: 50%; transform: translateY(-50%); }
+.vdock-layer[data-edge='right'] .vdock-tip { right: calc(100% + 10px); top: 50%; transform: translateY(-50%); }
+
+/* The tile context menu — a sibling of the strip, positioned in viewport
+   coordinates by Dock.tsx so it survives the strip becoming a scroll box. */
+.vdock-menu {
+  pointer-events: auto;
+  z-index: 40;
+}
+
 /* ── Reduced motion ──────────────────────────────────────────────────────────
-   Honour the OS preference: no lifts, no pulses, no colour transitions. */
+   Honour the OS preference: no lifts, no pulses, no colour transitions. The
+   autohide SLIDE is a transition, not the state — reduced motion removes the
+   animation, never the reveal, so an autohidden dock still appears on hover. */
 @media (prefers-reduced-motion: reduce) {
   .vshell-btn,
   .vshell-chip,
   .vshell-dock-tile,
+  .vdock-tip,
   .vshell-dot {
     transition: none;
   }
   .vshell-chip-dot[data-live='true'] {
     animation: none;
   }
+  .vshell-dock,
   .vshell-dock-item,
-  .vshell-dock-item:hover {
+  .vdock-layer[data-edge='bottom'] .vshell-dock-item:hover,
+  .vdock-layer[data-edge='top'] .vshell-dock-item:hover,
+  .vdock-layer[data-edge='left'] .vshell-dock-item:hover,
+  .vdock-layer[data-edge='right'] .vshell-dock-item:hover {
     transition: none;
+    transform: none;
+  }
+  /* Re-state the hidden offsets AFTER the blanket transform reset above, so
+     autohide still hides — the reset must kill motion, not the feature. */
+  .vdock-layer[data-autohide='on'][data-edge='bottom'] .vshell-dock { transform: translateY(calc(100% - 6px)); }
+  .vdock-layer[data-autohide='on'][data-edge='top'] .vshell-dock { transform: translateY(calc(-100% + 6px)); }
+  .vdock-layer[data-autohide='on'][data-edge='left'] .vshell-dock { transform: translateX(calc(-100% + 6px)); }
+  .vdock-layer[data-autohide='on'][data-edge='right'] .vshell-dock { transform: translateX(calc(100% - 6px)); }
+  .vdock-layer[data-autohide='on'] .vshell-dock:hover,
+  .vdock-layer[data-autohide='on'] .vshell-dock:focus-within {
     transform: none;
   }
 }
@@ -459,6 +691,33 @@
     0 0 0 1px color-mix(in srgb, var(--accent) 50%, var(--border-strong)),
     var(--shadow-window);
 }
+/* Frame radius is one of the four allowlisted `--vd-*` tokens (0–24px, checked
+   in src/desktop/validate.ts). The fallback is the stock 0.5rem, so a layout
+   that sets nothing is byte-for-byte the look that shipped. */
+.vwin {
+  border-radius: var(--vd-window-radius, 0.5rem);
+}
+
+/* ── Which side the window controls sit on ───────────────────────────────────
+   The single biggest piece of muscle memory that transfers between desktops,
+   and the reason "Taskbar" and "Side dock" feel right to someone arriving from
+   Windows or Ubuntu: close is where their hand already goes.
+
+   Done with `order` rather than row-reverse so the CLUSTER's internal order is
+   also correct — minimise, maximise, close, with close outermost — instead of
+   merely mirrored. Driven off <html data-window-controls>, written by
+   src/desktop/store.ts from the validated layout. */
+[data-window-controls='right'] .vwin-lights {
+  order: 9;
+}
+[data-window-controls='right'] .vwin-light-min { order: 1; }
+[data-window-controls='right'] .vwin-light-max { order: 2; }
+[data-window-controls='right'] .vwin-light-close { order: 3; }
+/* With the controls on the right the title reads from the left, which is the
+   other half of the same convention. */
+[data-window-controls='right'] .vwin-titlebar .vwin-title {
+  justify-content: flex-start;
+}
 
 /* ── Titlebar ────────────────────────────────────────────────────────────────
    A translucent, faintly-blurred strip built from the elevated surface so it
@@ -711,13 +970,20 @@
 }
 
 /* Dock band separator — a hairline between the launcher, the apps and the
-   shell panels, so the strip reads as three purposes rather than one soup. */
+   shell panels, so the strip reads as three purposes rather than one soup.
+   Turns with the strip: a 1px column between rows in a vertical dock. */
 .vshell-dock-sep {
   width: 1px;
   align-self: stretch;
   margin: 0.375rem 0.3125rem;
   background: color-mix(in srgb, var(--border-emphasis) 50%, transparent);
   flex: none;
+}
+.vdock-layer[data-edge='left'] .vshell-dock-sep,
+.vdock-layer[data-edge='right'] .vshell-dock-sep {
+  width: auto;
+  height: 1px;
+  margin: 0.3125rem 0.375rem;
 }
 
 /* Non-app dock affordances (Spotlight, Assistant) carry a glyph rather than an
