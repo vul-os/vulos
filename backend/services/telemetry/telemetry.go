@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"vulos/backend/internal/proctl"
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/gpu"
 
@@ -342,6 +343,24 @@ type ProcessInfo struct {
 	MemPct  float64 `json:"mem_pct"`
 	Threads int     `json:"threads"`
 	Command string  `json:"command"`
+
+	// Start is field 22 of /proc/<pid>/stat — clock ticks since boot at which
+	// this process began. Shipped to the client because a pid ALONE is not a
+	// process identity: once a process is reaped the kernel may hand its number
+	// to something else, and a client that posts back only a pid is asking the
+	// server to signal whatever happens to hold that number now. The client
+	// echoes this value back on a kill and the server refuses if it no longer
+	// matches. See internal/proctl.
+	Start uint64 `json:"start"`
+	PPID  int    `json:"ppid"`
+	PGID  int    `json:"pgid"`
+
+	// Protected is set when this process may never be signalled through the
+	// API, with ProtectedReason saying why. Sent with the LISTING so the UI can
+	// render a disabled control that explains itself, rather than an enabled
+	// control that fails on click.
+	Protected       bool   `json:"protected"`
+	ProtectedReason string `json:"protected_reason,omitempty"`
 }
 
 // NetConn represents a network connection.
@@ -352,12 +371,25 @@ type NetConn struct {
 	RemoteAddr string `json:"remote_addr"`
 	RemotePort int    `json:"remote_port"`
 	State      string `json:"state"`
-	PID        int    `json:"pid"`
-	Process    string `json:"process"`
+	// PID is the process owning the socket, or 0 when it could not be resolved
+	// (which is normal: sockets in TIME_WAIT have no owning process, and a
+	// socket owned by another user is unreadable unless the server is root).
+	PID     int    `json:"pid"`
+	Process string `json:"process"`
+	// Inode is the socket inode from /proc/net/*. It is the JOIN KEY to a pid,
+	// never a pid itself — see NetworkConnections.
+	Inode int `json:"inode"`
 }
 
 // ProcessList reads all processes from /proc and returns them sorted by CPU desc.
 func ProcessList() []ProcessInfo {
+	return ProcessListFor(proctl.CurrentSelf())
+}
+
+// ProcessListFor is ProcessList with the server identity that decides which
+// rows are protected. Split out so the annotation can be tested against a
+// synthetic Self rather than only against whatever pid the test binary got.
+func ProcessListFor(self proctl.Self) []ProcessInfo {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil
@@ -427,6 +459,19 @@ func ProcessList() []ProcessInfo {
 			}
 		}
 
+		// Kernel threads have an empty cmdline; the fallback above sets Command
+		// to the comm name, so the emptiness has to be read before that. Done
+		// here from the raw file rather than re-deriving it, so the UI's
+		// protected flag agrees with what proctl will decide at kill time.
+		kernel := false
+		if cmdData, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline")); err == nil {
+			kernel = len(strings.Trim(string(cmdData), "\x00")) == 0
+		}
+		if d := proctl.Protect(proctl.Snapshot{PID: p.PID, PPID: p.PPID, PGID: p.PGID, Kernel: kernel}, self); d != nil {
+			p.Protected = true
+			p.ProtectedReason = d.Reason
+		}
+
 		procs = append(procs, p)
 	}
 
@@ -461,6 +506,10 @@ func parseProcStat(data string, pid int, systemUptime, clkTck float64, memTotal 
 		return p
 	}
 
+	// ppid (field 4), pgrp (field 5) — rest[i] is proc(5) field i+3.
+	p.PPID, _ = strconv.Atoi(rest[1])
+	p.PGID, _ = strconv.Atoi(rest[2])
+
 	// State
 	switch rest[0] {
 	case "R":
@@ -483,6 +532,7 @@ func parseProcStat(data string, pid int, systemUptime, clkTck float64, memTotal 
 	utime, _ := strconv.ParseFloat(rest[11], 64)
 	stime, _ := strconv.ParseFloat(rest[12], 64)
 	starttime, _ := strconv.ParseFloat(rest[19], 64)
+	p.Start, _ = strconv.ParseUint(rest[19], 10, 64)
 
 	totalTime := utime + stime
 	seconds := systemUptime - (starttime / clkTck)
@@ -512,15 +562,30 @@ func NetworkConnections() []NetConn {
 	conns = append(conns, parseNetFile("/proc/net/udp", "udp")...)
 	conns = append(conns, parseNetFile("/proc/net/udp6", "udp6")...)
 
-	// Build pid->name map for inode lookup
-	inodePID := buildInodePIDMap()
+	// Resolve socket inode -> owning process.
+	//
+	// This used to park the INODE in NetConn.PID and then look the map up by
+	// that field, leaving PID holding an inode forever: the Activity Monitor's
+	// "PID" column was showing socket inode numbers — six- and seven-digit
+	// values that look like plausible pids on a busy box, which is why it read
+	// as correct. Nothing could act on a connection because the number never
+	// identified a process. Inode now has its own field and PID holds a pid.
+	return ResolveSocketOwners(conns, buildInodeOwners())
+}
 
+// ResolveSocketOwners joins connections to the processes holding their sockets.
+//
+// Split out from NetworkConnections and exported so the JOIN can be tested: the
+// bug it fixes was invisible to every test because the only way to observe it
+// was to read a live /proc on Linux and notice that the numbers in the PID
+// column were too large. A pure function over a map is observable anywhere.
+func ResolveSocketOwners(conns []NetConn, owners map[int]SocketOwner) []NetConn {
 	for i := range conns {
-		if name, ok := inodePID[conns[i].PID]; ok {
-			conns[i].Process = name
+		if o, ok := owners[conns[i].Inode]; ok {
+			conns[i].PID = o.PID
+			conns[i].Process = o.Name
 		}
 	}
-
 	return conns
 }
 
@@ -562,7 +627,7 @@ func parseNetFile(path, proto string) []NetConn {
 			RemoteAddr: remoteAddr,
 			RemotePort: remotePort,
 			State:      state,
-			PID:        inode, // temporarily store inode, resolve to PID later
+			Inode:      inode,
 		})
 	}
 	return conns
@@ -607,8 +672,14 @@ func parseHexAddr(s string, isV6 bool) (string, int) {
 	return hex, int(port)
 }
 
-func buildInodePIDMap() map[int]string {
-	result := make(map[int]string)
+// SocketOwner is the process holding a socket inode open.
+type SocketOwner struct {
+	PID  int
+	Name string
+}
+
+func buildInodeOwners() map[int]SocketOwner {
+	result := make(map[int]SocketOwner)
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return result
@@ -643,7 +714,7 @@ func buildInodePIDMap() map[int]string {
 							name = strconv.Itoa(pid)
 						}
 					}
-					result[inode] = fmt.Sprintf("%s (%d)", name, pid)
+					result[inode] = SocketOwner{PID: pid, Name: name}
 				}
 			}
 		}
@@ -665,21 +736,41 @@ func uidToName(uid string) string {
 	return uid
 }
 
-// ProcessHandler returns an HTTP handler for /api/system/processes
+// ProcessHandler returns an HTTP handler for /api/system/processes.
+//
+// An unreadable /proc is a 503 with an OBJECT body, never a 200 with an empty
+// list. A box always has processes, so "zero processes" is never a true
+// answer — it is what a client renders when it swallowed a failure. Every
+// /api/* service in this repo answers errors with JSON that parses cleanly,
+// so a client doing `.then(r => r.json())` without checking r.ok gets a value
+// either way; returning `[]` on failure would hand it a value that is
+// indistinguishable from a healthy empty result, and the user would be told
+// their box is running nothing.
 func ProcessHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, _ := json.Marshal(ProcessList())
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		procs := ProcessList()
+		if procs == nil {
+			writeProcErr(w, 503,
+				"cannot read /proc on this host", "proc_unavailable")
+			return
+		}
+		writeProcJSON(w, 200, procs)
 	}
 }
 
-// NetworkHandler returns an HTTP handler for /api/system/network
+// NetworkHandler returns an HTTP handler for /api/system/network.
+//
+// An empty connection list is a legitimate answer here — a box with nothing
+// listening and nothing dialled is unusual but real — so unlike the process
+// list this does not treat empty as failure. It still returns a slice rather
+// than nil so the client sees [] and not null.
 func NetworkHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, _ := json.Marshal(NetworkConnections())
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(data)
+		conns := NetworkConnections()
+		if conns == nil {
+			conns = []NetConn{}
+		}
+		writeProcJSON(w, 200, conns)
 	}
 }
 
