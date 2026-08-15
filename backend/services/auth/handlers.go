@@ -124,6 +124,16 @@ var publicPaths = map[string]bool{
 	// auth-bypass entry is a landmine: if either path is ever reused for a new
 	// handler, it would silently inherit an unauthenticated exemption nobody
 	// reviewed for the new purpose. Removed rather than left as a trap.
+	// SETUP-DEVICE-01: the form-factor SUGGESTION read behind step 3 of the setup
+	// wizard, which runs before any account exists. Deliberately a SEPARATE path
+	// from /api/device-profile: isPublicPath() below matches on PATH ONLY, so
+	// listing that one would exempt its PUT too and let an unauthenticated caller
+	// switch an unclaimed box into TV/car/watch mode. What this discloses is one
+	// value from {pc,tv,car,watch} — the chassis class the box detected about
+	// itself — and only until setup completes: the handler
+	// (cmd/server/routes_setup.go) 403s once .setup-complete exists, and the
+	// interface it holds has no Set().
+	"/api/setup/device-profile":       true,
 	"/api/auth/masterkey/recover":     true, // WAVE2-RECOVERY: phrase-based password reset (user is locked out)
 	"/api/auth/pin/unlock":            true, // CLOGIN-06: PIN unlock (unauthenticated — user is on lock screen)
 	"/api/auth/pin/status":            true, // CLOGIN-06: lockout status (unauthenticated — shown on lock screen)

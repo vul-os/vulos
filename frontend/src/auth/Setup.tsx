@@ -640,7 +640,12 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/device-profile', { credentials: 'include' })
+    // GET /api/setup/device-profile, not /api/device-profile: this step runs at
+    // index 2 of 15, four steps BEFORE the account exists, so the session-gated
+    // route 401s on every real first boot (see below). The setup-time route is
+    // public only while /var/lib/vulos/.setup-complete is absent, is read-only,
+    // and answers with nothing but the detected form factor.
+    fetch('/api/setup/device-profile', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then((data: unknown) => {
         if (cancelled) return
@@ -650,13 +655,17 @@ function DeviceStep({ config, update, onNext, onPrev }: StepProps) {
           || null
         setDetected(suggested)
         if (!config.deviceProfile) {
-          // Fall back to 'pc' when detection says nothing. GET
-          // /api/device-profile is not in the backend's publicPaths, so on a
-          // real first boot it 401s and detection is ALWAYS empty — which left
-          // nothing selected and turned the step's primary button into "Skip",
-          // i.e. the wizard shrugging at its own question. Observed in a
-          // browser. 'pc' is the right default: it is the responsive profile,
-          // and the only one whose UI works on all four device classes.
+          // Fall back to 'pc' when detection says nothing. This step used to
+          // read GET /api/device-profile, which is not in the backend's
+          // publicPaths, so on a real first boot it 401'd and detection was
+          // ALWAYS empty — which left nothing selected, turned the step's
+          // primary button into "Skip", and brought a TV or car head unit that
+          // had correctly detected itself up in the desktop shell. Observed in
+          // a browser. The fallback stays for the cases that are still
+          // legitimately silent (detection found nothing; the wizard re-run by
+          // hand on a box that IS set up, where the setup-time route 403s):
+          // 'pc' is the responsive profile, the only one whose UI works on all
+          // four device classes.
           update('deviceProfile', suggested || 'pc')
         }
       })
@@ -1397,13 +1406,26 @@ function NetworkStep({ config, update, onNext, onPrev }: StepProps) {
    *
    * This used to be `catch { setNetworks([]) }` with no res.ok check, and
    * GET /api/wifi/scan is not in the backend's publicPaths — so on every real
-   * first boot it answered 401, `res.json()` happily parsed the error body,
+   * first boot it answers 401, `res.json()` happily parsed the error body,
    * `Array.isArray` was false, and the step rendered "No networks found".
    *
    * That is not a cosmetic difference. It is the screen telling a user on
    * wifi-only hardware that there is no wifi in range, with a "Scan again"
    * button that will say the same thing forever, on the step whose entire job
    * is getting the machine online. Screenshotted on a simulated real boot.
+   *
+   * The 401 itself is now a DECISION, not an oversight. Step 3 got a public,
+   * read-only setup-time route (GET /api/setup/device-profile); this step
+   * deliberately did not, because a scan is not a read: wifi.Service.Scan
+   * shells out to `iw dev <iface> scan trigger` as root, holds the service
+   * mutex and sleeps 2s, so an unauthenticated exemption would hand any caller
+   * who can reach an unclaimed box a repeatable, radio-driving, lock-holding
+   * operation — and publish its visible SSID list, which locates the box for
+   * anyone not standing next to it (SEC-WIFI-SCAN-01, backend routes_setup.go).
+   * Nothing is lost from the flow: finish() applies the Wi-Fi choice through
+   * the admin-gated POST /api/wifi/connect, with the session the account step
+   * created. What the user loses before that point is the PICKER, which is why
+   * the message below points at Ethernet and Settings instead of pretending.
    */
   const scan = async () => {
     setScanning(true)

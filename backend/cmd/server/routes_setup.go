@@ -52,6 +52,25 @@ package main
 //     wizard.
 //   - It is audit-logged like every other privileged filesystem write
 //     (ROUTES.md, "Privileged routes have an extra rule").
+//
+// THE ROUTE THAT IS DELIBERATELY NOT HERE: a setup-time Wi-Fi scan.
+//
+// Step 6 of the wizard scans for networks and 401s on a real first boot, for
+// the same reason step 3 did — no session exists yet. It is NOT fixed the same
+// way, and the difference is the point. GET /api/wifi/scan is admin-gated on
+// purpose (SEC-WIFI-SCAN-01, routes_wifi.go): a scan is not a read. It shells
+// out to `iw dev <iface> scan trigger` as root, takes the Wi-Fi service mutex,
+// sleeps two seconds, and repeated calls can disturb the association the box is
+// currently using. Exempting it during setup would hand a radio-driving,
+// lock-holding, unlimited-repeat operation to any unauthenticated caller who
+// can reach a box that has no owner yet — and would publish the box's visible
+// SSID list, which is a location oracle for anyone NOT physically near it.
+//
+// So the scan stays gated and the step keeps degrading honestly ("this box
+// would not run a scan for us yet — you can continue on Ethernet and set up
+// Wi-Fi from Settings"). Nothing is lost from the flow itself: the wizard
+// applies the Wi-Fi choice at finish(), through the admin-gated
+// POST /api/wifi/connect, with the owner session the account step created.
 
 import (
 	"fmt"
@@ -61,7 +80,16 @@ import (
 	"time"
 
 	"vulos/backend/services/auth"
+	bprofiles "vulos/backend/services/profiles"
 )
+
+// formFactorReader is the slice of *profiles.DeviceProfileStore this file uses:
+// the read, and only the read. Set() is deliberately not in the interface, so
+// no future edit to this unauthenticated handler can reach a mutation through
+// the dependency it was given.
+type formFactorReader interface {
+	Get() (profile, suggested bprofiles.FormFactor)
+}
 
 // setupMarkerPath is the file whose EXISTENCE means "this box has been set up".
 //
@@ -96,12 +124,49 @@ func markSetupComplete(userID string) error {
 }
 
 // registerSetupRoutes wires the setup status + completion routes into mux.
-func registerSetupRoutes(mux *http.ServeMux, authStore *auth.Store) {
+func registerSetupRoutes(mux *http.ServeMux, authStore *auth.Store, devices formFactorReader) {
 	// GET /api/setup/status — public (auth.publicPaths), no auth needed. The
 	// shell asks this before it has anyone to authenticate as. It discloses one
 	// boolean: whether this box has been through setup.
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]bool{"setup_complete": setupIsComplete()})
+	})
+
+	// GET /api/setup/device-profile — public, read-only, and ONLY before this box
+	// has been set up.
+	//
+	// Why a second route instead of exempting GET /api/device-profile: the auth
+	// middleware's allow-list is METHOD-BLIND. isPublicPath() is called with
+	// r.URL.Path alone (services/auth/handlers.go), so listing "/api/device-profile"
+	// would exempt PUT /api/device-profile too — handing any unauthenticated
+	// caller on the network the power to switch an unclaimed box into TV, car or
+	// watch mode, which changes the entire shell. "Allow-list just the read" is
+	// not something that mechanism can express, so the read gets its own path
+	// with no mutating sibling, and the interface it is handed (formFactorReader)
+	// has no Set().
+	//
+	// WHAT THIS DISCLOSES, precisely: one value from {pc, tv, car, watch} —
+	// twice — to anyone who can reach a box that has not yet been set up. It is
+	// the SMBIOS chassis class the box detected about itself, i.e. roughly "this
+	// is a laptop" vs "this is a TV". Nothing about its network, its hardware
+	// beyond that class, its owner (there isn't one yet) or its contents. The
+	// window closes the moment setup completes.
+	//
+	// Why it is worth that: step 3 of the wizard asks "what kind of device is
+	// this?" and pre-selects the detected answer. 401'd, detection is ALWAYS
+	// empty and the step falls back to "pc" — so a TV or a car head unit that
+	// correctly detected itself came up in the desktop shell unless the user
+	// noticed and overrode it.
+	mux.HandleFunc("GET /api/setup/device-profile", func(w http.ResponseWriter, r *http.Request) {
+		if setupIsComplete() {
+			// Not "forbidden because you are nobody" — forbidden because this
+			// route only exists during setup. The session-gated
+			// /api/device-profile is the one to use afterwards.
+			writeErr(w, 403, "setup is already complete; sign in and use /api/device-profile")
+			return
+		}
+		profile, suggested := devices.Get()
+		writeJSON(w, map[string]string{"profile": string(profile), "suggested": string(suggested)})
 	})
 
 	// POST /api/setup/complete — owner-only; records first-boot completion.

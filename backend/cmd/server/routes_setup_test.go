@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"vulos/backend/services/auth"
+	bprofiles "vulos/backend/services/profiles"
 )
 
 // newSetupTestMux returns the real registered routes, an admin id and a
@@ -59,8 +60,17 @@ func newSetupTestMux(t *testing.T) (*http.ServeMux, string, string) {
 	setupMarkerAt(t, filepath.Join(t.TempDir(), "vulos", ".setup-complete"))
 
 	mux := http.NewServeMux()
-	registerSetupRoutes(mux, store)
+	registerSetupRoutes(mux, store, fakeFormFactor{profile: "tv", suggested: "tv"})
 	return mux, owner.ID, guest.ID
+}
+
+// fakeFormFactor stands in for the device-profile store. It satisfies
+// formFactorReader — which has no Set(), which is the point: the
+// unauthenticated handler is handed a dependency it cannot mutate anything with.
+type fakeFormFactor struct{ profile, suggested bprofiles.FormFactor }
+
+func (f fakeFormFactor) Get() (bprofiles.FormFactor, bprofiles.FormFactor) {
+	return f.profile, f.suggested
 }
 
 // setupMarkerAt redirects the package-level marker path for one test and
@@ -185,7 +195,7 @@ func TestSetupComplete_UnownedBoxCannotBeCompleted(t *testing.T) {
 	}
 	setupMarkerAt(t, filepath.Join(t.TempDir(), "vulos", ".setup-complete"))
 	mux := http.NewServeMux()
-	registerSetupRoutes(mux, store)
+	registerSetupRoutes(mux, store, fakeFormFactor{profile: "pc", suggested: "pc"})
 
 	// No session, and an invented user id — the two shapes a stranger has.
 	for _, id := range []string{"", "u-does-not-exist"} {
@@ -230,6 +240,76 @@ func TestSetupComplete_IsIdempotent(t *testing.T) {
 	}
 	if string(first) != string(second) {
 		t.Errorf("a repeat completion rewrote the marker:\n  before %q\n  after  %q", first, second)
+	}
+}
+
+// ── GET /api/setup/device-profile ────────────────────────────────────────────
+
+// TestSetupDeviceProfile_AnswersBeforeSetupAndClosesAfter.
+//
+// Step 3 of the wizard ("what kind of device is this?") pre-selects the
+// detected form factor. It read the session-gated /api/device-profile, so on a
+// real first boot it was 401'd, detection was always empty, and a TV or car
+// head unit that had correctly detected itself came up in the desktop shell.
+//
+// The read is answered without a session ONLY while the box is unclaimed. Both
+// halves are asserted here because either one alone is a different product: an
+// exemption that never closes is a permanent unauthenticated read, and a route
+// that 403s during setup fixes nothing.
+func TestSetupDeviceProfile_AnswersBeforeSetupAndClosesAfter(t *testing.T) {
+	mux, ownerID, _ := newSetupTestMux(t)
+
+	rec := setupReq(mux, "GET", "/api/setup/device-profile", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unauthenticated read during setup: %d, want 200 — step 3 cannot "+
+			"detect anything and every box comes up as a PC", rec.Code)
+	}
+	var out map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode %q: %v", rec.Body.String(), err)
+	}
+	if out["suggested"] != "tv" {
+		t.Errorf("suggested = %q, want the detected %q", out["suggested"], "tv")
+	}
+
+	// Take ownership of the box, ending setup.
+	if rec := setupReq(mux, "POST", "/api/setup/complete", ownerID); rec.Code != http.StatusOK {
+		t.Fatalf("owner completion: %d", rec.Code)
+	}
+
+	if rec := setupReq(mux, "GET", "/api/setup/device-profile", ""); rec.Code != http.StatusForbidden {
+		t.Errorf("unauthenticated read AFTER setup: %d, want 403 — the setup-time "+
+			"exemption must close when setup does, or it is simply an "+
+			"unauthenticated read of a live box", rec.Code)
+	}
+}
+
+// TestSetupDeviceProfile_HasNoMutatingSibling.
+//
+// The reason this route exists at all instead of an entry for
+// "/api/device-profile" in publicPaths: isPublicPath() matches on PATH ONLY, so
+// that entry would exempt PUT /api/device-profile as well, and an unauthenticated
+// caller could switch an unclaimed box into TV, car or watch mode — changing the
+// entire shell. This test states the two facts that keep that true.
+func TestSetupDeviceProfile_HasNoMutatingSibling(t *testing.T) {
+	public := auth.PublicPaths()
+	if public["/api/device-profile"] {
+		t.Fatal("/api/device-profile is in auth.publicPaths, and the allow-list is " +
+			"METHOD-BLIND (isPublicPath takes r.URL.Path alone) — PUT is now " +
+			"unauthenticated and a stranger can change this box's form factor")
+	}
+	if !public["/api/setup/device-profile"] {
+		t.Fatal("/api/setup/device-profile left auth.publicPaths — step 3 of the " +
+			"wizard is back to 401ing on every real first boot")
+	}
+
+	// Nothing may be written through the setup-time route, whatever verb is tried.
+	mux, _, _ := newSetupTestMux(t)
+	for _, method := range []string{"PUT", "POST", "PATCH", "DELETE"} {
+		if rec := setupReq(mux, method, "/api/setup/device-profile", ""); rec.Code == http.StatusOK {
+			t.Errorf("%s /api/setup/device-profile: 200 — the setup-time read has "+
+				"grown a write", method)
+		}
 	}
 }
 

@@ -1039,7 +1039,7 @@ func main() {
 	// /api/exec, which is kill-switchable, so a box with exec disabled could
 	// never record that setup had finished. Both now live in routes_setup.go and
 	// share one marker path.
-	registerSetupRoutes(mux, authStore)
+	registerSetupRoutes(mux, authStore, deviceProfile)
 
 	// Device profile — form-factor selection
 	mux.HandleFunc("GET /api/device-profile", func(w http.ResponseWriter, r *http.Request) {

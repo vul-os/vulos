@@ -496,6 +496,7 @@ func TestPublicPaths_ExhaustiveAllowList(t *testing.T) {
 		// landmines until this audit removed them from handlers.go too. Do not
 		// re-add either path here without pairing it with a real, reviewed
 		// handler.
+		"/api/setup/device-profile":       "SETUP-DEVICE-01: form-factor SUGGESTION read behind step 3 of the wizard, which runs before any account exists. A separate path from /api/device-profile BECAUSE isPublicPath matches on path only — listing that one would exempt its PUT and let an unauthenticated caller switch an unclaimed box into TV/car/watch mode. Discloses one value from {pc,tv,car,watch}; the handler 403s once .setup-complete exists. Guarded by TestSetupDeviceProfile_* in cmd/server",
 		"/api/auth/masterkey/recover":     "WAVE2-RECOVERY: phrase-based password reset (user is locked out by definition)",
 		"/api/auth/pin/unlock":            "CLOGIN-06: PIN unlock — rate-limited, lock screen only",
 		"/api/auth/pin/status":            "CLOGIN-06: lockout status — displayed on lock screen",
