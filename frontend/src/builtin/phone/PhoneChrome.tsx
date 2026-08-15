@@ -200,9 +200,19 @@ export function BottomTabs({ tab, onPick }: { tab: TabId; onPick: (t: TabId) => 
 
 // ─── call button ───────────────────────────────────────────────────────────
 
-export function CallButton({ onClick, disabled, title, size = 40 }: { onClick: () => void; disabled?: boolean; title: string; size?: number }) {
+/**
+ * `label` is the ACTION ("Call Priya Naidoo") and is always the accessible name.
+ * `reason` is why the button is disabled and rides on `title` only.
+ *
+ * These were one prop, and when the button was disabled the accessible name
+ * became the reason — so a screen reader announced "Box modem is data/SMS
+ * only" where a button should be, and the button stopped being findable as a
+ * call button at all. A control's name is what it does; whether it can do it
+ * right now is a different fact.
+ */
+export function CallButton({ onClick, disabled, label, reason, size = 40 }: { onClick: () => void; disabled?: boolean; label: string; reason?: string; size?: number }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-label={title}
+    <button type="button" onClick={onClick} disabled={disabled} title={disabled && reason ? reason : label} aria-label={label}
       className="shrink-0 grid place-items-center rounded-full transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed focus-primary"
       style={{
         width: size, height: size,

@@ -102,7 +102,7 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
                   </button>
                   {dialable && (
                     <CallButton size={34} onClick={() => onCall(c.number)} disabled={!canCall}
-                      title={canCall ? `Call ${label(c)}` : callBlockedReason} />
+                      label={`Call ${label(c)}`} reason={callBlockedReason} />
                   )}
                 </div>
               </li>
@@ -128,7 +128,7 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
       {selected.origin === 'gsm' && selected.number ? (
         <div className="flex items-center gap-2 mt-4">
           <CallButton size={40} onClick={() => onCall(selected.number)} disabled={!canCall}
-            title={canCall ? 'Call' : callBlockedReason} />
+            label={`Call ${label(selected)}`} reason={callBlockedReason} />
           <button type="button" onClick={() => onMessage(selected.number)}
             className="px-3 py-2 rounded-lg text-[13px] font-medium focus-primary transition-colors"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' }}>

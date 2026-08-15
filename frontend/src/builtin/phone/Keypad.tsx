@@ -70,6 +70,7 @@ export default function Keypad({ contacts, canCall, callBlockedReason, canSms, o
             <button key={k} type="button"
               onClick={() => press(k === '0' ? '0' : k)}
               onContextMenu={(e) => { if (k === '0') { e.preventDefault(); press('+') } }}
+              aria-label={k}
               className="aspect-[5/3] rounded-xl flex flex-col items-center justify-center transition-colors hover:brightness-110 active:scale-95 focus-primary"
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)' }}>
               <span className="text-[20px] leading-none font-light" style={{ color: 'var(--text-primary)' }}>{k}</span>
@@ -87,7 +88,8 @@ export default function Keypad({ contacts, canCall, callBlockedReason, canSms, o
             </button>
           )}
           <CallButton size={56} onClick={() => onCall(value)} disabled={!canCall || !value}
-            title={!canCall ? callBlockedReason : value ? `Call ${displayNumber(value)}` : 'Enter a number first'} />
+            label={value ? `Call ${displayNumber(value)}` : 'Call'}
+            reason={!canCall ? callBlockedReason : 'Enter a number first'} />
           <button type="button" onClick={back} onDoubleClick={clear} disabled={!value}
             aria-label="Backspace"
             className="px-3 py-2 rounded-lg text-[15px] disabled:opacity-30 focus-primary transition-colors"

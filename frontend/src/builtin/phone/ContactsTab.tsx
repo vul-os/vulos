@@ -97,6 +97,10 @@ export default function ContactsTab({
           <div className="p-4 flex items-center gap-2 text-[13px]" style={{ color: 'var(--text-tertiary)' }}>
             <span className="w-3.5 h-3.5 spinner" /> Loading…
           </div>
+        ) : error && contacts.length === 0 ? (
+          // The error banner above is the whole story. Showing "No contacts yet"
+          // underneath it would state, as fact, the one thing we do not know.
+          null
         ) : filtered.length === 0 ? (
           <EmptyNote glyph="👤"
             title={query ? 'No matches' : 'No contacts yet'}
@@ -136,7 +140,7 @@ export default function ContactsTab({
                     </button>
                     {primary && (
                       <CallButton size={34} onClick={() => onCall(primary)} disabled={!canCall}
-                        title={canCall ? `Call ${c.name || primary}` : callBlockedReason} />
+                        label={`Call ${c.name || primary}`} reason={callBlockedReason} />
                     )}
                   </div>
                 </li>
@@ -173,7 +177,7 @@ export default function ContactsTab({
                   </button>
                 )}
                 <CallButton size={34} onClick={() => onCall(p)} disabled={!canCall}
-                  title={canCall ? `Call ${displayNumber(p)}` : callBlockedReason} />
+                  label={`Call ${displayNumber(p)}`} reason={callBlockedReason} />
               </li>
             ))}
           </ul>
