@@ -290,18 +290,19 @@ Updates stage into the slot that is *not* active (staging into the active slot i
 > So: a staged OS update **does** become active on the next reboot, and a boot
 > counter that passes `VULOS_BOOT_THRESHOLD` **does** roll the box back.
 >
-> Two caveats, one of them operational:
+> One caveat remains:
 >
 > - The reboot proof hardlinks slot-b to slot-a's image, so what is proven is
 >   *which slot the firmware and initramfs choose*, not that a genuinely
 >   different image boots. See
 >   [ARCHITECTURE.md → OS distribution](ARCHITECTURE.md#os-distribution-bare-metal).
-> - **`init`'s rollback log line is stale and now says the opposite of the
->   truth.** `backend/cmd/init/main.go:220` still logs that the rollback
->   "HAS NO EFFECT on the next boot (OSDIST-FLIP-01)". It does have an effect.
->   Until that line is fixed, an operator reading it during an incident will
->   conclude the box did not protect itself when it did. Tracked as a code fix,
->   not a documentation one.
+>
+> **Retired 2026-08-15:** this page used to carry a second caveat — that `init`'s
+> rollback log line still said the flip "HAS NO EFFECT on the next boot", the
+> opposite of the truth, so an operator reading it mid-incident would conclude
+> the box had not protected itself when it had. The line is fixed
+> (`backend/cmd/init/main.go`), and the boot it describes is observable: a
+> non-quiet serial log shows `boot-state.json selects slot b`.
 >
 > Everything below the flip — signature verification, the epoch floor, staging
 > into the inactive slot, the boot counter — is real and does what this page
