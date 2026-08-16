@@ -134,8 +134,35 @@ var Decisions = []DomainDecision{
 	{
 		Domain: "sql:app_registry",
 		Sync:   false,
-		Reason: "Already replicated by internal/multiinstance/appsync over the same fabric transport. Two engines converging the same table would " +
-			"fight: each would observe the other's writes as local edits and restamp them, and the pair would never settle.",
+		Reason: "The PER-INSTANCE REALISED set — what each box actually managed to install — replicated by " +
+			"internal/multiinstance/appsync over the fabric transport. Two engines converging one table would fight: each would observe the " +
+			"other's writes as local edits and restamp them, and the pair would never settle. " +
+			"THAT REASONING WAS ALREADY HERE AND WAS FALSE IN FACT UNTIL 2026-08-16, which is the part worth recording. The audit in " +
+			"roadmap/SYNC-INVENTORY.md §1 found appsync replicating a table NOTHING EVER WROTE — LocalInstall and LocalUninstall had zero " +
+			"non-test callers across 512 scanned files — so this refusal deferred to an engine that moved nothing, that engine deferred to " +
+			"this allow-list, and the installed app set reached no second instance by any path. Each mechanism's own tests passed. The " +
+			"deferral is now true: services/appnet/store.go's Realiser methods produce the events, and appsync carries a fleet DESIRED set " +
+			"(sql:app_desired) beside the realised one. " +
+			"WHY APPSYNC AND NOT THIS ENGINE, since §2 recommends retiring appsync eventually: appsync rides fabric (LAN + relay " +
+			"rendezvous) while crdtsync is LAN-only, and two boxes that are not on the same LAN is exactly the case 'one OS' has to cover; " +
+			"it already carries per-instance Ed25519 identity, roster verification and the revocation check the eviction work made " +
+			"admission-time; and the desired set needs an intent tombstone with an actor, an algebra neither per-column LWW nor GrowOnly " +
+			"expresses. Moving that algebra here — alongside GrowOnly — is what §2's consolidation means in practice, and it is a larger " +
+			"change than wiring a producer, so it stays the target rather than being done halfway.",
+	},
+	{
+		Domain: "sql:app_desired",
+		Sync:   false,
+		Reason: "The FLEET DESIRED set — one row per app, no instance in the key: what the user has asked to be installed everywhere. Refused " +
+			"here for the same reason as its sibling sql:app_registry, and it is the SAME engine that carries it, not a third one: " +
+			"internal/multiinstance/appsync merges both tables in one transaction off one changeset, so splitting them across two " +
+			"replicators would let a box see a realisation report for an app whose desire had not arrived yet. " +
+			"Its algebra is deliberately not this engine's: removal is a tombstone (desired=0) that is never vacuumed, so a peer still " +
+			"holding a pre-removal copy loses LWW instead of resurrecting the app; and an exact-timestamp tie breaks on the actor id rather " +
+			"than 'install wins', because two boxes acting on one user action stamp the same removal and install-wins would mean it never " +
+			"lands. Unlike the realised set it is NOT quorum-gated — intent is expressed once, by a person, and requiring a majority of a " +
+			"user's own boxes to agree before an uninstall took effect would be a product defect. What guards it instead is admission: an " +
+			"unverified origin's desire rows are dropped, not merely uncounted.",
 	},
 	{
 		Domain: "sql:storagemode",
