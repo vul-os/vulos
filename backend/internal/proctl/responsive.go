@@ -49,6 +49,21 @@ const (
 	StatusUnknown Status = "unknown"
 	// StatusNotApplicable — the subject is not a thing that can be asked.
 	StatusNotApplicable Status = "not_applicable"
+	// StatusDisplayNotResponding — the app's DISPLAY stopped answering, so no
+	// question about the app could be put to it.
+	//
+	// This is its own status rather than a flavour of not_responding because it
+	// is a different fault with a different remedy. When an X server stalls,
+	// every application on it goes silent at once; they are all fine and the
+	// display is not. Folding it into not_responding would put a "Not
+	// responding" badge on a healthy app, and the user's obvious response —
+	// force-quit it — destroys work and does not fix the frozen picture. The
+	// session is what needs restarting.
+	//
+	// It IS a measurement, unlike unknown: something was probed and something
+	// definite came back, or definitely did not. What it is a measurement OF is
+	// the display.
+	StatusDisplayNotResponding Status = "display_not_responding"
 )
 
 // Method names the mechanism behind a Status, so that a UI (or a reader of the
@@ -69,6 +84,11 @@ const (
 	// MethodClientSide — the subject is a browser surface; only the client can
 	// measure it, and the backend declines rather than guessing.
 	MethodClientSide Method = "client_side"
+	// MethodX11Ping — a WM_PROTOCOLS/_NET_WM_PING ClientMessage sent to an X
+	// window, and the echo the application's own event loop sends back. This is
+	// the real event-loop test for a streamed desktop app; see xping.go for
+	// what it proves and for why every X TOOL on the box cannot do it.
+	MethodX11Ping Method = "x11_ping"
 )
 
 // probeBudget bounds an HTTP liveness probe.
@@ -115,26 +135,63 @@ func ProbeHTTP(ctx context.Context, client *http.Client, url string) Responsiven
 	}
 }
 
-// StreamUnknown is the answer for a streamed X11 desktop app.
+// StreamUnknown is the answer for a streamed session that offers nothing to
+// ask.
 //
-// X HAS the right mechanism — _NET_WM_PING, the EWMH protocol a window manager
-// uses to decide a client is hung, which is the direct analogue of what macOS
-// reports. Vulos does not implement it: services/stream runs Xvfb, a WM and
-// gstreamer, and there is no X client in this codebase that could send a ping
-// and time the reply (no xdotool, no xprop, no Go X binding anywhere in the
-// tree — checked, not assumed).
+// # This used to be the answer for ALL streamed apps, and was wrong about why
 //
-// Returning "unknown" with that reason is the honest position. The available
-// substitutes are all wrong in the same way: the app's process state is S while
-// it waits for X, whether it is healthy or wedged; its CPU is near zero in both
-// cases; and the video pipeline keeps producing frames of a frozen window, so
-// "the stream is flowing" is not evidence about the app at all. Every one of
-// those would produce a confident badge that is uncorrelated with the thing it
-// claims to measure.
+// The original text said Vulos could not implement _NET_WM_PING because there
+// was no X client on the box — "no xdotool, no xprop, no Go X binding anywhere
+// in the tree, checked, not assumed". Two thirds of that was false when it was
+// written: scripts/build-sh-packages.txt ships xdotool in the rootfs and the
+// Dockerfile installs it in the image.
+//
+// The conclusion happened to survive the correction, but not for the stated
+// reason. xdotool, xprop and xwininfo all query the X SERVER's copy of the
+// window tree, which answers just as promptly for an application that has been
+// wedged for an hour. They cannot send a ping. What was actually missing was an
+// X client that speaks the protocol, and proctl now contains one: see
+// ProbeX11Ping, and x11.go for why the tools were the wrong shape rather than
+// merely absent.
+//
+// What remains genuinely unaskable, and why:
+//
+//   - The Wayland path. When the box has a GPU, services/stream runs `cage`
+//     instead of Xvfb and the app is a Wayland client. Wayland's equivalent is
+//     xdg_wm_base.ping, and it is the COMPOSITOR's to send; cage exposes no
+//     control interface, and a second client cannot ping another client's
+//     surface. See StreamWayland.
+//   - A session with no X window that implements _NET_WM_PING — a raw-Xlib or
+//     SDL1 game, or an app in the first moments before it maps anything.
+//     ProbeX11Ping reports that case as unknown with the window count, because
+//     "nobody to ask" and "asked and got no answer" are different facts.
+//   - A session that is not running, which is this constructor's remaining use.
 func StreamUnknown() Responsiveness {
 	return Responsiveness{
 		Status: StatusUnknown, Method: MethodNone,
-		Detail: "streamed X11 apps need _NET_WM_PING, which this box does not implement yet",
+		Detail: "this session has no display to ask",
+	}
+}
+
+// StreamWayland is the answer for a session running on cage rather than Xvfb.
+//
+// Not a stopgap and not laziness: on Wayland there is no client-to-client
+// protocol for this at all. xdg_wm_base.ping travels from the COMPOSITOR to the
+// surface's owner, and a Wayland client cannot address another client's
+// surface — the design goal that removes X's global window tree also removes
+// the ability to ping across it. cage is the compositor here and it is a
+// deliberately minimal kiosk shell with no control socket, no IPC and no
+// unresponsive-client reporting, so there is nothing to ask it either.
+//
+// Closing this gap means a compositor that reports pings (labwc, or cage with a
+// patch) and a client that can read that report — a substantially different
+// piece of work from the X path, and not one to be faked in the meantime by
+// reusing a signal that measures something else.
+func StreamWayland() Responsiveness {
+	return Responsiveness{
+		Status: StatusUnknown, Method: MethodNone,
+		Detail: "this session runs on the Wayland compositor (cage), where a liveness ping " +
+			"is the compositor's to send and no client can send one; only the X11 path can be probed",
 	}
 }
 
