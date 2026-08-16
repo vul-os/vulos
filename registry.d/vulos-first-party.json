@@ -1,16 +1,18 @@
 {
-  "_source": "First-party Vulos products (source: vulos, per roadmap/APP-RECIPE-STANDARD.md section 2). Produced 2026-08-15. Two entries: diwan (NEW - absent from registry.json entirely) and wede (REPLACEMENT - the existing entry installs nothing). KERF IS DELIBERATELY ABSENT: vul-os/kerf v0.1.9 publishes no artefact that can be installed unattended into a working app, and the entry currently in registry.json installs a placeholder HTML page while reporting success. It must be DELETED from registry.json, not repaired. The reasoning and the evidence are in roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+  "_source": "First-party Vulos products (source: vulos, per roadmap/APP-RECIPE-STANDARD.md section 2). MERGED into registry.json on 2026-08-16 -- these entries are the SHIPPED ones, kept here as the artefact-pinning record that scripts/verify-firstparty-artifacts.sh re-checks. Three apps: diwan (new), wede (replacement -- the previous entry installed nothing) and lilmail (new). KERF IS DELIBERATELY ABSENT and its registry.json entry has been DELETED: vul-os/kerf v0.1.9 publishes no artefact that installs unattended into a working app, and the entry that was there installed a placeholder HTML page while reporting success. Evidence in roadmap/FIRST-PARTY-REGISTRY-TRUTH.md section 4.",
   "_verification": [
-    "Every download_url was fetched on 2026-08-15 and sha256'd locally; each digest matches BOTH the digest GitHub publishes for the asset AND the line for that asset in the release's own checksums.txt.",
-    "Both binaries were installed and launched exactly as their recipe specifies (binary at bin/<basename-of-download_url>, post_install run first, then the command string) in a debian:trixie-slim container, on linux/amd64 and linux/arm64, and both served real HTTP 200 application responses.",
-    "Re-check the pinned artefacts at any time with: scripts/verify-firstparty-artifacts.sh",
-    "SIGNATURES ARE INTENTIONALLY EMPTY. These entries are inert until a maintainer runs `make sign-registry RELEASE_PRIV=<release private key>` on the merged registry.json. That is a human, offline operation (docs/KEY-CEREMONY.md); an agent must not mint production trust material, because the signature IS the act of vetting. VerifyEntrySignature fails closed on an empty signature, so an unsigned entry cannot be installed by accident."
+    "PER-ARCHITECTURE. Each recipe now pins BOTH linux artefacts through the artifacts field {arch: {download_url, checksum}}, resolved against the box architecture by appnet.staticInstall. Previously a VersionRecipe carried one download_url, so these apps would have shipped amd64-only while their arm64 binaries sat unused in the same release. See roadmap/PER-ARCH-ARTIFACTS.md.",
+    "Every artefact was downloaded fresh on 2026-08-16 and sha256d locally; each digest equals BOTH its line in the release’s own checksums.txt / SHA256SUMS AND the digest GitHub publishes for that asset.",
+    "Every recipe was installed by the PRODUCT’S OWN installer (appnet.InstallFromRegistry, the function POST /api/store/install reaches) in a debian:trixie-slim container on linux/amd64 AND linux/arm64, with signature verification fully ON against an ephemeral trust root generated in the container; each launched app answered a real HTTP request and  confirmed the installed binary was really that architecture.",
+    "KNOWN GAP: scripts/verify-firstparty-artifacts.sh only understands the single download_url form and is BLIND to artifacts. It must be taught the per-arch shape (re-hash every arch, not just one) before it can check these entries again. Owner of that script: see roadmap/PER-ARCH-ARTIFACTS.md section 9.",
+    "SIGNATURES ARE INTENTIONALLY EMPTY, here and in registry.json. VerifyEntrySignature fails closed on an empty signature, so these entries are inert until the founder runs . That is a human, offline operation (docs/KEY-CEREMONY.md); an agent must not mint production trust material, because the signature IS the act of vetting."
   ],
   "apps": {
     "diwan": {
-      "_note": "SOURCE vulos (first-party). Pinned to the vul-os/diwan v0.1.0 release asset diwan-linux-amd64. CHECKSUM EVIDENCE 2026-08-15: the asset was downloaded fresh and sha256'd locally to 467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293, which equals BOTH the digest GitHub publishes for the asset and the line for it in the release's own checksums.txt - three independent statements of the same hash. `file` reports a statically linked stripped ELF x86-64, so there is no shared-library surface beyond ca-certificates. BOOT EVIDENCE: installed and started exactly as this recipe specifies (binary at bin/diwan-linux-amd64, config written by post_install, launched with -config data/diwan.yaml) inside a debian:trixie-slim container matching the box runtime image, on both linux/amd64 and linux/arm64: `GET /` returned the real Diwan SPA (HTTP 200, 4863 bytes, <title>Diwan</title>) and `GET /api/files` returned HTTP 200, with the SQLite state (userauth.db, fileacl.db, notify.db, invites.db, audit.db) created under data/. PORT: diwan v0.1.0 has no port flag and no env override for server.addr, so the port is written as a literal into data/diwan.yaml by post_install. That is correct rather than fragile because appPort is taken verbatim from this recipe's `port` field (backend/cmd/server/main.go:1853) and is NOT pool-allocated - only the HOST port is - so ${PORT} at launch is always exactly 8080. It must be written as a literal because ${PORT} is NOT expanded during post_install (it is substituted only into `command`, at launch, launcher.go:248); scripts/verify-firstparty-artifacts.sh asserts the literal and the `port` field agree. CHOWN: apps are exec'd as nobody (uid/gid 65534, launcher.go:52-53) but InstallFromRegistry creates the app directory 0755 root-owned and never chowns it, so post_install hands data/ and uploads/ to the runtime uid; without that diwan cannot create its SQLite files. ARCH: v0.1.0 also publishes diwan-linux-arm64 (sha256 2e92fc0713227f7e3380a4ebe292768930b54e6d3e5d167aa2117ef3d7891ce5, boot-verified identically), but a VersionRecipe carries a single download_url so one recipe cannot serve two architectures. This entry therefore declares amd64 only, which InstallFromRegistry enforces at install time (registry.go:964, ArchSupported) and the App Hub surfaces as \"requires amd64; this box is arm64\" - a refusal, never a binary the box cannot exec. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+      "_note": "SOURCE vulos (first-party). PER-ARCHITECTURE: pins BOTH linux binaries from the vul-os/diwan v0.1.0 release via `artifacts`, so an arm64 box installs the arm64 build instead of being told the OS's own office suite is unavailable. CHECKSUM EVIDENCE 2026-08-16: each asset was downloaded fresh and sha256'd locally, and each digest equals BOTH the line for it in the release's own checksums.txt AND the digest GitHub publishes for the asset - three independent statements per artefact (amd64 467f27fc..., arm64 2e92fc07...). BOOT EVIDENCE: installed by the product's own appnet.InstallFromRegistry and launched exactly as this recipe specifies, in a debian:trixie-slim container on linux/amd64 AND linux/arm64; `file` confirmed the per-arch binary really is x86-64 resp. ARM aarch64, GET / returned the real Diwan SPA (HTTP 200, <title>Diwan</title>) and GET /api/files returned 200, with the SQLite state created under data/. BINARY_NAME: the release assets are named diwan-linux-amd64 and diwan-linux-arm64, but `command` is one string for every architecture, so binary_name pins the installed path to bin/diwan on both. PORT: diwan v0.1.0 has no port flag and no env override for server.addr, so the port is a LITERAL in data/diwan.yaml written by post_install. That is correct rather than fragile because appPort is taken verbatim from this recipe's `port` field (backend/cmd/server/main.go:1853) and is not pool-allocated - only the HOST port is - so ${PORT} at launch always equals 8080. It must be a literal because ${PORT} is NOT expanded during post_install (only into `command`, at launch, launcher.go:248). CHOWN: apps are exec'd as nobody (uid 65534, launcher.go:52-53) but InstallFromRegistry creates the app dir 0755 root-owned and never chowns it, so post_install hands data/ and uploads/ to the runtime uid; without that diwan cannot create its SQLite files. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md and roadmap/PER-ARCH-ARTIFACTS.md.",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
       "author": "Vulos",
       "category": "productivity",
@@ -43,13 +45,23 @@
       "versions": {
         "0.1.0": {
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293",
+              "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "2e92fc0713227f7e3380a4ebe292768930b54e6d3e5d167aa2117ef3d7891ce5",
+              "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-arm64"
+            }
+          },
           "auto_start": false,
-          "checksum": "467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293",
-          "command": "bin/diwan-linux-amd64 -config data/diwan.yaml",
+          "binary_name": "diwan",
+          "command": "bin/diwan -config data/diwan.yaml",
           "deps": [
             "ca-certificates"
           ],
-          "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-amd64",
+          "download_url": "",
           "env": null,
           "flatpak_id": "",
           "install": "",
@@ -63,10 +75,76 @@
         }
       }
     },
-    "wede": {
-      "_note": "SOURCE vulos (first-party). REPLACES the previous entry, which had no install step and no download_url at all: nothing ever placed /root/.local/bin/wede, so the app could not start. Pinned to the vul-os/wede v0.1.3 release asset wede-linux-amd64. CHECKSUM EVIDENCE 2026-08-15: downloaded fresh and sha256'd locally to 275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7, equal to both GitHub's published asset digest and the release's own checksums.txt. Statically linked stripped ELF x86-64. BOOT EVIDENCE: installed and started exactly as this recipe specifies, in a debian:trixie-slim container on both linux/amd64 and linux/arm64: the binary reports `wede v0.1.3`, logs `loaded config from $APP_DIR/wede.config.json` and `running on http://0.0.0.0:9090`, `GET /` returns the real IDE (HTTP 200, <title>WEDE | Web Development Environment</title>), and POST /api/auth/login with the generated password returns {\"role\":\"owner\"} - so the credential this recipe mints actually authenticates. CONFIG IS MANDATORY: wede v0.1.3 calls log.Fatal when it cannot find wede.config.json and rejects an empty password, so it fails loudly rather than starting half-configured. post_install therefore mints a 32-char random password from /dev/urandom and REFUSES (exit 1) if it cannot produce 32 characters, instead of writing a weak or empty one. The owner reads the password from wede-password.txt in the app directory; no credential is baked into this registry. PORT: the port arrives via `-port ${PORT}` on the command line, which the launcher does expand (launcher.go:248); the \"9090\" inside the config is only the file's own self-consistent default and the flag overrides it. CHOWN: as for diwan - apps run as uid 65534 and the installer leaves the app dir root-owned, so the config, the password file and workspace/ are handed to the runtime uid. DEPS: `git` is a genuine runtime dependency, not decoration - wede shells out to the git binary (backend/internal/chat/chat.go:509), so the git panel the README headlines is inert without it. ARCH: v0.1.3 also publishes wede-linux-arm64 (sha256 73800e85e9577e2def5d62d59847e8333a3c030c07651c748675277aaeed6ae8, boot-verified identically); one recipe cannot carry two download URLs, so this entry declares amd64 only and an arm64 box is told so rather than being handed a binary it cannot exec. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+    "lilmail": {
+      "_note": "SOURCE vulos (first-party). NEW ENTRY. PER-ARCHITECTURE: pins both linux zips from vul-os/lilmail v1.14.0 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each zip downloaded fresh and sha256'd locally, and each digest equals BOTH its line in the release's published SHA256SUMS AND the digest GitHub publishes for the asset (amd64 c3d0fa78..., arm64 7689dd62...). ZIP: these are the first registry artefacts that are .zip rather than .tar.gz or a raw binary. staticInstall previously recognised only tar formats, so a .zip fell through to the plain-binary branch and was installed as bin/<name>.zip chmod 0755 - a SUCCESSFUL install of an app that could never start. That gap is now closed by extractZip (archive/zip, in-process, so the gated image package set needs no `unzip`). ARCHIVE_STRIP 1 drops the leading lilmail/ directory, leaving ./lilmail and config.toml.example at the app root; binary_name is deliberately ABSENT because it applies only to single-binary downloads and validateRecipeSecurity refuses it on an archive rather than ignoring it. BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; `file` confirmed the per-arch binary really is x86-64 resp. ARM aarch64, `./lilmail -version` reports lilmail 1.14.0, GET / returns 302 to /login and GET /login returns the real page (HTTP 200, <title>lilmail</title>), with the bolt store created under cache/. PORT: lilmail has no port flag - config.LoadConfig(\"config.toml\") is read relative to the working directory, which the launcher sets to the app dir - so the port is a LITERAL in config.toml, equal to this recipe's `port` field for the same reason as diwan. SECRETS: [jwt].secret and [encryption].key are REQUIRED (LoadConfig rejects a key that is not 16/24/32 bytes), so post_install mints both from /dev/urandom and REFUSES (exit 1) rather than writing weak or empty ones; no credential is baked into this registry. CACHE DIR: cache/ must exist before launch or lilmail logs `scheduled send unavailable (store open failed)` and runs degraded - observed, then fixed here. MAILBOX: lilmail hosts no mail and has no account system; the [imap]/[smtp] hosts written here are placeholders the owner edits to point at their OWN mailbox. CHOWN: as for diwan, the runtime uid 65534 is given the state directories. See roadmap/PER-ARCH-ARTIFACTS.md.",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
+      ],
+      "author": "Vulos",
+      "category": "productivity",
+      "description": "Database-free personal information manager - mail, calendar and contacts for your OWN IMAP/CalDAV/CardDAV accounts, served from a single binary. Hosts no mail and has no account system.",
+      "homepage": "https://github.com/vul-os/lilmail",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "mail",
+        "email",
+        "imap",
+        "smtp",
+        "calendar",
+        "caldav",
+        "contacts",
+        "carddav",
+        "pim",
+        "webmail"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "name": "lilmail",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
+      "versions": {
+        "1.14.0": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "c3d0fa7834e60eba3ed724ae4b6324d718e3372d0d9b2c4fe5ff1cce47e65814",
+              "download_url": "https://github.com/vul-os/lilmail/releases/download/v1.14.0/lilmail_1.14.0_linux_amd64.zip"
+            },
+            "arm64": {
+              "checksum": "7689dd62a46ce52a89a99d6acec86b48640932a4d4f86eccf957c58fb063cc3b",
+              "download_url": "https://github.com/vul-os/lilmail/releases/download/v1.14.0/lilmail_1.14.0_linux_arm64.zip"
+            }
+          },
+          "auto_start": false,
+          "command": "./lilmail",
+          "deps": [
+            "ca-certificates"
+          ],
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8090,
+          "post_install": "mkdir -p cache sessions && JWT=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; KEY=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#JWT} -ne 32 ] || [ ${#KEY} -ne 32 ]; then echo \"lilmail post-install: could not generate 32-character secrets from /dev/urandom - refusing to write a config with weak or empty [jwt].secret or [encryption].key\" >&2; exit 1; fi; printf '[server]\\nport = 8090\\nsecure_cookies = false\\nframe_ancestors = \"\\'self\\'\"\\n[auth]\\nallow_full_email_username = true\\n[imap]\\nserver = \"imap.example.com\"\\nport = 993\\ntls = true\\n[cache]\\nfolder = \"%s/cache\"\\n[storage]\\nbackend = \"bolt\"\\n[jwt]\\nsecret = \"%s\"\\n[encryption]\\nkey = \"%s\"\\n[smtp]\\nport = 587\\nuse_starttls = true\\n' \"$APP_DIR\" \"$JWT\" \"$KEY\" > config.toml && chmod 640 config.toml && chown -R 65534:65534 config.toml cache sessions",
+          "singleton": true
+        }
+      }
+    },
+    "wede": {
+      "_note": "SOURCE vulos (first-party). REPLACES the previous entry, which could not work at all: its `install` was empty, its `download_url` was empty, and its `command` was /root/.local/bin/wede - nothing ever placed that binary. PER-ARCHITECTURE: pins both linux binaries from vul-os/wede v0.1.3 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each downloaded fresh and sha256'd locally, each digest matching both the release's checksums.txt and GitHub's published asset digest (amd64 275ed918..., arm64 73800e85...). BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; the binary reports `wede v0.1.3`, logs `loaded config from $APP_DIR/wede.config.json`, GET / returns the real IDE (HTTP 200, <title>WEDE | Web Development Environment</title>), and POST /api/auth/login with the generated password returns {\"role\":\"owner\"} - so the credential this recipe mints actually authenticates. CONFIG IS MANDATORY: wede v0.1.3 calls log.Fatal when it cannot find wede.config.json and rejects an empty password, so it fails loudly rather than starting half-configured. post_install mints a 32-character password from /dev/urandom and REFUSES (exit 1) if it cannot produce 32, rather than writing a weak or empty one; the owner reads it from wede-password.txt and no credential is baked into this registry. PORT: arrives via `-port ${PORT}`, which the launcher DOES expand (launcher.go:248); the 9090 inside the config is the file's own self-consistent default and the flag overrides it. DEPS: git is a genuine runtime dependency - wede shells out to the git binary (backend/internal/chat/chat.go:509) - not decoration. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+      "arch": [
+        "amd64",
+        "arm64"
       ],
       "author": "Vulos",
       "category": "developer",
@@ -98,14 +176,24 @@
       "versions": {
         "0.1.3": {
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7",
+              "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "73800e85e9577e2def5d62d59847e8333a3c030c07651c748675277aaeed6ae8",
+              "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-arm64"
+            }
+          },
           "auto_start": false,
-          "checksum": "275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7",
-          "command": "bin/wede-linux-amd64 -port ${PORT} workspace",
+          "binary_name": "wede",
+          "command": "bin/wede -port ${PORT} workspace",
           "deps": [
             "ca-certificates",
             "git"
           ],
-          "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-amd64",
+          "download_url": "",
           "env": null,
           "flatpak_id": "",
           "install": "",
