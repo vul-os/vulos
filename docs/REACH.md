@@ -165,6 +165,15 @@ affects only its own link.
 **One relay is a single point of failure. Two under different operators is not.**
 The box logs a note when only one is configured.
 
+Settings → **Relay & Reachability** shows the nodes this box dials out to and the
+live health of each tunnel. Note the third entry: a Pier broker sits in the same
+list as the two built-in relays, because it speaks the same rendezvous contract —
+"three tunnels up" counts all three.
+
+<picture>
+  <img src="screenshots/settings-relay-nodes-light.png" alt="The relay-nodes list in Settings: three nodes, 3/3 healthy, 3 tunnels up — relay-eu, relay-us, and a pier-lon broker, each with its region and public URL" width="880" />
+</picture>
+
 ---
 
 ## Configuration

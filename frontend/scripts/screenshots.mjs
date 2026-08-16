@@ -39,8 +39,29 @@
  *   the real xterm.js widget rendering a scripted PTY stream mocked over a fake
  *   WebSocket — no image is ever hand-drawn.
  *
- * Output: docs/screenshots/<name>.png            (dark theme, canonical)
- *         docs/screenshots/<name>-light.png      (light theme, where supported)
+ * Output: docs/screenshots/<name>-light.png      (light theme — what ships)
+ *         docs/screenshots/<name>.png            (dark theme — OPT-IN, see below)
+ *
+ * LIGHT IS WHAT SHIPS, AND THAT USED TO BE BACKWARDS.
+ *   This header called the dark output "canonical" for months. It never was:
+ *   every consumer in the repository — README.md and eleven docs/ pages —
+ *   embeds the `-light` variant, without exception. The dark half was captured
+ *   on every run and committed anyway, and by 2026-08-16 it had accumulated 24
+ *   images (~14 MB) that nothing referenced. A generator that produces an
+ *   unread artefact on every invocation does not produce an "alternative
+ *   version"; it produces landfill, and landfill is what the next reader has to
+ *   sort through to find out which images are real.
+ *
+ *   So the default is now light only, and dark is opt-in:
+ *
+ *       npm run screenshots                       # light — what ships
+ *       SHOT_THEMES=dark npm run screenshots      # dark, for looking at
+ *       SHOT_THEMES=dark,light npm run screenshots
+ *
+ *   Nothing here decides what is COMMITTED — scripts/check-screenshot-provenance.py
+ *   does, and its REFERENCED check fails on a fixture that no document embeds.
+ *   Capturing a dark set to look at is free; committing one is a decision that
+ *   has to be declared.
  * Captured at 1600x1000. Per-shot `dsf` (deviceScaleFactor) defaults to 1 —
  * heavy maximized apps (App Hub's 52 cards, Dashboard's tables) intermittently
  * capture a BLACK GPU frame in headless Chromium at 2x (a known high-DPI
@@ -75,6 +96,23 @@ const BASE_URL = `http://localhost:${PORT}`
 // high-DPI compositor glitch. dsf:1 with a larger viewport renders every view
 // reliably, so we trade nominal retina density for correctness.
 const VIEWPORT = { width: 1600, height: 1000 }
+
+// Which themes to capture. LIGHT ONLY by default — see the header: every doc in
+// the repository embeds the `-light` variant, so a dark run writes files nobody
+// reads. An unknown name is rejected rather than silently skipped, because
+// SHOT_THEMES=lite would otherwise capture nothing and report a clean run.
+const KNOWN_THEMES = ['light', 'dark']
+const THEMES = (process.env.SHOT_THEMES || 'light')
+  .split(',')
+  .map((t) => t.trim())
+  .filter(Boolean)
+if (!THEMES.length || THEMES.some((t) => !KNOWN_THEMES.includes(t))) {
+  console.error(
+    `SHOT_THEMES="${process.env.SHOT_THEMES}" is not a theme list. ` +
+      `Known: ${KNOWN_THEMES.join(', ')}.`,
+  )
+  process.exit(1)
+}
 
 // ── DEMO fixtures ────────────────────────────────────────────────────────────
 // Everything the shell can render is derived from these. No real host state.
@@ -1539,9 +1577,10 @@ async function main() {
   try {
     await waitForServer(BASE_URL)
     browser = await chromium.launch({ headless: true, args: ['--disable-gpu'] })
-    console.log(`\nCapturing → ${path.relative(REPO_ROOT, OUT_DIR)}`)
-    await captureTheme(browser, 'dark', overrides, results)
-    await captureTheme(browser, 'light', overrides, results)
+    console.log(`\nCapturing → ${path.relative(REPO_ROOT, OUT_DIR)} (themes: ${THEMES.join(', ')})`)
+    for (const theme of THEMES) {
+      await captureTheme(browser, theme, overrides, results)
+    }
   } finally {
     if (browser) await browser.close()
     preview.kill('SIGTERM')
@@ -1559,13 +1598,14 @@ async function main() {
   // every entry skip. The summary then reads "0 captured, 0 failed" and the
   // caller treats stale docs assets as freshly regenerated.
   //
-  // Expected count is derived from SHOTS rather than hard-coded, so adding or
-  // removing a shot needs no edit here — but capturing fewer than expected,
-  // for any reason, is a failure.
-  const expected = process.env.SHOT
-    ? SHOTS.filter((s) => s.name === process.env.SHOT).length +
-      SHOTS.filter((s) => s.name === process.env.SHOT && s.light).length
-    : SHOTS.length + SHOTS.filter((s) => s.light).length
+  // Expected count is derived from SHOTS and the themes actually requested
+  // rather than hard-coded, so adding a shot or a theme needs no edit here —
+  // but capturing fewer than expected, for any reason, is a failure.
+  const wanted = SHOTS.filter((s) => !process.env.SHOT || s.name === process.env.SHOT)
+  const expected = THEMES.reduce(
+    (n, theme) => n + wanted.filter((s) => theme !== 'light' || s.light).length,
+    0,
+  )
 
   if (process.env.SHOT && expected === 0) {
     console.error(

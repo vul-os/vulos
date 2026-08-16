@@ -25,7 +25,7 @@ So the split is made structural, and this script keeps it true:
 WHAT IS ACTUALLY CHECKED
 ------------------------
 The labels are checked AGAINST THE CODE, not taken on trust. A directory split
-that anyone can quietly violate is decoration; these four checks give it teeth:
+that anyone can quietly violate is decoration; these six checks give it teeth:
 
   CLASSIFIED  Every shipped PNG under docs/screenshots/ falls in exactly one
               class, and PROVENANCE.md lists exactly the files that exist.
@@ -36,11 +36,22 @@ that anyone can quietly violate is decoration; these four checks give it teeth:
               mock. If screenshots.mjs ever stopped mocking, calling its output
               fixture-backed would be a lie in the other direction.
 
+  REFERENCED  Every shipped FIXTURE is embedded or cited by some tracked file.
+              A figure nobody shows a reader is weight, and it accumulates
+              silently: 24 such images (~14 MB) built up one run at a time
+              before anyone looked. An exception costs one line and must carry
+              a reason, and goes stale when the file is either referenced or
+              deleted. LIVE shots are exempt on purpose -- see the check.
+
   LIVE-IS-LIVE
-              The spec behind the LIVE shots imports NOTHING from
+              Each spec behind the LIVE shots imports NOTHING from
               mock-backend.js, and still carries its liveness proof. This is the
               check that matters: it is what stops a LIVE-labelled shot from
               silently becoming another mocked one.
+
+  SPEC-COVERAGE
+              Every shots-live-*.e2e.ts is on the list LIVE-IS-LIVE walks, so a
+              second live-shot harness cannot ship unchecked shots.
 
   COVERAGE    There is one LIVE shot per process-backed app in frontend/apps/,
               and the totals are non-zero. A rename or deletion that left the
@@ -136,6 +147,64 @@ def process_backed_apps() -> list[str]:
             if json.load(f).get("command"):
                 apps.append(name)
     return apps
+
+
+# File types that could plausibly point at a screenshot. Everything else is
+# skipped so the scan does not try to read a PNG as text.
+TEXTY = (
+    ".md", ".html", ".htm", ".txt", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+    ".py", ".go", ".sh", ".yml", ".yaml", ".json", ".css", ".rs", ".toml",
+)
+
+# Markdown `![alt](path)`, inline `<img src="path">`, and a bare repo-rooted
+# mention. The third form is deliberate: a path named in prose or in a code
+# comment IS a reference -- somebody reading that line is expected to be able to
+# open the file. Matching only embeds would call such a file dead and delete a
+# path that a comment still points at.
+MD_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
+HTML_IMAGE = re.compile(r"""<img[^>]+src=["']([^"']+)["']""")
+BARE_PATH = re.compile(r"docs/screenshots/[A-Za-z0-9_\-/]+\.png")
+
+
+def referenced_shots() -> tuple[dict[str, list[str]], int]:
+    """Map each referenced screenshot path to the tracked files that name it.
+
+    Returns the map and the total number of image references examined, so the
+    caller can refuse to trust a scan that found suspiciously little.
+    """
+    refs: dict[str, list[str]] = {}
+    examined = 0
+    tracked = subprocess.run(
+        ["git", "-C", ROOT, "ls-files"], capture_output=True, text=True, check=True,
+    ).stdout.split("\n")
+    for rel in tracked:
+        if not rel or not rel.endswith(TEXTY):
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf-8", errors="ignore") as f:
+                body = f.read()
+        except OSError:
+            continue
+        if ".png" not in body:
+            continue
+        here = os.path.dirname(rel)
+        found = set()
+        for pattern in (MD_IMAGE, HTML_IMAGE):
+            for raw in pattern.findall(body):
+                examined += 1
+                target = raw.split("#")[0].split("?")[0].strip()
+                if not target or target.startswith(("http://", "https://", "data:")):
+                    continue
+                if target.startswith("/"):
+                    found.add(os.path.normpath(target.lstrip("/")))
+                else:
+                    found.add(os.path.normpath(os.path.join(here, target)))
+        for raw in BARE_PATH.findall(body):
+            examined += 1
+            found.add(raw)
+        for target in found:
+            refs.setdefault(target, []).append(rel)
+    return refs, examined
 
 
 def classify(paths: list[str]) -> tuple[list[str], list[str]]:
@@ -261,6 +330,86 @@ def main() -> int:
         fail("COVERAGE", f"LIVE screenshots with no matching app: {', '.join(extra)}")
     if not missing and not extra and apps:
         ok("COVERAGE", f"{len(apps)} process-backed apps, {len(live)} live shots, 1:1")
+
+    # ── REFERENCED ──────────────────────────────────────────────────────────
+    # A committed FIXTURE that no document shows a reader is not documentation,
+    # it is weight. This is an ERROR rather than a warning, and rather than
+    # nothing, for one reason: the failure mode is silent ACCUMULATION. Nothing
+    # here was ever wrong on the day it landed -- 24 unreferenced images (~14 MB)
+    # arrived one plausible run at a time over months, and were found only when
+    # somebody went looking. A warning is exactly what a build that already
+    # prints hundreds of lines swallows; the repo's own history is a list of
+    # green checks that were examining nothing.
+    #
+    # It is not the strictest rule available either. The strict version -- error,
+    # no escape -- would force a legitimately-staged figure to be deleted merely
+    # because its page is still being written, which is a worse outcome than
+    # keeping it. So an exception costs exactly one line, and that line must say
+    # WHY. It also goes stale automatically in both directions: writing the doc
+    # (the file becomes referenced) and deleting the file both make the entry
+    # fail, so an exception cannot outlive its cause.
+    #
+    # LIVE shots are deliberately NOT covered. A fixture is a FIGURE: its whole
+    # purpose is to be embedded, so an unembedded one has no purpose. A live shot
+    # is EVIDENCE that an app runs -- README.md and PROVENANCE.md link the
+    # directory as a set, and the set is the artefact. Requiring each of the 15
+    # to be embedded somewhere would push the docs to embed images to satisfy a
+    # linter, which is how a gate starts generating the thing it measures.
+    UNREFERENCED_OK: dict[str, str] = {}
+
+    refs, examined = referenced_shots()
+
+    # Anti-vacuity, both directions. A scan that matched nothing would report
+    # every shot dead, which is loud; a scan that matched too eagerly would
+    # report every shot alive, which is silent -- and silent is the failure this
+    # whole file exists to prevent. So: enough references must be found to be
+    # credible, AND a path that appears in no document must not be claimed as
+    # referenced.
+    if examined < 20:
+        fail(
+            "REFERENCED",
+            f"only {examined} image reference(s) found across the repo — the scan is "
+            "broken, and would pass by examining nothing",
+        )
+    # Assembled from pieces rather than written out, so the literal never appears
+    # in any tracked file. The first version was spelled in full here, and this
+    # script is itself tracked and scanned -- so the canary matched ITSELF and
+    # the check failed on its own text. That was the scan proving it reads code
+    # comments as references, which is exactly what it claims to do.
+    canary = "docs/screenshots/" + "__no-document" + "-names-this__" + ".png"
+    if canary in refs:
+        fail("REFERENCED", "the reference scan matches paths nothing mentions — it is too permissive")
+
+    for name, reason in UNREFERENCED_OK.items():
+        path = f"docs/screenshots/{name}"
+        if len(reason) < 60:
+            fail("REFERENCED", f"{name} is kept unreferenced with no real reason given")
+        if path not in fixture:
+            fail("REFERENCED", f"{name} is declared unreferenced-but-kept, but is not shipped — delete its entry")
+        elif path in refs:
+            fail(
+                "REFERENCED",
+                f"{name} IS referenced now ({', '.join(sorted(set(refs[path])))}) — "
+                "delete its UNREFERENCED_OK entry",
+            )
+
+    orphans = sorted(
+        os.path.basename(p) for p in fixture
+        if p not in refs and os.path.basename(p) not in UNREFERENCED_OK
+    )
+    if orphans:
+        fail(
+            "REFERENCED",
+            f"{len(orphans)} fixture screenshot(s) that no file references: "
+            f"{', '.join(orphans)} — embed them, delete them, or declare them in "
+            "UNREFERENCED_OK with a reason",
+        )
+    else:
+        ok(
+            "REFERENCED",
+            f"all {len(fixture)} fixtures are embedded or cited "
+            f"({examined} image references scanned, {len(UNREFERENCED_OK)} declared exceptions)",
+        )
 
     # ── CLASSIFIED ──────────────────────────────────────────────────────────
     if not os.path.isfile(MANIFEST):

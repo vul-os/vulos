@@ -20,6 +20,15 @@ Three properties define it:
 2. **Reading and acting are split.** Read-only tools run freely. Anything that sends, creates, or changes state becomes a *proposal* you must explicitly approve.
 3. **Egress is fenced.** A single choke point (the Guard) classifies the configured model endpoint into a sovereignty tier and refuses to send your content anywhere that tier does not permit.
 
+The tier is not buried in a settings pane — it is on the assistant itself, on every
+surface. On a phone the shell hands the assistant the full screen, and the
+**On your device** badge sits in the header beside the model picker, with *Stays on
+your box* under the composer:
+
+<picture>
+  <img src="screenshots/mobile-assistant-light.png" alt="The assistant fullscreen on a phone: an 'On your device' badge in the header, an answer about the day's mail and calendar, and a composer captioned 'Stays on your box'" width="300" />
+</picture>
+
 ---
 
 ## What it can do

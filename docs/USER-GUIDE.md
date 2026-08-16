@@ -200,6 +200,14 @@ Halves and quarters tile the usable area exactly, with no seams, below the menu 
   <img src="screenshots/tiled-light.png" alt="Multiple windows tiled side by side on the Vulos desktop" width="880" />
 </picture>
 
+Tiling is a choice, not the only layout. Left alone, windows float and overlap the
+way they do on any desktop — drag them anywhere, and the one you clicked last comes
+to the front:
+
+<picture>
+  <img src="screenshots/stacked-light.png" alt="Three overlapping floating windows on the Vulos desktop — Terminal, File Explorer, and Activity Monitor stacked front to back, with the clock, agenda, and notifications widgets down the right" width="880" />
+</picture>
+
 ### Window sessions persist
 
 The shell saves your desktops and windows to the browser (debounced, on every change) and restores them on reload: which desktop each window was on, its position, size, minimized state, and tile state. Built-in apps and web-app windows restore faithfully; streaming windows (a native-app browser, remote sessions) need a live backend session, so they're intentionally dropped on reload rather than shown broken.

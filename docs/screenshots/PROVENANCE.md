@@ -50,7 +50,7 @@ back to the developer's laptop fails instead of shipping.
 
 ## FIXTURE — real UI, mocked data
 
-`docs/screenshots/` — 48 images.
+`docs/screenshots/` — 24 images.
 
 Captured by `frontend/scripts/screenshots.mjs`, which drives the REAL
 shipping React bundle but answers every `/api` call from
@@ -66,50 +66,26 @@ no process behind them, so the fixture stands in for DATA, not for a running
 app. Process-backed apps are shot live instead, above.
 
 - `apphub-installed-light.png`
-- `apphub-installed.png`
 - `apphub-light.png`
 - `apphub.png`
 - `assistant-light.png`
-- `assistant.png`
 - `calendar-light.png`
-- `calendar.png`
 - `contacts-light.png`
-- `contacts.png`
 - `dashboard-light.png`
-- `dashboard.png`
 - `files-light.png`
-- `files.png`
 - `hero-light.png`
-- `hero.png`
 - `instances-light.png`
-- `instances.png`
 - `launchpad-light.png`
-- `launchpad.png`
 - `mobile-apps-light.png`
-- `mobile-apps.png`
 - `mobile-assistant-light.png`
-- `mobile-assistant.png`
 - `mobile-light.png`
 - `mobile-windows-light.png`
-- `mobile-windows.png`
-- `mobile.png`
 - `settings-appearance-light.png`
-- `settings-appearance.png`
 - `settings-domain-light.png`
-- `settings-domain.png`
 - `settings-light.png`
-- `settings-relay-light.png`
 - `settings-relay-nodes-light.png`
-- `settings-relay-nodes.png`
 - `settings-relay-providers-light.png`
-- `settings-relay-providers.png`
-- `settings-relay.png`
-- `settings.png`
 - `stacked-light.png`
-- `stacked.png`
 - `tablet-windows-light.png`
-- `tablet-windows.png`
 - `terminal-light.png`
-- `terminal.png`
 - `tiled-light.png`
-- `tiled.png`

@@ -66,6 +66,15 @@ For background on accounts, roles, and the desktop shell that surrounds Settings
 | **CDN** *(owner only)* | Configure a CDN vendor (Cloudflare/Fastly/Bunny) in front of this box — origin host, Host header, authenticated-origin-pulls — and preview an origin-firewall ruleset restricting inbound traffic to that vendor's published IP ranges. The panel is explicit that enabling the firewall here only **generates and shows** the ruleset; nothing is applied to the box's actual network filter yet. |
 | **TURN / WebRTC** | Point real-time app streaming at your own coturn server (host, port, realm, shared secret) if devices behind strict NAT need a dedicated TURN relay, and test reachability. |
 
+The six reachability providers described above are one radio group, below the relay-node
+list in the same pane — the built-in Vulos relay is preselected and marked **Active**,
+and every option restates that switching it changes ingress and rendezvous only, never
+call media:
+
+<picture>
+  <img src="screenshots/settings-relay-providers-light.png" alt="The Reachability provider card in Settings, showing all six options: Vulos relay (default, Active), Pier relay, bring your own STUN/TURN, libp2p Circuit Relay v2, WireGuard mesh, and None (static IP / port-forward)" width="880" />
+</picture>
+
 ## Developer
 
 | Pane | What you do there |
