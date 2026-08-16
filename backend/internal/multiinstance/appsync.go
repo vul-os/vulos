@@ -1943,6 +1943,39 @@ func (as *AppSync) PlanReconcile(r Realiser) (ReconcilePlan, error) {
 	return plan, nil
 }
 
+// reportFailureIfChanged records a realisation failure ONLY when it differs from
+// what this instance's row already says.
+//
+// Without this, a permanent failure churns forever. Reconcile runs on a timer;
+// an arm64 box that cannot install an amd64-only app fails on every pass, and
+// ReportRealiseFailure stamps UpdatedAt = now unconditionally — so the row
+// crosses the LWW cursor every couple of minutes and is pushed to every peer,
+// for as long as the app stays desired. Nothing would be WRONG, which is why it
+// would not have been noticed: the state converges correctly, the reason is
+// right, and the fleet quietly gossips an unchanging fact forever.
+//
+// A changed reason still writes. That matters more than it looks: "requires
+// amd64; this box is arm64" becoming "download timed out" is the difference
+// between a box that can never have the app and one that might on the next try,
+// and suppressing it to save a write would hide the only signal that says which.
+func (as *AppSync) reportFailureIfChanged(instanceULID, appID, version, reason string) error {
+	var (
+		state  string
+		detail string
+	)
+	err := as.db.QueryRow(`
+		SELECT realise_state, realise_detail FROM app_registry
+		WHERE instance_ulid = ? AND app_id = ?
+	`, instanceULID, appID).Scan(&state, &detail)
+	if err == nil && state == RealiseFailed && detail == reason {
+		return nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("appsync: reportFailureIfChanged: read current row: %w", err)
+	}
+	return as.ReportRealiseFailure(instanceULID, appID, version, reason)
+}
+
 // Reconcile computes the plan and performs it, reporting each outcome into this
 // instance's realisation rows so peers learn what this box managed.
 //
@@ -1972,7 +2005,7 @@ func (as *AppSync) Reconcile(ctx context.Context, instanceULID string, r Realise
 		if a.Install {
 			if rerr := r.Realise(ctx, a.AppID, a.Version); rerr != nil {
 				res.Failed[a.AppID] = rerr.Error()
-				if perr := as.ReportRealiseFailure(instanceULID, a.AppID, a.Version, rerr.Error()); perr != nil {
+				if perr := as.reportFailureIfChanged(instanceULID, a.AppID, a.Version, rerr.Error()); perr != nil {
 					return res, fmt.Errorf("appsync: Reconcile: report failure for %s: %w", a.AppID, perr)
 				}
 				continue
@@ -1985,7 +2018,7 @@ func (as *AppSync) Reconcile(ctx context.Context, instanceULID string, r Realise
 		}
 		if rerr := r.Unrealise(ctx, a.AppID); rerr != nil {
 			res.Failed[a.AppID] = rerr.Error()
-			if perr := as.ReportRealiseFailure(instanceULID, a.AppID, "", rerr.Error()); perr != nil {
+			if perr := as.reportFailureIfChanged(instanceULID, a.AppID, "", rerr.Error()); perr != nil {
 				return res, fmt.Errorf("appsync: Reconcile: report removal failure for %s: %w", a.AppID, perr)
 			}
 			continue

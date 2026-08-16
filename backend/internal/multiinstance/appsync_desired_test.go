@@ -747,6 +747,64 @@ func TestReconcileReportsWhyThisBoxCannotRealiseAnApp(t *testing.T) {
 	}
 }
 
+// TestAPermanentFailureIsNotRestampedForever pins the quiet one.
+//
+// Reconcile runs on a timer, and a failure report stamps UpdatedAt = now. An
+// arm64 box that can never install an amd64-only app therefore fails on every
+// pass, and each report would cross the LWW cursor and be pushed to every peer —
+// forever, for as long as the app stays desired. Nothing would be WRONG, which
+// is exactly why it would not be noticed: the state converges, the reason is
+// correct, and the fleet gossips an unchanging fact until someone reads a
+// bandwidth graph.
+//
+// A CHANGED reason must still be written, so the check is not "have we reported
+// a failure" but "have we reported THIS failure".
+func TestAPermanentFailureIsNotRestampedForever(t *testing.T) {
+	const (
+		ulidA = "01HWZMINST000000000000001A"
+		app   = "steam"
+	)
+	_, as := openTempAppSync(t)
+	if err := as.DesireInstall(ulidA, app, "1.0.0"); err != nil {
+		t.Fatalf("DesireInstall: %v", err)
+	}
+	r := newFakeRealiser(nil)
+	r.installErr[app] = errors.New(`registry entry "steam" cannot be installed on this box: requires amd64; this box is arm64`)
+
+	stampAfterPass := func(pass int) time.Time {
+		t.Helper()
+		if _, err := as.Reconcile(context.Background(), ulidA, r); err != nil {
+			t.Fatalf("Reconcile pass %d: %v", pass, err)
+		}
+		rows, err := as.ListAppsForInstance(ulidA, true)
+		if err != nil {
+			t.Fatalf("ListAppsForInstance: %v", err)
+		}
+		for _, row := range rows {
+			if row.AppID == app {
+				return row.UpdatedAt
+			}
+		}
+		t.Fatalf("no realisation row for %q after pass %d", app, pass)
+		return time.Time{}
+	}
+
+	first := stampAfterPass(1)
+	for pass := 2; pass <= 4; pass++ {
+		if got := stampAfterPass(pass); !got.Equal(first) {
+			t.Fatalf("reconcile pass %d restamped an UNCHANGED failure (%v → %v) — the row crosses the sync cursor on every "+
+				"timer tick and is pushed to every peer for as long as the app stays desired", pass, first, got)
+		}
+	}
+
+	// A different reason IS news and must be written.
+	r.installErr[app] = errors.New("download timed out")
+	if got := stampAfterPass(5); got.Equal(first) {
+		t.Error("the failure reason changed from an arch mismatch to a timeout and the row was not updated — " +
+			"that is the difference between a box that can never have the app and one that might on the next try")
+	}
+}
+
 // TestReconcileRemovesWhatTheFleetNoLongerWants closes the loop: a box that was
 // holding an app the user removed elsewhere actually loses it, and says so.
 func TestReconcileRemovesWhatTheFleetNoLongerWants(t *testing.T) {
