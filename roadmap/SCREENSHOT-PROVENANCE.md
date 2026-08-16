@@ -117,8 +117,20 @@ These are more informative about "will this work when I boot it" than any of the
 
 - **28 of the 48 fixture screenshots are referenced by nothing** (every dark
   variant, the whole `settings-relay*` set, `mobile-assistant*`, `stacked-light`).
-  So is all of `frontend/e2e-shots/activity/` (20 PNGs, 16 MB, committed,
-  unreferenced). Roughly 29 MB of committed images with 20 actually consumed.
-  Not addressed here — it is a separate cleanup, and deleting images is exactly
-  the kind of change no CI job would currently catch, since **nothing verifies
-  that README/docs image links resolve**.
+  Roughly 29 MB of committed images with 20 actually consumed.
+
+  **`frontend/e2e-shots/` is now untracked and gitignored (2026-08-16).** The
+  blocker named here — nothing verifies that image links resolve — was closed by
+  `TestDocImagesResolve` in `backend/internal/docsref/`, so a delete that took a
+  live embed with it now fails the build. That is what made the cleanup safe.
+
+  The deciding evidence was not the size. Those 20 PNGs are Playwright OUTPUT:
+  every run re-renders them, so they churned on every invocation with zero
+  content change, permanently dirtying `git status` and hiding real edits in the
+  noise. They are diagnostic captures an agent looks at while debugging a
+  layout, worth exactly one run — not artifacts, and not the product screenshots,
+  which live in `docs/screenshots/` under a provenance gate.
+
+  The 28 unreferenced fixture screenshots in `docs/screenshots/` are a separate
+  question and are deliberately left: they are stable rather than churning, and
+  several document features whose docs are unwritten rather than absent.

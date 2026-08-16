@@ -1,0 +1,11 @@
+
+# Playwright diagnostic captures.
+#
+# These are OUTPUT of a test run, not artifacts: every run re-renders them, so
+# 20 committed PNGs churned on every invocation with zero content change --
+# dirtying the tree permanently and hiding real edits in `git status`.
+#
+# Nothing reads them. They are not the product screenshots, which live in
+# docs/screenshots/ with a provenance gate over them; these are what an agent
+# looks at while debugging a layout, and are worth exactly one run.
+e2e-shots/
