@@ -22,7 +22,13 @@
 | arch | how it ran here | verdict | evidence |
 | --- | --- | --- | --- |
 | **arm64** | **native** (this Mac is arm64) | **PASS** | §3 |
-| **amd64** | **emulated** (qemu, via Docker) | see §4 | §4 |
+| **amd64** | **emulated** (qemu, via Docker) | **PASS** | §4 |
+
+Both runs: the real `InstallFromRegistry`, signature verification on against an
+ephemeral in-container root, the arch's own artefact fetched and its pin matched,
+the zip **extracted** (`strip=1, 2 members`) with `file` confirming the right
+machine type, and a live `GET /login` → 200 carrying `<title>lilmail</title>`
+from the app running as uid 65534. Neither run degraded.
 
 Which one was emulated is stated because it changes what the run proves about
 *timing* and nothing else: an emulated run that serves is still an install that
@@ -147,12 +153,56 @@ and the app's own log shows Fiber bound on 8090 and answering:
 20:57:02 | 302 |   57.54µs | 127.0.0.1 | GET | /      | -
 ```
 
-## 4. amd64 — emulated
+## 4. amd64 — PASS, emulated
 
-**RUN IN PROGRESS at the time of this commit.** The emulated amd64 run is under
-way; its result — pass, fail, or did-not-finish — is landed in the very next
-commit to this file, whatever it says. It is deliberately not inferred from the
-arm64 result, and this section is deliberately not left implying one.
+It finished. The emulation cost was paid almost entirely by `apt` while building
+the base image (~5 min under qemu on a host at load ~80); the install and the
+serve check were comparable to native, and the whole verified run — download,
+checksum, extract, `post_install`, launch, HTTP — took about six seconds.
+
+```
+· box-arch              installer resolved for amd64 (driver runtime.GOARCH)
+· artifact              …/v1.14.0/lilmail_1.14.0_linux_amd64.zip
+✓ install               InstallFromRegistry returned OK in 3s
+✓ checksum-verified     matched the registry pin c3d0fa7834e6… for amd64
+✓ manifest-written      /var/lib/vulos/apps/lilmail/app.json
+✓ command-declared      ./lilmail
+✓ extracted-not-copied  no .zip left under the app dir
+✓ binary-executable     /var/lib/vulos/apps/lilmail/lilmail
+✓ arch-correct          amd64 ⇐ ELF 64-bit LSB executable, x86-64, dynamically linked,
+                        interpreter /lib64/ld-linux-x86-64.so.2, stripped
+✓ post-install-config   config.toml written (640 nobody:nogroup)
+✓ serves-login          GET /login → 200 after 2s
+✓ serves-own-page       <title>lilmail</title>
+· serves-root           GET / → 302
+✓ not-degraded          no degradation reported in the app's own log
+══ PASS lilmail on linux/amd64 (EMULATED (qemu)) ══
+```
+
+```
+[registry/static] downloading …/lilmail_1.14.0_linux_amd64.zip
+[registry/static] checksum OK (c3d0fa7834e6)
+[registry/static] extracted zip into /var/lib/vulos/apps/lilmail (strip=1, 2 members)
+21:02:27 | 200 | 34.813259ms | 127.0.0.1 | GET | /login | -
+```
+
+**One difference between the two artefacts, found by running them.** The arm64
+binary is **statically linked**; the amd64 binary is **dynamically linked**
+against glibc (`interpreter /lib64/ld-linux-x86-64.so.2`). Both run in
+`debian:trixie-slim`, which is what the shipped image is built from, so this
+changes nothing for Vulos today. It is recorded because it means the two
+artefacts do not have the same runtime requirements, and any future non-glibc
+base would break exactly one of them — the kind of asymmetry that is invisible
+until someone tests only the arch that happens to be static.
+
+If this must be re-run natively rather than emulated:
+
+```sh
+# on any Linux/amd64 host, same commit, docker + go1.25+
+bash scripts/verify-app-install-perarch.sh lilmail --arch amd64
+# expect: PASS … (native), with arch-correct reading
+#   "amd64 <= ELF 64-bit LSB executable, x86-64"
+```
 
 ## 5. Whose job is `cache/`
 
@@ -164,11 +214,27 @@ arm64 result, and this section is deliberately not left implying one.
   anyone adds `cache/` to that loop, so the choice has to be made deliberately
   for all 56 entries rather than discovered when a per-recipe `mkdir` quietly
   becomes dead code.
-- The **app** does not create it. Without the directory lilmail logs
-  `scheduled send unavailable (store open failed)` and runs **degraded** while
-  still answering `GET /login` with 200 — which is precisely why a status-code
-  check alone is not enough.
+- The **app** does not create it, and its absence costs something real. Measured,
+  not assumed: `--control nocachelaunch` does a clean install and deletes
+  `cache/` immediately before the first launch. `cache/` stays **ABSENT**,
+  lilmail still answers `GET /login` with **200**, and its own log carries
+
+  ```
+  scheduled send unavailable (store open failed): storage: open bolt
+  /var/lib/vulos/apps/lilmail/cache/scheduled.db: no such file or directory
+  ```
+
+  That is the exact silent degradation a status-code check waves through.
 - The **recipe** does, in `post_install`, alongside `sessions/`.
+
+**The recipe-side control could not reach the state it was written to observe,
+and the reason is worth keeping.** `--control cachedir` re-signs a variant whose
+`post_install` drops only the `cache` mkdir. The install does not succeed and
+degrade — it is **refused**: `post_install`'s own trailing
+`chown -R 65534:65534 config.toml cache sessions` then has nothing to chown, `sh`
+exits non-zero, and POSTINSTALL-01 removes the half-built app directory. The
+recipe is self-protecting. The control now records that refusal as its pass, and
+the app-side control above is what answers the original question.
 
 `TestShippedLilmailPostInstall_CreatesTheDirsItsConfigNames` **runs** the shipped
 `post_install` rather than pattern-matching it. Running it is the point: the last
@@ -219,6 +285,31 @@ The stub `tar` is never even invoked. That is a real kill of a real defect, but
 it is not a test of tar-independence; only the third mutant exercises that, and
 only the guard catches it.
 
+## 6a. The harness's own reds have been seen
+
+A checker that has never failed is not evidence. `--self-test` runs three
+containers on one arch and requires all three verdicts:
+
+```
+real             expect pass  got pass  CORRECT
+tamper-checksum  expect fail  got fail  CORRECT
+unsigned         expect fail  got fail  CORRECT
+```
+
+with the reasons printed rather than inferred:
+
+```
+tamper-checksum  INSTALL-FAILED: static install lilmail: checksum mismatch:
+                 expected 0689dd62…, got 7689dd62…
+unsigned         INSTALL-FAILED: registry entry "lilmail" failed publisher signature
+                 check: … has no publisher signature (REGISTRY-SIGN-01)
+```
+
+The `unsigned` case is the one that matters most for reading §3 and §4: it is the
+proof that signature verification was **actually running** during the two passes
+rather than quietly resolving to a skip. The tampered checksum is signed
+correctly and still refused, so the two integrity layers are independently live.
+
 ## 7. Re-running this
 
 ```sh
@@ -234,9 +325,14 @@ bash scripts/verify-app-install-perarch.sh lilmail --arch both
 # the harness's own reds: corrupted checksum and unsigned entry must both FAIL
 bash scripts/verify-app-install-perarch.sh lilmail --arch arm64 --self-test
 
-# the control that makes "not-degraded" mean something
-bash scripts/verify-app-install-perarch.sh lilmail --arch arm64 --control cachedir
+# the two controls that make "not-degraded" mean something
+bash scripts/verify-app-install-perarch.sh lilmail --arch arm64 --control cachedir       # recipe side
+bash scripts/verify-app-install-perarch.sh lilmail --arch arm64 --control nocachelaunch  # app side
 ```
+
+Every run leaves an evidence directory (`assertions.tsv`, `facts.json`,
+`install.log`, `app.log`, `login.html`, and the ephemeral trust material under
+`prep/`) whose path is printed with the verdict.
 
 It works for any entry, not just lilmail — `diwan` and `wede` are the obvious
 next two, and unlike the transcript-only runs behind `PER-ARCH-ARTIFACTS.md` §5,
