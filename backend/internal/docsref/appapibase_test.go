@@ -106,7 +106,7 @@ var boxAPIEscapes = map[string][]string{
 // a refactor, or a directory that moved would all produce "no violations found".
 const (
 	minBundledApps   = 15 // 16 today; a drop means the walk lost the tree
-	minResolvedSites = 51 // 51 today across 11 apps
+	minResolvedSites = 61 // 61 today across 11 apps
 	minHelperCopies  = 11 // the eleven apps with an own API
 )
 
