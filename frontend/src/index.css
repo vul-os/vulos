@@ -535,6 +535,48 @@ html, body, #root {
    so these are inert on desktop and non-notched devices. Requires
    `viewport-fit=cover` in the <meta viewport> (set in index.html).
    ═══════════════════════════════════════ */
+/* MOB-12b — these four are the only tokens in this file that something OUTSIDE
+ * the web app writes, and the difference matters.
+ *
+ * The Android APK (clients/android/.../MainActivity.kt) pushes real window
+ * insets in by running setProperty('--safe-top', '59.00px') on <html> — an
+ * INLINE style, which beats the :root rule below at any specificity. That is
+ * deliberate: env(safe-area-inset-*) inside a WebView reports only the display
+ * cutout, never the status bar or the navigation bar, so the native side knows
+ * something CSS does not. The consequence is that a WRONG native value does not
+ * degrade to the fallback below — it replaces it.
+ *
+ * MEASURED in Chromium against this bundle, pushing values inline over a
+ * `:root` fallback of 21px, for the four shapes the shell actually consumes:
+ *
+ *   value       max(40px,var)   bare var    max(1rem,var)   calc(var + 6px)
+ *   0px             40px          0px           16px             6px
+ *   34px            40px         34px           34px            40px
+ *   134px          134px        134px          134px           140px
+ *   "34,00px"        0px          0px            0px             0px     <──
+ *   -40px           40px          0px           16px             0px
+ *
+ * Read the fourth row. A comma-decimal value — what the native String.format
+ * emits if it ever loses its Locale.ROOT — is invalid at computed-value time,
+ * and that poisons the WHOLE declaration, so every consumer resolves to zero.
+ * `max()` does NOT save the ones that use it: max(40px, <invalid>) is 0px, not
+ * 40px. max() defends against an inset that is too SMALL, which is a different
+ * job. Nothing in CSS defends against one that is malformed.
+ *
+ * @property was tried here and REMOVED. Registering these as syntax '<length>'
+ * does make an invalid value fail — but it fails to the registered
+ * `initial-value`, NOT to the next declaration in the cascade. Measured with
+ * initial-value: 7px, a pushed "34,00px" computed to 7px while the :root rule
+ * said 21px. With the only honest initial-value (0px) that is precisely the
+ * defect — a value the shell invented, winning over a correct fallback. Do not
+ * add it back.
+ *
+ * The one operation that means "fall back to the rule below" is REMOVING the
+ * inline declaration, and that cannot be expressed in CSS. It lives in
+ * src/mobile/safeAreaInsets.ts, installed at boot from src/main.tsx, and is
+ * verified in e2e/insets-validation.e2e.ts — including the row above, so a
+ * future Chromium that changes any of it is noticed here rather than on a
+ * phone. */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);

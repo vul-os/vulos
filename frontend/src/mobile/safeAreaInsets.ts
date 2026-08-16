@@ -354,7 +354,15 @@ export function applySafeAreaInsets(
  * Idempotent per root — a second install replaces the first rather than stacking
  * observers. Returns a teardown.
  */
+const installed = new WeakMap<HTMLElement, () => void>()
+
 export function installSafeAreaGuard(root: HTMLElement = document.documentElement): () => void {
+  // Idempotent per root. Boot installs this once; if a second caller ever
+  // installs again, the first is torn down rather than left running — two
+  // observers on the same attribute would double every warning and make the
+  // first teardown look like it had disabled the guard when it had not.
+  installed.get(root)?.()
+
   const view = root.ownerDocument?.defaultView
   if (!view || typeof view.MutationObserver !== 'function') {
     // No observer (a non-DOM host); the one-shot sanitize is still worth doing.
@@ -380,9 +388,12 @@ export function installSafeAreaGuard(root: HTMLElement = document.documentElemen
 
   sanitizeSafeArea(root)
 
-  return () => {
+  const teardown = () => {
+    installed.delete(root)
     observer.disconnect()
     view.removeEventListener('resize', onViewportChange)
     view.removeEventListener('orientationchange', onViewportChange)
   }
+  installed.set(root, teardown)
+  return teardown
 }

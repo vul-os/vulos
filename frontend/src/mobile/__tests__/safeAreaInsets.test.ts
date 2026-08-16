@@ -31,12 +31,15 @@ import {
 const VIEWPORT_H = 768
 const VIEWPORT_W = 1024
 
-let warn: ReturnType<typeof vi.spyOn>
+/** Every console.warn the boundary emitted during a test. */
+const warned: string[] = []
+let warn: { mockRestore: () => void }
 
 beforeEach(() => {
   for (const p of SAFE_AREA_PROPERTIES) document.documentElement.style.removeProperty(p)
   delete window.__vulosSafeArea
-  warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  warned.length = 0
+  warn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => { warned.push(args.map(String).join(' ')) })
 })
 afterEach(() => {
   warn.mockRestore()
@@ -265,7 +268,7 @@ describe('sanitizeSafeArea', () => {
     const root = document.documentElement
     root.style.setProperty('--safe-bottom', '34,00px')
     sanitizeSafeArea(root)
-    const msg = warn.mock.calls.map(c => String(c[0])).join('\n')
+    const msg = warned.join('\n')
     expect(msg).toContain('--safe-bottom')
     expect(msg).toContain('34,00px')
     expect(msg).toContain('env(safe-area-inset-*)')
@@ -348,7 +351,7 @@ describe('installSafeAreaGuard', () => {
     await flush()
     expect(read('--safe-bottom')).toBe('')
     // One removal, one warning — not a warning per observer turn.
-    expect(warn.mock.calls.filter(c => String(c[0]).includes('-40px')).length).toBe(1)
+    expect(warned.filter(m => m.includes('-40px')).length).toBe(1)
   })
 
   it('ignores unrelated style writes on the same element', async () => {
@@ -356,7 +359,7 @@ describe('installSafeAreaGuard', () => {
     root.style.setProperty('--vd-window-radius', '8px')   // desktop/store.ts does this
     root.style.setProperty('--safe-top', '34px')
     await flush()
-    expect(read('--vd-window-radius')).toBe('8px')
+    expect(root.style.getPropertyValue('--vd-window-radius')).toBe('8px')
     expect(read('--safe-top')).toBe('34px')
   })
 

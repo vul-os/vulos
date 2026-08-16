@@ -11,6 +11,7 @@ import { configure } from './lib/net/endpoints.js'
 configure({ lsKeyPrefix: 'vulos.os.endpoints.v1', healthPath: '/api/auth/status' })
 import { bootstrapOffline } from './lib/net/offlineBootstrap.js'
 import { startOfflineQueueFlushLoop } from './lib/offlineQueue.js'
+import { installSafeAreaGuard } from './mobile/safeAreaInsets'
 
 // Synchronous OS tier resolver. Reads window.__VULOS_TIER (set by the OS
 // bootstrap / Setup state). Returns 'free' as a safe default. The shared
@@ -49,6 +50,25 @@ try {
 try {
   document.documentElement.setAttribute('data-theme', getInitialResolvedTheme())
 } catch { /* localStorage / matchMedia unavailable — CSS :root dark default applies */ }
+
+// MOB-12b: guard the safe-area inset tokens BEFORE React mounts.
+//
+// The Android APK pushes real window insets in by writing --safe-top/-bottom/
+// -left/-right as inline styles on <html>, which outrank the
+// env(safe-area-inset-*) fallback in index.css — so a wrong native value
+// replaces the working fallback instead of degrading to it. The guard watches
+// that attribute and removes any value that is not a plausible inset, which is
+// the only operation that means "fall back to env()"; see
+// mobile/safeAreaInsets.ts for the bounds and the measurements behind them.
+//
+// It is here rather than in the mobile shell for two reasons: the bridge
+// re-pushes its cached insets on every page load, which can land before any
+// component mounts, and the desktop surfaces (shell/MissionControl.tsx,
+// shell/Launchpad.tsx) read the same tokens. Installing at boot covers both;
+// nothing in CSS can, which is documented where the tokens are declared.
+try {
+  installSafeAreaGuard()
+} catch { /* no DOM/MutationObserver — the tokens keep their env() fallback */ }
 
 // Diagnostic surface: if React fails to mount (or any unhandled error fires
 // before/during render), paint a *visible* error directly to the document
