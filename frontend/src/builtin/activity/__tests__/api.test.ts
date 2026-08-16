@@ -97,11 +97,68 @@ describe('narrowing', () => {
     expect(toResponsiveness(null).status).toBe('unknown')
   })
 
-  it('keeps the four responsiveness statuses distinct', () => {
+  // …and it must not become the OTHER verdict either. Folding an unknown
+  // future status into not_responding would put a "this app is broken" badge
+  // on an app nothing was ever asked about.
+  it('never guesses not_responding for a status it does not know', () => {
+    for (const s of ['wobbly', 'display_wedged', 'partially_responding', 'frozen']) {
+      expect(toResponsiveness({ status: s }).status).not.toBe('not_responding')
+      expect(toResponsiveness({ status: s }).status).toBe('unknown')
+    }
+  })
+
+  // The server's own word is kept, so the badge can say "your box reported
+  // something this version does not understand" rather than presenting a newer
+  // fact as an ordinary absence of one.
+  it('keeps the unrecognised status string instead of discarding it', () => {
+    expect(toResponsiveness({ status: 'display_wedged' }).unrecognised).toBe('display_wedged')
+    // Recognised statuses carry no such marker — its presence IS the signal.
+    expect(toResponsiveness({ status: 'display_not_responding' }).unrecognised).toBeUndefined()
+    expect(toResponsiveness({ status: 'responding' }).unrecognised).toBeUndefined()
+    // A missing status is not a NEWER status; there is nothing to report.
+    expect(toResponsiveness({}).unrecognised).toBeUndefined()
+    expect(toResponsiveness({ status: '' }).unrecognised).toBeUndefined()
+    expect(toResponsiveness({ status: 7 }).unrecognised).toBeUndefined()
+  })
+
+  it('keeps the five responsiveness statuses distinct', () => {
     expect(toResponsiveness({ status: 'responding' }).status).toBe('responding')
     expect(toResponsiveness({ status: 'not_responding' }).status).toBe('not_responding')
     expect(toResponsiveness({ status: 'not_applicable' }).status).toBe('not_applicable')
     expect(toResponsiveness({ status: 'unknown' }).status).toBe('unknown')
+    expect(toResponsiveness({ status: 'display_not_responding' }).status).toBe('display_not_responding')
+  })
+
+  // THE regression this widening exists for. display_not_responding used to
+  // fall off the end of the recogniser and land on `unknown`, so the box knew
+  // the X server had stalled and the badge said "Cannot tell".
+  it('does not collapse display_not_responding into unknown', () => {
+    const r = toResponsiveness({
+      status: 'display_not_responding',
+      method: 'x11_ping',
+      detail: 'no answer from the X server at /tmp/.X11-unix/X10',
+      checked_ms: 3005,
+    })
+    expect(r.status).toBe('display_not_responding')
+    expect(r.status).not.toBe('unknown')
+    expect(r.method).toBe('x11_ping')
+    expect(r.checked_ms).toBe(3005)
+  })
+
+  // "nobody to ask" and "no mechanism at all" are both unknown, and the reason
+  // is the only thing separating them — so the reason must survive narrowing.
+  it('preserves the method that separates the two kinds of unknown', () => {
+    const noWindow = toResponsiveness({
+      status: 'unknown', method: 'x11_ping',
+      detail: 'no window on this display implements _NET_WM_PING (4 windows examined)',
+    })
+    const noMechanism = toResponsiveness({
+      status: 'unknown', method: 'none',
+      detail: 'this session runs on the Wayland compositor (cage)',
+    })
+    expect(noWindow.status).toBe(noMechanism.status)
+    expect(noWindow.method).toBe('x11_ping')
+    expect(noMechanism.method).toBe('none')
   })
 
   it('reads apps out of the {apps:[…]} envelope', () => {

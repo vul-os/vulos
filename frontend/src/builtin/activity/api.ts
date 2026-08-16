@@ -178,33 +178,92 @@ export function toNetConns(x: unknown): NetConn[] {
 // ── apps + responsiveness ───────────────────────────────────────────────────
 
 /**
- * RespStatus is four-valued, and the fourth values matter as much as the first
- * two. `unknown` means Vulos has no mechanism to ask — a gap it could close.
- * `not_applicable` means the question is a category error. Collapsing either
- * into "responding" would turn an absence of information into a reassurance.
+ * RespStatus is FIVE-valued, and the three that are not a plain yes/no matter
+ * as much as the two that are.
+ *
+ *  responding             a probe was made and the subject answered.
+ *  not_responding         a probe was made and THIS APP did not answer.
+ *  display_not_responding the app's display stopped answering, so no question
+ *                         about the app could be put to it. A measurement, but
+ *                         of the SESSION — every app on that display is equally
+ *                         silent and the one being looked at may be healthy.
+ *  unknown                nobody to ask. Vulos does not know.
+ *  not_applicable         the question is a category error.
+ *
+ * Collapsing any of the last three into "responding" would turn an absence of
+ * information into a reassurance. Collapsing display_not_responding into
+ * not_responding is the mirror of that mistake: it puts a "this app is broken"
+ * verdict on an app the box never managed to ask, and the user's obvious
+ * response — force-quit it — destroys work and does not unfreeze the picture.
+ *
+ * The list is widened HERE rather than in the component because this is the
+ * trust boundary: the component may switch on `status` knowing every value in
+ * it came through toResponsiveness.
  */
-export type RespStatus = 'responding' | 'not_responding' | 'unknown' | 'not_applicable'
+export type RespStatus =
+  | 'responding'
+  | 'not_responding'
+  | 'display_not_responding'
+  | 'unknown'
+  | 'not_applicable'
+
+/**
+ * The statuses this build understands. A newer backend may send one that is
+ * not here; see toResponsiveness for what happens then.
+ */
+const KNOWN_STATUSES: readonly string[] = [
+  'responding', 'not_responding', 'display_not_responding', 'unknown', 'not_applicable',
+]
 
 export interface Responsiveness {
   status: RespStatus
-  /** How the answer was reached: http_probe, proc_state, client_side, none. */
+  /** How the answer was reached: http_probe, x11_ping, proc_state, client_side, none. */
   method: string
   /** The evidence, or the reason there is none. Always shown on hover. */
   detail: string
   checked_ms?: number
+  /**
+   * The server's own word for a status this build does not know, kept so the
+   * UI can say "your box knows something this version does not" instead of
+   * silently presenting it as an ordinary unknown. Absent for every recognised
+   * status, so `unrecognised` being set is itself the signal.
+   */
+  unrecognised?: string
 }
 
+/**
+ * toResponsiveness narrows one responsiveness object.
+ *
+ * An UNRECOGNISED status becomes `unknown` — never `responding`, never
+ * `not_responding`. A value this client has not learned yet is an absence of
+ * information, and the two failure modes of guessing are both bad: guessing
+ * "responding" is a reassurance nobody measured, and guessing "not_responding"
+ * is a verdict on an app that may be perfectly healthy. `unknown` is the only
+ * value that is true regardless of what the newer backend meant. The original
+ * string is preserved in `unrecognised` so nothing is thrown away.
+ */
 export function toResponsiveness(x: unknown): Responsiveness {
   const r = isRecord(x) ? x : {}
   const s = str(r.status)
-  const status: RespStatus =
-    s === 'responding' || s === 'not_responding' || s === 'not_applicable' ? s : 'unknown'
-  return { status, method: str(r.method) || 'none', detail: str(r.detail) || '', checked_ms: num(r.checked_ms) }
+  const known = s !== undefined && KNOWN_STATUSES.includes(s)
+  const out: Responsiveness = {
+    status: known ? (s as RespStatus) : 'unknown',
+    method: str(r.method) || 'none',
+    detail: str(r.detail) || '',
+    checked_ms: num(r.checked_ms),
+  }
+  if (!known && s !== undefined && s !== '') out.unrecognised = s
+  return out
 }
 
 export interface AppStatus {
   app_id: string
   name?: string
+  /**
+   * What sort of thing this row is: process, stream or builtin. It decides
+   * what "responding" can mean AND what closing it does — see closeApp, where
+   * a `stream` row's close ends the whole session rather than one program.
+   */
   kind: string
   running: boolean
   pid?: number
@@ -259,6 +318,20 @@ export async function signalProcess(
   return postJSON('/api/system/processes/signal', { pid: p.pid, start: p.start, mode })
 }
 
+/**
+ * closeApp ends one app — or, for a streamed row, the whole session.
+ *
+ * The server resolves app_id against the appnet launcher first and falls
+ * through to the stream pool, and stream.Pool.Stop tears down the session
+ * entirely: the display, the window manager and everything drawing on it. So
+ * on a `stream` row this is not "close this program", and the UI must not
+ * label it as if it were.
+ *
+ * `force` is also NOT a second mechanism there. It shortens the appnet stop's
+ * grace window; the stream fall-through reaches the same Pool.Stop either way,
+ * which is why the stream rows offer ONE action instead of two buttons that
+ * do the same thing while implying different amounts of violence.
+ */
 export function closeApp(appID: string, force: boolean): Promise<Result<Record<string, unknown>>> {
   return postJSON('/api/proc/apps/close', { app_id: appID, force })
 }
