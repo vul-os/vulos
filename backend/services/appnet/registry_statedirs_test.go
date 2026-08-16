@@ -53,11 +53,13 @@ func TestInstallFromRegistry_CreatesOnlyTheBundleDirs(t *testing.T) {
 			Icon: "S", Author: "Test", License: "MIT", Homepage: "https://example.com",
 			Versions: map[string]*VersionRecipe{
 				"1.0": {
-					DownloadURL: srv.URL + "/app",
-					Checksum:    sha256Hex(body),
-					BinaryName:  "statedirs",
-					Command:     "bin/statedirs",
-					Port:        8080,
+					Artifacts: map[string]*Artifact{
+						"amd64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+						"arm64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+					},
+					BinaryName: "statedirs",
+					Command:    "bin/statedirs",
+					Port:       8080,
 					// No post_install: this is the installer on its own.
 				},
 			},

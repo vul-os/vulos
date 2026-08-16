@@ -229,9 +229,33 @@ type Artifact struct {
 
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
-	Install     string `json:"install"`      // shell command to install (e.g., "apt-get install -y postgresql-16")
-	FlatpakID   string `json:"flatpak_id"`   // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
-	DownloadURL string `json:"download_url"` // static install: URL to download a binary or tar.gz archive (single-arch form)
+	// Install USED TO BE a shell command run by the installer. It is now
+	// REFUSED — see roadmap/INSTALL-METHODOLOGY.md. Two install vehicles remain
+	// (Flatpak, and the Vulos-native per-arch `artifacts` map) and a shell
+	// string is neither of them.
+	//
+	// The field is deliberately KEPT and deliberately REFUSED rather than
+	// deleted. Deleting it would move `install` into the Extra passthrough map,
+	// where it would round-trip through the publisher signature while being read
+	// by nothing — which is exactly the per-recipe `arch` defect
+	// (APP-RECIPE-STANDARD §1.1): a field that looks like it does something and
+	// does not. A stale recipe must fail loudly, not quietly.
+	//
+	// What it cost while it worked: `code-server` shipped a FABRICATED sha256
+	// piped into `|| true`, so `dpkg -i` ran whatever came back regardless. That
+	// shape is only expressible in a shell string.
+	Install   string `json:"install"`    // REFUSED (INSTALL-01) — see above
+	FlatpakID string `json:"flatpak_id"` // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
+	// DownloadURL is the single-architecture download form, and it is now
+	// REFUSED (DOWNLOAD-01) in favour of Artifacts. Same reasoning as Install:
+	// kept so a stale recipe errors instead of being silently ignored.
+	//
+	// It is not a security hole — it carried a mandatory checksum — it is a
+	// SHAPE hole: one URL cannot pin two architectures, so every entry using it
+	// was implicitly amd64-only while claiming every arch the entry declared.
+	// `artifacts` says the same thing with one entry per architecture and one
+	// digest per artefact, and that is the only form the installer will run.
+	DownloadURL string `json:"download_url"` // REFUSED (DOWNLOAD-01) — use Artifacts
 
 	// Artifacts is the PER-ARCHITECTURE form of DownloadURL/Checksum, keyed by
 	// Debian arch name ("amd64", "arm64") — the same spelling RegistryEntry.Arch
@@ -263,6 +287,27 @@ type VersionRecipe struct {
 	Artifacts map[string]*Artifact `json:"artifacts,omitempty"`
 
 	ArchiveStrip int `json:"archive_strip"` // static install: number of leading path components to strip when extracting (tar --strip-components)
+
+	// ExtractDir is the subdirectory OF THE APP DIR an archive unpacks into.
+	// Empty means the app dir itself, which is the pre-existing behaviour, so
+	// every shipped entry is unaffected.
+	//
+	// It exists because removing the shell left one job with no declarative
+	// expression. A static web app is served with
+	// `python3 -m http.server ${PORT} --directory static/`, and every such
+	// recipe used to get its bytes into static/ by running `unzip -d static/` or
+	// `tar -C static/` in the install shell. Unpacking into the app dir instead
+	// and serving `.` is NOT an equivalent substitute: the app dir also holds
+	// data/, which is a symlink to the owner's data directory, so the one-line
+	// "just serve the app dir" version publishes the app's own database over
+	// HTTP. A field is cheaper than that mistake.
+	//
+	// It is a plain relative path inside the app dir — validateRecipeSecurity
+	// refuses absolute paths and traversal, and staticInstall re-checks the
+	// resolved destination, because this value becomes a filesystem path.
+	// Setting it alongside a non-archive artefact is refused rather than
+	// ignored, for the same reason binary_name is.
+	ExtractDir string `json:"extract_dir,omitempty"`
 
 	// BinaryName renames a single-binary download as it lands in bin/.
 	//
@@ -467,6 +512,50 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 			"set a sha256 checksum in the registry entry before installing (SECAUDIT2-H1)")
 	}
 
+	// ── INSTALL-01: there is no shell install path ───────────────────────────
+	//
+	// Ordered AFTER the two checks above on purpose. Both of those still fire
+	// first for the inputs they were written for (a pipe-to-shell string, a
+	// curl-without-checksum string), so neither becomes a guard that can never
+	// run — the failure this codebase keeps finding. This one catches what is
+	// left: the benign-looking `apt-get install -y blender`.
+	//
+	// Why the whole shape goes rather than being tightened: an install shell is
+	// unreviewable in general. `code-server`'s recipe verified a checksum and
+	// then piped the result into `|| true`, so `dpkg -i` ran regardless — and
+	// the checksum it "verified" was invented. No pattern list catches that;
+	// only removing the ability to express it does.
+	if s := strings.TrimSpace(recipe.Install); s != "" {
+		return fmt.Errorf("recipe carries an `install` shell command, which this installer no longer runs "+
+			"(INSTALL-01, roadmap/INSTALL-METHODOLOGY.md): %q — express the app as a Flatpak "+
+			"(`flatpak_id`) or as per-architecture pinned artefacts (`artifacts`)", firstLine(s))
+	}
+
+	// ── POSTINSTALL-02: post_install configures, it does not install ─────────
+	//
+	// post_install survives because three verified first-party entries (diwan,
+	// wede, lilmail) mint their config and their secrets there, and removing it
+	// would break installs that are proved to work. It survives NARROWED: it may
+	// only arrange bytes that are already on disk.
+	//
+	// Without this rule "we removed the install shell" would be false — the same
+	// `wget … && tar …` line simply moves one field down. `uptime-kuma`'s
+	// post_install is literally `npm install --production 2>/dev/null || true`.
+	if err := rejectNetworkFetch(recipe.PostInstall); err != nil {
+		return err
+	}
+
+	// ── POSTINSTALL-03: a step that cannot fail is not a step ────────────────
+	//
+	// POSTINSTALL-01 made a failed post_install fatal. `|| true` re-opens that
+	// from inside the string: the command fails, sh exits 0, the installer
+	// reports success and the app is unconfigured. This is the exact shape that
+	// let code-server's forged checksum through, and the shape that made kerf's
+	// install "succeed" with a placeholder page.
+	if err := rejectSwallowedFailure(recipe.PostInstall); err != nil {
+		return err
+	}
+
 	// ARTIFACTS-01: the per-architecture download form carries exactly the same
 	// obligations as the single-URL one, and two more of its own.
 	if recipe.HasArtifacts() {
@@ -532,6 +621,122 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 		}
 	}
 
+	// ── DOWNLOAD-01: one download form, and it is per-architecture ───────────
+	//
+	// Ordered LAST of the download rules, deliberately. Every earlier rule about
+	// download_url — SECAUDIT2-H1's missing checksum, ARTIFACTS-01's both-forms
+	// ambiguity, the binary_name-on-an-archive refusal — still fires for the
+	// input it was written for. Putting this one first would have made three
+	// shipped guards unreachable, which is the "guard that can never fire"
+	// defect this codebase keeps finding, dressed up as a tightening.
+	//
+	// A single download_url cannot pin two architectures, so every recipe using
+	// it was amd64-in-practice while its entry claimed every arch it declared.
+	if strings.TrimSpace(recipe.DownloadURL) != "" {
+		return fmt.Errorf("recipe sets `download_url`, which this installer no longer runs " +
+			"(DOWNLOAD-01, roadmap/INSTALL-METHODOLOGY.md) — move it into `artifacts` keyed by " +
+			"architecture, each with its own sha256, even when one artefact serves every architecture")
+	}
+
+	// EXTRACT-01: extract_dir becomes a filesystem path, so it is screened the
+	// same way an archive member is — and it is refused on a recipe that unpacks
+	// nothing, rather than being silently ignored (the binary_name rule again).
+	if d := strings.TrimSpace(recipe.ExtractDir); d != "" {
+		if err := validateExtractDir(d); err != nil {
+			return err
+		}
+		for arch, a := range recipe.Artifacts {
+			if a != nil && !isArchiveURL(a.DownloadURL) {
+				return fmt.Errorf("recipe sets extract_dir %q but artifacts[%q] is not an archive — "+
+					"extract_dir names where an archive unpacks and does nothing for a single binary; "+
+					"use binary_name instead (EXTRACT-01)", d, arch)
+			}
+		}
+	}
+
+	// ── INSTALL-02: an unclassified recipe gets no install path ──────────────
+	//
+	// Structural default-closed, matching DeliveryUnknown in arch.go: a recipe
+	// shape nobody classified must not silently acquire one. This is the second,
+	// independent gate — InstallFromRegistry's dispatch has no fallthrough
+	// branch either — so removing one of the two still leaves the catalogue
+	// closed. `vaultwarden` ships today with neither field set and is listed as
+	// installable.
+	if recipe.FlatpakID == "" && !recipe.HasArtifacts() {
+		return fmt.Errorf("recipe declares no install vehicle (INSTALL-02, roadmap/INSTALL-METHODOLOGY.md) — " +
+			"set exactly one of `flatpak_id` (a Flathub app) or `artifacts` (per-architecture pinned payloads)")
+	}
+
+	return nil
+}
+
+// firstLine trims a recipe string to something safe to put in an error message.
+// A refused install command can be several hundred characters of shell.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 120 {
+		return s[:117] + "..."
+	}
+	return s
+}
+
+// networkFetchRe matches the ways a shell string reaches the network for a
+// payload. Package managers are in the list because "apt-get is gone" has to
+// mean gone from every field, not gone from `install` and alive in
+// `post_install`.
+//
+// Word-boundary anchored on both sides so `curlify-config` is not a match; the
+// point is to refuse a FETCH, not any string containing four letters.
+var networkFetchRe = regexp.MustCompile(`(?i)(^|[\s;&|(` + "`" + `])(curl|wget|git\s+clone|apt|apt-get|dpkg|pip|pip3|npm|yarn|gem|go\s+install|cargo\s+install|nix-env)([\s;&|)]|$)`)
+
+// rejectNetworkFetch refuses a post_install that downloads anything.
+//
+// post_install exists to arrange bytes the installer has already fetched and
+// checksummed — write a config file, mint a secret, create a state directory.
+// The moment it can fetch, the pinned-artefact guarantee is decorative: the
+// signed entry says sha256 X and the box runs whatever the network returned.
+func rejectNetworkFetch(cmd string) error {
+	if m := networkFetchRe.FindString(cmd); m != "" {
+		return fmt.Errorf("post_install reaches the network or a package manager (%q) — "+
+			"it may only arrange bytes the installer already fetched and verified "+
+			"(POSTINSTALL-02, roadmap/INSTALL-METHODOLOGY.md): %q",
+			strings.TrimSpace(m), firstLine(cmd))
+	}
+	return nil
+}
+
+// swallowedFailureRe matches the shell idioms that turn a failing command into
+// a successful one: `|| true`, `|| :`, and `; true` as the final word.
+var swallowedFailureRe = regexp.MustCompile(`\|\|\s*(true|:)\s*($|[;&|])`)
+
+// rejectSwallowedFailure refuses a post_install that cannot report failure.
+func rejectSwallowedFailure(cmd string) error {
+	if swallowedFailureRe.MatchString(cmd) {
+		return fmt.Errorf("post_install swallows its own failure with `|| true` — a step that cannot fail "+
+			"cannot be relied on, and the installer would report success for an unconfigured app "+
+			"(POSTINSTALL-03, roadmap/INSTALL-METHODOLOGY.md): %q", firstLine(cmd))
+	}
+	return nil
+}
+
+// validateExtractDir screens a recipe's extract_dir before it becomes a path.
+//
+// Refusals are absolute names, traversal, and anything that is not a plain
+// relative path. `filepath.Clean` is applied first so "a/../../b" is caught on
+// its resolved form rather than on its spelling — the same lesson extractZip's
+// containment screen records.
+func validateExtractDir(d string) error {
+	if strings.HasPrefix(d, "/") || strings.HasPrefix(d, `\`) || filepath.IsAbs(d) {
+		return fmt.Errorf("extract_dir %q must be a relative path inside the app directory (EXTRACT-01)", d)
+	}
+	clean := filepath.Clean(d)
+	if clean == "." || clean == ".." || clean == "" ||
+		clean == string(filepath.Separator) ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("extract_dir %q escapes the app directory (EXTRACT-01)", d)
+	}
 	return nil
 }
 
@@ -1178,46 +1383,34 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		os.MkdirAll(filepath.Join(appDir, dir), 0755)
 	}
 
-	// Flatpak install path
-	if recipe.FlatpakID != "" {
+	// ── The two install vehicles, and nothing else ───────────────────────────
+	//
+	// There is deliberately NO default branch that installs. A recipe shape
+	// nobody classified must not silently acquire an install path — the same
+	// rule DeliveryUnknown states in arch.go, applied where it decides
+	// something. Before this, the fallthrough ran `sh -c recipe.Install`, so any
+	// recipe that was not Flatpak and not a download became a shell script; that
+	// is how `apt-get install -y blender`, `git clone … static/` and a forged
+	// checksum piped into `|| true` were all the same code path.
+	//
+	// validateRecipeSecurity refuses those shapes earlier (INSTALL-01/02), so
+	// this switch and that gate are two independent closures of the same hole.
+	// Deleting either one leaves the catalogue closed, which is the point:
+	// a single mutation cannot re-open a shell.
+	switch {
+	case recipe.FlatpakID != "":
 		if err := FlatpakInstall(ctx, recipe.FlatpakID); err != nil {
 			return fmt.Errorf("flatpak install %s: %w", recipe.FlatpakID, err)
 		}
-	} else if recipe.DownloadURL != "" || recipe.HasArtifacts() {
-		// Static (download) install path: download archive/binary, verify checksum, extract into app dir.
+	case recipe.HasArtifacts():
+		// Vulos-native: pinned per-architecture payload, own sha256, unpacked
+		// into the app's own directory.
 		if err := staticInstall(ctx, recipe, appDir); err != nil {
 			return fmt.Errorf("static install %s: %w", appID, err)
 		}
-	} else {
-		// Ensure apt cache is ready before installing
-		if !packages.CacheReady() {
-			log.Printf("[registry] apt cache empty, running apt-get update...")
-			if err := exec.CommandContext(ctx, "apt-get", "update", "-qq").Run(); err != nil {
-				return fmt.Errorf("apt-get update failed: %w (run 'Update Package Index' from Settings first)", err)
-			}
-		}
-
-		// Run install command
-		if recipe.Install != "" {
-			log.Printf("[registry] installing %s@%s: %s", appID, version, recipe.Install)
-			var stderrBuf bytes.Buffer
-			cmd := exec.CommandContext(ctx, "sh", "-c", recipe.Install)
-			cmd.Dir = appDir
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = &stderrBuf
-			home := os.Getenv("HOME")
-			if home == "" {
-				home = "/root"
-			}
-			cmd.Env = append(os.Environ(), fmt.Sprintf("APP_DIR=%s", appDir), "HOME="+home)
-			if err := cmd.Run(); err != nil {
-				errOutput := lastLines(stderrBuf.String(), 10)
-				if errOutput != "" {
-					return fmt.Errorf("install command failed: %w\n%s", err, errOutput)
-				}
-				return fmt.Errorf("install command failed: %w", err)
-			}
-		}
+	default:
+		return fmt.Errorf("registry entry %q@%s declares no install vehicle "+
+			"(INSTALL-02, roadmap/INSTALL-METHODOLOGY.md): set `flatpak_id` or `artifacts`", appID, version)
 	}
 
 	// Install additional deps
@@ -1527,8 +1720,27 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 	// mutually exclusive by construction: a zip must reach extractZip and must
 	// never fall through to `tar`, because whether that fallthrough "works"
 	// depends on which tar the host has (see tarExtensions).
+	// Where an archive unpacks. Empty extract_dir keeps the historical
+	// behaviour (the app dir itself); a set one is re-screened here rather than
+	// trusted from validateRecipeSecurity, because this is the line that turns
+	// the value into a path.
+	extractRoot := appDir
+	if d := strings.TrimSpace(recipe.ExtractDir); d != "" {
+		if err := validateExtractDir(d); err != nil {
+			return err
+		}
+		extractRoot = filepath.Join(appDir, filepath.Clean(d))
+		if !strings.HasPrefix(filepath.Clean(extractRoot)+string(os.PathSeparator),
+			filepath.Clean(appDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("refusing extract_dir %q: it resolves outside the app directory", d)
+		}
+		if err := os.MkdirAll(extractRoot, 0755); err != nil {
+			return fmt.Errorf("create extract_dir %s: %w", extractRoot, err)
+		}
+	}
+
 	if isZipURL(url) {
-		return extractZip(tmpPath, appDir, recipe.ArchiveStrip)
+		return extractZip(tmpPath, extractRoot, recipe.ArchiveStrip)
 	}
 
 	if isTarURL(url) {
@@ -1552,11 +1764,11 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 				return fmt.Errorf("refusing archive: unsafe member %q (path traversal)", m)
 			}
 		}
-		args := []string{"xf", tmpPath, "-C", appDir, "--no-same-owner"}
+		args := []string{"xf", tmpPath, "-C", extractRoot, "--no-same-owner"}
 		if recipe.ArchiveStrip > 0 {
 			args = append(args, fmt.Sprintf("--strip-components=%d", recipe.ArchiveStrip))
 		}
-		log.Printf("[registry/static] extracting archive into %s (strip=%d)", appDir, recipe.ArchiveStrip)
+		log.Printf("[registry/static] extracting archive into %s (strip=%d)", extractRoot, recipe.ArchiveStrip)
 		cmd := exec.CommandContext(ctx, "tar", args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("extract archive: %w\n%s", err, strings.TrimSpace(string(out)))
@@ -1596,9 +1808,26 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 	return nil
 }
 
+// zipExtensions are the suffixes dispatched to extractZip.
+//
+// `.war` is here because a WAR **is** a ZIP — the Servlet specification defines
+// it as one — and drawio's only published artefact is `draw.war`. This is not a
+// convenience: with `.war` unrecognised, the file matched neither archive
+// branch, fell through to the plain-binary branch, and was installed as
+// `bin/draw.war` with mode 0755 while the installer REPORTED SUCCESS. That is
+// the shipped behaviour of the `drawio` entry today, and it is the same silent
+// shape the missing `.zip` support had before it (PER-ARCH-ARTIFACTS §3).
+var zipExtensions = []string{".zip", ".war"}
+
 // isZipURL reports whether a download URL names a zip archive.
 func isZipURL(url string) bool {
-	return strings.HasSuffix(strings.ToLower(strings.SplitN(url, "?", 2)[0]), ".zip")
+	lower := strings.ToLower(strings.SplitN(url, "?", 2)[0])
+	for _, ext := range zipExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // extractZip unpacks a .zip into appDir, stripping `strip` leading path

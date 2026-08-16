@@ -184,10 +184,13 @@ func TestInstallFromRegistry_StaticPath(t *testing.T) {
 				Homepage:    "https://example.com",
 				Versions: map[string]*VersionRecipe{
 					"1.0": {
-						DownloadURL: srv.URL + "/myapp",
-						Checksum:    checksum,
-						Command:     "bin/myapp",
-						Port:        8080,
+						Artifacts: map[string]*Artifact{
+							"amd64": {DownloadURL: srv.URL + "/myapp", Checksum: checksum},
+							"arm64": {DownloadURL: srv.URL + "/myapp", Checksum: checksum},
+						},
+						BinaryName: "myapp",
+						Command:    "bin/myapp",
+						Port:       8080,
 					},
 				},
 			},

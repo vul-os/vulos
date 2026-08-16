@@ -454,10 +454,13 @@ func TestInstallFromRegistry_FailedPostInstallIsFatal(t *testing.T) {
 			Icon: "B", Author: "Test", License: "MIT", Homepage: "https://example.com",
 			Versions: map[string]*VersionRecipe{
 				"1.0": {
-					DownloadURL: srv.URL + "/app",
-					Checksum:    sha256Hex(body),
-					Command:     "bin/app",
-					Port:        8080,
+					Artifacts: map[string]*Artifact{
+						"amd64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+						"arm64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+					},
+					BinaryName: "app",
+					Command:    "bin/app",
+					Port:       8080,
 					// The real shape of the bug: a quote that never closes.
 					PostInstall: `printf 'frame_ancestors = "\'self\'"\n' > config.toml`,
 				},
@@ -500,8 +503,11 @@ func TestInstallFromRegistry_SucceedingPostInstallStillInstalls(t *testing.T) {
 			Icon: "G", Author: "Test", License: "MIT", Homepage: "https://example.com",
 			Versions: map[string]*VersionRecipe{
 				"1.0": {
-					DownloadURL: srv.URL + "/app",
-					Checksum:    sha256Hex(body),
+					Artifacts: map[string]*Artifact{
+						"amd64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+						"arm64": {DownloadURL: srv.URL + "/app", Checksum: sha256Hex(body)},
+					},
+					BinaryName:  "app",
 					Command:     "bin/app",
 					Port:        8080,
 					PostInstall: `printf 'ok\n' > config.txt`,

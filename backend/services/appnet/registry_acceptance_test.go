@@ -154,10 +154,13 @@ func hermeticApp(t *testing.T, appID string, releasePriv ed25519.PrivateKey) *Re
 		Icon:        "A",
 		Versions: map[string]*VersionRecipe{
 			"1.0": {
-				DownloadURL: srv.URL + "/" + appID,
-				Checksum:    hex.EncodeToString(sum[:]),
-				Command:     "bin/" + appID,
-				Port:        8080,
+				Artifacts: map[string]*Artifact{
+					"amd64": {DownloadURL: srv.URL + "/" + appID, Checksum: hex.EncodeToString(sum[:])},
+					"arm64": {DownloadURL: srv.URL + "/" + appID, Checksum: hex.EncodeToString(sum[:])},
+				},
+				BinaryName: appID,
+				Command:    "bin/" + appID,
+				Port:       8080,
 			},
 		},
 	}
