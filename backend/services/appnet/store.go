@@ -557,6 +557,80 @@ func (s *AppStore) AppDir() string {
 	return s.appsDir
 }
 
+// ── SYNC-APPS-01: the box's half of desire → realisation ─────────────────────
+//
+// These three methods make *AppStore satisfy multiinstance.Realiser, which is
+// how the fleet's DESIRED set (one entry per app, what the user asked for)
+// becomes apps on THIS box's disk.
+//
+// The interface is satisfied STRUCTURALLY. multiinstance declares it in
+// primitive types and neither package imports the other, so there is no adapter
+// type to drift and no import edge between the installer and the replicator.
+// That is deliberate: an adapter is where a signature change becomes a silent
+// behaviour change, and this is the seam whose absence was the whole defect —
+// AppStore.Install has always been a MkdirAll that writes no row anywhere, so
+// nothing produced the events the replicator existed to carry.
+//
+// The direction is one-way and the type says so. Nothing here can tell the
+// replicator what the fleet wants; a box can only be asked what it HAS and told
+// to change it. A box that cannot install something reports a reason and the
+// desire stands.
+
+// RealisedVersions reports what is actually installed on this box, appID →
+// version.
+//
+// It reads the FILESYSTEM (Installed()), which is this OS's definition of
+// installed, and not the app_registry table. Reconciling against the table would
+// mean reconciling against a report of the disk rather than the disk: a row that
+// went stale — an install that half-failed, a directory removed by hand — would
+// make the box believe its own bookkeeping and never repair itself. The whole
+// point of a realised set is that it is checkable against ground truth.
+//
+// Bundled apps (/opt/vulos/apps) are included, because they ARE installed here:
+// omitting them would make every box try to install what it already ships.
+func (s *AppStore) RealisedVersions() (map[string]string, error) {
+	apps, err := s.Installed()
+	if err != nil {
+		return nil, fmt.Errorf("appstore: RealisedVersions: %w", err)
+	}
+	out := make(map[string]string, len(apps))
+	for _, a := range apps {
+		if a == nil || a.ID == "" {
+			continue
+		}
+		out[a.ID] = a.Version
+	}
+	return out, nil
+}
+
+// Realise installs appID at version ("" = latest) on this box.
+//
+// It routes through InstallFromRegistry, NOT Install. That is a security
+// decision and not an implementation detail: Install takes a DownloadURL from an
+// admin's request body with no registry signature and no mandatory checksum (see
+// newSSRFGuardedStoreClient), so wiring a REPLICATED intent to it would let any
+// box that can write the fleet desired set name an arbitrary URL for every other
+// box to fetch and extract. InstallFromRegistry only ever downloads a URL from
+// an Ed25519-signed, vetted registry entry, verifies the publisher signature
+// before touching the filesystem, and refuses a disabled entry.
+//
+// It is also where the architecture check already lives, which is why arch needs
+// no special handling anywhere in the sync layer: an arm64 box asked to install
+// an amd64-only app gets back "requires amd64; this box is arm64" before
+// anything is downloaded, and that string travels to the fleet as the reason.
+func (s *AppStore) Realise(ctx context.Context, appID, version string) error {
+	return s.InstallFromRegistry(ctx, appID, version)
+}
+
+// Unrealise removes appID from this box. Errors — including "app X not
+// installed" for an app that only ever shipped bundled in the image — are
+// reported as realisation failures rather than swallowed, because a removal that
+// silently did not happen is exactly the class of silence this split exists to
+// end.
+func (s *AppStore) Unrealise(_ context.Context, appID string) error {
+	return s.Uninstall(appID)
+}
+
 func (s *AppStore) hasApp(appID string) bool {
 	if _, err := os.Stat(filepath.Join(s.appsDir, appID, "app.json")); err == nil {
 		return true
