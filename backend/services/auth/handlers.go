@@ -984,6 +984,26 @@ func sanitizeProfile(p *Profile) Profile {
 	if cp.AIAPIKey != "" {
 		cp.AIAPIKey = "••••••"
 	}
+	// Settings is a MAP, so `cp := *p` copied the reference and not the
+	// contents — anything written through cp.Settings would have reached the
+	// live stored profile. Rebuilding it is what makes this function's promise
+	// ("copies by value first") true for that field too.
+	//
+	// Masking, not omission: loadProfileSecrets stitches the per-device half of
+	// the map back onto the in-memory profile, so a secret-named settings key
+	// IS present here even though it never reaches the replicated row. Before
+	// PUT accepted `settings` nothing could put one there; now that it can be
+	// written by other paths, the read side must not echo the value back.
+	if len(cp.Settings) > 0 {
+		masked := make(map[string]string, len(cp.Settings))
+		for k, v := range cp.Settings {
+			if v != "" && settingsKeyIsSecret(k) {
+				v = "••••••"
+			}
+			masked[k] = v
+		}
+		cp.Settings = masked
+	}
 	return cp
 }
 
@@ -1069,6 +1089,11 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		AIModel     *string `json:"ai_model"`
 		AIAPIKey    *string `json:"ai_api_key"`
 		Initiative  *string `json:"initiative"`
+		// Settings is a PATCH over the free-form preference bag, not a
+		// replacement — see mergeSettings in profile_settings.go for the merge
+		// rule and for why a secret-named key is a 400 rather than a quiet
+		// write to the unreplicated half.
+		Settings map[string]string `json:"settings"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		writeErr(w, 400, "invalid request")
@@ -1098,6 +1123,18 @@ func (h *Handler) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if update.Initiative != nil {
 		existing.Initiative = *update.Initiative
+	}
+	// Merged BEFORE SetProfile and refused as a whole on any bad key, so a
+	// rejected patch leaves the stored map exactly as it was. The named fields
+	// above are already applied to the live pointer at this point; that is the
+	// pre-existing shape of this handler and not something this field changes.
+	if update.Settings != nil {
+		merged, err := mergeSettings(existing.Settings, update.Settings)
+		if err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+		existing.Settings = merged
 	}
 
 	h.store.SetProfile(existing)
