@@ -427,14 +427,14 @@ function renderViewer() {
   if (m.type === 'video') {
     const el = document.createElement('video');
     el.className = 'viewer-media';
-    el.src = '/media/' + m.path;
+    el.src = vulosApi.appUrl('/media/' + m.path);
     el.controls = true;
     el.autoplay = true;
     body.insertBefore(el, navPrev);
   } else {
     const el = document.createElement('img');
     el.className = 'viewer-media';
-    el.src = '/media/' + m.path;
+    el.src = vulosApi.appUrl('/media/' + m.path);
     body.insertBefore(el, navPrev);
   }
   // Update fav button

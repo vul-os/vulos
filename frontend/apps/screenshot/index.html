@@ -859,7 +859,7 @@ async function loadGallery() {
 
 async function loadItem(name) {
   if (name.endsWith('.webm')) {
-    const url = `/api/file/${encodeURIComponent(name)}`;
+    const url = vulosApi.appUrl('/api/file/' + encodeURIComponent(name));
     window.open(url, '_blank');
     return;
   }
@@ -876,7 +876,7 @@ async function loadItem(name) {
     pushUndo();
     setStatus(`Loaded: ${name} — ${img.width}×${img.height}`);
   };
-  img.src = `/api/file/${encodeURIComponent(name)}`;
+  img.src = vulosApi.appUrl('/api/file/' + encodeURIComponent(name));
 }
 
 async function deleteItem(e, name) {
