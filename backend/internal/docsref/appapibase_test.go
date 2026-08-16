@@ -55,6 +55,15 @@ import (
 // sandboxed frame at both mount shapes and asserts the URL that actually goes
 // out on the wire.
 
+// CACHING HAZARD — read before trusting a local PASS. Every input this file
+// examines lives OUTSIDE the Go module (frontend/apps/**), and `go test` will
+// replay a cached PASS after those files change. Three mutations were "killed"
+// from cache here before it was noticed, exactly as
+// services/appnet/bundled_manifests_test.go records happening to it. Always:
+//
+//	go test -count=1 ./internal/docsref/
+//
+// CI is unaffected (fresh checkout, cold cache).
 const bundledAppsDir = "frontend/apps"
 
 // sharedHelperRel is the single source of truth every app inlines.

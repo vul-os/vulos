@@ -49,6 +49,15 @@ import (
 // app falls through to prefers-color-scheme. Both are stated in the report
 // rather than asserted here, because a test that claimed either would be lying.
 
+// CACHING HAZARD — read before trusting a local PASS. Every input this file
+// examines lives OUTSIDE the Go module (frontend/apps/**), and `go test` will
+// replay a cached PASS after those files change. Three mutations were "killed"
+// from cache here before it was noticed, exactly as
+// services/appnet/bundled_manifests_test.go records happening to it. Always:
+//
+//	go test -count=1 ./internal/docsref/
+//
+// CI is unaffected (fresh checkout, cold cache).
 const (
 	sharedThemeRel  = bundledAppsDir + "/_shared/vulos-theme.js"
 	sharedTokensRel = bundledAppsDir + "/_shared/vulos-tokens.css"
