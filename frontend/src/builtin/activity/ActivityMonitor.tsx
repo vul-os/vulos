@@ -126,6 +126,21 @@ interface PendingAction {
   proc?: ProcessInfo
   /** Set for kind === 'app'. */
   appID?: string
+  /**
+   * True when this row's close ends a whole STREAMED SESSION rather than one
+   * program. The server resolves app_id against the appnet launcher first and
+   * falls through to stream.Pool.Stop, which tears down the display, the
+   * window manager and everything drawing on it — so the dialog has to say
+   * that, and cannot borrow the single-app wording.
+   */
+  session?: boolean
+  /**
+   * True when the reason for ending it is that the DISPLAY stopped answering.
+   * The dialog then has one more thing to say, and it is the sentence this
+   * whole feature turns on: ending the session does not repair this app,
+   * because this app was never the thing that failed.
+   */
+  displayStalled?: boolean
 }
 
 export default function ActivityMonitor() {
@@ -516,6 +531,8 @@ export default function ActivityMonitor() {
             apps={apps} search={search}
             onClose={(a, mode) => setPending({
               kind: 'app', mode, appID: a.app_id, label: a.name || a.app_id,
+              session: a.kind === 'stream',
+              displayStalled: a.responding.status === 'display_not_responding',
             })}
           />
         ) : (
@@ -616,23 +633,41 @@ function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
   onConfirm: () => void
 }) {
   const force = pending.mode === 'force'
+  const session = pending.session === true
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'var(--overlay)' }}
       role="dialog"
       aria-modal="true"
-      aria-label={force ? 'Confirm force quit' : 'Confirm quit'}
+      aria-label={session ? 'Confirm end session' : force ? 'Confirm force quit' : 'Confirm quit'}
     >
       <div className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
         <h2 className="text-sm font-semibold text-neutral-100">
-          {force ? 'Force quit' : 'Quit'} {pending.label}?
+          {session ? 'End session' : force ? 'Force quit' : 'Quit'} {pending.label}?
         </h2>
         <p className="mt-2 text-[12px] text-neutral-300 leading-relaxed">
-          {force
-            ? 'It will be ended immediately and will not get a chance to save. Anything unsaved is lost.'
-            : 'It will be asked to exit and given 5 seconds to finish up. If it has not exited by then it will be ended.'}
+          {session
+            ? 'The display, the window manager and everything drawing on it stop at once. Anything unsaved is lost, and the session will not come back on its own — it has to be started again.'
+            : force
+              ? 'It will be ended immediately and will not get a chance to save. Anything unsaved is lost.'
+              : 'It will be asked to exit and given 5 seconds to finish up. If it has not exited by then it will be ended.'}
         </p>
+        {/* The sentence this whole feature turns on, and the reason it is here
+            rather than on a hover: the user reached this dialog because a badge
+            said something was not responding, and if they leave believing they
+            have just repaired THIS APP they will conclude the feature does not
+            work when the picture is still frozen. */}
+        {pending.displayStalled && (
+          <p
+            className="mt-2 text-[12px] leading-relaxed"
+            style={{ color: 'var(--status-warning-text)' }}
+          >
+            This will not repair {pending.label}: the screen it draws on is what stopped
+            answering, and every app in the session is equally silent. Ending the session
+            clears the stuck display — it is not a verdict on this app.
+          </p>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onCancel}
@@ -656,7 +691,7 @@ function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
               ? { background: '#b91c1c', borderColor: '#b91c1c', color: '#ffffff' }
               : { borderColor: 'var(--border-emphasis)', color: 'var(--text-primary)' }}
           >
-            {busy ? 'Working…' : force ? 'Force quit' : 'Quit'}
+            {busy ? 'Working…' : session ? 'End session' : force ? 'Force quit' : 'Quit'}
           </button>
         </div>
       </div>
@@ -842,12 +877,16 @@ function AppTable({ apps, search, onClose }: {
     { label: 'App' }, { label: 'Kind' }, { label: 'Responding' },
     { label: 'Memory', align: 'text-right' }, { label: '' },
   ]
-  const gridTemplate = '1fr 90px 150px 80px 130px'
+  // 240px for the verdict, not 150. The session-stalled row carries a sentence
+  // under its badge saying the app may be fine, and that sentence is the whole
+  // point of the state — at 150px it wrapped to four lines and pushed the row
+  // to twice the height of its neighbours.
+  const gridTemplate = '1fr 90px 240px 80px 140px'
 
   return (
     <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-700 bg-neutral-900/40 overflow-hidden">
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-[560px]">
+        <div className="min-w-[660px]">
           <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map((c, i) => <span key={i} className={c.align}>{c.label}</span>)}
           </div>
@@ -856,33 +895,7 @@ function AppTable({ apps, search, onClose }: {
               No apps are running on this box right now.
             </div>
           )}
-          {filtered.map(a => (
-            <div key={a.app_id} className="grid gap-2 items-center px-3 py-1.5 text-[12px] border-b border-neutral-800/40" style={{ gridTemplateColumns: gridTemplate }}>
-              <span className="text-neutral-200 truncate">{a.name || a.app_id}</span>
-              <span className="text-neutral-400">{a.kind}</span>
-              <RespBadge r={a.responding} />
-              <span className="text-right text-neutral-400 font-mono">{a.mem_rss ? fmtBytes(a.mem_rss) : '—'}</span>
-              <span className="flex justify-end gap-1.5">
-                {a.closable && (
-                  <>
-                    <button
-                      onClick={() => onClose(a, 'quit')}
-                      className="px-2 py-1 text-[12px] rounded border border-neutral-600 text-neutral-100 hover:bg-neutral-800 transition-colors"
-                    >
-                      Close
-                    </button>
-                    <button
-                      onClick={() => onClose(a, 'force')}
-                      className="px-2 py-1 text-[12px] rounded border transition-colors"
-                      style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
-                    >
-                      Force
-                    </button>
-                  </>
-                )}
-              </span>
-            </div>
-          ))}
+          {filtered.map(a => <AppRow key={a.app_id} a={a} gridTemplate={gridTemplate} onClose={onClose} />)}
         </div>
       </div>
       <div className="px-3 py-1.5 text-[12px] text-neutral-400 border-t border-neutral-700 shrink-0 bg-neutral-900/80">
@@ -893,29 +906,187 @@ function AppTable({ apps, search, onClose }: {
 }
 
 /**
+ * AppRow is one app, and the row where a wrong verb does real damage.
+ *
+ * # The two buttons that were the same button
+ *
+ * A `stream` row's app_id is a STREAM SESSION id. The server resolves it
+ * against the appnet launcher first, fails, and falls through to
+ * stream.Pool.Stop — which ends the display, the window manager and everything
+ * drawing on it. `force` shortens only the appnet path's grace window, so both
+ * "Close" and "Force" reached the identical call. Two controls that do the
+ * same thing while implying different amounts of violence is a lie about the
+ * box, so a streamed row now offers ONE action, named for what it does.
+ *
+ * # Why it is not disabled when the display has stalled
+ *
+ * Force-quitting cannot fix a stalled display, and the tempting fix is to grey
+ * the control out. That is worse: ending the session IS the only remedy this
+ * box can currently reach for a wedged X server — it is half of the restart —
+ * and a disabled button with no alternative reads as a broken feature. So the
+ * action stays live and the CONSEQUENCE is spelled out where the user cannot
+ * miss it, in the confirmation, rather than being implied by a badge colour.
+ *
+ * The affordance this row still wants is "Restart session": stop, then relaunch
+ * with the same command and geometry. It is deliberately NOT built here as a
+ * stop-then-launch pair from the client, which would be a parallel path that
+ * loses the command line, the env and the owner. It needs one endpoint in
+ * services/stream; see the report accompanying this change.
+ */
+function AppRow({ a, gridTemplate, onClose }: {
+  a: AppStatus
+  gridTemplate: string
+  onClose: (a: AppStatus, mode: SignalMode) => void
+}) {
+  const session = a.kind === 'stream'
+  const stalled = a.responding.status === 'display_not_responding'
+  return (
+    <div className="grid gap-2 items-center px-3 py-1.5 text-[12px] border-b border-neutral-800/40" style={{ gridTemplateColumns: gridTemplate }}>
+      <span className="text-neutral-200 truncate">{a.name || a.app_id}</span>
+      <span className="text-neutral-400">{a.kind}</span>
+      <RespBadge r={a.responding} />
+      <span className="text-right text-neutral-400 font-mono">{a.mem_rss ? fmtBytes(a.mem_rss) : '—'}</span>
+      <span className="flex justify-end gap-1.5">
+        {a.closable && (session ? (
+          <button
+            onClick={() => onClose(a, 'force')}
+            title={stalled
+              ? 'Ends the whole session. It will not repair this app — the display it draws on is what stopped answering.'
+              : 'Ends the whole session: the display, the window manager and everything drawing on it.'}
+            className="px-2 py-1 text-[12px] rounded border transition-colors"
+            style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
+          >
+            End session
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => onClose(a, 'quit')}
+              title="Ask it to exit, then end it if it does not"
+              className="px-2 py-1 text-[12px] rounded border border-neutral-600 text-neutral-100 hover:bg-neutral-800 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => onClose(a, 'force')}
+              title="End it immediately. Unsaved work is lost."
+              className="px-2 py-1 text-[12px] rounded border transition-colors"
+              style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
+            >
+              Force
+            </button>
+          </>
+        ))}
+      </span>
+    </div>
+  )
+}
+
+/** How one responsiveness answer is worded and toned. */
+export interface RespPresentation {
+  /** The tone token. Border and dot ONLY — never the text; see the notice
+   *  comment above for why a coloured label fails AA on the light theme. */
+  tone: string
+  /** The badge label. */
+  label: string
+  /** A visible sentence beside the badge, or '' when the label says it all. */
+  note: string
+  /** The token the note is drawn in. --status-*-text, never --status-*. */
+  noteTone: string
+}
+
+/**
+ * describeResponding turns one answer into the words a user reads.
+ *
+ * Exported, and a pure function, because the WORDING is the part of this
+ * feature that can be wrong while every pixel renders: a badge that quietly
+ * implies "this app is broken" when the display stalled teaches the user to
+ * distrust the badge, and no layout or contrast gate can see that.
+ *
+ * The five answers, and what each one has to convey:
+ *
+ *  responding              this app's own event loop answered. Plain.
+ *  not_responding          THIS APP was asked and stayed silent while its
+ *                          display kept answering. The one state that may
+ *                          blame the app, and the only one shown in danger.
+ *  display_not_responding  the DISPLAY stopped answering. Every app in that
+ *                          session is equally silent and the one being looked
+ *                          at may be perfectly healthy, so the label names the
+ *                          SESSION and the note says the app may be fine.
+ *                          Warning, not danger: this is not a verdict on the
+ *                          row it sits on.
+ *  unknown                 nobody answered because nobody could be asked. Two
+ *                          different reasons reach it and they are NOT the
+ *                          same fact, so they do not get the same sentence:
+ *                          `x11_ping` means the display answered, its windows
+ *                          were enumerated, and none of them implement
+ *                          _NET_WM_PING — there was nothing to ask. Any other
+ *                          method means Vulos has no mechanism at all here
+ *                          (the Wayland path, a session that is not running).
+ *                          Flattening those into one badge would present
+ *                          "asked and got silence" and "nobody to ask" as the
+ *                          same measurement, which is the mistake the whole
+ *                          Status type exists to prevent.
+ *  not_applicable          the question is a category error.
+ *
+ * A status this build does not know arrives here as `unknown` carrying its
+ * original name (see toResponsiveness), and is worded as the box knowing
+ * something this version does not — which is true, and is not a verdict.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- describeResponding is exported so the WORDING can be asserted directly. It is the half of this feature that can be wrong while everything renders, and a test that re-implements it proves nothing.
+export function describeResponding(r: Responsiveness): RespPresentation {
+  switch (r.status) {
+    case 'responding':
+      return { tone: 'var(--status-success)', label: 'Responding', note: '', noteTone: 'var(--text-secondary)' }
+    case 'not_responding':
+      return { tone: 'var(--status-danger)', label: 'Not responding', note: '', noteTone: 'var(--text-secondary)' }
+    case 'display_not_responding':
+      return {
+        tone: 'var(--status-warning)',
+        label: 'Session not responding',
+        note: 'This app may be fine — the session it runs in stopped answering.',
+        noteTone: 'var(--status-warning-text)',
+      }
+    case 'not_applicable':
+      return { tone: 'var(--border-default)', label: 'Not applicable', note: '', noteTone: 'var(--text-secondary)' }
+    default:
+      return {
+        tone: 'var(--border-emphasis)',
+        label: 'Cannot tell',
+        note: r.unrecognised
+          ? 'Your box reported something this version does not understand.'
+          : r.method === 'x11_ping'
+            ? 'This app offers no way to be asked.'
+            : '',
+        noteTone: 'var(--text-secondary)',
+      }
+  }
+}
+
+/**
  * RespBadge renders a responsiveness answer WITHOUT flattening it.
  *
- * Four states, four appearances, and the two that are not measurements say so
- * in plain words rather than borrowing the look of the two that are. A badge
- * that guesses is worse than no badge: it is a confident claim about the one
- * thing the user came here to find out.
+ * Five states and five appearances. The colour is the border and the dot, and
+ * the words carry the meaning — a badge that guesses is worse than no badge,
+ * because it is a confident claim about the one thing the user came here to
+ * find out.
  */
 function RespBadge({ r }: { r: Responsiveness }) {
-  const look: Record<string, { edge: string; text: string }> = {
-    responding: { edge: 'var(--status-success)', text: 'Responding' },
-    not_responding: { edge: 'var(--status-danger)', text: 'Not responding' },
-    unknown: { edge: 'var(--border-emphasis)', text: 'Cannot tell' },
-    not_applicable: { edge: 'var(--border-default)', text: 'Not applicable' },
-  }
-  const l = look[r.status] || look.unknown
+  const l = describeResponding(r)
+  const hover = r.detail ? `${r.detail} (method: ${r.method})` : `method: ${r.method}`
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 border text-[12px] w-fit"
-      style={{ borderColor: l.edge, color: 'var(--text-primary)' }}
-      title={r.detail ? `${r.detail} (method: ${r.method})` : `method: ${r.method}`}
-    >
-      <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: l.edge }} aria-hidden="true" />
-      {l.text}
+    <span className="flex flex-col gap-0.5 min-w-0">
+      <span
+        className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 border text-[12px] w-fit"
+        style={{ borderColor: l.tone, color: 'var(--text-primary)' }}
+        title={hover}
+      >
+        <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: l.tone }} aria-hidden="true" />
+        {l.label}
+      </span>
+      {l.note && (
+        <span className="text-[12px] leading-snug" style={{ color: l.noteTone }}>{l.note}</span>
+      )}
     </span>
   )
 }
