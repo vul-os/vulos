@@ -149,6 +149,14 @@ func New(cfg Config) (*Service, error) {
 	if cfg.Secret == "" {
 		return nil, errFabric("Config.Secret is required (empty secret would disable peer auth)")
 	}
+	// FABRIC-SECRET-ROT-01, checked HERE and not further down: a ring that
+	// disagrees with the secret we send is a credential misconfiguration, and it
+	// must be reported as one rather than being masked by whichever unrelated
+	// required field the caller also happened to omit.
+	if cfg.Secrets != nil && cfg.Secrets.Current() != cfg.Secret {
+		return nil, errFabric("Config.Secrets.Current() does not match Config.Secret — " +
+			"a box that sends one secret and accepts another as 'current' would fail halfway through a fleet roll with an unexplained 401")
+	}
 	if cfg.AppSync == nil {
 		return nil, errFabric("Config.AppSync is required")
 	}
@@ -161,15 +169,12 @@ func New(cfg Config) (*Service, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = 30 * time.Second
 	}
-	// FABRIC-SECRET-ROT-01. The ring is what authOK consults; cfg.Secret is only
-	// what we send. Building it here rather than at the call site means every
-	// existing constructor gets rotation without a main.go edit.
+	// The ring is what authOK consults; cfg.Secret is only what we send. Building
+	// it here rather than at the call site means every existing constructor gets
+	// rotation without a main.go edit.
 	if cfg.Secrets == nil {
 		cfg.Secrets = LoadSecretRingFromEnv(cfg.Secret)
 		cfg.Secrets.LogSummary("[fabric]")
-	} else if cfg.Secrets.Current() != cfg.Secret {
-		return nil, errFabric("Config.Secrets.Current() does not match Config.Secret — " +
-			"a box that sends one secret and accepts another as 'current' would fail halfway through a fleet roll with an unexplained 401")
 	}
 	return &Service{
 		cfg:     cfg,

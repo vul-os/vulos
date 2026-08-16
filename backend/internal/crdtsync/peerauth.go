@@ -712,6 +712,40 @@ func AnyOfAuthorizer(authz ...Authorizer) Authorizer {
 	}
 }
 
+// SecretAccepter is the rotation ring, seen from the door.
+//
+// It is an interface rather than a concrete type because internal/fabric owns
+// the ring and importing fabric here would invert the dependency (fabric is the
+// transport, crdtsync is the engine). *fabric.SecretRing satisfies it
+// structurally, and so does any test double.
+//
+// The contract is narrow on purpose: given a presented X-Fabric-Auth value, say
+// whether this box admits it RIGHT NOW. "Right now" is load-bearing — an
+// implementation must re-evaluate any expiry on every call, because that is what
+// closes a rotation window on a box nobody restarts.
+type SecretAccepter interface {
+	Accepts(presented string) bool
+}
+
+// RingSecretAuthorizer is SecretAuthorizer against a rotation ring instead of a
+// single string: during a rotation overlap it admits the current secret AND the
+// overlap value, and it stops admitting the overlap value the instant that
+// window closes.
+//
+// It is the same door and the same header. The only thing that changed is that
+// the set of acceptable values is now a set, and that set can shrink without a
+// restart. A nil ring authorises NOTHING, matching SecretAuthorizer's posture
+// for an empty secret: a misconfigured box serves no endpoints rather than open
+// ones.
+func RingSecretAuthorizer(ring SecretAccepter) Authorizer {
+	return func(r *http.Request) bool {
+		if ring == nil {
+			return false
+		}
+		return ring.Accepts(r.Header.Get(AuthHeader))
+	}
+}
+
 // SignedOrBootstrapSecretAuthorizer is the CRDT exchange door.
 //
 // It admits a caller that presents a valid signature from a rostered peer. It

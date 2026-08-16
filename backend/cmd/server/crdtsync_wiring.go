@@ -642,7 +642,23 @@ func startCRDTSync(
 	// It does not un-read what that instance already pulled, and there is no
 	// group re-key here, so it does not make already-shared material unreadable
 	// to it. Eviction is future-tense.
-	secretAuthz := crdtsync.SecretAuthorizer(fabricSecret)
+	// FABRIC-SECRET-ROT-01. The secret arm is a rotation RING, not a single
+	// string: during an overlap it admits the current secret and the overlap
+	// value, and it stops admitting the overlap value the instant the window
+	// closes — re-evaluated per request, so the close needs no restart.
+	//
+	// This is a second ring instance, parsed from the same environment as the one
+	// internal/fabric builds for its own handlers. They agree on policy because
+	// the input and the clock are the same; what does not merge is the ADMISSION
+	// COUNTERS, so /api/fabric/status reports the fabric door's traffic and not
+	// this one's. That is the right way round for an operator watching a roll:
+	// the fabric changeset endpoints are gated on the secret ALONE, whereas this
+	// door only consults the secret during the bootstrap window (see below), so
+	// fabric's counters are the ones that answer "is anybody still on the old
+	// value".
+	secretRing := fabric.LoadSecretRingFromEnv(fabricSecret)
+	secretRing.LogSummary("[crdtsync]")
+	secretAuthz := crdtsync.RingSecretAuthorizer(secretRing)
 	authz := secretAuthz
 	if verifier != nil {
 		authz = crdtsync.SignedOrBootstrapSecretAuthorizer(
