@@ -174,6 +174,43 @@ type PeerRoster interface {
 	TrustedPeer(pub ed25519.PublicKey) bool
 }
 
+// PeerAttribution is the optional half of a PeerRoster: "can this box name its
+// peers at all yet?"
+//
+// It exists because eviction is impossible without attribution. The shared
+// fabric secret identifies a fleet, not a member, so a request that carries only
+// the secret cannot be told apart from a request carrying the SAME secret from a
+// box that was revoked an hour ago. Where a box can attribute its peers, the
+// secret must therefore stop being sufficient. Where it cannot attribute
+// anybody, refusing the secret would not evict a compromised box — there is
+// nothing to evict it BY — it would only stop sync working at all.
+//
+// So the secret survives exactly one window: until this box first learns a peer
+// identity. AttributesPeers is what closes that window, and it is deliberately
+// answered from state a peer cannot write (see the production implementation's
+// doc in cmd/server/crdtsync_wiring.go).
+//
+// A roster that does not implement it is treated as attributing — window
+// CLOSED, signature required. Fail closed, including for a roster written later
+// by someone who never read this comment.
+type PeerAttribution interface {
+	// AttributesPeers reports whether this box has learned at least one PEER
+	// identity. A REVOKED peer still counts: a fleet whose only peer has just
+	// been evicted must not fall back to accepting the bearer secret, which is
+	// precisely the credential that peer still holds.
+	AttributesPeers() bool
+}
+
+// CanAttributePeers answers PeerAttribution for any roster, fail-closed: a nil
+// roster, or one that does not implement the interface, counts as attributing,
+// so the caller requires a signature rather than opening the secret path.
+func CanAttributePeers(r PeerRoster) bool {
+	if a, ok := r.(PeerAttribution); ok {
+		return a.AttributesPeers()
+	}
+	return true
+}
+
 // PeerRosterFunc adapts a function to PeerRoster.
 type PeerRosterFunc func(pub ed25519.PublicKey) bool
 
@@ -204,6 +241,10 @@ func NewStaticPeerRoster(keys ...string) (*StaticPeerRoster, error) {
 	}
 	return r, nil
 }
+
+// AttributesPeers implements PeerAttribution: an explicit pin list with an
+// entry in it is exactly "this box can name a peer".
+func (r *StaticPeerRoster) AttributesPeers() bool { return len(r.keys) > 0 }
 
 // TrustedPeer implements PeerRoster.
 func (r *StaticPeerRoster) TrustedPeer(pub ed25519.PublicKey) bool {
@@ -643,10 +684,23 @@ func PeerKeyAuthorizer(v *PeerVerifier) Authorizer {
 }
 
 // AnyOfAuthorizer accepts a request that satisfies ANY of the supplied
-// authorizers, in order. It is how one mux serves both the LAN shared-secret
-// path and the WAN per-peer-signature path without either weakening the other:
-// a caller must still fully satisfy at least one whole scheme. With no
-// authorizers it accepts NOTHING.
+// authorizers, in order. With no authorizers it accepts NOTHING.
+//
+// # Do not use it to combine an ATTRIBUTABLE scheme with an UNATTRIBUTABLE one
+//
+// It used to compose SecretAuthorizer with PeerKeyAuthorizer at the production
+// wiring site, under the argument that this is not a weakening because a
+// signature is strictly stronger than the secret. That argument is sound for
+// GRANTING access and silent on REVOKING it, which is the case that matters:
+// AnyOf returns on the FIRST arm that passes, so a revoked instance still
+// holding the fleet-wide secret was accepted on the secret arm and never
+// reached the roster check. Eviction was impossible, and the reasoning that
+// made it so was written down and looked careful.
+//
+// The rule the composition has to satisfy is that no arm may admit a caller the
+// other arms could not have denied. Use SignedOrBootstrapSecretAuthorizer, which
+// states that ordering explicitly, rather than AnyOf with a bearer credential in
+// it.
 func AnyOfAuthorizer(authz ...Authorizer) Authorizer {
 	return func(r *http.Request) bool {
 		for _, a := range authz {
@@ -655,5 +709,47 @@ func AnyOfAuthorizer(authz ...Authorizer) Authorizer {
 			}
 		}
 		return false
+	}
+}
+
+// SignedOrBootstrapSecretAuthorizer is the CRDT exchange door.
+//
+// It admits a caller that presents a valid signature from a rostered peer. It
+// admits a caller that presents only the shared fabric secret ONLY while this
+// box has learned no peer identity at all — the bootstrap window, closed for
+// good by the first enrolment (see PeerAttribution).
+//
+// Why the secret cannot simply be dropped: on the LAN a peer is dialled with the
+// secret and nothing else, and a box that has never been told a peer's public
+// key has no way to authenticate one. Refusing the secret there evicts nobody
+// and stops sync outright, trading a security hole for an outage.
+//
+// Why it cannot simply be kept: it is one bearer credential, identical on every
+// box in the fleet, so a revoked instance still holds a valid one. While it is
+// accepted, the roster check is unreachable for anyone who has it, and no
+// eviction of any kind is possible.
+//
+// Hence: the moment this box can tell one peer from another, it requires that
+// it be told. Every arm here fails CLOSED —
+//
+//	signed  nil → the signature path admits nobody.
+//	secret  nil → the bootstrap path admits nobody.
+//	roster  nil, or not a PeerAttribution → treated as ATTRIBUTING, i.e. the
+//	              window is closed and a signature is required.
+//
+// Ordering matters and is not an optimisation: the signature is tried FIRST, so
+// a rostered peer is admitted (and a revoked one refused) on its own identity
+// even during the bootstrap window, rather than being waved through anonymously.
+func SignedOrBootstrapSecretAuthorizer(signed, secret Authorizer, roster PeerRoster) Authorizer {
+	return func(r *http.Request) bool {
+		if signed != nil && signed(r) {
+			return true
+		}
+		if CanAttributePeers(roster) {
+			// This box can name its peers, so an anonymous caller is one it
+			// could never evict. Refuse.
+			return false
+		}
+		return secret != nil && secret(r)
 	}
 }

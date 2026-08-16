@@ -313,7 +313,7 @@ func TestRevocation_RevokedKeyRejected(t *testing.T) {
 		t.Fatalf("upsert without the revoked flag: %v", err)
 	}
 	if again, _ := reg.Get(origin); !again.Revoked {
-		t.Fatal("a concurrent writer cleared a revocation: Upsert must LATCH revoked, "+
+		t.Fatal("a concurrent writer cleared a revocation: Upsert must LATCH revoked, " +
 			"or a cloud-sync poll un-revokes every box the operator evicted")
 	}
 	if err := as.ApplyChangeset(o.emitUninstall(t, victim, appID, "1.0.0", base.Add(2*time.Minute))); err != nil {

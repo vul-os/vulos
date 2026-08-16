@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -520,7 +521,14 @@ func TestStartCRDTSyncMountsPeerKeyAuthWhenIdentityIsSupplied(t *testing.T) {
 		t.Fatalf("an unrostered peer got %d, want 401", code)
 	}
 
-	// And the LAN secret path is untouched.
+	// And the bare shared secret NO LONGER gets in, because this box can name a
+	// peer (the roster has one) and therefore requires to be told which peer is
+	// calling.
+	//
+	// This assertion used to be the exact opposite — "the LAN secret path is
+	// untouched" — and that is what made eviction impossible: the secret is one
+	// bearer credential identical on every box, so a revoked instance passed on
+	// the secret arm and the roster check was never reached.
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
 	req.Header.Set(crdtsync.AuthHeader, wiringSecret)
 	resp, err := srv.Client().Do(req)
@@ -528,10 +536,395 @@ func TestStartCRDTSyncMountsPeerKeyAuthWhenIdentityIsSupplied(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("the LAN shared-secret path regressed: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("the bare shared secret was accepted (%d) by a box that can name its peers — "+
+			"every revoked instance holds that same secret, so nothing can be evicted", resp.StatusCode)
 	}
 }
+
+// TestRevokedInstanceHoldingTheFabricSecretIsRefused is THE test.
+//
+// It is the founder directive's security half stated as an assertion: a
+// compromised instance can be kicked out. The instance here is fully equipped —
+// it holds a valid VULOS_FABRIC_SECRET, its key is in the roster, and it signs
+// correctly. The only thing that changed is that the operator revoked it.
+//
+// Before the fix it was admitted on the secret arm and never reached the roster
+// check. Restore that OR (AnyOfAuthorizer(secret, peerkey) at the wiring site)
+// and this test goes red on the first sub-test.
+func TestRevokedInstanceHoldingTheFabricSecretIsRefused(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dir := t.TempDir()
+	reg, err := multiinstance.Open(filepath.Join(dir, "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	selfPriv, selfID := newWiringIdentity(t)
+	compromisedPriv, compromised := newWiringIdentity(t)
+	_, healthy := newWiringIdentity(t)
+
+	const (
+		selfULID        = "01HWZMINST0000000000SELF00"
+		compromisedULID = "01HWZMINST00000000000BAD00"
+		healthyULID     = "01HWZMINST0000000000GOOD00"
+	)
+	roster := func(t *testing.T, revoked bool) {
+		t.Helper()
+		for _, in := range []multiinstance.Instance{
+			{ULID: selfULID, Role: multiinstance.RoleOwner,
+				Ed25519PublicKey: base64.StdEncoding.EncodeToString(selfID.PublicKey())},
+			{ULID: compromisedULID, Ed25519PublicKey: base64.StdEncoding.EncodeToString(compromised.PublicKey()), Revoked: revoked},
+			{ULID: healthyULID, Ed25519PublicKey: base64.StdEncoding.EncodeToString(healthy.PublicKey())},
+		} {
+			if err := reg.Upsert(in); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	roster(t, false)
+
+	mux := http.NewServeMux()
+	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), selfULID, wiringSecret,
+		fabric.NewStaticDiscoverer(), nil, nil, selfPriv, fabricPeerRoster{reg: reg}, nil)
+	if err != nil {
+		t.Fatalf("startCRDTSync: %v", err)
+	}
+	defer store.Close()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body := []byte(`{"domain":"` + crdtsync.DomainReminders + `"}`)
+	// withSecret sends the credential the compromised box provably still has:
+	// the fleet's shared secret, byte for byte.
+	withSecret := func() int {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+		req.Header.Set(crdtsync.AuthHeader, wiringSecret)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	signed := func(from ed25519.PrivateKey) int {
+		t.Helper()
+		id, err := crdtsync.NewPeerIdentity(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		header, _, err := id.SignRequest(http.MethodPost, "/api/crdt/pull", body, selfID.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+		req.Header.Set(crdtsync.PeerAuthHeader, header)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Baseline: while it is a member in good standing it syncs both ways.
+	if code := signed(compromisedPriv); code != http.StatusOK {
+		t.Fatalf("a rostered peer was refused before any revocation: %d", code)
+	}
+
+	// The operator evicts it.
+	roster(t, true)
+
+	t.Run("the shared secret it still holds does not let it back in", func(t *testing.T) {
+		if code := withSecret(); code != http.StatusUnauthorized {
+			t.Fatalf("a caller presenting only VULOS_FABRIC_SECRET got %d, want 401.\n"+
+				"Every box in the fleet holds that byte string, including the revoked one, "+
+				"so while it is accepted a revocation cannot be enforced against anybody.", code)
+		}
+	})
+
+	t.Run("its own signature does not either", func(t *testing.T) {
+		if code := signed(compromisedPriv); code != http.StatusUnauthorized {
+			t.Fatalf("a REVOKED instance's correctly-signed request got %d, want 401", code)
+		}
+	})
+
+	t.Run("a healthy peer still syncs", func(t *testing.T) {
+		// The other half of the promise: evicting one box must not evict the
+		// fleet. A fix that 401s everybody passes the assertions above.
+		roster := fabricPeerRoster{reg: reg, selfULID: selfULID}
+		if !roster.TrustedPeer(healthy.PublicKey()) {
+			t.Fatal("a healthy rostered peer lost access when a DIFFERENT instance was revoked")
+		}
+		if roster.TrustedPeer(compromised.PublicKey()) {
+			t.Fatal("the revoked instance is still trusted by the roster")
+		}
+	})
+
+	t.Run("a revoked instance is no longer dialled either", func(t *testing.T) {
+		// Refusing its requests stops it writing to us. It does not stop us
+		// pulling FROM it and merging what it serves, which is the same
+		// compromised box feeding us ops.
+		dir := fabricPeerRoster{reg: reg, selfULID: selfULID}
+		if !dir.InstanceRevoked(compromisedULID) {
+			t.Fatal("the sync loop would keep dialling a revoked instance and merging its ops")
+		}
+		if dir.PeerKeyForInstance(compromisedULID) != "" {
+			t.Fatal("a revoked instance is still resolvable as a sync peer")
+		}
+		if dir.InstanceRevoked(healthyULID) {
+			t.Fatal("a healthy peer was dropped from the dial list")
+		}
+	})
+}
+
+// TestSharedSecretSurvivesOnlyTheBootstrapWindow pins the narrowing, in both
+// directions.
+//
+// Deleting the secret arm outright is not free: a LAN peer is dialled with the
+// secret and nothing else, and a box that has never been told a peer's public
+// key cannot authenticate one. Refusing it there would evict nobody and stop
+// sync working. So the secret survives exactly until this box learns a peer
+// identity — and a REVOKED peer must count as one, or evicting your only peer
+// would reopen the credential it still holds.
+func TestSharedSecretSurvivesOnlyTheBootstrapWindow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dir := t.TempDir()
+	reg, err := multiinstance.Open(filepath.Join(dir, "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	selfPriv, selfID := newWiringIdentity(t)
+	const selfULID = "01HWZMINST0000000000SELF01"
+	// Only SELF is rostered: this box has published its own key (appsync
+	// SetIdentity does that on every boot) and knows nobody else.
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID: selfULID, Role: multiinstance.RoleOwner,
+		Ed25519PublicKey: base64.StdEncoding.EncodeToString(selfID.PublicKey()),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := http.NewServeMux()
+	store, err := startCRDTSync(ctx, mux, newWiringDBDir(t), selfULID, wiringSecret,
+		fabric.NewStaticDiscoverer(), nil, nil, selfPriv, fabricPeerRoster{reg: reg}, nil)
+	if err != nil {
+		t.Fatalf("startCRDTSync: %v", err)
+	}
+	defer store.Close()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body := []byte(`{"domain":"` + crdtsync.DomainReminders + `"}`)
+	withSecret := func() int {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/crdt/pull", bytes.NewReader(body))
+		req.Header.Set(crdtsync.AuthHeader, wiringSecret)
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Bootstrap: no peer is known, so the secret still works — and this box's
+	// OWN key must not be mistaken for a peer identity.
+	if code := withSecret(); code != http.StatusOK {
+		t.Fatalf("a box that knows no peer refused the shared secret (%d) — that evicts nobody and breaks LAN sync", code)
+	}
+
+	// One peer enrols. The window closes, without a restart.
+	_, peer := newWiringIdentity(t)
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID: "01HWZMINST0000000000PEER01", Role: multiinstance.RolePeer,
+		Ed25519PublicKey: base64.StdEncoding.EncodeToString(peer.PublicKey()),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code := withSecret(); code != http.StatusUnauthorized {
+		t.Fatalf("the shared secret still worked (%d) after this box learned a peer identity", code)
+	}
+
+	// That peer is then revoked. The window must NOT reopen: the revoked box
+	// holds the secret.
+	if err := reg.Upsert(multiinstance.Instance{
+		ULID: "01HWZMINST0000000000PEER01", Role: multiinstance.RolePeer,
+		Ed25519PublicKey: base64.StdEncoding.EncodeToString(peer.PublicKey()), Revoked: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code := withSecret(); code != http.StatusUnauthorized {
+		t.Fatalf("revoking the only peer reopened the shared-secret path (%d) — "+
+			"which is the one credential the revoked box still has", code)
+	}
+}
+
+// TestOperatorDenyListEvictsAndDominates covers the trigger.
+//
+// Instance.Revoked was enforced in three places and set in none: RevokePeer had
+// no production caller, and CloudInstance (the control plane's wire type) has no
+// revoked field, so a cloud sync could not set it either. An enforcement path
+// with no trigger is not a control.
+func TestOperatorDenyListEvictsAndDominates(t *testing.T) {
+	dir := t.TempDir()
+	reg, err := multiinstance.Open(filepath.Join(dir, "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+
+	byULID, byULIDB64 := newWiringKey(t)
+	byKey, byKeyB64 := newWiringKey(t)
+	pinnedOnly, pinnedOnlyB64 := newWiringKey(t)
+	pinnedAndDenied, pinnedAndDeniedB64 := newWiringKey(t)
+	// Pinned by the operator AND revoked in the roster. This is the case that
+	// tests the ORDER rather than the arms: the deny reason lives only in the
+	// roster, so it is reachable only if the revocation sweep runs before the
+	// pin list. Run the pin arm first and this key is trusted.
+	pinnedButRevoked, pinnedButRevokedB64 := newWiringKey(t)
+
+	for _, in := range []multiinstance.Instance{
+		{ULID: "EVICT-BY-ULID", Ed25519PublicKey: byULIDB64},
+		{ULID: "EVICT-BY-KEY", Ed25519PublicKey: byKeyB64},
+		{ULID: "PINNED-BUT-REVOKED", Ed25519PublicKey: pinnedButRevokedB64, Revoked: true},
+	} {
+		if err := reg.Upsert(in); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv(envFabricPeerKeys, strings.Join([]string{
+		crdtsync.EncodePeerKey(pinnedOnly),
+		crdtsync.EncodePeerKey(pinnedAndDenied),
+		crdtsync.EncodePeerKey(pinnedButRevoked),
+	}, ","))
+	t.Setenv(envFabricRevokedPeers, "EVICT-BY-ULID, "+crdtsync.EncodePeerKey(byKey)+" "+crdtsync.EncodePeerKey(pinnedAndDenied))
+	withFreshPolicy(t)
+
+	r := fabricPeerRoster{reg: reg, selfULID: "SELF"}
+
+	if r.TrustedPeer(byULID) {
+		t.Error("an instance named in the deny list by ULID is still trusted")
+	}
+	if r.TrustedPeer(byKey) {
+		t.Error("an instance named in the deny list by key is still trusted")
+	}
+	if !r.TrustedPeer(pinnedOnly) {
+		t.Error("an operator-pinned key is not trusted — a box with no control plane can then name nobody, and a peer nobody can name cannot be evicted")
+	}
+	if r.TrustedPeer(pinnedAndDenied) {
+		t.Error("a key that is both PINNED and DENIED was trusted: deny must dominate allow, whichever arm is added later")
+	}
+	if r.TrustedPeer(pinnedButRevoked) {
+		t.Error("an operator-pinned key belonging to a REVOKED instance was trusted — " +
+			"the allow arm ran before the revocation sweep, which is how the pin list " +
+			"becomes a second way past a revocation")
+	}
+
+	// The eviction is persisted, so it outlives the environment variable and
+	// reaches appsync's quorum check too.
+	applyOperatorRevocations(reg)
+	for _, ulid := range []string{"EVICT-BY-ULID", "EVICT-BY-KEY"} {
+		in, ok := reg.Get(ulid)
+		if !ok || !in.Revoked {
+			t.Errorf("%s was refused at the door but never marked revoked in the roster", ulid)
+		}
+	}
+	// Unused suppression: the base64-standard forms are what the roster stores.
+	_ = byULIDB64
+	_ = pinnedOnlyB64
+	_ = pinnedAndDeniedB64
+}
+
+// newWiringKey mints a key and its base64-STANDARD roster encoding.
+func newWiringKey(t *testing.T) (ed25519.PublicKey, string) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pub, base64.StdEncoding.EncodeToString(pub)
+}
+
+// withFreshPolicy re-reads the operator policy for one test and restores the
+// process-wide value afterwards. The production path parses it once, on purpose
+// — an auth decision must not do a syscall per request — so a test that changes
+// the environment has to say so explicitly.
+func withFreshPolicy(t *testing.T) {
+	t.Helper()
+	prev := operatorPeerPolicy
+	operatorPeerPolicy = sync.OnceValue(loadOperatorPeerPolicy)
+	t.Cleanup(func() { operatorPeerPolicy = prev })
+}
+
+// TestLANRequestsAreSignedWhenThePeerCanBeNamed covers the half of this change
+// that prevents an outage.
+//
+// crdtsync/syncer.go signs WAN requests only; a LAN peer is dialled with
+// X-Fabric-Auth and nothing else. Once a box learns a peer identity it stops
+// accepting the bare secret — so without this wrapper the fix would evict the
+// compromised box and every healthy one along with it.
+func TestLANRequestsAreSignedWhenThePeerCanBeNamed(t *testing.T) {
+	_, id := newWiringIdentity(t)
+	_, peer := newWiringIdentity(t)
+	keys := newPeerKeyIndex()
+	keys.remember("https://192.168.1.42:443", peer.ID())
+
+	var got *http.Request
+	inner := doerFunc(func(r *http.Request) (*http.Response, error) {
+		got = r
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("{}")), Header: http.Header{}}, nil
+	})
+	client := lanSigningClient(inner, id, keys)
+
+	body := []byte(`{"domain":"sql:reminders"}`)
+	req, err := http.NewRequest(http.MethodPost, "https://192.168.1.42:443/api/crdt/pull", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(crdtsync.AuthHeader, wiringSecret)
+	if _, err := client.Do(req); err != nil {
+		t.Fatal(err)
+	}
+	if got.Header.Get(crdtsync.PeerAuthHeader) == "" {
+		t.Fatal("a LAN request to a NAMED peer went out unsigned — an upgraded peer refuses it, and the fleet stops syncing")
+	}
+	if got.Header.Get(crdtsync.AuthHeader) != wiringSecret {
+		t.Fatal("the shared secret was dropped — a peer still inside its bootstrap window accepts nothing else")
+	}
+	// The body must survive the signing wrapper intact.
+	sent, err := io.ReadAll(got.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sent, body) {
+		t.Fatalf("the signing wrapper consumed the request body: %q", sent)
+	}
+
+	// An unnameable peer is signed for by nobody, and the request still goes.
+	got = nil
+	req2, _ := http.NewRequest(http.MethodPost, "https://192.168.1.99:443/api/crdt/pull", bytes.NewReader(body))
+	req2.Header.Set(crdtsync.AuthHeader, wiringSecret)
+	if _, err := client.Do(req2); err != nil {
+		t.Fatal(err)
+	}
+	if got.Header.Get(crdtsync.PeerAuthHeader) != "" {
+		t.Fatal("a request was signed to a peer this box cannot name")
+	}
+}
+
+type doerFunc func(*http.Request) (*http.Response, error)
+
+func (f doerFunc) Do(r *http.Request) (*http.Response, error) { return f(r) }
 
 func TestStartCRDTSyncWithoutIdentityMountsOnlyTheSecretPath(t *testing.T) {
 	// The fail-closed half: no key or no roster means WAN peers are skipped,
