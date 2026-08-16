@@ -260,16 +260,25 @@ func TestLocalIntentWinsOverALaggingClock(t *testing.T) {
 		t.Fatalf("DesireRemove: %v", err)
 	}
 
-	live, err := as.DesiredApps()
-	if err != nil {
-		t.Fatalf("DesiredApps: %v", err)
+	// Reading local state HERE proves nothing, and an earlier version of this
+	// test did exactly that and passed with the stamp bump removed: a local
+	// desireMutate writes unconditionally, so the removal is always visible on
+	// the box that made it. The defect is not that the removal fails to apply —
+	// it is that it fails to SURVIVE. The measurement has to be taken after the
+	// peer re-sends the row the removal was supposed to supersede, which is what
+	// the very next sync does.
+	if live, lerr := as.DesiredApps(); lerr != nil {
+		t.Fatalf("DesiredApps: %v", lerr)
+	} else if len(live) != 0 {
+		t.Fatalf("the removal did not even apply locally: %+v", live)
 	}
-	for _, d := range live {
-		if d.AppID == app {
-			t.Fatalf("the user's removal on this box lost to a peer row stamped in the future — "+
-				"the removal silently did not happen (local stamp must bump past the highest seen, %v)", future)
-		}
+
+	if err := as.ApplyChangeset(cs); err != nil {
+		t.Fatalf("re-apply peer row: %v", err)
 	}
+	assertNoDesire(t, as, app, "the user's removal on a lagging box was undone by the very next sync — "+
+		"it lost LWW to a peer row stamped in this box's future ("+future.Format(time.RFC3339Nano)+"), "+
+		"so the app came back with no error anywhere. The local stamp must bump past the highest timestamp already seen.")
 }
 
 // ── property 2: realisation is never authoritative over desire ───────────────
@@ -551,7 +560,7 @@ func TestDesireRidesTheExistingChangesetTransport(t *testing.T) {
 // fleet. Extending the signed message must not invalidate signatures a box that
 // predates the desired set produced, or the first upgraded box refuses every
 // other box's uninstall observations.
-func TestSigningMessageUnchangedForPreDesireChangesets(t *testing.T) {
+func TestLegacyShapedSignedUninstallStillVerifiesEndToEnd(t *testing.T) {
 	const ulidP = "01HWZMINST00000000000000PP"
 	reg, as := openTempAppSync(t)
 	peer := newSignedOrigin(t, ulidP)
