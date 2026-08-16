@@ -95,6 +95,17 @@ func applyLegacyRegistry(t *testing.T, db *sql.DB) {
 	postFold := []string{
 		// migrations/0002_store_only.sql — NODE-CAP-01
 		`ALTER TABLE instances ADD COLUMN store_only INTEGER NOT NULL DEFAULT 0`,
+		// migrations/0003_app_desired.sql — SYNC-APPS-01 (desire vs realisation)
+		`CREATE TABLE IF NOT EXISTS app_desired (
+			app_id          TEXT NOT NULL PRIMARY KEY,
+			desired_version TEXT NOT NULL DEFAULT '',
+			desired         INTEGER NOT NULL DEFAULT 1,
+			actor_ulid      TEXT NOT NULL DEFAULT '',
+			updated_at      TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_app_desired_state ON app_desired(desired)`,
+		`ALTER TABLE app_registry ADD COLUMN realise_state  TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE app_registry ADD COLUMN realise_detail TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, s := range postFold {
 		if _, err := db.Exec(s); err != nil {

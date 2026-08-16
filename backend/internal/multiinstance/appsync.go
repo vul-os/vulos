@@ -3,6 +3,88 @@
 // AppSync replicates the app_registry table across instances using a
 // pure-Go CRDT changeset layer (no CGO / cr-sqlite extension required).
 //
+// # SYNC-APPS-01: desire and realisation
+//
+// The standing directive is that a user's instances are ONE OS — "each instance
+// is almost a direct clone of the next". app_registry alone cannot express that.
+// It is keyed (instance_ulid, app_id), which makes it a PER-INSTANCE INVENTORY:
+// it records what each box happens to have. That is a DESCRIPTION. "I installed
+// Steam, put it everywhere" is an INTENT, and an inventory has no way to hold
+// one — there is no row that means "the fleet should have this", only rows that
+// mean "this box does".
+//
+// So there are two sets, deliberately in two tables with two different keys:
+//
+//	app_desired    one row per app_id      — FLEET-LEVEL DESIRE.  What the user asked for.
+//	app_registry   one row per (inst,app)  — PER-BOX REALISATION. What actually happened.
+//
+// Three properties are load-bearing, and each is enforced structurally rather
+// than by convention:
+//
+//  1. REMOVAL IS A STATE, NOT AN ABSENCE. DesireRemove writes desired=0 with a
+//     fresh timestamp — a tombstone row that is never vacuumed. A desired set in
+//     which removal is spelled "the row is gone" resurrects apps the user
+//     deleted on every sync, forever: the peer that has not heard about the
+//     removal re-sends its copy and the removing box merges it back as news.
+//     Against a tombstone that re-send is simply an older write, and loses.
+//
+//  2. REALISATION IS NEVER AUTHORITATIVE OVER DESIRE. Nothing in the realisation
+//     path writes app_desired. mergeEntry routes a wire row to mergeDesired or to
+//     the realisation merge on the reserved key and the two never meet, so a box
+//     that FAILED to install an app cannot report that back as "not wanted". One
+//     broken instance therefore cannot uninstall the fleet. The reconciler runs
+//     strictly one way: desire → this box's disk → a report of what happened.
+//
+//  3. AN ARCH MISMATCH IS A REALISATION FAILURE, NOT A SPECIAL CASE. A box that
+//     cannot install a desired app records realise_state='failed' with the reason
+//     the installer produced (services/appnet/arch.go's ArchUnavailableReason
+//     yields "requires amd64; this box is arm64"), and that report replicates.
+//     There is no arch-shaped branch in this file, on purpose: the moment arch
+//     gets its own path, every other reason an install can fail goes silent
+//     again — which is the failure mode this whole split exists to remove.
+//
+// # Why the desired set rides app_registry's wire type
+//
+// A desire row travels as an AppRegistryEntry whose InstanceULID is the reserved
+// sentinel DesiredSetULID ("@fleet"). '@' is not in the Crockford base32 ULID
+// alphabet, so no real instance can collide with it.
+//
+// This is a discriminator, not a hack, and the alternative was worse. The fabric
+// transport's interface (fabric.AppSyncMerger) is fixed over []AppRegistryEntry
+// and internal/fabric is a separate concern; a second slice on AppChangeset would
+// have meant changing that interface, its handlers and its cursor logic, and — in
+// the failure case that matters — a desire row that silently did not ride the
+// transport at all while every test still passed. Reusing the one wire row means
+// the desired set inherits, unchanged and already proven: the cursor, the
+// signature, the roster verification and the revocation check at the door.
+//
+// # Why desire is NOT quorum-gated, and what replaces the quorum
+//
+// The uninstall quorum below defends app_registry against a holder of the shared
+// fabric secret unilaterally removing apps — necessary precisely BECAUSE that
+// secret is identical on every box and cannot distinguish peers.
+//
+// Applying it to DESIRE would be a product defect, not a hardening: a user would
+// have to uninstall an app on a majority of their own boxes before it went away
+// anywhere, which is the opposite of what the directive asks for. Intent is
+// expressed once, by a person, on one machine.
+//
+// What defends the desired set instead is admission: mergeDesired runs ONLY for a
+// changeset whose origin verified — a rostered, non-revoked peer whose Ed25519
+// signature checks out against its ROSTERED key (verifyChangesetSignature, which
+// the eviction work made revocation-aware). An unverified changeset's desire rows
+// are DROPPED, not merely uncounted; there is no quorum to withhold from, so
+// "does not count" would have meant "applies". This adds no trust path — it is
+// the same door, consulted for a different set.
+//
+// The residual, stated rather than hidden: a rostered box that is compromised but
+// not yet revoked can remove apps fleet-wide, because it can say anything the
+// user could say. That was already true of every other intent the fabric carries.
+// It is bounded by revocation (which now works and is enforced before merge), it
+// is recorded (actor_ulid names who removed what and when), and it is one action
+// to undo. Requiring quorum would not have bounded it either — a compromised box
+// can wait for the user to remove something and corroborate it.
+//
 // Conflict resolution strategy
 //
 //   - app_version field:  Last-Write-Wins (LWW) — the row with the higher
@@ -79,6 +161,7 @@
 package multiinstance
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"database/sql"
@@ -110,7 +193,101 @@ type AppRegistryEntry struct {
 	InstalledBy string `json:"installed_by"`
 	// UpdatedAt is the wall-clock timestamp used for LWW ordering.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// RealiseState is what this instance managed to do about the app, and it is
+	// the half of the split that makes a failure visible instead of silent:
+	// RealiseRealised / RealiseRemoved / RealiseFailed, or "" for a row written
+	// before SYNC-APPS-01 (or by a peer that predates it).
+	//
+	// It travels WITH the row on the wire, because a box that reports "I cannot
+	// install this, and here is why" only into its own database has reported
+	// nothing — the user is standing at a different box.
+	RealiseState string `json:"realise_state,omitempty"`
+	// RealiseDetail is the human-readable reason for RealiseFailed, verbatim
+	// from whatever refused the install. An architecture mismatch arrives here
+	// as "requires amd64; this box is arm64" by the same route a failed download
+	// or a bad signature does — see the package doc on why arch has no branch.
+	RealiseDetail string `json:"realise_detail,omitempty"`
 }
+
+// Realisation states for AppRegistryEntry.RealiseState.
+const (
+	// RealiseUnknown is a row that predates SYNC-APPS-01 or was never attempted.
+	// It is the zero value on purpose: every existing row reads back as this, so
+	// an upgrade changes no behaviour.
+	RealiseUnknown = ""
+	// RealiseRealised means the app is installed and working on that instance.
+	RealiseRealised = "realised"
+	// RealiseRemoved means the app was uninstalled from that instance.
+	RealiseRemoved = "removed"
+	// RealiseFailed means the instance TRIED and could not. RealiseDetail says
+	// why. This is the state that distinguishes "this box cannot run it" from
+	// "this box has not got round to it", which absence alone cannot.
+	RealiseFailed = "failed"
+)
+
+// DesiredSetULID is the reserved InstanceULID that marks a wire row as a
+// FLEET-LEVEL DESIRE rather than a per-instance realisation.
+//
+// '@' is outside the Crockford base32 alphabet ULIDs are drawn from, so no real
+// instance identifier can ever collide with it. TestDesiredSetULIDCannotBeAULID
+// pins that rather than trusting this sentence, and localMutate refuses to write
+// a realisation row that claims the key.
+const DesiredSetULID = "@fleet"
+
+// DesiredEntry is one row of the FLEET-LEVEL desired set: one entry per app,
+// not per instance. It is the answer to "what has the user asked to be
+// installed", which is the thing the directive makes the default.
+type DesiredEntry struct {
+	// AppID is the canonical app slug. It is the whole primary key — there is
+	// deliberately no instance in it.
+	AppID string `json:"app_id"`
+	// Version is the desired version, or "" for "whatever the registry calls
+	// latest".
+	Version string `json:"version"`
+	// Desired is the two-state flag. TRUE: the user wants this app on every
+	// instance. FALSE: the user REMOVED it — an explicit tombstone, which is
+	// what stops the removal being resurrected by any peer that still holds a
+	// pre-removal copy. A removed entry keeps its row forever.
+	Desired bool `json:"desired"`
+	// ActorULID is the instance on which the intent was expressed. It is the
+	// deterministic LWW tie-break and the record of who removed what. It is NOT
+	// an authorisation input: that is the changeset signature.
+	ActorULID string `json:"actor_ulid"`
+	// UpdatedAt is when the intent was expressed; LWW ordering.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// wire renders a desire as the single AppRegistryEntry wire row, tagged with the
+// reserved sentinel so a receiver routes it to the desired set. See the package
+// doc for why there is one wire type rather than two.
+func (d DesiredEntry) wire() AppRegistryEntry {
+	return AppRegistryEntry{
+		InstanceULID: DesiredSetULID,
+		AppID:        d.AppID,
+		AppVersion:   d.Version,
+		Installed:    d.Desired,
+		InstalledBy:  d.ActorULID,
+		UpdatedAt:    d.UpdatedAt,
+	}
+}
+
+// desiredFromWire is wire's inverse. It does not check the sentinel; callers
+// route on isDesiredRow first.
+func desiredFromWire(e AppRegistryEntry) DesiredEntry {
+	return DesiredEntry{
+		AppID:     e.AppID,
+		Version:   e.AppVersion,
+		Desired:   e.Installed,
+		ActorULID: e.InstalledBy,
+		UpdatedAt: e.UpdatedAt,
+	}
+}
+
+// isDesiredRow reports whether a wire row belongs to the fleet desired set
+// rather than to some instance's realisation inventory. It is the single
+// routing predicate; every path that consumes a wire row asks it.
+func isDesiredRow(e AppRegistryEntry) bool { return e.InstanceULID == DesiredSetULID }
 
 // AppChangeset is the wire format exchanged between instances.
 // Each changeset carries all changed rows from one instance since the
@@ -349,34 +526,74 @@ func (as *AppSync) fireLocalChange() {
 
 // ── Local mutations ────────────────────────────────────────────────────────────
 
-// LocalInstall records that appID@version is installed on THIS instance and
-// fires the local-change hook (fabric Nudge) so peers learn promptly.
+// LocalInstall records that appID@version IS REALISED on THIS instance — the
+// box has it, on disk, working — and fires the local-change hook (fabric Nudge)
+// so peers learn promptly.
 //
 // It writes a single app_registry row stamped with UpdatedAt = now and
 // InstalledBy = instanceULID (this box is the writer node), which is exactly the
 // LWW input ChangesetSince/EmitChangeset will later replicate. instanceULID must
 // be this box's stable ULID.
+//
+// This is a REPORT, not an instruction. It says what happened here; it does not
+// and must not touch the fleet desired set (see the package doc, property 2).
 func (as *AppSync) LocalInstall(instanceULID, appID, version string) error {
-	return as.localMutate(instanceULID, appID, version, true)
+	return as.localMutate(instanceULID, appID, version, true, RealiseRealised, "")
 }
 
-// LocalUninstall records that appID is uninstalled on THIS instance (OR-set flag
-// flipped to false, stamped now) and fires the local-change hook. The actual
-// propagation still obeys the uninstall-quorum rules on the receiving peers.
+// LocalUninstall records that appID is no longer realised on THIS instance
+// (OR-set flag flipped to false, stamped now) and fires the local-change hook.
+// The actual propagation still obeys the uninstall-quorum rules on the receiving
+// peers.
+//
+// Also a report about this box only. Removing an app FROM THE FLEET is
+// DesireRemove, which is a different set with a different key.
 func (as *AppSync) LocalUninstall(instanceULID, appID string) error {
-	return as.localMutate(instanceULID, appID, "", false)
+	return as.localMutate(instanceULID, appID, "", false, RealiseRemoved, "")
 }
 
-// localMutate is the shared write path for LocalInstall/LocalUninstall. It
-// upserts the row in a single transaction, then — only on commit success —
-// fires the local-change hook so the fabric sync loop pushes the change without
-// waiting the tick.
-func (as *AppSync) localMutate(instanceULID, appID, version string, installed bool) error {
+// ReportRealiseFailure records that THIS instance tried to realise a desired app
+// and could not, with the reason verbatim.
+//
+// This is the entry the whole desire/realisation split exists for. Without it a
+// box that cannot run an app is indistinguishable from a box that has not tried
+// yet — both are simply "no row" — and the user, standing at a different box,
+// sees an app that is missing for no stated reason. With it, the fleet can say
+// "your arm64 box cannot install this: requires amd64; this box is arm64".
+//
+// The row is written installed=false (the box genuinely does not have the app)
+// with realise_state='failed'. It is a statement about THIS instance's row only:
+// the uninstall observation it produces is keyed to this instance as the target
+// and this instance as the observer, so it can never contribute toward removing
+// the app from a peer, and it never touches the desired set. The desire stands,
+// which is what makes the failure a report the user can act on rather than a
+// silent capitulation.
+func (as *AppSync) ReportRealiseFailure(instanceULID, appID, version, reason string) error {
+	if reason == "" {
+		// A failure with no reason is the silence this method exists to remove.
+		return fmt.Errorf("appsync: ReportRealiseFailure: reason must not be empty (a failure with no reason is the silence this reports against)")
+	}
+	return as.localMutate(instanceULID, appID, version, false, RealiseFailed, reason)
+}
+
+// localMutate is the shared write path for the REALISATION reports
+// (LocalInstall / LocalUninstall / ReportRealiseFailure). It upserts the row in a
+// single transaction, then — only on commit success — fires the local-change
+// hook so the fabric sync loop pushes the change without waiting the tick.
+func (as *AppSync) localMutate(instanceULID, appID, version string, installed bool, realiseState, realiseDetail string) error {
 	if instanceULID == "" {
 		return fmt.Errorf("appsync: localMutate: instanceULID must not be empty")
 	}
 	if appID == "" {
 		return fmt.Errorf("appsync: localMutate: appID must not be empty")
+	}
+	// The realisation set and the desired set share a wire type and are told
+	// apart by exactly one field. A realisation row that claimed the sentinel
+	// would be merged into the fleet desired set by every peer — a box's local
+	// report silently rewriting what the user wants, which is precisely the
+	// direction property 2 forbids. Refuse at the only door that can produce it.
+	if instanceULID == DesiredSetULID {
+		return fmt.Errorf("appsync: localMutate: instanceULID %q is the reserved fleet-desire key; a realisation report may not claim it (use DesireInstall/DesireRemove to express intent)", DesiredSetULID)
 	}
 	tx, err := as.db.Begin()
 	if err != nil {
@@ -389,12 +606,14 @@ func (as *AppSync) localMutate(instanceULID, appID, version string, installed bo
 		}
 	}()
 	entry := AppRegistryEntry{
-		InstanceULID: instanceULID,
-		AppID:        appID,
-		AppVersion:   version,
-		Installed:    installed,
-		InstalledBy:  instanceULID,
-		UpdatedAt:    time.Now().UTC(),
+		InstanceULID:  instanceULID,
+		AppID:         appID,
+		AppVersion:    version,
+		Installed:     installed,
+		InstalledBy:   instanceULID,
+		UpdatedAt:     time.Now().UTC(),
+		RealiseState:  realiseState,
+		RealiseDetail: realiseDetail,
 	}
 	if err := as.upsertEntry(tx, entry); err != nil {
 		return fmt.Errorf("appsync: localMutate: upsert: %w", err)
@@ -416,6 +635,262 @@ func (as *AppSync) localMutate(instanceULID, appID, version string, installed bo
 	// Local change is durable — nudge the fabric so it converges immediately.
 	as.fireLocalChange()
 	return nil
+}
+
+// ── The fleet desired set (SYNC-APPS-01) ─────────────────────────────────────
+
+// DesireInstall records that the user wants appID installed ON EVERY INSTANCE,
+// expressed on the box identified by actorULID. Version "" means "whatever the
+// registry calls latest".
+//
+// One row per app, no instance in the key. This is the write that was missing
+// and that made the whole replicator carry nothing: an intent no table could
+// hold, so nothing was ever written, so every box converged an empty inventory
+// and reported it as healthy.
+func (as *AppSync) DesireInstall(actorULID, appID, version string) error {
+	return as.desireMutate(actorULID, appID, version, true)
+}
+
+// DesireRemove records that the user no longer wants appID anywhere.
+//
+// It writes desired=0 — an explicit TOMBSTONE with a fresh timestamp — and never
+// deletes the row. That is the whole answer to resurrection: a peer that has not
+// yet heard about the removal still holds desired=1 at an OLDER timestamp, so
+// when the two meet the removal is the newer write and wins, in both directions,
+// however many times the stale copy is re-sent. Delete the row instead and the
+// same exchange re-installs the app, on every sync, forever.
+func (as *AppSync) DesireRemove(actorULID, appID string) error {
+	return as.desireMutate(actorULID, appID, "", false)
+}
+
+// desireMutate is the shared local write path for the desired set.
+//
+// The timestamp is max(now, latest-seen + 1ns), not now. A locally expressed
+// intent MUST win over everything this box has already seen, and physical clocks
+// between a user's own boxes routinely disagree by more than the seconds between
+// two of their actions. With a bare now(), a box whose clock lags would have its
+// user's "remove this" silently lose the LWW comparison against a remote row it
+// had just merged — the removal would appear to work, the UI would show it gone,
+// and the next sync would bring the app back with no error anywhere. Bumping past
+// the observed maximum keeps LWW's total order while making "the user just said
+// so" the newest fact in the system, which it is.
+func (as *AppSync) desireMutate(actorULID, appID, version string, desired bool) error {
+	if actorULID == "" {
+		return fmt.Errorf("appsync: desireMutate: actorULID must not be empty")
+	}
+	if actorULID == DesiredSetULID {
+		return fmt.Errorf("appsync: desireMutate: actorULID must be a real instance, not the reserved key %q", DesiredSetULID)
+	}
+	if appID == "" {
+		return fmt.Errorf("appsync: desireMutate: appID must not be empty")
+	}
+	tx, err := as.db.Begin()
+	if err != nil {
+		return fmt.Errorf("appsync: desireMutate: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stamp := time.Now().UTC()
+	var maxSeen string
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(updated_at), '') FROM app_desired`).Scan(&maxSeen); err != nil {
+		return fmt.Errorf("appsync: desireMutate: read desire watermark: %w", err)
+	}
+	if maxSeen != "" {
+		if prev, perr := time.Parse(time.RFC3339Nano, maxSeen); perr == nil && !stamp.After(prev) {
+			stamp = prev.Add(time.Nanosecond)
+		}
+	}
+
+	if err := as.upsertDesired(tx, DesiredEntry{
+		AppID:     appID,
+		Version:   version,
+		Desired:   desired,
+		ActorULID: actorULID,
+		UpdatedAt: stamp,
+	}); err != nil {
+		return fmt.Errorf("appsync: desireMutate: upsert: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("appsync: desireMutate: commit: %w", err)
+	}
+	committed = true
+	as.fireLocalChange()
+	return nil
+}
+
+// upsertDesired writes a desired-set row unconditionally. Callers that merge a
+// REMOTE row must run the LWW comparison in mergeDesired first; this is the raw
+// write.
+func (as *AppSync) upsertDesired(tx *sql.Tx, d DesiredEntry) error {
+	desired := 0
+	if d.Desired {
+		desired = 1
+	}
+	ts := ""
+	if !d.UpdatedAt.IsZero() {
+		ts = d.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	_, err := tx.Exec(`
+		INSERT INTO app_desired (app_id, desired_version, desired, actor_ulid, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(app_id) DO UPDATE SET
+			desired_version = excluded.desired_version,
+			desired         = excluded.desired,
+			actor_ulid      = excluded.actor_ulid,
+			updated_at      = excluded.updated_at
+	`, d.AppID, d.Version, desired, d.ActorULID, ts)
+	return err
+}
+
+// mergeDesired merges one REMOTE desired-set row.
+//
+// The algebra is last-writer-wins on UpdatedAt, tie-broken on the larger
+// ActorULID. Two things about it are deliberate and neither is the default the
+// realisation set uses:
+//
+//   - THERE IS NO QUORUM. Intent is expressed once, by a person, on one box.
+//     Requiring N boxes to agree before an uninstall took effect would mean the
+//     user uninstalling an app on a majority of their own machines. What guards
+//     this set instead is admission: ApplyChangeset only calls this for a
+//     changeset whose origin VERIFIED — rostered, not revoked, signature good.
+//     An unverified peer's desire rows are dropped entirely.
+//
+//   - A TIE IS NOT RESOLVED "INSTALL WINS". The realisation set's OR-set default
+//     is right there — an install and an uninstall of the same thing at the same
+//     instant is more likely a straggler than a decision. For DESIRE it would be
+//     a resurrection bug: two boxes acting on the same user action stamp the same
+//     removal, and install-wins on an exact tie means the removal never lands.
+//     The tie-break is the actor id alone, which is deterministic, symmetric, and
+//     has no opinion about which polarity is safer.
+//
+// The comparison is total and order-independent (max over (UpdatedAt, ActorULID)),
+// so peers applying the same rows in any order converge.
+func (as *AppSync) mergeDesired(tx *sql.Tx, remote DesiredEntry) error {
+	if remote.AppID == "" {
+		return fmt.Errorf("desired row has empty app_id")
+	}
+	var (
+		localVersion string
+		localDesired int
+		localActor   string
+		localRaw     string
+	)
+	err := tx.QueryRow(`
+		SELECT desired_version, desired, actor_ulid, updated_at
+		FROM app_desired WHERE app_id = ?
+	`, remote.AppID).Scan(&localVersion, &localDesired, &localActor, &localRaw)
+	if err == sql.ErrNoRows {
+		return as.upsertDesired(tx, remote)
+	}
+	if err != nil {
+		return fmt.Errorf("scan local desired row: %w", err)
+	}
+	var localAt time.Time
+	if localRaw != "" {
+		localAt, _ = time.Parse(time.RFC3339Nano, localRaw)
+	}
+	switch {
+	case remote.UpdatedAt.After(localAt):
+		return as.upsertDesired(tx, remote)
+	case remote.UpdatedAt.Equal(localAt):
+		if remote.ActorULID > localActor {
+			return as.upsertDesired(tx, remote)
+		}
+		return nil
+	default:
+		// Strictly older. This is the stale re-send of a pre-removal copy, and
+		// discarding it is exactly what the tombstone bought.
+		return nil
+	}
+}
+
+// DesiredSet returns every row of the fleet desired set INCLUDING tombstones
+// (Desired=false), ordered by app id. Tombstones are part of the state, not
+// noise: the reconciler needs them to know an app must be REMOVED here rather
+// than merely never installed.
+func (as *AppSync) DesiredSet() ([]DesiredEntry, error) {
+	rows, err := as.db.Query(`
+		SELECT app_id, desired_version, desired, actor_ulid, updated_at
+		FROM app_desired ORDER BY app_id`)
+	if err != nil {
+		return nil, fmt.Errorf("appsync: DesiredSet: %w", err)
+	}
+	defer rows.Close()
+	return scanDesired(rows)
+}
+
+// DesiredApps returns only the apps the user currently wants (tombstones
+// excluded) — the read a UI showing "your apps" wants.
+func (as *AppSync) DesiredApps() ([]DesiredEntry, error) {
+	all, err := as.DesiredSet()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DesiredEntry, 0, len(all))
+	for _, d := range all {
+		if d.Desired {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+// desiredChangesSince returns the desired-set rows changed after the cursor,
+// rendered as wire rows so they ride the existing changeset transport unchanged.
+func (as *AppSync) desiredChangesSince(since time.Time) ([]AppRegistryEntry, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if since.IsZero() {
+		rows, err = as.db.Query(`
+			SELECT app_id, desired_version, desired, actor_ulid, updated_at
+			FROM app_desired ORDER BY updated_at, app_id`)
+	} else {
+		rows, err = as.db.Query(`
+			SELECT app_id, desired_version, desired, actor_ulid, updated_at
+			FROM app_desired WHERE updated_at > ? ORDER BY updated_at, app_id`,
+			since.UTC().Format(time.RFC3339Nano))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("appsync: desiredChangesSince: %w", err)
+	}
+	defer rows.Close()
+	ds, err := scanDesired(rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AppRegistryEntry, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, d.wire())
+	}
+	return out, nil
+}
+
+// scanDesired scans *sql.Rows into DesiredEntry values.
+func scanDesired(rows *sql.Rows) ([]DesiredEntry, error) {
+	var out []DesiredEntry
+	for rows.Next() {
+		var (
+			d          DesiredEntry
+			desired    int
+			updatedRaw string
+		)
+		if err := rows.Scan(&d.AppID, &d.Version, &desired, &d.ActorULID, &updatedRaw); err != nil {
+			return nil, fmt.Errorf("appsync: scan desired: %w", err)
+		}
+		d.Desired = desired == 1
+		if updatedRaw != "" {
+			d.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedRaw)
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 // ── Emit ─────────────────────────────────────────────────────────────────────
@@ -476,27 +951,57 @@ func (as *AppSync) SignChangeset(cs *AppChangeset) error {
 }
 
 // changesetSigningMessage builds the canonical, deterministic byte string that a
-// changeset's origin signs and a receiver verifies. It binds the OriginULID to
-// the set of UNINSTALL entries it carries — install entries are not quorum-gated
-// and are excluded so an install-only changeset can be left unsigned. The entry
-// fields are joined with a NUL separator (which cannot appear in any of the
-// string fields) and entries are sorted so the message is independent of slice
-// order. The leading domain tag prevents cross-protocol signature reuse.
+// changeset's origin signs and a receiver verifies. The entry fields are joined
+// with a NUL separator (which cannot appear in any of the string fields) and
+// entries are sorted so the message is independent of slice order. The leading
+// domain tag prevents cross-protocol signature reuse.
+//
+// It covers two sections:
+//
+//	1. UNINSTALL realisation entries — install entries are excluded because they
+//	   are not quorum-gated, which is what lets an install-only changeset be left
+//	   unsigned.
+//	2. EVERY fleet-desire row, BOTH polarities (SYNC-APPS-01). Desire is not
+//	   quorum-gated, so the signature is the only thing standing between a peer
+//	   and the fleet's app set — leaving desired=1 rows out would have left an
+//	   unauthenticated REMOTE-INSTALL primitive open, which is a strictly worse
+//	   hole than the unauthenticated remote-uninstall the quorum was built for.
+//	   Desire rows are excluded from section 1 (they are not observations about an
+//	   instance) so no row is covered twice.
+//
+// Section 2 is APPENDED and is emitted only when there are desire rows, so for
+// any changeset a pre-SYNC-APPS-01 box could have produced the message is
+// byte-identical to what that box signed. A mixed-version fleet keeps verifying.
 func changesetSigningMessage(originULID string, entries []AppRegistryEntry) []byte {
 	const domain = "vulos:appsync:uninstall-observation:v1"
+	const desireSection = "vulos:appsync:fleet-desire:v1"
 	type rec struct {
 		instanceULID string
 		appID        string
 		updatedAt    string
 	}
+	type drec struct {
+		appID     string
+		updatedAt string
+		desired   string
+	}
 	recs := make([]rec, 0, len(entries))
+	drecs := make([]drec, 0, len(entries))
 	for _, e := range entries {
-		if e.Installed {
-			continue // only uninstall observations are signed/quorum-gated
-		}
 		ts := ""
 		if !e.UpdatedAt.IsZero() {
 			ts = e.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		}
+		if isDesiredRow(e) {
+			d := "0"
+			if e.Installed {
+				d = "1"
+			}
+			drecs = append(drecs, drec{appID: e.AppID, updatedAt: ts, desired: d})
+			continue
+		}
+		if e.Installed {
+			continue // only uninstall observations are signed/quorum-gated
 		}
 		recs = append(recs, rec{instanceULID: e.InstanceULID, appID: e.AppID, updatedAt: ts})
 	}
@@ -509,6 +1014,15 @@ func changesetSigningMessage(originULID string, entries []AppRegistryEntry) []by
 		}
 		return recs[i].updatedAt < recs[j].updatedAt
 	})
+	sort.Slice(drecs, func(i, j int) bool {
+		if drecs[i].appID != drecs[j].appID {
+			return drecs[i].appID < drecs[j].appID
+		}
+		if drecs[i].updatedAt != drecs[j].updatedAt {
+			return drecs[i].updatedAt < drecs[j].updatedAt
+		}
+		return drecs[i].desired < drecs[j].desired
+	})
 	var b strings.Builder
 	b.WriteString(domain)
 	b.WriteByte(0)
@@ -520,6 +1034,18 @@ func changesetSigningMessage(originULID string, entries []AppRegistryEntry) []by
 		b.WriteString(r.appID)
 		b.WriteByte(0)
 		b.WriteString(r.updatedAt)
+	}
+	if len(drecs) > 0 {
+		b.WriteByte(0)
+		b.WriteString(desireSection)
+		for _, d := range drecs {
+			b.WriteByte(0)
+			b.WriteString(d.appID)
+			b.WriteByte(0)
+			b.WriteString(d.updatedAt)
+			b.WriteByte(0)
+			b.WriteString(d.desired)
+		}
 	}
 	return []byte(b.String())
 }
@@ -636,6 +1162,10 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 		log.Printf("[appsync] changeset from %q carries uninstall(s) but is unverified "+
 			"(unknown/unsigned/bad-signature origin) — observations will NOT count toward quorum", originULID)
 	}
+	if !originVerified && hasDesire(cs.Entries) {
+		log.Printf("[appsync] changeset from %q carries fleet-desire row(s) but is unverified "+
+			"(unknown/unsigned/bad-signature/revoked origin) — they will be DROPPED, not merged", originULID)
+	}
 	// Resolve the origin's rostered public key NOW, BEFORE opening the write
 	// transaction. The registry shares this single-connection *sql.DB, so a
 	// roster read while a tx is open would deadlock waiting for the only
@@ -691,6 +1221,26 @@ func (as *AppSync) ApplyChangeset(cs *AppChangeset) error {
 // public key (or originULID is our own selfULID). An uninstall it carries
 // contributes exactly one observation toward quorum — and ONLY when verified.
 func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCount int, originULID string, originVerified bool, originPubKey string) error {
+	// SYNC-APPS-01 routing. A wire row is EITHER a fleet desire or a per-instance
+	// realisation, and this is the only place the two are told apart. Everything
+	// below this branch — generation epochs, uninstall observations, the OR-set,
+	// the quorum — belongs to the realisation set alone and must not run for a
+	// desire row. Routing FIRST is what makes property 2 structural: there is no
+	// path from here into the realisation tables for a desire row, and none from
+	// the realisation merge into app_desired for anything.
+	if isDesiredRow(remote) {
+		// Admission, not quorum (see mergeDesired). An unverified origin's desire
+		// rows are DROPPED. "Recorded but not counted" is the realisation set's
+		// answer and has no meaning here: with no quorum to withhold from, not
+		// counting an unverified write would be the same as applying it.
+		if !originVerified {
+			log.Printf("[appsync] DROPPING desired-set row for %q from unverified origin %q "+
+				"(unknown/unsigned/bad-signature/revoked) — the fleet desired set is writable only by a verified rostered peer", remote.AppID, originULID)
+			return nil
+		}
+		return as.mergeDesired(tx, desiredFromWire(remote))
+	}
+
 	// An install (re-install) bumps the install GENERATION for this app, which
 	// invalidates any uninstall observations gathered against an earlier
 	// generation (observation-set GC). This is what stops a re-install + later
@@ -1026,11 +1576,26 @@ func (as *AppSync) rosteredPubKey(originULID string) string {
 	return ""
 }
 
-// hasUninstall reports whether any entry in the slice is an uninstall (the only
-// quorum-gated, signature-relevant kind).
+// hasUninstall reports whether any entry in the slice is a REALISATION uninstall
+// (the quorum-gated kind). Desire rows are excluded: they carry the same
+// Installed=false spelling for a removal but are governed by admission, not
+// quorum, and folding them in here would make the "will not count toward quorum"
+// warning say something false about them.
 func hasUninstall(entries []AppRegistryEntry) bool {
 	for _, e := range entries {
-		if !e.Installed {
+		if !isDesiredRow(e) && !e.Installed {
+			return true
+		}
+	}
+	return false
+}
+
+// hasDesire reports whether any entry is a fleet-desire row. Used to log the
+// distinct thing that happens to those under an unverified origin: they are
+// dropped outright.
+func hasDesire(entries []AppRegistryEntry) bool {
+	for _, e := range entries {
+		if isDesiredRow(e) {
 			return true
 		}
 	}
@@ -1083,14 +1648,16 @@ func (as *AppSync) upsertEntry(tx *sql.Tx, e AppRegistryEntry) error {
 
 	_, err := tx.Exec(`
 		INSERT INTO app_registry
-			(instance_ulid, app_id, app_version, installed, installed_by, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+			(instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_ulid, app_id) DO UPDATE SET
-			app_version  = excluded.app_version,
-			installed    = excluded.installed,
-			installed_by = excluded.installed_by,
-			updated_at   = excluded.updated_at
-	`, e.InstanceULID, e.AppID, e.AppVersion, installed, e.InstalledBy, updatedAt)
+			app_version    = excluded.app_version,
+			installed      = excluded.installed,
+			installed_by   = excluded.installed_by,
+			updated_at     = excluded.updated_at,
+			realise_state  = excluded.realise_state,
+			realise_detail = excluded.realise_detail
+	`, e.InstanceULID, e.AppID, e.AppVersion, installed, e.InstalledBy, updatedAt, e.RealiseState, e.RealiseDetail)
 	return err
 }
 
@@ -1142,7 +1709,7 @@ func (as *AppSync) PeerInstanceIDs(excludeSelfULID string) []string {
 // to also include uninstalled entries.
 func (as *AppSync) ListAppsForInstance(instanceULID string, includeRemoved bool) ([]AppRegistryEntry, error) {
 	query := `
-		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
 		FROM app_registry
 		WHERE instance_ulid = ?`
 	if !includeRemoved {
@@ -1162,7 +1729,7 @@ func (as *AppSync) ListAppsForInstance(instanceULID string, includeRemoved bool)
 // ListAllApps returns every row in app_registry across all instances.
 func (as *AppSync) ListAllApps() ([]AppRegistryEntry, error) {
 	rows, err := as.db.Query(`
-		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
 		FROM app_registry
 		ORDER BY instance_ulid, app_id
 	`)
@@ -1194,13 +1761,13 @@ func (as *AppSync) ChangesetSince(since time.Time) ([]AppRegistryEntry, error) {
 	var err error
 	if since.IsZero() {
 		rows, err = as.db.Query(`
-			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
 			FROM app_registry
 			ORDER BY updated_at, instance_ulid, app_id`)
 	} else {
 		cursor := since.UTC().Format(time.RFC3339Nano)
 		rows, err = as.db.Query(`
-			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at
+			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
 			FROM app_registry
 			WHERE updated_at > ?
 			ORDER BY updated_at, instance_ulid, app_id`, cursor)
@@ -1209,7 +1776,38 @@ func (as *AppSync) ChangesetSince(since time.Time) ([]AppRegistryEntry, error) {
 		return nil, fmt.Errorf("appsync: ChangesetSince: %w", err)
 	}
 	defer rows.Close()
-	return scanEntries(rows)
+	realised, err := scanEntries(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// SYNC-APPS-01: the fleet desired set rides the SAME cursor and the SAME
+	// wire rows, tagged with DesiredSetULID. This union is the single point at
+	// which desire enters the transport, and it is why the desired set needed no
+	// change to internal/fabric: from the transport's side it is more rows of the
+	// type it already carries.
+	//
+	// Both halves are stamped from the same clock and compared as RFC3339Nano
+	// text, so merging them and re-sorting keeps the cursor semantics the caller
+	// relies on (advance to the max UpdatedAt returned).
+	desired, err := as.desiredChangesSince(since)
+	if err != nil {
+		return nil, err
+	}
+	if len(desired) == 0 {
+		return realised, nil
+	}
+	out := append(realised, desired...)
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].UpdatedAt.Before(out[j].UpdatedAt)
+		}
+		if out[i].InstanceULID != out[j].InstanceULID {
+			return out[i].InstanceULID < out[j].InstanceULID
+		}
+		return out[i].AppID < out[j].AppID
+	})
+	return out, nil
 }
 
 // scanEntries scans *sql.Rows into a slice of AppRegistryEntry.
@@ -1224,6 +1822,7 @@ func scanEntries(rows *sql.Rows) ([]AppRegistryEntry, error) {
 		if err := rows.Scan(
 			&e.InstanceULID, &e.AppID, &e.AppVersion,
 			&installed, &e.InstalledBy, &updatedRaw,
+			&e.RealiseState, &e.RealiseDetail,
 		); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
@@ -1234,6 +1833,169 @@ func scanEntries(rows *sql.Rows) ([]AppRegistryEntry, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// ── Reconciliation: desire → this box's disk → a report (SYNC-APPS-01) ───────
+
+// Realiser is the box's ability to actually install and remove apps. It is
+// deliberately expressed in primitive types: services/appnet owns the installer
+// and neither package imports the other, so *appnet.AppStore satisfies this
+// structurally and no adapter, and no import edge, exists to go stale.
+//
+// The direction of every method is one-way. Nothing on this interface can tell
+// AppSync what the fleet WANTS — it can only be asked what this box HAS and told
+// to change it. That is property 2 expressed as a type: a Realiser cannot write
+// the desired set because it has no way to name it.
+type Realiser interface {
+	// RealisedVersions reports what is actually installed on this box, appID →
+	// version. This is ground truth from disk, not from the registry table: the
+	// table is a report ABOUT disk and can be stale or wrong, and reconciling
+	// against a report of itself would make the loop believe its own bookkeeping.
+	RealisedVersions() (map[string]string, error)
+	// Realise installs appID at version ("" = latest). A returned error is the
+	// reason the user is shown, verbatim — including an architecture mismatch,
+	// which arrives here as an ordinary error and gets no special handling.
+	Realise(ctx context.Context, appID, version string) error
+	// Unrealise removes appID from this box.
+	Unrealise(ctx context.Context, appID string) error
+}
+
+// ReconcileAction is one thing this box must do to match the fleet desired set.
+type ReconcileAction struct {
+	// AppID is the app to act on.
+	AppID string
+	// Version is the desired version for an install ("" = latest); unused for a
+	// removal.
+	Version string
+	// Install is true to install, false to remove.
+	Install bool
+}
+
+// ReconcilePlan is the full set of differences between what the fleet wants and
+// what this box has. Computing it as a value, separately from performing it, is
+// what makes the interesting half testable without installing anything: every
+// convergence property below is a property of PlanReconcile, and the container
+// proof only has to show that Reconcile performs the plan it is given.
+type ReconcilePlan struct {
+	// Actions are the installs and removals, ordered by app id for determinism.
+	Actions []ReconcileAction
+}
+
+// ReconcileResult records what happened, per app.
+type ReconcileResult struct {
+	// Installed are apps newly realised on this box.
+	Installed []string
+	// Removed are apps unrealised from this box.
+	Removed []string
+	// Failed maps appID → the reason this box could not realise it. These are
+	// the entries that become realise_state='failed' rows and replicate, so the
+	// user sees "your arm64 box cannot install this" at whichever box they are
+	// standing at rather than an app that is simply absent.
+	Failed map[string]string
+}
+
+// PlanReconcile computes what this box must do to match the fleet desired set.
+//
+// The comparison is between the DESIRED set (including its tombstones) and
+// GROUND TRUTH from the Realiser — not the realisation table. Three cases:
+//
+//	desired=1, not on disk   → install
+//	desired=0, on disk       → remove   ← this is the case tombstones exist for
+//	desired=1, on disk       → nothing
+//
+// The second case is the one a "desired set" without tombstones cannot express
+// at all: a removed app would simply be absent from the desired set, which is
+// indistinguishable from an app that was never wanted, so a box that already had
+// it would keep it forever while every other box showed it gone.
+//
+// An app on disk that the desired set has never heard of is left ALONE. It is
+// not "undesired" — it is un-adopted, most likely a pre-existing install on a
+// box that predates the desired set, and deleting a user's apps because a table
+// is new would be the worst possible reading of the directive. Adoption is a
+// separate, explicit act (DesireInstall), not an inference.
+//
+// A version difference is likewise NOT an action here. Upgrades need their own
+// ordering and rollback story and pretending a reconcile loop can do them by
+// reinstalling would make every version skew a download storm.
+func (as *AppSync) PlanReconcile(r Realiser) (ReconcilePlan, error) {
+	if r == nil {
+		return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: nil Realiser")
+	}
+	onDisk, err := r.RealisedVersions()
+	if err != nil {
+		return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: read realised versions: %w", err)
+	}
+	desired, err := as.DesiredSet()
+	if err != nil {
+		return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: read desired set: %w", err)
+	}
+	var plan ReconcilePlan
+	for _, d := range desired {
+		_, have := onDisk[d.AppID]
+		switch {
+		case d.Desired && !have:
+			plan.Actions = append(plan.Actions, ReconcileAction{AppID: d.AppID, Version: d.Version, Install: true})
+		case !d.Desired && have:
+			plan.Actions = append(plan.Actions, ReconcileAction{AppID: d.AppID, Install: false})
+		}
+	}
+	sort.Slice(plan.Actions, func(i, j int) bool { return plan.Actions[i].AppID < plan.Actions[j].AppID })
+	return plan, nil
+}
+
+// Reconcile computes the plan and performs it, reporting each outcome into this
+// instance's realisation rows so peers learn what this box managed.
+//
+// Every outcome is reported, including the failures — that is the point. A box
+// that cannot install a desired app writes realise_state='failed' with the
+// installer's own reason and the row replicates, so the fleet can say WHY an app
+// is missing from one instance instead of the user discovering it is.
+//
+// The desired set is not touched, on any path, including the failure path. A box
+// that cannot install something has learned nothing about what the user wants.
+//
+// Reconcile does not loop or back off; the caller decides cadence. A failure is
+// retried on the next call, which is correct for a transient one (a download that
+// timed out) and harmless for a permanent one (an arch mismatch is refused before
+// anything is downloaded — services/appnet/registry.go checks ArchSupported
+// before it touches the filesystem).
+func (as *AppSync) Reconcile(ctx context.Context, instanceULID string, r Realiser) (ReconcileResult, error) {
+	res := ReconcileResult{Failed: map[string]string{}}
+	if instanceULID == "" {
+		return res, fmt.Errorf("appsync: Reconcile: instanceULID must not be empty")
+	}
+	plan, err := as.PlanReconcile(r)
+	if err != nil {
+		return res, err
+	}
+	for _, a := range plan.Actions {
+		if a.Install {
+			if rerr := r.Realise(ctx, a.AppID, a.Version); rerr != nil {
+				res.Failed[a.AppID] = rerr.Error()
+				if perr := as.ReportRealiseFailure(instanceULID, a.AppID, a.Version, rerr.Error()); perr != nil {
+					return res, fmt.Errorf("appsync: Reconcile: report failure for %s: %w", a.AppID, perr)
+				}
+				continue
+			}
+			if perr := as.LocalInstall(instanceULID, a.AppID, a.Version); perr != nil {
+				return res, fmt.Errorf("appsync: Reconcile: report install of %s: %w", a.AppID, perr)
+			}
+			res.Installed = append(res.Installed, a.AppID)
+			continue
+		}
+		if rerr := r.Unrealise(ctx, a.AppID); rerr != nil {
+			res.Failed[a.AppID] = rerr.Error()
+			if perr := as.ReportRealiseFailure(instanceULID, a.AppID, "", rerr.Error()); perr != nil {
+				return res, fmt.Errorf("appsync: Reconcile: report removal failure for %s: %w", a.AppID, perr)
+			}
+			continue
+		}
+		if perr := as.LocalUninstall(instanceULID, a.AppID); perr != nil {
+			return res, fmt.Errorf("appsync: Reconcile: report removal of %s: %w", a.AppID, perr)
+		}
+		res.Removed = append(res.Removed, a.AppID)
+	}
+	return res, nil
 }
 
 // ── Wire format helpers ───────────────────────────────────────────────────────
