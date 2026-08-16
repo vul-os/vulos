@@ -37,7 +37,6 @@ package fabric
 
 import (
 	"context"
-	"crypto/subtle"
 	"log"
 	"sort"
 	"sync"
@@ -70,7 +69,22 @@ type Config struct {
 	// peer request and required by this box's own handlers. Peers that cannot
 	// present it are rejected (401). Required — an empty secret disables the
 	// handlers (fail-closed: no auth means no exchange).
+	//
+	// This is the CURRENT secret: the one this box sends. What it ACCEPTS is
+	// Secrets, below, which during a rotation overlap is a superset.
 	Secret string
+
+	// Secrets is the rotation ring: the set of secrets this box accepts inbound
+	// (Secret, plus an overlap value while one is configured and unexpired) and
+	// the single value it sends (always Secret).
+	//
+	// Optional. When nil, New builds one with LoadSecretRingFromEnv, so a box
+	// gets rotation from VULOS_FABRIC_SECRET_ALSO / _ALSO_UNTIL with no change
+	// at the call site. When supplied, its Current MUST equal Secret — a ring
+	// that sends one value and reports another is the kind of divergence that
+	// would show up as an unexplained 401 halfway through a fleet roll, so it is
+	// a construction error rather than something to reconcile silently.
+	Secrets *SecretRing
 
 	// AppSync is the CRDT merge primitive (real *multiinstance.AppSync in prod).
 	// Required.
@@ -147,6 +161,16 @@ func New(cfg Config) (*Service, error) {
 	if cfg.SyncInterval <= 0 {
 		cfg.SyncInterval = 30 * time.Second
 	}
+	// FABRIC-SECRET-ROT-01. The ring is what authOK consults; cfg.Secret is only
+	// what we send. Building it here rather than at the call site means every
+	// existing constructor gets rotation without a main.go edit.
+	if cfg.Secrets == nil {
+		cfg.Secrets = LoadSecretRingFromEnv(cfg.Secret)
+		cfg.Secrets.LogSummary("[fabric]")
+	} else if cfg.Secrets.Current() != cfg.Secret {
+		return nil, errFabric("Config.Secrets.Current() does not match Config.Secret — " +
+			"a box that sends one secret and accepts another as 'current' would fail halfway through a fleet roll with an unexplained 401")
+	}
 	return &Service{
 		cfg:     cfg,
 		cursors: make(map[string]time.Time),
@@ -155,14 +179,25 @@ func New(cfg Config) (*Service, error) {
 	}, nil
 }
 
-// authOK reports whether presented matches the configured secret in constant
+// authOK reports whether presented is a secret this box accepts, in constant
 // time. An empty configured secret never matches (fail-closed).
+//
+// It goes through the rotation ring, not a single string: during a rotation
+// overlap the ring accepts the current secret AND the overlap value, and the
+// window is re-evaluated against the clock on every call — so it closes on a box
+// that is never restarted. See secretring.go.
 func (s *Service) authOK(presented string) bool {
 	if s.cfg.Secret == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(presented), []byte(s.cfg.Secret)) == 1
+	return s.cfg.Secrets.Accepts(presented)
 }
+
+// SecretRing returns this service's rotation ring (never nil after New). It is
+// exposed so the wiring can share ONE ring between the fabric handlers and the
+// crdtsync door rather than parsing the environment twice and risking two
+// different answers to "is the window open".
+func (s *Service) SecretRing() *SecretRing { return s.cfg.Secrets }
 
 // Run starts the background sync loop and blocks until ctx is cancelled. It
 // runs an immediate first sync, then syncs every SyncInterval, and also reacts

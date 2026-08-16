@@ -45,7 +45,7 @@
    `<script src>` would be a 404 and a dead app in every server.py that was not
    also edited. An inline copy has no such failure mode.
 
-   Regenerate the copies:  node frontend/apps/_shared/sync-api-helper.mjs
+   Regenerate the copies:  node frontend/apps/_shared/sync-shared-assets.mjs
    The copies are pinned byte-for-byte by
    backend/internal/docsref/appapibase_test.go, so drift fails the build.
    --------------------------------------------------------------------------- */

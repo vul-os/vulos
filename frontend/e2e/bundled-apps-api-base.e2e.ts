@@ -17,7 +17,7 @@
 // WHAT IS REAL AND WHAT IS A STAND-IN
 // -----------------------------------
 // REAL: `apps/_shared/vulos-api.js` is read off disk and inlined into the frame
-//   exactly as `sync-api-helper.mjs` inlines it into the shipping apps.
+//   exactly as `sync-shared-assets.mjs` inlines it into the shipping apps.
 // REAL: the frame URL and the sandbox attribute come from the shell's own
 //   `resolveAppFrameURL` / `iframeSandboxForURL` in src/core/AppOrigins.ts, with
 //   the two origin configurations a box can actually be in. Nothing about the

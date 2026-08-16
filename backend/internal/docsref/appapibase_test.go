@@ -236,7 +236,7 @@ func TestEveryAppCarriesTheSharedResolverVerbatim(t *testing.T) {
 		if m == nil {
 			if usesHelper {
 				t.Errorf("%s calls vulosApi.appUrl but carries no inlined vulos-api.js block; "+
-					"run `node %s/_shared/sync-api-helper.mjs`", app, bundledAppsDir)
+					"run `node %s/_shared/sync-shared-assets.mjs`", app, bundledAppsDir)
 			}
 			continue
 		}
@@ -244,7 +244,7 @@ func TestEveryAppCarriesTheSharedResolverVerbatim(t *testing.T) {
 		if m[1] != src {
 			t.Errorf("%s/index.html's inlined vulos-api.js has drifted from %s "+
 				"(%d bytes inlined vs %d bytes shared). The copies are mechanical: run "+
-				"`node %s/_shared/sync-api-helper.mjs`.",
+				"`node %s/_shared/sync-shared-assets.mjs`.",
 				app, sharedHelperRel, len(m[1]), len(src), bundledAppsDir)
 		}
 	}
