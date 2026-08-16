@@ -17,12 +17,36 @@ package proctl
 //
 // # What it does NOT prove
 //
-// That the byte layouts match a real X server, and that a real toolkit app
+// That the byte layouts match a real X server, or that a real toolkit app
 // answers a ping at all. A fake agreeing with the client that wrote it proves
 // only that they agree with each other — this repo's recorded lesson from the
-// kotva-cbor corpus. That half is proved separately against a real Xvfb, a real
-// matchbox window manager and a real GTK application; see xping_container_test
-// notes in the commit for this file.
+// kotva-cbor corpus.
+//
+// That half was proved by hand in a Debian trixie container (Xvfb,
+// matchbox-window-manager, zenity for GTK3, xeyes for a non-EWMH client),
+// running THIS package's source unmodified. It cannot run in CI on this
+// machine's `go test`, since macOS has no Xvfb; it is recorded here because a
+// verification nobody can find is a verification nobody repeats:
+//
+//	GTK3 app running                  responding, echo in 8ms
+//	same app, idle 25s, nothing drawn  responding, echo in 8ms
+//	same app, SIGSTOP                  not_responding ("the X server kept answering")
+//	same app, SIGCONT                  responding, echo in 1ms
+//	xeyes (Xt/Xaw, no _NET_WM_PING)    unknown, "2 windows examined"
+//	Xvfb itself SIGSTOPped             display_not_responding after 3005ms
+//	Xvfb resumed                       responding, echo in 31ms
+//
+// And, against the SAME SIGSTOPped application, the tools that were the
+// tempting shortcut: `xdotool search --name zenity` returned its window id,
+// `xprop -id` printed its full WM_PROTOCOLS, and `xwininfo -id` printed its
+// title. All three succeeded against an application that had not run an
+// instruction in minutes. Against the wedged SERVER, xdotool hung until it was
+// killed (exit 124). That is the whole argument for speaking the protocol,
+// measured rather than asserted.
+//
+// The tree walk was load-bearing there: matchbox reparents, and the visible
+// GTK dialog (0x400004) sat inside a matchbox frame (0x200101) one level below
+// root, where a probe reading only root's children would never have found it.
 
 import (
 	"encoding/binary"
