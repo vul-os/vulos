@@ -365,7 +365,7 @@ func (p *Pool) Launch(opts LaunchOpts) (*Session, error) {
 		}
 
 		// Wait for display
-		xSock := fmt.Sprintf("/tmp/.X11-unix/X%d", displayNum)
+		xSock := x11Socket(displayNum)
 		ready := false
 		for i := 0; i < 20; i++ {
 			if _, err := os.Stat(xSock); err == nil {

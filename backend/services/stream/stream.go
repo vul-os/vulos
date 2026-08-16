@@ -189,7 +189,7 @@ func (s *Session) Stop() {
 		signalGroup(cmd, syscall.SIGKILL)
 	}
 	// Clean up X11 socket (Xvfb path)
-	os.Remove(fmt.Sprintf("/tmp/.X11-unix/X%d", s.displayNum))
+	os.Remove(x11Socket(s.displayNum))
 	os.Remove(fmt.Sprintf("/tmp/.X%d-lock", s.displayNum))
 	// Clean up cage per-session runtime dir (Wayland path)
 	if s.cageRTDir != "" {
