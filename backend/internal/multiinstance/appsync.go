@@ -958,16 +958,16 @@ func (as *AppSync) SignChangeset(cs *AppChangeset) error {
 //
 // It covers two sections:
 //
-//	1. UNINSTALL realisation entries — install entries are excluded because they
-//	   are not quorum-gated, which is what lets an install-only changeset be left
-//	   unsigned.
-//	2. EVERY fleet-desire row, BOTH polarities (SYNC-APPS-01). Desire is not
-//	   quorum-gated, so the signature is the only thing standing between a peer
-//	   and the fleet's app set — leaving desired=1 rows out would have left an
-//	   unauthenticated REMOTE-INSTALL primitive open, which is a strictly worse
-//	   hole than the unauthenticated remote-uninstall the quorum was built for.
-//	   Desire rows are excluded from section 1 (they are not observations about an
-//	   instance) so no row is covered twice.
+//  1. UNINSTALL realisation entries — install entries are excluded because they
+//     are not quorum-gated, which is what lets an install-only changeset be left
+//     unsigned.
+//  2. EVERY fleet-desire row, BOTH polarities (SYNC-APPS-01). Desire is not
+//     quorum-gated, so the signature is the only thing standing between a peer
+//     and the fleet's app set — leaving desired=1 rows out would have left an
+//     unauthenticated REMOTE-INSTALL primitive open, which is a strictly worse
+//     hole than the unauthenticated remote-uninstall the quorum was built for.
+//     Desire rows are excluded from section 1 (they are not observations about an
+//     instance) so no row is covered twice.
 //
 // Section 2 is APPENDED and is emitted only when there are desire rows, so for
 // any changeset a pre-SYNC-APPS-01 box could have produced the message is

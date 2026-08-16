@@ -146,32 +146,48 @@ func OSStateInventory() []StateEntry {
 		// ── what you install ────────────────────────────────────────────────
 		{
 			Name:     "installed app set",
-			Where:    "<root>/apps/<appID>/app.json — a DIRECTORY on local disk. There is no table.",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "<root>/apps/<appID>/app.json — a DIRECTORY on local disk, now reconciled against a replicated record.",
+			Engine:   EngineAppSync,
+			Status:   StatusPartial,
 			Evidence: "backend/services/appnet/store.go",
-			Anchor:   "func (s *AppStore) Installed()",
-			Why: "\"Installed\" is defined as \"a directory containing app.json exists on THIS box\" — Installed() is a filesystem " +
-				"scan and hasApp() is an os.Stat. A filesystem fact in a directory no replicator watches (services/sync covers " +
-				"<root>/data and <root>/db/browser-profiles, not <root>/apps) cannot reach another instance by any path that exists today.",
-			Consequence: "Install an app on your laptop instance and your other instance never learns about it. Nothing is " +
-				"queued, nothing is retried, and no status anywhere reports a difference — the second box simply does not have the app.",
+			Anchor:   "func (s *AppStore) RealisedVersions()",
+			Why: "\"Installed\" is still a filesystem fact — Installed() is a scan and hasApp() is an os.Stat, and that is correct: it " +
+				"is the ground truth a record can be checked against. What changed (SYNC-APPS-01) is that the disk is no longer the ONLY " +
+				"copy. AppStore now satisfies multiinstance.Realiser (RealisedVersions/Realise/Unrealise), so a fleet DESIRED set drives " +
+				"installs and removals here and this box reports back what it managed. " +
+				"PARTIAL, not syncing, and the remainder is deliberate rather than unfinished: bundled apps ship with the image and are " +
+				"never installed into <root>/apps; an app already on disk that the desired set has never heard of is left ALONE (un-adopted, " +
+				"not undesired — deleting a user's pre-existing apps because a table is new would be the worst reading of the directive); " +
+				"version skew is not reconciled, because upgrades need their own ordering and rollback story; and an install this box cannot " +
+				"perform stays absent by definition. Two boxes therefore converge on INTENT, not byte-for-byte on <root>/apps.",
+			Consequence: "Install an app on your laptop instance and your other instance now learns about it and installs it on its next " +
+				"reconcile pass. Where it cannot — wrong architecture, failed download — it records the reason on a replicated row instead " +
+				"of the app being silently missing. What still differs between boxes is bundled apps, versions, and anything installed " +
+				"before this existed.",
+			Note: "Unproven on this machine: a real two-box install over a real fabric connection. The merge, the desire algebra, the " +
+				"reconciler and the AppStore seam are proven in-process; ip netns is Linux-only and the install path downloads from a " +
+				"signed registry, so the end-to-end run belongs on a Linux box.",
 		},
 		{
 			Name:     "installed app set (the replicated mirror)",
-			Where:    "app_registry table in <root>/db/multiinstance.db",
+			Where:    "app_desired (fleet intent) + app_registry (per-instance realisation), <root>/db/multiinstance.db",
 			Engine:   EngineAppSync,
-			Status:   StatusGap,
+			Status:   StatusSyncs,
 			Evidence: "backend/internal/multiinstance/appsync.go",
-			Anchor:   "func (as *AppSync) LocalInstall(",
-			Why: "A signed-changeset CRDT with uninstall quorum, roster verification and generation epochs is built and wired over " +
-				"the fabric transport — and it replicates a table nothing ever writes. LocalInstall and LocalUninstall are the only " +
-				"local producers and neither has a non-test caller anywhere in backend/. POST /api/store/install goes to " +
-				"AppStore.Install and never touches AppSync. The pipe is real; there is nothing in it.",
-			Consequence: "The system reports app-registry replication as working, and it is: it faithfully converges an empty " +
-				"table. Two boxes agree perfectly about the apps neither of them has recorded.",
-			Note: "This is the sharper half of the installed-app gap: not missing machinery, but machinery with no producer. " +
-				"Pinned by TestInstalledAppSetHasNoLocalProducer, which scans the source rather than trusting this comment.",
+			Anchor:   "func (as *AppSync) DesireInstall(",
+			Why: "A signed-changeset CRDT with uninstall quorum, roster verification and generation epochs was built and wired over the " +
+				"fabric transport — and until 2026-08-16 it replicated a table NOTHING EVER WROTE. LocalInstall/LocalUninstall had no " +
+				"non-test caller in 512 scanned files; POST /api/store/install went to AppStore.Install, which creates a directory. " +
+				"Two things were missing and only one of them was wiring. The other was shape: app_registry is keyed " +
+				"(instance_ulid, app_id), a per-instance INVENTORY, which records what a box has — a description. \"I installed Steam, put " +
+				"it everywhere\" is an INTENT and no row could hold one. So app_desired (one row per app, no instance in the key) now " +
+				"carries desire, app_registry carries realisation, and the handlers write both.",
+			Consequence: "The replicated record now reflects real installs and real removals, and a box that cannot realise a desired app " +
+				"reports why on a row the other boxes can read.",
+			Note: "Removal is a TOMBSTONE, never a deleted row: an absence is indistinguishable from \"never wanted\", so any peer still " +
+				"holding a pre-removal copy would resurrect the app on every sync, forever. Nothing in the realisation path writes " +
+				"app_desired, so one broken box cannot uninstall the fleet. Pinned by TestInstalledAppSetHasBothProducers, which scans the " +
+				"source rather than trusting this comment.",
 		},
 		{
 			Name:     "app catalogue (which apps are installABLE)",

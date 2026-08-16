@@ -3853,6 +3853,122 @@ func main() {
 		apps, _ := appStore.Installed()
 		writeJSON(w, apps)
 	})
+
+	// ── SYNC-APPS-01: the producers the app-registry replicator never had ─────
+	//
+	// roadmap/SYNC-INVENTORY.md §1: a signed-changeset CRDT with roster
+	// verification, uninstall quorum and generation epochs was built, wired over
+	// the fabric transport and carrying a table NOTHING EVER WROTE. Install went
+	// to AppStore.Install, which creates a directory. Every box converged an
+	// empty table, perfectly, and reported it healthy.
+	//
+	// These are the two calls that were missing, and they are deliberately two,
+	// because an install is TWO DIFFERENT FACTS and conflating them is the design
+	// error underneath the missing wiring:
+	//
+	//	DESIRE      "the user wants this app"     — fleet-level, one row per app
+	//	REALISATION "this box now has it"         — per-instance, one row per box
+	//
+	// An inventory of what each box happens to have cannot express "put it
+	// everywhere"; that is a description, not an intent. Recording only the
+	// realisation would replicate a fact about this machine and leave the other
+	// boxes with nothing to act on.
+	//
+	// Both are best-effort and never fail the request: the app IS installed on
+	// this box by the time we get here, and refusing a completed install because
+	// a sync row could not be written would turn a replication problem into a
+	// user-visible outage. A failure is logged and the next reconcile pass
+	// repairs the realisation half from disk.
+	recordAppDesire := func(appID, version string, want bool) {
+		if fabricAppSync == nil || cfg.InstanceID == "" || appID == "" {
+			return
+		}
+		var err error
+		if want {
+			err = fabricAppSync.DesireInstall(cfg.InstanceID, appID, version)
+		} else {
+			err = fabricAppSync.DesireRemove(cfg.InstanceID, appID)
+		}
+		if err != nil {
+			log.Printf("[appsync] could not record fleet desire (%s, want=%v): %v — this box has the right app set, the others will not learn about this change", appID, want, err)
+		}
+	}
+	recordAppRealised := func(appID, version string) {
+		if fabricAppSync == nil || cfg.InstanceID == "" || appID == "" {
+			return
+		}
+		// Prefer the version the EXTRACTED manifest declares over the one the
+		// caller asked for ("latest" is not a version), matching what a
+		// filesystem rescan would report.
+		if m, err := appStore.GetManifest(appID); err == nil && m.Version != "" {
+			version = m.Version
+		}
+		if err := fabricAppSync.LocalInstall(cfg.InstanceID, appID, version); err != nil {
+			log.Printf("[appsync] could not record realisation of %q on this box: %v", appID, err)
+		}
+	}
+	recordAppUnrealised := func(appID string) {
+		if fabricAppSync == nil || cfg.InstanceID == "" || appID == "" {
+			return
+		}
+		if err := fabricAppSync.LocalUninstall(cfg.InstanceID, appID); err != nil {
+			log.Printf("[appsync] could not record removal of %q from this box: %v", appID, err)
+		}
+	}
+
+	// The other half: turn the fleet's desire into apps on THIS box's disk.
+	//
+	// Producing desire rows alone would replicate an intention nothing acts on —
+	// the same shape of defect this work exists to remove, one layer up. The loop
+	// installs what the fleet wants and this box lacks, removes what the fleet
+	// has tombstoned and this box still has, and — the part the directive
+	// actually asks for — records WHY when it cannot, so a box that fails is a
+	// box REPORTING, not an app quietly missing on one machine.
+	//
+	// An app on disk the desired set has never heard of is left alone: it is
+	// un-adopted, not undesired, and deleting a user's pre-existing apps because
+	// a table is new would be the worst possible reading of "everything syncs".
+	// The desired set starts EMPTY and no migration backfills it, so on an
+	// upgraded box this loop does nothing at all until someone installs or
+	// removes something.
+	//
+	// VULOS_APP_RECONCILE=off disables it. It exists because a loop that installs
+	// software on its own and cannot be stopped is worse than one that can, not
+	// because syncing apps is optional — under the directive it is the default.
+	if fabricAppSync != nil && cfg.InstanceID != "" && !strings.EqualFold(os.Getenv("VULOS_APP_RECONCILE"), "off") {
+		go func() {
+			// A single goroutine, so passes are serial by construction and a slow
+			// install can never overlap the next tick.
+			t := time.NewTicker(2 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+				}
+				res, err := fabricAppSync.Reconcile(ctx, cfg.InstanceID, appStore)
+				if err != nil {
+					log.Printf("[appsync] reconcile: %v", err)
+					continue
+				}
+				for _, id := range res.Installed {
+					if m, merr := appStore.GetManifest(id); merr == nil {
+						wireAppGateway(m)
+					}
+				}
+				if len(res.Installed) > 0 || len(res.Removed) > 0 {
+					desktopSvc.Scan()
+					log.Printf("[appsync] reconciled to the fleet desired set: installed %v, removed %v", res.Installed, res.Removed)
+				}
+				for id, why := range res.Failed {
+					// Logged AND recorded on the replicated row, so the reason
+					// reaches whichever box the user is standing at.
+					log.Printf("[appsync] this box cannot realise %q: %s", id, why)
+				}
+			}
+		}()
+	}
 	mux.HandleFunc("POST /api/store/install", func(w http.ResponseWriter, r *http.Request) {
 		// Admin only
 		if p, _ := authStore.GetProfile(r.Header.Get("X-User-ID")); p == nil || p.Role != auth.RoleAdmin {
@@ -3875,6 +3991,10 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// SYNC-APPS-01: an install is TWO facts, and conflating them is what
+		// left the app set unsynced. See recordAppDesire.
+		recordAppDesire(entry.ID, entry.Version, true)
+		recordAppRealised(entry.ID, entry.Version)
 		// BUG FIX (2026-07-12): wire the gateway grants (storage/integration/
 		// entitlement) for this app NOW rather than only at next process
 		// restart — see wireAppGateway's doc comment. Read the manifest back
@@ -3915,6 +4035,11 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// SYNC-APPS-01. The desire tombstone is the half that makes this stick:
+		// without it the removal is spelled as an absence, and the next sync
+		// with any box that still has the app puts it straight back.
+		recordAppDesire(req.AppID, "", false)
+		recordAppUnrealised(req.AppID)
 		// Rescan desktop entries
 		desktopSvc.Scan()
 		writeJSON(w, map[string]string{"status": "uninstalled"})
@@ -3957,6 +4082,9 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
+		// SYNC-APPS-01: same two facts as POST /api/store/install.
+		recordAppDesire(req.AppID, req.Version, true)
+		recordAppRealised(req.AppID, req.Version)
 		// BUG FIX (2026-07-12): same live-wiring fix as POST /api/store/install
 		// — a registry-installed app's manifest can still declare storage/
 		// integration/product permissions and must not wait for a restart.

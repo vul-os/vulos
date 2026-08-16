@@ -193,7 +193,13 @@ func TestEveryEntryIsReasonedAndGapsNameTheirConsequence(t *testing.T) {
 func TestTheKnownGapsAreStillRecorded(t *testing.T) {
 	want := []string{
 		"installed app set",
-		"installed app set (the replicated mirror)",
+		// "installed app set (the replicated mirror)" was here and was FIXED on
+		// 2026-08-16 (SYNC-APPS-01): app_desired carries fleet intent, app_registry
+		// carries per-instance realisation, and the store handlers write both — so
+		// it is no longer a gap and TestInstalledAppSetHasBothProducers now scans
+		// the source to keep it that way. "installed app set" itself stays pinned
+		// as PARTIAL: bundled apps, un-adopted pre-existing installs and version
+		// skew still leave <root>/apps differing between boxes by design.
 		"per-app sandbox storage (appfs)",
 		"app launcher visibility and suite selection",
 		"theme, accent, night shift (the copy the shell actually uses)",
@@ -227,29 +233,33 @@ func TestTheKnownGapsAreStillRecorded(t *testing.T) {
 	}
 }
 
-// TestInstalledAppSetHasNoLocalProducer is the sharpest guard here, and the
-// one that answers the App Hub's blocking question mechanically instead of by
+// TestInstalledAppSetHasBothProducers is the sharpest guard here, and the one
+// that answers the App Hub's blocking question mechanically instead of by
 // assertion.
 //
-// AppSync.LocalInstall / LocalUninstall are the ONLY way a locally installed
-// app can enter app_registry, the table the fabric transport replicates. This
-// test scans every non-test Go file under backend/ for a call to either. Today
-// it finds none: POST /api/store/install goes to AppStore.Install, which
-// creates a directory and never touches AppSync. So the replication is real
-// and carries nothing.
+// It was TestInstalledAppSetHasNoLocalProducer until 2026-08-16, and it fired:
+// the installed app set gained producers, so the assertion is now the mirror
+// image. Inverted rather than deleted, because "this is wired" decays exactly
+// the way "this is not wired" did — silently, with every other test green.
 //
-// The test therefore goes RED IN BOTH DIRECTIONS:
+// It requires TWO producers, and that is the part the original could not have
+// caught. An install is two different facts:
 //
-//   - if someone wires the producer, this fails and the inventory entry and
-//     roadmap/SYNC-INVENTORY.md must be updated to say apps now sync;
-//   - if someone claims apps sync without wiring it, the inventory entry has
-//     to stay StatusGap, which the assertion below enforces.
+//	DESIRE      DesireInstall / DesireRemove   fleet-level, one row per app
+//	REALISATION LocalInstall / LocalUninstall  per-instance, one row per box
+//
+// Realisation alone was never the missing piece in principle — it is a
+// per-instance inventory, a description of what each box happens to have, and
+// the directive asks for "put it everywhere", which is an intent. A guard that
+// checked only for LocalInstall would report PASS on a system that had quietly
+// reverted to inventory-only replication, which is the very state the audit
+// found. So both are required, separately, with separate messages.
 //
 // A source scan rather than a comment, because a comment cannot tell a call
 // that RUNS from one that merely EXISTS — the same reasoning behind
 // TestCRDTSyncCallSiteIsReachable in cmd/server.
-func TestInstalledAppSetHasNoLocalProducer(t *testing.T) {
-	var callers []string
+func TestInstalledAppSetHasBothProducers(t *testing.T) {
+	var realisers, desirers []string
 	scanned := 0
 
 	backend := filepath.Join(repoRoot, "backend")
@@ -263,7 +273,9 @@ func TestInstalledAppSetHasNoLocalProducer(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		// appsync.go DEFINES the methods; a definition is not a caller.
+		// appsync.go DEFINES the methods; a definition is not a caller. Nor is
+		// the reconciler inside it — Reconcile calls LocalInstall, but a loop
+		// that nothing outside the package ever starts produces nothing.
 		if strings.HasSuffix(filepath.ToSlash(path), "internal/multiinstance/appsync.go") {
 			return nil
 		}
@@ -280,7 +292,10 @@ func TestInstalledAppSetHasNoLocalProducer(t *testing.T) {
 				continue
 			}
 			if strings.Contains(line, ".LocalInstall(") || strings.Contains(line, ".LocalUninstall(") {
-				callers = append(callers, filepath.ToSlash(path)+": "+trimmed)
+				realisers = append(realisers, filepath.ToSlash(path)+": "+trimmed)
+			}
+			if strings.Contains(line, ".DesireInstall(") || strings.Contains(line, ".DesireRemove(") {
+				desirers = append(desirers, filepath.ToSlash(path)+": "+trimmed)
 			}
 		}
 		return nil
@@ -297,19 +312,33 @@ func TestInstalledAppSetHasNoLocalProducer(t *testing.T) {
 
 	inv := findEntry(t, "installed app set (the replicated mirror)")
 
-	if len(callers) == 0 {
-		if inv.Status != StatusGap {
-			t.Errorf("app_registry still has no local producer, but the inventory records it as %q — it must stay %q", inv.Status, StatusGap)
+	if len(desirers) == 0 {
+		t.Errorf("NOTHING outside internal/multiinstance calls DesireInstall or DesireRemove, so the FLEET DESIRED SET has no "+
+			"producer. Whatever else replicates, an install on one box is not being expressed as an intent for the others, and "+
+			"app_registry alone is a per-instance inventory — a description of what each box happens to have. That is the exact state "+
+			"roadmap/SYNC-INVENTORY.md §1 recorded as the largest gap against the directive. If this is now deliberate, the %q entry "+
+			"must go back to %q and say why.", "installed app set (the replicated mirror)", StatusGap)
+	}
+	if len(realisers) == 0 {
+		t.Errorf("NOTHING outside internal/multiinstance calls LocalInstall or LocalUninstall, so no box reports what it actually " +
+			"managed to install. The fleet can want apps and never learn which instance has them, which is the half that lets a box " +
+			"say WHY it could not install something instead of the app being silently missing.")
+	}
+	if len(desirers) == 0 || len(realisers) == 0 {
+		if inv.Status == StatusSyncs {
+			t.Errorf("...and the inventory still claims %q. A claim without a producer is what this whole audit was about.", StatusSyncs)
 		}
-		t.Logf("scanned %d non-test Go files: app_registry has no local producer, so the installed app set does not sync", scanned)
 		return
 	}
 
-	t.Fatalf("app_registry now HAS a local producer (%d call site(s)):\n  %s\n\n"+
-		"This is good news, and it means the audit's headline finding is out of date. Update the %q and %q inventory entries, "+
-		"roadmap/SYNC-INVENTORY.md and roadmap/SYNC.md in the same commit, then remove this branch of the test.",
-		len(callers), strings.Join(callers, "\n  "),
-		"installed app set", "installed app set (the replicated mirror)")
+	if inv.Status != StatusSyncs {
+		t.Errorf("both producers are wired (%d desire, %d realisation call sites) but the inventory records %q as %q. "+
+			"If the wiring is real the entry should say so; if it is unreachable in production, say THAT — an entry that "+
+			"undersells working code is as misleading as one that oversells missing code.",
+			len(desirers), len(realisers), inv.Name, inv.Status)
+	}
+	t.Logf("scanned %d non-test Go files: desire producers %v; realisation producers %v",
+		scanned, desirers, realisers)
 }
 
 // TestShellArrangementIsBrowserLocal pins the second headline finding: the
