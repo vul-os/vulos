@@ -13,8 +13,11 @@ package appnet
 // wholly empty store with no error anywhere.
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -238,5 +241,97 @@ func TestInstall_RefusesWrongArch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "arm64") || !strings.Contains(err.Error(), "amd64") {
 		t.Fatalf("refusal does not name the mismatch: %v", err)
+	}
+}
+
+// ── The undeclared-arch ratchet ──────────────────────────────────────────────
+//
+// arch.go's policy block promises this test exists: "arch_test.go ratchets the
+// undeclared count: it may fall, never rise. A new entry that does not declare
+// `arch` fails the build." Without it the policy is prose, and the permissive
+// branch in ArchSupported has nothing bounding it.
+//
+// The ceiling is a LITERAL transcribed from a measurement of registry.json on
+// 2026-08-17, deliberately NOT computed from the file under test. A ratchet
+// that derives its own bound from its subject proves only that the file agrees
+// with itself — the self-consistency trap that already let a size-limit test
+// pass while its constant was raised a thousandfold.
+const undeclaredArchCeiling = 44
+
+// registryTotalFloor guards the guard. If registry.json moves, shrinks, or
+// fails to parse, a count of zero undeclared entries would read as PERFECT
+// COMPLIANCE and this test would go green over an empty examination. Every
+// guard in this suite that carried a coverage-count assertion survived
+// mutation; every one that lacked one did not.
+const registryTotalFloor = 56
+
+func TestRegistry_UndeclaredArchOnlyEverFalls(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "registry.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read the registry this gate exists to bound: %v", err)
+	}
+	var reg struct {
+		Apps map[string]struct {
+			Arch []string `json:"arch"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(raw, &reg); err != nil {
+		t.Fatalf("registry.json did not parse: %v", err)
+	}
+	if len(reg.Apps) < registryTotalFloor {
+		t.Fatalf("examined %d entries, floor is %d — a shrinking registry would "+
+			"make this gate pass by looking at nothing",
+			len(reg.Apps), registryTotalFloor)
+	}
+
+	var undeclared []string
+	for id, e := range reg.Apps {
+		if !ArchDeclared(e.Arch) {
+			undeclared = append(undeclared, id)
+		}
+	}
+	sort.Strings(undeclared)
+
+	if len(undeclared) > undeclaredArchCeiling {
+		t.Fatalf("%d entries declare no architecture, ceiling is %d.\n"+
+			"An undeclared entry is an UNVERIFIED CLAIM TO EVERY ARCHITECTURE "+
+			"Vulos ships: ArchSupported permits it, the box downloads it, and an "+
+			"amd64 binary that passes its checksum will not exec on arm64.\n"+
+			"Declare `arch` on the new entry — measured, not guessed.\nundeclared: %v",
+			len(undeclared), undeclaredArchCeiling, undeclared)
+	}
+	if len(undeclared) < undeclaredArchCeiling {
+		t.Fatalf("%d entries now declare no architecture, below the ceiling of %d. "+
+			"Good — lower undeclaredArchCeiling to %d so the ratchet keeps its grip. "+
+			"A bound that never tightens is not a ratchet.\nundeclared: %v",
+			len(undeclared), undeclaredArchCeiling, len(undeclared), undeclared)
+	}
+}
+
+// TestArchSupported_UndeclaredFollowsPolicyBothWays pins the two halves of the
+// migration arch.go describes. Today undeclared is PERMITTED so the 44 keep
+// working; when the catalogue merge populates them, strict becomes the default
+// and undeclared must REFUSE. Asserting only today's half would let the strict
+// branch rot unnoticed until the day it is switched on.
+func TestArchSupported_UndeclaredFollowsPolicyBothWays(t *testing.T) {
+	box := []string{"arm64"}
+
+	SetStrictUndeclaredArch(false)
+	defer SetStrictUndeclaredArch(false)
+	if !ArchSupported(nil, box) {
+		t.Error("undeclared refused under the permissive default — that empties " +
+			"44 working entries to fix a claim")
+	}
+
+	SetStrictUndeclaredArch(true)
+	if ArchSupported(nil, box) {
+		t.Error("undeclared PERMITTED under strict policy — the strict branch is dead")
+	}
+	// Malformed is not absent, in either mode: [""] carries a broken audit and
+	// must fail closed even while undeclared is being tolerated.
+	SetStrictUndeclaredArch(false)
+	if ArchSupported([]string{""}, box) {
+		t.Error("a declaration that normalises to nothing was treated as absent")
 	}
 }
