@@ -5,6 +5,333 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self';">
   <title>Weather</title>
+<script data-vulos-shared="vulos-theme.js">
+/* ---------------------------------------------------------------------------
+   vulos-theme.js — let a bundled app render in the theme the SHELL is in.
+
+   THE PROBLEM
+   -----------
+   A bundled app is a separate document in an iframe. With per-app origins off
+   (the default) it runs in an OPAQUE origin — src/core/AppOrigins.ts withholds
+   allow-same-origin on the shell's own origin, deliberately — and with them on
+   it runs on its own origin. Either way it cannot read the shell's
+   <html data-theme>, and it cannot read the shell's localStorage where
+   ThemeProvider persists the user's choice.
+
+   So prefers-color-scheme is all an app can see by itself, and that is only
+   ever right for ONE of the shell's four theme modes. ThemeProvider supports
+   'auto' (follow the system), 'light', 'dark' and 'schedule'; three of those
+   can disagree with the system preference, and when they do the app renders
+   light furniture inside a dark shell. An app that is consistently wrong is
+   better than one that is wrong only sometimes — so guessing is not an option
+   either.
+
+   THE CHANNEL
+   -----------
+   The shell already puts data into the app's frame URL. AppBridge.appFrameSrc()
+   appends `#__vulos_s=<seed>`, the app's own storage snapshot, to every frame
+   src. A fragment is the right carrier and it is already proven here:
+
+     - it never reaches the server, so it cannot leak into gateway logs or be
+       cached by the proxy;
+     - it survives the `?_r=<attempt>` query-string cache-bust IframeApp applies
+       when it retries a frame;
+     - it is readable on the frame's first line, before first paint, so there is
+       no flash of the wrong theme;
+     - changing ONLY the fragment fires hashchange without reloading the frame,
+       so a live theme switch in the shell costs the app nothing.
+
+   This file reads `__vulos_t` off that same fragment and stamps data-theme on
+   <html>, where apps/_shared/vulos-tokens.css layers 2 and 3 pick it up. When
+   the parameter is ABSENT it stamps nothing, on purpose: the attribute's
+   absence is what lets the prefers-color-scheme fallback in layer 4 govern. A
+   stamped guess would silently disable that fallback.
+
+   WHAT IS STILL MISSING
+   ---------------------
+   The sender. appFrameSrc must add `__vulos_t=<resolved>` alongside
+   `__vulos_s`, and that file is shell-owned. Until it does, every app follows
+   the system preference — correct for the DEFAULT mode ('auto') and wrong only
+   for an explicit Light/Dark/Schedule choice. This file is the receiving half
+   and is inert until the sender lands: no parameter, no attribute, no change.
+
+   THIS FILE IS A SINGLE SOURCE OF TRUTH.
+   Inlined verbatim into every bundled app by sync-shared-assets.mjs and pinned
+   byte-for-byte by backend/internal/docsref/appthemetokens_test.go.
+   --------------------------------------------------------------------------- */
+(function (root) {
+  'use strict';
+
+  // The fragment key. Kept alongside __vulos_s, which AppBridge already sends.
+  var PARAM = '__vulos_t';
+  // The only two values that mean anything. ThemeProvider resolves 'auto' and
+  // 'schedule' down to one of these before it stamps its own attribute, so the
+  // app never has to know about modes — only about the resolved result.
+  var VALID = { light: 1, dark: 1 };
+
+  // themeFromHash extracts the resolved theme, or '' when the shell did not
+  // send one (or sent something that is not a theme).
+  function themeFromHash(hash) {
+    var h = typeof hash === 'string'
+      ? hash
+      : (root && root.location && root.location.hash) || '';
+    if (h.charAt(0) === '#') h = h.slice(1);
+    if (!h) return '';
+    for (var i = 0, parts = h.split('&'); i < parts.length; i++) {
+      var eq = parts[i].indexOf('=');
+      if (eq < 0) continue;
+      if (parts[i].slice(0, eq) !== PARAM) continue;
+      var v = decodeURIComponent(parts[i].slice(eq + 1)).toLowerCase();
+      return VALID[v] ? v : '';
+    }
+    return '';
+  }
+
+  // applyTheme stamps <html data-theme>, or REMOVES it when the shell has not
+  // told us — absence is what hands control to the prefers-color-scheme
+  // fallback, so it is a meaningful state and not merely "unset".
+  function applyTheme(doc, hash) {
+    var d = doc || (root && root.document);
+    if (!d || !d.documentElement) return '';
+    var t = themeFromHash(hash);
+    if (t) d.documentElement.setAttribute('data-theme', t);
+    else d.documentElement.removeAttribute('data-theme');
+    return t;
+  }
+
+  var api = { themeFromHash: themeFromHash, applyTheme: applyTheme };
+  if (root) {
+    root.vulosTheme = api;
+    applyTheme();
+    // A shell-side theme switch rewrites only the fragment, so the frame is not
+    // reloaded and this is the only thing that would notice.
+    if (root.addEventListener) {
+      root.addEventListener('hashchange', function () { applyTheme(); });
+    }
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : null);
+</script>
+<style data-vulos-shared="vulos-tokens.css">
+/* ════════════════════════════════════════════════════════════════════════
+   vulos-tokens.css — shared design tokens for the bundled single-file apps
+   ────────────────────────────────────────────────────────────────────────
+   This mirrors the semantic variables in /src/index.css so the whole suite
+   reads as one product. It is inlined verbatim into every bundled app as a
+   style element tagged data-vulos-shared="vulos-tokens.css" by
+   apps/_shared/sync-shared-assets.mjs, and pinned byte-for-byte by
+   backend/internal/docsref/appthemetokens_test.go.
+
+   WHY INLINED AND NOT LINKED
+   Each app ships its own hand-rolled server.py with its own ad-hoc static
+   route table. Only four of the fifteen (browser, camera, phone,
+   system-info) ever special-cased `/vulos-tokens.css` to escape their APP_DIR
+   and serve this file; the other eleven would 404 a <link>. An inline copy
+   has no such failure mode — and no round trip, so there is no unstyled
+   first paint either.
+
+   STRUCTURE — the same four layers as /src/index.css, in the same order:
+     1. :root                     structural tokens + the DARK palette as the
+                                  shipped default, and EVERY alias, defined
+                                  exactly once so no colour's only definition
+                                  lives inside a conditional block.
+     2. [data-theme="dark"]       the dark palette again, explicitly, so an
+                                  explicit Dark choice is symmetric with Light.
+     3. [data-theme="light"]      the light palette.
+     4. @media (prefers-color-scheme: light) :root:not([data-theme])
+                                  the pure-CSS fallback, for a document that
+                                  has not been told the shell's theme.
+
+   HOW AN APP LEARNS THE THEME
+   A bundled app is a SEPARATE DOCUMENT in an iframe — on an opaque origin
+   when per-app origins are off, on its own origin when they are on. Either
+   way it cannot read the shell's <html data-theme> or the shell's
+   localStorage, so layer 4 alone would leave an app disagreeing with a shell
+   whose theme the user set EXPLICITLY (Light on a dark-system machine, or the
+   Schedule mode) — which is worse than being consistently dark.
+
+   The shell must therefore tell it, and there is already a channel for
+   exactly this: src/core/AppBridge.ts appFrameSrc() appends
+   `#__vulos_s=<seed>` to every app frame URL. A fragment never reaches the
+   server, survives the query-string cache-bust IframeApp applies on retry,
+   and is readable by the frame on its very first line — before first paint.
+   apps/_shared/vulos-theme.js reads `__vulos_t` off that same fragment and
+   stamps data-theme, falling back to prefers-color-scheme when it is absent.
+   Sending it is a one-line change in appFrameSrc, which is shell-owned; until
+   it lands, apps follow the system preference, which is correct for the
+   DEFAULT theme mode ('auto') and wrong only for an explicit choice.
+
+   Canonical names match /src/index.css (--bg-*, --text-*, --border-*,
+   --accent). Short aliases (--surface, --text, --accent2, status colours) are
+   provided so existing app CSS can adopt the tokens with minimal churn.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Shared shape + type (theme-agnostic) ── */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Inter', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* ── DARK PALETTE (shipped default) ── */
+  color-scheme: dark;
+
+  --accent: #5b6cff;
+  --accent-hover: #4a58d1;
+  --accent2: #7c6ef7;
+  --accent-contrast: #ffffff;
+
+  --bg-base: #08090c;
+  --bg-surface: #0f1116;
+  --bg-elevated: #171a21;
+  --bg-hover: #1e222b;
+
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
+
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
+  --text-ghost: #414653;
+
+  --ok: #35c081;
+  --ok-bright: #4ade80;
+  --warn: #f0b232;
+  --warn-bright: #fbbf24;
+  --danger: #f2565b;
+  --danger-bright: #f87171;
+
+  /* ── Aliases. Defined ONCE, here, as var() indirections: they follow
+     whichever palette is in force, so no theme block ever has to restate
+     them and none of them can go missing in one theme only. ── */
+  --bg: var(--bg-base);
+  --surface: var(--bg-surface);
+  --surface2: var(--bg-elevated);
+  --surface3: var(--bg-hover);
+  --elevated: var(--bg-elevated);
+  --border: var(--border-default);
+  --border2: var(--border-strong);
+  --text: var(--text-primary);
+  --text2: var(--text-tertiary);
+  --text3: var(--text-ghost);
+  --muted: var(--text-muted);
+  --green: var(--ok-bright);
+  --green2: var(--ok);
+  --red: var(--danger-bright);
+  --yellow: var(--warn-bright);
+  --blue: var(--accent);
+  --record: var(--danger);
+}
+
+/* 2. Explicit Dark — symmetric with Light, so `data-theme="dark"` on a
+   system-light machine is honoured rather than falling through to layer 4. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --accent: #5b6cff;
+  --accent-hover: #4a58d1;
+  --accent2: #7c6ef7;
+
+  --bg-base: #08090c;
+  --bg-surface: #0f1116;
+  --bg-elevated: #171a21;
+  --bg-hover: #1e222b;
+
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
+
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
+  --text-ghost: #414653;
+
+  --ok: #35c081;
+  --ok-bright: #4ade80;
+  --warn: #f0b232;
+  --warn-bright: #fbbf24;
+  --danger: #f2565b;
+  --danger-bright: #f87171;
+}
+
+/* 3. Explicit Light. Values are /src/index.css's light palette, including the
+   text ramp it derived by measurement against its own surfaces — the muted and
+   faint steps sit closer together than in dark because a near-white ground has
+   little room between AA and invisible. The status colours are the light ones
+   too: the dark theme's brights measure well under 4.5:1 on white. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --accent: #4d5efb;
+  --accent-hover: #3d4bd0;
+  --accent2: #6d5ef0;
+
+  --bg-base: #ffffff;
+  --bg-surface: #f7f8fa;
+  --bg-elevated: #eef0f4;
+  --bg-hover: #e7eaf0;
+
+  --border-default: #e2e5eb;
+  --border-strong: #cfd4dd;
+  --border-emphasis: #b7bdc9;
+
+  --text-primary: #12141a;
+  --text-secondary: #333844;
+  --text-tertiary: #565d6b;
+  --text-muted: #5c626e;
+  --text-faint: #606977;
+  --text-ghost: #aab0bc;
+
+  --ok: #16a34a;
+  --ok-bright: #16a34a;
+  --warn: #d97706;
+  --warn-bright: #d97706;
+  --danger: #dc2626;
+  --danger-bright: #dc2626;
+}
+
+/* 4. Pure-CSS fallback for a document that has NOT been told the shell's
+   theme. Only applies when no explicit data-theme is present, so the stamped
+   attribute always wins. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+
+    --accent: #4d5efb;
+    --accent-hover: #3d4bd0;
+    --accent2: #6d5ef0;
+
+    --bg-base: #ffffff;
+    --bg-surface: #f7f8fa;
+    --bg-elevated: #eef0f4;
+    --bg-hover: #e7eaf0;
+
+    --border-default: #e2e5eb;
+    --border-strong: #cfd4dd;
+    --border-emphasis: #b7bdc9;
+
+    --text-primary: #12141a;
+    --text-secondary: #333844;
+    --text-tertiary: #565d6b;
+    --text-muted: #5c626e;
+    --text-faint: #606977;
+    --text-ghost: #aab0bc;
+
+    --ok: #16a34a;
+    --ok-bright: #16a34a;
+    --warn: #d97706;
+    --warn-bright: #d97706;
+    --danger: #dc2626;
+    --danger-bright: #dc2626;
+  }
+}
+</style>
   <style>
     :root {
       color-scheme: dark;

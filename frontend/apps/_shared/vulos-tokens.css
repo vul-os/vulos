@@ -3,7 +3,7 @@
    ────────────────────────────────────────────────────────────────────────
    This mirrors the semantic variables in /src/index.css so the whole suite
    reads as one product. It is inlined verbatim into every bundled app as a
-   <style data-vulos-shared="vulos-tokens.css"> block by
+   style element tagged data-vulos-shared="vulos-tokens.css" by
    apps/_shared/sync-shared-assets.mjs, and pinned byte-for-byte by
    backend/internal/docsref/appthemetokens_test.go.
 
