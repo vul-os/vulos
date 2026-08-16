@@ -35,6 +35,14 @@
 //
 // NO SHARED PORT: binds an ephemeral port of its own, never the suite's
 // preview server or baseURL.
+//
+// SHOWN CAPABLE OF FAILING (chromium, 7/7 green clean):
+//   - delete the [data-theme="light"] block from vulos-tokens.css and re-sync →
+//     "an explicit Light ... BEATS the dark system preference" and the live
+//     switch both fail. Structure alone would not have caught it: the Go guard
+//     only sees the source file, which is why this one measures computed style.
+//   - drop the value validation in vulos-theme.js (stamp whatever arrives) →
+//     "a junk theme value is ignored rather than stamped" fails.
 
 import { test, expect, type Page } from '@playwright/test'
 import http from 'node:http'
