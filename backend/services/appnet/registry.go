@@ -375,21 +375,34 @@ func requiresChecksum(install string) bool {
 	return binaryDownloadRe.MatchString(install)
 }
 
-// archiveExtensions are the archive formats staticInstall can unpack. Anything
-// else that arrives on the download path is treated as a single binary.
-var archiveExtensions = []string{".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip"}
+// tarExtensions are the formats handed to the `tar` binary. Zip is NOT among
+// them and must never be added.
+//
+// GNU tar — what the shipped Debian image has — cannot read a zip at all. BSD
+// tar (libarchive), which is what a developer Mac has, cannot only read one but
+// will happily extract it. So routing .zip to the tar branch works on the
+// machine the tests run on and fails on every box a user owns. That is the
+// host-is-not-the-target trap, and it was caught here by a mutation that
+// disabled the zip branch and survived: the fallthrough silently did the job on
+// macOS. Zip is dispatched to extractZip, in-process, on every platform.
+var tarExtensions = []string{".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"}
 
-// isArchiveURL reports whether a download URL names an archive we can unpack.
+// isTarURL reports whether a download URL names an archive for the tar branch.
 // The query string is stripped first so a signed/CDN URL is still classified.
-func isArchiveURL(url string) bool {
+func isTarURL(url string) bool {
 	lower := strings.ToLower(strings.SplitN(url, "?", 2)[0])
-	for _, ext := range archiveExtensions {
+	for _, ext := range tarExtensions {
 		if strings.HasSuffix(lower, ext) {
 			return true
 		}
 	}
 	return false
 }
+
+// isArchiveURL reports whether a URL names anything staticInstall unpacks
+// rather than installing as a single binary. Used by validateRecipeSecurity to
+// refuse a binary_name that would silently do nothing.
+func isArchiveURL(url string) bool { return isTarURL(url) || isZipURL(url) }
 
 // HasArtifacts reports whether this recipe uses the per-architecture form.
 func (v *VersionRecipe) HasArtifacts() bool { return len(v.Artifacts) > 0 }
@@ -1488,12 +1501,15 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 		log.Printf("[registry/static] checksum OK (%s)", got[:12])
 	}
 
-	// Detect archive vs plain binary by URL extension.
+	// Detect archive vs plain binary by URL extension. The three branches are
+	// mutually exclusive by construction: a zip must reach extractZip and must
+	// never fall through to `tar`, because whether that fallthrough "works"
+	// depends on which tar the host has (see tarExtensions).
 	if isZipURL(url) {
 		return extractZip(tmpPath, appDir, recipe.ArchiveStrip)
 	}
 
-	if isArchiveURL(url) {
+	if isTarURL(url) {
 		// SECAUDIT2 H1: pre-extraction traversal screen. `tar` does not block
 		// `../` / absolute / symlink-escaping members. List members first and
 		// refuse any that would escape appDir. Archive-format-agnostic so
@@ -1583,9 +1599,24 @@ func extractZip(zipPath, appDir string, strip int) error {
 	}
 	defer zr.Close()
 
-	// The same defence the tar path applies: a zip member may name any path it
-	// likes, including ../.. and absolute ones. Screen every member BEFORE
-	// creating anything, so a malicious archive cannot half-extract.
+	// A zip member may name any path it likes, including ../.. and absolute
+	// ones. Screen every member BEFORE creating anything, so a malicious archive
+	// cannot half-extract.
+	//
+	// There are exactly TWO screens here and each one is load-bearing; neither
+	// is decoration for the other:
+	//
+	//   1. Absolute names are refused outright. Containment alone would not
+	//      refuse them — "/etc/cron.d/evil" trims to a relative path that lands
+	//      harmlessly INSIDE appDir — so `tar`'s habit of silently stripping the
+	//      leading slash would become ours. An archive that asks to write to /etc
+	//      is not an archive we unpack quietly.
+	//   2. Containment is what catches traversal, and it does so on the RESOLVED
+	//      destination rather than on the spelling of the name. An earlier draft
+	//      also string-matched "../" first, which made this check unreachable —
+	//      a guard that can never fire, which is the failure mode this codebase
+	//      keeps finding. The textual pre-filter is gone; the traversal tests now
+	//      exercise this line.
 	type planned struct {
 		f    *zip.File
 		dest string
@@ -1594,10 +1625,8 @@ func extractZip(zipPath, appDir string, strip int) error {
 	root := filepath.Clean(appDir) + string(os.PathSeparator)
 	for _, f := range zr.File {
 		name := f.Name
-		if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) ||
-			strings.Contains(name, "../") || strings.Contains(name, `..\`) ||
-			name == ".." || filepath.IsAbs(name) {
-			return fmt.Errorf("refusing archive: unsafe member %q (path traversal)", name)
+		if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || filepath.IsAbs(name) {
+			return fmt.Errorf("refusing archive: unsafe member %q (absolute path)", name)
 		}
 		// Strip leading components the way tar --strip-components does: a member
 		// with fewer components than `strip` is dropped, not flattened.
@@ -1613,10 +1642,8 @@ func extractZip(zipPath, appDir string, strip int) error {
 			continue
 		}
 		dest := filepath.Join(appDir, rel)
-		// Belt to the braces above: resolve and confirm the result is inside
-		// appDir even if the name dodged the textual screen.
 		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), root) {
-			return fmt.Errorf("refusing archive: member %q escapes the app directory", name)
+			return fmt.Errorf("refusing archive: member %q escapes the app directory (path traversal)", name)
 		}
 		// Symlinks can point anywhere once written; a zip we unpack as root has
 		// no business carrying them.
