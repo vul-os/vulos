@@ -31,6 +31,12 @@ instance's architecture. The answer is:
 Not partially, not over the LAN only, not when S3 is configured. There is no
 path by which one instance learns what another has installed.
 
+> **This answer was true when written (2026-08-15) and is no longer true
+> (2026-08-16). It is kept intact, not edited, because the rest of §1 is the
+> record of HOW a system reaches this state with every test green — which is the
+> part worth re-reading. §1a states what was built, what it does not do, and what
+> is still unproven. Read §1 for the diagnosis and §1a for the answer.**
+
 ### Where the code is
 
 **"Installed" is a filesystem fact, not a record.**
@@ -119,6 +125,189 @@ entry. That distinction is what the parallel agent's design actually needs.
 
 ---
 
+## 1a. What was built (2026-08-16): desire and realisation
+
+The finding above is now out of date, and the correction belongs next to it
+rather than replacing it — the shape of the mistake is the reusable part.
+
+**The desired/realised split was adopted, as proposed.** Two sets, deliberately
+in two tables with two different keys:
+
+| | key | means |
+|---|---|---|
+| `app_desired` | `app_id` | fleet-level **desire**. What the user asked for. |
+| `app_registry` | `(instance_ulid, app_id)` | per-instance **realisation**. What each box managed. |
+
+`app_registry` was not the wrong table; it was the wrong *only* table. Its shape
+is exactly right for realisation, which is why it kept its key and its merge and
+gained two columns (`realise_state`, `realise_detail`) rather than being replaced.
+
+### Which engine carries it, and why the other's refusal is now correct
+
+**`multiinstance/appsync`**, and `crdtsync/policy.go` now refuses both
+`sql:app_registry` and `sql:app_desired` **for the real reason, which is that the
+deferral is finally true**. The old refusal said "already replicated by appsync"
+and was correct in the abstract while false in fact; the correction is recorded
+in the policy entry itself, dated, because a refusal whose premise silently
+became true is indistinguishable from one whose premise silently became false.
+
+§2 recommends retiring appsync and folding `app_registry` into `crdtsync`. That
+is still the right target and was **not** done here, for reasons that are about
+this change rather than about effort:
+
+- `crdtsync` is **LAN-only**; appsync rides fabric's LAN **+ relay rendezvous**.
+  Two of a user's boxes that are not on the same LAN is precisely the case "one
+  OS" has to cover, and it is the case the app set most needs.
+- appsync already carries per-instance Ed25519 identity, roster verification and
+  — as of the eviction work an hour earlier — a **revocation check at admission**.
+  The desired set inherits all of it rather than growing a parallel trust path.
+- The desired set needs an **intent tombstone with an actor**. That is a third
+  algebra, and neither crdtsync's per-column LWW nor its `GrowOnly` expresses it.
+  Moving it into crdtsync's policy layer alongside `GrowOnly` is what §2's
+  consolidation concretely means — and it is a larger change than wiring a
+  producer, so it stays the target instead of being done halfway here.
+
+**No third engine was built.** Both tables merge in one transaction off one
+changeset, over the transport that already existed: a desire row travels as an
+ordinary `AppRegistryEntry` whose `InstanceULID` is the reserved sentinel
+`"@fleet"` (`@` is outside the Crockford base32 ULID alphabet, so nothing can
+collide, and a test asserts that rather than the comment). Reusing the one wire
+row meant `internal/fabric` needed no change at all — and avoided the failure
+that actually mattered, which is a second slice that silently does not ride the
+transport while every test still passes.
+
+### How uninstall is expressed, and why nothing resurrects
+
+`DesireRemove` writes `desired = 0` — an explicit **tombstone**, never a deleted
+row, never vacuumed. Four things hold the line, and the first is the only one
+that is about the data model rather than the code:
+
+1. **A removal is a state, not an absence.** Delete the row instead and a peer
+   that has not heard about the removal re-sends its copy, the removing box
+   merges it back as news, and the app returns on **every sync, forever** — not
+   once. Against a tombstone that re-send is an older write and loses. The test
+   replays the stale changeset three times, because a design that survives one
+   exchange and loses on the next is the bug.
+2. **A tie does not resolve "install wins".** That is `app_registry`'s OR-set
+   default and it is right there — for a straggler observation. For *intent* it
+   is a resurrection bug: two boxes acting on one user action stamp the same
+   removal instant, and install-wins means it never lands. Desire breaks ties on
+   the actor id alone: deterministic, symmetric, no opinion about polarity.
+3. **A local intent is stamped past everything the box has seen**, not at
+   `now()`. Clocks between a user's own boxes disagree by more than the seconds
+   between two of their actions, and a lagging box's removal would lose LWW to a
+   row it had just merged — appearing to work, then silently undone by the next
+   sync.
+4. **The reconciler removes what the fleet tombstoned**, so a box that was
+   offline during the removal loses the app on reconnect rather than re-seeding it.
+
+### What replaces the uninstall quorum for desire, and what it does not
+
+The existing quorum stays exactly where it was, on the **realised** set. It is
+**not** applied to desire, and that is a decision rather than an omission:
+requiring a majority of a user's own boxes to agree before an uninstall took
+effect would mean uninstalling an app three times. Intent is expressed once, by
+a person, on one machine.
+
+What guards it instead is **admission**: a desire row is merged only from an
+origin that verified — rostered, not revoked, signature good against its
+*rostered* key. An unverified changeset's desire rows are **dropped, not merely
+uncounted**; with no quorum to withhold from, "does not count" would have meant
+"applies". The signing message was extended to cover desire rows of **both**
+polarities, because leaving `desired = 1` out — the natural mirror of "installs
+are not quorum-gated" — would have left an unauthenticated fleet-wide **install**
+primitive open, which is strictly worse than the remote uninstall the quorum was
+built for. The extra section is appended only when desire rows exist, so any
+changeset a box predating this could produce still signs byte-identically; an
+internal test pins those bytes.
+
+**Residual, stated rather than hidden:** a rostered box that is compromised and
+not yet revoked can remove apps fleet-wide, because it can say anything the user
+could say. That was already true of every intent the fabric carries. Quorum
+would not have bounded it either — a compromised box can simply wait for the
+user to remove something and corroborate it. It is bounded by revocation, which
+now works and is enforced before merge; recorded, via `actor_ulid`; and one
+action to undo.
+
+### What a box that cannot realise an app reports
+
+`realise_state = 'failed'` with `realise_detail` set to the installer's own
+reason, on a row that **replicates** — a box reporting a failure only to itself
+has reported nothing, because the user is standing at a different box.
+
+**There is no architecture-specific branch anywhere in the sync layer, on
+purpose.** `InstallFromRegistry` already refuses an unsupported arch before
+touching the filesystem and already produces the sentence
+(`ArchUnavailableReason`: *"requires amd64; this box is arm64"*). It travels the
+same column as a failed download or a bad signature. The moment arch gets its own
+path, every other reason an install can fail goes silent again — which is the
+failure mode this whole split exists to remove.
+
+### One broken instance cannot uninstall the fleet
+
+Structurally, not by review: `mergeEntry` routes on the sentinel **first**, the
+two merges never meet, and there is no code path from a realisation row into
+`app_desired`. The `Realiser` interface says the same thing in the type system —
+it can be asked what the box HAS and told to change it, and has no way to name
+the desired set. A test merges five failure reports from a peer and requires the
+fleet desire to be unchanged; the mutation that routes realisation rows into the
+desired set kills it.
+
+### What is proven, and where
+
+| | |
+|---|---|
+| Desire algebra, tombstones, tie-break, clock bump, admission, signature coverage, transport union, reconcile planning | 19 tests in `internal/multiinstance`, **13 mutations killed** |
+| Signing-message byte-compatibility with a pre-SYNC-APPS-01 box | internal test pinning the exact bytes — the round-trip test could not have caught this, since both sides run the same function |
+| `*appnet.AppStore` satisfies `Realiser`, reads the disk not the table, and `Realise` routes through the **signed** registry path not the arbitrary-URL one | `appsync_realiser_test.go`, 3 mutations killed |
+| The producers are **called**, not merely defined, and the reconcile loop is not dead code | `cmd/server/appsync_producers_test.go` (AST call sites), 4 mutations killed |
+| The inventory cannot claim `syncs` without producers, or `gap` with them | `sqlcrdt.TestInstalledAppSetHasBothProducers`, inverted from the guard that caught the original defect |
+
+**Not proven on this machine, and it matters:** a real two-box install over a
+real fabric connection. `ip netns` is Linux-only and the install path downloads
+from a signed registry over the network, so what has been shown is that the
+merge, the algebra, the reconciler and the AppStore seam are correct in-process
+and on Linux in a `golang:1.25` container — not that box A installing Steam
+results in Steam running on box B. That run belongs on a Linux host with two
+instances and a populated registry, and it is the remaining evidence gap.
+
+**Two guards found by mutation rather than by reading**, both of the same family
+as the defect this work fixes:
+
+- The lagging-clock test read local state, where a local write always wins
+  unconditionally. It passed with the property removed. The defect was never that
+  the removal fails to apply — it is that it fails to *survive*, which is only
+  visible after the peer re-sends.
+- The producers are wrapped in closures, so deleting every handler call left the
+  producer calls inside the closure bodies where the source scan still found
+  them. **Collection is not execution.** The AST test that fixed it then failed
+  the same way itself: it delegated to a helper matching only `*ast.Ident`, so
+  for `fabricAppSync.Reconcile` it found nothing, iterated an empty gate list and
+  passed a loop wrapped in `if false`. A check that iterates nothing passes
+  everything.
+
+### What was NOT done
+
+- **Version skew is not reconciled.** A desired version newer than the installed
+  one produces no action. Upgrades need their own ordering and rollback story,
+  and reinstalling on every skew would make each one a download storm.
+- **Apps already on disk are not adopted.** An app the desired set has never
+  heard of is left alone — un-adopted, not undesired. Deleting a user's
+  pre-existing apps because a table is new would be the worst available reading
+  of the directive. Adoption should be an explicit act, and is unbuilt.
+- **The desired set is not backfilled.** It starts empty on every box, so an
+  upgraded instance does nothing until someone installs or removes something.
+  That is the safe default and it also means the feature is invisible until used.
+- **The fabric changeset transport is still gated on the shared secret alone**
+  (§3.6). Desire rows inherit that door, so the admission argument above is only
+  as strong as that transport — the per-peer signature check inside appsync is a
+  second gate, not the only one. Closing §3.6's remaining item strengthens this.
+- **No UI.** `realise_state`/`realise_detail` replicate and nothing renders them,
+  so a user cannot yet see "your arm64 box cannot install this". The data a UI
+  needs exists; the UI does not.
+
+---
+
 ## 2. How many sync engines exist
 
 The project's memory records a decentralisation finding: **one shared sync
@@ -183,17 +372,20 @@ Engine count is a symptom. The measurement that states the problem is
 **coverage against the directive**, from the 35-entry inventory in
 `backend/internal/sqlcrdt/osstate.go`:
 
-| Status | Count |
-|---|---|
-| **Syncs** | **5** |
-| Partial | 4 |
-| Exception (deliberate, argued) | 12 |
-| **Gap** (should sync, does not) | **14** |
+| Status | Count (2026-08-15 audit) | Count (2026-08-16, after §1a) |
+|---|---|---|
+| **Syncs** | **5** | **6** |
+| Partial | 4 | 5 |
+| Exception (deliberate, argued) | 12 | 12 |
+| **Gap** (should sync, does not) | **14** | **12** |
 
-**Five of thirty-five states sync.** Twelve engines exist and four of the five
-successes come from one of them. The problem is not that there are too few
-engines; it is that eleven engines carry almost nothing while the general one
-is allow-listed down to four tables.
+**Five of thirty-five states synced at the time of the audit; six do now**, and
+the two that moved are the installed app set (§1a) — one to `syncs`, one to
+`partial`. Twelve engines exist and four of the original five successes come
+from one of them. The problem is not that there are too few engines; it is that
+eleven engines carry almost nothing while the general one is allow-listed down
+to four tables. **That is unchanged**: §1a fixed a gap by giving an existing
+engine a producer, which is not consolidation and should not be mistaken for it.
 
 ### Which engine should survive
 
@@ -209,6 +401,14 @@ Every other tier-1 engine is a special case of it:
   into it — and it removes a whole CRDT implementation. Its **uninstall quorum**
   is the one idea worth keeping and should move into crdtsync's policy layer as
   a domain algebra, alongside the existing `GrowOnly`.
+  **Correction (2026-08-16):** the producer was wired into appsync instead, and
+  the "strictly less work" claim was wrong on the merits — see §1a. Retiring
+  appsync means first giving crdtsync a WAN/rendezvous reach it does not have,
+  and the desired set turned out to need a **third** algebra (an intent tombstone
+  with an actor) that neither per-column LWW nor `GrowOnly` expresses. So the
+  list of things that must move into crdtsync's policy layer is now **two**:
+  the uninstall quorum *and* the desire algebra. Retiring appsync remains the
+  target; it is a larger change than this paragraph assumed.
 - **Engine 3 (services/sync) should stay**, scoped to bytes. Blobs do not belong
   in a per-column register store. But its *directory list* is the bug: two
   hard-coded directories is why `<root>/apps`, `<root>/auth` and `<root>/db`
@@ -578,16 +778,17 @@ re-keying in §3.4 needs, which is why they should be built together.
 
 ## 5. The gaps, ranked by user impact
 
-Fourteen gaps and four partials. Ranked by what a user loses, not by
-implementation cost. Each is pinned by name in
-`sqlcrdt.TestTheKnownGapsAreStillRecorded`, so removing one requires either
-fixing it or arguing it down in the same commit.
+Fourteen gaps and four partials as audited; **twelve and five** after §1a.
+Ranked by what a user loses, not by implementation cost. Each is pinned by name
+in `sqlcrdt.TestTheKnownGapsAreStillRecorded`, so removing one requires either
+fixing it or arguing it down in the same commit — which is how row 3 below came
+to be struck through rather than deleted.
 
 | # | Gap | What the user experiences |
 |---|---|---|
 | 1 | **Password vault** does not sync, and `<root>/auth` is in **no backup path** | Save a password on one box, it is not on the other. Lose that box and every stored password is gone permanently. |
 | 2 | **Joining a cluster installs nothing** (§1 correction, `joinsync/backend.go`) | The wizard reaches 100% "complete" against an empty machine. The progress bar is measuring a readability check. |
-| 3 | **Installed app set** does not sync | Install on the laptop box; the other never learns. Nothing is queued or retried. |
+| 3 | ~~**Installed app set** does not sync~~ — **FIXED 2026-08-16, see §1a** | Was: install on the laptop box; the other never learns, nothing queued or retried. Now: an install writes a fleet **desire** and a per-box **realisation**, both replicate, and a reconcile loop makes each box match. What remains is narrower and listed in §1a: version skew, adoption of pre-existing installs, and no UI for the failure reason. |
 | 4 | **Drive metadata and bytes** do not sync; `files.db` is in no policy at all | Your Drive is a different Drive on each box. A file is not merely unopenable on the other — it is not in the tree. |
 | 5 | **Durable backup covers one DB file**, `auth.db`, and is off by default | A restored box comes back with accounts and settings and without reminders, Drive, audit history or passwords. |
 | 6 | **TOTP keychain** does not sync and is in no backup | Second-factor codes work at one desk only, and vanish with the box. |
@@ -599,8 +800,9 @@ fixing it or arguing it down in the same commit.
 | 12 | **Relay and TURN config** are per-box | Point one box at your relay; the others do not know. |
 | 13 | **Per-app data syncs while the app does not** | An app's saved data can arrive on a box that cannot open it. |
 
-The top two are the sharpest because both present as *success*: the join wizard
-reports completion, and the app-registry replicator reports healthy convergence.
-Neither surfaces as an error anywhere.
+The top two were the sharpest because both present as *success*: the join wizard
+reports completion, and the app-registry replicator reported healthy convergence
+of an empty table. Neither surfaced as an error anywhere. The second is fixed
+(§1a); **the join wizard is not**, and it is now the sharpest remaining one.
 
 ---
