@@ -434,14 +434,45 @@ func TestStatusReportsWhetherAnybodyIsStillOnTheOldSecret(t *testing.T) {
 		t.Fatal("admissions on the CURRENT secret are not being counted, so the two slots cannot be told apart")
 	}
 
-	// Polling the status endpoint must not itself move the overlap counter:
-	// Slot is inspection, Accepts is the door.
-	before := read(newSecret).AdmittedOnOverlap
-	_ = read(newSecret)
-	if got := read(newSecret).AdmittedOnOverlap; got != before {
-		t.Fatalf("polling the status on the CURRENT secret inflated the overlap counter (%d → %d) — "+
-			"the measurement is corrupting itself", before, got)
+	// ── the measurement must not corrupt itself ──────────────────────────────
+	//
+	// One request must move its slot's counter by EXACTLY ONE: the door counts,
+	// and the status handler's slot lookup (Slot) does not.
+	//
+	// An earlier version of this checked the OVERLAP counter while polling with
+	// the CURRENT secret, and a mutation that made the status handler call
+	// Accepts a second time SURVIVED it — the double-count landed in
+	// AdmittedOnCurrent, which nothing was reading. The counter to watch is the
+	// one belonging to the secret the CALLER PRESENTED, and it has to be counted
+	// exactly rather than merely "not obviously wrong", because "did it move at
+	// all" cannot tell one increment from two.
+	//
+	// The operational stake is specific and is why this is worth pinning: an
+	// operator checking a laggard box does so with the OLD secret. If that poll
+	// counted twice — or counted at all beyond the one admission — then
+	// overlap_last_used_at would advance every time anyone looked, the roll would
+	// look permanently unfinished, and the window would never be closed. The
+	// observability would have destroyed the thing it exists to observe.
+	countExactlyOnePerRequest := func(name, presented string, get func(rot) uint64) {
+		t.Helper()
+		base := get(read(newSecret))
+		box.get(t, "/api/fabric/status", presented)
+		afterOne := get(read(newSecret))
+		if afterOne != base+1 {
+			t.Fatalf("one %s-secret request moved AdmittedOn%s by %d, want exactly 1. "+
+				"The door counts; the status handler's slot lookup must not. A status poll that counts itself makes "+
+				"overlap_last_used_at advance whenever anyone looks, so the roll never appears finished and the window "+
+				"is never closed.", name, name, afterOne-base)
+		}
+		box.get(t, "/api/fabric/status", presented)
+		box.get(t, "/api/fabric/status", presented)
+		if afterThree := get(read(newSecret)); afterThree != base+3 {
+			t.Fatalf("three %s-secret requests moved AdmittedOn%s by %d, want exactly 3", name, name, afterThree-base)
+		}
 	}
+	// Read with the CURRENT secret throughout (read() itself is one such
+	// request, which is why the baseline is taken the same way).
+	countExactlyOnePerRequest("overlap", oldSecret, func(r rot) uint64 { return r.AdmittedOnOverlap })
 }
 
 // TestFabricRefusesARingThatDisagreesWithTheSecretItSends pins the construction
