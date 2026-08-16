@@ -64,9 +64,15 @@
 #
 #   --arch both        runs the native arch first, then the emulated one.
 #   --control cachedir installs a variant whose post_install does NOT mkdir
-#                      cache/, to establish whether anything else creates it.
-#                      Expected verdict is DEGRADED; a clean run FAILS the
-#                      control, because that would mean the mkdir is decoration.
+#                      cache/ (the RECIPE-side control). The mkdir proves itself
+#                      load-bearing either way: post_install's own trailing
+#                      chown then has nothing to chown, so POSTINSTALL-01
+#                      refuses the install outright.  A clean, undegraded run
+#                      FAILS the control.
+#   --control nocachelaunch  a clean install, then cache/ deleted before the
+#                      first launch (the APP-side control): establishes whether
+#                      the app creates the directory itself, and what its
+#                      absence actually costs.  Expected verdict is DEGRADED.
 #   --self-test        three runs on one arch: the real entry (must PASS), the
 #                      entry with a corrupted artifact checksum (must FAIL), and
 #                      the entry left UNSIGNED (must FAIL).  A checker that has
@@ -130,8 +136,12 @@ in_container() {
   # of trust is ephemeral. `-mode prepare` refuses to run if VULOS_ENV or
   # VULOS_REGISTRY_INSECURE is set, so the harness cannot quietly slip into a
   # weaker posture.
+  # control-nocachelaunch touches nothing in the recipe: it is an APP-side
+  # control, applied after a clean install and before the first launch.
+  local variant="$mode"
+  [[ "$variant" == "control-nocachelaunch" ]] && variant=real
   if ! /verify/driver -mode prepare -registry /verify/registry.json -app "$app" \
-        -out /out/prep -variant "$mode" -facts /out/facts.json >/out/prepare.log 2>&1; then
+        -out /out/prep -variant "$variant" -facts /out/facts.json >/out/prepare.log 2>&1; then
     record FAIL prepare "$(tail -3 /out/prepare.log)"
     return 1
   fi
@@ -151,9 +161,22 @@ in_container() {
   local t0 t1; t0="$(date +%s)"
   if ! /verify/driver -mode install -registry /out/prep/registry.json -app "$app" \
         -apps-dir "$apps_dir" >/out/install.log 2>&1; then
+    # The cachedir control is SATISFIED by an install refusal. Removing the
+    # `mkdir -p cache` leaves post_install's own trailing `chown … cache …` with
+    # nothing to chown, sh exits non-zero, and POSTINSTALL-01 refuses the whole
+    # install. That is the mkdir proving it is load-bearing at install time,
+    # which is a better answer than the degraded launch this control was
+    # written to look for.
+    if [[ "$mode" == "control-cachedir" ]]; then
+      record OK control-mkdir-load-bearing "install REFUSED without post_install's cache mkdir: $(grep -m1 'INSTALL-FAILED' /out/install.log | head -c 200)"
+      return 0
+    fi
     record FAIL install "$(grep -m1 -E 'INSTALL-FAILED|failed|refus' /out/install.log || tail -3 /out/install.log)"
     sed 's/^/    | /' /out/install.log | tail -20
     return 1
+  fi
+  if [[ "$mode" == "control-cachedir" ]]; then
+    record INFO control-note "install SUCCEEDED without the cache mkdir; the launch below must then show degradation or the control fails"
   fi
   t1="$(date +%s)"
   record OK install "InstallFromRegistry returned OK in $((t1-t0))s"
@@ -253,6 +276,15 @@ in_container() {
   # NOT faithful: no `ip netns exec` (needs CAP_SYS_ADMIN and an iproute2 stack
   # this image does not carry) and no run-lease. Neither can make a
   # non-serving app serve.
+  # The app-side control: a clean install, then cache/ removed immediately
+  # BEFORE the first launch. This is the only way to ask "does the app create
+  # it, and does its absence degrade?" — the recipe-side control never gets
+  # that far, because post_install refuses the install instead.
+  if [[ "$mode" == "control-nocachelaunch" ]]; then
+    rm -rf "$app_dir/cache"
+    record INFO control-removed-cache "cache/ deleted after a clean install, before first launch"
+  fi
+
   local expanded; expanded="${cmd//\$\{PORT\}/$port}"; expanded="${expanded//\$\{CONSOLE_PORT\}/$port}"
   ( cd "$workdir" && setpriv --reuid=65534 --regid=65534 --clear-groups --no-new-privs \
       env -i PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin \
@@ -288,17 +320,15 @@ in_container() {
   local degraded
   degraded="$(grep -i -m3 'unavailable\|store open failed\|degraded\|failed to open' /out/app.log || true)"
   if [[ -n "$degraded" ]]; then
-    if [[ "$mode" == "control-cachedir" ]]; then
-      record OK control-degraded-as-expected "${degraded//$'\n'/ ; }"
-    else
-      record FAIL not-degraded "app started but reported a degraded subsystem: ${degraded//$'\n'/ ; }"
-    fi
+    case "$mode" in
+      control-*) record OK control-degraded-as-expected "${degraded//$'\n'/ ; }" ;;
+      *)         record FAIL not-degraded "app started but reported a degraded subsystem: ${degraded//$'\n'/ ; }" ;;
+    esac
   else
-    if [[ "$mode" == "control-cachedir" ]]; then
-      record FAIL control-degraded-as-expected "post_install's mkdir cache/ was removed and NOTHING degraded — the mkdir is decoration, or the app creates it"
-    else
-      record OK not-degraded "no degradation reported in the app's own log"
-    fi
+    case "$mode" in
+      control-*) record FAIL control-degraded-as-expected "cache/ was absent at launch and NOTHING degraded — either the app creates it or the directory does not matter" ;;
+      *)         record OK not-degraded "no degradation reported in the app's own log" ;;
+    esac
   fi
   for d in cache sessions; do
     if [[ -d "$app_dir/$d" ]]; then
