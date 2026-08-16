@@ -221,6 +221,16 @@ export interface SafeAreaDiagnostics {
   readonly flagged: SafeAreaProperty[]
   /** Viewport the bounds were computed against. */
   readonly viewport: { width: number; height: number }
+  /** How many passes have seen at least one inset actually set. THE check to
+   *  run first on a device: if the native listener never fires, nothing is
+   *  malformed and nothing is oversized, and every other field looks
+   *  immaculate. `pushes: 0` on a phone means the bridge is dead. */
+  readonly pushes: number
+  /** The most recent REJECTED check per edge, sticky and never cleared.
+   *  `rejected` above only describes the last pass, and the native bridge
+   *  re-pushes on every inset change and every navigation — so by the time
+   *  someone reads this over a USB cable the evidence would otherwise be gone. */
+  readonly rejectedEver: Partial<Record<SafeAreaProperty, InsetCheck>>
 }
 
 declare global {
@@ -240,6 +250,10 @@ function viewportOf(root: HTMLElement): { width: number; height: number } {
 }
 
 let sanitizing = false
+
+// Sticky across passes — see the two fields they back on SafeAreaDiagnostics.
+let pushes = 0
+const rejectedEver: Partial<Record<SafeAreaProperty, InsetCheck>> = {}
 
 /**
  * The one commit path. `rawFor` supplies the candidate value for each property;
@@ -276,6 +290,7 @@ function commit(root: HTMLElement, rawFor: (prop: SafeAreaProperty) => string | 
       if (!check.accepted) {
         root.style.removeProperty(prop)
         rejected.push(prop)
+        rejectedEver[prop] = check
         continue
       }
       if (check.reason === 'implausible') flagged.push(prop)
@@ -285,7 +300,14 @@ function commit(root: HTMLElement, rawFor: (prop: SafeAreaProperty) => string | 
     sanitizing = false
   }
 
-  const diagnostics: SafeAreaDiagnostics = { checks, rejected, flagged, viewport }
+  // A pass in which every edge was 'empty' is not a push — it is the guard
+  // priming itself, or a resize. Counting those would make a dead bridge look
+  // like a live one, which is the failure the counter exists to expose.
+  if (SAFE_AREA_PROPERTIES.some(p => checks[p].reason !== 'empty')) pushes += 1
+
+  const diagnostics: SafeAreaDiagnostics = {
+    checks, rejected, flagged, viewport, pushes, rejectedEver: { ...rejectedEver },
+  }
   const view = root.ownerDocument?.defaultView
   if (view) view.__vulosSafeArea = diagnostics
   report(diagnostics)

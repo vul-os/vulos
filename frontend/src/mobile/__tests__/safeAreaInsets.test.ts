@@ -264,6 +264,39 @@ describe('sanitizeSafeArea', () => {
     expect(d!.viewport).toEqual({ width: VIEWPORT_W, height: VIEWPORT_H })
   })
 
+  // The device check that has to run FIRST, because it is the one a green-looking
+  // diagnostics record can hide: if the native listener never fires, nothing is
+  // malformed, nothing is oversized, and every other field is immaculate.
+  it('does not count a pass that saw no inset at all as a push', () => {
+    const root = document.documentElement
+    const before = sanitizeSafeArea(root).pushes
+    sanitizeSafeArea(root)              // priming again — still nothing set
+    expect(sanitizeSafeArea(root).pushes).toBe(before)
+    root.style.setProperty('--safe-top', '59.00px')
+    expect(sanitizeSafeArea(root).pushes).toBe(before + 1)
+  })
+
+  it('counts a REJECTED push, because the bridge did run — it just ran wrong', () => {
+    const root = document.documentElement
+    const before = sanitizeSafeArea(root).pushes
+    root.style.setProperty('--safe-bottom', '34,00px')
+    expect(sanitizeSafeArea(root).pushes).toBe(before + 1)
+  })
+
+  it('keeps a rejection on record after a later good push wipes the live one', () => {
+    const root = document.documentElement
+    root.style.setProperty('--safe-bottom', '34,00px')
+    sanitizeSafeArea(root)
+    // The bridge re-pushes on every inset change and every navigation, so by the
+    // time someone reads this over a USB cable `rejected` has long since gone
+    // back to empty. Without the sticky record the evidence is unreachable.
+    root.style.setProperty('--safe-bottom', '34.00px')
+    const d = sanitizeSafeArea(root)
+    expect(d.rejected).toEqual([])
+    expect(d.rejectedEver['--safe-bottom']?.raw).toBe('34,00px')
+    expect(d.rejectedEver['--safe-bottom']?.reason).toBe('malformed')
+  })
+
   it('says on the console which property it refused and why', () => {
     const root = document.documentElement
     root.style.setProperty('--safe-bottom', '34,00px')

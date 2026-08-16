@@ -178,6 +178,44 @@ test.describe('phone 390×844 — safe-area inset boundary', () => {
     expect(diag?.checks['--safe-bottom'].reason).toBe('malformed')
   })
 
+  // The three console reads roadmap/MOBILE-SAFE-AREA-DEVICE-TEST.md tells a
+  // tester to run, driven here against the shipping bundle so the instructions
+  // cannot go stale against the code they instrument. If a field is renamed, the
+  // note is wrong on a phone with a cable in it; this is what notices instead.
+  test('the on-device console reads in the device-test note return what the note says', async ({ page }) => {
+    await bootMobile(page)
+
+    // §3, test 0 — did the bridge run at all? Before any push, no.
+    expect(await page.evaluate(() => window.__vulosSafeArea!.pushes)).toBe(0)
+    expect(await page.evaluate(() => window.__vulosSafeArea!.checks['--safe-top'].reason)).toBe('empty')
+
+    // A correct push, the way MainActivity sends all four at once.
+    await page.evaluate(() => {
+      const r = document.documentElement
+      r.style.setProperty('--safe-top', '59.00px')
+      r.style.setProperty('--safe-bottom', '34.00px')
+      r.style.setProperty('--safe-left', '0.00px')
+      r.style.setProperty('--safe-right', '0.00px')
+    })
+    let d = await page.evaluate(() => window.__vulosSafeArea!)
+    expect(d.pushes).toBeGreaterThan(0)
+    expect(d.checks['--safe-top'].reason).toBe('ok')
+    expect(d.checks['--safe-top'].px).toBe(59)
+    expect(d.flagged).toEqual([])       // §4, the ten-second density read
+    expect(d.rejected).toEqual([])      // §5, the Locale.ROOT read
+    expect(d.rejectedEver).toEqual({})
+
+    // Now the comma-decimal locale, then a correct push on top of it — which is
+    // what a tester will actually be looking at minutes later, after the bridge
+    // has re-pushed on a rotation or a navigation.
+    await nativePush(page, '--safe-bottom', '34,00px')
+    await nativePush(page, '--safe-bottom', '34.00px')
+    d = await page.evaluate(() => window.__vulosSafeArea!)
+    expect(d.rejected).toEqual([])                              // the live record has moved on
+    expect(d.rejectedEver['--safe-bottom']!.raw).toBe('34,00px') // the sticky one has not
+    expect(d.rejectedEver['--safe-bottom']!.reason).toBe('malformed')
+  })
+
   test('a refused inset is never painted — the revert lands before the next frame', async ({ page }) => {
     await bootMobile(page)
     // Write the bad value and read the rendered padding back in the SAME frame
