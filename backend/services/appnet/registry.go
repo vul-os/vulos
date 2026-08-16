@@ -1,6 +1,7 @@
 package appnet
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -212,22 +213,88 @@ func (e RegistryEntry) MarshalJSON() ([]byte, error) {
 	return mergeExtraJSON(base, e.Extra, knownEntryKeys)
 }
 
+// Artifact is one downloadable payload and the sha256 that must match it.
+//
+// The URL and its checksum live in the SAME object on purpose. The obvious
+// alternative — letting `download_url` be either a string or an
+// {arch: url} map while `checksum` stayed a scalar — can express a recipe that
+// pins two different binaries to one hash. That is not a hypothetical mistake:
+// it is the shape a curator reaches for first, and it would install an
+// unverified artifact on every arch but one while looking pinned. A schema
+// should not be able to say the wrong thing.
+type Artifact struct {
+	DownloadURL string `json:"download_url"`
+	Checksum    string `json:"checksum"` // sha256, lower-case hex; MANDATORY (SECAUDIT2-H1)
+}
+
 // VersionRecipe defines how to install and run a specific version of an app.
 type VersionRecipe struct {
-	Install      string            `json:"install"`             // shell command to install (e.g., "apt-get install -y postgresql-16")
-	FlatpakID    string            `json:"flatpak_id"`          // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
-	DownloadURL  string            `json:"download_url"`        // static install: URL to download a binary or tar.gz archive
-	ArchiveStrip int               `json:"archive_strip"`       // static install: number of leading path components to strip when extracting (tar --strip-components)
-	Command      string            `json:"command"`             // how to run it (e.g., "bin/postgres -D data/")
-	Port         int               `json:"port"`                // default port the app listens on
-	PostInstall  string            `json:"post_install"`        // one-time setup command (e.g., "bin/initdb -D data/")
-	Deps         []string          `json:"deps"`                // additional OS package dependencies
-	Env          map[string]string `json:"env"`                 // default environment variables
-	Permissions  []string          `json:"permissions"`         // required permissions
-	Checksum     string            `json:"checksum"`            // sha256 checksum of download (if applicable)
-	Singleton    bool              `json:"singleton"`           // only one instance allowed
-	AutoStart    bool              `json:"auto_start"`          // start on boot
-	Disabled     bool              `json:"_disabled,omitempty"` // true = entry is administratively disabled; install is refused
+	Install     string `json:"install"`      // shell command to install (e.g., "apt-get install -y postgresql-16")
+	FlatpakID   string `json:"flatpak_id"`   // Flatpak app ID (e.g., "org.gimp.GIMP") — if set, install/run via Flatpak
+	DownloadURL string `json:"download_url"` // static install: URL to download a binary or tar.gz archive (single-arch form)
+
+	// Artifacts is the PER-ARCHITECTURE form of DownloadURL/Checksum, keyed by
+	// Debian arch name ("amd64", "arm64") — the same spelling RegistryEntry.Arch
+	// and arch.go already use, normalised through NormalizeArch on both sides so
+	// a registry that says x86_64 still matches a box that says amd64.
+	//
+	// Why this exists: Vulos ships amd64 AND arm64 images, and a VersionRecipe
+	// carried a single DownloadURL, so a download-based app had to pick one
+	// architecture. Three first-party apps (diwan, wede, lilmail) publish
+	// working binaries for BOTH and were nonetheless offered on one — telling an
+	// arm64 owner the OS's own office suite was unavailable while the binary sat
+	// in the release. It also forked the app set by architecture, which the
+	// everything-syncs directive does not allow: an instance must be a near
+	// clone of its siblings, and an app that cannot follow a user onto their
+	// arm64 box breaks that.
+	//
+	// Set EITHER DownloadURL or Artifacts, never both — validateRecipeSecurity
+	// refuses a recipe that sets both rather than picking a winner, because
+	// which one wins is exactly the kind of thing a reader would guess wrong.
+	// Artifacts is `omitempty`, so all 55 pre-existing entries serialise
+	// byte-identically and their publisher signatures are untouched by this
+	// schema change.
+	//
+	// There is deliberately NO fallback from Artifacts to DownloadURL when the
+	// box's arch is missing from the map. Falling back would hand an arm64 box
+	// an amd64 binary that passes its checksum and then fails to exec — a
+	// successful install of an app that cannot run, which is the defect class
+	// this whole change exists to remove. A missing arch is a loud refusal.
+	Artifacts map[string]*Artifact `json:"artifacts,omitempty"`
+
+	ArchiveStrip int `json:"archive_strip"` // static install: number of leading path components to strip when extracting (tar --strip-components)
+
+	// BinaryName renames a single-binary download as it lands in bin/.
+	//
+	// Without it, a plain binary is installed to bin/<basename of the URL>, so
+	// per-arch artifacts land under DIFFERENT names — bin/diwan-linux-amd64 on
+	// one box, bin/diwan-linux-arm64 on another — while `command` is one string
+	// shared by every architecture. No command could then name the binary on
+	// both. Setting binary_name to "diwan" makes the installed path arch-
+	// independent and lets `command` stay a single literal.
+	//
+	// The alternative was a ${ARCH} substitution inside `command`, expanded at
+	// launch. That spreads architecture spelling into free-text recipe strings
+	// and puts the fix in the launcher; this keeps it in the installer, where
+	// the arch is already known and already enforced.
+	//
+	// It applies ONLY to the single-binary branch. Setting it alongside an
+	// archive URL is refused by validateRecipeSecurity rather than ignored:
+	// per-recipe `arch` was already dead data nobody read (APP-RECIPE-STANDARD
+	// §1.1), and adding a second field that silently does nothing would repeat
+	// exactly that.
+	BinaryName string `json:"binary_name,omitempty"`
+
+	Command     string            `json:"command"`             // how to run it (e.g., "bin/postgres -D data/")
+	Port        int               `json:"port"`                // default port the app listens on
+	PostInstall string            `json:"post_install"`        // one-time setup command (e.g., "bin/initdb -D data/")
+	Deps        []string          `json:"deps"`                // additional OS package dependencies
+	Env         map[string]string `json:"env"`                 // default environment variables
+	Permissions []string          `json:"permissions"`         // required permissions
+	Checksum    string            `json:"checksum"`            // sha256 checksum of download (if applicable)
+	Singleton   bool              `json:"singleton"`           // only one instance allowed
+	AutoStart   bool              `json:"auto_start"`          // start on boot
+	Disabled    bool              `json:"_disabled,omitempty"` // true = entry is administratively disabled; install is refused
 
 	// Extra preserves recipe fields this struct does not model (today: "_note",
 	// per-recipe "arch").  Same rationale as RegistryEntry.Extra: the publisher
@@ -308,6 +375,54 @@ func requiresChecksum(install string) bool {
 	return binaryDownloadRe.MatchString(install)
 }
 
+// archiveExtensions are the archive formats staticInstall can unpack. Anything
+// else that arrives on the download path is treated as a single binary.
+var archiveExtensions = []string{".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip"}
+
+// isArchiveURL reports whether a download URL names an archive we can unpack.
+// The query string is stripped first so a signed/CDN URL is still classified.
+func isArchiveURL(url string) bool {
+	lower := strings.ToLower(strings.SplitN(url, "?", 2)[0])
+	for _, ext := range archiveExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasArtifacts reports whether this recipe uses the per-architecture form.
+func (v *VersionRecipe) HasArtifacts() bool { return len(v.Artifacts) > 0 }
+
+// ResolveArtifact returns the download URL and checksum this recipe installs on
+// a box of architecture boxArch (Debian spelling; normalised here, so either
+// spelling works on either side).
+//
+// Single-arch recipes (DownloadURL set) resolve to themselves regardless of
+// boxArch — the entry-level `arch` gate in InstallFromRegistry is what keeps
+// them off boxes they do not fit, and 55 shipped entries depend on that
+// behaviour being unchanged.
+//
+// Per-arch recipes resolve strictly: no match is an error naming the box's arch
+// and every arch the recipe does offer. It never falls back to DownloadURL.
+func (v *VersionRecipe) ResolveArtifact(boxArch string) (url, checksum string, err error) {
+	if !v.HasArtifacts() {
+		return v.DownloadURL, v.Checksum, nil
+	}
+	want := NormalizeArch(boxArch)
+	offered := make([]string, 0, len(v.Artifacts))
+	for k, a := range v.Artifacts {
+		n := NormalizeArch(k)
+		offered = append(offered, n)
+		if n == want && a != nil {
+			return a.DownloadURL, a.Checksum, nil
+		}
+	}
+	sort.Strings(offered)
+	return "", "", fmt.Errorf("recipe publishes no artifact for this box's architecture %q (it offers: %s)",
+		want, strings.Join(offered, ", "))
+}
+
 // validateRecipeSecurity checks a recipe for disallowed patterns and missing checksums.
 // It must be called before executing any install or post-install commands.
 func validateRecipeSecurity(recipe *VersionRecipe) error {
@@ -337,6 +452,71 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 	if strings.TrimSpace(recipe.DownloadURL) != "" && strings.TrimSpace(recipe.Checksum) == "" {
 		return fmt.Errorf("static download recipe (download_url set) has no checksum — " +
 			"set a sha256 checksum in the registry entry before installing (SECAUDIT2-H1)")
+	}
+
+	// ARTIFACTS-01: the per-architecture download form carries exactly the same
+	// obligations as the single-URL one, and two more of its own.
+	if recipe.HasArtifacts() {
+		// Ambiguity is refused rather than resolved. If both forms were set,
+		// whichever one the engine happened to prefer would be a coin-flip to
+		// every reader of the registry, and a half-migrated entry would install
+		// the stale artifact while looking migrated.
+		if strings.TrimSpace(recipe.DownloadURL) != "" {
+			return fmt.Errorf("recipe sets BOTH download_url and artifacts — " +
+				"use exactly one: artifacts for a per-architecture app, download_url for a single-arch one (ARTIFACTS-01)")
+		}
+		if strings.TrimSpace(recipe.Checksum) != "" {
+			return fmt.Errorf("recipe sets a top-level checksum alongside artifacts — " +
+				"each artifact carries its own checksum; a shared one cannot be right for two different binaries (ARTIFACTS-01)")
+		}
+		seen := make(map[string]string, len(recipe.Artifacts))
+		for arch, a := range recipe.Artifacts {
+			if a == nil {
+				return fmt.Errorf("artifacts[%q] is null — remove the key or give it a download_url and checksum (ARTIFACTS-01)", arch)
+			}
+			norm := NormalizeArch(arch)
+			if norm == "" {
+				return fmt.Errorf("artifacts has an empty architecture key (ARTIFACTS-01)")
+			}
+			// Two spellings of one arch ("amd64" and "x86_64") would make which
+			// artifact wins depend on Go's randomised map iteration order.
+			if prev, dup := seen[norm]; dup {
+				return fmt.Errorf("artifacts names architecture %q twice (as %q and %q) — "+
+					"one architecture, one artifact (ARTIFACTS-01)", norm, prev, arch)
+			}
+			seen[norm] = arch
+			if strings.TrimSpace(a.DownloadURL) == "" {
+				return fmt.Errorf("artifacts[%q] has no download_url (ARTIFACTS-01)", arch)
+			}
+			// Same rule as SECAUDIT2-H1, applied per artifact: an unchecksummed
+			// artifact is an unverified binary no matter which key it hides under.
+			if strings.TrimSpace(a.Checksum) == "" {
+				return fmt.Errorf("artifacts[%q] has no checksum — "+
+					"set a sha256 checksum before installing (SECAUDIT2-H1)", arch)
+			}
+		}
+	}
+
+	// A binary_name on an archive recipe would be silently ignored. Per-recipe
+	// `arch` was already dead data read by nothing (APP-RECIPE-STANDARD §1.1);
+	// refusing here keeps a second field from joining it.
+	if strings.TrimSpace(recipe.BinaryName) != "" {
+		if u := strings.TrimSpace(recipe.DownloadURL); u != "" && isArchiveURL(u) {
+			return fmt.Errorf("recipe sets binary_name %q but download_url is an archive — "+
+				"binary_name renames a single downloaded binary and does nothing for an archive; "+
+				"use archive_strip and a command naming the extracted path (ARTIFACTS-01)", recipe.BinaryName)
+		}
+		for arch, a := range recipe.Artifacts {
+			if a != nil && isArchiveURL(a.DownloadURL) {
+				return fmt.Errorf("recipe sets binary_name %q but artifacts[%q] is an archive — "+
+					"binary_name renames a single downloaded binary and does nothing for an archive (ARTIFACTS-01)", recipe.BinaryName, arch)
+			}
+		}
+		// A name that is a path would escape bin/ (or land somewhere the command
+		// does not expect). Only a plain filename is meaningful.
+		if strings.ContainsAny(recipe.BinaryName, `/\`) || recipe.BinaryName == "." || recipe.BinaryName == ".." {
+			return fmt.Errorf("binary_name %q must be a plain filename, not a path (ARTIFACTS-01)", recipe.BinaryName)
+		}
 	}
 
 	return nil
@@ -990,7 +1170,7 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		if err := FlatpakInstall(ctx, recipe.FlatpakID); err != nil {
 			return fmt.Errorf("flatpak install %s: %w", recipe.FlatpakID, err)
 		}
-	} else if recipe.DownloadURL != "" {
+	} else if recipe.DownloadURL != "" || recipe.HasArtifacts() {
 		// Static (download) install path: download archive/binary, verify checksum, extract into app dir.
 		if err := staticInstall(ctx, recipe, appDir); err != nil {
 			return fmt.Errorf("static install %s: %w", appID, err)
@@ -1252,13 +1432,24 @@ func availableVersions(entry *RegistryEntry) []string {
 //
 // The download is streamed so large files do not require buffering in memory.
 func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) error {
-	url := recipe.DownloadURL
+	// Per-architecture recipes resolve against THIS SERVER PROCESS's own
+	// architecture — the same value ARCH-01 enforces the entry-level `arch`
+	// against, via the same NormalizeArch table. Nothing here reads a request
+	// header: desktop apps are streamed FROM the box, so the box's arch is the
+	// only one that can matter.
+	url, checksum, err := recipe.ResolveArtifact(BoxArch())
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(url) == "" {
+		return fmt.Errorf("static install: recipe has no download_url")
+	}
 	log.Printf("[registry/static] downloading %s", url)
 
 	client := &http.Client{Timeout: 10 * time.Minute}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+	req, rerr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if rerr != nil {
+		return fmt.Errorf("build request: %w", rerr)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1284,23 +1475,25 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 	}
 	tmpFile.Close()
 
-	// Verify checksum when provided.
-	if recipe.Checksum != "" {
+	// Verify the checksum for the artifact we actually resolved. Note this is
+	// `checksum` from ResolveArtifact, NOT recipe.Checksum: on a per-arch recipe
+	// the top-level checksum is empty by construction (validateRecipeSecurity
+	// refuses one), so reading it here would silently skip verification on every
+	// per-arch install.
+	if checksum != "" {
 		got := hex.EncodeToString(h.Sum(nil))
-		if got != strings.ToLower(recipe.Checksum) {
-			return fmt.Errorf("checksum mismatch: expected %s, got %s", recipe.Checksum, got)
+		if got != strings.ToLower(checksum) {
+			return fmt.Errorf("checksum mismatch: expected %s, got %s", checksum, got)
 		}
 		log.Printf("[registry/static] checksum OK (%s)", got[:12])
 	}
 
 	// Detect archive vs plain binary by URL extension.
-	lowerURL := strings.ToLower(url)
-	isArchive := strings.HasSuffix(lowerURL, ".tar.gz") ||
-		strings.HasSuffix(lowerURL, ".tgz") ||
-		strings.HasSuffix(lowerURL, ".tar.bz2") ||
-		strings.HasSuffix(lowerURL, ".tar.xz")
+	if isZipURL(url) {
+		return extractZip(tmpPath, appDir, recipe.ArchiveStrip)
+	}
 
-	if isArchive {
+	if isArchiveURL(url) {
 		// SECAUDIT2 H1: pre-extraction traversal screen. `tar` does not block
 		// `../` / absolute / symlink-escaping members. List members first and
 		// refuse any that would escape appDir. Archive-format-agnostic so
@@ -1331,8 +1524,21 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 			return fmt.Errorf("extract archive: %w\n%s", err, strings.TrimSpace(string(out)))
 		}
 	} else {
-		// Plain binary: install to bin/<filename>.
+		// Plain binary: install to bin/<filename>, or bin/<binary_name> when the
+		// recipe pins one. The pinned name is what makes a per-arch recipe
+		// runnable: the release assets are called diwan-linux-amd64 and
+		// diwan-linux-arm64, but `command` is one string for both arches, so
+		// without a stable name no command could refer to the installed file.
 		base := filepath.Base(strings.SplitN(url, "?", 2)[0])
+		if n := strings.TrimSpace(recipe.BinaryName); n != "" {
+			// validateRecipeSecurity has already refused a name containing a
+			// path separator; this is the belt to that braces, because the value
+			// is about to become a filesystem path.
+			if strings.ContainsAny(n, `/\`) || n == "." || n == ".." {
+				return fmt.Errorf("refusing binary_name %q: must be a plain filename", n)
+			}
+			base = n
+		}
 		destPath := filepath.Join(appDir, "bin", base)
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			return fmt.Errorf("create bin dir: %w", err)
@@ -1349,6 +1555,119 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 		log.Printf("[registry/static] installed binary → %s", destPath)
 	}
 
+	return nil
+}
+
+// isZipURL reports whether a download URL names a zip archive.
+func isZipURL(url string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.SplitN(url, "?", 2)[0]), ".zip")
+}
+
+// extractZip unpacks a .zip into appDir, stripping `strip` leading path
+// components, exactly as the tar path does with --strip-components.
+//
+// Why this exists: staticInstall detected .tar.gz/.tgz/.tar.bz2/.tar.xz and
+// nothing else, so a .zip fell through to the "plain binary" branch — it was
+// copied to bin/<name>.zip and chmod 0755. The install REPORTED SUCCESS and the
+// app could never start. lilmail publishes zips, and it is the first entry to
+// need this; the gap was a silent one, which is the only reason it survived.
+//
+// It uses Go's archive/zip rather than shelling out to `unzip`, so the shipped
+// image needs no new package (scripts/image-packages.txt is gated) and the
+// traversal screen is applied member by member in-process rather than parsed
+// out of another program's output.
+func extractZip(zipPath, appDir string, strip int) error {
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zr.Close()
+
+	// The same defence the tar path applies: a zip member may name any path it
+	// likes, including ../.. and absolute ones. Screen every member BEFORE
+	// creating anything, so a malicious archive cannot half-extract.
+	type planned struct {
+		f    *zip.File
+		dest string
+	}
+	var plan []planned
+	root := filepath.Clean(appDir) + string(os.PathSeparator)
+	for _, f := range zr.File {
+		name := f.Name
+		if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) ||
+			strings.Contains(name, "../") || strings.Contains(name, `..\`) ||
+			name == ".." || filepath.IsAbs(name) {
+			return fmt.Errorf("refusing archive: unsafe member %q (path traversal)", name)
+		}
+		// Strip leading components the way tar --strip-components does: a member
+		// with fewer components than `strip` is dropped, not flattened.
+		parts := strings.Split(strings.Trim(name, "/"), "/")
+		if strip > 0 {
+			if len(parts) <= strip {
+				continue
+			}
+			parts = parts[strip:]
+		}
+		rel := filepath.Join(parts...)
+		if rel == "" || rel == "." {
+			continue
+		}
+		dest := filepath.Join(appDir, rel)
+		// Belt to the braces above: resolve and confirm the result is inside
+		// appDir even if the name dodged the textual screen.
+		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), root) {
+			return fmt.Errorf("refusing archive: member %q escapes the app directory", name)
+		}
+		// Symlinks can point anywhere once written; a zip we unpack as root has
+		// no business carrying them.
+		if f.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing archive: member %q is a symlink", name)
+		}
+		plan = append(plan, planned{f: f, dest: dest})
+	}
+
+	for _, p := range plan {
+		if p.f.FileInfo().IsDir() {
+			if err := os.MkdirAll(p.dest, 0755); err != nil {
+				return fmt.Errorf("create dir %s: %w", p.dest, err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(p.dest), 0755); err != nil {
+			return fmt.Errorf("create dir for %s: %w", p.dest, err)
+		}
+		// Preserve the executable bit — a zip is how lilmail ships its binary,
+		// and a 0644 binary is an install that cannot launch.
+		mode := p.f.Mode().Perm()
+		if mode == 0 {
+			mode = 0644
+		}
+		if err := writeZipMember(p.f, p.dest, mode); err != nil {
+			return err
+		}
+	}
+	log.Printf("[registry/static] extracted zip into %s (strip=%d, %d members)", appDir, strip, len(plan))
+	return nil
+}
+
+// writeZipMember copies one zip entry to dest with the given mode.
+func writeZipMember(f *zip.File, dest string, mode os.FileMode) error {
+	rc, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("open zip member %s: %w", f.Name, err)
+	}
+	defer rc.Close()
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", dest, err)
+	}
+	if _, err := io.Copy(out, rc); err != nil {
+		out.Close()
+		return fmt.Errorf("write %s: %w", dest, err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", dest, err)
+	}
 	return nil
 }
 
