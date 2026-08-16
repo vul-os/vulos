@@ -783,12 +783,117 @@ fi
 # fabricated read-only $rootmnt with klibc-shaped mount/mkdir stubs and fails on
 # any write to $rootmnt before the rebind below.
 
+# ── NETB-03: keep /var/cache/vulos ON THE DISK, not in the overlay ────────────
+#
+# THE PROBLEM. On a netboot-INSTALLED disk the kernel command line is
+#
+#   root=LABEL=vulos-root ro ... vulos.live=0 vulos.squashfs=/var/cache/vulos/slot-a/os-core.squashfs
+#
+# and `vulos.live=0` ACTIVATES this hook (cmdline_has matches the KEY= form —
+# see its comment, and netboot_install.go's, where it is called REQUIRED rather
+# than decorative). It has to: on that machine the OS *is* the squashfs sitting
+# in /var/cache/vulos/slot-a on that very partition, and this hook is the only
+# thing that mounts it. Booting the overlay there is correct.
+#
+# What is NOT correct is what the rebind below then does to the partition. It
+# leaves the ext4 mounted at $rootmnt and mounts the overlay on top of it, so the
+# ext4 becomes unreachable by path for the rest of the machine's life. Nothing
+# ever brings it back: this image ships no fstab, there is no .mount unit
+# anywhere in the tree, and backend/cmd/init/main.go's mountAll() mounts the
+# pseudo-filesystems plus LABEL=vulos-data at ~/.vulos and nothing else.
+#
+# So the running OS's /var/cache/vulos resolved inside the OVERLAY — squashfs
+# lower, tmpfs upper. The OSDIST-03 boot counter, MarkHealthy, and OTA staging
+# into the inactive slot all wrote to RAM and were gone on the next boot, while
+# this hook went on reading the untouched on-disk boot-state.json. A box looked
+# healthy, rolled back nothing, and lost its update state on every restart. Every
+# slot-manager unit test passed throughout, because they all run against a real
+# directory, and scripts/netboot-install-smoke.sh Phase 4 passed too, because it
+# flips boot-state.json and reads booted-slot by LOOP-MOUNTING THE IMAGE FROM THE
+# HOST — it never once asks the running OS to write anything.
+#
+# THE FIX, and why it is shaped like this.
+#
+# The subtree has to be captured BEFORE the rebind and re-exposed AFTER it:
+#
+#   - Before: ${rootmnt}/var/cache/vulos is still reachable, so bind it to
+#     /run/vulos/cache, a path that survives (initramfs-tools' init does
+#     `mount -n -o move /run ${rootmnt}/run` right after us, and a bind is
+#     independent of its source path once made).
+#   - After: mount that capture onto ${rootmnt}/var/cache/vulos, which is now the
+#     overlay's own directory and writable.
+#
+# It cannot be done in one step before the rebind. klibc's mount has NO long
+# options at all, so there is no --rbind, and `-o bind` does not carry submounts:
+# anything mounted under $MERGED beforehand would simply not appear under
+# $rootmnt after `mount -o bind $MERGED $rootmnt`. This is the one and only mount
+# that is allowed to follow the rebind, and it has to.
+#
+# THE REMOUNT IS NOT OPTIONAL. The cmdline says `ro`, and a bind shares its
+# source's superblock — so without this the OS would get a read-only window onto
+# the disk and still persist nothing. record_booted_slot deliberately restores
+# `ro` after writing its marker, so the partition is remounted rw here and LEFT
+# rw. That is the correct end state and not a leak: on this layout the ext4 is a
+# data partition, not the OS root — the OS root is the read-only verity squashfs
+# — and it must be writable for the update mechanism to work at all.
+#
+# NARROWLY GATED, on purpose. Only the layout writeSlotABootEntry pins
+# (/var/cache/vulos/slot-*) takes this path. A live-USB boots /image.squashfs and
+# a re-flashed live ESP boots /EFI/vulos/os-core.squashfs; neither is a machine
+# whose state lives on that partition, and neither gets a single extra mount.
+# The plain `--disk` install never reaches here at all — it carries no
+# vulos.live, so the hook exits at its gate above, and its ext4 genuinely is the
+# writable root.
+#
+# EVERY STEP IS BEST-EFFORT. A failure here must degrade to the old behaviour —
+# volatile cache, machine still boots — and never panic. A boot path that cannot
+# be re-tested cheaply is the wrong place to add a new way to fail closed.
+#
+# Pinned by TestNetbootInstalledDiskKeepsVarCacheVulosOnDisk in
+# backend/internal/docsref/livehook_test.go, which drives this file with the
+# command line read out of netboot_install.go and asserts the mount topology:
+# the capture is sourced from outside $rootmnt, the re-exposure comes AFTER the
+# rebind, and the last remount leaves the partition rw.
+CACHE_CAPTURE=""
+case "$SQUASHFS_PATH" in
+    /var/cache/vulos/slot-*)
+        if [ -d "${rootmnt}/var/cache/vulos" ]; then
+            _cc_dev="$(rootmnt_device "$rootmnt")" || _cc_dev=""
+            if [ -z "$_cc_dev" ]; then
+                log_warning_msg "vulos-live: no device for ${rootmnt} in /proc/mounts — /var/cache/vulos will be READ-ONLY this boot"
+            elif mount -o remount,rw "$_cc_dev" "$rootmnt" 2>/dev/null; then
+                log_begin_msg "vulos-live: ${_cc_dev} remounted rw so /var/cache/vulos persists"
+            else
+                log_warning_msg "vulos-live: could not remount ${_cc_dev} rw — /var/cache/vulos will be READ-ONLY this boot"
+            fi
+            mkdir -p /run/vulos/cache "${MERGED}/var/cache/vulos"
+            if mount -o bind "${rootmnt}/var/cache/vulos" /run/vulos/cache; then
+                CACHE_CAPTURE="/run/vulos/cache"
+            else
+                log_warning_msg "vulos-live: could not capture the on-disk /var/cache/vulos before the overlay rebind — the boot counter, MarkHealthy and OTA staging will be VOLATILE this boot"
+            fi
+        else
+            log_warning_msg "vulos-live: booting ${SQUASHFS_PATH} but ${rootmnt}/var/cache/vulos does not exist — nothing to keep persistent"
+        fi
+        ;;
+esac
+
 # Rebind $rootmnt to the merged overlay view.
 #
 # This is the one write to $rootmnt that belongs here, and it is a mount ONTO
 # the directory, not a write INTO the filesystem — which is why it works on a
 # read-only ext4 while the mkdir above did not.
 mount -o bind "$MERGED" "$rootmnt"
+
+# Re-expose the captured on-disk /var/cache/vulos ON TOP of the overlay. See the
+# block above for why this is the one mount that must follow the rebind.
+if [ -n "$CACHE_CAPTURE" ]; then
+    if mount -o bind "$CACHE_CAPTURE" "${rootmnt}/var/cache/vulos"; then
+        log_end_msg "vulos-live: /var/cache/vulos is the on-disk partition (persistent boot counter / OTA staging)"
+    else
+        log_warning_msg "vulos-live: FAILED to expose the on-disk /var/cache/vulos above the overlay — the boot counter, MarkHealthy and OTA staging will be VOLATILE this boot"
+    fi
+fi
 
 if [ -n "$LOWER_DEV" ]; then
     log_end_msg "Vulos: live overlayfs active (dm-verity ro + tmpfs rw)"
