@@ -191,7 +191,19 @@ func (r *Registry) Upsert(inst Instance) error {
 			region                  = excluded.region,
 			prev_ed25519_public_key = excluded.prev_ed25519_public_key,
 			prev_key_expires_at     = excluded.prev_key_expires_at,
-			revoked                 = excluded.revoked,
+			-- Revocation is MONOTONIC, latched in SQL for the same reason
+			-- store_only is below: a read-then-write guard in Go would race a
+			-- concurrent writer, and there is more than one writer. This column
+			-- used to be a plain excluded.revoked, so ANY Upsert that did not
+			-- carry the flag cleared it — including CloudSyncer's, whose wire
+			-- type (CloudInstance) has no revoked field at all, on every poll.
+			-- Revoking a compromised box therefore survived until the next cloud
+			-- sync round and then silently undid itself. Once set, it stays set;
+			-- readmission is enrolment under a fresh identity, not a flag flip.
+			revoked                 = CASE
+				WHEN instances.revoked = 1 THEN 1
+				ELSE excluded.revoked
+			END,
 			-- NODE-CAP-01: an EXISTING owner row's serving posture is
 			-- box-authoritative — only SetStoreOnly (a targeted UPDATE) may
 			-- change it. A sync/rotation/identity Upsert must never move it, so

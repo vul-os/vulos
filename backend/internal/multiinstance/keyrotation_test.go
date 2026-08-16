@@ -296,15 +296,65 @@ func TestRevocation_RevokedKeyRejected(t *testing.T) {
 		t.Fatal("a REVOKED origin's signed uninstall must NOT count toward quorum")
 	}
 
-	// After restoring trust, the same origin's signed uninstall counts again.
-	if err := as.RestoreFromRevocation(origin); err != nil {
-		t.Fatalf("RestoreFromRevocation: %v", err)
+	// Revocation is MONOTONIC. This block used to call RestoreFromRevocation and
+	// assert the origin counted again; that API is gone, and the property under
+	// test is now the opposite one — nothing a later writer does clears the bit.
+	//
+	// The writer used here is the one that actually did it in production:
+	// a plain Upsert carrying the instance WITHOUT the flag, which is exactly
+	// the shape of CloudSyncer's per-poll write (CloudInstance has no revoked
+	// field, so cloudInstanceToLocal always produces Revoked=false).
+	unrevoke, ok := reg.Get(origin)
+	if !ok {
+		t.Fatal("origin vanished from the roster")
+	}
+	unrevoke.Revoked = false
+	if err := reg.Upsert(unrevoke); err != nil {
+		t.Fatalf("upsert without the revoked flag: %v", err)
+	}
+	if again, _ := reg.Get(origin); !again.Revoked {
+		t.Fatal("a concurrent writer cleared a revocation: Upsert must LATCH revoked, "+
+			"or a cloud-sync poll un-revokes every box the operator evicted")
 	}
 	if err := as.ApplyChangeset(o.emitUninstall(t, victim, appID, "1.0.0", base.Add(2*time.Minute))); err != nil {
-		t.Fatalf("apply post-restore uninstall: %v", err)
+		t.Fatalf("apply post-unrevoke-attempt uninstall: %v", err)
 	}
-	if stillInstalled(t, as, victim) {
-		t.Fatal("after RestoreFromRevocation the origin's signed uninstall must count again")
+	if !stillInstalled(t, as, victim) {
+		t.Fatal("a revoked origin's signed uninstall counted again after an un-revoking write")
+	}
+}
+
+// TestRotateIdentityRefusesWhileRevoked pins the self-pardon path shut.
+//
+// RotateIdentity used to set `inst.Revoked = false` on every rotation, with the
+// comment "a fresh self-rotation clears any stale revoked flag on self". The
+// code runs on the box being revoked, so the only party with a motive to run it
+// is the one that must not be trusted: rotating was a one-call self-readmission.
+func TestRotateIdentityRefusesWhileRevoked(t *testing.T) {
+	const self = "01HWZMINST00000000000SELF04"
+	reg, as := openTempAppSync(t)
+
+	if _, err := as.GenerateAndSetIdentity(self); err != nil {
+		t.Fatalf("set identity: %v", err)
+	}
+	if err := as.RevokePeer(self); err != nil {
+		t.Fatalf("RevokePeer(self): %v", err)
+	}
+
+	newKey, err := multiinstance.GenerateRotationKey()
+	if err != nil {
+		t.Fatalf("GenerateRotationKey: %v", err)
+	}
+	if err := as.RotateIdentity(newKey, time.Hour); err == nil {
+		t.Fatal("a REVOKED instance rotated its own key — that is a self-pardon: " +
+			"the new key would be published into the roster with the revocation lifted")
+	}
+	inst, ok := reg.Get(self)
+	if !ok {
+		t.Fatal("self vanished from the roster")
+	}
+	if !inst.Revoked {
+		t.Fatal("the refused rotation still cleared the revoked flag")
 	}
 }
 

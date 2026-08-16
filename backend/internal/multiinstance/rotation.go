@@ -20,9 +20,33 @@
 //
 //	A compromised peer is marked Revoked in the roster. A revoked instance's
 //	signed observations NEVER count toward quorum (verifyChangesetSignature fails
-//	closed for a revoked origin), so its uninstall observations stop accumulating
-//	immediately. Revocation is monotonic in practice (a key, once compromised,
-//	stays revoked) but RestoreFromRevocation is provided for completeness / tests.
+//	closed for a revoked origin), and it is refused at the CRDT sync door
+//	(cmd/server/crdtsync_wiring.go's fabricPeerRoster), so a revoked box stops
+//	being able to write to its peers immediately.
+//
+//	# Revocation is MONOTONIC. There is no un-revoke.
+//
+//	This used not to be true, and the un-revoke paths were the reason eviction
+//	did not work:
+//
+//	  - RestoreFromRevocation cleared the flag outright. It existed "for
+//	    completeness / tests" and had no production caller. It is DELETED, not
+//	    gated: a function whose only effect is to undo a security decision is a
+//	    liability in a codebase where the roster is written by a background cloud
+//	    poll, and "for tests" is not a reason to keep a live un-revoke.
+//	  - RotateIdentity cleared Revoked on SELF on every rotation. A compromised
+//	    box runs this code: rotating its own key was a one-call self-pardon. It
+//	    now REFUSES to rotate while self is revoked.
+//	  - Registry.Upsert wrote `revoked = excluded.revoked` unconditionally, so
+//	    ANY writer that did not carry the flag cleared it — including
+//	    CloudSyncer, whose wire type has no revoked field at all, on every poll.
+//	    Upsert now latches the bit in SQL (see registry.go), the same way it
+//	    already protects an owner row's store_only.
+//
+//	What monotonicity costs: a box that was revoked in error cannot be readmitted
+//	under the same ULID. That is the correct trade — readmission is enrolment,
+//	and enrolment is an operator act with a fresh identity, not a flag flip that
+//	a concurrent writer can also perform.
 package multiinstance
 
 import (
@@ -83,12 +107,20 @@ func (as *AppSync) RotateIdentity(newPriv ed25519.PrivateKey, overlap time.Durat
 	if !found {
 		inst = Instance{ULID: selfULID, Kind: KindDevice, Role: RoleOwner, Status: StatusOnline}
 	}
+	// A revoked box does not get to re-admit itself. This line used to be
+	// `inst.Revoked = false`, justified as clearing a "stale" flag — but the
+	// code that runs it is the code on the box that was revoked, and the only
+	// party with a motive to run it is the box that should not be trusted. A
+	// rotation is not a pardon. Readmission is enrolment under a fresh identity,
+	// performed by the operator, not a side effect of a key roll.
+	if inst.Revoked {
+		return fmt.Errorf("appsync: RotateIdentity: instance %s is REVOKED — rotating a key does not lift a revocation, and a revoked instance may not re-admit itself; enrol a fresh identity instead", selfULID)
+	}
 	if oldPubB64 != "" {
 		inst.PrevEd25519PublicKey = oldPubB64
 		inst.PrevKeyExpiresAt = time.Now().UTC().Add(overlap)
 	}
 	inst.Ed25519PublicKey = newPubB64
-	inst.Revoked = false // a fresh self-rotation clears any stale revoked flag on self
 	if err := as.reg.Upsert(inst); err != nil {
 		return fmt.Errorf("appsync: RotateIdentity: publish rotated key: %w", err)
 	}
@@ -114,10 +146,23 @@ func GenerateRotationKey() (ed25519.PrivateKey, error) {
 	return priv, nil
 }
 
-// RevokePeer marks the rostered peer ulid as compromised so its signed
-// observations stop counting toward quorum immediately (verification fails
-// closed for a revoked origin). Both its current and previous keys are rejected
-// while revoked. Returns an error if the peer is not in the roster.
+// RevokePeer marks the rostered peer ulid as compromised. It is ONE-WAY: there
+// is no paired un-revoke (see the package doc), and Registry.Upsert latches the
+// bit so a later writer that does not carry it cannot clear it either.
+//
+// Its effect is immediate and covers both of the peer's keys:
+//
+//   - signed observations from that origin stop counting toward quorum
+//     (verifyChangesetSignature fails closed for a revoked origin), and
+//   - the peer is refused at the CRDT sync door, before any op is merged
+//     (cmd/server/crdtsync_wiring.go's fabricPeerRoster checks revocation
+//     before any allow arm, re-reading the roster on every request).
+//
+// What it does NOT do — and this is the honest boundary of "eviction": it does
+// not un-read anything the peer already pulled, and it does not re-key the
+// fleet, so it makes future WRITES impossible, not past reads unhappen.
+//
+// Returns an error if the peer is not in the roster.
 func (as *AppSync) RevokePeer(ulid string) error {
 	if ulid == "" {
 		return fmt.Errorf("appsync: RevokePeer: ulid must not be empty")
@@ -139,23 +184,7 @@ func (as *AppSync) RevokePeer(ulid string) error {
 	return nil
 }
 
-// RestoreFromRevocation clears the revoked flag on a peer (e.g. after the peer
-// has rotated to a fresh, trusted key out of band). Provided for completeness;
-// production revocation is generally permanent.
-func (as *AppSync) RestoreFromRevocation(ulid string) error {
-	if as.reg == nil {
-		return fmt.Errorf("appsync: RestoreFromRevocation: no registry")
-	}
-	inst, ok := as.reg.Get(ulid)
-	if !ok {
-		return fmt.Errorf("appsync: RestoreFromRevocation: unknown instance %q", ulid)
-	}
-	if !inst.Revoked {
-		return nil
-	}
-	inst.Revoked = false
-	if err := as.reg.Upsert(inst); err != nil {
-		return fmt.Errorf("appsync: RestoreFromRevocation: persist: %w", err)
-	}
-	return nil
-}
+// There is deliberately no RestoreFromRevocation. It existed here, cleared the
+// flag, and had no production caller — an un-revoke API kept "for completeness"
+// in a package whose roster is also written by a background cloud poll. See the
+// package doc: revocation is monotonic, and readmission is enrolment.
