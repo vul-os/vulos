@@ -37,8 +37,8 @@
    which is exactly how this bug is written in the first place.
 
    THIS FILE IS THE SINGLE SOURCE OF TRUTH.
-   It is inlined verbatim into every bundled app's index.html inside a
-   `<script data-vulos-shared="vulos-api.js">` block. Inlined rather than linked
+   It is inlined verbatim into every bundled app's index.html inside a script
+   element tagged data-vulos-shared="vulos-api.js". Inlined rather than linked
    because each app ships its own hand-rolled `server.py` with its own static
    route table (fifteen different shapes — four of them serve
    `../_shared/vulos-tokens.css`, eleven serve nothing shared at all), so a
