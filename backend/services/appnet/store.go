@@ -588,6 +588,20 @@ func (s *AppStore) AppDir() string {
 //
 // Bundled apps (/opt/vulos/apps) are included, because they ARE installed here:
 // omitting them would make every box try to install what it already ships.
+//
+// SYNC-APPS-02 — what "ground truth" means on a volatile root. The paragraph
+// above is right that the filesystem is the truth, and wrong about how long that
+// truth lasts. On the three overlay boot paths (live-USB, live-ESP,
+// netboot-installed) the whole of / is a squashfs lower plus a tmpfs upper in
+// RAM (scripts/initramfs/vulos-live), and appsDir is datadir.Join("apps") =
+// /root/.vulos/apps, inside it. There, this method reports the truth about THIS
+// BOOT, which is a different claim from the truth about this box: after a reboot
+// it reads an empty directory for apps the box really did install.
+//
+// That is still the right answer to give — a box must not claim to have an app
+// it cannot launch — but it is not, on its own, enough for the reconciler to act
+// on, which is why StorageVolatility exists next to it and why PlanReconcileFor
+// classifies an absence rather than just counting it.
 func (s *AppStore) RealisedVersions() (map[string]string, error) {
 	apps, err := s.Installed()
 	if err != nil {
@@ -601,6 +615,150 @@ func (s *AppStore) RealisedVersions() (map[string]string, error) {
 		out[a.ID] = a.Version
 	}
 	return out, nil
+}
+
+// mountsPath is the kernel's mount table. A variable so the classifier can be
+// tested against captured tables instead of the host's own.
+var mountsPath = "/proc/self/mounts"
+
+// volatileFSTypes are the filesystems that exist only in RAM. A file written to
+// one of these is gone at the next boot, with no failure at the time of writing.
+var volatileFSTypes = map[string]bool{"tmpfs": true, "ramfs": true}
+
+// StorageVolatility reports whether the directory this box installs apps into
+// lives on storage that does NOT survive a reboot, with a human-readable detail
+// naming the mount it decided on.
+//
+// This is the second input the reconciler needs and the one nothing produced
+// before. RealisedVersions can say "the app is not here"; only this can say
+// whether "not here" means "never arrived" or "arrived and evaporated with the
+// tmpfs". Without it a fleet-driven reconciler on a live-USB box re-downloads
+// every desired app on every boot, forever, and the only symptom is a slow boot.
+//
+// It is measured, not inferred, and measured from the kernel's own mount table
+// rather than from the boot mode: an operator who points VULOS_DATA_DIR at a
+// mounted volume, or an initramfs that later binds the data dir onto real
+// storage, flips this to durable with no code change here and no policy to
+// update. That is deliberate — the day the app dir becomes persistent, every
+// behaviour keyed on this answer stops firing by itself rather than becoming
+// wrong.
+//
+// Unknown is reported as NOT volatile (false, ""). There is no mount table on
+// darwin (developer machines) and there may be none in a stripped container, and
+// claiming "your storage is volatile" without evidence would put a false reason
+// on a replicated row that a user reads at another box.
+func (s *AppStore) StorageVolatility() (bool, string) {
+	data, err := os.ReadFile(mountsPath)
+	if err != nil {
+		return false, ""
+	}
+	return classifyMountVolatility(string(data), s.appsDir)
+}
+
+// classifyMountVolatility decides whether path sits on RAM-backed storage, given
+// the contents of a /proc/self/mounts-style table.
+//
+// Two hops, because one is not enough on this OS. The mount covering
+// /root/.vulos/apps on every overlay boot is "/" with fstype `overlay`, and
+// overlay is neither durable nor volatile in itself: it inherits the answer from
+// wherever its WRITABLE upper layer lives. vulos-live puts that upper in a tmpfs
+// at /run/vulos/rw, so the classifier follows upperdir= and asks the same
+// question of it. Stopping at "overlay" would report every overlay box as
+// durable — which is the mistake that makes this whole defect invisible.
+func classifyMountVolatility(mounts, path string) (bool, string) {
+	return classifyMountVolatilityDepth(mounts, path, 0)
+}
+
+func classifyMountVolatilityDepth(mounts, path string, depth int) (bool, string) {
+	if depth > 4 {
+		// An overlay stacked on an overlay stacked on … — refuse to loop and
+		// refuse to guess.
+		return false, ""
+	}
+	fstype, mountPoint, opts := mountFor(mounts, path)
+	switch {
+	case fstype == "":
+		return false, ""
+	case volatileFSTypes[fstype]:
+		return true, fmt.Sprintf("%s at %s (RAM-backed)", fstype, mountPoint)
+	case fstype == "overlay":
+		upper := mountOption(opts, "upperdir")
+		if upper == "" {
+			// A lower-only overlay is read-only: an install cannot land at all,
+			// which is not the same failure but is equally not durable.
+			return true, fmt.Sprintf("overlay at %s with no writable upper layer", mountPoint)
+		}
+		volatile, detail := classifyMountVolatilityDepth(mounts, upper, depth+1)
+		if !volatile {
+			return false, ""
+		}
+		return true, fmt.Sprintf("overlay at %s whose upper layer %s is %s", mountPoint, upper, detail)
+	default:
+		return false, ""
+	}
+}
+
+// mountFor returns the fstype, mount point and options of the most specific
+// mount covering path. Longest-prefix, because "/" covers everything and the
+// answer for /root/.vulos/apps is whichever mount is nearest it.
+func mountFor(mounts, path string) (fstype, mountPoint, opts string) {
+	path = filepath.Clean(path)
+	best := -1
+	for _, line := range strings.Split(mounts, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 {
+			continue
+		}
+		mp := unescapeMountField(f[1])
+		if !pathWithin(path, mp) {
+			continue
+		}
+		if len(mp) > best {
+			best, fstype, mountPoint, opts = len(mp), f[2], mp, f[3]
+		}
+	}
+	return fstype, mountPoint, opts
+}
+
+// pathWithin reports whether path is mp or lives beneath it. Prefix comparison
+// alone would put /rootfs-backup under /root.
+func pathWithin(path, mp string) bool {
+	mp = filepath.Clean(mp)
+	if mp == "/" || mp == path {
+		return true
+	}
+	return strings.HasPrefix(path, mp+string(filepath.Separator))
+}
+
+// mountOption returns the value of key= in a comma-separated mount option list.
+func mountOption(opts, key string) string {
+	for _, o := range strings.Split(opts, ",") {
+		if v, ok := strings.CutPrefix(o, key+"="); ok {
+			return unescapeMountField(v)
+		}
+	}
+	return ""
+}
+
+// unescapeMountField undoes the octal escaping the kernel applies to space, tab,
+// newline and backslash in mount table paths.
+func unescapeMountField(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) &&
+			s[i+1] >= '0' && s[i+1] <= '7' &&
+			s[i+2] >= '0' && s[i+2] <= '7' &&
+			s[i+3] >= '0' && s[i+3] <= '7' {
+			b.WriteByte((s[i+1]-'0')<<6 | (s[i+2]-'0')<<3 | (s[i+3] - '0'))
+			i += 3
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // Realise installs appID at version ("" = latest) on this box.
