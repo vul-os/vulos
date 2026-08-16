@@ -101,5 +101,4 @@
       root.addEventListener('hashchange', function () { applyTheme(); });
     }
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);

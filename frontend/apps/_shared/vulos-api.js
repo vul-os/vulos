@@ -85,5 +85,4 @@
 
   var api = { mountBase: mountBase, appUrl: appUrl, appFetch: appFetch };
   if (root) root.vulosApi = api;
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);
