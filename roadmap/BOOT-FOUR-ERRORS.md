@@ -155,8 +155,15 @@ both the live-USB and the netboot-installed slot layouts and asserts:
 - no `mkdir` may land inside `$rootmnt` during init-bottom
 - no `Read-only file system`, no `mount: No such file or directory`, no
   `invalid option --` in the hook's output
-- exactly one mount may name `$rootmnt`, it must be the overlay bind, and it
-  must be **last**
+- **on a live boot**, exactly one mount may name `$rootmnt`, it must be the
+  overlay bind, and it must be **last**
+
+That last assertion is deliberately live-only. The netboot-installed path adds
+exactly one mount after the rebind — the on-disk `/var/cache/vulos`, which has to
+sit *on top of* the overlay and therefore cannot precede it — and that path has
+its own topology assertions in the section at the end of this file. Keeping the
+live rule strict is the point: the exception is one named boot, not a licence to
+append mounts.
 
 Every assertion is "the hook did *not* do X", which a harness that failed to
 start the hook satisfies trivially — so `assertHarnessActuallyRanTheHook` pins
