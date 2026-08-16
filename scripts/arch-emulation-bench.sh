@@ -42,11 +42,36 @@
 # has crypto extensions the emulators do not model, so such a benchmark would
 # measure the extension gap rather than the emulator.
 #
-# Usage: scripts/arch-emulation-bench.sh [reps]     (default 5)
+# ── Modes ───────────────────────────────────────────────────────────────────
+#
+#   bench   [reps]  the original throughput/start-up/RSS comparison (default)
+#   cost            what shipping the emulator costs the OS image, measured as
+#                   an xz-squashfs delta on ONE tree — the same compression
+#                   build.sh uses (`mksquashfs -comp xz`), so the number is the
+#                   image's, not a `du` guess.
+#   handler         proof that an x86_64 binary runs through the binfmt handler
+#                   THIS REPO SHIPS, with the emulator never named on the
+#                   command line, and with its exit status checked.
+#   all             cost, then handler, then bench.
+#
+# Usage: scripts/arch-emulation-bench.sh [bench|cost|handler|all] [reps]
 set -uo pipefail
 
+MODE="${1:-bench}"
+case "$MODE" in
+  bench|cost|handler|all) shift || true ;;
+  ''|*[0-9]*) MODE=bench ;;          # back-compat: a bare rep count
+  *) echo "unknown mode: $MODE" >&2; exit 2 ;;
+esac
 REPS="${1:-5}"
 
+# Every docker invocation below checks its exit status. §4.3 of
+# roadmap/ARCH-PLACEMENT.md exists because a timing harness that does not check
+# exit status timed a crashing box64 and produced a plausible 1.57x. Nothing in
+# this file may report a number it has not proved came from a process that ran.
+RC=0
+
+run_bench() {
 # -i is REQUIRED: without it docker does not attach stdin, `sh -s` reads EOF
 # immediately, and the whole script exits 0 having run nothing at all.
 docker run --rm -i --platform linux/arm64 debian:trixie-slim sh -s -- "$REPS" <<'INNER'
@@ -138,3 +163,273 @@ echo "native arm64 : $(mem "$NB") KB"
 echo "qemu-x86_64  : $(mem qemu-x86_64 "$XB") KB"
 echo "box64        : $(mem box64 "$XB") KB"
 INNER
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cost — what shipping the emulator adds to the OS image.
+#
+# Measured the way build.sh actually builds the image: `mksquashfs -comp xz`
+# over the rootfs. A `du` of /usr/bin/qemu-* would overstate it by whatever xz
+# achieves on 80 near-identical statically linked binaries, and understate
+# nothing — so it is the wrong number in an unpredictable direction.
+#
+# THE SAME TREE is squashed three times, in place, so the deltas are
+# apples-to-apples:
+#   A  baseline debian:trixie-slim (with squashfs-tools, which is measurement
+#      scaffolding and therefore in the BASELINE, not in any delta)
+#   B  + qemu-user-static binfmt-support   (the whole 80-emulator qemu-user)
+#   C  after pruning to the two emulators a Vulos fleet can actually need:
+#      qemu-x86_64 (amd64 apps on an arm64 box) and qemu-aarch64 (the reverse).
+#
+# C-A is the number build.sh should pay. B-A is what it costs to not prune.
+# ─────────────────────────────────────────────────────────────────────────────
+run_cost() {
+docker run --rm -i --platform linux/arm64 debian:trixie-slim sh -s <<'COST'
+set -u
+fail() { echo "COST-MEASUREMENT-FAILED: $*" >&2; exit 1; }
+
+apt-get update -qq >/dev/null 2>&1 || fail "apt-get update"
+apt-get install -y --no-install-recommends squashfs-tools >/dev/null 2>&1 \
+  || fail "squashfs-tools (the measuring instrument) did not install"
+command -v mksquashfs >/dev/null || fail "mksquashfs absent after install"
+
+mkdir -p /out
+# Excluded: kernel/virtual filesystems, apt's download cache (cleaned anyway,
+# but a stray .deb would land in exactly one of the three measurements), and
+# /out itself — squashing the previous squashfs into the next one would make
+# every delta cumulative and wrong.
+squash() {
+  apt-get clean
+  rm -f "/out/$1.sqfs"
+  mksquashfs / "/out/$1.sqfs" -comp xz -noappend -quiet -no-progress \
+      -e proc sys dev run tmp out var/cache/apt/archives \
+    || fail "mksquashfs $1"
+  stat -c %s "/out/$1.sqfs"
+}
+
+A=$(squash a-baseline)     || exit 1
+echo "A baseline (trixie-slim + squashfs-tools) : $A bytes"
+
+apt-get install -y --no-install-recommends qemu-user-static binfmt-support >/dev/null 2>&1 \
+  || fail "qemu-user-static did not install"
+# Prove the thing we are costing is actually there before costing it.
+[ -x /usr/bin/qemu-x86_64 ] || fail "qemu-x86_64 missing after install"
+[ -f /usr/lib/binfmt.d/qemu-x86_64.conf ] || fail "binfmt.d registration missing"
+
+B=$(squash b-full) || exit 1
+echo "B + qemu-user-static (all $(ls /usr/bin/qemu-* | wc -l) emulators)      : $B bytes"
+
+echo
+echo "--- what is actually in there, uncompressed ---"
+du -shc /usr/bin/qemu-* 2>/dev/null | tail -1
+dpkg-query -W -f='${Package} ${Installed-Size}KB\n' qemu-user qemu-user-static qemu-user-binfmt binfmt-support libpipeline1
+
+# ── The prune ──
+# Debian ships one qemu-user package containing every target. Vulos needs two:
+# the x86_64 emulator on arm64 boxes and the aarch64 emulator on amd64 boxes.
+# Keeping all 80 costs the image ~30x what the two cost.
+KEEP="x86_64 aarch64"
+keep_re="qemu-x86_64|qemu-aarch64"
+for f in /usr/bin/qemu-*; do
+  b=$(basename "$f")
+  echo "$b" | grep -Eq "^($keep_re)(-static)?$" || rm -f "$f"
+done
+for f in /usr/libexec/qemu-binfmt/*; do
+  b=$(basename "$f")
+  echo "$b" | grep -Eq "^(x86_64|aarch64)-binfmt-P$" || rm -f "$f"
+done
+for f in /usr/lib/binfmt.d/qemu-*.conf; do
+  b=$(basename "$f" .conf)
+  echo "$b" | grep -Eq "^($keep_re)$" || rm -f "$f"
+done
+# The prune must not have removed what we keep.
+#
+# NOTE, and this guard earned its keep by catching it: there is no
+# binfmt.d/qemu-aarch64.conf on an arm64 host, and no qemu-x86_64.conf on an
+# amd64 one. Debian does not register a handler for the machine's OWN
+# architecture, because the kernel already runs it. So the conf is required
+# only for the FOREIGN arch — asking for both failed the measurement outright,
+# which is the correct behaviour for a check that does not know that.
+NATIVE=$(uname -m)
+for a in $KEEP; do
+  [ -x "/usr/bin/qemu-$a" ] || fail "prune deleted qemu-$a, the whole point"
+  [ -x "/usr/libexec/qemu-binfmt/$a-binfmt-P" ] || fail "prune deleted the $a binfmt interpreter"
+  if [ "$a" != "$NATIVE" ]; then
+    [ -f "/usr/lib/binfmt.d/qemu-$a.conf" ] || fail "prune deleted qemu-$a.conf, the registration for the foreign arch"
+  fi
+done
+echo
+echo "--- after prune, uncompressed ---"
+du -shc /usr/bin/qemu-* /usr/libexec/qemu-binfmt/* 2>/dev/null | tail -1
+
+C=$(squash c-pruned) || exit 1
+echo "C pruned to x86_64 + aarch64                : $C bytes"
+
+echo
+echo "=== IMAGE COST (xz squashfs, the compression build.sh uses) ==="
+awk -v a="$A" -v b="$B" -v c="$C" 'BEGIN{
+  printf "baseline                      : %10.1f MB\n", a/1048576;
+  printf "full qemu-user (80 emulators) : %+10.1f MB\n", (b-a)/1048576;
+  printf "pruned to x86_64 + aarch64    : %+10.1f MB   <- what Vulos should pay\n", (c-a)/1048576;
+  printf "saved by pruning              : %10.1f MB\n", (b-c)/1048576;
+}'
+COST
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# handler — the execution proof.
+#
+# The bench above invokes `qemu-x86_64 <binary>` BY NAME. That proves the
+# emulator works; it does not prove the OS will reach it, which is the thing an
+# app launcher depends on. This mode registers the handler THIS REPO SHIPS
+# (/usr/lib/binfmt.d/qemu-x86_64.conf, verbatim, flags and all) and then runs an
+# x86_64 binary with `./binary` — no emulator named anywhere — and checks the
+# exit status.
+#
+# ── Why it does not simply register the ELF magic ────────────────────────────
+#
+# binfmt_misc is a KERNEL-GLOBAL table. In Docker/OrbStack on this Mac that
+# kernel is the shared Linux VM every other container on this machine is using,
+# and it already carries an x86_64 ELF handler (Rosetta, per §4.2). Registering
+# a second entry for the same magic puts ours at the head of the list and
+# silently re-routes every other agent's amd64 container through qemu until we
+# deregister. That is not a risk worth taking for a proof.
+#
+# So: the shipped conf's magic is swapped for an EXTENSION match (`.x86p`) and
+# nothing else — same interpreter path, same flags, same emulator. An extension
+# handler cannot collide with an ELF-magic handler, so nothing else on this
+# machine changes. The registration is removed on exit either way.
+#
+# The flags are the part that actually matters and they are preserved exactly:
+# `F` (fix-binary) makes the kernel open the interpreter AT REGISTRATION TIME
+# and keep the fd, which is why the handler still works inside a mount
+# namespace that has no /usr/bin/qemu-x86_64 — a Flatpak bwrap sandbox, a
+# chroot, a container. The last test below unshares a mount namespace, hides
+# the emulator, and runs the binary anyway. Without F that step fails; it is
+# the difference between "emulation works" and "emulation works where apps
+# actually run".
+# ─────────────────────────────────────────────────────────────────────────────
+run_handler() {
+docker run --rm -i --privileged --platform linux/arm64 debian:trixie-slim sh -s <<'HANDLER'
+set -u
+FAILED=0
+ok()   { echo "  PASS  $*"; }
+bad()  { echo "  FAIL  $*"; FAILED=1; }
+
+dpkg --add-architecture amd64
+apt-get update -qq >/dev/null 2>&1
+apt-get install -y --no-install-recommends qemu-user-static binfmt-support util-linux >/dev/null 2>&1 \
+  || { echo "install failed"; exit 1; }
+
+mkdir -p /w && cd /w
+apt-get download busybox-static:amd64 >/dev/null 2>&1 || { echo "download failed"; exit 1; }
+mkdir -p /opt/x && for d in busybox-static_*_amd64.deb; do dpkg -x "$d" /opt/x; done
+XB=$(find /opt/x -name busybox -type f | head -1)
+[ -n "$XB" ] || { echo "no amd64 busybox"; exit 1; }
+cp "$XB" /w/probe.x86p && chmod +x /w/probe.x86p
+
+echo "=== the handler this repo ships ==="
+cat /usr/lib/binfmt.d/qemu-x86_64.conf
+CONF=$(cat /usr/lib/binfmt.d/qemu-x86_64.conf)
+INTERP=$(echo "$CONF" | awk -F: '{print $5}')
+FLAGS=$(echo "$CONF" | awk -F: '{print $6}')
+echo "interpreter: $INTERP"
+echo "flags      : $FLAGS"
+case "$FLAGS" in
+  *F*) ok "shipped flags contain F (fix-binary) — required inside a Flatpak/bwrap sandbox" ;;
+  *)   bad "shipped flags lack F; the handler will not resolve inside an app sandbox" ;;
+esac
+
+echo
+echo "=== kernel binfmt_misc state BEFORE we touch it ==="
+mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null
+if [ ! -f /proc/sys/fs/binfmt_misc/register ]; then
+  echo "  binfmt_misc not mountable — cannot prove kernel dispatch here"; exit 1
+fi
+ls /proc/sys/fs/binfmt_misc | grep -v '^\(register\|status\)$' | while read -r e; do
+  echo "  existing: $e -> $(awk '/^interpreter/{print $2}' "/proc/sys/fs/binfmt_misc/$e")"
+done
+if ls /proc/sys/fs/binfmt_misc | grep -qi rosetta; then
+  echo "  NOTE: a rosetta handler is registered in this shared kernel. It is left alone."
+fi
+
+NAME=vulos-qemu-x86-64-proof
+cleanup() { [ -f "/proc/sys/fs/binfmt_misc/$NAME" ] && echo -1 > "/proc/sys/fs/binfmt_misc/$NAME"; }
+trap cleanup EXIT INT TERM
+
+# Same interpreter, same flags as the shipped conf; magic swapped for the
+# extension so this cannot shadow anything else on the shared kernel.
+echo ":$NAME:E::x86p::$INTERP:$FLAGS" > /proc/sys/fs/binfmt_misc/register 2>/dev/null \
+  || { bad "could not register the handler"; exit 1; }
+[ -f "/proc/sys/fs/binfmt_misc/$NAME" ] && ok "handler registered from the shipped interpreter + flags"
+grep -q '^enabled' "/proc/sys/fs/binfmt_misc/$NAME" && ok "handler is enabled"
+
+echo
+echo "=== 1. an x86_64 binary, run with NO emulator on the command line ==="
+OUT=$(/w/probe.x86p echo RAN-X86_64-THROUGH-BINFMT 2>&1); RC=$?
+echo "  exit=$RC output=$OUT"
+if [ "$RC" -eq 0 ] && [ "$OUT" = "RAN-X86_64-THROUGH-BINFMT" ]; then
+  ok "kernel dispatched an x86_64 ELF to qemu-user and it ran to a zero exit"
+else
+  bad "the x86_64 binary did not run through the handler (exit $RC)"
+fi
+
+echo
+echo "=== 2. it is NOT Rosetta servicing this (the §4.2 trap) ==="
+# Rosetta maps /run/rosetta into the translated process. qemu does not.
+MAPS=$(/w/probe.x86p sh -c 'grep -c rosetta /proc/self/maps || true' 2>/dev/null)
+echo "  rosetta mappings in the translated process: ${MAPS:-0}"
+if [ "${MAPS:-0}" = "0" ]; then
+  ok "no rosetta mapping — this is qemu-user, the software a real ARM box would run"
+else
+  bad "rosetta serviced the exec; this measurement would not transfer to a real ARM box"
+fi
+
+echo
+echo "=== 3. it still works inside a sandbox with no emulator visible ==="
+# This is the Flatpak case: bwrap gives the app the runtime's own /usr. If the
+# handler needed to find /usr/bin/qemu-x86_64 in the app's mount namespace, it
+# would fail here — and would fail identically inside every Flatpak.
+mkdir -p /sandbox/bin /sandbox/usr
+cp /w/probe.x86p /sandbox/probe.x86p
+OUT=$(unshare -m sh -c '
+  mount -t tmpfs tmpfs /usr/libexec 2>/dev/null
+  mount --bind /sandbox/bin /usr/bin 2>/dev/null
+  /sandbox/probe.x86p echo RAN-INSIDE-SANDBOX 2>&1' ); RC=$?
+echo "  exit=$RC output=$OUT"
+if [ "$RC" -eq 0 ] && [ "$OUT" = "RAN-INSIDE-SANDBOX" ]; then
+  ok "F-flag handler resolved with the emulator hidden — works inside an app sandbox"
+else
+  bad "handler did not resolve inside a mount namespace without the emulator (exit $RC)"
+fi
+
+echo
+echo "=== 4. NEGATIVE CONTROL: with the handler removed, the same exec must fail ==="
+# Without this, every PASS above is unfalsifiable: if something else on the
+# machine were running the binary, the tests would pass with our handler
+# deregistered too.
+echo -1 > "/proc/sys/fs/binfmt_misc/$NAME"
+OUT=$(/w/probe.x86p echo SHOULD-NOT-RUN 2>&1); RC=$?
+echo "  exit=$RC output=$OUT"
+if [ "$RC" -eq 0 ]; then
+  bad "the x86_64 binary ran with NO handler registered — something else serviced it, so tests 1-3 prove nothing about our handler"
+else
+  ok "with the handler gone the exec fails (exit $RC) — tests 1-3 were measuring OUR handler"
+fi
+
+echo
+[ "$FAILED" -eq 0 ] && echo "=== HANDLER PROOF: ALL PASS ===" || echo "=== HANDLER PROOF: FAILURES ABOVE ==="
+exit "$FAILED"
+HANDLER
+}
+
+case "$MODE" in
+  bench)   run_bench;   RC=$? ;;
+  cost)    run_cost;    RC=$? ;;
+  handler) run_handler; RC=$? ;;
+  all)     run_cost;    RC=$?
+           run_handler; RC=$((RC + $?))
+           run_bench;   RC=$((RC + $?)) ;;
+esac
+[ "$RC" -eq 0 ] || echo "arch-emulation-bench: mode '$MODE' exited $RC — the numbers above, if any, are not trustworthy" >&2
+exit "$RC"
