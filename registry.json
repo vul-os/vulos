@@ -458,6 +458,73 @@
       },
       "vetted": true
     },
+    "diwan": {
+      "_note": "SOURCE vulos (first-party). PER-ARCHITECTURE: pins BOTH linux binaries from the vul-os/diwan v0.1.0 release via `artifacts`, so an arm64 box installs the arm64 build instead of being told the OS's own office suite is unavailable. CHECKSUM EVIDENCE 2026-08-16: each asset was downloaded fresh and sha256'd locally, and each digest equals BOTH the line for it in the release's own checksums.txt AND the digest GitHub publishes for the asset - three independent statements per artefact (amd64 467f27fc..., arm64 2e92fc07...). BOOT EVIDENCE: installed by the product's own appnet.InstallFromRegistry and launched exactly as this recipe specifies, in a debian:trixie-slim container on linux/amd64 AND linux/arm64; `file` confirmed the per-arch binary really is x86-64 resp. ARM aarch64, GET / returned the real Diwan SPA (HTTP 200, <title>Diwan</title>) and GET /api/files returned 200, with the SQLite state created under data/. BINARY_NAME: the release assets are named diwan-linux-amd64 and diwan-linux-arm64, but `command` is one string for every architecture, so binary_name pins the installed path to bin/diwan on both. PORT: diwan v0.1.0 has no port flag and no env override for server.addr, so the port is a LITERAL in data/diwan.yaml written by post_install. That is correct rather than fragile because appPort is taken verbatim from this recipe's `port` field (backend/cmd/server/main.go:1853) and is not pool-allocated - only the HOST port is - so ${PORT} at launch always equals 8080. It must be a literal because ${PORT} is NOT expanded during post_install (only into `command`, at launch, launcher.go:248). CHOWN: apps are exec'd as nobody (uid 65534, launcher.go:52-53) but InstallFromRegistry creates the app dir 0755 root-owned and never chowns it, so post_install hands data/ and uploads/ to the runtime uid; without that diwan cannot create its SQLite files. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md and roadmap/PER-ARCH-ARTIFACTS.md.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Vulos",
+      "category": "productivity",
+      "description": "Self-hostable collaborative office suite - documents, spreadsheets, slides and whiteboards, CRDT-native and peer-to-peer, served from a single binary on your own storage.",
+      "homepage": "https://github.com/vul-os/diwan",
+      "icon": "D",
+      "icon_url": "",
+      "keywords": [
+        "office",
+        "documents",
+        "docs",
+        "spreadsheets",
+        "sheets",
+        "slides",
+        "whiteboard",
+        "pdf",
+        "collaboration",
+        "crdt",
+        "productivity"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "name": "Diwan",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
+      "versions": {
+        "0.1.0": {
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "467f27fcc68133488394bae758bb3c629e76092c89473e4f29a5ad861668e293",
+              "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "2e92fc0713227f7e3380a4ebe292768930b54e6d3e5d167aa2117ef3d7891ce5",
+              "download_url": "https://github.com/vul-os/diwan/releases/download/v0.1.0/diwan-linux-arm64"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "diwan",
+          "command": "bin/diwan -config data/diwan.yaml",
+          "deps": [
+            "ca-certificates"
+          ],
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8080,
+          "post_install": "mkdir -p data uploads && printf 'server:\\n  addr: \":8080\"\\n  data_dir: \"%s/data\"\\n  uploads_dir: \"%s/uploads\"\\nauth:\\n  enabled: false\\nstorage:\\n  type: \"local\"\\n' \"$APP_DIR\" \"$APP_DIR\" > data/diwan.yaml && chown -R 65534:65534 data uploads",
+          "singleton": true
+        }
+      }
+    },
     "drawio": {
       "name": "draw.io",
       "vetted": true,
@@ -1322,54 +1389,6 @@
       },
       "signature": "Z1HQEOYkac32CVm2PyRiZQ2+qLGPrqplPgP1JqM9AivbkbmVBerIoEOaFYYQZKIbjC4WEgwowd5SCDwNKimQBQ=="
     },
-    "kerf": {
-      "arch": null,
-      "author": "Kerf Contributors",
-      "category": "developer",
-      "description": "Browser-native parametric CAD — WASM-powered 3D modelling and sketching; default app for all CAD intents (replaces Fusion 360 / SolidWorks). See roadmap/CAD-KERF.md.",
-      "homepage": "https://github.com/kerf-cad/kerf",
-      "icon": "Kerf",
-      "icon_url": "",
-      "keywords": [
-        "cad",
-        "3d",
-        "modelling",
-        "parametric",
-        "wasm",
-        "design",
-        "engineering",
-        "solidworks",
-        "fusion360"
-      ],
-      "lane": {
-        "web": true
-      },
-      "license": "Apache-2.0",
-      "name": "Kerf",
-      "signature": "FA6z/OJiv1P3NpUhFNRD9j62hJWCTXPSZH0mVvtAmrGBoMKzyRYW5z8FcUmDLuYxGCQDJb1g7vUqIApnSBUICw==",
-      "type": "web",
-      "versions": {
-        "latest": {
-          "_note": "Kerf upstream WASM release pending; recipe falls back to placeholder page. Update once kerf-cad/kerf publishes a dist artifact.",
-          "archive_strip": 0,
-          "auto_start": false,
-          "checksum": "",
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "deps": null,
-          "download_url": "",
-          "env": null,
-          "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 https://github.com/kerf-cad/kerf.git static/ 2\u003e/dev/null || (mkdir -p static \u0026\u0026 printf '\u003chtml\u003e\u003cbody\u003e\u003ch1\u003eKerf CAD\u003c/h1\u003e\u003cp\u003eKerf WASM build not yet published. See roadmap/CAD-KERF.md for status.\u003c/p\u003e\u003c/body\u003e\u003c/html\u003e' \u003e static/index.html)",
-          "permissions": [
-            "network"
-          ],
-          "port": 8080,
-          "post_install": "mkdir -p static",
-          "singleton": true
-        }
-      },
-      "vetted": true
-    },
     "kicad": {
       "name": "KiCad",
       "vetted": true,
@@ -1498,6 +1517,71 @@
         }
       },
       "signature": "izvArJDFh9kd2tSD8bhVW+S9FRCtUJMrpHJRftx781lx0NjgoJUE30qu1VOc/6VXqPZamECImJ/+srHB0cB2Cg=="
+    },
+    "lilmail": {
+      "_note": "SOURCE vulos (first-party). NEW ENTRY. PER-ARCHITECTURE: pins both linux zips from vul-os/lilmail v1.14.0 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each zip downloaded fresh and sha256'd locally, and each digest equals BOTH its line in the release's published SHA256SUMS AND the digest GitHub publishes for the asset (amd64 c3d0fa78..., arm64 7689dd62...). ZIP: these are the first registry artefacts that are .zip rather than .tar.gz or a raw binary. staticInstall previously recognised only tar formats, so a .zip fell through to the plain-binary branch and was installed as bin/<name>.zip chmod 0755 - a SUCCESSFUL install of an app that could never start. That gap is now closed by extractZip (archive/zip, in-process, so the gated image package set needs no `unzip`). ARCHIVE_STRIP 1 drops the leading lilmail/ directory, leaving ./lilmail and config.toml.example at the app root; binary_name is deliberately ABSENT because it applies only to single-binary downloads and validateRecipeSecurity refuses it on an archive rather than ignoring it. BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; `file` confirmed the per-arch binary really is x86-64 resp. ARM aarch64, `./lilmail -version` reports lilmail 1.14.0, GET / returns 302 to /login and GET /login returns the real page (HTTP 200, <title>lilmail</title>), with the bolt store created under cache/. PORT: lilmail has no port flag - config.LoadConfig(\"config.toml\") is read relative to the working directory, which the launcher sets to the app dir - so the port is a LITERAL in config.toml, equal to this recipe's `port` field for the same reason as diwan. SECRETS: [jwt].secret and [encryption].key are REQUIRED (LoadConfig rejects a key that is not 16/24/32 bytes), so post_install mints both from /dev/urandom and REFUSES (exit 1) rather than writing weak or empty ones; no credential is baked into this registry. CACHE DIR: cache/ must exist before launch or lilmail logs `scheduled send unavailable (store open failed)` and runs degraded - observed, then fixed here. MAILBOX: lilmail hosts no mail and has no account system; the [imap]/[smtp] hosts written here are placeholders the owner edits to point at their OWN mailbox. CHOWN: as for diwan, the runtime uid 65534 is given the state directories. See roadmap/PER-ARCH-ARTIFACTS.md.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Vulos",
+      "category": "productivity",
+      "description": "Database-free personal information manager - mail, calendar and contacts for your OWN IMAP/CalDAV/CardDAV accounts, served from a single binary. Hosts no mail and has no account system.",
+      "homepage": "https://github.com/vul-os/lilmail",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "mail",
+        "email",
+        "imap",
+        "smtp",
+        "calendar",
+        "caldav",
+        "contacts",
+        "carddav",
+        "pim",
+        "webmail"
+      ],
+      "license": "MIT OR Apache-2.0",
+      "name": "lilmail",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
+      "versions": {
+        "1.14.0": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "c3d0fa7834e60eba3ed724ae4b6324d718e3372d0d9b2c4fe5ff1cce47e65814",
+              "download_url": "https://github.com/vul-os/lilmail/releases/download/v1.14.0/lilmail_1.14.0_linux_amd64.zip"
+            },
+            "arm64": {
+              "checksum": "7689dd62a46ce52a89a99d6acec86b48640932a4d4f86eccf957c58fb063cc3b",
+              "download_url": "https://github.com/vul-os/lilmail/releases/download/v1.14.0/lilmail_1.14.0_linux_arm64.zip"
+            }
+          },
+          "auto_start": false,
+          "command": "./lilmail",
+          "deps": [
+            "ca-certificates"
+          ],
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8090,
+          "post_install": "mkdir -p cache sessions && JWT=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; KEY=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#JWT} -ne 32 ] || [ ${#KEY} -ne 32 ]; then echo \"lilmail post-install: could not generate 32-character secrets from /dev/urandom - refusing to write a config with weak or empty [jwt].secret or [encryption].key\" >&2; exit 1; fi; printf '[server]\\nport = 8090\\nsecure_cookies = false\\nframe_ancestors = \"\\'self\\'\"\\n[auth]\\nallow_full_email_username = true\\n[imap]\\nserver = \"imap.example.com\"\\nport = 993\\ntls = true\\n[cache]\\nfolder = \"%s/cache\"\\n[storage]\\nbackend = \"bolt\"\\n[jwt]\\nsecret = \"%s\"\\n[encryption]\\nkey = \"%s\"\\n[smtp]\\nport = 587\\nuse_starttls = true\\n' \"$APP_DIR\" \"$JWT\" \"$KEY\" > config.toml && chmod 640 config.toml && chown -R 65534:65534 config.toml cache sessions",
+          "singleton": true
+        }
+      }
     },
     "lmms": {
       "name": "LMMS",
@@ -2359,34 +2443,58 @@
       "signature": "zO+bS9Da3WrrcmeHX8Z+S7vdqpAVHgUr+pkD+6oaNsUsOOktV5O3O+tNisfMDI8pzr8Z7cmQA10rybJnrwvAAw=="
     },
     "wede": {
-      "name": "Wede",
-      "vetted": false,
-      "type": "web",
-      "arch": null,
-      "description": "Lightweight web-based code editor — edit files and projects from your browser with syntax highlighting",
-      "category": "developer",
+      "_note": "SOURCE vulos (first-party). REPLACES the previous entry, which could not work at all: its `install` was empty, its `download_url` was empty, and its `command` was /root/.local/bin/wede - nothing ever placed that binary. PER-ARCHITECTURE: pins both linux binaries from vul-os/wede v0.1.3 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each downloaded fresh and sha256'd locally, each digest matching both the release's checksums.txt and GitHub's published asset digest (amd64 275ed918..., arm64 73800e85...). BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; the binary reports `wede v0.1.3`, logs `loaded config from $APP_DIR/wede.config.json`, GET / returns the real IDE (HTTP 200, <title>WEDE | Web Development Environment</title>), and POST /api/auth/login with the generated password returns {\"role\":\"owner\"} - so the credential this recipe mints actually authenticates. CONFIG IS MANDATORY: wede v0.1.3 calls log.Fatal when it cannot find wede.config.json and rejects an empty password, so it fails loudly rather than starting half-configured. post_install mints a 32-character password from /dev/urandom and REFUSES (exit 1) if it cannot produce 32, rather than writing a weak or empty one; the owner reads it from wede-password.txt and no credential is baked into this registry. PORT: arrives via `-port ${PORT}`, which the launcher DOES expand (launcher.go:248); the 9090 inside the config is the file's own self-consistent default and the flag overrides it. DEPS: git is a genuine runtime dependency - wede shells out to the git binary (backend/internal/chat/chat.go:509) - not decoration. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Vulos",
+      "category": "developer",
+      "description": "Self-hosted collaborative web IDE - real-time multi-user editing, shared terminals, git and per-workspace chat, from a single binary in your browser.",
       "homepage": "https://github.com/vul-os/wede",
-      "icon": "wede",
+      "icon": "W",
       "icon_url": "",
       "keywords": [
         "editor",
+        "ide",
         "code",
         "web",
-        "ide",
+        "collaboration",
+        "terminal",
+        "git",
         "files",
-        "syntax"
+        "syntax",
+        "developer"
       ],
-      "license": "MIT",
+      "license": "MIT OR Apache-2.0",
+      "name": "Wede",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "vetted": true,
       "versions": {
-        "latest": {
-          "_disabled": true,
-          "_note": "Disabled (SEC-H3): previous recipe used curl|bash with no pinned version or checksum. Re-enable once a pinned release artifact with sha256 is available.",
+        "0.1.3": {
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "275ed918bd4539a9710c9189b682294293011a50ef11a8cdfd1092e4a3a0c8a7",
+              "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "73800e85e9577e2def5d62d59847e8333a3c030c07651c748675277aaeed6ae8",
+              "download_url": "https://github.com/vul-os/wede/releases/download/v0.1.3/wede-linux-arm64"
+            }
+          },
           "auto_start": false,
-          "checksum": "",
-          "command": "/root/.local/bin/wede -port ${PORT}",
-          "deps": null,
+          "binary_name": "wede",
+          "command": "bin/wede -port ${PORT} workspace",
+          "deps": [
+            "ca-certificates",
+            "git"
+          ],
           "download_url": "",
           "env": null,
           "flatpak_id": "",
@@ -2396,11 +2504,10 @@
             "filesystem"
           ],
           "port": 9090,
-          "post_install": "",
+          "post_install": "mkdir -p workspace && PW=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#PW} -ne 32 ]; then echo \"wede post-install: could not generate a 32-character password from /dev/urandom - refusing to write a config with a weak or empty password\" >&2; exit 1; fi; printf '{\"password\":\"%s\",\"port\":\"9090\",\"host\":\"0.0.0.0\",\"workspace_root\":\"%s\"}\\n' \"$PW\" \"$APP_DIR\" > wede.config.json && printf '%s\\n' \"$PW\" > wede-password.txt && chmod 640 wede.config.json wede-password.txt && chown -R 65534:65534 wede.config.json wede-password.txt workspace",
           "singleton": true
         }
-      },
-      "signature": "IiAIao2RJRFxoLAou24tZSJ/kvpp6nbGd9z8k6wZhg16oJOwovVjiiCea/ftObMJzEw/ma4iBHiO9+5QM2PeAw=="
+      }
     },
     "wine": {
       "arch": null,
