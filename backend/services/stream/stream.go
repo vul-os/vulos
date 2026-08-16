@@ -669,7 +669,16 @@ const idleThresholdFPS = 2
 const idleStaticThreshold = 10 * time.Second
 
 // idleSuspendDuration is how long the session must be without input AND
-// without any connected peer before Xvfb/app processes are suspended (SIGSTOP).
+// without any connected peer before the VIDEO ENCODER is suspended (SIGSTOP).
+//
+// The encoder, and nothing else. The comment here used to say "Xvfb/app
+// processes", which the code has never done — startIdleWatcher signals
+// s.gstVideo alone. The distinction stopped being cosmetic when Session
+// acquired a responsiveness probe: a SIGSTOPped application cannot answer a
+// _NET_WM_PING, so if this really did stop the app, every session idle for five
+// minutes would collect a "Not responding" badge for doing exactly what it was
+// told. It does not, and the badge is safe — but a reader reasoning from the
+// old comment would have concluded the opposite and been right to.
 const idleSuspendDuration = 5 * time.Minute
 
 // startIdleWatcher launches the background goroutine that monitors input-event
