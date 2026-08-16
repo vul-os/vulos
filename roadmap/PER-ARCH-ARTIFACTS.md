@@ -239,6 +239,29 @@ Had the control passed, the gate would have stopped reading the registry and the
 
 ## 8. What the founder's signing ceremony must run
 
+### ⚠ Two Go tests are RED right now, and that is the mechanism working
+
+```
+--- FAIL: TestAcceptance_ShippedAnchorVerifiesShippedRegistry
+    registry entry "wede" is UNSIGNED — run `make sign-registry`
+    registry entry "diwan" is UNSIGNED — run `make sign-registry`
+    registry entry "lilmail" is UNSIGNED — run `make sign-registry`
+    verified 56 shipped registry entries against the shipped trust anchor
+--- FAIL: TestShippedRegistry_HoldsNoUnsignedEntry
+    registry.json ships 3 UNSIGNED entry/entries [diwan lilmail wede] — either sign
+    them (`make sign-registry`) or move them to registry-unverified.json; the
+    signed set has no exception path
+```
+
+**Do not "fix" these by weakening them, and do not fix them by quarantining the
+entries.** They are the loud failure that a merge-without-signing is supposed to
+produce. The other 53 entries verify against the shipped anchor exactly as
+before; these three fail for one reason only — `signature: ""` — and the
+ceremony below clears both tests. An agent silencing them would be minting the
+appearance of vetting without the vetting, which is the one thing this trust
+model cannot survive.
+
+
 The three entries carry `"signature": ""` **deliberately**.
 `VerifyEntrySignature` fails closed on an empty signature, so they are inert:
 they cannot be installed by accident, and a merge that skips signing fails
