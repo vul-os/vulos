@@ -120,6 +120,27 @@ func TestProbeX11Ping_StalledServerIsNotBlamedOnTheApp(t *testing.T) {
 	}
 }
 
+// The post-ping liveness check, isolated. Here the server answers everything up
+// to and including the ping, and only THEN stops — so nothing before the check
+// can catch it, and the check is the sole reason this is not reported as a
+// frozen application. Written after a mutation survived: removing the check
+// changed no test result, because the other stalled-server test wedges during
+// the window walk and never reaches it. A guard no test can kill is a guard
+// that is not there.
+func TestProbeX11Ping_ServerThatWedgesAfterThePingIsNotBlamedOnTheApp(t *testing.T) {
+	f := oneAppDisplay(false)
+	f.stallAfterFirstConn = true
+	sock := startFakeX(t, f)
+
+	got := ProbeX11Ping(context.Background(), sock, 300*time.Millisecond)
+	if got.Status == StatusNotResponding {
+		t.Fatalf("the app was blamed for a server that stopped answering after the ping (detail: %s)", got.Detail)
+	}
+	if got.Status != StatusDisplayNotResponding {
+		t.Fatalf("Status = %q, want %q (detail: %s)", got.Status, StatusDisplayNotResponding, got.Detail)
+	}
+}
+
 // A server that stops answering before the probe has even found a window is the
 // same fault at a different moment, and must get the same name.
 func TestProbeX11Ping_StalledServerDuringSetupIsDisplayNotResponding(t *testing.T) {

@@ -52,6 +52,13 @@ type fakeX struct {
 	// wrongWindow makes the echo name a window that was never pinged, which is
 	// what a stray or spoofed echo looks like.
 	wrongWindow uint32
+	// stallAfterFirstConn serves the first connection normally and then never
+	// completes a handshake again. This is a server that wedges AFTER the ping
+	// has gone out, which is the only arrangement in which the post-ping
+	// liveness check is the one thing deciding between "the app is frozen" and
+	// "the display is".
+	stallAfterFirstConn bool
+	conns               int
 
 	socket string
 	ln     net.Listener
@@ -113,6 +120,15 @@ func (f *fakeX) atom(name string) uint32 {
 func (f *fakeX) serve(c net.Conn) {
 	defer c.Close()
 
+	f.mu.Lock()
+	f.conns++
+	nth := f.conns
+	f.mu.Unlock()
+	if f.stallAfterFirstConn && nth > 1 {
+		time.Sleep(time.Hour)
+		return
+	}
+
 	// Connection setup.
 	head := make([]byte, 12)
 	if _, err := io.ReadFull(c, head); err != nil {
@@ -142,6 +158,7 @@ func (f *fakeX) serve(c net.Conn) {
 
 	var seq uint16
 	requests := 0
+	subscribed := false
 	var wmu sync.Mutex
 	write := func(b []byte) {
 		wmu.Lock()
@@ -220,10 +237,23 @@ func (f *fakeX) serve(c net.Conn) {
 			write(out)
 
 		case opChangeWindowAttributes:
-			// No reply, by protocol.
+			// No reply, by protocol. A real server does enforce the event mask,
+			// though, and so does this one: an echo is delivered only to a
+			// client that selected SubstructureNotify on the root window
+			// BEFORE the echo was sent. Without that rule the fake would
+			// happily deliver the reply to a probe that subscribed too late,
+			// and the ordering bug — subscribe after pinging, lose the race
+			// against a fast app, report it frozen — would be invisible here.
+			win := binary.LittleEndian.Uint32(req[4:8])
+			mask := binary.LittleEndian.Uint32(req[8:12])
+			if win == fakeRootWindow && mask&cwEventMask != 0 {
+				if binary.LittleEndian.Uint32(req[12:16])&eventMaskSubstructureNotify != 0 {
+					subscribed = true
+				}
+			}
 
 		case opSendEvent:
-			if !f.echo {
+			if !f.echo || !subscribed {
 				continue
 			}
 			ev := req[12:44]
