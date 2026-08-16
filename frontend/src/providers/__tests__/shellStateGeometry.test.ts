@@ -15,6 +15,10 @@ import {
   type ShellWindow,
 } from '../ShellProvider'
 import { readViewportSize, viewportPx } from '../screenScale'
+import {
+  openWindowGeometry, DEFAULT_WINDOW_SIZE, OPEN_CASCADE_ORIGIN,
+  MENU_BAR_H, DOCK_H, WINDOW_EDGE_MARGIN,
+} from '../../shell/windowTiling'
 
 type ShellState = Parameters<typeof shellReducer>[0]
 
@@ -105,24 +109,148 @@ describe('cross-viewport publish/apply — a 1920x1080 writer, a 3840x2160 follo
   })
 })
 
-describe('legacy payload — a pre-canonical-unit writer, or one mid-upgrade', () => {
-  it('an untagged payload is treated as already this viewport\'s raw px, not rescaled', () => {
-    const legacy = {
-      desktops: {
-        'desktop-1': {
-          id: 'desktop-1', label: 'Desktop 1', activeWindow: 1,
-          windows: [{ id: 1, appId: 'terminal', position: { x: 1800, y: 40 }, size: { width: 720, height: 500 }, minimized: false, _tile: null, _maximized: false, _builtin: true }],
-        },
+// A v0.1.0-shaped persisted blob: exactly the fields that release's
+// saveShellState wrote (see `git show v0.1.0:.../ShellProvider.tsx`), with NO
+// geomUnit and — the fact the whole decision turns on — no record of the
+// viewport that produced the numbers.
+function legacyBlob(position: { x: number; y: number }, size: { width: number; height: number }) {
+  return {
+    desktops: {
+      'desktop-1': {
+        id: 'desktop-1', label: 'Desktop 1', activeWindow: 1,
+        windows: [{ id: 1, appId: 'terminal', position, size, minimized: false, _tile: null, _maximized: false, _builtin: true }],
       },
-      activeDesktop: 'desktop-1',
-    }
+    },
+    activeDesktop: 'desktop-1',
+  }
+}
+
+const extent = (w: number, h: number) => ({ widthPx: viewportPx(w), heightPx: viewportPx(h) })
+
+describe('legacy payload — a pre-canonical-unit writer (v0.1.0), or one mid-upgrade', () => {
+  // THE DECISION, recorded where it is checked. Untagged geometry is raw px
+  // from a viewport that was never written down, so it is:
+  //   - never RESCALED (there is no writer extent to divide by, and magnitude
+  //     cannot infer one — that is why the tag exists), and
+  //   - never DISCARDED (that would throw away the arrangement of every
+  //     v0.1.0 user upgrading on the same monitor, which is nearly all of
+  //     them),
+  // but FITTED to the reading viewport, because a window the user cannot
+  // reach is worse than a window that moved. See the "What an UNTAGGED
+  // payload is, and why it is fitted" section of ShellProvider.tsx.
+
+  it('an untagged payload is never rescaled — a window that already fits comes back byte-identical', () => {
     // A follower on a totally different (4K) viewport — if this were
     // mistaken for canonical, 1800/40 would be multiplied by the extent and
-    // land far off-screen instead of passing through untouched.
-    const hydrated = hydratePersistedState(legacy, { widthPx: viewportPx(3840), heightPx: viewportPx(2160) })
+    // land far off-screen instead of passing through untouched. It fits a
+    // 4K viewport as-is, so the fit is a no-op and the passthrough this test
+    // has always pinned still holds exactly.
+    const hydrated = hydratePersistedState(legacyBlob({ x: 1800, y: 40 }, { width: 720, height: 500 }), extent(3840, 2160))
     const w = firstWindow(hydrated)
     expect(w.position).toEqual({ x: 1800, y: 40 })
     expect(w.size).toEqual({ width: 720, height: 500 })
+  })
+
+  it('a legacy blob re-read on the SAME screen that wrote it changes nothing at all', () => {
+    // The v0.1.0 → v0.2.0 upgrade as nearly every user experiences it: same
+    // box, same monitor. Fractional coordinates on purpose — the fit must not
+    // round a geometry it is leaving alone.
+    const hydrated = hydratePersistedState(legacyBlob({ x: 837.5, y: 271.25 }, { width: 733.5, height: 419.75 }), extent(1920, 1080))
+    const w = firstWindow(hydrated)
+    expect(w.position).toEqual({ x: 837.5, y: 271.25 })
+    expect(w.size).toEqual({ width: 733.5, height: 419.75 })
+  })
+
+  it('the 1920→768 case: a legacy window that would restore 1032px off the right edge is brought back on screen', () => {
+    // Written at x=1800 on a 1920-wide screen; the box is now opened on a
+    // 768-wide one. Passing it through would put the title bar AND the
+    // bottom-right resize grip past the right edge — no gesture reaches it.
+    const hydrated = hydratePersistedState(legacyBlob({ x: 1800, y: 40 }, { width: 720, height: 500 }), extent(768, 1024))
+    const w = firstWindow(hydrated)
+    expect(w.position.x + w.size.width).toBeLessThanOrEqual(768 - WINDOW_EDGE_MARGIN)
+    expect(w.position.x).toBe(768 - WINDOW_EDGE_MARGIN - 720) // 40
+    // Fitted, NOT rescaled: 1800 * 768/1920 would be 720, and the size is
+    // untouched because it already fits.
+    expect(w.position.x).not.toBe(720)
+    expect(w.size).toEqual({ width: 720, height: 500 })
+    // And not discarded either — y was reachable, so y is exactly what the
+    // user left it at.
+    expect(w.position.y).toBe(40)
+  })
+
+  it('a legacy window larger than the whole screen shrinks to fit rather than overflowing it', () => {
+    const hydrated = hydratePersistedState(legacyBlob({ x: 200, y: 900 }, { width: 1600, height: 1000 }), extent(768, 1024))
+    const w = firstWindow(hydrated)
+    expect(w.size).toEqual({ width: 768 - 2 * WINDOW_EDGE_MARGIN, height: 1024 - MENU_BAR_H - DOCK_H }) // 752 x 924
+    expect(w.position).toEqual({ x: WINDOW_EDGE_MARGIN, y: MENU_BAR_H })
+    expect(w.position.y + w.size.height).toBe(1024 - DOCK_H)
+  })
+
+  it('no legacy geometry, from any plausible writer screen, restores outside the usable band of any viewport the canvas mounts at', () => {
+    // The general property, table-driven, because the two cases above are
+    // single points and the guarantee is "always reachable". Viewports are
+    // windowOpenFit/windows-open-geometry's own set — 768 is the narrowest
+    // width the desktop canvas is ever mounted at.
+    const viewports = [[768, 1024], [834, 1194], [1024, 768], [1440, 900], [1920, 1080]] as const
+    const legacyGeoms = [
+      [{ x: 1800, y: 40 }, { width: 720, height: 500 }],
+      [{ x: 3600, y: 1900 }, { width: 500, height: 400 }],
+      [{ x: -400, y: -200 }, { width: 720, height: 500 }],
+      [{ x: 0, y: 0 }, { width: 3800, height: 2100 }],
+      [{ x: 60, y: 50 }, { width: 720, height: 500 }],
+    ] as const
+    const offenders: string[] = []
+    for (const [vw, vh] of viewports) {
+      for (const [position, size] of legacyGeoms) {
+        const w = firstWindow(hydratePersistedState(legacyBlob(position, size), extent(vw, vh)))
+        const outside = w.position.x < WINDOW_EDGE_MARGIN || w.position.y < MENU_BAR_H ||
+          w.position.x + w.size.width > vw - WINDOW_EDGE_MARGIN ||
+          w.position.y + w.size.height > vh - DOCK_H
+        if (outside) offenders.push(`${vw}x${vh}: (${position.x},${position.y}) ${size.width}x${size.height} -> (${w.position.x},${w.position.y}) ${w.size.width}x${w.size.height}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('fits a legacy window exactly the way openWindowGeometry fits a fresh one', () => {
+    // The anti-drift check: the legacy fit and the open clamp answer the same
+    // question ("where does the shell put a window on THIS screen") and live
+    // in two different files. Given the same input geometry the open cascade
+    // would produce, they must agree — insets, order of operations and all.
+    for (const [vw, vh] of [[768, 1024], [1024, 768], [1440, 900]] as const) {
+      const hydrated = hydratePersistedState(legacyBlob({ ...OPEN_CASCADE_ORIGIN }, { ...DEFAULT_WINDOW_SIZE }), extent(vw, vh))
+      const w = firstWindow(hydrated)
+      const fresh = openWindowGeometry(0, DEFAULT_WINDOW_SIZE, extent(vw, vh))
+      expect({ position: w.position, size: w.size }, `${vw}x${vh}`).toEqual(fresh)
+    }
+  })
+
+  it('a legacy window with missing/NaN geometry gets the default rather than a NaN rect', () => {
+    // hydrateGeometry's untagged branch used to hand these straight through;
+    // it is now the first thing that dereferences numbers parsed out of
+    // foreign JSON, so a corrupt blob must land on the same fallback a
+    // corrupt canonical payload does.
+    const nan = hydratePersistedState(legacyBlob({ x: NaN, y: 40 }, { width: 720, height: 500 }), extent(1920, 1080))
+    expect(firstWindow(nan).position).toEqual({ x: 60, y: 50 })
+    const missing = hydratePersistedState(
+      // @ts-expect-error -- a hand-corrupted blob: position absent entirely, which the JSON boundary cannot rule out
+      legacyBlob(undefined, { width: 720, height: 500 }), extent(1920, 1080))
+    expect(firstWindow(missing).size).toEqual({ width: 720, height: 500 })
+  })
+
+  it('loadShellState brings a real v0.1.0 localStorage blob back on screen end to end', () => {
+    // Not hydratePersistedState directly: the actual boot path, through the
+    // real STORAGE_KEY, with the JSON a v0.1.0 box would have left behind.
+    localStorage.clear()
+    localStorage.setItem('vulos-shell-state', JSON.stringify(legacyBlob({ x: 1800, y: 40 }, { width: 720, height: 500 })))
+    vi.stubGlobal('innerWidth', 768)
+    vi.stubGlobal('innerHeight', 1024)
+    const loaded = loadShellState()
+    if (!loaded) throw new Error('expected loadShellState to restore the legacy blob, not drop it')
+    const w = loaded.desktops['desktop-1'].windows[0]
+    expect(w.position.x + w.size.width).toBeLessThanOrEqual(768 - WINDOW_EDGE_MARGIN)
+    expect(w.position.y).toBeGreaterThanOrEqual(MENU_BAR_H)
+    localStorage.clear()
   })
 })
 

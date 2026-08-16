@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useViewport } from '../shell/useViewport'
 import { canSpawnNativeWindow, getNativeMode } from '../core/useNativeMode'
-import { tileGeometry, openWindowGeometry, DEFAULT_WINDOW_SIZE, MENU_BAR_H } from '../shell/windowTiling'
+import { tileGeometry, openWindowGeometry, DEFAULT_WINDOW_SIZE, MENU_BAR_H, DOCK_H, WINDOW_EDGE_MARGIN } from '../shell/windowTiling'
 import { builtinComponent, isBuiltinComponent } from '../shell/builtinApps'
 import { useShellSession, type ShellSession } from './useShellSession'
 import { useViewportFocus } from './viewportFocus'
@@ -527,6 +527,62 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
 // screenScale.ts, so the explicit tag is the primary signal; the heuristic is
 // only a backstop against a canonical-tagged payload whose numbers are
 // obviously wrong (e.g. a future bug that tags without converting).
+//
+// ─── What an UNTAGGED payload is, and why it is fitted ──────────────────────
+//
+// Untagged geometry is raw px measured against a viewport this process cannot
+// see and the payload does not record. Two producers make one:
+//
+//   1. Vulos v0.1.0 (tagged 2026-08-06, the first release the project ever
+//      published). Its saveShellState wrote `position: w.position, size:
+//      w.size` verbatim under the SAME localStorage key this build reads,
+//      `vulos-shell-state` — unchanged from 6f019564 through today, so a
+//      v0.1.0 user's blob is not orphaned by a key rename, it is read. The
+//      canonical tag landed 2b3ee4bd (2026-08-13) and first shipped in v0.2.0
+//      (2026-08-14). The legacy population is therefore every box that ran
+//      v0.1.0 and has not yet re-saved under v0.2.0; it is small, but it is
+//      provably not empty, which rules out "leave it".
+//   2. serializeGeometry's own viewport-less fallback below, and a
+//      mid-upgrade cross-tab writer still running pre-2b3ee4bd code while a
+//      reader has already reloaded into this one.
+//
+// NOTHING in either shape records the writer's extent — v0.1.0's persisted
+// object is desktops/activeDesktop and per-window id/appId/title/icon/
+// position/size/minimized/_tile/_maximized/_builtin/url, and that is all. So
+// there is no honest rescale available: converting these numbers would mean
+// GUESSING a writer viewport, and guessing wrong shrinks or scatters geometry
+// that was perfectly correct. Magnitude cannot rescue that guess either —
+// that is the whole reason the tag exists.
+//
+// Left alone, though, they restore off-screen: a window at x=1800 written on
+// a 1920-wide screen, read at 768, lands 1032px past the right edge, taking
+// its title bar AND its bottom-right resize grip with it. The user has no
+// gesture that reaches it.
+//
+// So untagged geometry is FITTED to the reading viewport (fitLegacyGeometry),
+// not rescaled and not discarded. This is the same rule the open clamp
+// states, applied to the one hydration case it does not cover: a canonical
+// payload is user intent expressed proportionally, so it is restored
+// proportionally and never clamped; an untagged payload is user intent about
+// SOME OTHER screen, and where it should sit on THIS one is a question only
+// the shell can answer — which makes it invented geometry, and invented
+// geometry is fitted. Discarding it would answer that question by throwing
+// the arrangement away even in the overwhelmingly common case where the
+// upgrade happens on the same monitor and every window already fits.
+//
+// The two properties that fall out, both pinned in
+// __tests__/shellStateGeometry.test.ts:
+//   - a window that already fits is returned byte-identical (no clamp, no
+//     rescale, no rounding), so a same-screen v0.1.0 upgrade changes nothing;
+//   - a window that does not fit ends up fully inside the usable band, so it
+//     is always reachable.
+// The fit is one-way and one-time: the next serialize writes canonical, and
+// from then on the window is proportional forever. The cost is that a legacy
+// window the user had deliberately parked half off-screen is pulled back in
+// once — untagged data cannot distinguish that from a bigger screen's
+// leftovers, and "reachable" is the safer of the two failures. Post-v0.2.0
+// data keeps deliberate off-screen parking exactly, because the canonical
+// path is not clamped.
 
 type GeometryUnitTag = 'canonical-v1'
 
@@ -590,6 +646,58 @@ function fallbackWindowGeometry(viewport: ViewportSize | null): { position: Wind
   return openWindowGeometry(0, DEFAULT_WINDOW_SIZE, viewport)
 }
 
+/** Same shape as windowTiling's own private clamp, including its `Math.max(lo,
+ *  hi)` guard for a viewport too short to hold even the insets — without it a
+ *  hi below lo would push the window ABOVE the menu bar instead of below it. */
+function clampToRange(v: number, lo: number, hi: number): number {
+  return Math.min(Math.max(v, lo), Math.max(lo, hi))
+}
+
+/**
+ * Fits UNTAGGED (raw-px-from-an-unknown-viewport) geometry into the reading
+ * viewport's usable band. See the "What an UNTAGGED payload is, and why it is
+ * fitted" section above for why fitting rather than rescaling or discarding.
+ *
+ * Deliberately identical in method and insets to openWindowGeometry — size
+ * first, then position against the size that survived; WINDOW_EDGE_MARGIN
+ * left/right, MENU_BAR_H/DOCK_H top/bottom, and fit beating every other
+ * consideration — because a legacy restore and a fresh open are answering the
+ * same question ("where does the shell put a window on THIS screen"), and two
+ * answers that differ would be two behaviours to reason about. A test pins
+ * that agreement so the two cannot drift while they live in separate files.
+ *
+ * What it deliberately does NOT do: re-position (a fitting window keeps its
+ * exact x/y, it is not cascaded) and NOT round (an already-fitting fractional
+ * geometry must survive byte-identical, which rounding would break).
+ *
+ * With a null viewport there is nothing to fit against and the numbers are
+ * returned untouched — the same honesty as serializeGeometry refusing to
+ * fabricate a fraction without an extent.
+ *
+ * A payload whose numbers are missing or non-finite gets the invented default
+ * instead, for the same reason a corrupted canonical payload does: clamping
+ * NaN produces NaN, and this function is the first thing that dereferences
+ * numbers parsed out of foreign JSON (localStorage, or another tab's
+ * postMessage) — the untagged branch used to hand them straight through.
+ */
+function fitLegacyGeometry(
+  position: WindowPosition,
+  size: WindowSize,
+  viewport: ViewportSize | null,
+): { position: WindowPosition; size: WindowSize } {
+  const finite = Number.isFinite(position?.x) && Number.isFinite(position?.y) &&
+    Number.isFinite(size?.width) && Number.isFinite(size?.height)
+  if (!finite) return fallbackWindowGeometry(viewport)
+  if (!viewport) return { position, size }
+  const vw = viewport.widthPx as number
+  const vh = viewport.heightPx as number
+  const width = Math.max(1, Math.min(size.width, vw - 2 * WINDOW_EDGE_MARGIN))
+  const height = Math.max(1, Math.min(size.height, vh - MENU_BAR_H - DOCK_H))
+  const x = clampToRange(position.x, WINDOW_EDGE_MARGIN, vw - WINDOW_EDGE_MARGIN - width)
+  const y = clampToRange(position.y, MENU_BAR_H, vh - DOCK_H - height)
+  return { position: { x, y }, size: { width, height } }
+}
+
 /** Converts one window's live px position/size into the wire form. Canonical
  *  (fraction of THIS tab's own viewport) whenever the viewport is readable, so
  *  a reader on a different-sized viewport lands the window in the same
@@ -606,14 +714,17 @@ function serializeGeometry(position: WindowPosition, size: WindowSize, viewport:
  *  viewport px, ready to render.
  *   - `geomUnit === 'canonical-v1'` and the numbers are plausible: convert
  *     through THIS tab's own current viewport — never the writer's.
- *   - no tag: legacy pre-canonical-unit data, or a viewport-less writer's
- *     fallback — already raw px, used as-is.
+ *   - no tag: legacy pre-canonical-unit data (v0.1.0), or a viewport-less
+ *     writer's fallback — already raw px, and NEVER rescaled, because no
+ *     writer extent was recorded to rescale against. Fitted to this viewport
+ *     so it cannot restore somewhere unreachable; a window that already fits
+ *     comes back untouched.
  *   - tagged canonical but this tab has no viewport, or the numbers fail the
  *     plausibility backstop (a corrupted payload): neither raw-as-is nor a
  *     fabricated conversion is safe, so fall back to
  *     fallbackWindowGeometry(). */
 function hydrateGeometry(w: SerializedGeometry, viewport: ViewportSize | null): { position: WindowPosition; size: WindowSize } {
-  if (w.geomUnit !== 'canonical-v1') return { position: w.position, size: w.size }
+  if (w.geomUnit !== 'canonical-v1') return fitLegacyGeometry(w.position, w.size, viewport)
   const plausible = isPlausibleCanonicalUnit(w.position.x) && isPlausibleCanonicalUnit(w.position.y) &&
     isPlausibleCanonicalUnit(w.size.width) && isPlausibleCanonicalUnit(w.size.height)
   if (!viewport || !plausible) {
