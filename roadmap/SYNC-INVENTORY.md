@@ -394,6 +394,108 @@ useful for — and drive the rotations, rather than leaving the user to guess.
 Steps 1–3 are small and remove the ability of an evicted box to keep syncing.
 Steps 4–5 are what make the claim honest.
 
+### 3.6 What was built (2026-08-16), and what it does not do
+
+Steps 2, 3 and 4 above are done for the **crdtsync** transport. Step 1 is done
+for that transport and **not** for fabric's. Step 5 is untouched. Details,
+because "eviction shipped" would be a larger claim than the code supports.
+
+**The `OR` is gone.** `crdtsync_wiring.go` now composes
+`SignedOrBootstrapSecretAuthorizer(signature, secret, roster)` instead of
+`AnyOfAuthorizer(secret, signature)`. The old comment argued AnyOf was not a
+weakening because a signature is strictly stronger than the secret; that is true
+of *granting* access and says nothing about *revoking* it, which was the only
+case that mattered. Both the code and the comment were corrected.
+
+**The secret was narrowed, not deleted, and here is what it was load-bearing
+for.** Deleting it outright would have been an outage, for two reasons found
+before changing anything:
+
+1. `crdtsync/syncer.go`'s `post` signs **WAN requests only** — a LAN peer is
+   dialled with `X-Fabric-Auth` and nothing else. Requiring signatures at the
+   door without changing the dialling side refuses every legitimate LAN peer.
+2. Worse, **nothing in this codebase writes a peer's public key into a local
+   roster.** `appsync.SetIdentity` publishes *self's* key; `CloudSyncer` publishes
+   peers' keys from the control plane. So a box with no control plane can
+   attribute nobody, its roster arm authorises nobody, and the secret was
+   carrying 100% of LAN sync.
+
+So the secret now survives exactly one window: **until this box first learns any
+peer identity.** The window closes permanently on first enrolment, without a
+restart, and a **revoked** peer still counts as an enrolment — otherwise evicting
+your only peer would reopen the one credential it still holds. Every error path
+answers "window closed", i.e. requires a signature.
+
+**LAN requests are now signed too** (`lanSigningClient`), in addition to the
+secret, whenever this box can name the peer it is dialling. That is what lets a
+fleet upgrade one box at a time instead of the first upgraded box refusing all
+the others.
+
+**Revocation reaches the sync layer, and is now monotonic.** Three un-revoke
+paths were live and are closed:
+
+| Path | Was | Now |
+|---|---|---|
+| `RestoreFromRevocation` | cleared the flag; no production caller | deleted |
+| `RotateIdentity` | set `Revoked = false` on self every rotation — a one-call self-pardon, run by the box being revoked | refuses to rotate while revoked |
+| `Registry.Upsert` | `revoked = excluded.revoked`, so any writer that did not carry the flag cleared it — **including `CloudSyncer`, whose wire type has no revoked field, on every poll** | latched in SQL, like `store_only` |
+
+The third was the decisive one: without it, revoking a box survived until the
+next cloud-sync round and then silently undid itself.
+
+**Eviction now has a trigger.** `Instance.Revoked` was enforced in three places
+and set in none — `RevokePeer` had no production caller and `CloudInstance` has
+no revoked field, so the control plane could not set it either. An enforcement
+path with no trigger is not a control. `VULOS_FABRIC_REVOKED_PEERS` (instance
+ULIDs and/or peer keys) is that trigger; it needs no control plane, it is
+persisted into the roster at startup so it outlives the variable and reaches
+appsync's quorum check, and the in-memory list is what the door consults so a
+failed write cannot fail open. `VULOS_FABRIC_PEER_KEYS` is its counterpart, and
+exists only because of finding (2) above: a peer nobody can name cannot be
+evicted, so an operator with no control plane needs a way to name one.
+
+**Deny dominates allow, structurally.** `TrustedPeer` sweeps the whole roster for
+a reason to refuse — both key slots, ignoring the rotation-overlap expiry —
+before any allow arm runs. The previous `continue`-on-revoked was correct only
+while the roster was the only allow arm; the pin list is a second one.
+
+**Eviction covers the pull direction too.** A revoked instance is dropped from
+the dial list. Refusing its requests stops it writing to us and does nothing
+about the ops we would otherwise pull from it and merge.
+
+#### What this does NOT do
+
+- **No group re-key.** Stated in §3.1 as the thing that makes eviction
+  meaningful, and it is not built. An evicted instance keeps every byte it
+  already read, and any shared key material it holds — the fabric secret itself,
+  the SSE-C bucket key — remains valid for the rest of the fleet. What shipped
+  bounds the **future**: the evicted box can no longer read from or write to a
+  peer's replicated domains. It is not retroactive and the UI must not imply it
+  is. §3.4's epoch design is still the plan.
+- **`VULOS_FABRIC_SECRET` still cannot be rotated.** No tooling, no
+  coordination. Eviction is now possible *without* a re-key, which is the point,
+  but a re-key remains the only thing that revokes the secret itself.
+- **The fabric changeset transport is untouched.** `/api/fabric/changeset` is
+  still gated on the shared secret alone (`fabric/handlers.go:43,57,99`). A
+  ULID-based revocation check was deliberately **not** added there: the
+  transport is unattributable, so a revoked box would simply claim a different
+  `OriginULID` and the check would report PASS while stopping nobody. That door
+  needs the same treatment crdtsync just got — per-peer signatures on both the
+  handler and `fabric/client.go` — and it is a separate change, not a line.
+- **Revocation still does not propagate.** It must be entered on each box. The
+  roster is deliberately not replicated, so this is by design until the
+  `devicekey` monotonic store becomes the single authority (step 4 of §3.5,
+  which this work makes possible rather than performs).
+- **`services/devicekey` is still not consulted.** The unification in §3.4 —
+  one revocation authority instead of two — remains open. What changed is that
+  the weaker of the two systems is no longer *wrong*: it is monotonic, it has a
+  trigger, and it is enforced at admission.
+
+The test that pins all of it is
+`cmd/server.TestRevokedInstanceHoldingTheFabricSecretIsRefused`: restore the
+`OR` and it fails with "a caller presenting only VULOS_FABRIC_SECRET got 200,
+want 401".
+
 ---
 
 ## 4. The legitimate exceptions
