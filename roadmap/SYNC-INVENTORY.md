@@ -672,9 +672,25 @@ about the ops we would otherwise pull from it and merge.
   bounds the **future**: the evicted box can no longer read from or write to a
   peer's replicated domains. It is not retroactive and the UI must not imply it
   is. §3.4's epoch design is still the plan.
-- **`VULOS_FABRIC_SECRET` still cannot be rotated.** No tooling, no
-  coordination. Eviction is now possible *without* a re-key, which is the point,
-  but a re-key remains the only thing that revokes the secret itself.
+- **`VULOS_FABRIC_SECRET` can now be rotated** (FABRIC-SECRET-ROT-01, added
+  2026-08-16 — see `roadmap/GROUP-SECRET-ROTATION-AND-REKEY.md`). It was an
+  environment variable read once at startup into a single acceptance slot, so
+  the only available mechanic was "change it and restart", which partitions a
+  fleet that updates one box at a time. It now has a second, inbound-only
+  acceptance slot (`VULOS_FABRIC_SECRET_ALSO`) bounded by an absolute deadline
+  (`..._ALSO_UNTIL`), which closes **per request against the wall clock** — so
+  the old value stops being accepted with no restart and no operator action.
+  A two-phase roll (prepare, then commit) keeps every pair of boxes talking in
+  both directions throughout.
+
+  Scope, stated so this is not read as more than it is: this rotates the
+  **fabric secret only**. The **SSE-C bucket key is still not rotatable at all**
+  (`Argon2id(passphrase, salt)` with one salt object inside the bucket it
+  protects, no epoch, no per-object key id), and per-instance Ed25519 identities
+  are deliberately untouched — `multiinstance.RotateIdentity` and
+  `services/devicekey` already own those correctly, and sweeping them into a
+  fleet-wide operation would destroy the per-box asymmetry eviction depends on.
+  **The group re-key of §3.4 is specified but still not built.**
 - **The fabric changeset transport is untouched.** `/api/fabric/changeset` is
   still gated on the shared secret alone (`fabric/handlers.go:43,57,99`). A
   ULID-based revocation check was deliberately **not** added there: the
