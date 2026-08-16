@@ -1,58 +1,98 @@
 /* ════════════════════════════════════════════════════════════════════════
    vulos-tokens.css — shared design tokens for the bundled single-file apps
    ────────────────────────────────────────────────────────────────────────
-   This is the single source of truth for the OS design language, mirroring
-   the semantic variables in /src/index.css so the whole suite (browser,
-   social, system-info, phone, camera, …) reads as one product.
+   This mirrors the semantic variables in /src/index.css so the whole suite
+   reads as one product. It is inlined verbatim into every bundled app as a
+   <style data-vulos-shared="vulos-tokens.css"> block by
+   apps/_shared/sync-shared-assets.mjs, and pinned byte-for-byte by
+   backend/internal/docsref/appthemetokens_test.go.
 
-   The bundled apps are self-contained HTML served under a strict CSP
-   (style-src 'self' 'unsafe-inline', which permits same-origin stylesheet
-   links). Each app's <head> actually links this file —
-   <link rel="stylesheet" href="vulos-tokens.css"> — and each app's own
-   server.py serves it from ../_shared/vulos-tokens.css (apps/browser,
-   apps/social use a path allowlist; apps/camera, apps/phone, apps/system-info
-   likewise special-case the request so it can escape their own sandboxed
-   APP_DIR for this one, fixed, non-user-controlled path). This file is the
-   only copy — there is nothing to keep "in sync" anymore.
+   WHY INLINED AND NOT LINKED
+   Each app ships its own hand-rolled server.py with its own ad-hoc static
+   route table. Only four of the fifteen (browser, camera, phone,
+   system-info) ever special-cased `/vulos-tokens.css` to escape their APP_DIR
+   and serve this file; the other eleven would 404 a <link>. An inline copy
+   has no such failure mode — and no round trip, so there is no unstyled
+   first paint either.
+
+   STRUCTURE — the same four layers as /src/index.css, in the same order:
+     1. :root                     structural tokens + the DARK palette as the
+                                  shipped default, and EVERY alias, defined
+                                  exactly once so no colour's only definition
+                                  lives inside a conditional block.
+     2. [data-theme="dark"]       the dark palette again, explicitly, so an
+                                  explicit Dark choice is symmetric with Light.
+     3. [data-theme="light"]      the light palette.
+     4. @media (prefers-color-scheme: light) :root:not([data-theme])
+                                  the pure-CSS fallback, for a document that
+                                  has not been told the shell's theme.
+
+   HOW AN APP LEARNS THE THEME
+   A bundled app is a SEPARATE DOCUMENT in an iframe — on an opaque origin
+   when per-app origins are off, on its own origin when they are on. Either
+   way it cannot read the shell's <html data-theme> or the shell's
+   localStorage, so layer 4 alone would leave an app disagreeing with a shell
+   whose theme the user set EXPLICITLY (Light on a dark-system machine, or the
+   Schedule mode) — which is worse than being consistently dark.
+
+   The shell must therefore tell it, and there is already a channel for
+   exactly this: src/core/AppBridge.ts appFrameSrc() appends
+   `#__vulos_s=<seed>` to every app frame URL. A fragment never reaches the
+   server, survives the query-string cache-bust IframeApp applies on retry,
+   and is readable by the frame on its very first line — before first paint.
+   apps/_shared/vulos-theme.js reads `__vulos_t` off that same fragment and
+   stamps data-theme, falling back to prefers-color-scheme when it is absent.
+   Sending it is a one-line change in appFrameSrc, which is shell-owned; until
+   it lands, apps follow the system preference, which is correct for the
+   DEFAULT theme mode ('auto') and wrong only for an explicit choice.
 
    Canonical names match /src/index.css (--bg-*, --text-*, --border-*,
-   --accent). Short aliases (--surface, --text, --accent2, status colors) are
+   --accent). Short aliases (--surface, --text, --accent2, status colours) are
    provided so existing app CSS can adopt the tokens with minimal churn.
    ════════════════════════════════════════════════════════════════════════ */
 :root {
-  /* Accent (shared OS blue) */
-  --accent: #3b82f6;
-  --accent-hover: #2f6fd6;
+  /* ── Shared shape + type (theme-agnostic) ── */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+  --font-ui: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Inter', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+
+  /* ── DARK PALETTE (shipped default) ── */
+  color-scheme: dark;
+
+  --accent: #5b6cff;
+  --accent-hover: #4a58d1;
   --accent2: #7c6ef7;
+  --accent-contrast: #ffffff;
 
-  /* Backgrounds (dark) */
-  --bg-base: #0a0a0a;
-  --bg-surface: #111111;
-  --bg-elevated: #1a1a1a;
-  --bg-hover: #1e1e1e;
+  --bg-base: #08090c;
+  --bg-surface: #0f1116;
+  --bg-elevated: #171a21;
+  --bg-hover: #1e222b;
 
-  /* Borders */
-  --border-default: #1f1f1f;
-  --border-strong: #2a2a2a;
-  --border-emphasis: #333333;
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
 
-  /* Text */
-  --text-primary: #e5e5e5;
-  --text-secondary: #cccccc;
-  --text-tertiary: #999999;
-  --text-muted: #888888;
-  --text-faint: #666666;
-  --text-ghost: #555555;
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
+  --text-ghost: #414653;
 
-  /* Status */
-  --ok: #22c55e;
+  --ok: #35c081;
   --ok-bright: #4ade80;
-  --warn: #f59e0b;
+  --warn: #f0b232;
   --warn-bright: #fbbf24;
-  --danger: #ef4444;
+  --danger: #f2565b;
   --danger-bright: #f87171;
 
-  /* Convenience aliases used by existing app CSS */
+  /* ── Aliases. Defined ONCE, here, as var() indirections: they follow
+     whichever palette is in force, so no theme block ever has to restate
+     them and none of them can go missing in one theme only. ── */
   --bg: var(--bg-base);
   --surface: var(--bg-surface);
   --surface2: var(--bg-elevated);
@@ -70,10 +110,109 @@
   --yellow: var(--warn-bright);
   --blue: var(--accent);
   --record: var(--danger);
+}
 
-  /* Shared shape + type */
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-lg: 16px;
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+/* 2. Explicit Dark — symmetric with Light, so `data-theme="dark"` on a
+   system-light machine is honoured rather than falling through to layer 4. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --accent: #5b6cff;
+  --accent-hover: #4a58d1;
+  --accent2: #7c6ef7;
+
+  --bg-base: #08090c;
+  --bg-surface: #0f1116;
+  --bg-elevated: #171a21;
+  --bg-hover: #1e222b;
+
+  --border-default: #1f232c;
+  --border-strong: #2b303b;
+  --border-emphasis: #3a4150;
+
+  --text-primary: #f2f4f8;
+  --text-secondary: #c3c8d2;
+  --text-tertiary: #9ea5b1;
+  --text-muted: #8c93a1;
+  --text-faint: #7f8798;
+  --text-ghost: #414653;
+
+  --ok: #35c081;
+  --ok-bright: #4ade80;
+  --warn: #f0b232;
+  --warn-bright: #fbbf24;
+  --danger: #f2565b;
+  --danger-bright: #f87171;
+}
+
+/* 3. Explicit Light. Values are /src/index.css's light palette, including the
+   text ramp it derived by measurement against its own surfaces — the muted and
+   faint steps sit closer together than in dark because a near-white ground has
+   little room between AA and invisible. The status colours are the light ones
+   too: the dark theme's brights measure well under 4.5:1 on white. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --accent: #4d5efb;
+  --accent-hover: #3d4bd0;
+  --accent2: #6d5ef0;
+
+  --bg-base: #ffffff;
+  --bg-surface: #f7f8fa;
+  --bg-elevated: #eef0f4;
+  --bg-hover: #e7eaf0;
+
+  --border-default: #e2e5eb;
+  --border-strong: #cfd4dd;
+  --border-emphasis: #b7bdc9;
+
+  --text-primary: #12141a;
+  --text-secondary: #333844;
+  --text-tertiary: #565d6b;
+  --text-muted: #5c626e;
+  --text-faint: #606977;
+  --text-ghost: #aab0bc;
+
+  --ok: #16a34a;
+  --ok-bright: #16a34a;
+  --warn: #d97706;
+  --warn-bright: #d97706;
+  --danger: #dc2626;
+  --danger-bright: #dc2626;
+}
+
+/* 4. Pure-CSS fallback for a document that has NOT been told the shell's
+   theme. Only applies when no explicit data-theme is present, so the stamped
+   attribute always wins. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+
+    --accent: #4d5efb;
+    --accent-hover: #3d4bd0;
+    --accent2: #6d5ef0;
+
+    --bg-base: #ffffff;
+    --bg-surface: #f7f8fa;
+    --bg-elevated: #eef0f4;
+    --bg-hover: #e7eaf0;
+
+    --border-default: #e2e5eb;
+    --border-strong: #cfd4dd;
+    --border-emphasis: #b7bdc9;
+
+    --text-primary: #12141a;
+    --text-secondary: #333844;
+    --text-tertiary: #565d6b;
+    --text-muted: #5c626e;
+    --text-faint: #606977;
+    --text-ghost: #aab0bc;
+
+    --ok: #16a34a;
+    --ok-bright: #16a34a;
+    --warn: #d97706;
+    --warn-bright: #d97706;
+    --danger: #dc2626;
+    --danger-bright: #dc2626;
+  }
 }
