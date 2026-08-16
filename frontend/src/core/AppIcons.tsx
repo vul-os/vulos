@@ -65,6 +65,17 @@ export const APP_LOGOS: Record<string, string> = {
   lilmail: '/product-logos/lilmail.svg',
   mail: '/product-logos/lilmail.svg',
   envoir: '/product-logos/envoir.svg',
+  // kerf has no registry.json entry: its App Hub entry was deleted because
+  // vul-os/kerf publishes no artefact that installs unattended (the old recipe
+  // cloned a repository that does not resolve and wrote a placeholder page on
+  // failure, so the install "succeeded" and the user got a stub — see
+  // roadmap/FIRST-PARTY-REGISTRY-TRUTH.md §4). The MARK stays, deliberately.
+  // Most of this block is in the same state — envoir, llmux, kotva, aql, vuna,
+  // kilio, soko, gitstate and magnetite are first-party products with a mark
+  // and no App Hub entry — so an unregistered mark here is the norm, not an
+  // orphan to sweep. It is byte-identical to kerf's own brand/logo.svg; brand
+  // assets are copied outward, never redrawn, and deleting it would mean
+  // re-deriving it when Kerf ships something installable.
   kerf: '/product-logos/kerf.svg',
   llmux: '/product-logos/llmux.svg',
   kotva: '/product-logos/kotva.svg',
