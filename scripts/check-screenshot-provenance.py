@@ -68,7 +68,32 @@ MANIFEST = os.path.join(SHOTS_DIR, "PROVENANCE.md")
 APPS_DIR = os.path.join(ROOT, "frontend", "apps")
 
 FIXTURE_GENERATOR = os.path.join(ROOT, "frontend", "scripts", "screenshots.mjs")
-LIVE_SPEC = os.path.join(ROOT, "frontend", "e2e", "shots-live-apps.e2e.ts")
+
+# Every spec that writes into docs/screenshots/live-apps/, with the proof each
+# one must still carry. A LIST, not a single path: when the fifteenth app got
+# its own harness the single-path version kept passing while saying nothing
+# about the new spec, so a shot could have been labelled LIVE with no check
+# behind it at all. Adding a live-shot spec without adding it here leaves its
+# output ungated, which SPEC-COVERAGE below turns into a failure.
+LIVE_SPECS = {
+    os.path.join(ROOT, "frontend", "e2e", "shots-live-apps.e2e.ts"): [
+        # Both halves of the sequence: the app must be stopped, and the re-fetch
+        # must be asserted to fail. Anchored on the PROOF, not on a variable
+        # name -- an earlier version looked for the identifier `afterKill` and
+        # survived a mutation that renamed the declaration, because the name
+        # still appeared at the assertion site.
+        ("await stopApp(started)", "never stops the app — nothing proves the shot was live"),
+        ("is NOT backed by a live process", "the kill-then-refetch assertion is gone"),
+    ],
+    os.path.join(ROOT, "frontend", "e2e", "shots-live-system-info.e2e.ts"): [
+        ("/api/apps/stop", "never asks the box to stop the app — nothing proves the shot was live"),
+        ("is NOT backed by a live process", "the stop-then-refetch assertion is gone"),
+        # This spec's whole reason to exist: the machine photographed must not
+        # be the machine running the test. Lose that and it is the laptop leak
+        # it was written to prevent.
+        ("os.hostname()", "no longer checks that the box is not the capture host"),
+    ],
+}
 
 GREEN, RED, DIM, RESET = (
     ("\033[32m", "\033[31m", "\033[2m", "\033[0m") if sys.stdout.isatty() else ("", "", "", "")
@@ -150,9 +175,14 @@ def render_manifest(fixture: list[str], live: list[str]) -> str:
         "looks like. `VULOS_API` is pinned to the dead address `127.0.0.1:1`, so an",
         "app that reports itself offline or unconfigured is telling the truth.",
         "",
-        "`system-info.png` is the exception and is **deliberately absent**.",
-        "reads that machine's real hostname, kernel and disk. That is a deliberate",
-        "trade — it is also the clearest evidence the shot is not staged.",
+        "`system-info.png` is the exception, and has its own harness:",
+        "`frontend/e2e/shots-live-system-info.e2e.ts`. That app's entire surface IS",
+        "the machine it runs on, so shooting it where the other fourteen are shot",
+        "would publish the capture machine's real hostname, kernel and disk. It is",
+        "photographed on a **booted Vulos OS box** instead — started by the box's own",
+        "launcher into its own network namespace — and the spec asserts that the",
+        "hostname on screen is not this machine's, so a capture that quietly fell",
+        "back to the developer's laptop fails instead of shipping.",
         "",
     ]
     lines += [f"- `{basename(p)}`" for p in live] or ["- _(none)_"]
@@ -208,16 +238,15 @@ def main() -> int:
     # two rules below stop it becoming one: an entry must carry a reason, and it
     # must be STALE the moment a shot appears -- so capturing one properly forces
     # the exemption to be deleted rather than quietly outliving its cause.
-    NO_LIVE_SHOT = {
-        "system-info": (
-            "This app's entire surface IS the machine it runs on, so a capture "
-            "on a developer machine publishes that machine's hostname, kernel "
-            "and disk -- and this repository is public. Cropping was rejected: a "
-            "doctored shot of a system-information app is a staged shot of the "
-            "one app whose whole job is to be accurate. Capture it on a real box "
-            "or in the Linux container, then delete this entry."
-        ),
-    }
+    #
+    # It has been empty since 2026-08-16, and the mechanism is the reason. The
+    # one entry it ever held was `system-info`, whose surface IS the machine it
+    # runs on, so any capture on a developer machine published that machine's
+    # hostname, kernel and disk into a public repository. The exemption expired
+    # exactly as designed: frontend/e2e/shots-live-system-info.e2e.ts now shoots
+    # it on a booted Vulos OS box, a live shot appeared, and the entry had to
+    # go. Keep the dict, not the entry.
+    NO_LIVE_SHOT: dict[str, str] = {}
     for name, reason in NO_LIVE_SHOT.items():
         if len(reason) < 60:
             fail("COVERAGE", f"{name} is exempted from a live shot with no real reason given")
@@ -250,30 +279,50 @@ def main() -> int:
             ok("CLASSIFIED", f"{len(fixture)} fixture + {len(live)} live, all declared")
 
     # ── LIVE-IS-LIVE ────────────────────────────────────────────────────────
-    if not os.path.isfile(LIVE_SPEC):
-        fail("LIVE-IS-LIVE", f"{LIVE_SPEC} is missing, but LIVE shots are shipped")
-    else:
-        with open(LIVE_SPEC) as f:
+    before = len(failures)
+    for spec, proofs in sorted(LIVE_SPECS.items()):
+        name = os.path.basename(spec)
+        if not os.path.isfile(spec):
+            fail("LIVE-IS-LIVE", f"{spec} is missing, but LIVE shots are shipped")
+            continue
+        with open(spec) as f:
             src = f.read()
-        before = len(failures)
         # An IMPORT of the mock, as opposed to the header comment that explains
         # why there isn't one.
         if re.search(r"^\s*import\b[^\n]*mock-backend", src, re.M):
-            fail("LIVE-IS-LIVE", "shots-live-apps.e2e.ts IMPORTS mock-backend — its shots are not live")
+            fail("LIVE-IS-LIVE", f"{name} IMPORTS mock-backend — its shots are not live")
         if "page.route(" in src:
-            fail("LIVE-IS-LIVE", "shots-live-apps.e2e.ts installs page.route — its shots are not live")
-        # Anchor on the PROOF, not on a variable name. An earlier version of
-        # this check looked for the identifier `afterKill` and survived a
-        # mutation that renamed the declaration, because the name still
-        # appeared at the assertion site. Both halves of the sequence are
-        # required: the app must be stopped, and the re-fetch must be asserted
-        # to fail.
-        if "await stopApp(started)" not in src:
-            fail("LIVE-IS-LIVE", "shots-live-apps.e2e.ts never stops the app — nothing proves the shot was live")
-        if "is NOT backed by a live process" not in src:
-            fail("LIVE-IS-LIVE", "the liveness proof (kill-then-refetch assertion) is gone from shots-live-apps.e2e.ts")
-        if len(failures) == before:
-            ok("LIVE-IS-LIVE", "no mock import, no page.route, liveness proof present")
+            fail("LIVE-IS-LIVE", f"{name} installs page.route — its shots are not live")
+        for anchor, why in proofs:
+            if anchor not in src:
+                fail("LIVE-IS-LIVE", f"{name} {why} (lost anchor: {anchor!r})")
+    if len(failures) == before:
+        ok(
+            "LIVE-IS-LIVE",
+            f"{len(LIVE_SPECS)} live-shot specs: no mock import, no page.route, proofs present",
+        )
+
+    # ── SPEC-COVERAGE ───────────────────────────────────────────────────────
+    # LIVE-IS-LIVE can only check the specs it is told about, so being told
+    # about all of them is itself checked. Without this, adding
+    # shots-live-<something>.e2e.ts and shipping its PNGs would pass every check
+    # above while nothing verified that spec was live at all -- exactly the
+    # "collection is not execution" gap this file was written against.
+    e2e_dir = os.path.join(ROOT, "frontend", "e2e")
+    on_disk = {
+        os.path.join(e2e_dir, f)
+        for f in os.listdir(e2e_dir)
+        if f.startswith("shots-live-") and f.endswith(".e2e.ts")
+    }
+    unwatched = sorted(os.path.basename(p) for p in on_disk - set(LIVE_SPECS))
+    if unwatched:
+        fail(
+            "SPEC-COVERAGE",
+            "live-shot spec(s) not listed in LIVE_SPECS, so nothing checks they are live: "
+            + ", ".join(unwatched),
+        )
+    else:
+        ok("SPEC-COVERAGE", "every shots-live-*.e2e.ts under frontend/e2e/ is checked")
 
     # ── FIXTURE-IS-FIXTURE ──────────────────────────────────────────────────
     if not os.path.isfile(FIXTURE_GENERATOR):

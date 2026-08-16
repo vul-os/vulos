@@ -10,7 +10,7 @@ not match how it is actually produced.
 
 ## LIVE — a real process, really serving
 
-`docs/screenshots/live-apps/` — 14 images.
+`docs/screenshots/live-apps/` — 15 images.
 
 Captured by `frontend/e2e/shots-live-apps.e2e.ts`, which imports nothing
 from `mock-backend.js`. Each app is spawned as a real subprocess from its
@@ -23,9 +23,14 @@ These show real empty states, because that is what a freshly-booted box
 looks like. `VULOS_API` is pinned to the dead address `127.0.0.1:1`, so an
 app that reports itself offline or unconfigured is telling the truth.
 
-`system-info.png` is the exception and is **deliberately absent**.
-reads that machine's real hostname, kernel and disk. That is a deliberate
-trade — it is also the clearest evidence the shot is not staged.
+`system-info.png` is the exception, and has its own harness:
+`frontend/e2e/shots-live-system-info.e2e.ts`. That app's entire surface IS
+the machine it runs on, so shooting it where the other fourteen are shot
+would publish the capture machine's real hostname, kernel and disk. It is
+photographed on a **booted Vulos OS box** instead — started by the box's own
+launcher into its own network namespace — and the spec asserts that the
+hostname on screen is not this machine's, so a capture that quietly fell
+back to the developer's laptop fails instead of shipping.
 
 - `browser.png`
 - `calculator.png`
@@ -37,6 +42,7 @@ trade — it is also the clearest evidence the shot is not staged.
 - `notes.png`
 - `phone.png`
 - `screenshot.png`
+- `system-info.png`
 - `text-editor.png`
 - `video.png`
 - `voice-recorder.png`
