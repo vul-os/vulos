@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -22,8 +23,11 @@ import (
 //	process-backed apps  — HTTP liveness probe through the app's namespace.
 //	                       Real: a server that has stopped draining its
 //	                       accept loop is the same condition macOS reports.
-//	streamed X11 apps    — UNKNOWN. X's own mechanism is _NET_WM_PING and
-//	                       Vulos has no X client to send one.
+//	streamed X11 apps    — _NET_WM_PING, sent to the app's own window and
+//	                       answered only by its event loop. Real, and the
+//	                       same thing a desktop WM measures. The Wayland
+//	                       (cage) path stays UNKNOWN: there, the ping is the
+//	                       compositor's to send and no client can send one.
 //	built-in surfaces    — NOT APPLICABLE. React views in the shell's tab;
 //	                       no process, no port, nothing to probe.
 //	system processes     — the /proc state letter, reported as a NOTE and
@@ -90,9 +94,24 @@ func collectAppStatus(launcher *appnet.Launcher, gw *gateway.Gateway, pool *stre
 		})
 	}
 
-	// Streamed X11 desktop apps.
+	// Streamed desktop apps. Probed concurrently for the same reason the HTTP
+	// probes above are, and more so: a wedged app costs the full ping budget
+	// plus the server check that follows it, and a box with four sessions must
+	// wait the maximum rather than the sum.
 	if pool != nil {
-		for _, s := range pool.List() {
+		sessions := pool.List()
+		pings := make([]proctl.Responsiveness, len(sessions))
+		pinged := make(chan int, len(sessions))
+		for i, s := range sessions {
+			go func(i int, s *stream.Session) {
+				pings[i] = s.Responsiveness(context.Background())
+				pinged <- i
+			}(i, s)
+		}
+		for range sessions {
+			<-pinged
+		}
+		for i, s := range sessions {
 			out = append(out, telemetry.AppStatus{
 				AppID:   s.ID,
 				Name:    s.Name,
@@ -101,7 +120,7 @@ func collectAppStatus(launcher *appnet.Launcher, gw *gateway.Gateway, pool *stre
 				// No pid: Session's *exec.Cmd fields are unexported, and
 				// reaching for them would hand the client a pid it must not
 				// signal directly — the session owns the teardown.
-				Responding: proctl.StreamUnknown(),
+				Responding: pings[i],
 				Closable:   true,
 			})
 		}

@@ -120,3 +120,64 @@ func TestGateWalksTheWholeBackend(t *testing.T) {
 		t.Fatalf("the walk reached only %d .go files under services/ — it is not covering the backend", seen)
 	}
 }
+
+// A responsiveness answer in this package must come from the protocol, not from
+// a command-line tool.
+//
+// The rootfs ships xdotool and the image installs it, so the tempting shortcut
+// is here today: shell out, parse the output, call it a probe. Every X tool on
+// the box — xdotool, xprop, xwininfo — asks the X SERVER about a window, and
+// the server answers from its own memory whether or not the application that
+// owns the window is alive. `xdotool search --name` succeeds against a client
+// that has been wedged for an hour.
+//
+// That is a proxy signal presented as a measurement, and this repo has shipped
+// exactly that once: a placement gate that read `foot --title` while the
+// shipping client was `cog`, which sets no title. The gate was green and blind.
+// _NET_WM_PING is the only exchange that requires the CLIENT to act, and
+// sending one requires speaking the protocol — so this package speaks it, and
+// executes nothing.
+//
+// Verified capable of failing: adding `import "os/exec"` and an exec.Command
+// call to xping.go makes this test name the file.
+func TestProctlNeverShellsOut(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	var offenders []string
+	scanned := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		scanned++
+		for i, line := range strings.Split(string(src), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "*") {
+				continue
+			}
+			if strings.Contains(trimmed, `"os/exec"`) || strings.Contains(trimmed, "exec.Command") ||
+				strings.Contains(trimmed, "xdotool") || strings.Contains(trimmed, "xprop") ||
+				strings.Contains(trimmed, "xwininfo") {
+				offenders = append(offenders, fmt.Sprintf("%s:%d: %s", name, i+1, trimmed))
+			}
+		}
+	}
+	// A real floor, not >0: if the scan stopped reading this package it would
+	// report a clean bill of health while examining nothing.
+	if scanned < 4 {
+		t.Fatalf("scanned only %d source files in internal/proctl; the gate is not reading the package", scanned)
+	}
+	if len(offenders) > 0 {
+		t.Errorf("a responsiveness answer here was reached by running a program. Every X window "+
+			"tool queries the SERVER's copy of the window tree, which answers identically for a "+
+			"healthy app and a wedged one — that is a proxy signal wearing the clothes of a "+
+			"measurement. Speak the protocol instead (see xping.go):\n%s", strings.Join(offenders, "\n"))
+	}
+}
