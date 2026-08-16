@@ -369,6 +369,20 @@ type FabricStatus struct {
 	SyncIntervalMS int64            `json:"sync_interval_ms"`
 	PeerCount      int              `json:"peer_count"`
 	Peers          []PeerSyncStatus `json:"peers"`
+
+	// AuthenticatedWith names the secret slot THE CALLER'S OWN request matched:
+	// "current" or "overlap" (see SlotCurrent/SlotOverlap). Empty when the
+	// snapshot was not produced for a request.
+	//
+	// This is how an operator answers "which secret is this box on?" during a
+	// roll — present the new value to each box in turn; "current" means that box
+	// has committed to it, "overlap" means it has only prepared. It discloses
+	// nothing, because it describes a value the caller just sent.
+	AuthenticatedWith string `json:"authenticated_with,omitempty"`
+
+	// SecretRotation is the fleet-wide half of the same question: is a window
+	// open, when does it close, and is anybody still arriving on the old value.
+	SecretRotation SecretRotationStatus `json:"secret_rotation"`
 }
 
 // Status returns a snapshot of the fabric sync state for observability. It is
@@ -382,6 +396,7 @@ func (s *Service) Status() FabricStatus {
 		InstanceID:     s.cfg.InstanceID,
 		SyncIntervalMS: s.cfg.SyncInterval.Milliseconds(),
 		Peers:          make([]PeerSyncStatus, 0, len(s.status)),
+		SecretRotation: s.cfg.Secrets.RotationStatus(),
 	}
 	if !s.lastRun.IsZero() {
 		lr := s.lastRun.UTC()

@@ -112,11 +112,28 @@ package fabric
 //     distribution has to be out of band, which means the operator, which means
 //     an environment variable and a restart.
 //
-// What this package offers instead is OBSERVABILITY: Service.Status reports
-// whether an overlap is open and when it closes, so an operator can verify a
-// roll landed on every box. It deliberately publishes no digest or fingerprint
-// of either secret. A digest of a low-entropy shared secret is the secret, and
-// the status endpoint is readable by a caller holding only the OLD one.
+// What this package offers instead is OBSERVABILITY, and it is shaped around the
+// only two questions an operator actually has mid-roll:
+//
+//	"WHICH SECRET IS THIS BOX ON?"  GET /api/fabric/status answers it by telling
+//	  the caller WHICH SLOT THE CALLER'S OWN HEADER matched: authenticated_with
+//	  is "current" or "overlap". Present the new secret to each box in turn —
+//	  "current" means that box has committed (phase 2 done), "overlap" means it
+//	  has only prepared (phase 1). This discloses nothing: the box is describing
+//	  a value the caller already sent it.
+//
+//	"HAS EVERY PEER MOVED?"  Answered as honestly as an unattributable credential
+//	  permits, which is NOT by naming peers. The ring counts admissions per slot
+//	  and stamps the last time the overlap slot was used. While
+//	  overlap_last_used_at keeps advancing, SOMEBODY has not moved; when it goes
+//	  stale, nobody is still presenting the old value and the window is safe to
+//	  close. It cannot say who, and it does not pretend to — the shared secret
+//	  names a fleet and not a member, which is the whole reason the signature
+//	  path exists.
+//
+// It deliberately publishes NO digest or fingerprint of either secret. A digest
+// of a low-entropy shared secret is the secret, and this endpoint is readable by
+// a caller holding only the OLD one.
 
 import (
 	"crypto/subtle"
@@ -124,7 +141,18 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
+)
+
+// Slot names reported by Slot and by the status endpoint's authenticated_with.
+const (
+	// SlotCurrent means the presented secret matched VULOS_FABRIC_SECRET — the
+	// value this box also sends.
+	SlotCurrent = "current"
+	// SlotOverlap means it matched the rotation overlap value, which this box
+	// accepts but never sends. A peer seen on this slot has not moved yet.
+	SlotOverlap = "overlap"
 )
 
 // Environment variables that configure the ring.
@@ -153,9 +181,17 @@ const MaxSecretOverlap = 7 * 24 * time.Hour
 // SecretRing is the set of shared-secret values this box will ACCEPT, and the
 // single value it will SEND.
 //
-// It is immutable after construction. Nothing in a request path can widen it,
-// which is what makes "who may rotate" answerable at all — see the file comment.
-// Safe for concurrent use precisely because there is nothing to lock.
+// # Its POLICY is immutable after construction
+//
+// current, alt and altUntil are written once, by NewSecretRing, and never
+// again. There is no setter, no reload and no handler that reaches them, which
+// is what makes "who may rotate" answerable at all — see the file comment. The
+// mutable state below it is COUNTERS ONLY: they record what the door already
+// decided and can never widen what it decides next. Keeping that distinction
+// sharp matters, because "the ring is immutable" is load-bearing for the claim
+// that a rotation cannot be triggered over the network.
+//
+// Safe for concurrent use.
 type SecretRing struct {
 	current string
 
@@ -171,6 +207,13 @@ type SecretRing struct {
 	// so the caller can log them with its own prefix instead of this package
 	// guessing whether it is speaking for fabric or for crdtsync.
 	warnings []string
+
+	// ── observability only; see the type doc ─────────────────────────────────
+	mu           sync.Mutex
+	nCurrent     uint64    // requests admitted on the current secret
+	nOverlap     uint64    // requests admitted on the overlap slot
+	lastOverlap  time.Time // when the overlap slot was last used
+	firstOverlap time.Time // and when it was first used
 }
 
 // NewSecretRing builds a ring explicitly.
@@ -282,17 +325,49 @@ func (r *SecretRing) Current() string {
 // EVERY CALL — that is what lets the window close on a box nobody restarts.
 //
 // An empty current secret accepts nothing, including an empty presented value.
+//
+// It RECORDS which slot admitted the request. That record is what answers "has
+// every peer moved?" — see Slot and RotationStatus.
 func (r *SecretRing) Accepts(presented string) bool {
-	if r == nil || r.current == "" {
+	slot := r.Slot(presented)
+	if slot == "" {
 		return false
+	}
+	r.mu.Lock()
+	if slot == SlotOverlap {
+		now := r.now().UTC()
+		r.nOverlap++
+		r.lastOverlap = now
+		if r.firstOverlap.IsZero() {
+			r.firstOverlap = now
+		}
+	} else {
+		r.nCurrent++
+	}
+	r.mu.Unlock()
+	return true
+}
+
+// Slot reports WHICH slot a presented secret matches — SlotCurrent,
+// SlotOverlap, or "" for a value this box does not accept.
+//
+// It is the pure-inspection half of Accepts: it counts nothing, so the status
+// handler can name the caller's own slot without inflating the very counters an
+// operator is reading to decide whether the roll is finished.
+func (r *SecretRing) Slot(presented string) string {
+	if r == nil || r.current == "" {
+		return ""
 	}
 	if subtle.ConstantTimeCompare([]byte(presented), []byte(r.current)) == 1 {
-		return true
+		return SlotCurrent
 	}
 	if !r.overlapOpen() {
-		return false
+		return ""
 	}
-	return subtle.ConstantTimeCompare([]byte(presented), []byte(r.alt)) == 1
+	if subtle.ConstantTimeCompare([]byte(presented), []byte(r.alt)) == 1 {
+		return SlotOverlap
+	}
+	return ""
 }
 
 // overlapOpen reports whether the ALSO slot is live at this instant.
@@ -317,6 +392,67 @@ func (r *SecretRing) OverlapClosesAt() time.Time {
 		return time.Time{}
 	}
 	return r.altUntil
+}
+
+// SecretRotationStatus is the operator-facing view of a rotation in progress.
+// It contains no secret and no digest of one — see the file comment.
+type SecretRotationStatus struct {
+	// OverlapConfigured is true whenever an overlap value is present and usable,
+	// whether or not its deadline has passed. It separates "no rotation is
+	// happening" from "a rotation is happening and has closed".
+	OverlapConfigured bool `json:"overlap_configured"`
+	// OverlapOpen is whether the second secret is accepted AT THIS INSTANT.
+	OverlapOpen bool `json:"overlap_open"`
+	// OverlapClosesAt is when it stops (or stopped) being accepted.
+	OverlapClosesAt *time.Time `json:"overlap_closes_at,omitempty"`
+
+	// AdmittedOnCurrent / AdmittedOnOverlap count inbound requests this process
+	// admitted on each slot. Ratio, not absolute value, is the signal.
+	AdmittedOnCurrent uint64 `json:"admitted_on_current"`
+	AdmittedOnOverlap uint64 `json:"admitted_on_overlap"`
+
+	// OverlapFirstUsedAt / OverlapLastUsedAt bracket the period during which
+	// some peer was still presenting the overlap value.
+	//
+	// LastUsedAt is THE number to watch. While it keeps advancing, a box out
+	// there has not been rolled yet and closing the window would partition it
+	// off. When it stops advancing, the roll is done. It deliberately does not
+	// say WHICH box: a shared bearer secret identifies a fleet and not a member,
+	// so any per-peer attribution here would be invented rather than measured.
+	OverlapFirstUsedAt *time.Time `json:"overlap_first_used_at,omitempty"`
+	OverlapLastUsedAt  *time.Time `json:"overlap_last_used_at,omitempty"`
+
+	// Warnings are configuration inputs that were refused or clamped.
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// RotationStatus snapshots the ring for the status endpoint.
+func (r *SecretRing) RotationStatus() SecretRotationStatus {
+	if r == nil {
+		return SecretRotationStatus{}
+	}
+	out := SecretRotationStatus{
+		OverlapConfigured: r.alt != "" && !r.altUntil.IsZero(),
+		OverlapOpen:       r.overlapOpen(),
+		Warnings:          r.Warnings(),
+	}
+	if out.OverlapConfigured {
+		t := r.altUntil
+		out.OverlapClosesAt = &t
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out.AdmittedOnCurrent = r.nCurrent
+	out.AdmittedOnOverlap = r.nOverlap
+	if !r.firstOverlap.IsZero() {
+		t := r.firstOverlap
+		out.OverlapFirstUsedAt = &t
+	}
+	if !r.lastOverlap.IsZero() {
+		t := r.lastOverlap
+		out.OverlapLastUsedAt = &t
+	}
+	return out
 }
 
 // Warnings returns the configuration inputs that were refused or clamped. Empty

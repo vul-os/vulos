@@ -39,13 +39,24 @@ func (s *Service) RegisterHandlers(mux *http.ServeMux) {
 // It is gated by the same shared fabric secret as the exchange endpoints — the
 // roster/cursor data is LAN-only operational state and must not be readable by
 // an unauthenticated host, consistent with the LAN-only/auth fabric posture.
+// It also reports the rotation state (FABRIC-SECRET-ROT-01), which is what makes
+// a secret roll verifiable rather than hopeful: whether an overlap window is
+// open, when it closes, whether anybody is still arriving on the overlap value,
+// and — for THIS caller — which of the two slots its own header matched. That
+// last field is why the roll can be checked box by box.
 func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.authOK(r.Header.Get("X-Fabric-Auth")) {
+	presented := r.Header.Get("X-Fabric-Auth")
+	if !s.authOK(presented) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
+	st := s.Status()
+	// Read the slot AFTER the gate, from the value the caller sent us. Slot does
+	// not count the lookup, so an operator polling this endpoint to watch the
+	// roll does not move the counters they are watching.
+	st.AuthenticatedWith = s.SecretRing().Slot(presented)
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(s.Status()); err != nil {
+	if err := json.NewEncoder(w).Encode(st); err != nil {
 		log.Printf("[fabric] encode status: %v", err)
 	}
 }
