@@ -422,6 +422,102 @@ func TestInstallFromRegistry_ArtifactsReachTheStaticPath(t *testing.T) {
 	}
 }
 
+// ── post_install (POSTINSTALL-01) ────────────────────────────────────────────
+
+// TestInstallFromRegistry_FailedPostInstallIsFatal pins the rule that a failed
+// post_install fails the install.
+//
+// This is a regression test for a defect that shipped a broken app during the
+// change that added it. lilmail's post_install contained `\'` inside a
+// single-quoted sh string, where a backslash does not escape but ENDS the
+// quote; sh exited 2 with "Syntax error: Unterminated quoted string", the
+// config file was never written, and InstallFromRegistry logged a warning and
+// RETURNED SUCCESS. The manifest was written, the binary was present and the
+// correct architecture, and every launch died with "Failed to load config".
+//
+// For every entry that writes its config in post_install — conduit, gitea,
+// navidrome, diwan, wede, lilmail — post_install IS the install.
+func TestInstallFromRegistry_FailedPostInstallIsFatal(t *testing.T) {
+	withInsecureRegistry(t)
+
+	body := []byte("#!/bin/sh\necho hi\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	appsDir := t.TempDir()
+	reg := &Registry{Apps: map[string]*RegistryEntry{
+		"brokenpost": {
+			Name: "Broken Post", Vetted: true, Type: "web",
+			Description: "post_install fails", Category: "developer",
+			Icon: "B", Author: "Test", License: "MIT", Homepage: "https://example.com",
+			Versions: map[string]*VersionRecipe{
+				"1.0": {
+					DownloadURL: srv.URL + "/app",
+					Checksum:    sha256Hex(body),
+					Command:     "bin/app",
+					Port:        8080,
+					// The real shape of the bug: a quote that never closes.
+					PostInstall: `printf 'frame_ancestors = "\'self\'"\n' > config.toml`,
+				},
+			},
+		},
+	}}
+
+	err := InstallFromRegistry(context.Background(), reg, "brokenpost", "1.0", appsDir)
+	if err == nil {
+		t.Fatal("install with a FAILING post_install returned success — " +
+			"this is the successful-install-of-an-unconfigured-app defect")
+	}
+	if !strings.Contains(err.Error(), "post-install") {
+		t.Errorf("error should name post-install as the cause: %v", err)
+	}
+	// The half-built directory must be gone, so a retry starts clean rather
+	// than on top of whatever the failed command managed to create.
+	if _, statErr := os.Stat(filepath.Join(appsDir, "brokenpost")); !os.IsNotExist(statErr) {
+		t.Errorf("app dir survived a failed post_install: %v", statErr)
+	}
+}
+
+// TestInstallFromRegistry_SucceedingPostInstallStillInstalls is the control.
+// Without it, the test above would pass just as well if post_install were made
+// to fail unconditionally.
+func TestInstallFromRegistry_SucceedingPostInstallStillInstalls(t *testing.T) {
+	withInsecureRegistry(t)
+
+	body := []byte("#!/bin/sh\necho hi\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	}))
+	defer srv.Close()
+
+	appsDir := t.TempDir()
+	reg := &Registry{Apps: map[string]*RegistryEntry{
+		"goodpost": {
+			Name: "Good Post", Vetted: true, Type: "web",
+			Description: "post_install succeeds", Category: "developer",
+			Icon: "G", Author: "Test", License: "MIT", Homepage: "https://example.com",
+			Versions: map[string]*VersionRecipe{
+				"1.0": {
+					DownloadURL: srv.URL + "/app",
+					Checksum:    sha256Hex(body),
+					Command:     "bin/app",
+					Port:        8080,
+					PostInstall: `printf 'ok\n' > config.txt`,
+				},
+			},
+		},
+	}}
+
+	if err := InstallFromRegistry(context.Background(), reg, "goodpost", "1.0", appsDir); err != nil {
+		t.Fatalf("install with a SUCCEEDING post_install failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(appsDir, "goodpost", "config.txt")); err != nil {
+		t.Errorf("post_install did not run: %v", err)
+	}
+}
+
 // ── Zip ──────────────────────────────────────────────────────────────────────
 
 // buildZip makes a zip whose members and modes the test controls.

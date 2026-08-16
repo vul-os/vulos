@@ -112,7 +112,7 @@
       "type": "web",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
+          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -198,7 +198,7 @@
       "license": "AGPL-3.0",
       "versions": {
         "4.12.1": {
-          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz \u0026\u0026 echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - \u0026\u0026 tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/cinny.tar.gz",
+          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz && echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - && tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 && rm /tmp/cinny.tar.gz",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -297,7 +297,7 @@
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends curl \u0026\u0026 curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb \u0026\u0026 echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2\u003e/dev/null || true \u0026\u0026 dpkg -i /tmp/code-server.deb \u0026\u0026 rm -f /tmp/code-server.deb",
+          "install": "apt-get install -y --no-install-recommends curl && curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb && echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/code-server.deb && rm -f /tmp/code-server.deb",
           "permissions": [
             "network",
             "filesystem"
@@ -310,7 +310,7 @@
       "vetted": true
     },
     "conduit": {
-      "_note": "upstream famedly/conduit (conduit.rs) still ships GitLab source-archive-only releases (no prebuilt binary) as of 2026-07-19, so this entry tracks Continuwuity (continuwuity.org) instead \u2014 the actively-maintained community continuation of Conduit/conduwuit, which publishes signed prebuilt linux-amd64/arm64 binaries. The v0.5.9 conduwuit-linux-amd64 binary was downloaded directly and its sha256 computed locally (no vendor-published digest exists to compare against) and functionally boot-tested (fresh RocksDB store, admin room created, listened on 127.0.0.1:6167) in a debian:trixie-slim container matching the box runtime image.",
+      "_note": "upstream famedly/conduit (conduit.rs) still ships GitLab source-archive-only releases (no prebuilt binary) as of 2026-07-19, so this entry tracks Continuwuity (continuwuity.org) instead — the actively-maintained community continuation of Conduit/conduwuit, which publishes signed prebuilt linux-amd64/arm64 binaries. The v0.5.9 conduwuit-linux-amd64 binary was downloaded directly and its sha256 computed locally (no vendor-published digest exists to compare against) and functionally boot-tested (fresh RocksDB store, admin room created, listened on 127.0.0.1:6167) in a debian:trixie-slim container matching the box runtime image.",
       "admin_only": true,
       "arch": [
         "amd64"
@@ -343,7 +343,7 @@
           "archive_strip": 0,
           "command": "bin/conduwuit-linux-amd64 --config data/conduit.toml",
           "port": 6167,
-          "post_install": "mkdir -p data \u0026\u0026 printf '[global]\\nserver_name = \"%s\"\\naddress = [\"127.0.0.1\"]\\nport = %s\\ndatabase_path = \"%s/data/db\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"${PORT}\" \"$APP_DIR\" \u003e data/conduit.toml",
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"%s\"\\naddress = [\"127.0.0.1\"]\\nport = %s\\ndatabase_path = \"%s/data/db\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"${PORT}\" \"$APP_DIR\" > data/conduit.toml",
           "deps": [
             "liburing2",
             "ca-certificates"
@@ -447,7 +447,7 @@
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends wget unzip \u0026\u0026 wget -qO /tmp/diagrams.zip https://github.com/jgraph/drawio-desktop/releases/download/v24.7.17/draw.io-24.7.17.AppImage \u0026\u0026 mkdir -p static \u0026\u0026 cp /tmp/diagrams.zip static/ \u0026\u0026 rm /tmp/diagrams.zip",
+          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/diagrams.zip https://github.com/jgraph/drawio-desktop/releases/download/v24.7.17/draw.io-24.7.17.AppImage && mkdir -p static && cp /tmp/diagrams.zip static/ && rm /tmp/diagrams.zip",
           "permissions": [
             "network"
           ],
@@ -548,7 +548,7 @@
       "license": "Apache-2.0",
       "versions": {
         "30.0.1": {
-          "install": "apt-get install -y --no-install-recommends unzip \u0026\u0026 wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war \u0026\u0026 mkdir -p static \u0026\u0026 unzip -q /tmp/draw.war -d static/ \u0026\u0026 rm /tmp/draw.war",
+          "install": "apt-get install -y --no-install-recommends unzip && wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war && mkdir -p static && unzip -q /tmp/draw.war -d static/ && rm /tmp/draw.war",
           "flatpak_id": "",
           "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war",
           "archive_strip": 0,
@@ -613,7 +613,7 @@
       "signature": "E0r0Kv0Yau2mjUejPPFXTq17BBVoMWejCgTIqa2NzCFSdOSS8IWGS23LozULt7ELNUpszA7E0z5v1IZyAY+TAA=="
     },
     "element-call": {
-      "_note": "Static frontend only \u2014 requires a LiveKit SFU (or compatible focus) and a Matrix homeserver that supports MSC3401 group calls; edit static/config.json post-install to point at them. This is the 'hosted-web experience the user configures' shape, same as Cinny needing a homeserver URL.",
+      "_note": "Static frontend only — requires a LiveKit SFU (or compatible focus) and a Matrix homeserver that supports MSC3401 group calls; edit static/config.json post-install to point at them. This is the 'hosted-web experience the user configures' shape, same as Cinny needing a homeserver URL.",
       "arch": null,
       "author": "Element (New Vector Ltd / Matrix.org Foundation)",
       "category": "network",
@@ -636,7 +636,7 @@
       "type": "web",
       "versions": {
         "0.21.0": {
-          "install": "wget -qO /tmp/element-call.tar.gz https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz \u0026\u0026 echo '6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36  /tmp/element-call.tar.gz' | sha256sum -c - \u0026\u0026 tar xzf /tmp/element-call.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/element-call.tar.gz",
+          "install": "wget -qO /tmp/element-call.tar.gz https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz && echo '6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36  /tmp/element-call.tar.gz' | sha256sum -c - && tar xzf /tmp/element-call.tar.gz -C static/ --strip-components=1 && rm /tmp/element-call.tar.gz",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -680,7 +680,7 @@
       "versions": {
         "0.18.0": {
           "_disabled": true,
-          "_note": "awaiting checksum \u2014 GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz",
+          "_note": "awaiting checksum — GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -689,7 +689,7 @@
           "download_url": "https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz",
           "env": null,
           "flatpak_id": "",
-          "install": "wget -qO /tmp/excalidraw.tgz https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz \u0026\u0026 tar -xzf /tmp/excalidraw.tgz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/excalidraw.tgz",
+          "install": "wget -qO /tmp/excalidraw.tgz https://github.com/excalidraw/excalidraw/releases/download/v0.18.0/excalidraw-0.18.0.tgz && tar -xzf /tmp/excalidraw.tgz -C static/ --strip-components=1 && rm /tmp/excalidraw.tgz",
           "permissions": [
             "network"
           ],
@@ -892,13 +892,13 @@
       "license": "MIT",
       "versions": {
         "1.22.0": {
-          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 \u0026\u0026 echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - \u0026\u0026 chmod +x bin/gitea \u0026\u0026 ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
+          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 && echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - && chmod +x bin/gitea && ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
           "command": "bin/gitea web --config data/app.ini",
           "port": 3000,
-          "post_install": "mkdir -p data/repositories data/lfs \u0026\u0026 printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" \u003e data/app.ini",
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
           "deps": null,
           "env": null,
           "permissions": [
@@ -978,13 +978,13 @@
       "license": "AGPL-3.0",
       "versions": {
         "11": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common \u0026\u0026 wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg \u0026\u0026 echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" \u003e /etc/apt/sources.list.d/grafana.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends grafana",
+          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common && wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg && echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" > /etc/apt/sources.list.d/grafana.list && apt-get update && apt-get install -y --no-install-recommends grafana",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
           "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
           "port": 3000,
-          "post_install": "mkdir -p data/plugins data/dashboards \u0026\u0026 printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" \u003e data/grafana.ini",
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/grafana.ini",
           "deps": null,
           "env": null,
           "permissions": [
@@ -1021,7 +1021,7 @@
       "versions": {
         "2026.4.1": {
           "_disabled": true,
-          "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum",
+          "_note": "awaiting checksum — GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -1030,7 +1030,7 @@
           "download_url": "https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz",
           "env": null,
           "flatpak_id": "",
-          "install": "wget -qO /tmp/hoppscotch.tar.gz https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz \u0026\u0026 tar -xzf /tmp/hoppscotch.tar.gz -C static/ --strip-components=1 \u0026\u0026 rm /tmp/hoppscotch.tar.gz",
+          "install": "wget -qO /tmp/hoppscotch.tar.gz https://github.com/hoppscotch/hoppscotch/archive/refs/tags/2026.4.1.tar.gz && tar -xzf /tmp/hoppscotch.tar.gz -C static/ --strip-components=1 && rm /tmp/hoppscotch.tar.gz",
           "permissions": [
             "network"
           ],
@@ -1061,7 +1061,7 @@
       "license": "ISC",
       "versions": {
         "0.9": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3 \u0026\u0026 pip3 install --break-system-packages httpbin gunicorn",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -1116,7 +1116,7 @@
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends curl wget unzip \u0026\u0026 wget -qO /tmp/immich-server.tar.gz https://github.com/immich-app/immich/releases/download/v1.134.0/immich-server.tar.gz",
+          "install": "apt-get install -y --no-install-recommends curl wget unzip && wget -qO /tmp/immich-server.tar.gz https://github.com/immich-app/immich/releases/download/v1.134.0/immich-server.tar.gz",
           "permissions": [
             "network",
             "filesystem"
@@ -1196,7 +1196,7 @@
       "type": "web",
       "versions": {
         "10": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg \u0026\u0026 curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg \u0026\u0026 echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' \u003e /etc/apt/sources.list.d/jellyfin.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
+          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg && curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg && echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' > /etc/apt/sources.list.d/jellyfin.list && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -1283,7 +1283,7 @@
       "license": "BSD-3-Clause",
       "versions": {
         "4": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv \u0026\u0026 python3 -m pip install --break-system-packages jupyterlab",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -1499,13 +1499,13 @@
       "license": "AGPL-3.0",
       "versions": {
         "1.5.3": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev \u0026\u0026 pip3 install --break-system-packages libretranslate==1.5.3",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
           "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
           "port": 5000,
-          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2\u003e/dev/null || true",
+          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2>/dev/null || true",
           "deps": null,
           "env": null,
           "permissions": [
@@ -1578,7 +1578,7 @@
             "filesystem"
           ],
           "port": 8090,
-          "post_install": "mkdir -p cache sessions && JWT=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; KEY=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#JWT} -ne 32 ] || [ ${#KEY} -ne 32 ]; then echo \"lilmail post-install: could not generate 32-character secrets from /dev/urandom - refusing to write a config with weak or empty [jwt].secret or [encryption].key\" >&2; exit 1; fi; printf '[server]\\nport = 8090\\nsecure_cookies = false\\nframe_ancestors = \"\\'self\\'\"\\n[auth]\\nallow_full_email_username = true\\n[imap]\\nserver = \"imap.example.com\"\\nport = 993\\ntls = true\\n[cache]\\nfolder = \"%s/cache\"\\n[storage]\\nbackend = \"bolt\"\\n[jwt]\\nsecret = \"%s\"\\n[encryption]\\nkey = \"%s\"\\n[smtp]\\nport = 587\\nuse_starttls = true\\n' \"$APP_DIR\" \"$JWT\" \"$KEY\" > config.toml && chmod 640 config.toml && chown -R 65534:65534 config.toml cache sessions",
+          "post_install": "mkdir -p cache sessions && JWT=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; KEY=\"$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)\"; if [ ${#JWT} -ne 32 ] || [ ${#KEY} -ne 32 ]; then echo \"lilmail post-install: could not generate 32-character secrets from /dev/urandom - refusing to write a config with weak or empty [jwt].secret or [encryption].key\" >&2; exit 1; fi; printf '[server]\\nport = 8090\\nsecure_cookies = false\\nframe_ancestors = \"\\047self\\047\"\\n[auth]\\nallow_full_email_username = true\\n[imap]\\nserver = \"imap.example.com\"\\nport = 993\\ntls = true\\n[cache]\\nfolder = \"%s/cache\"\\n[storage]\\nbackend = \"bolt\"\\n[jwt]\\nsecret = \"%s\"\\n[encryption]\\nkey = \"%s\"\\n[smtp]\\nport = 587\\nuse_starttls = true\\n' \"$APP_DIR\" \"$JWT\" \"$KEY\" > config.toml && chmod 640 config.toml && chown -R 65534:65534 config.toml cache sessions",
           "singleton": true
         }
       }
@@ -1673,7 +1673,7 @@
             "gpu"
           ],
           "port": 0,
-          "post_install": "lutris --init 2\u003e/dev/null || true",
+          "post_install": "lutris --init 2>/dev/null || true",
           "singleton": true
         }
       },
@@ -1702,7 +1702,7 @@
       "versions": {
         "0.22.4": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 \u2014 update download_url and obtain a checksum before re-enabling",
+          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -1755,7 +1755,7 @@
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio \u0026\u0026 chmod +x /usr/local/bin/minio",
+          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
           "permissions": [
             "network",
             "filesystem"
@@ -1793,7 +1793,7 @@
       "type": "web",
       "versions": {
         "4.10.0": {
-          "install": "apt-get install -y --no-install-recommends git \u0026\u0026 git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
+          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -1839,7 +1839,7 @@
           "archive_strip": 0,
           "command": "bin/navidrome --configfile data/navidrome.toml",
           "port": 4533,
-          "post_install": "mkdir -p data/music \u0026\u0026 printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" \u003e data/navidrome.toml",
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
           "deps": null,
           "env": null,
           "permissions": [
@@ -1881,7 +1881,7 @@
           "archive_strip": 0,
           "command": "nginx -c data/nginx.conf -g 'daemon off;'",
           "port": 8080,
-          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" \u003e data/nginx.conf \u0026\u0026 mkdir -p static \u0026\u0026 echo '\u003ch1\u003eNginx is running\u003c/h1\u003e' \u003e static/index.html",
+          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
           "deps": null,
           "env": null,
           "permissions": [
@@ -2168,7 +2168,7 @@
             "audio"
           ],
           "port": 0,
-          "post_install": "steam --reset 2\u003e/dev/null || true",
+          "post_install": "steam --reset 2>/dev/null || true",
           "singleton": true
         }
       },
@@ -2210,7 +2210,7 @@
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends wget unzip \u0026\u0026 wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip \u0026\u0026 unzip -q /tmp/svgedit.zip -d static/ \u0026\u0026 rm /tmp/svgedit.zip",
+          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip && unzip -q /tmp/svgedit.zip -d static/ && rm /tmp/svgedit.zip",
           "permissions": [
             "network"
           ],
@@ -2244,7 +2244,7 @@
       "license": "MPL-2.0",
       "versions": {
         "1": {
-          "install": "apt-get install -y --no-install-recommends curl apt-transport-https \u0026\u0026 curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg \u0026\u0026 echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" \u003e /etc/apt/sources.list.d/syncthing.list \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends syncthing",
+          "install": "apt-get install -y --no-install-recommends curl apt-transport-https && curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg && echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" > /etc/apt/sources.list.d/syncthing.list && apt-get update && apt-get install -y --no-install-recommends syncthing",
           "flatpak_id": "",
           "download_url": "",
           "archive_strip": 0,
@@ -2292,7 +2292,7 @@
           "archive_strip": 0,
           "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
           "port": 9091,
-          "post_install": "mkdir -p data/downloads data/incomplete \u0026\u0026 printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" \u003e data/settings.json",
+          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
           "deps": null,
           "env": null,
           "permissions": [
@@ -2329,7 +2329,7 @@
       "versions": {
         "1.23.16": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 \u2014 update download_url and obtain a checksum before re-enabling",
+          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
           "archive_strip": 1,
           "auto_start": false,
           "checksum": "",
@@ -2344,7 +2344,7 @@
             "filesystem"
           ],
           "port": 3001,
-          "post_install": "mkdir -p data \u0026\u0026 npm install --production 2\u003e/dev/null || true",
+          "post_install": "mkdir -p data && npm install --production 2>/dev/null || true",
           "singleton": true
         }
       },
@@ -2374,7 +2374,7 @@
       "versions": {
         "1.32.7": {
           "_disabled": true,
-          "_note": "awaiting verified upstream checksum \u2014 pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
+          "_note": "awaiting verified upstream checksum — pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",

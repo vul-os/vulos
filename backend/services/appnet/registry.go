@@ -1285,13 +1285,35 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 			fmt.Sprintf("APP_DIR=%s", appDir),
 			fmt.Sprintf("DATA_DIR=%s", filepath.Join(appDir, "data")),
 		)
+		// POSTINSTALL-01: a failed post_install is FATAL, and the half-built app
+		// directory is removed.
+		//
+		// This used to log a warning and carry on, which meant a successful
+		// install of an UNCONFIGURED app. That is not a theoretical grade of
+		// wrong: it shipped a broken app during this very change. lilmail's
+		// post_install contained `\'` inside a single-quoted sh string, where a
+		// backslash does not escape — it ends the quote. sh exited 2 with
+		// "Syntax error: Unterminated quoted string", config.toml was never
+		// written, and the installer nonetheless reported success, wrote the
+		// manifest, and left an app whose every launch dies with
+		// "Failed to load config". Only an HTTP probe caught it; install-path,
+		// manifest-written and the binary all looked fine.
+		//
+		// For an app that writes its config here — conduit, gitea, navidrome,
+		// diwan, wede, lilmail — post_install IS the install. Refusing loudly
+		// gives the owner an error naming the app; the previous behaviour gave
+		// them an app that starts and immediately dies.
 		if err := cmd.Run(); err != nil {
 			errOutput := lastLines(stderrBuf.String(), 10)
-			if errOutput != "" {
-				log.Printf("[registry] post-install warning for %s: %v\n%s", appID, err, errOutput)
-			} else {
-				log.Printf("[registry] post-install warning for %s: %v", appID, err)
+			// Roll back, so a retry starts clean rather than on top of whatever
+			// the failed command managed to create.
+			if rmErr := os.RemoveAll(appDir); rmErr != nil {
+				log.Printf("[registry] post-install rollback for %s failed: %v", appID, rmErr)
 			}
+			if errOutput != "" {
+				return fmt.Errorf("post-install for %s@%s failed: %w\n%s", appID, version, err, errOutput)
+			}
+			return fmt.Errorf("post-install for %s@%s failed: %w", appID, version, err)
 		}
 	}
 
