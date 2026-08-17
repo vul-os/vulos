@@ -339,7 +339,14 @@ because `ArchSupported` *is* enforced at install time (`registry.go:964`), so
 `null` is not harmless: it means "all", and an amd64-only app declared `null` is
 offered on arm64 boxes and fails at install.
 
-### 6.7 Apps run as uid 65534, but the installer never chowns the app dir
+### 6.7 Apps run as uid 65534, but the installer never chowns the app dir — CLOSED 2026-08-17
+
+> **STATE-01 closed this** (`backend/services/appnet/state_owner.go`). The
+> installer hands `data/`, and the target of the `data/` symlink, to 65534 after
+> `post_install`, and fails the install if it cannot. It does **not** chown the
+> whole app dir as this section proposed: `bin/` and `static/` are code and stay
+> root-owned, because an app that can rewrite its own binary keeps any compromise
+> across a restart. The paragraph below is kept as the record of the defect.
 
 `launcher.go:52-53` drops to `nobody`/`nogroup` (65534/65534) via `setpriv`
 before exec. `InstallFromRegistry` creates `bin/ static/ data/` with mode `0755`

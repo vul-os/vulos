@@ -327,14 +327,52 @@ to that field. Six shipped entries got this wrong.
 - **No arch-specific state on the sync wire.** §5.
 
 **One honest exception, named rather than buried:** `deps` still calls
-`packages.InstallDeps`, which is `apt-get install -y`. Exactly one shipped entry
-uses it (`conduit`, for `liburing2` and `ca-certificates`). The right model is
-that `deps` names packages the **base image must already carry**, verified at
-install rather than installed — `ca-certificates` is in
-`scripts/image-packages.txt`, `liburing2` is not. That change was not made here
-because dropping `deps` from conduit would make a working app stop working to
-satisfy a sentence in a document. **It is the last apt call in the install path
-and it is open.**
+`packages.InstallDeps`, which is `apt-get install -y`. **It is the last apt call
+in the install path and it is still open.** What changed on 2026-08-17 is that
+the three things this paragraph asserted were measured, and two of them were
+wrong:
+
+- **"Exactly one shipped entry uses it" was wrong.** Four do: `conduit`
+  (`liburing2`, `ca-certificates`), `diwan` and `lilmail` (`ca-certificates`),
+  and `wede` (`ca-certificates`, `git`). Three of the four are the *verified
+  first-party* entries. `ca-certificates` is in `scripts/image-packages.txt`;
+  `liburing2` and `git` are **not**.
+- **"Dropping `deps` from conduit would make a working app stop working" is
+  true, and now it is measured rather than assumed.** The DT_NEEDED list of
+  conduwuit v0.5.9 was read out of both published binaries:
+
+  ```
+  conduwuit-linux-amd64  (83751128 bytes)  liburing.so.2, libstdc++.so.6, libgcc_s.so.1, libm.so.6, libc.so.6, ld-linux-x86-64.so.2
+  conduwuit-linux-arm64  (74653640 bytes)  liburing.so.2, libstdc++.so.6, libgcc_s.so.1, libm.so.6, libc.so.6
+  ```
+
+  Both architectures need `liburing.so.2` at load time, and the release
+  publishes no static or musl variant — its four assets are
+  `conduwuit-linux-{amd64,arm64}` and two `-maxperf` builds of the same shape.
+  So the dependency is real; there is no artefact swap that removes it.
+
+The right model is unchanged: `deps` names packages the **base image must
+already carry**, verified at install rather than installed. Reaching it needs
+`liburing2` (and `git`, for wede) added to `scripts/image-packages.txt` — an
+image change, not an installer change — and only then can the call site go.
+
+Two defects in the current path are named here so they are not rediscovered:
+
+- **DEPS-01 — the return value is discarded.** `packages.InstallDeps(ctx,
+  recipe.Deps)` is called and its error is dropped, so a dependency that could
+  not be installed produces a **successful install of an app that cannot exec**.
+  That is POSTINSTALL-01's defect one field down, and it was left alone
+  deliberately: making it fatal changes the install outcome for three verified
+  first-party entries on a box this session could not run, and a change that
+  turns working installs into refusals needs the container run this session did
+  not have.
+- **DEPS-02 — the box very likely cannot satisfy it anyway.** `build.sh` clears
+  the apt lists, nothing in the install path runs `apt-get update`, and
+  `liburing2` is not in the image, so `apt-get install -y liburing2` on a fresh
+  box is expected to fail with "Unable to locate package" — and DEPS-01 then
+  reports success. conduit is therefore probably already broken on a fresh box,
+  silently. **Expected, not measured**: it needs a boot, and it is written down
+  as the first thing to check rather than as a finding.
 
 ---
 
@@ -408,6 +446,7 @@ In order:
 | **ARTIFACTS-02** | `any` combined with a real architecture key — `any` is exclusive, never a fallback |
 | **EXTRACT-01** | `extract_dir` absolute, traversing, or on a non-archive |
 | **INSTALL-02** | neither `flatpak_id` nor `artifacts` — an unclassified recipe gets no install path |
+| **ARCH-02** | an architecture name (`amd64`, `arm64`, `x86_64`, `aarch64`, `armhf`, …) in `command`, `post_install`, `binary_name`, `extract_dir` or `env` — one string, every architecture. Checked LAST, so every older rule still answers for the input it was written for; the artefact URLs are deliberately exempt, because the `artifacts` key is the one correct place for an architecture |
 
 ### 6.0 The sixth way in, which the count of five missed
 
@@ -438,6 +477,41 @@ default:                      return error   // INSTALL-02
 Gate and dispatch are **two independent closures of the same hole**. Deleting
 either one still leaves the catalogue shut, which is the point: a single
 mutation cannot re-open a shell.
+
+6. **PAYLOAD-01 — the payload must be the KIND of thing the URL claims.**
+   `staticInstall` classifies a download by URL *extension*, and everything it
+   does not recognise falls through to "must be a single binary": install at
+   `bin/<name>`, `chmod 0755`, report success. That branch is how drawio's 52 MB
+   `draw.war` became `bin/draw.war` while `static/` stayed empty. Teaching the
+   zip list about `.war` fixed drawio and left the shape — `.tar.zst`, `.7z`,
+   `.tar`, `.deb`, `.jar` and whatever an upstream invents next all still land
+   there. So the installer now reads the **bytes**: if the payload carries an
+   archive container's magic and is about to be installed as an executable, the
+   install fails naming both facts. It runs after the checksum (so it classifies
+   bytes the signed entry pinned) and before the file is placed (so a refusal
+   leaves no 0755 archive behind). tar's magic sits 257 bytes in, so it reads
+   512 rather than a prefix. A real binary — ELF, a script — matches nothing and
+   is unaffected; `TestRealBinaryStillInstalls` is the control that says so.
+
+7. **STATE-01 — the state directory is handed to the uid the app runs as.**
+   The installer creates the app directory as root, `Launcher` execs the app as
+   `setpriv --reuid=65534 --regid=65534`, and a 0755 root-owned `data/` is an
+   app that installs cleanly and dies on its first write. Seven migrated recipes
+   carried `chown -R 65534:65534 data` in `post_install` instead — a stopgap
+   repeated seven times, absent from the eighth, and a **privileged** command in
+   a string that also runs on a developer box, where it fails and POSTINSTALL-01
+   turns that failure into a failed install. The model is stated once now:
+
+   | path | owner | why |
+   | --- | --- | --- |
+   | `bin/`, `static/` | root, 0755 | **code**. An app that can rewrite its own binary keeps any compromise across a restart |
+   | `data/` (and the symlink's target) | 65534 | **state**. The one directory the app writes |
+
+   It runs **last**, so it covers what `post_install` wrote, and it follows the
+   `data/` symlink, because chowning a symlink changes nothing on disk. Not
+   being root is a logged skip — an unprivileged installer cannot `setpriv`
+   either, so owner and app are already the same uid. Any other failure fails
+   the install.
 
 ### 6.1 Ordering is load-bearing
 
@@ -499,9 +573,9 @@ pin. **arm64 boxes lose Blender**, and will see "requires amd64; this box is
 arm64" rather than a failing install. Reversing this means keeping an unpinned
 apt path for one app; it is the founder's call.
 
-### 7.2 Re-expressed in the Vulos-native format — 12
+### 7.2 Re-expressed in the Vulos-native format — 15
 
-Staged in `registry.d/vulos-native.json`. **Five gain arm64** — see the
+Staged in `registry.d/vulos-native.json`. **Six gain arm64** — see the
 correction below the table; the first count of this was wrong.
 
 | app | version | vehicle before | now |
@@ -518,26 +592,38 @@ correction below the table; the first count of this was wrong.
 | drawio | 30.0.1 | `download_url` to a `.war` (**broken**) | one artefact, `extract_dir` |
 | minipaint | 4.10.0 | `git clone --branch v4.10.0` | tag archive, checksum-pinned |
 | audiomass | 2026-05-25 | `git clone` of the **default branch** | **commit**-pinned archive |
+| jellyfin | 10.11.11 | vendor apt repo, GPG key fetched unpinned | per-arch tar.gz → `bin/`, **stays `_disabled`** |
+| minio | RELEASE.2025-09-07T16-13-09Z | `wget` of an **unversioned** URL into `/usr/local/bin` | per-arch binary, `binary_name`, **stays `_disabled`** |
+| svg-edit | 7.4.2 | shell `wget` of a release asset **that does not exist** | one `any` artefact → `static/`, **stays `_disabled`** |
 
-**Correction, because the first count of this was too generous.** Only five of
-the twelve actually gain an architecture: `conduit` (shipped `arch: ["amd64"]`),
-`navidrome`, `gitea`, `memos` and `code-server` (all amd64-only artefacts).
-`syncthing` and `grafana` came from **vendor apt repositories that already
-publish arm64**, so their gain is pinning, not coverage — the earlier commit
-message on this work claims nine and is wrong. The remaining five
-(`cinny`, `element-call`, `drawio`, `minipaint`, `audiomass`) are static bundles
-that were always architecture-independent.
+**Correction, because the first count of this was too generous.** Only six of
+the fifteen actually gain an architecture: `conduit` (shipped `arch: ["amd64"]`),
+`navidrome`, `gitea`, `memos`, `code-server` (all amd64-only artefacts) and
+`minio` (an amd64-only URL). `syncthing`, `grafana` and `jellyfin` came from
+**vendor apt repositories that already publish arm64**, so their gain is
+pinning, not coverage — the earlier commit message on this work claims nine and
+is wrong. The remaining six (`cinny`, `element-call`, `drawio`, `minipaint`,
+`audiomass`, `svg-edit`) are static bundles that were always
+architecture-independent.
+
+**Three of the fifteen ship `_disabled` on purpose**, and a fourth pair already
+did. `code-server` and `memos` were disabled for trust failures; `jellyfin`,
+`minio` and `svg-edit` are newly pinned but nobody has run their installs, and
+`jellyfin` has a named functional gap (§7.3). Pinning an artefact is not the same
+claim as "this app works", and an entry that conflates them is how the catalogue
+got here.
 
 `code-server` and `memos` stay `_disabled`. Both were disabled for trust
 failures; re-enabling them on the strength of an install nobody has run is the
 same mistake facing the other way. Enable after
 `scripts/verify-app-recipe.sh <id>` passes.
 
-### 7.3 Parked — 8, plus wine, with a per-app reason
+### 7.3 Parked — 7, plus wine, with a per-app reason
 
 `registry.d/apt-retired.json` sets `_disabled: true` on `cockpit`, `httpbin`,
-`jellyfin`, `jupyter`, `libretranslate`, `nginx`, `steam`, `transmission`;
-`wine` is parked in `apt-to-flatpak.json`.
+`jupyter`, `libretranslate`, `nginx`, `steam`, `transmission`;
+`wine` is parked in `apt-to-flatpak.json`. **`jellyfin` left this list on
+2026-08-17** — see below.
 
 - **cockpit, nginx, transmission** — distribution components. Upstream publishes
   source only; there is nothing self-contained to pin. If Vulos wants a
@@ -547,13 +633,32 @@ same mistake facing the other way. Enable after
   other trades nothing. **jupyter is the loss most likely to be felt**, and it is
   the strongest argument for a third vehicle later (a pinned wheel set, or a
   Flathub entry). It is deliberately not invented here.
-- **jellyfin** — parked for honest ignorance, not absence. Its pinnable per-arch
-  URLs were confirmed by HTTP HEAD on 2026-08-17
-  (`repo.jellyfin.org/files/server/linux/stable/v10.11.11/{amd64,arm64}/…`,
-  110228765 and 107416274 bytes) but were **not downloaded and not hashed**, and
-  two things were not measured: whether the portable build is self-contained or
-  needs a .NET runtime the image does not carry, and whether ffmpeg is present.
-  **This is the cheapest of the eight to finish.**
+- **jellyfin — MEASURED AND MIGRATED (still `_disabled`).** Both open questions
+  were answered on 2026-08-17 and they answer differently.
+  **Self-containment: yes.** The tarball carries `libcoreclr.so`,
+  `libhostfxr.so`, `libhostpolicy.so`, `libclrjit.so` and the whole `System.*.dll`
+  set, so the .NET runtime is *inside the payload* and the image does not need
+  one; `jellyfin-web` ships in the same tarball (2331 members), so the web client
+  is not a second package either. The two apphosts are genuinely different builds
+  — `ELF 64-bit LSB pie executable, x86-64` and `… ARM aarch64` — so this is not
+  the kerf shape. **ffmpeg: no.** Zero archive members match `ffmpeg` or
+  `ffprobe`, and neither is in `scripts/image-packages.txt`. A Jellyfin that
+  cannot probe or transcode is an app that installs and cannot do the thing it is
+  for, so the recipe is pinned with real digests and **stays `_disabled`**: one
+  edit from enabling once the image carries ffmpeg and
+  `scripts/verify-app-recipe.sh jellyfin` passes.
+  **A third defect surfaced while measuring**: the retired recipe ran
+  `jellyfin --port ${PORT}`, and jellyfin has **no `--port` option** — the option
+  names compiled into `jellyfin.dll` are exactly `cachedir`, `configdir`,
+  `datadir`, `ffmpeg`, `logdir`, `nowebclient`, `published-server-url`, `service`,
+  `webdir`. The port lives in `network.xml`, which the new `post_install` writes
+  with the literal 8096 the recipe declares; the element names
+  (`InternalHttpPort`, `PublicHttpPort`) were read out of the shipped
+  `MediaBrowser.Common.dll`, not guessed.
+  **Still unmeasured and named rather than assumed**: whether the image carries
+  ICU. A self-contained .NET app needs `libicuuc`/`libicui18n` unless it was built
+  invariant; `libicu` is not in `image-packages.txt` and chromium is *expected*
+  to pull it in transitively, which is an inference.
 - **steam** — already excluded by `APP-CATALOG.md` policy 1a (proprietary,
   founder call, explicitly reversible), amd64-only everywhere, and its Flathub
   package is extra-data.
@@ -564,36 +669,66 @@ same mistake facing the other way. Enable after
   resolves is a `flatpak remote-info` measurement that was not run**. Guessing it
   is exactly the fabricated-value failure this work exists to remove.
 
-### 7.4 Already `_disabled`, left alone — 9
+### 7.4 Already `_disabled`, left alone — 6
 
-`diagrams-net`, `excalidraw`, `hoppscotch`, `immich`, `minio`, `svg-edit`,
-`uptime-kuma`, `vaultwarden` are refused today and stay refused; each needs a
-build step, a service topology, or an artefact that does not exist. Two are worth
-recording because the reason is a defect rather than a limitation:
+`diagrams-net`, `excalidraw`, `hoppscotch`, `immich`, `uptime-kuma`,
+`vaultwarden` are refused today and stay refused; each needs a build step, a
+service topology, or an artefact that does not exist. (The heading previously
+said 9 while listing 8 names; it was miscounted, and `minio` and `svg-edit` have
+since moved to §7.2.)
 
-- **svg-edit** pins release `v7.3.0`, which **does not exist** — SVG-Edit's tags
-  are `v.7.3.3`, `v7.2.0`, `v.7.1.2-beta.1`, and none of its releases carries any
-  asset. `_disabled` is the only reason nobody has hit that error.
+- **svg-edit — DEFECT CONFIRMED AND FIXED (still `_disabled`).** It pinned
+  release `v7.3.0`, which **does not exist**: the tags are `v.7.3.3`, `v7.2.0`,
+  `v.7.1.2-beta.1`, `v5.1.0` and older, and measured against the GitHub releases
+  API **ten releases carry zero assets between them**. `_disabled` is the only
+  reason nobody hit that 404. The one *published build* of SVG-Edit is its npm
+  package, which is immutable per version and ships `dist/editor/` prebuilt
+  (`index.html`, `Editor.js`, `svgedit.css`, `components/`, `extensions/`,
+  `images/`), so no build step is needed. It is now pinned to `svgedit-7.4.2.tgz`,
+  and this is one of only two entries in the catalogue with an independent second
+  opinion on its bytes: our sha512 and sha1 both match npm's published
+  `dist.integrity` and `dist.shasum`. `command` serves `static/dist/editor/`
+  specifically — serving the app dir would publish `data/`, a symlink to the
+  owner's data directory (§4.4).
+- **minio — the 404 was real, and there was a pinnable artefact one release
+  back.** `dl.min.io/…/archive/minio.RELEASE.2025-10-15T17-29-55Z` 404s because
+  that release **publishes no binary at all** (its GitHub asset list is empty).
+  `RELEASE.2025-09-07T16-13-09Z` publishes real per-architecture Linux binaries as
+  GitHub release assets — a pinned immutable URL, unlike the unversioned
+  `…/release/linux-amd64/minio` the old recipe used, which the format forbids.
+  MinIO publishes a `.sha256sum` beside each asset and **both match ours byte for
+  byte**, which makes this the other entry with two independent statements per
+  artefact. It stays `_disabled`: no install has been run, and this build is from
+  the series where the embedded console UI was removed upstream — a product
+  question for the founder, not a packaging one.
 - **excalidraw**'s `excalidraw-0.18.0.tgz` is an **npm library package**
   (`package/dist/{dev,prod}/…`, no `index.html`), measured by listing the
   downloaded archive. It is not a servable site build, so no `extract_dir` makes
-  it work.
+  it work. (svg-edit's npm package is the opposite case, and the difference was
+  measured the same way — by listing the archive, not by assuming npm means
+  library.)
 
 ### 7.5 The honest total
 
 | | count |
 | --- | ---: |
 | migrated to Flathub | 11 |
-| migrated to Vulos-native | 12 |
-| **migrated** | **23** |
-| parked with a stated reason | 9 |
-| already disabled, unchanged | 8 |
-| **not migrated** | **17** |
+| migrated to Vulos-native | 15 |
+| **migrated** | **26** |
+| parked with a stated reason | 8 |
+| already disabled, unchanged | 6 |
+| **not migrated** | **14** |
 
-Of the 23, **11 gain an architecture they could not previously install on** (six
-via Flathub, five via per-arch artefacts) and **one — blender — loses one.**
-Of the 17 not migrated, **exactly one, jellyfin, was blocked by a measurement I
-did not take** rather than by an artefact that does not exist.
+Of the 26, **12 gain an architecture they could not previously install on** (six
+via Flathub, six via per-arch artefacts) and **one — blender — loses one.**
+Five of the 26 are pinned but ship `_disabled` (`code-server`, `memos`,
+`jellyfin`, `minio`, `svg-edit`): a pinned artefact is a claim about bytes, not
+about whether the app runs.
+
+Of the 14 not migrated, **none is now blocked by a measurement nobody took.**
+The three that were — jellyfin, minio, svg-edit — were measured on 2026-08-17 and
+moved to §7.2; what blocks the remaining fourteen is an artefact that does not
+exist, a build step, or a service topology.
 
 ---
 
@@ -629,6 +764,31 @@ had one.
 | minipaint 4.10.0 | both | 4226993 | `1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9` |
 | audiomass @2ac3801a | both | 13972572 | `0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103` |
 
+**Second run, 2026-08-17** — same rule, same script, no digit typed by hand:
+
+| app | arch | bytes | sha256 |
+| --- | --- | ---: | --- |
+| jellyfin 10.11.11 | amd64 | 110228765 | `9f7f194a7e37777cfde0d107c088fc47e81c7904440046ac0ceb7a289546cf79` |
+| jellyfin 10.11.11 | arm64 | 107416274 | `31f86f51f72f006dfe2d9daabc25e75a9bbbfdad8dc1cbac7d14ea616de1fa40` |
+| minio RELEASE.2025-09-07T16-13-09Z | amd64 | 110989496 | `7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f` ✚ |
+| minio RELEASE.2025-09-07T16-13-09Z | arm64 | 105251000 | `5c83cd2cf151717ba0243f73e1c7802ff36e272b67144bdd7f1f7d684fd6f03d` ✚ |
+| svg-edit 7.4.2 | any | 10265698 | `249cc66750a5b4ac39fc79ee8723ab71b581c48946aaea1ee58054fd91db98a7` ✚ |
+| conduit 0.5.9 (re-measured) | amd64 | 83751128 | `4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de` ✔ |
+| conduit 0.5.9 (re-measured) | arm64 | 74653640 | `d325133456241bf64e4dec5dc905fc0513b1e3fb7eaaa927f51726b801a9d3d2` ✔ |
+
+**✚ = agrees with a digest UPSTREAM publishes**, which is the second opinion §11
+asks for and which the first run had for nothing: MinIO ships a `.sha256sum`
+beside each asset (both match), and npm publishes `dist.integrity` and
+`dist.shasum` for the exact svg-edit tarball (our sha512 **and** sha1 match both).
+The conduit rows are a re-measurement taken to read the binaries' `DT_NEEDED`
+lists (§4.6): amd64 reproduces the digest the shipped registry has carried all
+along, and arm64 reproduces the one the first run computed — an independent
+agreement on both halves of a per-arch pair.
+
+Jellyfin publishes **no digest file at all** next to these assets (the release
+directory holds only the `.tar.gz` and the `.tar.xz`), so those two sha256s rest
+on one session's arithmetic and the entry says so.
+
 **Independently re-verified.** `scripts/verify-firstparty-artifacts.sh
 registry.d/vulos-native.json` re-downloaded all 22 artefacts and recomputed every
 digest with a **different implementation** from the one that produced them. All
@@ -653,12 +813,18 @@ does not use, and it matches nothing upstream publishes for that file either.
 
 | app | why not |
 | --- | --- |
-| jellyfin | URLs HEAD-confirmed (110228765 / 107416274 bytes) but never downloaded. Runtime self-containment unmeasured. |
-| minio | `dl.min.io/…/release/linux-{amd64,arm64}/archive/minio.RELEASE.2025-10-15T17-29-55Z` returned **404**. The unversioned `…/release/linux-amd64/minio` the old recipe used is a moving target the format forbids. |
 | wine | no artefact exists to hash. |
 | blender | no aarch64 artefact exists to hash; converted to Flathub instead. |
-| svg-edit | the pinned release does not exist and no SVG-Edit release publishes any asset. |
 | cockpit, nginx, transmission, httpbin, jupyter, libretranslate, immich, uptime-kuma, hoppscotch, excalidraw, vaultwarden, diagrams-net, steam | no single self-contained artefact to hash. |
+
+**Three rows left this table on 2026-08-17**, and it is worth saying what each
+turned out to be, because "not computed" covered three different situations:
+
+| app | what it actually was |
+| --- | --- |
+| jellyfin | a download nobody had run. Both artefacts hashed; the blocker was never the artefact, it was ffmpeg (§7.3). |
+| minio | a 404 that was **true**: that release publishes no binary. One release back does, with upstream digests. |
+| svg-edit | a pinned release that does not exist. The artefact is the npm package, which no one had looked for. |
 
 ### The caveat on the two source archives
 
@@ -699,11 +865,35 @@ Caused by this change, and cleared by the merge, not by an edit:
     installer no longer runs (INSTALL-01)
 ```
 
-Both assert that a **shipped `registry.json` entry** satisfies the gate. The
-migrated replacements are staged in `registry.d/vulos-native.json`; the tests go
-green when the single writer merges them. They are red because the code enforces
-the standard and the data has not caught up — which is the correct order, and the
-only order that does not involve an agent editing `registry.json`.
+Both assert that a **shipped `registry.json` entry** satisfies the gate. They are
+red because the code enforces the standard and the data has not caught up — which
+is the correct order, and the only order that does not involve an agent editing
+`registry.json`.
+
+> **CORRECTION, 2026-08-17: merging the fragments will NOT make these two go
+> green, and whoever merges needs to know that before they run the ceremony.**
+> Both tests assert the *retired vehicle* alongside the gate, and those
+> assertions flip from green to red the moment the migrated entries land:
+>
+> | test | assertion | after the merge |
+> | --- | --- | --- |
+> | `TestAppStore_ConduitEntry_Enabled` | `recipe.DownloadURL == ""` → error | **red** — the migrated recipe has no `download_url`; DOWNLOAD-01 refuses one |
+> | | `recipe.Checksum == ""` → error | **red** — the digest lives per artefact now |
+> | | `len(recipe.Checksum) != 64` → error | **red** — same reason |
+> | | `validateRecipeSecurity(recipe)` | green — this is the half that clears |
+> | `TestAppStore_CommsEntries_ElementCall` | `recipe.Checksum == ""` → error | **red** — `artifacts.any` carries the digest |
+> | | `validateRecipeSecurity(recipe)` | green |
+>
+> **These two tests are part of the defect they were written to protect
+> against.** `TestAppStore_ConduitEntry_Enabled` pins the very shape that made
+> conduit amd64-only, and its own comment says so out loud: *"a download_url, a
+> non-empty sha256 checksum, deps for the binary's runtime libraries"*. They were
+> left untouched deliberately — the coordinator owns `registry.json` and these
+> assertions belong to the same edit as the merge — but they must be **rewritten
+> in that edit**, not deleted: the replacements are `recipe.HasArtifacts()`, one
+> 64-character digest **per artefact**, and `recipe.DownloadURL == ""` asserted
+> the other way round. Deleting them would remove the only per-entry checks these
+> two apps have.
 
 `TestStagedRegistryFragmentsUseOnlyTheTwoVehicles` asserts the same thing about
 everything in `registry.d/`, and is **green** at 53 recipes.
@@ -755,6 +945,41 @@ survivors**, working tree restored after every run.
 | M18 | the `any` artefact never resolves | `TestArtifactAny_ResolvesOnEveryArchitecture` |
 | M19 | `any` becomes a general per-arch fallback | `TestArtifactPerArch_StillRefusesAMissingArch` |
 | M20 | the checker treats *every* recipe as architecture-independent | `verify-firstparty-artifacts.sh --self-test` |
+
+**Second round, 2026-08-17 — fourteen more, planted one at a time in the
+shipping source, every one killed, working tree restored and verified clean
+after each:**
+
+| # | mutation | killed by |
+| --- | --- | --- |
+| S1 | the state handoff is a no-op | `TestInstall_HandsTheWholeStateTreeToTheAppUID` |
+| S2 | state is handed to `0:0` instead of `65534:65534` | same, on the uid assertion |
+| S3 | the top directory only — no recursion | same, on the nested file |
+| S4 | the handoff does not follow the `data/` symlink | `TestInstall_HandsOverTheSymlinkTARGET` |
+| S5 | blanket chown of the WHOLE app dir | `TestInstall_LeavesTheCodeDirectoriesRootOwned` |
+| P1 | PAYLOAD-01 never fires | `TestArchiveWithAnUnknownExtensionIsRefused…` |
+| P2 | the sniff reads a 4-byte prefix instead of 512 | `TestUncompressedTarIsRefused` (tar's magic is at 257) |
+| P3 | PAYLOAD-01 refuses *every* single-binary install | `TestRealBinaryStillInstalls` (its control) |
+| P4 | the sniff runs AFTER the file is placed 0755 | `TestArchiveWithAnUnknownExtensionIsRefused…`, on "nothing was placed" |
+| A1 | ARCH-02 never fires | `TestArchInCommandIsRefused` |
+| A2 | ARCH-02 refuses *every* recipe | `TestArchInArtifactURLsIsACCEPTED` (its control) |
+| A3 | ARCH-02 also reads the artefact URLs | same control |
+| A4 | ARCH-02 watches only `command` | `TestArchInEachSharedFieldIsRefused` |
+| A5 | ARCH-02 is checked FIRST, shadowing DOWNLOAD-01 | `TestArchRuleDoesNotShadowTheOlderDownloadRules` |
+
+**S5 found a hollow assertion of mine before it found anything else.** The
+"code stays root-owned" test compared an unresolved `/var/…` app-dir path
+against chowns recorded on the resolved `/private/var/…` path, so it could never
+match and the blanket-chown mutant was killed by a *different* test while that
+one stayed green. That is the same class as M7 in the first round: a measurement
+that looked like a result. The comparison is resolved on both sides now, and S5
+is killed by the test that is supposed to kill it.
+
+**P3, A2 and A3 are over-broad on purpose**, for the reason M11/M12 record: a
+rule that refuses everything passes every negative test written for it. A3 is the
+sharper of the two — extending ARCH-02 to the artefact URLs looks like a
+tightening and would refuse *every correct per-arch recipe in the catalogue*,
+because the `artifacts` key is the one place an architecture belongs.
 
 M11, M12 and M14 are **over-broad** mutations on purpose. A rule that refuses
 everything passes every negative test ever written for it; only a control that
@@ -827,6 +1052,20 @@ aarch64 + "HTML document, ASCII text"                        -> INFO
 - **`permissions` still means nothing.** Of the ten valid strings exactly one
   (`storage`) has runtime effect. Converting apps to Flatpak does not break a
   permission bridge; there is no bridge.
+- **STATE-01 was proved by observing the chowns, not by performing them.** No
+  unprivileged test process can chown to uid 65534, so the tests inject a
+  recorder and claim euid 0. What is proved is that the installer *asks* for the
+  right ownership on the right paths; that the kernel then grants it on a real
+  box is a claim only a box can make. The alternative — skipping the assertion
+  when the chown cannot run — is a test that asserts nothing.
+- **PAYLOAD-01 knows the containers it knows.** It refuses gzip, zip/war/jar,
+  xz, bzip2, zstd, 7z, ar/deb, rar and uncompressed tar. A container format
+  outside that list still reaches the single-binary branch — the guard narrows
+  the hole to formats nobody has published yet, and does not close it by
+  construction the way removing the branch would.
+- **`deps` is still `apt-get install -y`, and conduit still needs it.** §4.6.
+  DEPS-01 (the discarded error) and DEPS-02 (the package is not in the image) are
+  both open and both named.
 
 ---
 
@@ -844,7 +1083,11 @@ aarch64 + "HTML document, ASCII text"                        -> INFO
       digest **you computed from the bytes that arrived**. Never a `latest` URL.
 - [ ] `archive_strip` / `extract_dir` / `binary_name` derived by **listing the
       archive**, not guessed.
-- [ ] `post_install` writes config only — no fetch, no `|| true`, literal port.
+- [ ] `post_install` writes config only — no fetch, no `|| true`, literal port,
+      and **no `chown`**: the installer hands `data/` to uid 65534 itself
+      (STATE-01). A recipe that chowns is either duplicating that or reaching
+      outside `data/`, and the second one needs a sentence in `_note`.
+- [ ] No architecture spelled anywhere except an `artifacts` key (ARCH-02).
 - [ ] `scripts/verify-app-recipe.sh <id>` run, ledger row committed by the script
       (never hand-written), or an honest `untestable-on-arm64` row with the
       reason.

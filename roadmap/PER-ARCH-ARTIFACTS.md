@@ -297,10 +297,16 @@ Carried forward from `FIRST-PARTY-REGISTRY-TRUTH.md` §6 and unchanged here:
   `post_install` yields a *successful install of an unconfigured app*. All three
   entries here write their config in `post_install`, so all three are exposed.
   This is the single highest-value remaining fix in the installer.
-- **The installer never chowns the app dir** — apps run as uid 65534 but the app
-  dir is created 0755 root-owned. All three recipes chown their own state
-  directories as a stopgap; the right fix is one `os.Chown` in the installer,
-  not a line repeated in 56 recipes.
+- ~~**The installer never chowns the app dir**~~ — **CLOSED 2026-08-17
+  (STATE-01, `backend/services/appnet/state_owner.go`).** The installer now hands
+  `data/` — and the target of the `data/` symlink — to uid 65534 after
+  `post_install`, and fails the install if it cannot. Not the whole app dir, on
+  purpose: `bin/` and `static/` stay root-owned, because an app that can rewrite
+  its own binary keeps any compromise across a restart. The seven migrated
+  recipes that carried `chown -R 65534:65534 data` no longer do. The three
+  first-party recipes still chown, and still should: lilmail's state lives in
+  `cache/`, `sessions/` and `config.toml` at the app ROOT, which STATE-01
+  deliberately does not touch.
 - **`${PORT}` is not expanded in `post_install`** and six shipped entries rely on
   it (`conduit`, `gitea`, `grafana`, `navidrome`, `nginx`, `transmission`).
 - **`code-server`'s checksum is verified and then ignored** via `|| true`.
