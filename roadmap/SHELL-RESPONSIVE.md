@@ -231,6 +231,17 @@ against a stale bundle.
 After all three reverts, `git status --porcelain` shows none of this workstream's files, and
 the suite is **24 passed** again.
 
+### Nothing neighbouring broke
+
+`mobile-touch-targets`, `mobile-native`, `mobile-dock`, `mobile-shell`, `mobile-files`,
+`insets-validation`, `mobile-contrast`, `desktop-layout`, `desktop-windows`, `shell-contrast`
+— **106 passed**, one run, same provenance. Those suites are where the changes here could have
+gone wrong quietly: the 44px floor on the phone chrome, the safe-area inset padding on
+`.vmob-bar`, the home grid's column count at 768 and 834 (which the container query had to
+reproduce exactly), and the desktop's deliberately dense mouse chrome, which the
+`(pointer: coarse)` block must not have leaked into. Unit tests: 135 passed across
+`src/mobile`, `src/layouts`, `src/shell`.
+
 ---
 
 ## 6b. Two things about the harness, for whoever runs this next
