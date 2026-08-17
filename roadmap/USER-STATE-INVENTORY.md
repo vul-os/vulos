@@ -20,9 +20,11 @@ reviewable separately from the code that acts on them. Three verdicts only:
 
 **Counts: 15 SYNC, 5 PER-BOX, 4 EPHEMERAL — 24 entries.**
 
-Of the 15 SYNC entries, **9 are migrated by this pass** and 6 are not; each
-unmigrated one names what it is waiting on. Nothing here is claimed as syncing
-because it *should*.
+Of the 15 SYNC entries, **11 are migrated by this pass** (one of them only
+partly — the wallpaper, §5) and **4 are not**; each unmigrated one names what it
+is waiting on, in §7. Nothing here is claimed as syncing because it *should*
+sync, and the counts are pinned by `frontend/src/core/prefGroups.test.ts`, which
+fails if the code writes a bag key this document does not name.
 
 ---
 
@@ -169,6 +171,16 @@ wrong* layout rather than an obvious failure.
   already drops unknown widgets, clamps sizes and intersects grants against the
   manifest. A placement that arrives from another box gets exactly the same
   treatment as one read back from disk.
+
+  **With one correction that mutation testing forced.** "Drops unknown widgets"
+  is right for rendering and catastrophic for syncing: box A has a widget box B
+  does not ship, B loads the rail, drops the placement, re-exports a shorter
+  rail and pushes it — and the widget is gone from A too. The box that
+  understood the placement least would have been the one deciding it did not
+  exist. An unrenderable placement is therefore carried through **verbatim**:
+  not shown on this box, not editable on this box, not destroyed by this box.
+  It is the rule the installed-app set already follows for an app the desired
+  set has never heard of.
 
 Key budget against `MaxSettingKeys` = 64:
 

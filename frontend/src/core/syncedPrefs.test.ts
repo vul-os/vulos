@@ -137,6 +137,46 @@ describe('adoption — the one-time migration off localStorage', () => {
   })
 })
 
+describe('a payload that says nothing is not a payload that says "unset"', () => {
+  it('does not clear a preference when the reply carries no settings at all', () => {
+    // Caught by an E2E run, and it is the worst regression this pass produced.
+    // Applying a desktop preset pushed the layout; the reply carried no
+    // settings object; hydration read that silence as "the box holds nothing"
+    // and reset the desktop to stock a moment after the user chose it.
+    //
+    // Go's `json:"settings,omitempty"` omits an EMPTY map, so "the box has no
+    // preferences" and "this response did not include them" are the same bytes.
+    // Only one of the two readings is safe.
+    hydratePrefs('user-1', { [BAG]: 'dark' })
+    expect(prefRead(LS)).toBe('dark')
+
+    hydratePrefs('user-1', {}, { authoritative: false })
+
+    expect(prefRead(LS)).toBe('dark')
+  })
+
+  it('still clears when the payload DID carry settings and simply lacks the key', () => {
+    // The other half. Reset-to-stock on the other box must reach this one, or
+    // a deletion is a change that never propagates.
+    hydratePrefs('user-1', { [BAG]: 'dark' })
+    hydratePrefs('user-1', { [OTHER_BAG]: 'x' }) // authoritative by default
+    expect(prefRead(LS)).toBe('')
+  })
+
+  it('does not push from a non-authoritative payload', () => {
+    // Otherwise every offline unlock and every partial reply would queue the
+    // whole local state as if the box were missing it.
+    localStorage.setItem(LS, 'dark')
+    hydratePrefs('user-1', { [BAG]: 'dark' })  // first hydrate, box already has it
+    localStorage.setItem(OTHER_LS, 'later')
+
+    const patch = hydratePrefs('user-1', {}, { authoritative: false })
+
+    expect(patch).toEqual({})
+    expect(prefRead(OTHER_LS)).toBe('later') // kept, just not pushed
+  })
+})
+
 describe('offline writes', () => {
   it('applies locally at once and keeps the patch queued when the box is unreachable', async () => {
     hydratePrefs('user-1', { [BAG]: 'dark' })

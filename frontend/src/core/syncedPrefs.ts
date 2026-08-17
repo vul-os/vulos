@@ -365,10 +365,41 @@ export function prefsHydratedFor(): string | null {
  * sends the returned patch; it is returned rather than sent here so hydration
  * stays synchronous and testable without a network.
  */
-export function hydratePrefs(userID: string, serverBag: Record<string, string>): Record<string, string> {
+export interface HydrateOptions {
+  /**
+   * Whether this payload is entitled to say a key is UNSET.
+   *
+   * False when the profile carries no `settings` object at all, which is not
+   * the same statement as an empty one — and the two are indistinguishable on
+   * the wire, because Go's `json:"settings,omitempty"` omits an empty map.
+   *
+   * This is not a theoretical distinction. It is the difference between
+   * "another box cleared your preferences" and "this response simply did not
+   * include them", and treating the second as the first destroys the user's
+   * wallpaper, theme, dock pins, desktop layout and widget rail. An E2E run
+   * caught it doing exactly that: applying a desktop preset pushed the layout,
+   * the reply carried no settings, hydration read the silence as "unset" and
+   * reset the desktop to stock a moment after the user chose it.
+   *
+   * The same shape reaches further than a mocked reply. AuthProvider sets a
+   * bare `{ display_name, offline: true }` profile when a user unlocks
+   * offline — with an authoritative reading, unlocking your box without a
+   * network would have wiped every preference you own.
+   */
+  authoritative?: boolean
+}
+
+export function hydratePrefs(
+  userID: string,
+  serverBag: Record<string, string>,
+  opts: HydrateOptions = {},
+): Record<string, string> {
+  const authoritative = opts.authoritative !== false
   const first = hydratedFor !== userID
   hydratedFor = userID
-  lastServerView = { ...serverBag }
+  // A non-authoritative payload MERGES into the known server view rather than
+  // replacing it: it did not mention those keys, so it did not retract them.
+  lastServerView = authoritative ? { ...serverBag } : { ...lastServerView, ...serverBag }
 
   const adoption: Record<string, string> = {}
 
@@ -382,13 +413,18 @@ export function hydratePrefs(userID: string, serverBag: Record<string, string>):
         if (group.owns(k) && v) effective[k] = v
       }
 
-      if (first) {
-        // Adoption: the box has never heard of this key and this browser has a
-        // real value for it. Local wins ONCE.
+      // Local values fill the gaps in two cases: the FIRST hydrate for a user
+      // (adoption — the one-time migration off localStorage), and any
+      // non-authoritative payload (which did not mention these keys, so it
+      // cannot be read as unsetting them).
+      if (first || !authoritative) {
         for (const [k, v] of Object.entries(local)) {
           if (!v || effective[k] !== undefined) continue
           effective[k] = v
-          if (v.length <= MAX_SYNCED_VALUE) adoption[k] = v
+          // Only a FIRST hydrate pushes. A non-authoritative payload is not
+          // evidence the box is missing anything, so it must not generate
+          // writes on every reload.
+          if (first && v.length <= MAX_SYNCED_VALUE) adoption[k] = v
         }
       }
 

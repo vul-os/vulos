@@ -74,9 +74,17 @@ export default function SyncedPrefsBridge({ children }: SyncedPrefsBridgeProps) 
     const userID = user.id
     if (typeof userID !== 'string' || !userID) return
 
+    // An OFFLINE session is not the box speaking. AuthProvider sets a bare
+    // { display_name, offline: true } profile when a user unlocks without a
+    // network; hydrating from it would read a payload that mentions nothing as
+    // a box that holds nothing, and unlocking your own machine offline would
+    // erase every preference you have.
+    if (profile.offline === true) return
+
     const bag: Record<string, string> = {}
     const settings: unknown = profile.settings
-    if (typeof settings === 'object' && settings !== null && !Array.isArray(settings)) {
+    const settingsPresent = typeof settings === 'object' && settings !== null && !Array.isArray(settings)
+    if (settingsPresent) {
       for (const [k, v] of Object.entries(settings as Record<string, unknown>)) {
         if (typeof v === 'string' && v) bag[k] = v
       }
@@ -84,7 +92,10 @@ export default function SyncedPrefsBridge({ children }: SyncedPrefsBridgeProps) 
     const theme: unknown = profile.theme
     if (typeof theme === 'string' && theme) bag[THEME_BAG_KEY] = theme
 
-    hydratePrefs(userID, bag)
+    // `settings` absent is NOT an empty bag — Go's `omitempty` omits an empty
+    // map, so the wire cannot tell them apart, and only one of the two readings
+    // is safe. See HydrateOptions.authoritative.
+    hydratePrefs(userID, bag, { authoritative: settingsPresent })
     // Adoption (this box's existing localStorage values, which the box has
     // never seen) and anything queued while offline are both in the outbox by
     // now. Sending is fire-and-forget: a failure leaves the queue intact and
