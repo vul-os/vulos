@@ -56,11 +56,28 @@ const cardFor = (name: string) => screen.getByText(name).closest('article') as H
 // The GET /api/store/registry wire shape (services/appnet/registry.go's
 // RegistryListEntry) — a store-only shape AppHub.tsx's local StoreApp narrows
 // from, not the shell-launcher `App` type.
+//
+// `availability` is the BOX's verdict, computed by EvaluateArch. `arch` is still
+// on the wire and is deliberately still in these fixtures: the hub must ignore
+// it, and a fixture that dropped it could not prove that it does.
+interface FixtureAvailability {
+  state: string
+  installable: boolean
+  requires_emulation: boolean
+  badge: string
+  card_badge: string
+  detail: string
+  box_arch: string
+  undeclared: boolean
+  needs: string[]
+}
+
 interface RegistryFixtureApp {
   id: string
   name: string
   type: string
   arch: string[]
+  availability: FixtureAvailability
   description: string
   category: string
   keywords: string[]
@@ -69,12 +86,52 @@ interface RegistryFixtureApp {
   installed: boolean
 }
 
+/**
+ * The box's answer, in the shape and the wording services/appnet/arch.go emits.
+ *
+ * The SENTENCES are the box's to write and its tests own them
+ * (TestEvaluateArch_NoUnmeasuredClaimReachesTheUser sweeps every rung's copy).
+ * What this file asserts is that the hub RENDERS what it is given and composes
+ * nothing of its own — so these strings are deliberately distinctive, and
+ * several tests below check the exact text reaches the screen.
+ */
+function availability(over: Partial<FixtureAvailability> = {}): FixtureAvailability {
+  return {
+    state: 'native',
+    installable: true,
+    requires_emulation: false,
+    badge: '',
+    card_badge: '',
+    detail: '',
+    box_arch: 'amd64',
+    undeclared: false,
+    needs: [],
+    ...over,
+  }
+}
+
+/** Rung 5: the box will not install it, and says why. */
+function refusedFor(name: string, needs: string[], boxArch: string): FixtureAvailability {
+  return availability({
+    state: 'unavailable',
+    installable: false,
+    badge: 'Not available on this box',
+    card_badge: `Needs ${needs.join('/')}`,
+    detail: `${name} ships for ${needs.join(' or ')} only, and this box is ${boxArch}. ` +
+      `No build is published for this box's architecture. ` +
+      `It stays available on any ${needs.join(' or ')} instance you run.`,
+    box_arch: boxArch,
+    needs,
+  })
+}
+
 const APPS: RegistryFixtureApp[] = [
   {
     id: 'conduit',
     name: 'Conduit',
     type: 'service',
     arch: ['amd64'],
+    availability: availability(),
     description: 'Lightweight Matrix homeserver written in Rust',
     category: 'network',
     keywords: ['matrix', 'homeserver', 'federation', 'self-hosted'],
@@ -87,6 +144,7 @@ const APPS: RegistryFixtureApp[] = [
     name: 'Darktable',
     type: 'desktop',
     arch: ['amd64'],
+    availability: availability(),
     description: 'Photography workflow and RAW developer',
     category: 'media',
     keywords: ['photography', 'raw', 'editing'],
@@ -339,20 +397,34 @@ describe('install failures are visible', () => {
 })
 
 describe('architecture', () => {
-  /** A box of a given architecture, serving one app. */
-  function boxWith(boxArch: string, app: Partial<RegistryFixtureApp> & { arch: string[] }) {
+  /**
+   * ── What changed, and why these tests read differently ────────────────────
+   *
+   * The hub used to DECIDE this. First with `app.arch.includes(systemArch)` — a
+   * raw string match in which `["x86_64"]` never matched `"amd64"`, so most of
+   * the Flathub catalogue read as incompatible on every box — and then with a
+   * spelling fold in arch.ts, which was correct and was still a second
+   * implementation of the box's own policy.
+   *
+   * The decision now lives in services/appnet/arch.go (EvaluateArch) and arrives
+   * per entry as `availability`. So the assertions here changed subject: they no
+   * longer ask "does the hub compute the right answer", they ask "does the hub
+   * render the box's answer, and ONLY the box's answer". The strongest of them
+   * hand the hub an `arch` array that CONTRADICTS the verdict, which no fixture
+   * could have done while the browser was deriving one from the other.
+   */
+
+  /** One app, with a verdict, served to the hub. */
+  function serving(app: Partial<RegistryFixtureApp> & { availability: FixtureAvailability }) {
     mockBackend({
       '/api/store/registry': ok([{ ...APPS[0], ...app }]),
       '/api/store/installed': ok([]),
-      // The apt-cache endpoint is the FALLBACK source of the box's
-      // architecture; /api/system/arch is preferred and does not exist yet, so
-      // it 404s through mockBackend's catch-all and this is what is read.
-      '/api/packages/cache': ok({ ready: true, arch: boxArch }),
+      '/api/packages/cache': ok({ ready: true }),
     })
   }
 
-  it('marks an app this box cannot run instead of offering to install it', async () => {
-    boxWith('amd64', { arch: ['ppc64el'] })
+  it('marks an app the box refused instead of offering to install it', async () => {
+    serving({ arch: ['ppc64el'], availability: refusedFor('Conduit', ['ppc64el'], 'amd64') })
     render(<AppHub />)
     await screen.findByText('Conduit')
 
@@ -360,18 +432,19 @@ describe('architecture', () => {
     expect(screen.queryByRole('button', { name: 'Install Conduit' })).toBeNull()
   })
 
-  // ── The spelling trap ─────────────────────────────────────────────────────
+  // ── The hub does not second-guess the box ────────────────────────────────
   //
-  // Debian says amd64/arm64; Flatpak, `uname -m` and Flathub metadata say
-  // x86_64/aarch64. The comparison this replaced was a raw
-  // `app.arch.includes(systemArch)`, so an x86_64-only Flathub app read as
-  // INCOMPATIBLE on an amd64 box — silently, with no error, across most of the
-  // desktop catalogue. These two tests are the founder's requirement stated as
-  // assertions: an arm64 box must not offer an x86_64-only app, and an amd64
-  // box must.
+  // These two are the deletion, stated as assertions. Each hands the component
+  // an `arch` array pointing the OPPOSITE way to the verdict. A hub that still
+  // compared strings would get both of them wrong, and a hub that folded
+  // spellings would get the first one wrong — which is precisely the pair of
+  // defects this file used to have to test around.
 
-  it('offers an x86_64-only app on an amd64 box, despite the different spelling', async () => {
-    boxWith('amd64', { id: 'lutris', name: 'Lutris', arch: ['x86_64'] })
+  it('offers an app whose declared arch it cannot match, because the box said yes', async () => {
+    // The box resolved this through binfmt, an emulator, a flatpak that
+    // supports the arch, or simply a spelling the browser has never heard of.
+    // None of those are visible here, and the hub must not overrule them.
+    serving({ id: 'lutris', name: 'Lutris', arch: ['x86_64'], availability: availability() })
     render(<AppHub />)
     await screen.findByText('Lutris')
 
@@ -379,8 +452,14 @@ describe('architecture', () => {
     expect(within(cardFor('Lutris')).queryByText(/Needs/)).toBeNull()
   })
 
-  it('refuses an x86_64-only app on an arm64 box, and names what it needs', async () => {
-    boxWith('arm64', { id: 'lutris', name: 'Lutris', arch: ['x86_64'] })
+  it('refuses an app whose declared arch LOOKS like a match, because the box said no', async () => {
+    // arch says amd64, box_arch says amd64, and the box still refused — which is
+    // exactly what happens when the recipe's delivery cannot serve this machine
+    // or the entry is quarantined for a reason no arch list carries.
+    serving({
+      id: 'lutris', name: 'Lutris', arch: ['amd64'],
+      availability: refusedFor('Lutris', ['amd64'], 'amd64'),
+    })
     render(<AppHub />)
     await screen.findByText('Lutris')
 
@@ -389,18 +468,10 @@ describe('architecture', () => {
     expect(screen.queryByRole('button', { name: 'Install Lutris' })).toBeNull()
   })
 
-  it('reads the box architecture in uname spelling too', async () => {
-    // A backend answering `uname -m` rather than `dpkg --print-architecture`
-    // must not silently mark the whole catalogue incompatible.
-    boxWith('aarch64', { id: 'lutris', name: 'Lutris', arch: ['arm64'] })
-    render(<AppHub />)
-    await screen.findByText('Lutris')
-
-    expect(screen.getByRole('button', { name: 'Install Lutris' })).toBeInTheDocument()
-  })
-
-  it('shows the box architecture, so the user can see what decides this', async () => {
-    boxWith('arm64', { arch: ['arm64'] })
+  it('shows the box architecture the verdicts were computed against', async () => {
+    // Read from the catalogue's own answer, not from a second endpoint: the
+    // label and the badges must describe one machine.
+    serving({ availability: availability({ box_arch: 'arm64' }) })
     render(<AppHub />)
     await screen.findByText('Conduit')
     expect(screen.getByText('arm64')).toBeInTheDocument()
@@ -409,11 +480,11 @@ describe('architecture', () => {
   it('offers a filter to hide what this box cannot run, and it is off by default', async () => {
     mockBackend({
       '/api/store/registry': ok([
-        { ...APPS[0], id: 'lutris', name: 'Lutris', arch: ['x86_64'] },
-        { ...APPS[1], arch: ['arm64'] },
+        { ...APPS[0], id: 'lutris', name: 'Lutris', availability: refusedFor('Lutris', ['amd64'], 'arm64') },
+        { ...APPS[1], availability: availability({ box_arch: 'arm64' }) },
       ]),
       '/api/store/installed': ok([]),
-      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+      '/api/packages/cache': ok({ ready: true }),
     })
     render(<AppHub />)
     await screen.findByText('Darktable')
@@ -432,11 +503,11 @@ describe('architecture', () => {
     // that showing-with-a-reason exists to avoid.
     mockBackend({
       '/api/store/registry': ok([
-        { ...APPS[0], id: 'lutris', name: 'Lutris', arch: ['x86_64'] },
-        { ...APPS[1], arch: ['arm64'] },
+        { ...APPS[0], id: 'lutris', name: 'Lutris', availability: refusedFor('Lutris', ['amd64'], 'arm64') },
+        { ...APPS[1], availability: availability({ box_arch: 'arm64' }) },
       ]),
       '/api/store/installed': ok([]),
-      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+      '/api/packages/cache': ok({ ready: true }),
     })
     render(<AppHub />)
     await screen.findByText('Lutris')
@@ -452,12 +523,15 @@ describe('architecture', () => {
   it('sorts what this box cannot run below what it can', async () => {
     mockBackend({
       '/api/store/registry': ok([
-        // Alphabetically first, but incompatible.
-        { ...APPS[0], id: 'aaa-lutris', name: 'AAA Lutris', arch: ['x86_64'] },
-        { ...APPS[1], id: 'zzz-ok', name: 'ZZZ Runs Here', arch: ['arm64'] },
+        // Alphabetically first, but refused.
+        {
+          ...APPS[0], id: 'aaa-lutris', name: 'AAA Lutris',
+          availability: refusedFor('AAA Lutris', ['amd64'], 'arm64'),
+        },
+        { ...APPS[1], id: 'zzz-ok', name: 'ZZZ Runs Here', availability: availability({ box_arch: 'arm64' }) },
       ]),
       '/api/store/installed': ok([]),
-      '/api/packages/cache': ok({ ready: true, arch: 'arm64' }),
+      '/api/packages/cache': ok({ ready: true }),
     })
     render(<AppHub />)
     await screen.findByText('AAA Lutris')
@@ -470,20 +544,188 @@ describe('architecture', () => {
     expect(order).toEqual(['zzz-ok', 'aaa-lutris'])
   })
 
-  it('makes no compatibility claim when the box has not reported an architecture', async () => {
-    // Claiming "yes" offers an install that fails in apt; claiming "no" marks
-    // the whole catalogue unavailable on every backend that does not report
-    // architecture — which is every backend today.
+  it('makes no compatibility claim when the box sent no verdict', async () => {
+    // Every backend from before this field existed. Claiming "yes" offers an
+    // install that fails; claiming "no" empties the catalogue on all of them.
+    // The app is offered, unbadged, with nothing asserted about it.
     mockBackend({
-      '/api/store/registry': ok([{ ...APPS[0], arch: ['amd64'] }]),
+      '/api/store/registry': ok([{ ...APPS[0], arch: ['ppc64el'], availability: undefined }]),
       '/api/store/installed': ok([]),
-      '/api/packages/cache': ok({ ready: true, arch: null }),
+      '/api/packages/cache': ok({ ready: true }),
     })
     render(<AppHub />)
     await screen.findByText('Conduit')
 
     expect(within(cardFor('Conduit')).queryByText(/Needs/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+    expect(cardFor('Conduit').getAttribute('data-arch-state')).toBe('unknown')
+  })
+
+  it('makes no claim for a rung this build has never heard of', async () => {
+    // A future state must not be rendered as one of the four this build knows,
+    // least of all as the one that takes the install button away.
+    serving({ availability: { ...refusedFor('Conduit', ['amd64'], 'arm64'), state: 'distro-sourced' } })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    expect(within(cardFor('Conduit')).queryByText(/Needs/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+  })
+})
+
+// ── The four rungs, as the user sees them ───────────────────────────────────
+//
+// roadmap/DISTRO-SOURCED-APPS.md §1: native > emulated-and-told > available on a
+// sibling > declared unavailable with the reason. Rung 5 still ships a row —
+// E1–E3 are exceptions to uniform AVAILABILITY, never to uniform VISIBILITY.
+
+describe('the rungs', () => {
+  function serve(app: Partial<RegistryFixtureApp> & { availability: FixtureAvailability }) {
+    mockBackend({
+      '/api/store/registry': ok([{ ...APPS[0], ...app }]),
+      '/api/store/installed': ok([]),
+      '/api/packages/cache': ok({ ready: true }),
+    })
+  }
+
+  it('rung 1 — a native app carries no badge at all', async () => {
+    serve({ availability: availability() })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    const card = cardFor('Conduit')
+    expect(within(card).queryByText(/Needs|emulat|On your/i)).toBeNull()
+    expect(within(card).getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+    expect(card.getAttribute('data-arch-state')).toBe('native')
+  })
+
+  it('rung 3 — an emulated app is OFFERED and the cost is stated before the button', async () => {
+    // The labelling is the whole difference between rung 3 and rung 2. An app
+    // that is present and crawls reads as a Vulos defect rather than as a
+    // hardware limit, so the sentence has to be on screen next to the install.
+    const detail = 'Conduit ships for amd64 only and will run on this arm64 box through emulation ' +
+      '— noticeably slower, though it uses this box’s own graphics driver rather than an emulated one.'
+    serve({
+      availability: availability({
+        state: 'emulated', installable: true, requires_emulation: true,
+        badge: 'Runs emulated', card_badge: 'Runs emulated', detail,
+        box_arch: 'arm64', needs: ['amd64'],
+      }),
+    })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    const card = cardFor('Conduit')
+    expect(card.getAttribute('data-arch-state')).toBe('emulated')
+    expect(within(card).getByText('Runs emulated')).toBeInTheDocument()
+    // Offered, not hidden: rung 3 is above rung 5.
+    expect(within(card).getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Conduit' }))
+    expect(await screen.findByText(detail)).toBeInTheDocument()
+    // Scoped to the PANEL. An unscoped /^Install/ also matches the card's own
+    // "Install Conduit" button, which is a different control and would let this
+    // pass with no install affordance in the panel at all.
+    const panel = document.querySelector('.hub-detail') as HTMLElement
+    expect(within(panel).getByRole('button', { name: /^Install/ })).toBeInTheDocument()
+  })
+
+  it('rung 4 — a sibling instance is NAMED, and no install is offered here', async () => {
+    const detail = 'Conduit ships for amd64 only, and this box is arm64. ' +
+      'It is installed on studio-box and stays available there.'
+    serve({
+      availability: availability({
+        state: 'other-instance', installable: false,
+        badge: 'On your other instance', card_badge: 'On studio-box', detail,
+        box_arch: 'arm64', needs: ['amd64'],
+      }),
+    })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    const card = cardFor('Conduit')
+    expect(card.getAttribute('data-arch-state')).toBe('other-instance')
+    expect(within(card).getByText('On studio-box')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Install Conduit' })).toBeNull()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Conduit' }))
+    expect(await screen.findByText('On your other instance')).toBeInTheDocument()
+    expect(screen.getByText(detail)).toBeInTheDocument()
+  })
+
+  it('rung 5 — refused, shown, and the box’s reason is the reason displayed', async () => {
+    const av = refusedFor('Conduit', ['amd64'], 'arm64')
+    serve({ availability: av })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    fireEvent.click(within(cardFor('Conduit')).getByRole('button', { name: 'Conduit' }))
+    expect(await screen.findByText(av.badge)).toBeInTheDocument()
+    expect(screen.getByText(av.detail)).toBeInTheDocument()
+  })
+
+  /**
+   * THE HONESTY GATE.
+   *
+   * Two claims must never reach a user, and neither is a wording preference:
+   *
+   *  - that the app FAILS TO RUN. §6 Q3 of roadmap/DISTRO-SOURCED-APPS.md got
+   *    `bwrap: Creating new namespace failed: Operation not permitted`, which is
+   *    a CONTAINER PRIVILEGE limit that would have stopped a native aarch64 app
+   *    in the same container. It is recorded `untestable-on-arm64-mac`. Nobody
+   *    has measured it. What the hub used to say — "Installing it here would
+   *    fail" — is additionally measurably wrong for Flatpak, where
+   *    `flatpak install --arch=x86_64` deploys the app and its 1.4 GB platform.
+   *  - that emulation gets HARDWARE acceleration. §5.3 proved which GL stack
+   *    box64 bound, on a container with NO GPU where that stack is llvmpipe.
+   *
+   * The Go side owns this for the copy it writes
+   * (TestEvaluateArch_NoUnmeasuredClaimReachesTheUser). This is the other half:
+   * the hub must not add a sentence of its own on top. It is checked by feeding
+   * a verdict whose own strings are innocuous and scanning the WHOLE rendered
+   * hub — so any sentence the component composes is caught, wherever it is.
+   */
+  const UNMEASURED = [
+    'cannot run', 'will not run', 'would fail', 'installing it here',
+    'hardware acceleration', 'gpu-accelerated', 'full graphics acceleration',
+    'in settings',
+  ]
+
+  it('adds no architecture sentence of its own to any rung', async () => {
+    const rungs: FixtureAvailability[] = [
+      availability(),
+      availability({
+        state: 'emulated', installable: true, requires_emulation: true,
+        badge: 'Runs emulated', card_badge: 'Runs emulated',
+        detail: 'Conduit runs here through emulation, and is slower for it.',
+        box_arch: 'arm64', needs: ['amd64'],
+      }),
+      availability({
+        state: 'other-instance', installable: false,
+        badge: 'On your other instance', card_badge: 'On studio-box',
+        detail: 'Conduit is installed on studio-box and stays available there.',
+        box_arch: 'arm64', needs: ['amd64'],
+      }),
+      refusedFor('Conduit', ['amd64'], 'arm64'),
+    ]
+
+    for (const av of rungs) {
+      cleanup()
+      serve({ availability: av })
+      render(<AppHub />)
+      await screen.findByText('Conduit')
+      // Open the panel too — that is where the composed sentence used to live.
+      fireEvent.click(within(cardFor('Conduit')).getByRole('button', { name: 'Conduit' }))
+      await screen.findAllByText('Conduit')
+
+      const rendered = (document.body.textContent || '').toLowerCase()
+      for (const phrase of UNMEASURED) {
+        expect(rendered.includes(phrase), `${av.state}: the hub rendered "${phrase}", which the ` +
+          'box did not send and nobody measured').toBe(false)
+      }
+    }
+    // COVERAGE: without this the loop passes by iterating over nothing.
+    expect(rungs.length).toBe(4)
   })
 })
 

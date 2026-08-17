@@ -1,125 +1,176 @@
-import { describe, expect, it } from 'vitest'
-import { archCompat, normalizeArch, requiredArches, isUniversalArch } from '../arch'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { toArchAvailability, fetchBoxArch } from '../arch'
 
 /**
- * The architecture comparison, tested in both spellings on both sides.
+ * arch.ts is now a NARROWER, and this file changed shape with it.
  *
- * This is the whole reason arch.ts exists as a module rather than a line of
- * code inside a component. The comparison it replaced was
- * `app.arch.includes(systemArch)` — a raw string match — and its failure mode
- * is the dangerous kind: `["x86_64"]` never matches `"amd64"`, so a Flathub app
- * on an amd64 box reads as incompatible, consistently, with no error anywhere.
- * Nothing crashes, nothing logs, and roughly three quarters of the desktop
- * catalogue quietly becomes uninstallable.
+ * ── What it used to test, and why those tests are gone rather than moved ────
+ *
+ * It tested `normalizeArch`, `archCompat`, `isUniversalArch` and
+ * `requiredArches`: an alias table folding x86_64 onto amd64, a comparison
+ * against the box's architecture, and a display canonicaliser. Every one of them
+ * passed. Every one of them was the SECOND implementation of a policy
+ * services/appnet/arch.go already owned, and the second implementation is the
+ * one that drifts — it agreed with the box on the day it was written, which is
+ * the only day anyone checks.
+ *
+ * Those assertions did not vanish. They moved to the machine that can answer
+ * them: `TestEvaluateArch_SpellsOneArchitectureScheme`,
+ * `TestEvaluateArch_CardBadgeIsShortAndNamesTheFact` and
+ * `TestListEntries_CarriesTheServersAnswer` in
+ * backend/services/appnet, where the fold is applied to the same data the
+ * installer uses rather than to a copy of it.
+ *
+ * What is left on this side is the seam, and its failure modes are different in
+ * kind: not "does the comparison match" but "what does this UI do when the box
+ * says something it does not understand, or says nothing at all".
  */
 
-describe('normalizeArch', () => {
-  it('folds both ecosystems onto the Debian spelling registry.json is written in', () => {
-    // Debian / dpkg / apt          Flatpak / uname -m / OCI
-    expect(normalizeArch('amd64')).toBe('amd64')
-    expect(normalizeArch('x86_64')).toBe('amd64')
-    expect(normalizeArch('x86-64')).toBe('amd64')
-    expect(normalizeArch('x64')).toBe('amd64')
+afterEach(() => vi.unstubAllGlobals())
 
-    expect(normalizeArch('arm64')).toBe('arm64')
-    expect(normalizeArch('aarch64')).toBe('arm64')
+/** A well-formed entry as GET /api/store/registry sends it. */
+function entry(availability: Record<string, unknown>) {
+  return { id: 'lutris', name: 'Lutris', availability }
+}
 
-    expect(normalizeArch('armhf')).toBe('armhf')
-    expect(normalizeArch('armv7l')).toBe('armhf')
+const FULL = {
+  state: 'unavailable',
+  installable: false,
+  requires_emulation: false,
+  badge: 'Not available on this box',
+  card_badge: 'Needs amd64',
+  detail: 'Lutris ships for amd64 only, and this box is arm64.',
+  box_arch: 'arm64',
+  undeclared: false,
+  needs: ['amd64'],
+}
 
-    expect(normalizeArch('i386')).toBe('i386')
-    expect(normalizeArch('i686')).toBe('i386')
+describe('toArchAvailability', () => {
+  it('carries every field the hub renders, under the names the box sends', () => {
+    const av = toArchAvailability(entry(FULL))
+    expect(av).not.toBeNull()
+    expect(av).toEqual({
+      state: 'unavailable',
+      installable: false,
+      requiresEmulation: false,
+      badge: 'Not available on this box',
+      cardBadge: 'Needs amd64',
+      detail: 'Lutris ships for amd64 only, and this box is arm64.',
+      boxArch: 'arm64',
+      undeclared: false,
+      needs: ['amd64'],
+    })
   })
 
-  it('is tolerant of the casing and whitespace a server might send', () => {
-    expect(normalizeArch('X86_64')).toBe('amd64')
-    expect(normalizeArch('  aarch64 ')).toBe('arm64')
+  it('carries the emulated rung, which is installable AND badged', () => {
+    // Rung 3's shape is the one a boolean cannot hold: the app CAN be installed
+    // and the user still has to be told what they are getting. A narrower that
+    // treated "has a badge" as "cannot install" would hide the button.
+    const av = toArchAvailability(entry({
+      ...FULL,
+      state: 'emulated',
+      installable: true,
+      requires_emulation: true,
+      badge: 'Runs emulated',
+      card_badge: 'Runs emulated',
+      detail: 'Lutris will run on this arm64 box through emulation — noticeably slower.',
+    }))
+    expect(av?.state).toBe('emulated')
+    expect(av?.installable).toBe(true)
+    expect(av?.requiresEmulation).toBe(true)
+    expect(av?.cardBadge).toBe('Runs emulated')
   })
 
-  it('passes an unrecognised architecture through instead of guessing', () => {
-    // The alternative is worse in both directions: mapping an unknown to
-    // "universal" offers an install that cannot work, and mapping it to a
-    // sentinel hides an app that might.
-    expect(normalizeArch('ppc64el')).toBe('ppc64el')
-    expect(normalizeArch('s390x')).toBe('s390x')
+  it('carries the sibling-instance rung', () => {
+    const av = toArchAvailability(entry({
+      ...FULL, state: 'other-instance', badge: 'On your other instance', card_badge: 'On studio-box',
+    }))
+    expect(av?.state).toBe('other-instance')
+    expect(av?.cardBadge).toBe('On studio-box')
+  })
+
+  // ── The three ways this can be handed nothing usable ──────────────────────
+  //
+  // All three answer NULL, and null is not a verdict. The hub renders it as no
+  // compatibility claim at all: the app is offered, unbadged. Both foldings are
+  // worse, and they are worse in opposite directions — see arch.ts.
+
+  it('answers null when the box did not send an availability at all', () => {
+    // Every backend before this field existed. Folding this to "unavailable"
+    // marks the entire catalogue unrunnable on all of them.
+    expect(toArchAvailability({ id: 'lutris', name: 'Lutris' })).toBeNull()
+    expect(toArchAvailability({ id: 'lutris', availability: null })).toBeNull()
+    expect(toArchAvailability(null)).toBeNull()
+    expect(toArchAvailability('lutris')).toBeNull()
+  })
+
+  it('answers null for a rung this build has never heard of', () => {
+    // A future state — say a distribution-sourced rung 2 — must not be silently
+    // rendered as one of the four this build knows, least of all as the one that
+    // takes the install button away.
+    for (const state of ['distro-sourced', 'NATIVE', '', 'yes', 'no']) {
+      expect(toArchAvailability(entry({ ...FULL, state })), `state ${JSON.stringify(state)}`).toBeNull()
+    }
+    // The control: the four it does know are not rejected.
+    for (const state of ['native', 'emulated', 'other-instance', 'unavailable']) {
+      expect(toArchAvailability(entry({ ...FULL, state }))?.state, state).toBe(state)
+    }
+  })
+
+  it('does not let a malformed field become an optimistic claim', () => {
+    // `installable` decides whether an Install button is drawn. Anything that is
+    // not literally true is false — a truthy string or a 1 from a hand-written
+    // fixture must not offer an install the box refused.
+    for (const installable of ['true', 1, {}, [], null, undefined]) {
+      expect(toArchAvailability(entry({ ...FULL, installable }))?.installable, String(installable)).toBe(false)
+    }
+    expect(toArchAvailability(entry({ ...FULL, installable: true }))?.installable).toBe(true)
+  })
+
+  it('keeps missing strings as empty strings rather than rendering "undefined"', () => {
+    const av = toArchAvailability({ id: 'x', availability: { state: 'native' } })
+    expect(av).toEqual({
+      state: 'native', installable: false, requiresEmulation: false,
+      badge: '', cardBadge: '', detail: '', boxArch: '', undeclared: false, needs: [],
+    })
+  })
+
+  it('drops non-string members of `needs` instead of printing them', () => {
+    const av = toArchAvailability(entry({ ...FULL, needs: ['amd64', 7, null, 'i386'] }))
+    expect(av?.needs).toEqual(['amd64', 'i386'])
+    expect(toArchAvailability(entry({ ...FULL, needs: 'amd64' }))?.needs).toEqual([])
+  })
+
+  it('does NOT fold spellings, because folding here is the thing that was deleted', () => {
+    // If the box ever sends `x86_64` that is a defect ON THE BOX, and it has to
+    // be visible as one. A fold here would hide it and re-create the second
+    // implementation — this time invisibly, since nothing would disagree.
+    const av = toArchAvailability(entry({ ...FULL, needs: ['x86_64'], card_badge: 'Needs x86_64' }))
+    expect(av?.needs).toEqual(['x86_64'])
+    expect(av?.cardBadge).toBe('Needs x86_64')
   })
 })
 
-describe('archCompat', () => {
-  it('offers an x86_64-only app on an amd64 box, in either spelling', () => {
-    // Steam, Chrome, Spotify, Zoom, VS Code, Discord and Slack are all in this
-    // shape — Flathub metadata, x86_64-only.
-    expect(archCompat(['x86_64'], 'amd64')).toBe('yes')
-    expect(archCompat(['amd64'], 'x86_64')).toBe('yes')
-    expect(archCompat(['x86_64'], 'x86_64')).toBe('yes')
-    expect(archCompat(['amd64'], 'amd64')).toBe('yes')
+describe('fetchBoxArch', () => {
+  it('reads the box architecture from the dedicated endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ arch: 'arm64', supported: ['arm64'] }))))
+    expect(await fetchBoxArch()).toBe('arm64')
   })
 
-  it('does NOT offer an x86_64-only app on an arm64 box, in either spelling', () => {
-    // The founder's requirement, stated as a test: an arm64 box must not offer
-    // an install that cannot succeed.
-    expect(archCompat(['x86_64'], 'arm64')).toBe('no')
-    expect(archCompat(['x86_64'], 'aarch64')).toBe('no')
-    expect(archCompat(['amd64'], 'arm64')).toBe('no')
-    expect(archCompat(['amd64'], 'aarch64')).toBe('no')
+  it('returns the value AS SENT, because it is printed and never compared', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ arch: ' x86_64 ' }))))
+    expect(await fetchBoxArch()).toBe('x86_64')
   })
 
-  it('offers a multi-arch app on both boxes', () => {
-    expect(archCompat(['amd64', 'arm64'], 'arm64')).toBe('yes')
-    expect(archCompat(['amd64', 'arm64'], 'amd64')).toBe('yes')
-    expect(archCompat(['x86_64', 'aarch64'], 'arm64')).toBe('yes')
-  })
-
-  it('treats an app with no declared architecture as running anywhere', () => {
-    // Web apps and services: the registry declares `"arch": []` for these, and
-    // most of the catalogue's web tier looks like this.
-    expect(archCompat([], 'arm64')).toBe('yes')
-    expect(archCompat(undefined, 'arm64')).toBe('yes')
-    expect(archCompat(['all'], 'arm64')).toBe('yes')
-    expect(archCompat(['any'], 'arm64')).toBe('yes')
-    expect(archCompat(['noarch'], 'riscv64')).toBe('yes')
-  })
-
-  it('says "unknown" rather than guessing when the box has not reported its architecture', () => {
-    // Both alternatives are defects with a user-visible cost. Answering "yes"
-    // is what the code did before this module and it offers installs that fail
-    // in apt. Answering "no" marks the whole catalogue unavailable for the
-    // moment before the box replies — and permanently on any backend that does
-    // not report architecture at all, which is every backend today.
-    expect(archCompat(['amd64'], null)).toBe('unknown')
-    expect(archCompat(['x86_64'], null)).toBe('unknown')
-    // ...but an app that needs no particular architecture is still installable
-    // on a box whose architecture is unknown, because nothing about the machine
-    // can make it not so.
-    expect(archCompat([], null)).toBe('yes')
-    expect(archCompat(['all'], null)).toBe('yes')
-  })
-
-  it('rejects an architecture neither side recognises rather than falling open', () => {
-    expect(archCompat(['ppc64el'], 'amd64')).toBe('no')
-    expect(archCompat(['ppc64el'], 'ppc64el')).toBe('yes')
-  })
-})
-
-describe('isUniversalArch', () => {
-  it('knows the words that mean "no particular machine"', () => {
-    expect(isUniversalArch('all')).toBe(true)
-    expect(isUniversalArch('any')).toBe(true)
-    expect(isUniversalArch('noarch')).toBe(true)
-    expect(isUniversalArch('amd64')).toBe(false)
-  })
-})
-
-describe('requiredArches', () => {
-  it('canonicalises for display so one requirement does not read as two', () => {
-    // Flathub metadata merged with Debian's produces exactly this.
-    expect(requiredArches(['x86_64', 'amd64'])).toEqual(['amd64'])
-    expect(requiredArches(['amd64', 'aarch64'])).toEqual(['amd64', 'arm64'])
-  })
-
-  it('drops universal markers, which are not a requirement to state', () => {
-    expect(requiredArches(['all'])).toEqual([])
-    expect(requiredArches([])).toEqual([])
-    expect(requiredArches(undefined)).toEqual([])
+  it('says nothing rather than guessing when the endpoint is absent or broken', async () => {
+    for (const res of [
+      () => new Response('{}', { status: 200 }),
+      () => new Response('not json', { status: 200 }),
+      () => new Response('', { status: 404 }),
+      () => { throw new Error('offline') },
+    ]) {
+      vi.stubGlobal('fetch', vi.fn(async () => res()))
+      expect(await fetchBoxArch()).toBeNull()
+    }
   })
 })
