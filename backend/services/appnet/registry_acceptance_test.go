@@ -8,7 +8,7 @@ package appnet
 //
 // The two halves:
 //
-//	fresh box, SHIPPED anchor  → the 55 committed registry.json entries verify,
+//	fresh box, SHIPPED anchor  → every committed registry.json entry verifies,
 //	                             and an install completes with NO insecure flag.
 //	fresh box, PROD anchor     → the same, under VULOS_ENV=prod, using an anchor
 //	                             from a simulated offline ceremony.
@@ -22,6 +22,22 @@ package appnet
 // An entry not yet fit to be signed is not excused — it is moved out of
 // registry.json entirely, into registry-unverified.json, which nothing loads.
 // See registry_quarantine_test.go and docs/KEY-CEREMONY.md § 5.1.
+//
+// WHY THIS FILE COUNTS EVERYTHING IT LOOKS AT
+//
+// This suite used to close with
+//
+//	t.Logf("verified %d shipped registry entries …", len(reg.Apps))
+//
+// which reports the number of entries READ, not the number VERIFIED. On a
+// registry where a catalogue wave had merged staged entries without re-signing
+// them, that line printed "verified 74" while 55 of the 74 carried
+// `"signature": ""` and verified nothing. The count that mattered — how many
+// signatures actually cleared the shipped anchor — was 19, and no line of
+// output said so. Every assertion below therefore partitions the shipped
+// registry into verified / unsigned / invalid, asserts the three add up to the
+// number of entries the file contains, and asserts that number is non-zero, so
+// neither a vacuous loop nor a shrinking registry can report success.
 
 import (
 	"context"
@@ -34,6 +50,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -183,12 +200,79 @@ func assertInstalled(t *testing.T, appsDir, appID string) {
 
 // ─── The acceptance test ──────────────────────────────────────────────────────
 
+// signingState is the partition of the shipped registry by what its signature
+// actually does against the shipped trust anchor. Every entry lands in exactly
+// one bucket, so the three lengths must sum to the number of entries read.
+type signingState struct {
+	total    int
+	verified []string          // signed, and the signature clears the shipped anchor
+	unsigned []string          // `"signature": ""` — staged, never signed
+	invalid  map[string]string // signed, but does NOT clear the anchor (tampered / foreign key)
+}
+
+// partitionShippedRegistry sorts every shipped entry into signingState and
+// asserts the partition is total: a bucket that silently dropped entries would
+// otherwise let this suite report a clean sheet it never earned.
+func partitionShippedRegistry(t *testing.T, reg *Registry, key ed25519.PublicKey) signingState {
+	t.Helper()
+
+	st := signingState{total: len(reg.Apps), invalid: map[string]string{}}
+	for appID, entry := range reg.Apps {
+		switch {
+		case entry.Signature == "":
+			st.unsigned = append(st.unsigned, appID)
+		default:
+			if err := VerifyEntrySignature(entry, appID, key); err != nil {
+				st.invalid[appID] = err.Error()
+			} else {
+				st.verified = append(st.verified, appID)
+			}
+		}
+	}
+	sort.Strings(st.verified)
+	sort.Strings(st.unsigned)
+
+	// COVERAGE. Both directions: the buckets must account for every entry, and
+	// there must be entries to account for. Without the second check an empty
+	// or unreadable registry.json would satisfy every assertion below by
+	// examining nothing.
+	if got := len(st.verified) + len(st.unsigned) + len(st.invalid); got != st.total {
+		t.Fatalf("partition covered %d entries but registry.json holds %d — the partition is not total", got, st.total)
+	}
+	if st.total == 0 {
+		t.Fatal("shipped registry.json holds no entries — every signature assertion below would pass vacuously")
+	}
+	return st
+}
+
 // TestAcceptance_ShippedAnchorVerifiesShippedRegistry is the headline claim: a
 // box holding ONLY the anchor we ship can verify every entry of the registry we
 // ship, with no insecure flag and no other configuration.
 //
-// It also fails if a new app is added to registry.json without re-signing —
-// which is exactly what `make sign-registry` is for.
+// It fails if an entry is added to registry.json without being signed by the
+// key the shipped release certificate authorises.
+//
+// # WHAT A FAILURE HERE MEANS, AND WHAT IT DOES NOT
+//
+// The old message on an unsigned entry was "run `make sign-registry`". On any
+// tree carrying real ceremony output that instruction is false, and it is false
+// on this one: `make sign-registry` defaults RELEASE_PRIV to keys/release.priv.json,
+// the DEV key derived from a published seed, and the Makefile's check-release-key
+// target REFUSES it because keys/release-cert.json authorises a different key.
+// Signing is a HUMAN operation on an offline machine (docs/KEY-CEREMONY.md);
+// CI and this test hold no private key and cannot fix an unsigned entry.
+//
+// So the two failure modes are reported separately, because the responses are
+// opposite:
+//
+//	invalid  — a signature that does not clear the anchor. Tampering, a re-key,
+//	           or a foreign signer. NEVER acceptable, never a pending state.
+//	unsigned — an entry staged into registry.json without the ceremony. The
+//	           box refuses to install it (TestAcceptance_UnsignedShippedEntriesAreUninstallable),
+//	           but it still ships in a file whose whole contract is that every
+//	           entry in it is signed. The fix is a founder action, and the
+//	           message says so in those words rather than naming a command that
+//	           will refuse.
 func TestAcceptance_ShippedAnchorVerifiesShippedRegistry(t *testing.T) {
 	anchor, cert := shippedTrust(t)
 	stageBox(t, "dev", anchor, &cert)
@@ -202,16 +286,147 @@ func TestAcceptance_ShippedAnchorVerifiesShippedRegistry(t *testing.T) {
 	}
 
 	reg := shippedRegistry(t)
-	for appID, entry := range reg.Apps {
-		if entry.Signature == "" {
-			t.Errorf("registry entry %q is UNSIGNED — run `make sign-registry`", appID)
+	st := partitionShippedRegistry(t, reg, key)
+
+	for _, appID := range sortedKeys(st.invalid) {
+		t.Errorf("registry entry %q failed verification against the shipped anchor: %s", appID, st.invalid[appID])
+	}
+
+	if len(st.unsigned) > 0 {
+		t.Errorf(`%d of %d entries in the shipped registry.json carry "signature": "" and were never signed.
+
+  UNSIGNED: %s
+
+  These entries are STAGED, AWAITING THE SIGNING CEREMONY. They are inert on a
+  real box — InstallFromRegistry refuses every one of them before it touches the
+  filesystem — but registry.json's contract is that every entry in it is signed,
+  and %d of them are not.
+
+  This test CANNOT fix it and neither can CI: no private key exists here.
+  keys/release-cert.json authorises key_id %q (release_pubkey %s…), whose
+  private half lives only on the founder's offline signing machine.
+  Plain "make sign-registry" REFUSES on this tree — it would reach for the dev
+  key derived from a published seed, and check-release-key rejects it.
+
+  FOUNDER ACTION, one of:
+    a) run the ceremony and sign, which is what makes this test green:
+         make sign-registry RELEASE_PRIV=/media/signing/release.priv.json
+    b) or move the entries that are not fit to sign into registry-unverified.json,
+       the quarantine file nothing loads (registry_quarantine_test.go,
+       docs/KEY-CEREMONY.md § 5.1).
+
+  Verified against the shipped anchor: %d. Invalid: %d.`,
+			len(st.unsigned), st.total, strings.Join(st.unsigned, ", "), len(st.unsigned),
+			cert.KeyID, firstN(cert.ReleasePubKey, 16), len(st.verified), len(st.invalid))
+	}
+
+	// The count that matters is how many signatures CLEARED the anchor — not how
+	// many entries were read. Reporting the latter is what let a registry with 55
+	// unsigned entries print "verified 74".
+	t.Logf("shipped registry.json: %d entries — %d verified against the shipped anchor, %d unsigned, %d invalid",
+		st.total, len(st.verified), len(st.unsigned), len(st.invalid))
+}
+
+// TestAcceptance_UnsignedShippedEntriesAreUninstallable is the security property
+// itself, measured against the registry this repo actually ships rather than a
+// fixture: an entry with no publisher signature must never install on a real
+// box, and must leave nothing behind when it is refused.
+//
+// It runs under VULOS_ENV=prod with the SHIPPED anchor and cert — the strictest
+// configuration a box can be in — and it drives the real InstallFromRegistry.
+// That is safe to do without a network: the signature gate is the first thing
+// InstallFromRegistry does after resolving the version, so a refused entry never
+// reaches the download.
+//
+// NON-VACUITY. If the ceremony runs and every shipped entry becomes signed, the
+// loop over unsigned entries examines nothing — and a loop over zero items
+// reports success. So the test also strips the signature from a REAL shipped
+// entry in memory and requires that one to be refused too. That control exists
+// on every possible state of registry.json, and the test asserts it ran.
+func TestAcceptance_UnsignedShippedEntriesAreUninstallable(t *testing.T) {
+	anchor, cert := shippedTrust(t)
+	stageBox(t, "prod", anchor, &cert)
+
+	key, err := TrustedKey()
+	if err != nil {
+		t.Fatalf("prod box could not resolve the shipped trust chain: %v", err)
+	}
+
+	reg := shippedRegistry(t)
+	st := partitionShippedRegistry(t, reg, key)
+
+	refused := 0
+	for _, appID := range st.unsigned {
+		appsDir := t.TempDir()
+		err := InstallFromRegistry(context.Background(), reg, appID, "", appsDir)
+		if err == nil {
+			t.Errorf("UNSIGNED shipped entry %q INSTALLED on a prod box — the signature gate is fail-open", appID)
 			continue
 		}
-		if err := VerifyEntrySignature(entry, appID, key); err != nil {
-			t.Errorf("registry entry %q failed verification against the shipped anchor: %v", appID, err)
+		if !strings.Contains(err.Error(), "signature") {
+			t.Errorf("unsigned shipped entry %q was refused, but not for its signature: %v", appID, err)
+			continue
 		}
+		assertNothingInstalled(t, appsDir)
+		refused++
 	}
-	t.Logf("verified %d shipped registry entries against the shipped trust anchor", len(reg.Apps))
+	if refused != len(st.unsigned) {
+		t.Errorf("refused %d unsigned entries but the registry holds %d — every one must be refused", refused, len(st.unsigned))
+	}
+
+	// The control: a real shipped entry, signature stripped in memory. Always
+	// present, so this test can never pass by examining nothing.
+	control := controlEntryID(t, st)
+	stripped := *reg.Apps[control]
+	stripped.Signature = ""
+	controlReg := &Registry{Apps: map[string]*RegistryEntry{control: &stripped}}
+	appsDir := t.TempDir()
+	err = InstallFromRegistry(context.Background(), controlReg, control, "", appsDir)
+	if err == nil {
+		t.Fatalf("control: shipped entry %q installed with its signature STRIPPED — the gate is fail-open", control)
+	}
+	if !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("control: stripped entry %q was refused, but not for its signature: %v", control, err)
+	}
+	assertNothingInstalled(t, appsDir)
+
+	t.Logf("prod box refused %d/%d unsigned shipped entries, plus the signature-stripped control %q (registry holds %d entries, %d verified)",
+		refused, len(st.unsigned), control, st.total, len(st.verified))
+}
+
+// controlEntryID picks a deterministic real entry for the stripped-signature
+// control. A VERIFIED entry is preferred, because stripping a signature that
+// demonstrably worked is the sharpest possible control; it falls back to an
+// unsigned one only when the registry has no verified entry at all.
+func controlEntryID(t *testing.T, st signingState) string {
+	t.Helper()
+	if len(st.verified) > 0 {
+		return st.verified[0]
+	}
+	if len(st.unsigned) > 0 {
+		return st.unsigned[0]
+	}
+	t.Fatal("shipped registry has no entry to use as a control")
+	return ""
+}
+
+// sortedKeys returns a map's keys in a stable order so failures are reported
+// the same way on every run.
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// firstN truncates for a message without panicking on a short string.
+func firstN(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
 }
 
 // TestAcceptance_FreshBoxInstallsWithNoInsecureFlag drives a real install to
