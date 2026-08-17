@@ -66,3 +66,32 @@ func TestValidateStoreDownloadURL_AllowsPublic(t *testing.T) {
 		}
 	}
 }
+
+// TestAppStore_Install_RequiresChecksum is CATALOG-01.
+//
+// AppStore.Install is the one install path in this OS with no publisher
+// signature: `entry` is decoded straight from a POST /api/store/install request
+// body. Its checksum used to be verified only `if entry.Checksum != ""`, so
+// OMITTING the field skipped verification entirely rather than failing — the
+// weakest path had the weakest check, which is the wrong way round. See
+// roadmap/INSTALL-METHODOLOGY.md §4.3.
+func TestAppStore_Install_RequiresChecksum(t *testing.T) {
+	store := NewAppStore(t.TempDir())
+	entry := StoreEntry{
+		AppManifest: AppManifest{ID: "no-checksum-app"},
+		// A public IP literal, so the SSRF guard passes and this test is
+		// really exercising the checksum rule rather than borrowing that one's
+		// refusal. No request is made: the refusal comes first.
+		DownloadURL: "https://1.1.1.1/app.tar.gz",
+	}
+	err := store.Install(context.Background(), entry)
+	if err == nil {
+		t.Fatal("CATALOG-01 REGRESSION: Install accepted a catalog entry with NO checksum — " +
+			"an unsigned download with no integrity check")
+	}
+	if !strings.Contains(err.Error(), "CATALOG-01") {
+		t.Fatalf("refused for the wrong reason (the SSRF guard, or a network error, may be "+
+			"answering instead of the checksum rule): %v", err)
+	}
+	t.Logf("correctly refused: %v", err)
+}

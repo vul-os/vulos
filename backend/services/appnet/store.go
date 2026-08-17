@@ -46,7 +46,7 @@ func (s *AppStore) ValidateInstalled() ([]*AppManifest, []error) {
 type StoreEntry struct {
 	AppManifest
 	DownloadURL string `json:"download_url"`
-	Checksum    string `json:"checksum"` // optional sha256 hex digest of the download archive
+	Checksum    string `json:"checksum"` // REQUIRED sha256 hex digest of the download archive (CATALOG-01)
 	Author      string `json:"author"`
 	Size        string `json:"size"`
 	Stars       int    `json:"stars"`
@@ -195,7 +195,8 @@ func (s *AppStore) Catalog(ctx context.Context) ([]StoreEntry, error) {
 // Security measures (M3):
 //   - entry.ID is validated against a strict allowlist pattern before use in paths.
 //   - The tar.gz is extracted with pure Go (no shell) and each entry is containment-checked.
-//   - If entry.Checksum is non-empty the archive sha256 is verified before extraction.
+//   - The archive sha256 is verified before extraction, and a MISSING checksum
+//     is refused rather than skipped (CATALOG-01).
 func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	// --- ID validation ---
 	if !installIDPattern.MatchString(entry.ID) {
@@ -211,6 +212,32 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	// screened exactly like any other user-supplied outbound URL in this OS.
 	if err := validateStoreDownloadURL(entry.DownloadURL); err != nil {
 		return fmt.Errorf("refusing download URL for %s: %w", entry.ID, err)
+	}
+
+	// CATALOG-01: a checksum is MANDATORY here, exactly as it is on every
+	// artefact in the registry (roadmap/INSTALL-METHODOLOGY.md §4.3).
+	//
+	// This is the weakest install path in the OS and it was the only one with an
+	// optional integrity check: `entry` is decoded straight from a request body,
+	// it carries no publisher signature, and the checksum below used to be
+	// verified only `if entry.Checksum != ""` — so omitting the field skipped
+	// verification entirely rather than failing. An admin (or a CSRF'd session)
+	// could install an unverified tarball from any public host.
+	//
+	// Ordered AFTER the SSRF guard so that guard still answers for the inputs it
+	// was written for; a URL that is refused for pointing at 169.254.169.254
+	// must keep saying so rather than complaining about a missing digest.
+	//
+	// Note what this does NOT do: it does not make this path equivalent to the
+	// registry one. There is still no signature, so the checksum only proves the
+	// bytes match what the REQUEST asked for. The methodology's answer is that
+	// signed registry entries are the way apps are installed; this endpoint is
+	// the vestigial external-catalog path (VULOS_APP_CATALOG) and the shipped
+	// front end never calls it — it uses POST /api/store/registry/install.
+	if strings.TrimSpace(entry.Checksum) == "" {
+		return fmt.Errorf("refusing to install %s: the catalog entry has no checksum, and an "+
+			"unsigned download with no integrity check is the one shape this OS does not install "+
+			"(CATALOG-01, roadmap/INSTALL-METHODOLOGY.md)", entry.ID)
 	}
 
 	appDir := filepath.Join(s.appsDir, entry.ID)
@@ -245,10 +272,10 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 	tmp.Close()
 
 	// --- Checksum verification ---
-	if entry.Checksum != "" {
-		if err := verifySHA256(tmpPath, entry.Checksum); err != nil {
-			return fmt.Errorf("checksum mismatch for %s: %w", entry.ID, err)
-		}
+	// Unconditional: CATALOG-01 above has already refused an empty one, so this
+	// runs for every download rather than for the ones that opted in.
+	if err := verifySHA256(tmpPath, entry.Checksum); err != nil {
+		return fmt.Errorf("checksum mismatch for %s: %w", entry.ID, err)
 	}
 
 	// --- Safe tar extraction ---
