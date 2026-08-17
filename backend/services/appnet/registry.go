@@ -1856,6 +1856,13 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 			base = n
 		}
 		destPath := filepath.Join(appDir, "bin", base)
+		// PAYLOAD-01: an archive that reaches this branch would be installed as
+		// an executable and unpack nothing, while the install reported success.
+		// The URL extension is what routed it here, and the URL extension is
+		// exactly the thing that was wrong for drawio; the bytes are not.
+		if err := refuseArchiveInstalledAsBinary(tmpPath, url, destPath); err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			return fmt.Errorf("create bin dir: %w", err)
 		}
