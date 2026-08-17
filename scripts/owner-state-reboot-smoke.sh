@@ -65,7 +65,14 @@ EDK2_CODE="${EDK2_CODE_AA64:-/opt/homebrew/share/qemu/edk2-aarch64-code.fd}"
 EDK2_VARS_SRC="${EDK2_VARS_AA64:-/opt/homebrew/share/qemu/edk2-arm-vars.fd}"
 
 HOSTPORT="${HOSTPORT:-8097}"
-TIMEOUT=420
+# 900, not 420. The first real run of this harness reached HTTP at 396 s on the
+# first boot and 383 s on the second, on a host at load ~260 — i.e. it passed
+# with under 30 s of margin, and would have reported "the disk did not reach
+# HTTP" on a slightly busier machine. That failure would have been about the
+# host, not about the box, and it would have looked exactly like the defect this
+# script exists to detect. The deadline is the instrument; the assertions are
+# has_users and the login, and neither moved.
+TIMEOUT=900
 NO_BUILD=0
 NO_INSTALL=0
 

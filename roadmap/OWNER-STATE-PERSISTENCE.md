@@ -26,8 +26,8 @@ every auth test builds its store in a `t.TempDir()`.
 | what | path at runtime |
 | --- | --- |
 | owner accounts, password hashes, sessions, recovery + master-key blobs | `/root/.vulos/db/auth.db` (+`-wal`, `-shm`) |
-| the secret every session cookie is signed with | `/root/.vulos/auth.key` |
-| profiles/roles | `/root/.vulos/auth.json` |
+| the secret every session cookie is signed with | `/root/.vulos/db/auth.key` (mode 0600) |
+| profiles/roles | `/root/.vulos/db/auth.json` |
 | box identity | `/root/.vulos/db/instance.json`, `/root/.vulos/instance-id` |
 | box Ed25519 peering identity + VulosID | `/root/.vulos/peering/identity/` |
 | recovery anchor | `/root/.vulos/peering/identity/recovery_anchor.json` |
@@ -226,6 +226,65 @@ powers the guest down through ACPI, boots the same disk again, and requires
 `has_users=true` plus a 200 from `/api/auth/login`. It then loop-mounts the
 partition from the host and requires `auth.db` to be **on the ext4** and
 `/root/.vulos/apps` to be **empty**.
+
+### It was run, and it passed — 2026-08-17
+
+arm64 QEMU/HVF, dm-verity active, `TestNetbootInstall_RealPipeline_E2E` doing
+the install for real:
+
+```
+── step: state-dirs
+[netboot-install] owner-state dirs created: /root/.vulos (0700), /root/.vulos/apps, /var/lib/vulos
+OWNSTATE-01: owner-state dirs present on the installed partition with the
+declared modes: [{root/.vulos 0700} {root/.vulos/apps 0755} {var/lib/vulos 0755}]
+
+✓ first boot up — HTTP answering
+  /api/auth/status (before setup): {"has_users":false}
+  creating the owner account (POST /api/auth/register)…
+  /api/auth/status (after setup):  {"has_users":true}
+  login BEFORE reboot → HTTP 200
+▸ Phase 4 — ACPI powerdown, then a second boot of the same disk
+✓ guest powered down
+✓ second boot up
+  /api/auth/status AFTER REBOOT: {"has_users":true}
+  login AFTER REBOOT → HTTP 200
+✓ the owner logged in after a reboot
+```
+
+And the partition itself, read from the host with the guest off:
+
+```
+=== /root/.vulos (mode must be 0700) ===
+drwx------ 13 root root 4096 /mnt/i/root/.vulos
+  .appfs_migrated_v2   .ssh/   ai-apps/   apps/   auth/   data/   db/
+  instance-id          os-cache/  peering/  sandbox/  web/   wine/
+
+=== /root/.vulos/db ===
+-rw-r--r--  auth.db          -rw-r--r--  auth.db-wal (168952 bytes)
+-rw-------  auth.key (32)    -rw-------  instance.json    -rw-------  vapid.json
+  … plus files.db, multiinstance.db, accountsecurity.db and ~15 more
+
+=== /root/.vulos/apps — must be EMPTY (tmpfs kept manifests in RAM) ===
+total 8
+drwxr-xr-x  2 root root 4096 17:00 .          <- install time; never written to
+drwx------ 13 root root 4096 17:07 ..
+
+=== /var/lib/vulos ===
+-rw------- 1 root root 11 17:07 epoch-floor.json
+```
+
+Three things in that listing are the whole answer. `auth.db` and its 168 KB WAL
+are **on the ext4**, with mtimes from the *second* boot — the running OS's
+writes reached the disk, so the login is not a cache. `/root/.vulos/apps` still
+carries only its install-time mtime and holds nothing: the tmpfs kept every
+installed-app manifest in RAM exactly as intended. And `epoch-floor.json`
+appeared under `/var/lib/vulos` because the running OS wrote it there, which is
+what the second bind is for.
+
+Both boots reached HTTP at ~390 s of a 420 s deadline, on a host at load ~260.
+Nothing about the box was slow; the harness deadline was simply close enough to
+produce a false failure on a busy machine, so it was raised to 900 s. That is
+the instrument, not the assertion.
 
 ## 6. Still not true
 
