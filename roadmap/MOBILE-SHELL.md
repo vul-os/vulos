@@ -230,26 +230,43 @@ convention is for** — an owner fixing it once, at the token, rather than three
 each patching their own instance.
 
 **7.2 — Touch leaks in builtins.** From a sweep of `src/builtin/**`, `src/core/**`,
-`src/apps/**`:
+`src/apps/**`. Two of the five items below have since been fixed by other workstreams —
+marked inline rather than silently dropped, per the reporting convention §7.1 sets.
 
-- **`builtin/files/FileManager.tsx` is the worst file in the tree on touch.** `:866`
-  `onDoubleClick` is the *only* trigger for entering a folder (the row's `onClick` merely
-  selects), and `:867` `onContextMenu` is the only path to "Ask AI about this" (`:1039`) and
-  "Share to peer…" (`:1045`). There is **no long-press handler anywhere in `src/`**. On a
-  phone you cannot open a folder and cannot reach the file actions.
-- **`builtin/packages/Packages.tsx:490`** — the Remove button is `opacity-0` with only
-  `group-hover`/`focus-visible` to reveal it. On touch it is an invisible but still-tappable
-  target.
-- **`shell/Toasts.tsx:77`** — a **16 px** toast dismiss button, and Toasts *is* mounted in
-  `MobileStack`. **`core/SystemPulse.tsx:251/253`** — 24 px month arrows, also mounted on
-  mobile. These two plus `shell/TrustBadge.tsx` are the only sub-44px targets left in the
-  mobile chrome (5 of them, measured).
-- **12 `window.confirm()` call sites** (Drive, Settings, Authenticator, WebhooksPanel,
-  CDNPanel, `phone/CallsTab.tsx:58` gating an actual phone call). Unstyled OS chrome that
-  breaks the fullscreen shell.
-- **`builtin/stream/StreamViewer.tsx`** is driven entirely by `onMouseMove`/`onMouseDown`/
-  `onWheel` + `requestPointerLock()`, which does not exist on mobile browsers. The streamed
-  desktop is view-only on touch.
+- **`builtin/files/FileManager.tsx` is the worst file in the tree on touch — FIXED
+  (`4c54227c`, "On a phone you could not open a folder, and two file actions did not
+  exist").** `onDoubleClick` used to be the only trigger for entering a folder (the row's
+  `onClick` merely selected it) and `onContextMenu` the only path to "Ask AI about this" and
+  "Share to peer…", with no long-press handler anywhere in `src/`. Now: a single tap opens (a
+  folder navigates, a file previews), a long press opens the same context menu at the finger's
+  position, and the pointer path is untouched (click still selects, double-click still opens,
+  right-click still opens the menu) — which one applies is decided by the POINTER that
+  produced the event, not a `(pointer: coarse)` media query. New primitive:
+  `frontend/src/mobile/useLongPress.ts` (`useLongPress`, `usePointerKind`), wired into
+  `FileManager.tsx`'s own header comment, which now tells this history itself.
+- **`builtin/packages/Packages.tsx:490`** — still open. The Remove button is `opacity-0` with
+  only `group-hover`/`focus-visible` to reveal it. On touch it is an invisible but
+  still-tappable target.
+- **`shell/Toasts.tsx:77` — FIXED, by the SHELL-RESPONSIVE workstream (R-8), not this one.**
+  The dismiss button is `w-6 h-6` (24px) now, not 16×16; `Toasts.tsx`'s own comment records the
+  old defect in the past tense. **`core/SystemPulse.tsx:251/253`** — still open: 24px month
+  arrows, mounted on mobile, still under the 44px floor. So of the original five sub-44px
+  targets in the mobile chrome, one (Toasts) is fixed and `shell/TrustBadge.tsx` was not
+  independently re-checked here.
+- **`window.confirm()` call sites — count and citation both stale.** This said "12," naming
+  Drive, Settings, Authenticator, WebhooksPanel, CDNPanel, and a phone-dialer file "gating an
+  actual phone call." That file (the former `phone/CallsTab.tsx:58`) no longer exists — it was
+  renamed to `RecentsTab.tsx` in `e7bec3f6` ("Phone was an Android app wearing a box app's
+  name") — and the confirm-before-calling `window.confirm()` no longer exists anywhere in the
+  phone/contacts code either: the worst offender in the original list (blocking a phone call
+  with unstyled OS chrome) is gone, not just moved. Current count across `frontend/src`
+  (excluding tests): **7**, in
+  `core/settings/WebhooksPanel.tsx` (2), `core/settings/CDNPanel.tsx` (1),
+  `apps/Authenticator/Authenticator.tsx` (1), `builtin/drive/Drive.tsx` (3). Still unstyled OS
+  chrome breaking the fullscreen shell; still open, just not 12 sites and not the phone dialer.
+- **`builtin/stream/StreamViewer.tsx`** — still open. Driven entirely by `onMouseMove`/
+  `onMouseDown`/`onWheel` + `requestPointerLock()`, which does not exist on mobile browsers.
+  The streamed desktop is view-only on touch.
 
 **7.3 — `frontend/src/layouts/DesktopCanvas.tsx` had an uncommitted `tsc` error** during this
 session (`OpenWindowOptions` vs a `component?: unknown` structural slice). It cleared before
