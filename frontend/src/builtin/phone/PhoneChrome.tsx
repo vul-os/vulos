@@ -3,7 +3,7 @@
 
 import { type ReactNode, type CSSProperties } from 'react'
 import { initials, avatarHue } from './phoneUtils'
-import { TABS, ACCENT_FILL, type TabId } from './phoneLayout'
+import { TABS, ACCENT_FILL, type Tab, type TabId } from './phoneLayout'
 import type { Line, LineId } from './usePhoneData'
 
 // ─── avatar ────────────────────────────────────────────────────────────────
@@ -178,11 +178,11 @@ export function LineBar({ lines, active, onPick }: { lines: Line[]; active: Line
 // ─── tabs ──────────────────────────────────────────────────────────────────
 
 /** Top tabs (medium/wide) — an underlined row, as on a tablet or desktop. */
-export function TopTabs({ tab, onPick }: { tab: TabId; onPick: (t: TabId) => void }) {
+export function TopTabs({ tab, onPick, tabs = TABS }: { tab: TabId; onPick: (t: TabId) => void; tabs?: Tab[] }) {
   return (
-    <div role="tablist" aria-label="Phone sections" className="shrink-0 flex items-stretch gap-0.5 px-2"
+    <div role="tablist" aria-label="Contacts and calls" className="shrink-0 flex items-stretch gap-0.5 px-2"
       style={{ borderBottom: '1px solid var(--border-default)' }}>
-      {TABS.map((t) => {
+      {tabs.map((t) => {
         const on = t.id === tab
         return (
           <button key={t.id} type="button" role="tab" aria-selected={on} onClick={() => onPick(t.id)}
@@ -201,11 +201,17 @@ export function TopTabs({ tab, onPick }: { tab: TabId; onPick: (t: TabId) => voi
 }
 
 /** Bottom tabs (narrow) — the phone-shaped nav, thumb-reachable. */
-export function BottomTabs({ tab, onPick }: { tab: TabId; onPick: (t: TabId) => void }) {
+export function BottomTabs({ tab, onPick, tabs = TABS }: { tab: TabId; onPick: (t: TabId) => void; tabs?: Tab[] }) {
   return (
-    <div role="tablist" aria-label="Phone sections" className="shrink-0 grid grid-cols-4"
-      style={{ background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-default)' }}>
-      {TABS.map((t) => {
+    // The column count follows the tabs that EXIST. It was a hardcoded
+    // `grid-cols-4`; on a box with no modem, where only Contacts and Recents
+    // are offered, that left two empty columns of dead tab bar.
+    <div role="tablist" aria-label="Contacts and calls" className="shrink-0 grid"
+      style={{
+        gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
+        background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-default)',
+      }}>
+      {tabs.map((t) => {
         const on = t.id === tab
         return (
           // The selected tab is marked by an accent BAR (a graphic, held to 3:1)

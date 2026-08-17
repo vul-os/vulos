@@ -192,6 +192,45 @@ export async function hangUp(): Promise<void> {
   okOrThrow(await request('/telephony/call/hangup', { method: 'POST' }))
 }
 
+export async function answerCall(): Promise<void> {
+  okOrThrow(await request('/telephony/call/answer', { method: 'POST' }))
+}
+
+export async function declineCall(): Promise<void> {
+  okOrThrow(await request('/telephony/call/decline', { method: 'POST' }))
+}
+
+/**
+ * What the MODEM says is happening right now — the only honest basis for an
+ * in-call bar. `state` is ModemManager's own vocabulary, passed through by the
+ * box rather than flattened, because "ringing" and "connected" are different
+ * things to show and a boolean throws the difference away.
+ */
+export interface ActiveCall {
+  active: boolean
+  number: string
+  /** ModemManager's direction: 'incoming' | 'outgoing' (or '' when unreported). */
+  direction: string
+  /** 'dialing' | 'ringing-out' | 'ringing-in' | 'active' | 'held' | 'waiting'. */
+  state: string
+}
+
+const NO_CALL: ActiveCall = { active: false, number: '', direction: '', state: '' }
+
+export function toActiveCall(x: unknown): ActiveCall {
+  if (!isRecord(x)) return NO_CALL
+  // `active` must be the wire's own boolean. Inferring it from "is there a
+  // number?" would light the in-call bar on any response shape that happens to
+  // carry one — including, as it happens, a modem Status body, which is what
+  // GET /api/telephony/ answers if the specific route ever stops matching.
+  if (x.active !== true) return NO_CALL
+  return { active: true, number: str(x.number), direction: str(x.direction), state: str(x.state) }
+}
+
+export async function getActiveCall(): Promise<ActiveCall> {
+  return toActiveCall(await request('/telephony/call/active'))
+}
+
 // ─── SMS ───────────────────────────────────────────────────────────────────
 
 export interface SmsThread {

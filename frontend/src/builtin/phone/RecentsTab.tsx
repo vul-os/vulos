@@ -19,7 +19,7 @@
 // history costs nothing and is honest; offering the action would not be.
 
 import { useState, useMemo } from 'react'
-import { Avatar, CallButton, ErrorNotice, EmptyNote } from './PhoneChrome'
+import { Avatar, CallButton, ErrorNotice, EmptyNote, NoLineState } from './PhoneChrome'
 import type { Size } from './phoneLayout'
 import { formatRelative, formatDuration, displayNumber } from './phoneUtils'
 import { callTimeMs } from './usePhoneData'
@@ -59,13 +59,23 @@ interface RecentsTabProps {
   onCall: (number: string) => void
   onMessage: (number: string) => void
   onRetry: () => void
+  /**
+   * Does this box have ANY telephony line? Recents is the page that answers
+   * "why is there no dialler here?", so on a box with no radio it renders the
+   * hardware explanation instead of an empty log — an empty log would be a
+   * true statement that answers the wrong question.
+   */
+  hasLine: boolean
+  /** The telephony service failed, which is NOT the same as "no modem". */
+  serviceError: string
+  onRetryLines: () => void
 }
 
 function label(c: CallEntry): string {
   return c.name || (c.number ? displayNumber(c.number) : 'Unknown')
 }
 
-export default function RecentsTab({ calls, loading, error, size, canCall, callBlockedReason, onCall, onMessage, onRetry }: RecentsTabProps) {
+export default function RecentsTab({ calls, loading, error, size, canCall, callBlockedReason, hasLine, serviceError, onCall, onMessage, onRetry, onRetryLines }: RecentsTabProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const wide = size === 'wide'
   const selected = useMemo(() => calls.find((c) => c.id === selectedId) ?? null, [calls, selectedId])
@@ -76,6 +86,27 @@ export default function RecentsTab({ calls, loading, error, size, canCall, callB
     return calls.filter((c) =>
       selected.number ? c.number === selected.number : c.peerId && c.peerId === selected.peerId)
   }, [calls, selected])
+
+  // No line and nothing that ever happened on one: name the hardware to plug
+  // in. If there IS history (a peer call, or a modem that has since been
+  // unplugged) the log wins — throwing away real history to show a hardware
+  // notice would be losing data to make a point.
+  //
+  // This early return sits AFTER every hook on purpose. Above the `related`
+  // memo it changed how many hooks ran between renders, which React answers by
+  // tearing the component down — the "no line" branch is the common case on
+  // most boxes, so that would have been the DEFAULT path.
+  const noLine = !hasLine && !loading && calls.length === 0
+  if (noLine) {
+    return (
+      <div className="h-full flex flex-col min-h-0">
+        <ErrorNotice message={error} onRetry={onRetry} />
+        <div className="flex-1 min-h-0">
+          <NoLineState serviceError={serviceError} onRetry={onRetryLines} />
+        </div>
+      </div>
+    )
+  }
 
   const list = (
     <div className="h-full overflow-y-auto">

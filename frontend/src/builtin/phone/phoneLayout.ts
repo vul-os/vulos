@@ -42,12 +42,43 @@ export function useSize(): [Size, (el: HTMLDivElement | null) => void] {
 
 export type TabId = 'recents' | 'contacts' | 'keypad' | 'messages'
 
-export const TABS: { id: TabId; label: string; glyph: string }[] = [
-  { id: 'recents', label: 'Recents', glyph: '🕘' },
+export interface Tab { id: TabId; label: string; glyph: string }
+
+/**
+ * CONTACTS IS FIRST, AND IS THE DEFAULT.
+ *
+ * The founder's ask, in his words: calls should "live with contacts,
+ * Android-style — one surface where you see people, call them, and see your
+ * call history", not a phone widget with an address book bolted onto it. So the
+ * surface opens on PEOPLE. Recents is the second page, not the front page:
+ * you reach for this app to call someone far more often than to audit a log.
+ */
+export const TABS: Tab[] = [
   { id: 'contacts', label: 'Contacts', glyph: '👤' },
+  { id: 'recents', label: 'Recents', glyph: '🕘' },
   { id: 'keypad', label: 'Keypad', glyph: '⌨' },
   { id: 'messages', label: 'Messages', glyph: '💬' },
 ]
+
+export const DEFAULT_TAB: TabId = 'contacts'
+
+/**
+ * Which pages exist on THIS box.
+ *
+ * Most Vulos boxes have no modem, and on those a dial pad and an SMS inbox are
+ * pages that can only ever be empty and can only ever fail — so they are not
+ * offered at all. The address book is not hardware-dependent and is always
+ * there; Recents is always there too, because it is where a box with no radio
+ * gets told what to plug in, and because Vulos-to-Vulos call history comes from
+ * a different service that has nothing to do with GSM.
+ *
+ * `hasLine` is "some line exists", NOT "some line can place calls": a data/SMS
+ * -only modem still has an inbox and can still send, and hiding Messages from
+ * it would remove a working feature over an unrelated missing capability.
+ */
+export function visibleTabs(hasLine: boolean): Tab[] {
+  return hasLine ? TABS : TABS.filter((t) => t.id === 'contacts' || t.id === 'recents')
+}
 
 /**
  * A fill for small white text.
