@@ -575,6 +575,9 @@ function AISettings({ profile, updateProfile }: AISettingsProps) {
   const [model, setModel] = useState(typeof profile?.ai_model === 'string' ? profile.ai_model : '')
   const [apiKey, setApiKey] = useState('')
   const [status, setStatus] = useState<AiStatus | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     // NOTE: GET /api/ai/status cannot currently fail — none of the three
@@ -587,7 +590,34 @@ function AISettings({ profile, updateProfile }: AISettingsProps) {
     apiGet('/api/ai/status').then((d: unknown) => setStatus(toAiStatus(d))).catch(() => {})
   }, [])
 
-  const save = () => updateProfile({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined })
+  // This discarded `updateProfile`'s result entirely — no saving state, no
+  // saved state, no error slot. Pressing "Save changes" changed nothing on
+  // screen whether the box stored the patch, refused it with a 403, or was
+  // never contacted.
+  //
+  // The offline case is why this is not merely a missing spinner:
+  // `updateProfile` opens with `if (!user || offlineMode) return 'unreachable'`,
+  // so in an offline session this button performs NO WRITE AT ALL — and the
+  // user has just typed a provider API key into a field whose hint says
+  // "Stored on your box".
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    setSaveError('')
+    const outcome = await updateProfile({ ai_provider: provider, ai_model: model, ai_api_key: apiKey || undefined })
+    setSaving(false)
+    if (outcome === 'ok') {
+      // Clear the key field only once the box has actually taken it —
+      // emptying it on a failed write would destroy the one copy the user has.
+      setApiKey('')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      return
+    }
+    setSaveError(outcome === 'rejected'
+      ? 'Your box refused these model settings.'
+      : 'Your box could not be reached, so nothing was saved — your key was not stored.')
+  }
 
   const isLocal = provider === 'ollama'
   const PROVIDER_LABELS: Record<string, string> = { ollama: 'Ollama (on-device)', claude: 'Claude (Anthropic)', openai: 'OpenAI', custom: 'Custom (OpenAI-compatible)' }
@@ -613,7 +643,9 @@ function AISettings({ profile, updateProfile }: AISettingsProps) {
             <span className="text-xs text-[var(--text-tertiary)]">
               {isLocal ? 'Running on-device — sovereign by default.' : `Using your ${providerLabel} key.`}
             </span>
-            <button onClick={save} className="btn-primary text-sm">Save changes</button>
+            <button onClick={save} disabled={saving} className="btn-primary text-sm">
+              {saving ? 'Saving…' : saved ? 'Saved' : 'Save changes'}
+            </button>
           </div>
         }
       >
@@ -633,6 +665,7 @@ function AISettings({ profile, updateProfile }: AISettingsProps) {
             <input id="ai-key" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="••••••••••••" className="input" />
           </Field>
         )}
+        {saveError && <Banner tone="danger" title="Model settings were not saved">{saveError}</Banner>}
       </Card>
 
       <Card title="Status">
@@ -967,7 +1000,8 @@ function DesktopLayoutSettings() {
 
 // DensityPicker — a real, persisted appearance pref. Writes
 // document.documentElement.dataset.density (consumed by index.css) and
-// localStorage so it survives reloads. Applied eagerly on load in main.jsx.
+// the preference cache so it survives reloads AND follows the user between
+// instances. Stamped onto <html data-density> by main.tsx before React mounts.
 const DENSITY_KEY = DENSITY_LS_KEY
 function DensityPicker() {
   // Read through the preference cache, not a copy seeded at mount: density now
@@ -1382,20 +1416,41 @@ function BluetoothSettings() {
   const disconnect = (addr: string) => send('/api/bluetooth/disconnect', { address: addr })
   const remove = (addr: string) => send('/api/bluetooth/remove', { address: addr })
 
+  // The radio's state as REPORTED, with `undefined` kept distinct from `false`.
+  // The pill and the switch were both `status?.powered ? … : …`, ungated, so
+  // before the first fetch resolved and after every failed one this panel
+  // stated flatly that Bluetooth was "Off" and drew the switch in the off
+  // position. A radio whose state is unknown is not a radio that is off, and
+  // the difference is exactly what the user's next click depends on. WiFi,
+  // twenty lines up, already gated its pill on `status &&`; Bluetooth was the
+  // inconsistent one.
+  const powered = status?.powered
+
   return (
     <Section
       icon="bluetooth"
       title="Bluetooth"
       desc="Pair keyboards, headsets and other peripherals with this box."
-      actions={<Pill tone={status?.powered ? 'success' : 'neutral'}>{status?.powered ? 'On' : 'Off'}</Pill>}
+      actions={powered !== undefined && (
+        <Pill tone={powered ? 'success' : 'neutral'}>{powered ? 'On' : 'Off'}</Pill>
+      )}
     >
       {error && <Banner tone="danger" title="Bluetooth is not responding">{error}</Banner>}
 
       <Card title="Radio">
         <SettingRow
           label="Bluetooth"
-          desc="Turning the radio off disconnects every paired device."
-          control={<Toggle ariaLabel="Bluetooth" checked={status?.powered} onChange={(v) => setPower(v)} />}
+          desc={powered === undefined
+            ? 'This box has not reported whether its Bluetooth radio is on.'
+            : 'Turning the radio off disconnects every paired device.'}
+          control={
+            <Toggle
+              ariaLabel="Bluetooth"
+              checked={powered}
+              disabled={powered === undefined}
+              onChange={(v) => setPower(v)}
+            />
+          }
         />
       </Card>
 
@@ -1723,11 +1778,23 @@ function EnergySettings() {
           ))}
         </div>
       </Field>
+      {/* Each line is gated on ITS OWN field, not on `status` being present.
+          This is the third time this exact shape has been found in this file —
+          Sound's "Backend:" and Display's "Compositor:" both carry comments
+          about it — and it is live rather than theoretical: the box's
+          /api/energy/status answers with only screen state on hardware with no
+          governor to report, which rendered the labels "CPU Governor:" and
+          "Idle:" over nothing at all and read as a half-drawn panel.
+
+          `screen_on` is a boolean, so it needs the undefined check too: a
+          missing field is not a screen that is off. */}
       {status && (
         <div className="text-xs text-[var(--text-faint)] mt-3 space-y-1">
-          <p>CPU Governor: {status.cpu_governor}</p>
-          <p>Screen: {status.screen_on ? (status.screen_dimmed ? 'Dimmed' : 'On') : 'Off'}</p>
-          <p>Idle: {status.idle_duration}</p>
+          {status.cpu_governor && <p>CPU Governor: {status.cpu_governor}</p>}
+          {status.screen_on !== undefined && (
+            <p>Screen: {status.screen_on ? (status.screen_dimmed ? 'Dimmed' : 'On') : 'Off'}</p>
+          )}
+          {status.idle_duration && <p>Idle: {status.idle_duration}</p>}
         </div>
       )}
     </Section>
@@ -1867,10 +1934,14 @@ function NET9_ConnectionModeSettings() {
             {loading ? '…' : (current || 'unknown')}
           </span>
         </div>
+        {/* `blocked` is a plain boolean initialised to false, so "not known to
+            be blocked" was drawn as the positive claim "enabled" — before the
+            first load and after every failed one. Gated on the mode actually
+            having been read, which is the same request that carries it. */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">External listener</span>
           <span className={`text-sm font-medium ${blocked ? 'text-warning' : 'text-[var(--text-secondary)]'}`}>
-            {blocked ? 'blocked (local-only)' : 'enabled'}
+            {current == null ? (loading ? '…' : '—') : blocked ? 'blocked (local-only)' : 'enabled'}
           </span>
         </div>
         {status?.domain && (
@@ -1960,16 +2031,24 @@ function toNetworkConfig(x: unknown): NetworkConfig | null {
 }
 
 function NetworkSettings() {
-  const [config, setConfig] = useState<NetworkConfig>({ app_url: 'http://localhost:8080' })
+  // Seeded EMPTY, not with 'http://localhost:8080'. That seed was drawn in the
+  // Access URL box the moment the panel opened, and stayed there if the read
+  // failed — so a hard-coded placeholder was presented as this box's actual
+  // configured address, and pressing Save would then write it. The real value
+  // arrives from the box or it does not arrive; the placeholder attribute
+  // below still shows the shape without asserting it is the setting.
+  const [config, setConfig] = useState<NetworkConfig>({})
+  const [loadErr, setLoadErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const { error, attempt } = useApiError()
 
   useEffect(() => {
-    fetch('/api/network/config').then(r => r.ok ? r.json() : null).then((raw: unknown) => {
+    apiGet('/api/network/config').then((raw: unknown) => {
       const d = toNetworkConfig(raw)
       if (d && !d.error) setConfig(d)
-    }).catch(() => {})
+      setLoadErr(null)
+    }).catch((e: unknown) => setLoadErr(errorMessage(e)))
   }, [])
 
   // This read no status and set `saved` unconditionally, so a 403 (not owner)
@@ -1995,9 +2074,11 @@ function NetworkSettings() {
       <p className="text-xs text-[var(--text-faint)] mb-5">Configure how this device is reached from the network. If you're accessing remotely, set the URL to your public IP or domain.</p>
 
       {error && <Banner tone="danger" title="Could not save the access URL">{error}</Banner>}
+      {loadErr && <Banner tone="danger" title="Could not read the current access URL">{loadErr}</Banner>}
 
-      <label className="block text-sm text-[var(--text-tertiary)] mb-1">Access URL</label>
+      <label htmlFor="network-app-url" className="block text-sm text-[var(--text-tertiary)] mb-1">Access URL</label>
       <input
+        id="network-app-url"
         value={config.app_url || ''}
         onChange={e => setConfig(c => ({ ...c, app_url: e.target.value }))}
         placeholder="http://localhost:8080"
@@ -2203,19 +2284,33 @@ function AccountSettings({ profile, updateProfile, logout }: AccountSettingsProp
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
+  // `updateProfile` NEVER THROWS. It returns 'ok' | 'rejected' | 'unreachable'
+  // (AuthProvider.tsx) — an offline session and a rejected fetch both return
+  // 'unreachable' without any request being made, a 4xx returns 'rejected', a
+  // 5xx returns 'unreachable'. So the try/catch that used to guard this button
+  // was dead code and its error slot was unreachable, and every one of those
+  // outcomes fell through to `setSaved(true)`.
+  //
+  // That made this the one control in Settings that did not merely fail
+  // quietly but ASSERTED a write that had not happened — the exact defect the
+  // comment on NetworkSettings.saveConfig describes as the reason IT was
+  // fixed. Reading the returned status is the whole fix; the two failures are
+  // reported apart because they mean different things to the user, and only
+  // one of them is worth retrying right now.
   const save = async () => {
     setSaving(true)
     setSaved(false)
     setError('')
-    try {
-      await updateProfile({ display_name: name, locale, timezone: tz })
+    const outcome = await updateProfile({ display_name: name, locale, timezone: tz })
+    setSaving(false)
+    if (outcome === 'ok') {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-    } catch (e: unknown) {
-      setError(errorMessage(e) || 'Failed to save')
-    } finally {
-      setSaving(false)
+      return
     }
+    setError(outcome === 'rejected'
+      ? 'Your box refused these details. Check the language code and timezone.'
+      : 'Your box could not be reached, so nothing was saved. Your changes are still in the fields above.')
   }
 
   return (
@@ -2301,7 +2396,14 @@ function DevicePINSettings() {
         const data = toPinStatus(raw)
         if (data) {
           setStatus(data)
-          setHasPIN(data.has_pin !== false)
+          // `data.has_pin !== false` treated an ABSENT field as "a PIN is set":
+          // undefined is not false, so the panel announced "PIN status: Set",
+          // titled the form "Change PIN", and rendered the destructive "Remove
+          // PIN" block — offering to remove something the box never said
+          // existed. A security state is the last place to default to the
+          // reassuring answer, so an absent field is now `null` (unknown, and
+          // rendered as an em-dash) rather than a claim in either direction.
+          setHasPIN(typeof data.has_pin === 'boolean' ? data.has_pin : null)
         }
       })
       .catch(() => {})
@@ -2393,9 +2495,16 @@ function DevicePINSettings() {
                 status.locked ? 'text-warning' :
                 'text-[var(--text-tertiary)]'
               }`}>
+                {/* `attempts_left ?? 5` invented the number 5. That is a live
+                    path, not a hypothetical: handleDevicePINStatus answers a
+                    box with no DevicePIN subsystem with ONLY {"has_pin":false}
+                    (services/auth/handlers.go), so this row confidently
+                    reported "5 attempts remaining" against a PIN that does not
+                    exist and a lockout counter that was never read. */}
                 {status.permanent_lock ? 'Permanently locked — re-auth required' :
                  status.locked ? 'Temporarily locked' :
-                 `${status.attempts_left ?? 5} attempts remaining`}
+                 status.attempts_left === undefined ? '—' :
+                 `${status.attempts_left} attempts remaining`}
               </span>
             </div>
             {status.locked && !status.permanent_lock && status.locked_until && (
@@ -2646,8 +2755,12 @@ function FingerprintSettings() {
         {status.enrolled && (
           <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
             <span className="text-xs text-[var(--text-muted)]">Unlock attempts left</span>
-            <span className={`text-sm ${(status.failures_left ?? 0) <= 1 ? 'text-warning' : 'text-[var(--text-tertiary)]'}`}>
-              {status.failures_left} of 3
+            {/* Rendered the literal string "undefined of 3" whenever the
+                status body omitted the counter — and the tone above it read
+                `?? 0`, so the same absent field also painted the row amber as
+                though the user were one failed scan from lockout. */}
+            <span className={`text-sm ${status.failures_left !== undefined && status.failures_left <= 1 ? 'text-warning' : 'text-[var(--text-tertiary)]'}`}>
+              {status.failures_left === undefined ? '—' : `${status.failures_left} of 3`}
             </span>
           </div>
         )}
@@ -2828,7 +2941,12 @@ interface AIAppVersionsProps {
 function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
   const [versions, setVersions] = useState<AiAppVersion[]>([])
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState('')
+  // A StatusMsg, not a bare string. `msg` carried BOTH outcomes — "Rolled back
+  // successfully", "Rollback failed", "Request failed" and the server's own
+  // error text — and every one of them was rendered in text-success green. On
+  // the one panel whose entire purpose is recovering a broken app, a failed
+  // rollback was drawn in the colour that means it worked.
+  const [msg, setMsg] = useState<StatusMsg | null>(null)
 
   const [loadErr, setLoadErr] = useState<string | null>(null)
 
@@ -2844,19 +2962,19 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
 
   const rollback = async (version: string) => {
     setBusy(true)
-    setMsg('')
+    setMsg(null)
     try {
       const r = await fetch(`/api/ai-apps/${appId}/rollback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version }),
       })
-      if (r.status === 503) { setMsg('AI-app editing is disabled by the administrator'); return }
-      const d: unknown = await r.json()
-      if (!r.ok) setMsg(errField(d) || 'Rollback failed')
-      else setMsg('Rolled back successfully')
+      if (r.status === 503) { setMsg({ type: 'err', text: 'AI-app editing is disabled by the administrator' }); return }
+      const d: unknown = await r.json().catch(() => null)
+      if (!r.ok) setMsg({ type: 'err', text: errField(d) || 'Rollback failed' })
+      else setMsg({ type: 'ok', text: 'Rolled back successfully' })
     } catch {
-      setMsg('Request failed')
+      setMsg({ type: 'err', text: 'Request failed' })
     } finally {
       setBusy(false)
     }
@@ -2886,7 +3004,12 @@ function AIAppVersions({ appId, onClose, editDisabled }: AIAppVersionsProps) {
           </button>
         </div>
       ))}
-      {msg && <p className="text-xs mt-2 text-success">{msg}</p>}
+      {msg && (
+        <p role={msg.type === 'err' ? 'alert' : undefined}
+          className={`text-xs mt-2 ${msg.type === 'ok' ? 'text-success' : 'text-danger'}`}>
+          {msg.text}
+        </p>
+      )}
     </div>
   )
 }
@@ -2897,6 +3020,7 @@ function AIAppsSettings() {
   const [versionsOpen, setVersionsOpen] = useState<string | null>(null)
   const [preview, setPreview] = useState<AiApp | null>(null)
   const [editDisabled, setEditDisabled] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const refresh = useCallback(() => apiGet('/api/ai-apps').then((raw: unknown) => setApps(toAiApps(raw))).catch(() => {}), [])
   useEffect(() => { refresh() }, [refresh])
   // Surface the DISABLE_AI_APP_EDIT kill-switch so mutating actions render as
@@ -2908,10 +3032,34 @@ function AIAppsSettings() {
       .catch(() => {})
   }, [])
 
-  const remove = async (id: string) => {
-    const r = await fetch(`/api/ai-apps/${id}`, { method: 'DELETE' })
+  // Deleting an AI app destroys the app AND its whole version history — the
+  // thing the "Versions / Restore" UI beside it exists to protect — and it did
+  // so on a single click from a 12px text button sitting next to "Open". Every
+  // other destructive action in Settings (PIN removal, fingerprint removal,
+  // user removal, OS staging) confirms first; this one did not.
+  //
+  // It also read exactly ONE status. A 403, a 404 or a 500 fell through to
+  // refresh(), which re-read a list where the app was still present, and said
+  // nothing — the user clicked Delete, watched the row stay put, and had no
+  // way to learn whether the box had refused.
+  const remove = async (app: AiApp) => {
+    const name = app.title || 'this app'
+    if (!confirm(`Delete "${name}"? Its saved versions are deleted with it, so Restore cannot bring it back. This cannot be undone.`)) return
+    setDeleteError(null)
+    let r: Response
+    try {
+      r = await fetch(`/api/ai-apps/${app.id}`, { method: 'DELETE' })
+    } catch (e: unknown) {
+      setDeleteError(`Could not reach your box, so "${name}" was not deleted: ${errorMessage(e)}`)
+      return
+    }
     if (r.status === 503) { setEditDisabled(true); return }
-    if (versionsOpen === id) setVersionsOpen(null)
+    const body: unknown = await r.json().catch(() => null)
+    if (!r.ok) {
+      setDeleteError(errField(body) || `Your box refused to delete "${name}" (${r.status}).`)
+      return
+    }
+    if (versionsOpen === app.id) setVersionsOpen(null)
     refresh()
   }
 
@@ -2926,6 +3074,7 @@ function AIAppsSettings() {
           AI-app editing is disabled by the administrator (DISABLE_AI_APP_EDIT). You can still open existing apps, but saving, updating, deleting, snapshotting and rollback are turned off.
         </div>
       )}
+      {deleteError && <Banner tone="danger" title="That app was not deleted">{deleteError}</Banner>}
       {apps?.length === 0 && <p className="text-sm text-[var(--text-muted)]">No saved apps yet. Ask the AI to build something visual.</p>}
       {apps?.map(app => (
         <div key={app.id} className="flex items-center justify-between py-2 border-b border-[var(--border-default)] gap-2">
@@ -2939,8 +3088,9 @@ function AIAppsSettings() {
             <button onClick={() => toggleVersions(app.id)} className="text-xs text-[var(--text-tertiary)]">Versions</button>
             <button onClick={() => setPreview(app)} className="text-xs text-[var(--accent)]">Open</button>
             <button
-              onClick={() => remove(app.id)}
+              onClick={() => remove(app)}
               disabled={editDisabled}
+              aria-label={`Delete ${app.title || 'Untitled'}`}
               title={editDisabled ? 'Editing disabled by administrator' : 'Delete app'}
               className="text-xs text-danger disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -3020,8 +3170,13 @@ function VaultSettings() {
       </div>
       {status?.initialized && (
         <>
+          {/* `|| 0` reported a vault holding ZERO SNAPSHOTS whenever
+              /api/vault/sync failed — the reading a user checks before
+              trusting a backup, produced by the request that did not answer.
+              `refresh()` reads status first and sync second, so this is
+              reachable with `status` populated and `sync` still null. */}
           <p className="text-xs text-[var(--text-muted)] mb-1">Last backup: {status?.last_backup || 'never'}</p>
-          <p className="text-xs text-[var(--text-muted)] mb-3">Snapshots: {sync?.total_snapshots || 0}</p>
+          <p className="text-xs text-[var(--text-muted)] mb-3">Snapshots: {sync?.total_snapshots ?? '—'}</p>
           <div className="flex gap-2 mb-4">
             <button onClick={backup} disabled={busy} className="btn">{busy ? 'Working…' : 'Backup Now'}</button>
             <button onClick={syncDevice} disabled={busy} className="btn">Sync to This Device</button>
@@ -3086,12 +3241,19 @@ function RecallSettings() {
       {error && <Banner tone="danger" title="Search index is not available">{error}</Banner>}
       {msg && <Banner tone="success">{msg}</Banner>}
       <p className="text-xs text-[var(--text-faint)] mb-3">Recall indexes your files for semantic search. The AI uses this to answer questions about your data.</p>
+      {/* The counts were `|| 0` and the state was `indexing ? … : 'Ready'`, so
+          a status body that omitted them reported an index holding zero files
+          and pronounced the service Ready in green. "Not told" and "told zero"
+          are different answers, and only one of them should be drawn as a
+          fact. */}
       {status && (
         <div className="space-y-1 text-sm mb-4">
-          <p>Files indexed: <span className="text-[var(--text-secondary)]">{status.indexed_files || 0}</span></p>
-          <p>Total scanned: <span className="text-[var(--text-secondary)]">{status.total_files || 0}</span></p>
+          <p>Files indexed: <span className="text-[var(--text-secondary)]">{status.indexed_files ?? '—'}</span></p>
+          <p>Total scanned: <span className="text-[var(--text-secondary)]">{status.total_files ?? '—'}</span></p>
           <p>Last index: <span className="text-[var(--text-secondary)]">{status.last_index || 'never'}</span></p>
-          <p>Status: <span className={status.indexing ? 'text-warning' : 'text-success'}>{status.indexing ? 'Indexing...' : 'Ready'}</span></p>
+          <p>Status: {status.indexing === undefined
+            ? <span className="text-[var(--text-muted)]">—</span>
+            : <span className={status.indexing ? 'text-warning' : 'text-success'}>{status.indexing ? 'Indexing...' : 'Ready'}</span>}</p>
         </div>
       )}
       <button onClick={reindex} className="btn">Re-index Now</button>
@@ -3131,8 +3293,32 @@ interface StorageModeDraft {
   minio_bucket: string
   minio_creds_ref: string
 }
+
+// STORAGE_MODE_LABELS — one label per mode the backend actually defines
+// (internal/storagemode/storagemode.go: ModeLocalFS, ModeLocalMinIOSync,
+// ModeCentralTigris).
+//
+// This replaces a two-state ternary — `mode === 'local-minio-sync' ? … :
+// 'Central Tigris (default)'` — written when there were two modes, and left
+// alone when `local-fs` became the default. Its `else` branch meant that a box
+// in its DEFAULT configuration, with every byte on its own disk, was told its
+// storage mode was "Central Tigris (default)": hosted, third-party, S3. On an
+// OS that exists so your data stays on hardware you own, there is no worse
+// sentence for this screen to say, and it said it to everyone who had never
+// touched the setting.
+//
+// A map rather than a ternary chain so a fourth mode shows up as an unmapped
+// raw string, which is visibly wrong, rather than silently joining whichever
+// branch happens to be last.
+const STORAGE_MODE_LABELS: Record<string, string> = {
+  'local-fs': 'This device (default)',
+  'local-minio-sync': 'Local MinIO + sync',
+  'central-tigris': 'Central Tigris (hosted)',
+}
+
 function StorageModeSettings() {
   const [cfg, setCfg] = useState<StorageModeConfig | null>(null)
+  const [loadErr, setLoadErr] = useState<string | null>(null)
   const [draft, setDraft] = useState<StorageModeDraft>({
     mode: 'local-fs',
     minio_endpoint: 'http://127.0.0.1:9000',
@@ -3143,12 +3329,18 @@ function StorageModeSettings() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
+  // Read through apiGet, not a bare `fetch().then(r => r.json())`. The box
+  // answers 5xx here with a JSON error body; that body passes isRecord, keeps
+  // none of the fields toStorageModeConfig asks for, and comes back a
+  // well-formed record of undefineds which is NOT null — so `cfg` was set, the
+  // "…" loading branch closed, and the panel reported a storage posture it had
+  // never been told. A failed read must read as a failed read.
   useEffect(() => {
-    fetch('/api/storagemode')
-      .then(r => r.json())
+    apiGet('/api/storagemode')
       .then((raw: unknown) => {
         const d = toStorageModeConfig(raw) || {}
         setCfg(d)
+        setLoadErr(null)
         // Seed the draft from the current config so the form is in sync.
         setDraft(prev => ({
           ...prev,
@@ -3159,7 +3351,7 @@ function StorageModeSettings() {
           minio_creds_ref: d.minio_creds_ref || prev.minio_creds_ref,
         }))
       })
-      .catch(() => {})
+      .catch((e: unknown) => setLoadErr(errorMessage(e)))
   }, [])
 
   const save = async () => {
@@ -3192,18 +3384,27 @@ function StorageModeSettings() {
 
   return (
     <Section title="Storage Mode">
+      {/* The default is this box's own disk, and this paragraph used to say the
+          opposite ("The default sends every read and write directly to hosted
+          Tigris") — a sentence that survived the D-STORE-LOCAL-DEFAULT change
+          and then told anyone reading this panel to decide whether to opt OUT
+          of hosted storage that they were already in it. */}
       <p className="text-xs text-[var(--text-faint)] mb-4">
-        Where the bundle (mail, office, OS) reads and writes its objects. The default sends every read and write
-        directly to hosted Tigris. Switch to local-MinIO-with-sync to make a co-located MinIO the source of truth and
-        let the CRDT sync layer replicate to peer Vulos nodes (mirrors what scripts/install-vulos.sh --storage=minio
-        provisions: a local /usr/local/bin/minio service plus /etc/vulos/storage.yaml).
+        Where the bundle (mail, office, OS) reads and writes its objects. The default is this box's own
+        disk — no object store, no third-party service, nothing leaving the machine. Local-MinIO-with-sync
+        makes a co-located MinIO the source of truth and lets the CRDT sync layer replicate to peer Vulos
+        nodes (mirrors what scripts/install-vulos.sh --storage=minio provisions: a local
+        /usr/local/bin/minio service plus /etc/vulos/storage.yaml). Central Tigris is an opt-in that sends
+        every read and write to a hosted third-party S3.
       </p>
+
+      {loadErr && <Banner tone="danger" title="Could not read the storage mode">{loadErr}</Banner>}
 
       <div className="space-y-px rounded-xl overflow-hidden border border-[var(--border-default)] mb-4">
         <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
           <span className="text-xs text-[var(--text-muted)]">Current mode</span>
           <span className="text-sm font-medium text-[var(--text-primary)]">
-            {cfg == null ? '…' : cfg.mode === 'local-minio-sync' ? 'Local MinIO + sync' : 'Central Tigris (default)'}
+            {loadErr ? '—' : cfg == null ? '…' : cfg.mode ? (STORAGE_MODE_LABELS[cfg.mode] ?? cfg.mode) : '—'}
           </span>
         </div>
         {cfg?.mode === 'local-minio-sync' && (
@@ -3778,9 +3979,18 @@ function AboutSettings() {
   const [legalErr, setLegalErr] = useState<string | null>(null)
   const [legalLoading, setLegalLoading] = useState(false)
 
+  // Both of these were `fetch(p).then(r => r.json())` with NO res.ok check —
+  // the shape apiGet exists in this file to replace, with a 17-line comment
+  // explaining why. The consequence here is the worst instance of it in
+  // Settings: a 5xx error body passes isRecord, keeps none of the ~20 fields
+  // toSysInfo asks for, and returns an all-undefined record that is NOT NULL.
+  // So `{sys && …}` opened, and the Graphics card asserted three concrete
+  // facts about hardware nobody had measured — "Tier 0 — Software",
+  // "Capture: X11 SHM", "Vendor: None" — on a box whose system service was
+  // simply not answering.
   useEffect(() => {
-    fetch('/health').then(r => r.json()).then((raw: unknown) => setHealth(toHealthPayload(raw))).catch(() => {})
-    fetch('/api/system/info').then(r => r.json()).then((raw: unknown) => setSys(toSysInfo(raw))).catch(() => {})
+    apiGet('/health').then((raw: unknown) => setHealth(toHealthPayload(raw))).catch(() => {})
+    apiGet('/api/system/info').then((raw: unknown) => setSys(toSysInfo(raw))).catch(() => setSys(null))
   }, [])
 
   const openLegal = (title: string, url: string) => {
@@ -3825,7 +4035,11 @@ function AboutSettings() {
           <InfoList>
             <InfoRow label="Device" value={sys?.device_model || sys?.hostname || '—'} />
             <InfoRow label="Hostname" value={sys?.hostname} />
-            <InfoRow label="OS" value={sys?.os_version ? `Debian ${sys.os_version}` : 'Debian Linux'} />
+            {/* Fell back to the bare string "Debian Linux" when the box had
+                said nothing — a claim about the running system standing in for
+                the absence of one. InfoRow already renders undefined as an
+                em-dash; that is the honest answer here. */}
+            <InfoRow label="OS" value={sys?.os_version ? `Debian ${sys.os_version}` : undefined} />
             <InfoRow label="Kernel" value={sys?.kernel} />
             <InfoRow label="Architecture" value={sys?.arch} />
           </InfoList>
@@ -3833,9 +4047,13 @@ function AboutSettings() {
 
         <Card title="Hardware">
           <InfoList>
-            <InfoRow label="Processor" value={sys?.cpu_model || `${sys?.cpu_cores || '—'} cores`} />
+            {/* "— cores" and "— used of —" are not answers, they are an
+                em-dash wearing a unit. A composite reading is known only when
+                every input to it is; otherwise the row says nothing at all and
+                InfoRow's own em-dash stands. */}
+            <InfoRow label="Processor" value={sys?.cpu_model || (sys?.cpu_cores ? `${sys.cpu_cores} cores` : undefined)} />
             <InfoRow label="CPU cores" value={sys?.cpu_cores} />
-            <InfoRow label="Memory" value={sys ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : '—'} />
+            <InfoRow label="Memory" value={sys?.mem_total_mb ? `${fmtMB(sys.mem_used_mb)} used of ${fmtMB(sys.mem_total_mb)}` : undefined} />
             <InfoRow label="Storage" value={sys?.storage_total_mb ? `${fmtMB(sys.storage_used_mb)} used of ${fmtMB(sys.storage_total_mb)}` : '—'} />
             {battery !== undefined && battery >= 0 && (
               <InfoRow label="Battery" value={`${battery}%${sys?.charging ? ' (charging)' : ''}`} />
@@ -3846,20 +4064,29 @@ function AboutSettings() {
           )}
         </Card>
 
-        {sys && (
+        {/* Gated on the box having reported SOMETHING about its graphics, not
+            merely on `sys` being non-null. `sys` is non-null whenever the
+            response parsed at all, so this card used to render in full against
+            an empty body — and every row below was a `x ? 'A' : 'B'` in which
+            `undefined` fell into the confident branch: "Tier 0 — Software",
+            "Capture: X11 SHM", "Vendor: None". Three measurements the box never
+            took, drawn as findings. */}
+        {sys && (sys.gpu_device || sys.gpu_vendor || sys.gpu_tier || sys.gpu_encoder || sys.gpu_codec) && (
           <Card title="Graphics">
             <InfoList>
               <InfoRow label="GPU" value={sys.gpu_device || '—'} />
-              <InfoRow label="Vendor" value={sys.gpu_vendor !== 'none' ? sys.gpu_vendor : 'None'} />
+              <InfoRow label="Vendor" value={sys.gpu_vendor ? (sys.gpu_vendor !== 'none' ? sys.gpu_vendor : 'None') : undefined} />
               <InfoRow
                 label="Tier"
-                value={sys.gpu_tier === 'nvenc' ? 'Tier 2 — NVENC' : sys.gpu_tier === 'vaapi' ? 'Tier 1 — VA-API' : 'Tier 0 — Software'}
+                value={sys.gpu_tier === 'nvenc' ? 'Tier 2 — NVENC'
+                  : sys.gpu_tier === 'vaapi' ? 'Tier 1 — VA-API'
+                    : sys.gpu_tier ? 'Tier 0 — Software' : undefined}
                 ok={sys.gpu_tier === 'nvenc' ? true : undefined}
               />
               <InfoRow label="Encoder" value={sys.gpu_encoder} />
               <InfoRow label="Codec" value={sys.gpu_codec || '—'} />
               {sys.gpu_av1 && <InfoRow label="AV1 encode" value="Supported" ok />}
-              <InfoRow label="Capture" value={sys.gpu_pipewire ? 'PipeWire DMA-BUF' : 'X11 SHM'} />
+              <InfoRow label="Capture" value={sys.gpu_pipewire === undefined ? undefined : sys.gpu_pipewire ? 'PipeWire DMA-BUF' : 'X11 SHM'} />
             </InfoList>
           </Card>
         )}
@@ -3905,12 +4132,14 @@ function AboutSettings() {
   )
 }
 
-// InfoRow now comes from ./settings/ui.jsx (shared kit). Local copy removed.
+// InfoRow now comes from ./settings/ui.tsx (shared kit). Local copy removed.
 
 // --- Shared UI components ---
 // --- Notifications (WAVE-13) ---
-// Wired to the framework-agnostic notificationStore. All prefs persist to
-// localStorage via the store; the shell bell + toaster honour them live.
+// Wired to the framework-agnostic notificationStore. The prefs ride
+// Profile.Settings under `shell.notifications.prefs` and follow the user between
+// instances (localStorage is now only the pre-paint cache); the shell bell +
+// toaster honour them live.
 const NOTIF_SOURCE_LABELS: Record<string, string> = {
   mail: 'Mail', assistant: 'Assistant', system: 'System', sync: 'Sync', ai: 'AI',
 }
@@ -3959,6 +4188,6 @@ function NotificationsSettings() {
 // Section — the shared panel header + body wrapper. A prominent title, an
 // optional one-line description, and a hairline divider give every panel a
 // consistent, premium masthead. `desc` is optional and back-compatible.
-// Section, Field and Toggle now live in ./settings/ui.jsx (the shared kit) and
+// Section, Field and Toggle now live in ./settings/ui.tsx (the shared kit) and
 // are imported at the top of this file — the local copies were removed so every
 // pane shares one design language.
