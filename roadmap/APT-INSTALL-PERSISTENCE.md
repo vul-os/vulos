@@ -88,11 +88,27 @@ log, the set of subtrees pulled back out of the overlay is:
 - live-USB boot: **none**
 - netboot-installed boot: **`/var/cache/vulos`, and only that**
 
-Nothing targets `/usr`, `/var/lib/dpkg`, `/var/lib/apt`, `/etc` or `/opt` on any
-path. This is measured by
-`TestOnlyVarCacheVulosIsRescuedFromTheOverlay`, which computes the rescued set
-from the hook's own mount log rather than reading the gate and reasoning about
-it.
+**UPDATED 2026-08-17 (OWNSTATE-01).** That netboot list is now three entries,
+not one: `/var/cache/vulos`, `/root/.vulos` and `/var/lib/vulos`. An owner
+account was measured *not surviving a reboot* on a real installed box, and the
+same capture-before-rebind mechanism was applied to the box's data directory —
+see `roadmap/OWNER-STATE-PERSISTENCE.md`. The live-USB list is still **none**.
+
+**None of that changes this section's answer, and the answer is now measured
+rather than asserted.** `apt-get` writes to `/usr`, `/var/lib/dpkg`,
+`/var/lib/apt`, `/etc` and `/opt`; none of them is a subtree of any of the three,
+and `/var/lib/vulos` is not a parent of `/var/lib/dpkg` or `/var/lib/apt`.
+`TestOnlyVarCacheVulosIsRescuedFromTheOverlay` computes the rescued set from the
+hook's own mount log and then checks every apt write target against it, so an
+edit that did start persisting one of them fails there with a pointer back to
+this note.
+
+One thing the same commit is careful *not* to do, and it matters here: the
+netboot boot also mounts a **tmpfs back over `/root/.vulos/apps`**, deliberately
+returning the app directory to RAM after its parent is persisted. That test now
+pins that set too. So the manifests an installed app leaves behind still die
+with the Flatpak/apt payload they point at, exactly as §3 below describes —
+`roadmap/APP-DIR-PERSISTENCE.md` measured why anything else is worse.
 
 ### Nothing outside the initramfs covers them either
 
@@ -108,11 +124,10 @@ Three facts close it, each checked rather than assumed:
 
 ## 3. What the user actually experiences
 
-**On today's images: the app disappears from the App Hub entirely, along with
-every other installed app and the rest of the box's state. It does not linger as
-a listed-but-unstartable ghost.** That is the better of the two failures, and it
-is true for a reason worth writing down, because it is one config change away
-from being false.
+**On today's images: the app disappears from the App Hub entirely. It does not
+linger as a listed-but-unstartable ghost.** That is the better of the two
+failures, and it is true for a reason worth writing down, because it is one
+config change away from being false.
 
 `AppStore.Installed()` is a directory scan of `appsDir`, and
 `appsDir = datadir.Join("apps")` — i.e. `$VULOS_DATA_DIR`, or `$HOME/.vulos`
@@ -120,6 +135,19 @@ when unset. The `vulos-server` unit `build.sh` writes sets `HOME=/root` and does
 **not** set `VULOS_DATA_DIR`. So the manifests live at `/root/.vulos/apps`,
 inside `/`, on exactly the same filesystem as everything apt writes. Both are in
 the tmpfs; both die together.
+
+**CORRECTED 2026-08-17 for the netboot-installed path.** This paragraph used to
+add "along with every other installed app and the rest of the box's state", and
+that half is no longer true there. OWNSTATE-01 persists `/root/.vulos` and
+`/var/lib/vulos` onto the disk, because the owner's ACCOUNT was dying on every
+reboot too — see `roadmap/OWNER-STATE-PERSISTENCE.md`. The app directory was
+deliberately excluded from that: the initramfs mounts a **tmpfs back over
+`${rootmnt}/root/.vulos/apps`** immediately after the state bind, precisely so
+the sentence above keeps holding. Manifests and payloads still die together;
+what no longer dies with them is the user's account. The two states are now
+pinned separately and exactly by
+`TestOnlyVarCacheVulosIsRescuedFromTheOverlay`, and dropping that tmpfs fails
+both it and `TestNetbootInstalledDiskKeepsTheOwnerAccountOnDisk`.
 
 The bundled apps in `/opt/vulos/apps` are unaffected — they ship inside the
 squashfs and are read-only-persistent. **None of the 29 apt entries has a
@@ -161,6 +189,29 @@ now guarded (`TestNothingCreatesTheDataPartitionLabel`,
 `TestVulosInitRunsOnlyWhereTheRootIsAlreadyPersistent`,
 `TestInstalledAppManifestsShareTheRootFilesystemsFate`) and each fails loudly
 with a pointer back to this note.
+
+**A FOURTH trigger has since been pulled, on purpose, and defused rather than
+guarded away.** OWNSTATE-01 makes `$HOME/.vulos` persistent while `/` stays an
+overlay on the netboot-installed path — exactly the condition this section
+warns about — because the alternative was a box that cannot keep an owner
+across a reboot. The ghost shape is prevented not by refusing the trigger but
+by mounting a tmpfs back over `/root/.vulos/apps` afterwards, so the manifest
+directory is the one thing under the data dir that stays in RAM with its
+payload. That is the narrowest available answer: it buys the owner's account
+and changes nothing about apps.
+
+It is a *worse* protection than the three above in one specific way, and that
+should be said. Those are "the trigger cannot happen"; this is "the trigger
+happens and is compensated". If the compensating tmpfs is ever dropped, the
+ghost shape is immediately real on every netboot-installed box. Two tests fail
+if it is (`TestOnlyVarCacheVulosIsRescuedFromTheOverlay`, which pins the
+put-back-in-RAM set exactly, and
+`TestNetbootInstalledDiskKeepsTheOwnerAccountOnDisk`), and both were
+mutation-verified against exactly that deletion. The durable fix remains
+option 2 in `roadmap/APP-DIR-PERSISTENCE.md`: teach
+`AppStore.RealisedVersions()` the flatpak liveness check `Registry.ListEntries`
+already performs, after which a surviving manifest is merely useless instead of
+harmful.
 
 ## 4. The image build is a different thing and is not in question
 

@@ -120,6 +120,41 @@ Two existing guards already cover this, and both would have gone red:
 
 Nothing was improvised in the initramfs. The hook is untouched.
 
+### UPDATE 2026-08-17 — the hook is no longer untouched, and this measurement is why
+
+The last two sentences above stopped being true the same day. An owner account
+was measured **not surviving a reboot** on a real netboot-installed box —
+`/api/auth/status` answering `{"has_users":false}` and the login 401'ing after a
+restart — so `/root/.vulos` is now bound out of the overlay onto the disk
+(OWNSTATE-01, `roadmap/OWNER-STATE-PERSISTENCE.md`). `~/.vulos/apps` is a child
+of that tree, so Half B's question was forced rather than chosen.
+
+**Half B is still stopped, and this note is the reason it was not quietly
+carried in on the back of the account fix.** The initramfs mounts a **tmpfs back
+over `${rootmnt}/root/.vulos/apps`** immediately after the state bind, so the
+app directory goes straight back into RAM with the Flatpak payload it points at.
+Everything measured above holds unchanged: the manifest still dies with its
+payload, `AppStore.RealisedVersions()` still reads an empty directory, and
+Half A still re-realises correctly.
+
+What changed in the guards, as a direct consequence:
+
+- `TestOnlyVarCacheVulosIsRescuedFromTheOverlay` now pins **two** exact sets —
+  what is pulled onto the disk (`/var/cache/vulos`, `/root/.vulos`,
+  `/var/lib/vulos`) and what is deliberately put back in RAM
+  (`/root/.vulos/apps`). Its helper also stopped counting a bind whose source is
+  *under* `$rootmnt` as a rescue, since such a bind reads the overlay's own
+  empty directory and persists nothing.
+- `TestNetbootInstalledDiskKeepsTheOwnerAccountOnDisk` fails if the apps tmpfs
+  is absent, is not a tmpfs, or is ordered before the `/root/.vulos` bind (which
+  would bury it). All three were mutation-verified.
+
+**The precondition list below is unchanged and still unmet.** Option 2 — teach
+`AppStore.RealisedVersions()` the flatpak liveness check `Registry.ListEntries`
+already performs — is now more valuable than it was, not less: today the ghost
+shape is held off by a mount that a future edit could delete, whereas the
+liveness check would make a surviving manifest merely useless.
+
 ### What would make Half B safe
 
 Not a decision for this pass, and stated as a precondition rather than a plan:

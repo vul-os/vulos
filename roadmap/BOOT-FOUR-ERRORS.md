@@ -159,11 +159,21 @@ both the live-USB and the netboot-installed slot layouts and asserts:
   overlay bind, and it must be **last**
 
 That last assertion is deliberately live-only. The netboot-installed path adds
-exactly one mount after the rebind — the on-disk `/var/cache/vulos`, which has to
-sit *on top of* the overlay and therefore cannot precede it — and that path has
-its own topology assertions in the section at the end of this file. Keeping the
-live rule strict is the point: the exception is one named boot, not a licence to
-append mounts.
+mounts after the rebind — subtrees that have to sit *on top of* the overlay and
+therefore cannot precede it — and that path has its own topology assertions in
+the section at the end of this file. Keeping the live rule strict is the point:
+the exception is one named boot, not a licence to append mounts.
+
+**That set has since grown from one to four, and the number is pinned rather
+than left to grow quietly.** When this was written the only such mount was the
+on-disk `/var/cache/vulos` (NETB-03, below). OWNSTATE-01 added three more —
+`/root/.vulos`, a tmpfs back over `/root/.vulos/apps`, and `/var/lib/vulos` —
+after an owner account was measured not surviving a reboot on a real installed
+box. See `roadmap/OWNER-STATE-PERSISTENCE.md`.
+`TestOnlyVarCacheVulosIsRescuedFromTheOverlay` now asserts **two exact sets**
+computed from the hook's own mount log: what is pulled onto the disk, and what
+is deliberately put back in RAM. A fifth mount appearing on either side fails
+it, which is what stops "one named exception" from decaying into a habit.
 
 Every assertion is "the hook did *not* do X", which a harness that failed to
 start the hook satisfies trivially — so `assertHarnessActuallyRanTheHook` pins
@@ -304,7 +314,13 @@ mount -o bind /run/vulos/cache "${rootmnt}/var/cache/vulos"   # on top of it
 It cannot be one step before the rebind. klibc's `mount` has **no long options at
 all**, so there is no `--rbind`, and `-o bind` does not carry submounts —
 anything mounted under `$MERGED` beforehand simply would not appear under
-`$rootmnt`. This is the one mount allowed to follow the rebind, and it has to.
+`$rootmnt`. It has to follow the rebind.
+
+*(When written this was "the one mount allowed to follow the rebind". It is now
+one of four — OWNSTATE-01 added the owner's data directory, a tmpfs back over
+its `apps` child, and `/var/lib/vulos`, for the same reason and by the same
+mechanism. `roadmap/OWNER-STATE-PERSISTENCE.md` is that work; the set is pinned
+exactly, in both directions, by `TestOnlyVarCacheVulosIsRescuedFromTheOverlay`.)*
 
 `$MERGED/var/cache/vulos` is `mkdir`'d before the rebind, so no `mkdir` ever
 touches `$rootmnt` and the guard from the four-errors work above still holds.
