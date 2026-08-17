@@ -46,6 +46,13 @@ func TestInstallFromRegistry_ExecsNoInstallShell(t *testing.T) {
 		`recipe.Install`,
 		`apt-get`,
 		`packages.CacheReady`,
+		// DEPS-02, added 2026-08-17. This one was inside the function the whole
+		// time the list above claimed the apt path was gone: `packages.InstallDeps`
+		// spells neither "apt-get" nor "recipe.Install", so the guard read clean
+		// while the last apt call in the install path sat five lines below the
+		// dispatch. The function is deleted now; this keeps the name from coming
+		// back through a different door.
+		`packages.InstallDeps`,
 	} {
 		if strings.Contains(body, banned) {
 			t.Errorf("InstallFromRegistry mentions %q — the raw-shell / apt install path is supposed to be gone "+

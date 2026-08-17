@@ -1374,6 +1374,14 @@ func SaveRegistry(path string, r *Registry) error {
 	return os.WriteFile(path, append(data, '\n'), 0644)
 }
 
+// verifyDeps is the seam the dependency check goes through. It is a variable
+// only so a test can supply a dependency set that IS satisfied — the negative
+// direction needs no seam, because a package name no box carries is missing on
+// every platform, while "this dep is present" is not portably expressible.
+// Nothing outside the tests ever reassigns it, and the real function is
+// exercised directly by services/packages' own tests.
+var verifyDeps = packages.VerifyDeps
+
 // InstallFromRegistry installs an app from the registry into appsDir.
 // It runs the install command, generates a validated app.json manifest,
 // downloads the icon, and runs post_install if present.
@@ -1440,6 +1448,32 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		return fmt.Errorf("security check failed for %s@%s: %w", appID, version, err)
 	}
 
+	// DEPS-01/DEPS-02: the declared dependencies must ALREADY be on the box,
+	// and this is checked BEFORE anything is downloaded.
+	//
+	// It used to be `packages.InstallDeps(ctx, recipe.Deps)` with the error
+	// DISCARDED, placed after the payload had landed. Two defects in one line:
+	//
+	//  1. A dependency that could not be installed produced a SUCCESSFUL
+	//     install of an app that cannot exec — POSTINSTALL-01's defect one
+	//     field down. Measured end to end on 2026-08-17: conduwuit 0.5.9's
+	//     arm64 binary carries `liburing.so.2` in DT_NEEDED, and on a box
+	//     without it every launch dies with
+	//     "error while loading shared libraries: liburing.so.2".
+	//  2. On a real box the install could not have worked anyway. build.sh
+	//     clears the apt lists, nothing here runs `apt-get update`, and
+	//     `apt-get install -y liburing2` in that state exits 100 with
+	//     "Unable to locate package". See packages.VerifyDeps for the
+	//     measurement.
+	//
+	// Running FIRST is deliberate, and it is the lesson EXTRACT-01 learned the
+	// hard way (M10): a box that fetches 110 MB and only then notices it can
+	// never run the result has already paid for the mistake. It also means
+	// the refusal names the dependency rather than an unpacked half-app.
+	if err := verifyDeps(ctx, recipe.Deps); err != nil {
+		return fmt.Errorf("dependency check failed for %s@%s: %w", appID, version, err)
+	}
+
 	appDir := filepath.Join(appsDir, appID)
 
 	// Create strict directory structure
@@ -1475,11 +1509,6 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	default:
 		return fmt.Errorf("registry entry %q@%s declares no install vehicle "+
 			"(INSTALL-02, roadmap/INSTALL-METHODOLOGY.md): set `flatpak_id` or `artifacts`", appID, version)
-	}
-
-	// Install additional deps
-	if len(recipe.Deps) > 0 {
-		packages.InstallDeps(ctx, recipe.Deps)
 	}
 
 	// Generate the app.json manifest

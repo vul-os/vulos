@@ -10,6 +10,7 @@ dhcpcd5
 evtest
 flatpak
 fonts-noto
+git
 gstreamer1.0-pipewire
 gstreamer1.0-plugins-bad
 gstreamer1.0-plugins-base
@@ -24,6 +25,7 @@ jq
 libegl1
 libevdev2
 libgbm1
+liburing2
 libva2
 matchbox-window-manager
 mesa-va-drivers

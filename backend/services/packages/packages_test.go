@@ -2,6 +2,7 @@ package packages
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
@@ -73,13 +74,9 @@ func parseAptCacheShow(raw string) map[string]string {
 	return info
 }
 
-// buildInstallArgs mirrors how Install/InstallDeps build the exec args.
+// buildInstallArgs mirrors how Install builds the exec args.
 func buildInstallArgs(name string) []string {
 	return []string{"apt-get", "install", "-y", "--no-install-recommends", name}
-}
-
-func buildInstallDepsArgs(deps []string) []string {
-	return append([]string{"apt-get", "install", "-y", "--no-install-recommends"}, deps...)
 }
 
 // ---------------------------------------------------------------------------
@@ -237,28 +234,135 @@ func TestBuildInstallArgs_NoShellExpansion(t *testing.T) {
 	}
 }
 
-func TestBuildInstallDepsArgs_MultiplePackages(t *testing.T) {
-	deps := []string{"curl", "vim", "git"}
-	args := buildInstallDepsArgs(deps)
-	// Expect: apt-get install -y --no-install-recommends curl vim git
-	if len(args) != 4+len(deps) {
-		t.Fatalf("arg count: want %d, got %d", 4+len(deps), len(args))
+// ---------------------------------------------------------------------------
+// DEPS-01 / DEPS-02 — `deps` is VERIFIED, never installed.
+//
+// The two tests that used to live here were TestBuildInstallDepsArgs_* and
+// they are replaced rather than deleted, because neither one touched shipping
+// code: one asserted the argument list built by a MIRROR function defined in
+// this test file, and the other reduced to `if len([]string{}) == 0 { return }`
+// — a test that passes whatever InstallDeps does, including not existing. That
+// is this repo's dominant defect (roadmap/vulos-guards-that-check-nothing), and
+// swapping them for assertions against the real function is the whole trade.
+// ---------------------------------------------------------------------------
+
+// TestVerifyDeps_EmptyIsNoOp is the CONTROL. Without it, a VerifyDeps that
+// refused everything would pass every negative test below it and look correct.
+func TestVerifyDeps_EmptyIsNoOp(t *testing.T) {
+	if err := VerifyDeps(context.Background(), nil); err != nil {
+		t.Errorf("nil deps refused: %v — a recipe with no dependencies must install", err)
 	}
-	for i, dep := range deps {
-		if args[4+i] != dep {
-			t.Errorf("dep[%d]: want %q, got %q", i, dep, args[4+i])
+	if err := VerifyDeps(context.Background(), []string{}); err != nil {
+		t.Errorf("empty deps refused: %v", err)
+	}
+}
+
+// TestVerifyDeps_MissingPackageIsAnError is the assertion DEPS-01 exists for.
+// The name is one no distribution ships, so it is missing on every platform:
+// on a box with dpkg-query it is "not installed", on a box without it the
+// answer is unknowable — and BOTH are errors, which is the point. A skip on
+// the second would be the hollow-guard shape.
+func TestVerifyDeps_MissingPackageIsAnError(t *testing.T) {
+	err := VerifyDeps(context.Background(), []string{"vulos-no-such-package-deps01"})
+	if err == nil {
+		t.Fatal("a dependency no box carries was reported SATISFIED — that is DEPS-01: " +
+			"the install then reports success for an app whose first exec dies with " +
+			"\"error while loading shared libraries\"")
+	}
+	if !strings.Contains(err.Error(), "vulos-no-such-package-deps01") &&
+		!strings.Contains(err.Error(), "dpkg-query") {
+		t.Errorf("the refusal names neither the package nor the missing tool: %v", err)
+	}
+}
+
+// TestVerifyDeps_RejectsFlagInjection keeps SEC-PKG-01 answering for the new
+// function too: a dep name is passed to an exec'd command, so the allowlist
+// must still run. A leading '-' would otherwise become a dpkg-query flag.
+func TestVerifyDeps_RejectsFlagInjection(t *testing.T) {
+	for _, bad := range []string{"--admindir=/tmp", "-W", "curl; rm -rf /", "pkg$(id)"} {
+		if err := VerifyDeps(context.Background(), []string{bad}); err == nil {
+			t.Errorf("VerifyDeps accepted %q", bad)
 		}
 	}
 }
 
-func TestBuildInstallDepsArgs_Empty(t *testing.T) {
-	// InstallDeps returns early for empty deps — no args should be built.
-	// We replicate that guard here.
-	deps := []string{}
-	if len(deps) == 0 {
-		return // guard matched — test passes
+// TestDepUnsatisfied_ReadsRealDpkgStatus feeds depUnsatisfied the exact lines
+// `dpkg-query -W -f '${Status}\t${Version}'` produced in a debian:trixie-slim
+// container on 2026-08-17. The two states that matter most are the ones that
+// LOOK installed: "deinstall ok config-files" is a removed package whose
+// conffiles remain — dpkg still knows it, `dpkg -l` still lists it, and its
+// shared libraries are gone.
+func TestDepUnsatisfied_ReadsRealDpkgStatus(t *testing.T) {
+	cases := []struct {
+		name      string
+		line      string
+		wantVer   string
+		versioned bool
+		satisfied bool
+	}{
+		{"installed", "install ok installed\t20250419", "", false, true},
+		{"installed with matching version", "install ok installed\t2.9-1", "2.9-1", true, true},
+		{"installed with wrong version", "install ok installed\t2.9-1", "2.8-1", true, false},
+		{"purged but conffiles remain", "deinstall ok config-files\t20250419", "", false, false},
+		{"known but never installed", "unknown ok not-installed\t", "", false, false},
+		{"interrupted unpack", "install ok half-installed\t2.9-1", "", false, false},
+		{"unpacked, not configured", "install ok unpacked\t2.9-1", "", false, false},
+		{"empty output", "", "", false, false},
 	}
-	t.Error("guard did not match empty slice")
+	for _, c := range cases {
+		why := depUnsatisfied(c.line, c.wantVer, c.versioned)
+		if (why == "") != c.satisfied {
+			t.Errorf("%s: depUnsatisfied(%q) = %q, satisfied=%v want satisfied=%v",
+				c.name, c.line, why, why == "", c.satisfied)
+		}
+	}
+}
+
+// TestNoAptInstallManyRemains is the structural half. VerifyDeps could be
+// perfect and the hole would still be one line away for as long as a function
+// that apt-get-installs a LIST lives in this package: `deps` is a list, and
+// wiring it back is a single call. Reading the source is the only way to
+// assert about a function that is supposed to not exist.
+func TestNoAptInstallManyRemains(t *testing.T) {
+	src, err := os.ReadFile("packages.go")
+	if err != nil {
+		t.Fatalf("read packages.go: %v", err)
+	}
+	text := string(src)
+	// Sanity first: if this file is not the one that holds the package API,
+	// every assertion below passes vacuously.
+	if !strings.Contains(text, "func VerifyDeps(") || !strings.Contains(text, "func Install(") {
+		t.Fatal("packages.go does not hold VerifyDeps and Install — this guard is reading the wrong file")
+	}
+	var code []string
+	for _, line := range strings.Split(text, "\n") {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
+		}
+		code = append(code, line)
+	}
+	body := strings.Join(code, "\n")
+
+	if strings.Contains(body, "func InstallDeps(") {
+		t.Error("InstallDeps is back. It was the last package-manager call in the install path " +
+			"(INSTALL-METHODOLOGY §4.6) and it cannot work on a shipped box: build.sh clears the " +
+			"apt lists, so `apt-get install -y liburing2` exits 100 with \"Unable to locate package\".")
+	}
+	// Install(name string) legitimately shells apt-get for the user-driven
+	// Packages screen. What must not come back is the variadic form, because
+	// that is the shape a recipe's `deps` slice plugs into.
+	if strings.Contains(body, `"install", "-y", "--no-install-recommends"}, deps...)`) {
+		t.Error("a function still expands a deps SLICE into `apt-get install` args")
+	}
+	// VerifyDeps itself must never reach apt.
+	start := strings.Index(body, "func VerifyDeps(")
+	end := strings.Index(body[start:], "\n}\n")
+	if end < 0 {
+		t.Fatal("could not delimit VerifyDeps")
+	}
+	if strings.Contains(body[start:start+end], "apt-get") {
+		t.Error("VerifyDeps calls apt-get — it is supposed to VERIFY, not install")
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -198,13 +198,115 @@ func GetInfo(ctx context.Context, name string) map[string]string {
 	return info
 }
 
-// InstallDeps installs multiple packages at once.
-func InstallDeps(ctx context.Context, deps []string) error {
+// InstallDeps IS DELETED, NOT DEPRECATED, and the deletion is the point.
+//
+// It was `apt-get install -y --no-install-recommends <deps…>` and it was the
+// LAST package-manager call in the whole install path
+// (roadmap/INSTALL-METHODOLOGY.md §4.6). Both of its call sites now go through
+// VerifyDeps. Leaving it here unused would leave the one function whose only
+// possible use is to re-open that path sitting next to the code that stopped
+// using it — and a recipe field wired back to it is a one-line change nobody
+// would read twice. `TestNoAptInstallManyRemains` is the guard that keeps it
+// gone; the git history is where it lives now.
+
+// VerifyDeps reports whether every package a recipe declares in `deps` is
+// ALREADY INSTALLED on this box. It installs nothing, and it is the function
+// that replaced InstallDeps.
+//
+// ── Why verifying is the only thing that can work here (DEPS-02) ─────────────
+//
+// The predecessor ran `apt-get install -y <deps…>`. Measured on 2026-08-17 in
+// a debian:trixie-slim container arranged like the shipped image — apt lists
+// cleared, exactly what build.sh does before packing, and nothing in the
+// install path runs `apt-get update`:
+//
+//	apt-get install -y --no-install-recommends liburing2   → E: Unable to locate
+//	                                                          package liburing2
+//	                                                          exit 100
+//	apt-get install -y --no-install-recommends git         → same, exit 100
+//	apt-get install -y --no-install-recommends ca-certificates
+//	  (NOT installed)                                      → no installation
+//	                                                          candidate, exit 100
+//	  (ALREADY installed)                                  → "already the newest
+//	                                                          version", exit 0
+//
+// So on a real box the install call can only ever do one of two things: exit 0
+// because the package was already there — in which case it installed nothing —
+// or fail. There is no third case in which it usefully installs something,
+// because there are no package lists to resolve from and fetching them would
+// pull tens to hundreds of megabytes of Debian indices into a tmpfs sized at
+// half of RAM (INSTALL-METHODOLOGY §2.2).
+//
+// Verifying states the same requirement without the pretence: `deps` names
+// packages THE IMAGE MUST ALREADY CARRY. A box that does not carry one gets a
+// loud refusal naming it, instead of a successful install of an app whose first
+// exec dies with "error while loading shared libraries".
+//
+// ── Why a missing dpkg-query is an error and not a skip ──────────────────────
+//
+// `deps` are Debian package names. A box with no dpkg cannot answer the
+// question at all, and answering "fine then" would be a guard that checks
+// nothing — the dominant defect class in this repo. The refusal names the
+// missing tool so it cannot be mistaken for a missing package.
+func VerifyDeps(ctx context.Context, deps []string) error {
 	if len(deps) == 0 {
 		return nil
 	}
-	args := append([]string{"install", "-y", "--no-install-recommends"}, deps...)
-	return exec.CommandContext(ctx, "apt-get", args...).Run()
+	dpkg, err := exec.LookPath("dpkg-query")
+	if err != nil {
+		return fmt.Errorf("cannot verify the declared dependencies %v: this box has no dpkg-query, "+
+			"so whether they are present is unknowable here (DEPS-02)", deps)
+	}
+
+	var missing []string
+	for _, dep := range deps {
+		name, wantVer, versioned := strings.Cut(dep, "=")
+		if err := validatePkgName(name); err != nil {
+			return fmt.Errorf("declared dependency %q: %w", dep, err)
+		}
+		out, err := exec.CommandContext(ctx, dpkg, "-W", "-f", "${Status}\t${Version}", name).Output()
+		if err != nil {
+			missing = append(missing, name+" (not installed)")
+			continue
+		}
+		if why := depUnsatisfied(string(out), wantVer, versioned); why != "" {
+			missing = append(missing, name+" ("+why+")")
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("the box does not carry %d of %d declared dependencies: %s — "+
+			"`deps` names packages the base image must already provide; add them to the image "+
+			"(scripts/image-packages.txt and build.sh's package sets), not to the install path (DEPS-02)",
+			len(missing), len(deps), strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// depUnsatisfied reads one `dpkg-query -W -f '${Status}\t${Version}'` line and
+// returns "" when the package is genuinely installed, or a short reason when it
+// is not. Split out from VerifyDeps for the reason archFromBinfmtEntry is split
+// out of its directory walk: it can then be tested against real dpkg output on
+// a machine that has no dpkg, which is every machine this suite runs on today.
+func depUnsatisfied(line, wantVer string, versioned bool) string {
+	status, gotVer, _ := strings.Cut(line, "\t")
+	fields := strings.Fields(status)
+	// dpkg's Status is three words: want, error-state, current-state. ONLY
+	// "installed" means the files are on disk. "config-files" is a package
+	// that was removed with its conffiles left behind, "half-installed" is an
+	// interrupted unpack, and "not-installed" is a package dpkg merely knows
+	// the name of — reading any of those as present is exactly how a
+	// dependency check reports a shared library that is not there.
+	if len(fields) != 3 || fields[1] != "ok" || fields[2] != "installed" {
+		s := strings.TrimSpace(status)
+		if s == "" {
+			s = "no status"
+		}
+		return s
+	}
+	if versioned && strings.TrimSpace(gotVer) != wantVer {
+		return "installed " + strings.TrimSpace(gotVer) + ", recipe wants " + wantVer
+	}
+	return ""
 }
 
 func installedSet(ctx context.Context) map[string]bool {

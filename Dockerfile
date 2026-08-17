@@ -137,10 +137,21 @@ RUN sed -i 's/Components: main/Components: main contrib non-free non-free-firmwa
 #   and it drags in 31 MiB of `cpp`. It stays only because this image DOES run
 #   an X server; build.sh's rootfs does not, which is why it is gone from there.
 #
+#   liburing2 and git are APP RUNTIME dependencies, not OS ones, and they are
+#   here because `deps` in a registry recipe is now VERIFIED at install rather
+#   than apt-installed (DEPS-02, roadmap/INSTALL-METHODOLOGY.md §4.6). Measured
+#   2026-08-17 in debian:trixie-slim with the apt lists cleared, which is the
+#   state build.sh leaves the image in: asking apt for liburing2 exits 100 with
+#   "Unable to locate package", so the old install-time call could never
+#   have worked on a shipped box. conduwuit 0.5.9 carries liburing.so.2 in
+#   DT_NEEDED on BOTH architectures and dies in the loader without it; wede
+#   shells out to the git binary. liburing2 costs 1 package, git costs 33.
+#
 # The package set is pinned by scripts/check-image-packages.sh: adding anything
 # here must be a deliberate diff, not a side effect.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
+    git liburing2 \
     iproute2 iptables \
     xvfb chromium xdotool \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \

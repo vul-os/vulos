@@ -16,6 +16,7 @@ deploy dhcpcd5
 deploy evtest
 deploy flatpak
 deploy fonts-noto
+deploy git
 deploy gstreamer1.0-plugins-bad
 deploy gstreamer1.0-plugins-base
 deploy gstreamer1.0-plugins-good
@@ -27,6 +28,7 @@ deploy joystick
 deploy jq
 deploy labwc
 deploy libevdev2
+deploy liburing2
 deploy libva2
 deploy matchbox-window-manager
 deploy mesa-va-drivers
@@ -64,6 +66,7 @@ rootfs dhcpcd5
 rootfs evtest
 rootfs flatpak
 rootfs fonts-noto
+rootfs git
 rootfs gstreamer1.0-plugins-bad
 rootfs gstreamer1.0-plugins-base
 rootfs gstreamer1.0-plugins-good
@@ -76,6 +79,7 @@ rootfs joystick
 rootfs jq
 rootfs labwc
 rootfs libevdev2
+rootfs liburing2
 rootfs libva2
 rootfs matchbox-window-manager
 rootfs mesa-va-drivers

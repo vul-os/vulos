@@ -283,10 +283,20 @@ func (s *AppStore) Install(ctx context.Context, entry StoreEntry) error {
 		return fmt.Errorf("extract %s: %w", entry.ID, err)
 	}
 
-	// --- Install OS dependencies if specified ---
+	// --- Verify OS dependencies if specified (DEPS-01) ---
+	//
+	// This used to be `packages.InstallDeps(ctx, manifest.Deps)` with the error
+	// discarded — an unsigned, downloaded app.json naming packages, and the box
+	// running `apt-get install -y` on that list. Two things change here: the
+	// list is verified rather than installed (DEPS-02, see packages.VerifyDeps),
+	// and the answer is no longer thrown away. This path carries NO publisher
+	// signature (§6.0), so it is the last place that should be handing a
+	// downloaded file's contents to a package manager.
 	manifest, err := LoadManifest(filepath.Join(appDir, "app.json"))
-	if err == nil && len(manifest.Deps) > 0 {
-		packages.InstallDeps(ctx, manifest.Deps)
+	if err == nil {
+		if err := packages.VerifyDeps(ctx, manifest.Deps); err != nil {
+			return fmt.Errorf("dependency check failed for %s: %w", entry.ID, err)
+		}
 	}
 
 	log.Printf("[appstore] installed %s", entry.ID)

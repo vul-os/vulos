@@ -301,8 +301,14 @@ apt-get update
 # lists in this file are now covered by scripts/check-image-packages.sh so a
 # repeat shows up as a manifest diff instead of a silent truncation.
 # PACKAGE-SET: deploy   (pinned by scripts/check-image-packages.sh — do not remove)
+# git and liburing2 are APP runtime dependencies (DEPS-02): a registry recipe's
+# `deps` is verified at install, never installed, so the image must carry them.
+# Measured — with the apt lists cleared, asking apt for liburing2 exits 100 with
+# "Unable to locate package", so the old install-time call could not have
+# worked here at all.
 apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
+    git liburing2 \
     iproute2 iptables \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     gstreamer1.0-vaapi \
@@ -745,8 +751,13 @@ chroot "$ROOTFS" apt-get update
 # licensing matter, not a packaging one.
 #
 # PACKAGE-SET: rootfs   (pinned by scripts/check-image-packages.sh — do not remove)
+# git and liburing2: see the deploy set above (DEPS-02). The rootfs is the one
+# target where getting this wrong is unrecoverable at runtime — the OS root is a
+# read-only dm-verity squashfs, so a missing runtime library cannot be added
+# after the fact by any install path at all.
 chroot "$ROOTFS" apt-get install -y --no-install-recommends \
     tini bash sudo python3 curl jq ca-certificates wget \
+    git liburing2 \
     iproute2 iptables \
     gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
     gstreamer1.0-vaapi \
