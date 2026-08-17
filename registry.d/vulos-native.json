@@ -1,8 +1,8 @@
 {
   "_arch_independent": "Five entries (audiomass, cinny, drawio, element-call, minipaint) pin ONE artefact under the exclusive `any` key. Listing the same URL and digest under both amd64 and arm64 would look identical in the data to a curator pinning the amd64 asset under both \u2014 the kerf v0.1.9 shape \u2014 and scripts/verify-firstparty-artifacts.sh refuses two architectures sharing one sha256 for exactly that reason. The recipe states which it means instead of a checker guessing.",
-  "_ownership": "NO RECIPE HERE CHOWNS ITS OWN STATE. Seven of these entries used to carry `chown -R 65534:65534 data` in post_install — a stopgap repeated seven times, silently absent from the eighth, and a PRIVILEGED command inside a string that also runs on a developer box, where it fails and POSTINSTALL-01 turns that failure into a failed install. InstallFromRegistry now hands the state directory to uid 65534 centrally, after post_install and through the data symlink (STATE-01, backend/services/appnet/state_owner.go). bin/ and static/ stay ROOT-owned on purpose: they are code, and an app that can rewrite its own binary keeps any compromise across a restart.",
   "_measurement": "EVERY checksum below was computed from bytes downloaded on 2026-08-17 and was written into this file BY A SCRIPT reading those measurements \u2014 no digest was typed by hand, because hand-copying twenty-two digests is exactly how a fabricated one enters a catalogue. Five of them (conduit amd64, gitea amd64, navidrome amd64, cinny, element-call, drawio) turned out to be byte-identical to digests the shipped registry already carried from an independent earlier measurement; those six agreements are the control on the run.",
   "_not_verified": "NO INSTALL WAS RUN. These recipes are pinned and their archive layouts were read out of the downloaded archives, but scripts/verify-app-recipe.sh has not been executed for any of them and roadmap/app-verification-ledger.json is untouched. `command`, `port` and `post_install` are therefore UNPROVEN. Every entry that ships _disabled today stays _disabled here.",
+  "_ownership": "NO RECIPE HERE CHOWNS ITS OWN STATE. Seven of these entries used to carry `chown -R 65534:65534 data` in post_install \u2014 a stopgap repeated seven times, silently absent from the eighth, and a PRIVILEGED command inside a string that also runs on a developer box, where it fails and POSTINSTALL-01 turns that failure into a failed install. InstallFromRegistry now hands the state directory to uid 65534 centrally, after post_install and through the data symlink (STATE-01, backend/services/appnet/state_owner.go). bin/ and static/ stay ROOT-owned on purpose: they are code, and an app that can rewrite its own binary keeps any compromise across a restart.",
   "_signing": "UNSIGNED BY CONSTRUCTION \u2014 every entry carries \"signature\": \"\". VerifyEntrySignature fails closed on an empty signature, so these are inert until the founder's ceremony (`make sign-registry RELEASE_PRIV=\u2026`). Do not set VULOS_SIGN_ALLOW_KEY_MISMATCH.",
   "_source": "registry.d/vulos-native.json \u2014 the apt/raw-shell/single-download entries re-expressed in the ONE Vulos-native install format (roadmap/INSTALL-METHODOLOGY.md). Staged for the single writer of registry.json; do NOT merge without re-signing.",
   "apps": {
@@ -482,6 +482,70 @@
       },
       "vetted": true
     },
+    "jellyfin": {
+      "_note": "PARKED FOR HONEST IGNORANCE UNTIL 2026-08-17; BOTH MISSING MEASUREMENTS TAKEN, AND ONE OF THEM SAYS ENABLE AND THE OTHER SAYS NOT YET. (1) SELF-CONTAINMENT: MEASURED, and the answer is yes \u2014 the amd64 tarball (110228765 bytes) carries libcoreclr.so, libhostfxr.so, libhostpolicy.so, libclrjit.so and the whole System.*.dll set, so the .NET runtime is INSIDE the payload and the image does not need one. jellyfin-web ships in the same tarball (2331 members under jellyfin/jellyfin-web/), so the web client is not a second package either. The apphost was checked per architecture and they are genuinely different builds: amd64 is 'ELF 64-bit LSB pie executable, x86-64' and arm64 is 'ELF 64-bit LSB pie executable, ARM aarch64' \u2014 not the kerf v0.1.9 shape. (2) FFMPEG: MEASURED, and the answer is no \u2014 zero members of the tarball match ffmpeg or ffprobe, and neither is in scripts/image-packages.txt. Jellyfin without ffprobe cannot analyse a library or transcode, so the recipe stays _disabled: an entry that installs and cannot do the thing the app is for is the defect class this format exists to remove. ENABLING IT IS ONE EDIT once ffmpeg is in the base image and scripts/verify-app-recipe.sh jellyfin passes. THIRD DEFECT FOUND WHILE MEASURING: the retired recipe ran `jellyfin --port ${PORT}`, and jellyfin HAS NO --port OPTION \u2014 the option names compiled into jellyfin.dll are exactly cachedir, configdir, datadir, ffmpeg, logdir, nowebclient, published-server-url, service, webdir. The port lives in network.xml, which post_install writes with the literal 8096 this recipe declares; the element names InternalHttpPort/PublicHttpPort were read out of the shipped MediaBrowser.Common.dll, not guessed. UNVERIFIED: no install has been run, so `command`, the XML and the port are unproven. Upstream publishes NO digest file beside these assets (the directory holds only the .tar.gz and .tar.xz), so unlike minio there is no second opinion on these two sha256s \u2014 they are ours alone. NOT MEASURED, and named rather than assumed: whether the image carries ICU. A self-contained .NET app that is not built invariant-globalization needs libicuuc/libicui18n at startup, and scripts/image-packages.txt does not list libicu \u2014 chromium is expected to pull it in transitively, which is an inference and not a measurement. Whoever enables this entry measures it in the image, not from a package list.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Jellyfin Project",
+      "category": "media",
+      "description": "Free software media system \u2014 stream your own films, series and music library to any device, with a web client bundled in the same payload",
+      "homepage": "https://jellyfin.org",
+      "icon": "jellyfin",
+      "icon_url": "",
+      "keywords": [
+        "media",
+        "video",
+        "streaming",
+        "movies",
+        "tv",
+        "music",
+        "server",
+        "plex-alternative"
+      ],
+      "license": "GPL-2.0",
+      "name": "Jellyfin",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "10.11.11": {
+          "_disabled": true,
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "9f7f194a7e37777cfde0d107c088fc47e81c7904440046ac0ceb7a289546cf79",
+              "download_url": "https://repo.jellyfin.org/files/server/linux/stable/v10.11.11/amd64/jellyfin_10.11.11-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "31f86f51f72f006dfe2d9daabc25e75a9bbbfdad8dc1cbac7d14ea616de1fa40",
+              "download_url": "https://repo.jellyfin.org/files/server/linux/stable/v10.11.11/arm64/jellyfin_10.11.11-arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/jellyfin --datadir data/ --webdir bin/jellyfin-web",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8096,
+          "post_install": "mkdir -p data/config data/cache && printf '<?xml version=\"1.0\" encoding=\"utf-8\"?>\\n<NetworkConfiguration>\\n  <InternalHttpPort>8096</InternalHttpPort>\\n  <PublicHttpPort>8096</PublicHttpPort>\\n  <EnableHttps>false</EnableHttps>\\n</NetworkConfiguration>\\n' > data/config/network.xml",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
     "memos": {
       "_note": "Two defects fixed. (1) The shipped download_url was WRONG \u2014 it asked for memos_0.22.4_linux_amd64.tar.gz; the published asset is memos_v0.22.4_..., with a `v`. (2) Its checksum was empty, so it could never install anyway. Now pinned per-arch, arm64 gained. STAYS _disabled: no install has been verified, and this entry's history is exactly why an unverified re-enable is not worth the risk.",
       "arch": [
@@ -538,6 +602,68 @@
             "filesystem"
           ],
           "port": 5230,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "minio": {
+      "_note": "UNPINNABLE -> PINNED, and the 404 that blocked it was a real dead end rather than a typo. dl.min.io/.../archive/minio.RELEASE.2025-10-15T17-29-55Z returns 404 because that release publishes NO binary at all \u2014 its GitHub release carries an empty asset list. The previous release, RELEASE.2025-09-07T16-13-09Z, publishes real per-architecture Linux binaries as GitHub release assets, which is a pinned immutable URL rather than the moving dl.min.io/server/minio/release/linux-amd64/minio the old recipe used. CROSS-CHECKED: MinIO publishes a .sha256sum beside each asset, and both of ours match it byte for byte \u2014 two independent statements per artefact, which is what \u00a711 of the methodology asks for and what the other entries here do not have. Sizes 110989496 and 105251000 bytes match the GitHub API's asset sizes. STAYS _disabled: it is disabled today, no install has been run, and this build is from the series where the embedded console UI was removed upstream, which is a product question for the founder rather than a packaging one.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "MinIO, Inc.",
+      "category": "developer",
+      "description": "S3-compatible object storage server \u2014 buckets, versioning and presigned URLs over an API any S3 client already speaks",
+      "homepage": "https://min.io",
+      "icon": "minio",
+      "icon_url": "",
+      "keywords": [
+        "storage",
+        "s3",
+        "object",
+        "bucket",
+        "self-hosted",
+        "api"
+      ],
+      "license": "AGPL-3.0",
+      "name": "MinIO",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "service",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "RELEASE.2025-09-07T16-13-09Z": {
+          "_disabled": true,
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f",
+              "download_url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z"
+            },
+            "arm64": {
+              "checksum": "5c83cd2cf151717ba0243f73e1c7802ff36e272b67144bdd7f1f7d684fd6f03d",
+              "download_url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-arm64.RELEASE.2025-09-07T16-13-09Z"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "minio",
+          "checksum": "",
+          "command": "bin/minio server data/ --address 0.0.0.0:${PORT}",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 9000,
           "post_install": "",
           "singleton": true
         }
@@ -656,6 +782,64 @@
           ],
           "port": 4533,
           "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "svg-edit": {
+      "_note": "THE PINNED RELEASE DID NOT EXIST. The shipped recipe fetched github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip: there is no v7.3.0 tag (the tags are v.7.3.3, v7.2.0, v.7.1.2-beta.1, v5.1.0 and older) and NO SVG-Edit release carries any asset at all \u2014 measured against the GitHub releases API, ten releases, every asset list empty. _disabled is the only reason nobody hit that 404. The one published BUILD of SVG-Edit is its npm package, which is immutable per version and carries dist/editor/ prebuilt \u2014 index.html, Editor.js, svgedit.css, components/, extensions/ and images/ \u2014 so no build step is needed. CROSS-CHECKED TWICE: the npm registry publishes dist.integrity and dist.shasum for this exact tarball, and our sha512 and sha1 computed from the downloaded bytes match both. The tarball also carries the project's source and docs, so `command` serves static/dist/editor/ specifically rather than static/ \u2014 serving the app dir would publish data/, which is a symlink to the owner's data directory. STAYS _disabled: no install has been run and the served bundle is unproven.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "SVG-Edit Contributors",
+      "category": "media",
+      "description": "Browser-based vector graphics editor \u2014 draw and edit SVG in the browser with layers, paths and text",
+      "homepage": "https://github.com/SVG-Edit/svgedit",
+      "icon": "svg-edit",
+      "icon_url": "",
+      "keywords": [
+        "svg",
+        "vector",
+        "editor",
+        "drawing",
+        "graphics",
+        "web",
+        "inkscape"
+      ],
+      "license": "MIT",
+      "name": "SVG-Edit",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "7.4.2": {
+          "_disabled": true,
+          "archive_strip": 1,
+          "artifacts": {
+            "any": {
+              "checksum": "249cc66750a5b4ac39fc79ee8723ab71b581c48946aaea1ee58054fd91db98a7",
+              "download_url": "https://registry.npmjs.org/svgedit/-/svgedit-7.4.2.tgz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/dist/editor/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
           "singleton": true
         }
       },
