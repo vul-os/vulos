@@ -166,7 +166,15 @@ func OSStateInventory() []StateEntry {
 				"before this existed.",
 			Note: "Unproven on this machine: a real two-box install over a real fabric connection. The merge, the desire algebra, the " +
 				"reconciler and the AppStore seam are proven in-process; ip netns is Linux-only and the install path downloads from a " +
-				"signed registry, so the end-to-end run belongs on a Linux box.",
+				"signed registry, so the end-to-end run belongs on a Linux box. " +
+				"SYNC-APPS-02 — on three of the five boot paths (live-USB, live-ESP, netboot-installed) <root>/apps is inside the tmpfs " +
+				"upper layer of the live overlay, so this row's ground truth is a fact about THIS BOOT and not about this box: after a " +
+				"reboot the scan reads empty for apps the box really did install, and the desire comes back from a peer. The reconciler no " +
+				"longer reads that as a first install — it consults this box's own replicated app_registry rows and classifies the absence " +
+				"as a RE-realisation, counts it on the replicated row (the count has to replicate: the local DB is in the same tmpfs), " +
+				"names the measured storage reason, and backs off only repetition fast enough to be pathological. It does NOT make the app " +
+				"dir persistent; that is a separate, still-OPEN question — see roadmap/APP-DIR-PERSISTENCE.md for why the /var/cache/vulos " +
+				"treatment cannot simply be copied here.",
 		},
 		{
 			Name:     "installed app set (the replicated mirror)",

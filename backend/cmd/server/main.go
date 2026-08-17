@@ -3966,6 +3966,22 @@ func main() {
 					// reaches whichever box the user is standing at.
 					log.Printf("[appsync] this box cannot realise %q: %s", id, why)
 				}
+				// SYNC-APPS-02. Without this line a re-realisation is
+				// indistinguishable in the log from a first install, which is
+				// exactly how a box re-downloading its entire app set on every
+				// boot looked like nothing at all: the pass succeeds, the apps
+				// work, and the only symptom is that the boot is slow.
+				if len(res.ReRealised) > 0 {
+					why := res.ReRealiseReason
+					if why == "" {
+						why = "this box could not measure its own storage durability"
+					}
+					log.Printf("[appsync] RE-REALISED %d app(s) this box had already installed and lost: %v — %s",
+						len(res.ReRealised), res.ReRealised, why)
+				}
+				for id, why := range res.Deferred {
+					log.Printf("[appsync] holding back a re-realisation of %q: %s", id, why)
+				}
 			}
 		}()
 	}
