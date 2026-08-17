@@ -1513,60 +1513,112 @@ func TestKioskEnvIsOverridable(t *testing.T) {
 //
 // GET /api/setup/status is os.Stat("/var/lib/vulos/.setup-complete") and
 // nothing else, and the shell's AuthGate skips the whole fifteen-step
-// first-boot wizard when it reports true. build.sh created that file in the
-// rootfs, unconditionally, from 2026-03-31 until 2026-08-15 — so every image
-// ever shipped, live and installed, booted claiming setup was already done.
+// first-boot wizard when it reports true. The wizard covers language, timezone,
+// network, the identity keypair, SSH keys and the recovery kit. When the marker
+// is pre-created, none of it runs: a first boot asks for a display name, a
+// username and a password, and goes straight to the desktop.
 //
-// The wizard covers language, timezone, network, the identity keypair, SSH keys
-// and the recovery kit. None of it ran. A first boot asked for a display name,
-// a username and a password, and went straight to the desktop.
+// That has now shipped from THREE separate build paths, and the first fix
+// missed the other two because it only looked at lines mentioning $ROOTFS:
 //
-// This is asserted against the SCRIPT rather than a built image because a build
-// takes an hour and this regression is one line. The complementary check —
-// that a real image actually shows the wizard — belongs in a boot test.
+//   1. build.sh created it in the rootfs, unconditionally, 2026-03-31 →
+//      2026-08-15. Every image, live and installed.
+//   2. build.sh --deploy used it as the "system packages installed" sentinel:
+//      `test -f .setup-complete` to decide whether to apt-get, `touch` it when
+//      done. Every remote box provisioned over SSH.
+//   3. The Dockerfile carried `RUN touch /var/lib/vulos/.setup-complete` as a
+//      layer. Every container, including the published one.
+//
+// So the check is now about the ACT, not the location: no build artefact may
+// create this file, anywhere, by any means. Reading it is fine — that is how a
+// box legitimately asks whether it has been set up.
+//
+// scripts/dev.sh and scripts/seed-demo.sh may write it, and are deliberately
+// not in the list below: a dev container and a seeded demo box are not shipped
+// images, and keeping the convenience there is what stops it being smuggled
+// back into one.
+//
+// Asserted against the SCRIPTS rather than a built image because a build takes
+// an hour and this regression is one line. The complementary check — that a
+// real image actually shows the wizard — belongs in a boot test.
 func TestBuildDoesNotPreCompleteSetup(t *testing.T) {
-	src := readRepoFile(t, "build.sh")
-
-	// Strip comments before matching. This file now carries a long comment
-	// ABOUT .setup-complete, and a naive grep would match the explanation and
-	// fail forever — a guard that cannot pass is as useless as one that cannot
-	// fail.
-	var code []string
-	for _, line := range strings.Split(src, "\n") {
-		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
-			continue
+	// The detector, checked against known-good and known-bad lines BEFORE it is
+	// pointed at anything real. A guard whose predicate has quietly stopped
+	// matching passes on every input, which is the failure mode this whole test
+	// exists to catch; three shipped causes are not enough of a lesson to skip
+	// proving the thing still bites.
+	for _, bad := range []string{
+		`touch /var/lib/vulos/.setup-complete`,
+		`RUN touch /var/lib/vulos/.setup-complete`,
+		`  touch "$ROOTFS/var/lib/vulos/.setup-complete"`,
+		`echo done > /var/lib/vulos/.setup-complete`,
+		`: >/var/lib/vulos/.setup-complete`,
+		`install -m 644 /dev/null /var/lib/vulos/.setup-complete`,
+	} {
+		if !createsSetupMarker(bad) {
+			t.Fatalf("the detector no longer recognises a marker write, so this "+
+				"guard would pass on anything:\n  %s", bad)
 		}
-		code = append(code, line)
 	}
-	body := strings.Join(code, "\n")
+	for _, ok := range []string{
+		`ssh "$DEPLOY_HOST" "test -f /var/lib/vulos/.setup-complete"`,
+		`if [ -f /var/lib/vulos/.setup-complete ]; then`,
+		`# DO NOT create /var/lib/vulos/.setup-complete here.`,
+		`touch /var/lib/vulos/.packages-installed`,
+	} {
+		if createsSetupMarker(ok) {
+			t.Fatalf("the detector flags a line that only READS the marker (or is a "+
+				"different file); it would be turned off rather than fixed:\n  %s", ok)
+		}
+	}
 
-	// The deploy path (--deploy) legitimately INSPECTS the marker on a remote
-	// box: `ssh host test -f /var/lib/vulos/.setup-complete`. Reading is fine.
-	// Creating it inside $ROOTFS is what ships a lie.
-	for _, line := range strings.Split(body, "\n") {
-		if !strings.Contains(line, ".setup-complete") {
-			continue
-		}
-		if !strings.Contains(line, "ROOTFS") {
-			continue // remote inspection, not image content
-		}
-		if strings.Contains(line, "touch") || strings.Contains(line, "> ") {
-			t.Errorf("build.sh creates .setup-complete inside the rootfs:\n  %s\n\n"+
+	// Every build artefact that produces something a user runs.
+	for _, rel := range []string{"build.sh", "Dockerfile"} {
+		src := readRepoFile(t, rel)
+		for i, line := range strings.Split(src, "\n") {
+			if !createsSetupMarker(line) {
+				continue
+			}
+			t.Errorf("%s:%d creates .setup-complete:\n  %s\n\n"+
 				"That makes /api/setup/status report true on a machine nobody has "+
 				"set up, and AuthGate then skips the first-boot wizard entirely — "+
 				"no timezone, no network, no identity keypair, no SSH keys, no "+
 				"recovery kit. The marker is runtime state: whatever COMPLETES "+
-				"setup writes it. scripts/dev.sh and scripts/seed-demo.sh may "+
-				"touch it, because a seeded dev box is not a shipped image.",
-				strings.TrimSpace(line))
+				"setup writes it, which on a real box is POST /api/setup/complete. "+
+				"scripts/dev.sh and scripts/seed-demo.sh may write it, because a "+
+				"dev container is not a shipped image.",
+				rel, i+1, strings.TrimSpace(line))
+		}
+
+		// Coverage: this test is worthless if it stopped being able to see its
+		// subject. Each file must still mention the marker somewhere — at
+		// minimum the comment explaining why it must not be created — or the
+		// check has lost the thing it guards.
+		if !strings.Contains(src, ".setup-complete") {
+			t.Errorf("%s no longer mentions .setup-complete at all — this guard has "+
+				"lost its subject in that file and would pass on any content", rel)
 		}
 	}
+}
 
-	// Coverage assertion: this test is worthless if it stopped being able to
-	// see the file it guards. build.sh must still mention the marker somewhere
-	// (the --deploy inspection at minimum), or the check has lost its subject.
-	if !strings.Contains(src, ".setup-complete") {
-		t.Fatal("build.sh no longer mentions .setup-complete at all — this guard " +
-			"has lost its subject and would pass on any file")
+// createsSetupMarker reports whether a single build-script line WRITES the
+// first-boot completion marker. Reads are not writes: `test -f` on a remote box
+// is how a deploy legitimately asks a question.
+func createsSetupMarker(line string) bool {
+	code := line
+	if i := strings.Index(code, "#"); i >= 0 {
+		code = code[:i]
 	}
+	if !strings.Contains(code, ".setup-complete") {
+		return false
+	}
+	// Anything that can bring a file into existence.
+	for _, verb := range []string{"touch", "install ", "cp ", "mv ", "tee ", "dd "} {
+		if strings.Contains(code, verb) {
+			return true
+		}
+	}
+	// Redirections: `> file`, `>>file`, `: >file`.
+	before := code[:strings.Index(code, ".setup-complete")]
+	return strings.Contains(before, ">")
 }

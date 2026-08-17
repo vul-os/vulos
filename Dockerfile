@@ -252,7 +252,23 @@ COPY --from=backend /vulos-init /usr/local/bin/vulos-init
 COPY scripts/xdg-open /usr/local/bin/xdg-open
 RUN rm -f /usr/bin/xdg-open && ln -s /usr/local/bin/xdg-open /usr/bin/xdg-open
 
-RUN touch /var/lib/vulos/.setup-complete
+# DO NOT create /var/lib/vulos/.setup-complete here.
+#
+# This layer used to, and it is the same defect build.sh shipped for four and a
+# half months: GET /api/setup/status is os.Stat on exactly that path, and
+# AuthGate runs the fifteen-step first-boot wizard only when it reports false.
+# Every container built from this file therefore booted claiming a person had
+# already set it up — welcome, chooser, device, language, timezone, network,
+# account, pin, apps, appearance, identity, storage, ssh, recoverykit, ready,
+# none of them. What a first boot offered instead was the create-account form.
+#
+# The convenience was real — a dev starting a fresh container does not want to
+# walk fifteen steps — but it belongs in the dev entry point, not in the image
+# that ships to users. scripts/dev.sh writes the marker into the container after
+# it starts, and scripts/seed-demo.sh does the same for a seeded demo box.
+#
+# The marker is runtime state. Whatever COMPLETES setup writes it, and on a real
+# box that is POST /api/setup/complete, called by the wizard's last step.
 
 ENV PORT=8080
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt

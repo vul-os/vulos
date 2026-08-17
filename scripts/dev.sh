@@ -55,6 +55,21 @@ start_container() {
   sleep 3
 
   if docker ps --filter "name=$NAME" --format '{{.Status}}' | grep -q "Up"; then
+    # Skip the fifteen-step wizard on a dev container.
+    #
+    # This USED to be a `RUN touch` layer in the Dockerfile, which meant every
+    # image built from it — including the published one — booted claiming a
+    # person had already set it up, and no first boot anywhere ever ran the
+    # wizard. The convenience is legitimate; shipping it to users is not. So it
+    # lives here, in the dev entry point, applied to the running container.
+    #
+    # Set VULOS_DEV_RUN_SETUP=1 to leave the marker off and actually walk the
+    # wizard — which is the only way to see, on a dev box, what a real first
+    # boot looks like.
+    if [ "${VULOS_DEV_RUN_SETUP:-0}" != "1" ]; then
+      docker exec "$NAME" sh -c 'mkdir -p /var/lib/vulos && touch /var/lib/vulos/.setup-complete' \
+        || echo "${RED}Could not write the dev setup marker — the wizard will run.${NC}"
+    fi
     echo "${GREEN}OS running at http://localhost:$PORT${NC}"
   else
     echo "${RED}Failed to start. Logs:${NC}"
