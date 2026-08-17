@@ -220,14 +220,27 @@ set -u
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >/dev/null 2>&1 || { echo "APT_UPDATE_FAILED"; exit 3; }
 [ "\$(dpkg --print-architecture)" = "$arch" ] || { echo "WRONG_ARCH \$(dpkg --print-architecture)"; exit 3; }
-apt-get install -y -qq curl ca-certificates python3 >/dev/null 2>&1 || { echo "TOOLS_FAILED"; exit 3; }
 VER=\$(apt-cache policy "$PKG" 2>/dev/null | awk -F': ' '/Candidate:/{print \$2}')
 [ -n "\$VER" ] && [ "\$VER" != "(none)" ] || { echo "NO_CANDIDATE"; exit 4; }
 echo "RESOLVED_VERSION=\$VER"
+
+# ── RESOLVE BEFORE INSTALLING ANYTHING. This order is load-bearing. ──────────
+# \`--print-uris\` reports what is missing from the container it runs in. An
+# earlier version of this script installed curl+python3 first, which dragged in
+# libexpat1 and a dozen others, so those were absent from the closure while the
+# manifest still declared base_image=debian:trixie-slim. The result installed
+# cleanly on a pristine base and then died with
+#   blender: error while loading shared libraries: libexpat.so.1
+# That is CLOSURE-03's failure mode, and it was measured, not imagined
+# (roadmap/DISTRO-SOURCED-APPS.md §4.4, attempt 3). The closure is resolved
+# against the DECLARED base and nothing is installed until afterwards.
 apt-get install --print-uris -y --no-install-recommends "$PKG" 2>/dev/null | grep "^'" > /uris.raw
 echo "CLOSURE_COUNT=\$(wc -l < /uris.raw)"
 echo "CLOSURE_BYTES=\$(awk '{s+=\$3} END{print s+0}' /uris.raw)"
 if [ "$RESOLVE_ONLY" = "1" ]; then cat /uris.raw; exit 0; fi
+
+# Safe to perturb the container now: the closure is already frozen above.
+apt-get install -y -qq curl ca-certificates python3 >/dev/null 2>&1 || { echo "TOOLS_FAILED"; exit 3; }
 python3 - "$SNAPSHOT" <<'PY' > /plan.json
 import re,sys,json
 snap=sys.argv[1]; out=[]
