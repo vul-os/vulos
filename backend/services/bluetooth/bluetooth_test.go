@@ -1,7 +1,12 @@
 package bluetooth
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -252,4 +257,276 @@ func TestAvailable_LiveSkip(t *testing.T) {
 	svc := New()
 	// Just ensure Available() doesn't panic; result depends on hardware.
 	_ = svc.Available()
+}
+
+// ---------------------------------------------------------------------------
+// "I could not ask" must not be served as an answer
+//
+// Every test below drives a FAILURE path. They exist because this package used
+// to have none: `GetStatus` swallowed a bluetoothctl error and returned a zero
+// Status, which cmd/server wrote as HTTP 200 `{"powered":false,"devices":null}`
+// — byte-identical to a healthy adapter that is switched off with nothing
+// paired. The Settings panel disables its toggle when `powered` is absent, on
+// the principle that a radio whose state is unknown is not a radio you can be
+// asked to toggle; because the box never said "I don't know", that state could
+// not be reached from the real backend at all.
+//
+// Each failure test is paired with a SUCCESS test asserting the same code path
+// still produces a real answer, so none of this can be satisfied by making
+// GetStatus always fail.
+// ---------------------------------------------------------------------------
+
+// fakeRunner is a scripted bluetoothctl. `fail` names the subcommands that
+// error; everything else is answered from `out`. It records every invocation
+// so a test can assert the call actually happened rather than passing because
+// nothing ran.
+type fakeRunner struct {
+	out   map[string]string
+	fail  map[string]bool
+	calls []string
+}
+
+func (f *fakeRunner) run(args ...string) (string, error) {
+	key := args[0]
+	f.calls = append(f.calls, strings.Join(args, " "))
+	if f.fail[key] {
+		return "", fmt.Errorf("fake: %s refused", key)
+	}
+	return f.out[key], nil
+}
+
+func (f *fakeRunner) called(sub string) bool {
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// healthyRunner answers every call the way a live box would.
+func healthyRunner() *fakeRunner {
+	return &fakeRunner{
+		out: map[string]string{
+			"show":    fixtureShow,
+			"devices": fixtureDevices,
+			"info":    fixtureInfoAudio,
+		},
+		fail: map[string]bool{},
+	}
+}
+
+func TestGetStatus_ShowFails_ReportsUnavailableNotPoweredOff(t *testing.T) {
+	f := healthyRunner()
+	f.fail["show"] = true
+	svc := newWithRunner(f.run)
+
+	st, err := svc.GetStatus(context.Background())
+	if err == nil {
+		t.Fatalf("GetStatus returned nil error when `bluetoothctl show` failed; it reported "+
+			"powered=%v devices=%d as if measured. A dead bluetoothd must not be served as a "+
+			"powered-off radio — the caller cannot tell the two apart and one of them is a lie.",
+			st.Powered, len(st.Devices))
+	}
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error must wrap ErrUnavailable so the HTTP layer can answer 503 rather than "+
+			"500 or 200; got %v", err)
+	}
+	if !f.called("show") {
+		t.Error("test is vacuous: bluetoothctl show was never invoked")
+	}
+}
+
+func TestGetStatus_DevicesFails_ReportsUnavailableNotEmptyList(t *testing.T) {
+	f := healthyRunner()
+	f.fail["devices"] = true
+	svc := newWithRunner(f.run)
+
+	st, err := svc.GetStatus(context.Background())
+	if err == nil {
+		t.Fatalf("GetStatus returned nil error when `bluetoothctl devices` failed, with %d devices. "+
+			"An empty device list because the daemon is dead and an empty device list because "+
+			"nothing is nearby are different facts.", len(st.Devices))
+	}
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error must wrap ErrUnavailable; got %v", err)
+	}
+	if !f.called("devices") {
+		t.Error("test is vacuous: bluetoothctl devices was never invoked")
+	}
+}
+
+// The non-vacuity control for both tests above: a box that answers must still
+// produce a measured Status, including the genuinely powered-off case, so the
+// fix cannot be "return an error whatever happens".
+func TestGetStatus_PoweredOffIsStillAMeasuredAnswer(t *testing.T) {
+	f := &fakeRunner{
+		out:  map[string]string{"show": fixtureShowOff, "devices": ""},
+		fail: map[string]bool{},
+	}
+	svc := newWithRunner(f.run)
+
+	st, err := svc.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("a box that answered must not report unavailable: %v", err)
+	}
+	if st.Powered {
+		t.Error("Powered=true for the powered-off fixture")
+	}
+	if len(st.Devices) != 0 {
+		t.Errorf("expected 0 devices for an empty listing, got %d", len(st.Devices))
+	}
+	if st.Address != "11:22:33:44:55:66" {
+		t.Errorf("Address=%q — the measured fields must survive the change", st.Address)
+	}
+}
+
+func TestGetStatus_HealthyBoxReturnsEveryDevice(t *testing.T) {
+	f := healthyRunner()
+	svc := newWithRunner(f.run)
+
+	st, err := svc.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("healthy box reported unavailable: %v", err)
+	}
+	if !st.Powered {
+		t.Error("Powered=false for the powered-on fixture")
+	}
+	// fixtureDevices has three "Device " lines; asserting the count keeps a
+	// listing loop that ran zero times from passing as success.
+	if len(st.Devices) != 3 {
+		t.Fatalf("expected 3 devices from fixtureDevices, got %d", len(st.Devices))
+	}
+	for _, d := range st.Devices {
+		if d.Unmeasured {
+			t.Errorf("device %s marked Unmeasured though every info call succeeded", d.Address)
+		}
+	}
+}
+
+func TestListDevices_InfoFails_MarksDeviceUnmeasured(t *testing.T) {
+	f := healthyRunner()
+	f.fail["info"] = true
+	svc := newWithRunner(f.run)
+
+	devs, err := svc.listDevices(context.Background())
+	if err != nil {
+		t.Fatalf("a failed per-device info must not blank the whole listing: %v", err)
+	}
+	if len(devs) != 3 {
+		t.Fatalf("expected 3 devices, got %d", len(devs))
+	}
+	for _, d := range devs {
+		if !d.Unmeasured {
+			t.Errorf("device %s: info failed but Unmeasured=false, so paired=%v connected=%v "+
+				"trusted=%v type=%q are reported as observations nobody made",
+				d.Address, d.Paired, d.Connected, d.Trusted, d.Type)
+		}
+		if d.Paired || d.Connected || d.Trusted {
+			t.Errorf("device %s: flags set from an info call that failed", d.Address)
+		}
+		if d.Address == "" || d.Name == "" {
+			t.Errorf("device %s: address/name come from the listing that SUCCEEDED and must survive", d.Address)
+		}
+	}
+	if !f.called("info") {
+		t.Error("test is vacuous: bluetoothctl info was never invoked")
+	}
+}
+
+func TestListDevices_InfoSucceeds_DeviceIsMeasured(t *testing.T) {
+	f := healthyRunner()
+	svc := newWithRunner(f.run)
+
+	devs, err := svc.listDevices(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(devs) != 3 {
+		t.Fatalf("expected 3 devices, got %d", len(devs))
+	}
+	if devs[0].Unmeasured {
+		t.Error("info succeeded but the device is flagged Unmeasured")
+	}
+	if !devs[0].Paired || !devs[0].Connected || devs[0].Type != "audio" {
+		t.Errorf("measured flags lost: %+v", devs[0])
+	}
+}
+
+// The wire shape is the contract the Settings panel reads, so assert it
+// directly rather than trusting the struct.
+func TestDeviceJSON_UnmeasuredIsAbsentWhenMeasured(t *testing.T) {
+	b, err := json.Marshal(Device{Address: "AA", Name: "n", Paired: true, Type: "audio"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "unmeasured") {
+		t.Errorf("a measured device must serialise exactly as before this change, so existing "+
+			"callers are unaffected; got %s", b)
+	}
+}
+
+func TestDeviceJSON_UnmeasuredIsPresentWhenUnmeasured(t *testing.T) {
+	b, err := json.Marshal(Device{Address: "AA", Name: "n", Unmeasured: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"unmeasured":true`) {
+		t.Errorf("an unmeasured device must say so on the wire; got %s", b)
+	}
+}
+
+// Pair's follow-on `trust` failing must not be reported as a failure to pair —
+// the device IS paired — but it must not silently vanish either.
+func TestPair_TrustFailureDoesNotFailThePairing(t *testing.T) {
+	f := healthyRunner()
+	f.fail["trust"] = true
+	svc := newWithRunner(f.run)
+
+	if err := svc.Pair(context.Background(), "AA:BB:CC:DD:EE:FF"); err != nil {
+		t.Fatalf("pair succeeded but was reported as failed because trust failed: %v", err)
+	}
+	if !f.called("trust") {
+		t.Error("test is vacuous: bluetoothctl trust was never invoked")
+	}
+}
+
+func TestPair_PairFailureIsReported(t *testing.T) {
+	f := healthyRunner()
+	f.fail["pair"] = true
+	svc := newWithRunner(f.run)
+
+	if err := svc.Pair(context.Background(), "AA:BB:CC:DD:EE:FF"); err == nil {
+		t.Error("a refused pairing reported success")
+	}
+}
+
+// The remaining mutators already returned their errors; these pin that, since
+// cmd/server now propagates them instead of discarding them.
+func TestMutatorsReportFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		sub  string
+		call func(*Service) error
+	}{
+		{"StartDiscovery", "scan", func(s *Service) error { return s.StartDiscovery(context.Background()) }},
+		{"StopDiscovery", "scan", func(s *Service) error { return s.StopDiscovery(context.Background()) }},
+		{"Disconnect", "disconnect", func(s *Service) error { return s.Disconnect(context.Background(), "AA") }},
+		{"Remove", "remove", func(s *Service) error { return s.Remove(context.Background(), "AA") }},
+		{"SetPower", "power", func(s *Service) error { return s.SetPower(context.Background(), true) }},
+		{"Connect", "connect", func(s *Service) error { return s.Connect(context.Background(), "AA") }},
+	}
+	if len(cases) != 6 {
+		t.Fatalf("expected 6 mutators under test, got %d", len(cases))
+	}
+	for _, tc := range cases {
+		f := healthyRunner()
+		f.fail[tc.sub] = true
+		if err := tc.call(newWithRunner(f.run)); err == nil {
+			t.Errorf("%s: bluetoothctl %s failed but the method reported success", tc.name, tc.sub)
+		}
+		if !f.called(tc.sub) {
+			t.Errorf("%s: test is vacuous, bluetoothctl %s was never invoked", tc.name, tc.sub)
+		}
+	}
 }

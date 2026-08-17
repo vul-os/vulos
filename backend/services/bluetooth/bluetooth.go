@@ -2,6 +2,7 @@ package bluetooth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/exec"
@@ -10,15 +11,56 @@ import (
 	"time"
 )
 
+// ErrUnavailable means this box could not ASK bluetoothctl — the binary is
+// missing, the daemon is not running, or the call timed out. It is not an
+// answer about the radio.
+//
+// It exists because the alternative, which this package shipped, is worse than
+// no answer: GetStatus swallowed the error and returned a zero-valued Status,
+// so a dead bluetoothd was served as HTTP 200 `{"powered":false,"devices":null}`
+// — indistinguishable on the wire from a healthy adapter that is switched off
+// with nothing paired. The Settings panel had already been hardened to disable
+// its toggle when `powered` is absent, on the principle that a radio whose
+// state is unknown is not a radio you can be asked to toggle; that state was
+// unreachable from the real backend, because the box never said "I don't know".
+//
+// The idiom is wltoplevel's (services/wltoplevel/wltoplevel.go:126) and is used
+// here for the same reason: the caller gets an error, and the HTTP layer turns
+// it into 503, never 200-with-a-zero-value.
+var ErrUnavailable = errors.New("bluetooth: bluetoothctl unavailable")
+
 // Device is a discovered or paired Bluetooth device.
 type Device struct {
-	Address   string `json:"address"`
-	Name      string `json:"name"`
+	Address string `json:"address"`
+	Name    string `json:"name"`
+
+	// Paired, Connected, Trusted and Type come from "bluetoothctl info <addr>".
+	// When Unmeasured is true that call FAILED and all four below are zero
+	// values that were never observed — see Unmeasured.
 	Paired    bool   `json:"paired"`
 	Connected bool   `json:"connected"`
 	Trusted   bool   `json:"trusted"`
 	Type      string `json:"type"` // "audio", "input", "phone", "computer", "unknown"
 	RSSI      int    `json:"rssi,omitempty"`
+
+	// Unmeasured is true when "bluetoothctl info <addr>" could not be run for
+	// this device, so its flags above are UNMEASURED rather than false. The
+	// error from that call used to be discarded (`info, _ := btctl(...)`),
+	// which reported a connected headset as `connected:false` and a paired
+	// keyboard as `paired:false` — measured-looking answers nobody measured,
+	// and the exact input the panel uses to decide whether to offer "Pair".
+	//
+	// Address and Name are still real: they come from "bluetoothctl devices",
+	// which succeeded. Only the info-derived fields are unknown, so this is a
+	// per-device flag rather than a failure of the whole listing — a device
+	// drifting out of range between the two calls is a normal race and must not
+	// blank the panel.
+	//
+	// `omitempty` keeps the success path byte-identical to the previous wire
+	// shape, so existing callers are unaffected. Note the negative sense is
+	// deliberate: absent must mean "measured", because that is what every
+	// response from an older box means.
+	Unmeasured bool `json:"unmeasured,omitempty"`
 }
 
 // Status is the Bluetooth adapter state.
@@ -34,29 +76,49 @@ type Status struct {
 // Service manages Bluetooth via bluetoothctl.
 type Service struct {
 	mu sync.Mutex
+
+	// run invokes bluetoothctl. It is a field so tests can drive the error
+	// paths without a bluetooth daemon; production always gets btctl. The
+	// injection point mirrors wltoplevel's Executor, for the same reason —
+	// the failure branches are the ones that were wrong, and they are
+	// unreachable in a test that can only run the real binary.
+	run func(args ...string) (string, error)
 }
 
 func New() *Service {
-	return &Service{}
+	return &Service{run: btctl}
 }
 
-// Available checks if Bluetooth hardware is present.
+// newWithRunner is used by tests to inject a fake bluetoothctl.
+func newWithRunner(run func(args ...string) (string, error)) *Service {
+	return &Service{run: run}
+}
+
+// Available reports whether bluetoothctl is installed AND answered. It cannot
+// distinguish "no Bluetooth hardware" from "bluetoothd is dead", so a false
+// here is not evidence about the radio; callers wanting that distinction must
+// use GetStatus and check for ErrUnavailable.
 func (s *Service) Available() bool {
 	_, err := exec.LookPath("bluetoothctl")
 	if err != nil {
 		return false
 	}
-	out, err := btctl("show")
+	out, err := s.run("show")
 	return err == nil && strings.Contains(out, "Controller")
 }
 
 // GetStatus returns the adapter and device state.
-func (s *Service) GetStatus(ctx context.Context) Status {
+//
+// A failure to run "bluetoothctl show" returns ErrUnavailable and a zero
+// Status which the caller MUST NOT serve — see ErrUnavailable. Returning
+// (zero, nil) here was the bug: it asserted powered:false about a radio nobody
+// had managed to look at.
+func (s *Service) GetStatus(ctx context.Context) (Status, error) {
 	st := Status{}
 
-	out, err := btctl("show")
+	out, err := s.run("show")
 	if err != nil {
-		return st
+		return Status{}, fmt.Errorf("%w: bluetoothctl show: %v", ErrUnavailable, err)
 	}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
@@ -80,8 +142,17 @@ func (s *Service) GetStatus(ctx context.Context) Status {
 		}
 	}
 
-	st.Devices = s.listDevices(ctx)
-	return st
+	devs, err := s.listDevices(ctx)
+	if err != nil {
+		// "show" answered but "devices" did not. An empty device list because
+		// the daemon just died and an empty device list because nothing is
+		// paired or nearby are different facts, and the panel draws them
+		// identically, so this is unavailable too — not a status with no
+		// devices in it.
+		return Status{}, err
+	}
+	st.Devices = devs
+	return st, nil
 }
 
 // SetPower turns Bluetooth on or off.
@@ -92,7 +163,7 @@ func (s *Service) SetPower(ctx context.Context, on bool) error {
 	if on {
 		val = "on"
 	}
-	_, err := btctl("power", val)
+	_, err := s.run("power", val)
 	log.Printf("[bluetooth] power %s", val)
 	return err
 }
@@ -101,7 +172,7 @@ func (s *Service) SetPower(ctx context.Context, on bool) error {
 func (s *Service) StartDiscovery(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("scan", "on")
+	_, err := s.run("scan", "on")
 	return err
 }
 
@@ -109,7 +180,7 @@ func (s *Service) StartDiscovery(ctx context.Context) error {
 func (s *Service) StopDiscovery(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("scan", "off")
+	_, err := s.run("scan", "off")
 	return err
 }
 
@@ -117,11 +188,18 @@ func (s *Service) StopDiscovery(ctx context.Context) error {
 func (s *Service) Pair(ctx context.Context, address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("pair", address)
+	_, err := s.run("pair", address)
 	if err != nil {
 		return fmt.Errorf("pair %s: %w", address, err)
 	}
-	btctl("trust", address)
+	// Trusting is a follow-on convenience (it stops bluetoothd re-asking on
+	// every reconnect), so a failure here does not undo the pairing and is not
+	// returned as a failure to pair. It is no longer thrown away either: the
+	// device really is paired-but-untrusted, and that is the difference between
+	// a headset that reconnects by itself and one that does not.
+	if _, err := s.run("trust", address); err != nil {
+		log.Printf("[bluetooth] paired %s but trust failed: %v — device will not auto-reconnect", address, err)
+	}
 	log.Printf("[bluetooth] paired %s", address)
 	return nil
 }
@@ -130,7 +208,7 @@ func (s *Service) Pair(ctx context.Context, address string) error {
 func (s *Service) Connect(ctx context.Context, address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("connect", address)
+	_, err := s.run("connect", address)
 	if err != nil {
 		return fmt.Errorf("connect %s: %w", address, err)
 	}
@@ -142,7 +220,7 @@ func (s *Service) Connect(ctx context.Context, address string) error {
 func (s *Service) Disconnect(ctx context.Context, address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("disconnect", address)
+	_, err := s.run("disconnect", address)
 	return err
 }
 
@@ -150,15 +228,20 @@ func (s *Service) Disconnect(ctx context.Context, address string) error {
 func (s *Service) Remove(ctx context.Context, address string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := btctl("remove", address)
+	_, err := s.run("remove", address)
 	log.Printf("[bluetooth] removed %s", address)
 	return err
 }
 
-func (s *Service) listDevices(ctx context.Context) []Device {
-	out, err := btctl("devices")
+// listDevices enumerates known devices.
+//
+// A failure of "bluetoothctl devices" returns ErrUnavailable — NOT nil. Those
+// two used to be the same value, so "I could not ask" was served as "there is
+// nothing here".
+func (s *Service) listDevices(ctx context.Context) ([]Device, error) {
+	out, err := s.run("devices")
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: bluetoothctl devices: %v", ErrUnavailable, err)
 	}
 
 	var devices []Device
@@ -176,8 +259,15 @@ func (s *Service) listDevices(ctx context.Context) []Device {
 
 		dev := Device{Address: addr, Name: name}
 
-		// Get detailed info
-		info, _ := btctl("info", addr)
+		// Get detailed info. A failure here leaves Paired/Connected/Trusted/Type
+		// UNSET and says so, rather than reporting the zero values as
+		// observations — the error used to be discarded outright.
+		info, infoErr := s.run("info", addr)
+		if infoErr != nil {
+			dev.Unmeasured = true
+			devices = append(devices, dev)
+			continue
+		}
 		for _, l := range strings.Split(info, "\n") {
 			l = strings.TrimSpace(l)
 			if strings.Contains(l, "Paired: yes") {
@@ -205,7 +295,7 @@ func (s *Service) listDevices(ctx context.Context) []Device {
 
 		devices = append(devices, dev)
 	}
-	return devices
+	return devices, nil
 }
 
 // parseStatus parses the text output of "bluetoothctl show" into a Status.

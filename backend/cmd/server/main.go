@@ -13,6 +13,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -2319,8 +2320,30 @@ func main() {
 	})
 
 	// Bluetooth
+	//
+	// writeBluetoothStatus serves a Status, or says the box could not measure
+	// one. It must never do what this route used to do — write the zero Status
+	// that GetStatus returned after bluetoothctl failed, as a 200. That reply
+	// asserts `powered:false` about a radio nobody looked at, and the Settings
+	// panel's "unknown radio" state (toggle disabled, because a radio whose
+	// state is unknown is not one you can be asked to toggle) was unreachable
+	// as a result. 503 is what wltoplevel's /api/shell/windows already does for
+	// the identical situation.
+	writeBluetoothStatus := func(w http.ResponseWriter, st bluetooth.Status, err error) {
+		if err != nil {
+			if errors.Is(err, bluetooth.ErrUnavailable) {
+				writeErr(w, http.StatusServiceUnavailable,
+					"bluetooth is not responding — bluetoothctl is missing or bluetoothd is not running")
+				return
+			}
+			writeErr(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, st)
+	}
 	mux.HandleFunc("GET /api/bluetooth/status", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, btSvc.GetStatus(r.Context()))
+		st, err := btSvc.GetStatus(r.Context())
+		writeBluetoothStatus(w, st, err)
 	})
 	mux.HandleFunc("POST /api/bluetooth/power", func(w http.ResponseWriter, r *http.Request) {
 		// SEC: toggling bluetooth power is a privileged host mutation — admin only.
@@ -2337,7 +2360,12 @@ func main() {
 			writeErr(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, btSvc.GetStatus(r.Context()))
+		// The write landed; the read-back may still fail. Reporting the zero
+		// Status here would be the same lie as on GET, so it gets the same
+		// treatment — the client is told the new state is unknown rather than
+		// handed a fabricated one.
+		st, err := btSvc.GetStatus(r.Context())
+		writeBluetoothStatus(w, st, err)
 	})
 	mux.HandleFunc("POST /api/bluetooth/scan", func(w http.ResponseWriter, r *http.Request) {
 		// SEC: starting bluetooth discovery is a privileged host mutation — admin only.
@@ -2349,10 +2377,18 @@ func main() {
 			On bool `json:"on"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		// The return value was discarded, so a scan that never started replied
+		// `{"status":"ok"}` and the panel waited 3s and redrew an empty device
+		// list — a dead daemon rendered as "nothing nearby".
+		var err error
 		if req.On {
-			btSvc.StartDiscovery(r.Context())
+			err = btSvc.StartDiscovery(r.Context())
 		} else {
-			btSvc.StopDiscovery(r.Context())
+			err = btSvc.StopDiscovery(r.Context())
+		}
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
@@ -2400,7 +2436,11 @@ func main() {
 			Address string `json:"address"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		btSvc.Disconnect(r.Context(), req.Address)
+		// Was discarded: a device that stayed connected reported "disconnected".
+		if err := btSvc.Disconnect(r.Context(), req.Address); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
 		writeJSON(w, map[string]string{"status": "disconnected"})
 	})
 	mux.HandleFunc("POST /api/bluetooth/remove", func(w http.ResponseWriter, r *http.Request) {
@@ -2414,7 +2454,12 @@ func main() {
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 		execAuditLog(r, "POST /api/bluetooth/remove", fmt.Sprintf("addr=%q", req.Address))
-		btSvc.Remove(r.Context(), req.Address)
+		// Was discarded: a device still paired to this box reported "removed",
+		// and the panel redrew it in the list as though the user had misclicked.
+		if err := btSvc.Remove(r.Context(), req.Address); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
 		writeJSON(w, map[string]string{"status": "removed"})
 	})
 
