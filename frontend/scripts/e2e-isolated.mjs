@@ -74,14 +74,23 @@ const PLANT_LINE = `\n// e2e provenance probe\nconsole.debug('${MARKER}')\n`
 let planted = false
 function plant() {
   const src = readFileSync(PLANT_FILE, 'utf8')
+  if (src.includes(MARKER)) throw new Error('src/main.tsx already contains the marker — refusing to plant a second one')
   writeFileSync(PLANT_FILE, src + PLANT_LINE)
   planted = true
-  log(`planted marker into src/main.tsx`)
+  log('planted marker into src/main.tsx')
 }
 function unplant() {
   if (!planted) return
   const src = readFileSync(PLANT_FILE, 'utf8')
-  writeFileSync(PLANT_FILE, src.endsWith(PLANT_LINE) ? src.slice(0, -PLANT_LINE.length) : src)
+  if (!src.includes(PLANT_LINE)) { planted = false; return }
+  // Removed by CONTENT, not by trailing-suffix. The first version stripped the
+  // last PLANT_LINE.length characters only when the file still ENDED with the
+  // marker — and this repository has several agents editing concurrently, so a
+  // write that landed underneath this process left the marker stranded in
+  // src/main.tsx with the revert reporting success. Matching the exact inserted
+  // text is both safer (it cannot truncate an unrelated edit) and correct when
+  // the marker is no longer last.
+  writeFileSync(PLANT_FILE, src.replace(PLANT_LINE, ''))
   planted = false
   log('reverted marker')
 }

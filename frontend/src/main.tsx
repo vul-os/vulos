@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { getInitialResolvedTheme } from './core/ThemeProvider.jsx'
+import { DENSITY_LS_KEY } from './core/prefKeys'
 // RELAY-CLIENT-04: relay-client shared package, with OS-specific seams.
 // configure() MUST run before any other relay-client import touches localStorage
 // so existing OS user state under 'vulos.os.endpoints.v1' survives the migration
@@ -40,8 +41,16 @@ bootstrapOffline({
 })
 
 // WAVE-13: apply the persisted shell density before first paint (no flash).
+//
+// This is the CACHE read, and it is why the localStorage copy of a synced
+// preference still exists after SYNC-PREFS-01: it runs before React mounts and
+// long before a profile can be fetched, so without a synchronous local copy
+// every reload would flash the default density and the default theme. The key
+// comes from core/prefKeys.ts rather than a literal — the same constant
+// hydration's one-time adoption reads, so the two cannot drift into a state
+// where this file paints from a key nothing migrates.
 try {
-  document.documentElement.dataset.density = localStorage.getItem('vulos.density') || 'comfortable'
+  document.documentElement.dataset.density = localStorage.getItem(DENSITY_LS_KEY) || 'comfortable'
 } catch { /* localStorage unavailable — default comfortable via CSS */ }
 
 // Apply the resolved theme (Light / Dark / System) before first paint so a
