@@ -33,6 +33,11 @@ export const SECTIONS: { id: string; label: string }[] = [
   { id: 'connmode', label: 'Connection Mode' },
   { id: 'network', label: 'Remote Access' },
   { id: 'lanpairing', label: 'Native Pairing' },
+  // Browser Trust shipped alongside Native Pairing and was left out of this
+  // list, so the responsive sweep and the contrast walk both reported the whole
+  // surface clean while never once rendering it. A sweep is only as wide as its
+  // section table.
+  { id: 'browsertrust', label: 'Browser Trust' },
   { id: 'domain', label: 'Custom Domain' },
   { id: 'relay', label: 'Relay & Reachability' },
   { id: 'cdn', label: 'CDN' },
@@ -51,12 +56,24 @@ export const SECTIONS: { id: string; label: string }[] = [
   { id: 'about', label: 'About' },
 ]
 
-/** Boot the shell with a mocked box and open the Settings app. */
-export async function openSettings(page: Page, theme: 'dark' | 'light' = 'dark'): Promise<void> {
+/**
+ * Boot the shell with a mocked box and open the Settings app.
+ *
+ * `overrides` is passed straight through to installBackend, keyed by
+ * "METHOD /path". It exists so a spec can drive what the BOX SAYS — a 500, a
+ * body missing a field, a refused write — which is the only way to test what
+ * Settings claims when it has not been told. Optional and trailing, so the
+ * existing callers are unaffected.
+ */
+export async function openSettings(
+  page: Page,
+  theme: 'dark' | 'light' = 'dark',
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
   await page.addInitScript((t) => {
     try { localStorage.setItem('vulos-theme', t) } catch { /* private mode */ }
   }, theme)
-  await installBackend(page)
+  await installBackend(page, overrides)
   await page.goto('/')
   const input = page.getByPlaceholder(/Search apps/)
   await expect(async () => {
