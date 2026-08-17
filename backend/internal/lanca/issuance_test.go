@@ -387,3 +387,99 @@ func TestCheckNotOnBoxDirectly(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The CA must cope with the REAL name set internal/lan derives.
+// ---------------------------------------------------------------------------
+
+// boxNameSetShape is the DNS SAN list internal/lan's NameSet.DNSNames produces,
+// transcribed BY HAND from its documented construction (for each base name:
+// the bare label, base+".local", base+".lan", base+".home.arpa"; then
+// box.<id>.lan.vulos.org).
+//
+// It is a hand-written fixture rather than a call into package lan on purpose.
+// Importing lan here would make this test assert that two pieces of our own
+// code agree with each other, which is the weaker claim; a transcribed fixture
+// asserts that this CA can serve the name SHAPE the box actually advertises. If
+// lan's shape changes, the cross-package guard noted below is what should catch
+// it — not this test silently following along.
+var boxNameSetShape = []string{
+	"vulos-k3n7q2",
+	"vulos-k3n7q2.local",
+	"vulos-k3n7q2.lan",
+	"vulos-k3n7q2.home.arpa",
+	"vulos",
+	"vulos.local",
+	"vulos.lan",
+	"vulos.home.arpa",
+	"box.01jd8x7k3n7q2.lan.vulos.org",
+}
+
+func TestFilterIssuableCoversEveryDottedNameTheBoxAdvertises(t *testing.T) {
+	ips := []net.IP{net.ParseIP("192.168.1.50"), net.ParseIP("169.254.7.7")}
+	ns, skippedDNS, skippedIPs := FilterIssuable(boxNameSetShape, ips)
+
+	if len(skippedIPs) != 0 {
+		t.Fatalf("CA cannot issue for the box's own LAN addresses %v", skippedIPs)
+	}
+
+	// Everything the box advertises that has a dot in it must be issuable.
+	// These are the names an owner can actually type into a browser and have
+	// resolved by mDNS or the router.
+	for _, n := range boxNameSetShape {
+		if !strings.Contains(n, ".") {
+			continue
+		}
+		if err := CheckDNSName(n); err != nil {
+			t.Errorf("the box advertises %q but this CA cannot issue for it: %v", n, err)
+		}
+	}
+
+	// The bare labels are the KNOWN, ACCEPTED gap: RFC 5280 permittedSubtrees
+	// cannot express "any single label", so they can never appear on a
+	// CA-issued leaf. They must be reported as skipped, not silently dropped
+	// and not smuggled in.
+	wantSkipped := map[string]bool{"vulos": true, "vulos-k3n7q2": true}
+	if len(skippedDNS) != len(wantSkipped) {
+		t.Fatalf("skipped = %v, want exactly the two bare labels %v", skippedDNS, wantSkipped)
+	}
+	for _, n := range skippedDNS {
+		if !wantSkipped[n] {
+			t.Errorf("skipped %q, which is NOT a bare label — a dotted name the box advertises is being dropped from the certificate", n)
+		}
+	}
+	for _, n := range ns.DNSNames {
+		if !strings.Contains(n, ".") {
+			t.Errorf("issuable set contains bare label %q, which no permittedSubtrees entry can cover — the resulting leaf would be rejected by every enforcing verifier", n)
+		}
+	}
+}
+
+func TestAWholeBoxNameSetIssuesAndVerifies(t *testing.T) {
+	root, err := NewRoot("shape-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	csrPEM, err := NewCSR(key, "vulos.local")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ns, _, _ := FilterIssuable(boxNameSetShape, []net.IP{net.ParseIP("192.168.1.50")})
+	_, leaf, err := root.IssueFromCSR(csrPEM, ns, 0)
+	if err != nil {
+		t.Fatalf("could not issue for the box's real name set: %v", err)
+	}
+
+	// Every issuable name must actually verify against the root — proving the
+	// issuing-side filter and the verifying-side constraint agree.
+	for _, name := range ns.DNSNames {
+		if err := verifyAgainstRoot(root, leaf, name); err != nil {
+			t.Errorf("issued for %q but verification fails: %v", name, err)
+		}
+	}
+	if err := verifyAgainstRoot(root, leaf, "192.168.1.50"); err != nil {
+		t.Errorf("browsing by IP fails: %v", err)
+	}
+}

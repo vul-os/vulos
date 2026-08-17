@@ -156,9 +156,27 @@ func cmdIssue(args []string) error {
 			"one name the owner actually types")
 	}
 
-	ns, err := lanca.NewNameSet(splitCSV(*dnsCSV), parseIPs(splitCSV(*ipCSV)))
-	if err != nil {
-		return err
+	// FilterIssuable rather than NewNameSet: an operator can paste the box's
+	// WHOLE advertised name list (which legitimately contains bare labels no
+	// permittedSubtrees entry can cover) and get a working certificate for the
+	// dotted subset. Skipped names are printed loudly rather than swallowed —
+	// that is both how the owner learns which names still warn, and how a typo
+	// like "vuloss.local" surfaces instead of quietly producing a certificate
+	// for a name nobody uses.
+	ns, skippedDNS, skippedIPs := lanca.FilterIssuable(splitCSV(*dnsCSV), parseIPs(splitCSV(*ipCSV)))
+	if len(ns.DNSNames) == 0 {
+		return fmt.Errorf("none of the names in -dns can be issued by this CA (it is name-constrained to %s); nothing to sign",
+			strings.Join(lanca.PermittedDNSDomains, ", "))
+	}
+	for _, n := range skippedDNS {
+		fmt.Fprintf(os.Stderr, "SKIPPED %s — outside this CA's permitted subtrees, so it will NOT be on the certificate.\n", n)
+	}
+	for _, ip := range skippedIPs {
+		fmt.Fprintf(os.Stderr, "SKIPPED %s — outside this CA's permitted IP ranges, so it will NOT be on the certificate.\n", ip)
+	}
+	if len(skippedDNS) > 0 || len(skippedIPs) > 0 {
+		fmt.Fprintf(os.Stderr, "Browsing to a skipped name still works, but shows the one-click warning\n")
+		fmt.Fprintf(os.Stderr, "rather than a padlock. Check the list above for typos.\n\n")
 	}
 
 	root, err := lanca.OpenRoot(*dir)

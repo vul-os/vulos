@@ -35,8 +35,9 @@
 //     sends only a CSR, so the CA never holds box key material either.
 //
 //  2. THE ROOT IS NAME-CONSTRAINED. X.509 permittedSubtrees (RFC 5280 §4.2.1.10)
-//     limit this root to `.local`, `lan.vulos.org`, and private/link-local IP
-//     space. A stolen CA key therefore cannot mint a working certificate for
+//     limit this root to the private name space a box can actually be reached
+//     at — `.local`, `.lan`, `.home.arpa`, `lan.vulos.org` — plus private and
+//     link-local IP ranges. None of those resolve on the public internet. A stolen CA key therefore cannot mint a working certificate for
 //     `google.com` on any verifier that enforces the extension. This is what
 //     separates "one root the owner controls" from "~150 public roots" — the
 //     public roots are unconstrained by construction.
@@ -68,8 +69,27 @@ import (
 // `local` covers `vulos.local` and every avahi-renamed variant (`vulos-2.local`
 // and friends), which matters because the SAN set is DERIVED from the names the
 // box actually advertises rather than hardcoded — see [LeafRequest].
+// `lan` and `home.arpa` are here because internal/lan's NameSet advertises the
+// router-DHCP forms (`vulos.lan`, `vulos.home.arpa`) alongside the mDNS ones.
+// A certificate that omitted them would make the router path fail for the one
+// name an owner's search domain actually produces.
+//
+// Both are safe to permit for the same reason `.local` is: neither is
+// publicly routable, so a stolen key minting `anything.lan` gains an attacker
+// nothing they could not already do by owning the LAN. `home.arpa` is formally
+// reserved for residential networks by RFC 8375.
+//
+// HONEST CAVEAT on `lan`: it is a DE-FACTO private TLD (OpenWrt's historical
+// default), not a de-jure reserved one. ICANN has not delegated it and has
+// blocked the comparable high-collision strings (.home, .corp, .mail) from
+// delegation, but that is precedent, not a guarantee. If `.lan` is ever
+// delegated as a real TLD, this entry must be removed — a stolen key could then
+// mint for a name that resolves on the public internet, which is precisely the
+// property the whole constraint exists to deny.
 var PermittedDNSDomains = []string{
 	"local",
+	"lan",
+	"home.arpa",
 	"lan.vulos.org",
 }
 
@@ -164,4 +184,53 @@ func CheckIP(ip net.IP) error {
 	}
 	return fmt.Errorf("lanca: IP %s is outside this CA's permitted ranges %v — "+
 		"this CA issues only for private and link-local address space", ip, permittedIPCIDRs)
+}
+
+// FilterIssuable splits an observed name set into the names THIS CA may issue
+// for and the names it may not, without failing.
+//
+// It exists because the box legitimately answers to more names than any
+// name-constrained CA can cover. internal/lan's NameSet includes BARE SINGLE
+// LABELS ("vulos", "vulos-k3n7q2") for the case where a resolver's search
+// domain completes them — and RFC 5280 permittedSubtrees has no way to express
+// "any single label". A subtree entry of "vulos" would permit that one literal
+// name and its subdomains, not the general shape, and enumerating every
+// possible box label into a root certificate is not a thing that can be done.
+//
+// So the CA-issued leaf carries a SUBSET of the box's names, and the
+// self-signed leaf carries all of them. This is not a compromise of the
+// derived-name-set invariant — the subset is still DERIVED from what the box
+// advertises, never hardcoded — but it does mean the TLS layer must serve the
+// self-signed certificate for any name the CA-issued one does not cover, rather
+// than serving a CA cert with a missing SAN and turning a one-click warning
+// into a name-mismatch error.
+//
+// Returning the rejected names rather than swallowing them is deliberate: the
+// operator tool prints them, so an owner learns which of their box's names will
+// still show a warning instead of discovering it in a browser.
+func FilterIssuable(dnsNames []string, ips []net.IP) (ns NameSet, skippedDNS []string, skippedIPs []net.IP) {
+	for _, n := range dedupeLower(dnsNames) {
+		if CheckDNSName(n) == nil {
+			ns.DNSNames = append(ns.DNSNames, n)
+		} else {
+			skippedDNS = append(skippedDNS, n)
+		}
+	}
+	seen := map[string]bool{}
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		k := ip.String()
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if CheckIP(ip) == nil {
+			ns.IPs = append(ns.IPs, ip)
+		} else {
+			skippedIPs = append(skippedIPs, ip)
+		}
+	}
+	return ns, skippedDNS, skippedIPs
 }

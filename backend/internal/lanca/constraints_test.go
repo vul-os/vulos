@@ -24,10 +24,24 @@ import (
 // test proves the code equals itself and nothing else.
 // ---------------------------------------------------------------------------
 
-func TestPermittedDNSDomainsAreExactlyTheTwoIntendedSubtrees(t *testing.T) {
-	// Hand-typed. If someone widens the CA to a third subtree, this fails and
-	// they must justify it here rather than silently inherit trust for it.
-	want := []string{"lan.vulos.org", "local"}
+func TestPermittedDNSDomainsAreExactlyTheIntendedSubtrees(t *testing.T) {
+	// Hand-typed. If someone widens the CA to another subtree, this fails and
+	// they must justify it HERE rather than silently inherit trust for it.
+	//
+	// This test has already earned its keep once: adding `lan` and `home.arpa`
+	// for internal/lan's router-DHCP names turned it red, which is the correct
+	// behaviour — widening a trust boundary should require a deliberate edit to
+	// a hand-typed list, not ride along with an unrelated change.
+	//
+	// Every entry must be a name that CANNOT resolve on the public internet.
+	// That is the property that makes a stolen CA key harmless outside the
+	// owner's LAN, and it is the bar any future addition has to clear.
+	//   local        RFC 6762 reserved
+	//   home.arpa    RFC 8375 reserved
+	//   lan          de-facto private TLD, undelegated (see the caveat on
+	//                PermittedDNSDomains — remove it if ICANN ever delegates)
+	//   lan.vulos.org  a real domain, but this subtree is ours
+	want := []string{"home.arpa", "lan", "lan.vulos.org", "local"}
 
 	got := append([]string(nil), PermittedDNSDomains...)
 	sort.Strings(got)
