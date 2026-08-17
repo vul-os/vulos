@@ -140,6 +140,41 @@ export function toProcesses(x: unknown): ProcessInfo[] {
   return Array.isArray(x) ? x.map(toProcess) : []
 }
 
+/**
+ * processKey is a row's IDENTITY, as a string the UI can hold across polls.
+ *
+ * # Why a selection may not be a pid
+ *
+ * The server's whole recycled-pid defence is that a kill request must echo the
+ * starttime the client saw, and it refuses the request when that no longer
+ * holds. That defence is sound, and a UI that selects rows BY PID walks around
+ * it without ever sending a stale pair.
+ *
+ * The route it takes: the list is re-polled every few seconds, and a selection
+ * held as a bare number is re-resolved against the newest list on every render.
+ * If the selected process exits between two polls and the kernel hands its
+ * number to something else, `find(p => p.pid === selectedPid)` silently rebinds
+ * the selection to a DIFFERENT PROGRAM. Nothing on screen moves — same pid in
+ * the same row, still highlighted. The confirmation dialog then snapshots that
+ * row, so the pid and the starttime are read from the same fresh object and
+ * agree with each other. The server verifies them, finds them consistent, and
+ * kills it. The identity check passes because the client is no longer lying —
+ * it is telling the truth about the wrong process.
+ *
+ * So the pair has to be bound at SELECTION time, not at confirmation time, and
+ * that is what this key is for. A recycled pid produces a different key, the
+ * lookup misses, the selection drops to null, and the action bar disables
+ * itself with "Select a process to end it". The user re-selects deliberately,
+ * seeing the new row's name, or does not.
+ *
+ * `none` rather than `undefined` for a row the server sent no starttime for:
+ * those rows cannot be ended at all (signalProcess refuses them), and giving
+ * them a distinct key keeps two such rows on one pid from matching each other.
+ */
+export function processKey(p: Pick<ProcessInfo, 'pid' | 'start'>): string {
+  return `${p.pid}:${typeof p.start === 'number' ? p.start : 'none'}`
+}
+
 // ── network ─────────────────────────────────────────────────────────────────
 
 export interface NetConn {

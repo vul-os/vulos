@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
 import { useTelemetry } from '../../core/useTelemetry'
 import {
-  loadJSON, toProcesses, toNetConns, toAppList, signalProcess, closeApp,
+  loadJSON, toProcesses, toNetConns, toAppList, signalProcess, closeApp, processKey,
   type ProcessInfo, type NetConn, type AppStatus, type ApiFailure,
   type Responsiveness, type SignalMode,
 } from './api'
@@ -161,10 +161,14 @@ export default function ActivityMonitor() {
   const [sortCol, setSortCol] = useState<ProcessSortKey>('cpu')
   const [sortAsc, setSortAsc] = useState(false)
   const [search, setSearch] = useState('')
-  const [selectedPid, setSelectedPid] = useState<number | null>(null)
+  // The selection is an IDENTITY, not a pid. See processKey: a selection held
+  // as a bare number silently re-aims at whatever inherits that number, and
+  // the kill it then forms is internally consistent, so the server's
+  // (pid, starttime) check has nothing to object to.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null)
+  const [notice, setNotice] = useState<OutcomeReport | null>(null)
 
   // Keyed on rawStats — the WEBSOCKET PAYLOAD — not on the narrowed `stats`.
   //
@@ -234,27 +238,39 @@ export default function ActivityMonitor() {
   const runPending = async () => {
     if (!pending) return
     setBusy(true)
-    const res = pending.kind === 'process' && pending.proc
-      ? await signalProcess(pending.proc, pending.mode)
-      : await closeApp(pending.appID || '', pending.mode === 'force')
+    // An explicit branch, not a `kind === 'process' && proc` condition with an
+    // app-close fallthrough. That form sent a malformed PROCESS action to
+    // /api/proc/apps/close with an empty app_id — the wrong endpoint for the
+    // wrong kind of target, silently, in the kill path. Unreachable today, but
+    // the types allow it and a wrong-target dispatch is not a thing to leave
+    // sitting one refactor away.
+    let res
+    if (pending.kind === 'process') {
+      if (!pending.proc) {
+        setBusy(false)
+        setPending(null)
+        setNotice({ tone: 'bad', text: `${pending.label}: this row lost its identity before the request was sent — refresh the list` })
+        return
+      }
+      res = await signalProcess(pending.proc, pending.mode)
+    } else {
+      res = await closeApp(pending.appID || '', pending.mode === 'force')
+    }
     setBusy(false)
     setPending(null)
     if (res.ok) {
-      const outcome = typeof res.value.outcome === 'string' ? res.value.outcome : 'done'
-      // OUTCOMES ARE NOT ALL SUCCESS. `survived` means the signal was
-      // delivered and the process is still there — a task in uninterruptible
-      // sleep cannot be killed until its I/O returns. Reporting that as a win
-      // would leave the user believing they fixed a stuck disk.
-      const survived = outcome === 'survived'
-      setNotice({
-        tone: survived ? 'bad' : 'ok',
-        text: survived
-          ? `${pending.label} could not be ended — it is blocked in the kernel (state ${String(res.value.state ?? '?')}), usually waiting on storage. Signals are not delivered until that returns.`
-          : `${pending.label}: ${outcome.replace(/_/g, ' ')}`,
-      })
-      setSelectedPid(null)
+      setNotice(describeOutcome(pending.label, res.value))
+      setSelectedKey(null)
     } else {
       setNotice({ tone: 'bad', text: `${pending.label}: ${res.error.message}` })
+      // A 409 means the pid the user selected now belongs to a DIFFERENT
+      // process. The server says "refresh the list" precisely because a retry
+      // is the wrong response, so the selection is dropped here rather than
+      // left armed over the stranger that inherited the number. Without this
+      // the buttons stay enabled against a row the server just refused, and
+      // the second click — with the stranger's own starttime now echoed back —
+      // is the one that succeeds.
+      if (res.error.code === 'identity_mismatch') setSelectedKey(null)
     }
     poll()
   }
@@ -273,7 +289,11 @@ export default function ActivityMonitor() {
   // The graphs say so for themselves below; the tables carry on.
   const cpuVal = Math.round(stats?.cpu || 0)
   const memVal = Math.round(stats?.mem_percent || 0)
-  const selected = processes.find(p => p.pid === selectedPid) || null
+  // Matching on the full key is what makes a recycled pid DESELECT rather than
+  // re-aim. When the number is handed to a new process the key no longer
+  // matches, find() misses, and the action bar falls back to "Select a process
+  // to end it" instead of quietly pointing at a stranger.
+  const selected = processes.find(p => processKey(p) === selectedKey) || null
 
   const graphsById: Record<GraphId, GraphSpec> = {
     cpu: {
@@ -496,17 +516,18 @@ export default function ActivityMonitor() {
               light while looking fine on dark — which is how a contrast bug
               ships. The text uses --text-primary, which the theme derives
               against its own surfaces and holds at ~17:1 in both. */}
+          {/* A failed or costly action is an ALERT, not a status. `status` is
+              polite: a screen reader finishes what it is saying and may never
+              announce it at all if focus moves. "I could not end that" and "I
+              destroyed your unsaved work" are both interruptions by nature. */}
           <div
-            role="status"
+            role={notice.tone === 'ok' ? 'status' : 'alert'}
             className="flex items-start gap-2 rounded-md px-3 py-2 text-[12px] mb-1 border"
-            style={{
-              borderColor: notice.tone === 'ok' ? 'var(--status-success)' : 'var(--status-danger)',
-              color: 'var(--text-primary)',
-            }}
+            style={{ borderColor: noticeTone(notice.tone), color: 'var(--text-primary)' }}
           >
             <span
               className="mt-1 inline-block w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ background: notice.tone === 'ok' ? 'var(--status-success)' : 'var(--status-danger)' }}
+              style={{ background: noticeTone(notice.tone) }}
               aria-hidden="true"
             />
             <span className="flex-1">{notice.text}</span>
@@ -524,7 +545,7 @@ export default function ActivityMonitor() {
             processes={processes} search={search}
             sortCol={sortCol} setSortCol={setSortCol}
             sortAsc={sortAsc} setSortAsc={setSortAsc}
-            selectedPid={selectedPid} setSelectedPid={setSelectedPid}
+            selectedKey={selectedKey} setSelectedKey={setSelectedKey}
           />
         ) : tab === 'apps' ? (
           <AppTable
@@ -707,12 +728,12 @@ interface ProcessTableProps {
   setSortCol: Dispatch<SetStateAction<ProcessSortKey>>
   sortAsc: boolean
   setSortAsc: Dispatch<SetStateAction<boolean>>
-  selectedPid: number | null
-  setSelectedPid: Dispatch<SetStateAction<number | null>>
+  selectedKey: string | null
+  setSelectedKey: Dispatch<SetStateAction<string | null>>
 }
 
 function ProcessTable({
-  processes, search, sortCol, setSortCol, sortAsc, setSortAsc, selectedPid, setSelectedPid,
+  processes, search, sortCol, setSortCol, sortAsc, setSortAsc, selectedKey, setSelectedKey,
 }: ProcessTableProps) {
   const handleSort = (col: ProcessSortKey) => {
     if (sortCol === col) setSortAsc(!sortAsc)
@@ -787,18 +808,25 @@ function ProcessTable({
                 : 'No processes match this filter'}
             </div>
           )}
-          {sorted.map(p => (
+          {sorted.map(p => {
+            const k = processKey(p)
+            // The React key is the identity too, not the pid. Keyed on pid, a
+            // recycled number reuses the same DOM node and the row simply
+            // changes its text under the highlight; keyed on identity, React
+            // unmounts the old row and mounts a new one, so the change is a
+            // change rather than a substitution.
+            return (
             <div
-              key={p.pid}
+              key={k}
               role="row"
               tabIndex={0}
-              aria-selected={selectedPid === p.pid}
-              onClick={() => setSelectedPid(prev => (prev === p.pid ? null : p.pid))}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPid(prev => (prev === p.pid ? null : p.pid)) } }}
+              aria-selected={selectedKey === k}
+              onClick={() => setSelectedKey(prev => (prev === k ? null : k))}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedKey(prev => (prev === k ? null : k)) } }}
               className={`grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/40 cursor-pointer transition-colors ${
-                selectedPid === p.pid ? 'bg-neutral-800' : 'hover:bg-neutral-800/40'
+                selectedKey === k ? 'bg-neutral-800' : 'hover:bg-neutral-800/40'
               }`}
-              style={gridStyle(gridTemplate, selectedPid === p.pid)}
+              style={gridStyle(gridTemplate, selectedKey === k)}
             >
               <span className="text-neutral-400 font-mono">{p.pid}</span>
               <span className="text-neutral-200 truncate" title={p.command}>{p.name}</span>
@@ -808,7 +836,8 @@ function ProcessTable({
               <span className="text-right text-neutral-400 font-mono">{fmtBytes(p.mem_rss)}</span>
               <span className="text-right text-neutral-400">{p.threads}</span>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
       {/* Footer */}
@@ -1033,6 +1062,88 @@ export interface RespPresentation {
  * original name (see toResponsiveness), and is worded as the box knowing
  * something this version does not — which is true, and is not a verdict.
  */
+/** What the user is told after the server accepted a signal request. */
+export interface OutcomeReport { tone: 'ok' | 'warn' | 'bad'; text: string }
+
+/**
+ * noticeTone maps a tone to a token. Colour lives in the BORDER and the dot,
+ * never in the text — --status-warning is around 3:1 against this theme's
+ * light surfaces, so a coloured label would fail WCAG AA on light while
+ * looking fine on dark, which is how a contrast bug ships. The text uses
+ * --text-primary, which the theme derives against its own surfaces.
+ */
+function noticeTone(tone: OutcomeReport['tone']): string {
+  return tone === 'ok' ? 'var(--status-success)'
+    : tone === 'warn' ? 'var(--status-warning)'
+      : 'var(--status-danger)'
+}
+
+/**
+ * describeOutcome turns a signal result into a sentence about WHAT WAS SENT.
+ *
+ * # The escalation is the part worth saying
+ *
+ * A quit request is a sequence, not a flag: SIGTERM, wait out the grace
+ * period, then SIGKILL if the process is still there. The server performs that
+ * sequence and reports it honestly — `signals` comes back as ["SIGTERM"] or
+ * ["SIGTERM","SIGKILL"], with `elapsed_ms` alongside.
+ *
+ * The previous version read `outcome` and threw `signals` away, so a user who
+ * clicked **Quit** on an editor that ignored SIGTERM was told, five seconds
+ * later, `notes (4242): killed`. Every word of that is true and the important
+ * one is missing: the polite request was refused and the box destroyed unsaved
+ * work to carry it out. That is the single fact a person needs in order to know
+ * whether to expect their document back, and it was already on the wire.
+ *
+ * So an escalation says so, and says how long it waited. It is `warn` rather
+ * than `ok` because the outcome differs from what was asked for, and rather
+ * than `bad` because the process did end — the action succeeded, expensively.
+ *
+ * A force quit that used SIGKILL alone is `ok`: it did exactly what the user
+ * chose, having been told in the dialog what that costs.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- describeOutcome is exported so the ESCALATION REPORT can be asserted directly. What the user is told after a kill is the half of this feature that can be wrong while every pixel renders, and a test that re-implements the wording proves nothing about the wording that ships.
+export function describeOutcome(label: string, v: Record<string, unknown>): OutcomeReport {
+  const outcome = typeof v.outcome === 'string' ? v.outcome : 'done'
+  const signals = Array.isArray(v.signals)
+    ? v.signals.filter((s): s is string => typeof s === 'string')
+    : []
+  const sent = signals.length > 0 ? signals.join(', then ') : 'a signal'
+  const ms = typeof v.elapsed_ms === 'number' ? v.elapsed_ms : null
+  const waited = ms !== null && ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : ms !== null ? `${ms}ms` : null
+
+  // OUTCOMES ARE NOT ALL SUCCESS. `survived` means the signal was delivered
+  // and the process is STILL there — a task in uninterruptible sleep cannot be
+  // killed until its I/O returns. Reporting that as a win would leave the user
+  // believing they fixed a stuck disk.
+  if (outcome === 'survived') {
+    return {
+      tone: 'bad',
+      text: `${label} could not be ended — ${sent} was delivered and it is still there, blocked in the kernel (state ${String(v.state ?? '?')}), usually waiting on storage. Signals are not delivered until that returns.`,
+    }
+  }
+  if (outcome === 'already_gone') {
+    return { tone: 'ok', text: `${label} had already exited before the request was sent.` }
+  }
+  if (outcome === 'terminated') {
+    return {
+      tone: 'ok',
+      text: `${label} was asked to quit (SIGTERM) and exited${waited ? ` in ${waited}` : ''}. It had the chance to save.`,
+    }
+  }
+  if (outcome === 'killed') {
+    const escalated = signals.includes('SIGTERM') && signals.includes('SIGKILL')
+    if (escalated) {
+      return {
+        tone: 'warn',
+        text: `${label} ignored the request to quit, so it was force-ended: SIGTERM, then SIGKILL${waited ? ` after ${waited}` : ''}. Unsaved work in it is lost.`,
+      }
+    }
+    return { tone: 'ok', text: `${label} was force-ended immediately (SIGKILL). Unsaved work in it is lost.` }
+  }
+  return { tone: 'ok', text: `${label}: ${outcome.replace(/_/g, ' ')}` }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- describeResponding is exported so the WORDING can be asserted directly. It is the half of this feature that can be wrong while everything renders, and a test that re-implements it proves nothing.
 export function describeResponding(r: Responsiveness): RespPresentation {
   switch (r.status) {
