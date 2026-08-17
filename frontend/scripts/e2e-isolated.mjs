@@ -46,6 +46,8 @@ import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve, join } from 'node:path'
 
+import { hasContentHash } from './entryHash.mjs'
+
 const FE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const argv = process.argv.slice(2)
@@ -123,7 +125,12 @@ async function main() {
   if (!entry) return fail(`could not find a hashed entry bundle in ${OUT_DIR}/index.html — this check would prove nothing`)
   // A content hash is what makes this a provenance check rather than a name
   // check: /assets/index.js would be identical across every agent's build.
-  if (!/-[A-Za-z0-9_]{8,}\.js$/.test(entry)) {
+  //
+  // The predicate lives in ./entryHash.mjs so it can be tested — the version
+  // inline here rejected any Vite digest containing a hyphen, which is a fifth
+  // of them, deterministically per tree, while reading as a build failure. See
+  // that file and src/__tests__/entryHash.test.ts.
+  if (!hasContentHash(entry)) {
     return fail(`entry ${entry} carries no content hash; any other build would produce the same name and this check would be decorative`)
   }
   log(`built entry: ${entry}`)
