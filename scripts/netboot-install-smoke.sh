@@ -204,6 +204,7 @@ if [ "$NO_BUILD" = "0" ]; then
   # build.sh's own /work/output.
   docker run --rm --privileged \
     -v "$REPO":/src -w /src \
+    -v /src/frontend/node_modules \
     -v vulos-bm-work:/work \
     -v vulos-bm-gocache:/root/.cache/go-build \
     -v vulos-bm-gomod:/go/pkg/mod \

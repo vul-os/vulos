@@ -174,7 +174,9 @@ jobs:
             # tag/VERSION via ldflags, not VCS, so skipping the stamp is fine.
             docker run --rm --privileged --platform "linux/${arch}" \
               -e GOFLAGS=-buildvcs=false \
-              -v "$PWD":/src -w /src "vulos-bm-builder-${arch}" \
+              -v "$PWD":/src -w /src \
+              -v /src/frontend/node_modules \
+              "vulos-bm-builder-${arch}" \
               bash -c "git config --global --add safe.directory '*' && ./build.sh ${flag} --live /src/out-${arch}"
             sudo chown -R "$(id -un)" "out-${arch}"
             gzip -c "out-${arch}/vulos-live-${arch}.img" > "vulos-${VERSION}-${label}.img.gz"

@@ -204,12 +204,31 @@ echo "  ${GREEN}✓${NC} vulos-server, vulos-init, vulos-verify-sig, vulos-insta
 # ═══════════════════════════════════
 echo "${BLUE}▸ Building frontend...${NC}"
 cd "$ROOT_DIR/frontend"
-# NOTE for anyone running this inside a container with the repo bind-mounted
-# (scripts/baremetal-builder.Dockerfile does exactly that): this npm ci writes
-# into the HOST's frontend/node_modules and replaces any platform-specific
-# binaries with the container's. After a containerised build, re-run
-# `cd frontend && npm ci` on the host before building locally again, or give the
-# container its own node_modules with `-v /src/frontend/node_modules`.
+# THE CLOBBER, and why every containerised caller now shadows node_modules.
+#
+# The builder image (scripts/baremetal-builder.Dockerfile) bind-mounts the repo
+# at /src, so this `npm ci` writes into the HOST's frontend/node_modules and
+# replaces every platform-specific binary with the container's LINUX build.
+# Measured 2026-08-17: after a containerised build on this macOS host, another
+# agent's `npx vitest` died with
+#
+#   Cannot find module '@rolldown/binding-darwin-arm64'
+#
+# because frontend/node_modules/@rolldown then held only linux-arm64 bindings.
+# That surfaces as a module-resolution CRASH, not a red test, so it reads as
+# local tooling breakage rather than "the image build ate your toolchain" — the
+# person who caused it is never the person who pays for it.
+#
+# This used to be a comment telling the reader to re-run `npm ci` on the host
+# afterwards. Nothing enforced it, and an instruction that must be remembered
+# after an unrelated 40-minute build is not a control. Every in-repo caller now
+# passes `-v /src/frontend/node_modules` — an ANONYMOUS volume that shadows the
+# bind mount, so the container installs into its own throwaway directory and the
+# host's is untouched. `docker run --rm` discards it on exit.
+#
+# internal/docsref TestBuildShCallersShadowNodeModules pins that: it fails if any
+# docker-run invocation in this repo bind-mounts the source tree and runs
+# build.sh without that flag, so a new call site cannot reintroduce the clobber.
 npm ci --silent 2>/dev/null || npm install --silent
 npm run build
 cd "$ROOT_DIR"
