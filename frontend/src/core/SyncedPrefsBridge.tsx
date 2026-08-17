@@ -39,8 +39,20 @@ export default function SyncedPrefsBridge({ children }: SyncedPrefsBridgeProps) 
 
   // The pusher is read through a ref by a callback that outlives any one
   // render, so it must not be captured stale.
+  //
+  // The assignment lives in an effect, not in the render body. Writing a ref
+  // during render is unsafe under concurrent rendering: React may start a
+  // render, throw it away, and render again — but the ref mutation from the
+  // discarded attempt survives, so the callback can end up holding an
+  // updateProfile from a render that never committed. `useRef(updateProfile)`
+  // already seeds the current value on first render, and this effect is
+  // declared BEFORE the setPrefPusher effect below, so effect ordering
+  // guarantees the ref is fresh before any push can be registered, let alone
+  // invoked.
   const updateRef = useRef(updateProfile)
-  updateRef.current = updateProfile
+  useEffect(() => {
+    updateRef.current = updateProfile
+  }, [updateProfile])
 
   useEffect(() => {
     setPrefPusher(async (patch): Promise<PushResult> => {
