@@ -741,6 +741,24 @@ duplication is the price of not becoming a distribution.
 `backend/services/appnet/**` is another agent's file. These are recommendations,
 not edits.
 
+> **STATUS 2026-08-17, written by the `appnet` owner after acting on them.**
+> §9.1, §9.2 and §9.3 are **implemented** in `backend/services/appnet/arch.go`
+> with tests and eleven mutations; §9.4 and §9.5 are **not**, and §9.5's design
+> question is still unanswered. Details at the end of each subsection. One
+> factual correction to §9.3 is recorded there.
+>
+> **A fact this handoff did not know, and it changes how to read the whole
+> section.** Every function §9 discusses — `EmulationCanServe`, `EvaluateArch`,
+> `EmulatedArches`, `DeliveryKindOf`, `ParseEmulationPolicy`, the binfmt parser,
+> roughly 450 lines — had **zero callers and zero tests** anywhere in the repo.
+> A grep for any of their names outside `arch.go` returns only prose in
+> `roadmap/`. The App Hub still re-derives availability client-side with
+> `app.arch.includes(systemArch)`, exactly as `arch.go`'s own comment says. That
+> is *why* the wrong Flatpak claim survived in a code comment: nothing executed
+> the function underneath it. The implementation below adds the tests. It does
+> **not** make anything call `EvaluateArch` — that is a separate piece of work,
+> and it is now the largest open item in this area.
+
 ### 9.1 `EmulationCanServe` conflates two questions and should be split
 
 Today: `func EmulationCanServe(k DeliveryKind) bool { return k == DeliveryBinary }`.
@@ -774,12 +792,45 @@ it be any good*:
 should produce **different sentences**, because they are different facts about
 the user's box.
 
+> **DONE 2026-08-17.** `EmulationCanServe` is gone; `EmulationCanInstall` and
+> `EmulationRunsWell` are its two halves, and `EvaluateArch`'s switch has two
+> arms where it had one, with two different sentences. Agreed with the
+> recommendation on the evidence and implemented as written, with one addition
+> the recommendation did not specify: **`EmulationRunsWell` returning false for
+> Flatpak is documented as a judgement about graphics, NOT as a claim that the
+> app fails to run.** §6 Q3 is `untestable-on-arm64-mac` and nothing in the code
+> may quietly promote it. `TestEvaluateArch_TheTwoRefusalsReadDifferently`
+> fails any user-facing sentence containing "cannot run" or "will not run", so
+> the unproven case cannot leak into copy later.
+>
+> Mutations: collapsing the split back into one answer, widening `RunsWell` to
+> Flatpak, and restoring the shared sentence were each planted alone and each
+> killed.
+
 ### 9.2 `NeedsGPU` should be scoped to delivery, not applied to the app
 
 `EvaluateArch`'s first switch arm makes `NeedsGPU` an unconditional
 `ArchStateUnavailable`. §5.3 measured that in a private prefix box64 reaches the
 host GL stack, so for `DeliveryBinary`/closure that arm is a false negative. E3
 is a fact about **Flatpak**, not about Blender.
+
+> **DONE 2026-08-17, with one refinement the recommendation missed.** Scoping E3
+> to delivery alone is still too coarse, because §5.3 measured **two emulators
+> giving opposite answers on the same architecture**: box64 bound this machine's
+> own aarch64 Mesa 25.0.7 with `direct rendering: Yes`, and qemu-user could not
+> obtain a GL visual at all. `DeliveryBinary` on a box that only has qemu-user
+> is exactly the case E3 was written for. So the exception is scoped to delivery
+> **and to the emulator**: `EmulatedArches` now reports emulator identity, and
+> `ArchRequest.EmulatorBindsHostLibraries` (default false — qemu's answer, the
+> one that offers less) decides it.
+>
+> The emulated-app sentence changed with it. It used to end "and without
+> graphics acceleration", which is now measurably false for box64; it does not
+> claim acceleration either, because §5.3 ran on a GPU-less container where the
+> host stack is llvmpipe. It says the app "uses this box's own graphics driver
+> rather than an emulated one", which is exactly what was proved — and a test
+> fails the strings "hardware acceleration", "GPU-accelerated" and "full
+> graphics acceleration" so the hedge cannot erode.
 
 ### 9.3 `EmulatedArches()` misses box64 entirely
 
@@ -789,6 +840,38 @@ handler by default** — it is invoked by name, which is how every measurement i
 emulation available*. It needs a second source: the presence and successful
 `--version` of a `box64` / `qemu-x86_64` binary. Keep it separate from
 `SupportedArches()`, exactly as §8.5 argues.
+
+> **DONE 2026-08-17, and ONE CLAIM ABOVE IS WRONG.** *"box64 does not register a
+> binfmt handler by default"* is true of upstream box64 and **false of Debian's
+> package**, which ships `/usr/lib/binfmt.d/box64.conf` for `systemd-binfmt` to
+> register:
+>
+> ```
+> :box64:M::\x7fELF\x02\x01\x01\x00…\x02\x00\x3e\x00:…:/usr/bin/box64:
+> ```
+>
+> — `e_machine` 0x3e at offset 0, interpreter `/usr/bin/box64`, and **no `F`
+> flag** (qemu's ships `OPF`). So on a systemd box the handler may well be
+> registered and the binfmt probe finds it. The recommendation is still right
+> and the reason is one step over: **neither source subsumes the other**, so
+> both are consulted and merged. Measured the same day, `debian:trixie-slim`
+> arm64:
+>
+> ```
+> box64 --version        exit 0, stdout "[BOX64] Box64 with Dynarec v0.3.4 …"
+> qemu-x86_64 --version  exit 0, stdout "qemu-x86_64 version 10.0.11 (Debian …)"
+> /proc/sys/fs/binfmt_misc   the directory EXISTS and is NOT MOUNTED
+> ```
+>
+> That last line is the sharper version of §9.3's point: binfmt_misc is a
+> filesystem someone has to mount before any handler can exist in it.
+>
+> `EmulatedArches()` keeps its signature and stays separate from
+> `SupportedArches()`. `EmulatorsAvailable()` is new and returns the emulators
+> themselves, because §9.2 needs to know **which** one would serve an app — the
+> GL answer is not a property of the architecture. Six mutations, including
+> deleting either probe and an over-broad "every emulator is present", were each
+> planted alone and each killed.
 
 ### 9.4 A new `DeliveryKind` and a new vehicle
 
@@ -810,6 +893,16 @@ for arm64 — which the current schema cannot express, because a recipe declares
 first design question the `appnet` owner has to answer**, and it is not mine to
 settle. The alternative — a whole `debian-closure` entry for both arches — is
 simpler and gives up Flathub's amd64 build.
+
+> **NOT DONE, and deliberately so.** §9.4 and §9.5 both depend on a vehicle the
+> founder **parked** on 2026-08-17 (§8). Adding `DeliveryDebianClosure` and a
+> third dispatch arm for a vehicle no entry uses would be building the machinery
+> the parking decision declined to build, and every rule added to
+> `validateRecipeSecurity` for it would be a guard that can never fire — this
+> repo's dominant defect wearing a tightening as a disguise. §9.5's question —
+> whether one entry may mix vehicles per architecture — is still **unanswered**,
+> and answering it in code before there is an entry that needs it would settle
+> it by accident.
 
 ---
 
@@ -872,8 +965,11 @@ Ordered by how much it would cost someone to pick up.
 - **box64 was never run against a GPU.** §5.3 proves it binds the host's native
   GL stack; on a GPU-less container that stack is `llvmpipe`. **Hardware
   acceleration under box64 is asserted by mechanism, not measured.**
-- **No Go was written or run.** §9 is prose. `go build` was not invoked for
-  either target, because nothing in `backend/` was touched.
+- ~~**No Go was written or run.**~~ **Superseded 2026-08-17**: §9.1, §9.2 and
+  §9.3 are implemented in `backend/services/appnet/arch.go`, with
+  `arch_emulation_test.go` (14 tests, none of which existed before) and eleven
+  mutations. Both `GOOS=linux GOARCH=amd64` and `GOOS=linux GOARCH=arm64` build.
+  §9.4 and §9.5 remain prose, on purpose — see the note under §9.5.
 - **No App Hub copy was implemented.** §1's badge table is a specification.
 - **`roadmap/app-verification-ledger.json` is untouched.** Blender was launched
   in a container, not through `scripts/verify-app-recipe.sh`, so no ledger row

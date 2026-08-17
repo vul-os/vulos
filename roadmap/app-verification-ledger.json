@@ -25,6 +25,16 @@
     },
     {
       "arch": "arm64",
+      "assertions": [],
+      "date": "2026-08-17T14:38:18Z",
+      "harness": "2",
+      "id": "excalidraw",
+      "note": "_disabled is set on the entry or its latest recipe \u2014 appnet refuses the install by design; nothing was run",
+      "source": "unclassified",
+      "status": "disabled"
+    },
+    {
+      "arch": "arm64",
       "assertions": [
         "install-path",
         "manifest-written",

@@ -13,11 +13,12 @@ a pass and **not** a claim the app works. `disabled` = the entry carries
 
 | status | apps |
 | --- | --- |
-| 🚫 disabled | 2 |
+| 🚫 disabled | 3 |
 | ✅ passed | 6 |
 
 | App | Source | Arch | Verified | Status | Disk MB | Mins | Date | Asserted / why not |
 | --- | --- | --- | --- | --- | ---: | ---: | --- | --- |
+| `excalidraw` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-17 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
 | `memos` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
 | `vaultwarden` | unclassified | arm64 | - | 🚫 disabled |  |  | 2026-08-15 | _disabled is set on the entry or its latest recipe — appnet refuses the install by design; nothing was run |
 | `cinny` | unclassified | arm64 | - | ✅ passed | 80 | 0 | 2026-08-15 | install-path, manifest-written, command-declared, command-resolves, command-executes |

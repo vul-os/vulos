@@ -326,11 +326,12 @@ to that field. Six shipped entries got this wrong.
   payload for them anyway.
 - **No arch-specific state on the sync wire.** §5.
 
-**One honest exception, named rather than buried:** `deps` still calls
-`packages.InstallDeps`, which is `apt-get install -y`. **It is the last apt call
-in the install path and it is still open.** What changed on 2026-08-17 is that
-the three things this paragraph asserted were measured, and two of them were
-wrong:
+**The exception is CLOSED as of 2026-08-17, and the measurement that closed it
+also proved a shipped app had been broken all along.** `deps` no longer calls a
+package manager: `packages.InstallDeps` is **deleted**, both call sites go
+through `packages.VerifyDeps`, and `liburing2` and `git` are in all three pinned
+package sets. **There is no apt call left in the install path.** §4.6.1 has the
+measurements. What follows is the history that led there:
 
 - **"Exactly one shipped entry uses it" was wrong.** Four do: `conduit`
   (`liburing2`, `ca-certificates`), `diwan` and `lilmail` (`ca-certificates`),
@@ -351,28 +352,70 @@ wrong:
   `conduwuit-linux-{amd64,arm64}` and two `-maxperf` builds of the same shape.
   So the dependency is real; there is no artefact swap that removes it.
 
-The right model is unchanged: `deps` names packages the **base image must
-already carry**, verified at install rather than installed. Reaching it needs
-`liburing2` (and `git`, for wede) added to `scripts/image-packages.txt` — an
-image change, not an installer change — and only then can the call site go.
+The right model is unchanged and is now what the code does: `deps` names
+packages the **base image must already carry**, verified at install rather than
+installed.
 
-Two defects in the current path are named here so they are not rediscovered:
+### 4.6.1 The two defects, and the container run that settled both
 
-- **DEPS-01 — the return value is discarded.** `packages.InstallDeps(ctx,
-  recipe.Deps)` is called and its error is dropped, so a dependency that could
-  not be installed produces a **successful install of an app that cannot exec**.
-  That is POSTINSTALL-01's defect one field down, and it was left alone
-  deliberately: making it fatal changes the install outcome for three verified
-  first-party entries on a box this session could not run, and a change that
-  turns working installs into refusals needs the container run this session did
-  not have.
-- **DEPS-02 — the box very likely cannot satisfy it anyway.** `build.sh` clears
-  the apt lists, nothing in the install path runs `apt-get update`, and
-  `liburing2` is not in the image, so `apt-get install -y liburing2` on a fresh
-  box is expected to fail with "Unable to locate package" — and DEPS-01 then
-  reports success. conduit is therefore probably already broken on a fresh box,
-  silently. **Expected, not measured**: it needs a boot, and it is written down
-  as the first thing to check rather than as a finding.
+**DEPS-01 — the return value was discarded.** `packages.InstallDeps(ctx,
+recipe.Deps)` was called and its error dropped, so a dependency that could not
+be installed produced a **successful install of an app that cannot exec**.
+POSTINSTALL-01's defect one field down. It was left open because making it fatal
+"changes the install outcome for three verified first-party entries on a box
+this session could not run". **That container run has now happened**, and it says
+the change is safe: `ca-certificates` — the dep all three first-party entries
+carry — is in every one of the three package sets, and an **already-installed**
+package resolves fine with no lists at all.
+
+**DEPS-02 — the box could not satisfy it anyway.** This was written down as
+*"expected, not measured"*. Measured on 2026-08-17 in `debian:trixie-slim` with
+`/var/lib/apt/lists` emptied, which is the state `build.sh` packs:
+
+```
+apt-get install -y --no-install-recommends liburing2        E: Unable to locate package liburing2   exit 100
+apt-get install -y --no-install-recommends git              E: Unable to locate package git         exit 100
+apt-get install -y --no-install-recommends ca-certificates  (not installed) no installation candidate exit 100
+apt-get install -y --no-install-recommends ca-certificates  (installed) already the newest version   exit 0
+apt-get install -y --no-install-recommends liburing2 ca-certificates   <- conduit's own list, exit 100
+```
+
+So the call had exactly two possible outcomes on a shipped box: **exit 0 because
+the package was already there — installing nothing — or fail.** There is no
+third case, because there are no package lists to resolve from. An install-time
+package manager with no index is not a weak mechanism; it is not a mechanism.
+
+**And conduit was already broken, silently, exactly as predicted.** Both
+published binaries were re-fetched, their digests reproduced this entry's
+values, and the failure was reproduced end to end:
+
+```
+conduwuit-linux-amd64  DT_NEEDED  liburing.so.2 libstdc++.so.6 libgcc_s.so.1 libm.so.6 libc.so.6 ld-linux-x86-64.so.2
+conduwuit-linux-arm64  DT_NEEDED  liburing.so.2 libstdc++.so.6 libgcc_s.so.1 libm.so.6 libc.so.6
+
+./conduwuit-linux-arm64 --version
+  error while loading shared libraries: liburing.so.2: cannot open shared object file: No such file or directory
+
+(apt-get install -y liburing2, with lists)   ->  continuwuity 0.5.9 (0514491)
+```
+
+> **One trap worth recording, because it is this document's third instance.**
+> The failing run above was piped through `head`, so `$?` reported **0** for a
+> command that had plainly died. Exit status through a pipe is the pipe's. The
+> loader message is the evidence; the exit code was not.
+
+**The fix is at the image layer, as §4.6 always said it should be.** `liburing2`
+(1 package) and `git` (33) are in the Dockerfile set, build.sh's `deploy` set and
+build.sh's `rootfs` set, with `scripts/check-image-packages.sh --update` run so
+the pinned manifests carry them. `git` is a genuine wede runtime dependency —
+wede shells out to the binary — not decoration. Then the call site went:
+`InstallDeps` is deleted, `VerifyDeps` reads dpkg's status, and a box missing a
+dependency gets a loud refusal naming it instead of an app that installs and
+dies in the loader.
+
+`TestShippedDepsAreImagePackages` is what stops this coming back: every `deps`
+entry of every enabled recipe must appear in **all three** package sets, or the
+build goes red.
 
 ---
 
@@ -625,6 +668,41 @@ failures; re-enabling them on the strength of an install nobody has run is the
 same mistake facing the other way. Enable after
 `scripts/verify-app-recipe.sh <id>` passes.
 
+> **THE HARNESS CANNOT RUN AGAINST ANY OF THE FIVE, AND THE REASON IS THE
+> SIGNING CEREMONY — measured 2026-08-17.** All five were attempted locally, one
+> at a time:
+>
+> ```
+> $ scripts/verify-app-recipe.sh jellyfin
+> ERROR: entry 'jellyfin' has no signature — sign it (make sign-registry) before verifying
+> EXIT=2
+> ```
+>
+> identically for `minio`, `svg-edit`, `code-server` and `memos`. `verify_one`
+> refuses before any container starts, and it is right to: the harness runs with
+> `VULOS_ENV` unset (which the product treats as prod) against the repo's real
+> trust anchor, so an unsigned entry would be refused by the product anyway and
+> scored as a FAILURE. Of the 74 entries in `registry.json`, **55 are unsigned**
+> — every migrated one.
+>
+> **The refusal is not the harness refusing everything.** Control, same
+> invocation, on a signed entry:
+>
+> ```
+> $ scripts/verify-app-recipe.sh excalidraw
+>   SKIP — entry is administratively disabled (_disabled); the product refuses to install it
+> EXIT=3
+> ```
+>
+> It passes the signature gate and reaches the next one. So there are **two
+> blockers in series** for the five, and clearing `_disabled` first would clear
+> nothing: the run still dies at the signature. **No ledger row was written for
+> any of the five** — the harness exits before writing one, and a hand-written
+> row is exactly what the curator checklist forbids.
+>
+> Nothing here may be "fixed" by minting a signature. In this trust model the
+> signature IS the act of vetting (§6.2), and an agent must not perform it.
+
 ### 7.3 Parked — 7, plus wine, with a per-app reason
 
 `registry.d/apt-retired.json` sets `_disabled: true` on `cockpit`, `httpbin`,
@@ -662,10 +740,40 @@ same mistake facing the other way. Enable after
   with the literal 8096 the recipe declares; the element names
   (`InternalHttpPort`, `PublicHttpPort`) were read out of the shipped
   `MediaBrowser.Common.dll`, not guessed.
-  **Still unmeasured and named rather than assumed**: whether the image carries
-  ICU. A self-contained .NET app needs `libicuuc`/`libicui18n` unless it was built
-  invariant; `libicu` is not in `image-packages.txt` and chromium is *expected*
-  to pull it in transitively, which is an inference.
+  **ICU: MEASURED 2026-08-17, and it clears.** The inference above ("chromium is
+  *expected* to pull it in transitively") is replaced by a resolution. Simulating
+  each pinned package set with `apt-get install -s --no-install-recommends`
+  resolves `libicu76` in **all three**: the Dockerfile set (500 packages),
+  build.sh's `rootfs` (530) and build.sh's `deploy` (493) — and `deploy` has no
+  chromium at all, so the dependency does not come from where the inference
+  guessed. It is not optional either: run with no ICU, the apphost aborts before
+  `main` with *"Process terminated. Couldn't find a valid ICU package installed
+  on the system"*, and `jellyfin.runtimeconfig.json` sets no
+  `InvariantGlobalization`.
+
+  **ffmpeg: RE-MEASURED, and the earlier finding understated it.** The arm64
+  tarball's 2805 members contain zero `ffmpeg`/`ffprobe`, and ffmpeg is in none
+  of the three package sets. But "cannot probe or transcode" is too kind. Run in
+  `debian:trixie-slim` with ICU present and no ffmpeg, jellyfin 10.11.11 **does
+  not start**:
+
+  ```
+  [ERR] MediaEncoder: FFmpeg: Failed version check: ffmpeg
+  [ERR] MediaEncoder: FFmpeg: Path set by system $PATH is invalid
+  [FTL] Main: Error while starting server
+  MediaBrowser.Common.FfmpegException: Failed to find valid ffmpeg
+  ```
+
+  Port 8096 never opens. With `ffmpeg` installed, the same command logs *"Found
+  ffmpeg version 7.1.5"* and its decoder/encoder lists. So enabling this entry
+  today ships an app that installs and never runs — the exact defect class this
+  format exists to remove — and **jellyfin stays `_disabled`**.
+
+  **What it would cost to close it: 204 packages.** `apt-get install -s ffmpeg`
+  on trixie/arm64 resolves 204. That is an image decision of founder scale for
+  one app, structurally the same call as Blender's *"one app does not justify a
+  third vehicle"* — not a packaging fix an agent should make. It is written down
+  here as a decision with a trigger condition, not as an impossibility.
 - **steam** — already excluded by `APP-CATALOG.md` policy 1a (proprietary,
   founder call, explicitly reversible), amd64-only everywhere, and its Flathub
   package is extra-data.
@@ -1039,10 +1147,12 @@ aarch64 + "HTML document, ASCII text"                        -> INFO
 
 ## 11. What this does NOT prove
 
-- **No install was run.** `scripts/verify-app-recipe.sh` needs docker and ~30
-  minutes per app; the host was at load ~145. `roadmap/app-verification-ledger.json`
-  is untouched and every migrated app remains **untested** in it. `command`,
-  `port` and `post_install` in the staged entries are **unproven**.
+- **No install was run, and now the reason is stronger than "no time".**
+  `scripts/verify-app-recipe.sh` refuses every migrated entry with
+  `ERROR: entry '<id>' has no signature`, before any container starts — 55 of 74
+  entries are unsigned pending the ceremony. Every migrated app remains
+  **untested** in `roadmap/app-verification-ledger.json`, and `command`, `port`
+  and `post_install` in those entries are **unproven**. See the note in §7.2.
 - **Archive layouts are measured; app behaviour is not.** `archive_strip`,
   `extract_dir` and `binary_name` were derived by listing each downloaded
   archive. That the app then starts is a separate claim nobody has earned here.
@@ -1070,9 +1180,13 @@ aarch64 + "HTML document, ASCII text"                        -> INFO
   outside that list still reaches the single-binary branch — the guard narrows
   the hole to formats nobody has published yet, and does not close it by
   construction the way removing the branch would.
-- **`deps` is still `apt-get install -y`, and conduit still needs it.** §4.6.
-  DEPS-01 (the discarded error) and DEPS-02 (the package is not in the image) are
-  both open and both named.
+- **`deps` is no longer a package manager (2026-08-17), and that closed a live
+  defect rather than a theoretical one.** §4.6.1. What is proved: the apt call
+  could not work on a shipped box, conduit could not start on one, and the
+  packages are now in all three image sets. What is **not** proved: that
+  conduit then runs. `VerifyDeps` answers "the library's package is installed",
+  which is one step short of "the binary execs" — and nobody has installed
+  conduit through `scripts/verify-app-recipe.sh`, because it is unsigned.
 
 ---
 
