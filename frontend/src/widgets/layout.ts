@@ -187,20 +187,46 @@ export function saveLayout(layout: WidgetLayout): void {
  * absent and it is not the finished state — roadmap/USER-STATE-INVENTORY.md §7.
  */
 
+/**
+ * Placements this box received and could NOT render, kept verbatim.
+ *
+ * Found by mutation testing, and it is the worst defect this pass turned up.
+ * The rail reconciles on read: reconcileInstance DROPS a placement whose widget
+ * id this build does not ship, which is right for rendering and catastrophic
+ * for syncing. Box A has a widget box B does not. B loads, drops it, re-exports
+ * a shorter rail and pushes it — and the widget is gone from A too. A box that
+ * cannot understand a placement would have become the authority on whether it
+ * exists.
+ *
+ * So an unrenderable placement is carried through rather than dropped. This box
+ * does not show it and cannot edit it; it simply does not destroy it. That is
+ * the rule the installed-app set already follows — an app the desired set has
+ * never heard of is left ALONE, not deleted.
+ *
+ * Recomputed on every import, so a placement genuinely removed on the other box
+ * stops being carried the moment that box says so.
+ */
+let foreignPlacements: string[] = []
+
+/** Test seam: how many received placements this build cannot render. */
+export function foreignPlacementCount(): number {
+  return foreignPlacements.length
+}
+
 export function exportRailFields(): Record<string, string> {
   const layout = loadLayout()
   const out: Record<string, string> = {}
   let n = 0
-  for (const inst of layout.instances) {
-    if (n >= MAX_INSTANCES) break
-    const encoded = JSON.stringify(inst)
+  const encodedLocal = layout.instances.map((inst) => {
+    const full = JSON.stringify(inst)
     // A placement whose settings push it past the cap is sent WITHOUT them
     // rather than dropped: losing the widget entirely to keep its stock-ticker
     // symbols is the wrong trade, and the settings normalise back to the
     // manifest's defaults on arrival.
-    const value = encoded.length <= MAX_SYNCED_VALUE
-      ? encoded
-      : JSON.stringify({ ...inst, settings: {} })
+    return full.length <= MAX_SYNCED_VALUE ? full : JSON.stringify({ ...inst, settings: {} })
+  })
+  for (const value of [...encodedLocal, ...foreignPlacements]) {
+    if (n >= MAX_INSTANCES) break
     if (value.length > MAX_SYNCED_VALUE) continue
     out[`${WIDGETS_PREF_KEY_PREFIX}${n}`] = value
     n++
@@ -215,11 +241,20 @@ export function importRailFields(values: Record<string, string>): void {
   // rail". Leave what is here alone; hydration only asserts what it was told.
   if (!Number.isInteger(count) || count < 0) return
   const instances: unknown[] = []
+  const foreign: string[] = []
   for (let i = 0; i < Math.min(count, MAX_INSTANCES); i++) {
     const raw = values[`${WIDGETS_PREF_KEY_PREFIX}${i}`]
     if (!raw) continue
-    try { instances.push(JSON.parse(raw)) } catch { /* dropped by parseLayout below */ }
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch { continue } // not a placement at all
+    // reconcileInstance is the SAME check loadLayout applies to what is already
+    // on this disk. A placement it rejects is one this build cannot render —
+    // usually a widget it does not ship. Kept verbatim rather than dropped, so
+    // this box does not delete it from the box that CAN render it.
+    if (reconcileInstance(parsed)) instances.push(parsed)
+    else foreign.push(raw)
   }
+  foreignPlacements = foreign
   const layout = parseLayout({ version: 1, instances }) ?? { version: 1 as const, instances: [] }
   try { localStorage.setItem(LS_KEY, JSON.stringify(layout)) } catch { /* private mode */ }
   emitRail()
