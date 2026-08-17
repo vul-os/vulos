@@ -72,7 +72,37 @@ if [[ "${1:-}" == "--in-container" ]]; then
 fi
 
 REPO_ROOT="${VULOS_REPO_ROOT:-$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)}"
-IMAGE="${VULOS_VERIFY_IMAGE:-vulos-recipe-verify:trixie-v2}"
+
+# ─── the base image tag CARRIES the package set it was built from ────────────
+#
+# ensure_image returns early when the tag already exists, so a fixed tag means a
+# stale image is silently reused forever. That is not hypothetical: on
+# 2026-08-17 `liburing2` and `git` were added to scripts/image-packages.txt
+# because a recipe's `deps` are now VERIFIED against the image rather than
+# apt-installed (DEPS-02). A two-day-old `vulos-recipe-verify:trixie-v2` was
+# sitting in the local daemon, and the next `verify-app-recipe.sh conduit` would
+# have run inside it, found no liburing2, and reported FAIL — a stale-cache
+# artefact wearing a recipe defect's clothes. Somebody would have gone looking
+# at conduit.
+#
+# Hashing the package list into the tag makes the invalidation structural
+# instead of something a human has to remember. A changed set builds a new
+# image; an unchanged set reuses the old one, which is the whole point of the
+# cache. The old tags are left alone — other sessions' images live in the same
+# daemon and this script does not delete what it did not create.
+pkgset_tag() {
+  local f="$REPO_ROOT/scripts/image-packages.txt"
+  [[ -f "$f" ]] || { printf 'nopkglist'; return; }
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$f" | cut -c1-8
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$f" | cut -c1-8
+  else
+    # No hasher is not a reason to reuse an image of unknown provenance.
+    printf 'nohash%s' "$(date -u +%Y%m%d)"
+  fi
+}
+IMAGE="${VULOS_VERIFY_IMAGE:-vulos-recipe-verify:trixie-v2-$(pkgset_tag)}"
 # TMPDIR on macOS ends in a slash, which produced paths like "…/T//vulos-verify".
 # Docker accepts them, but a bind mount whose source path is re-created under a
 # doubled separator can come back stale — see the note in verify_one.
