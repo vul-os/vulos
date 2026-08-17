@@ -638,14 +638,28 @@ func main() {
 		log.Println("[init] created /dev/uinput")
 	}
 
-	// Set hostname to "vulos" (Docker defaults to container ID)
+	// Set the system hostname (Docker otherwise defaults to the container ID).
+	//
+	// This used to hard-code "vulos", which silently UNDID an owner's rename on
+	// every single startup: POST /api/identity/hostname persisted "study" and
+	// this line wrote "vulos" back over it at the next boot. It now uses the
+	// box's resolved name — cfg.Hostname, which reads VULOS_HOSTNAME and falls
+	// back to the OS hostname, sanitised through the same derivation the mDNS
+	// advertisement and the certificate use.
+	//
+	// The trailing newline in the FILE is correct and deliberate: hostname(5)
+	// specifies a newline-terminated file. What was wrong was the reader —
+	// cmd/init passed the raw bytes to sethostname(2) and the box's hostname
+	// literally became "vulos\n" (measured 2026-08-17). See
+	// cmd/init/main.go's parseEtcHostname.
 	if os.Getuid() == 0 {
-		os.WriteFile("/etc/hostname", []byte("vulos\n"), 0644)
-		exec.Command("hostname", "vulos").Run()
+		boxName := startupBoxHostname(cfg.InstanceID, cfg.Hostname)
+		os.WriteFile("/etc/hostname", []byte(boxName+"\n"), 0644)
+		exec.Command("hostname", boxName).Run()
 		// Ensure hostname resolves in /etc/hosts (fixes sudo "unable to resolve host")
 		if hosts, err := os.ReadFile("/etc/hosts"); err == nil {
-			if !strings.Contains(string(hosts), "vulos") {
-				os.WriteFile("/etc/hosts", append(hosts, []byte("127.0.0.1 vulos\n::1 vulos\n")...), 0644)
+			if !strings.Contains(string(hosts), boxName) {
+				os.WriteFile("/etc/hosts", append(hosts, []byte("127.0.0.1 "+boxName+"\n::1 "+boxName+"\n")...), 0644)
 			}
 		}
 	}
@@ -4356,8 +4370,15 @@ func main() {
 	// enroll/remove) registered before this point.
 	// CDN (owner-gated edge cache + firewall)
 	registerCDNRoutes(mux, authStore, home)
-	// Identity service (instance ULID + hostname)
-	registerIdentityRoutes(mux, home)
+	// Identity service (instance ULID + hostname).
+	//
+	// lanRef is created HERE, ahead of the VULOS_LAN_ENABLE block that starts
+	// the LAN service, because both need it: the rename endpoint renames the
+	// box through it, and the LAN certificate reads its SANs through it. It is
+	// empty until the LAN service is set into it below, and every accessor
+	// falls back to the config-derived name set until then.
+	lanRef := newLANServiceRef(cfg.InstanceID, cfg.Hostname)
+	registerIdentityRoutes(mux, home, lanRef)
 	// Conflict resolver (CLUSTER-10)
 	registerConflictRoutes(mux, dataDir, notifySvc)
 	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)
@@ -4608,7 +4629,6 @@ func main() {
 		// can be renamed live (POST /api/identity/hostname) and DHCP can move
 		// it, and a certificate minted once at boot would track neither.
 		// Re-minting reuses the persisted key, so SPKI pins survive.
-		lanRef := newLANServiceRef(cfg.InstanceID, cfg.Hostname)
 		log.Printf("[lan] box names: %s", lanRef.names())
 		certSrc := lan.LoadDynamicCertSource(lanCertPath, lanKeyPath,
 			lanRef.certDNSNames, lanRef.certIPs,

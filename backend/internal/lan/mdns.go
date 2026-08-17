@@ -190,6 +190,21 @@ var probeConflict = func(name string, selfIP net.IP) (bool, string) {
 	return true, addr.String()
 }
 
+// NameTaken reports whether another box on this link already answers for the
+// given ".local" name, and which address answered.
+//
+// Exported so the install wizard can check a name for availability BEFORE the
+// owner commits to it (GET /api/identity/hostname/available). That is the
+// difference between telling someone "that name is taken by 192.168.1.9" while
+// they type, and letting avahi silently rename the losing box to vulos-2 hours
+// later — a name that is in nobody's certificate.
+//
+// selfIP is the caller's own LAN address, excluded from the answer so a box
+// never reports its own advertisement as a conflict.
+func NameTaken(name string, selfIP net.IP) (bool, string) {
+	return probeConflict(name, selfIP)
+}
+
 // isSelfAddr reports whether a probe answer came from this box.
 func isSelfAddr(addr netip.Addr, selfIP net.IP) bool {
 	if !addr.IsValid() {

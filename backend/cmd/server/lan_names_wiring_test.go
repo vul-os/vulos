@@ -150,3 +150,41 @@ func hasString(xs []string, want string) bool {
 	}
 	return false
 }
+
+// TestStartupHostnameDoesNotUndoARename pins the Docker-path startup writer.
+//
+// It used to be the literal "vulos", so every restart wrote "vulos" back over
+// an owner's chosen name and the rename silently reverted. It also meant every
+// box installed the SAME name, which is the collision that made vulos.local
+// resolve to a random box.
+func TestStartupHostnameDoesNotUndoARename(t *testing.T) {
+	const id = "01HZZZZZZZZZZZZZZZZZK3N7Q2"
+
+	if got := startupBoxHostname(id, "study"); got != "study" {
+		t.Fatalf("startupBoxHostname(id, %q) = %q — startup would write %q over the owner's chosen name", "study", got, got)
+	}
+	if got := startupBoxHostname(id, "  Study  "); got != "study" {
+		t.Errorf("startupBoxHostname did not sanitise: %q", got)
+	}
+	// The measured bare-metal value must be recovered, not propagated.
+	if got := startupBoxHostname(id, "vulos\n"); got != "vulos" {
+		t.Errorf("startupBoxHostname(id, %q) = %q, want %q", "vulos\n", got, "vulos")
+	}
+
+	// With nothing usable configured, the fallback must be PER-INSTANCE. A
+	// generic fallback puts every box back on the same name.
+	fallback := startupBoxHostname(id, "")
+	if fallback == "vulos" {
+		t.Fatal("with no configured name the startup hostname falls back to the shared \"vulos\" — every box installs the same name and they collide on the LAN")
+	}
+	if fallback != lan.DefaultHostname(id) {
+		t.Errorf("fallback = %q, want the per-instance default %q", fallback, lan.DefaultHostname(id))
+	}
+	other := startupBoxHostname("01HAAAAAAAAAAAAAAAAAB4M8R3", "")
+	if other == fallback {
+		t.Fatalf("two different boxes both fall back to %q", fallback)
+	}
+	if !lan.ValidHostnameLabel(fallback) {
+		t.Errorf("fallback %q is not a valid hostname label", fallback)
+	}
+}

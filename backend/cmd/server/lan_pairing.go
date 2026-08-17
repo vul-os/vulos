@@ -72,11 +72,42 @@ func (r *lanServiceRef) names() lan.NameSet {
 	if s := r.get(); s != nil {
 		return s.Names()
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return lan.NewNameSet(r.instanceID, r.hostname)
 }
 
 // certDNSNames is the DNS SAN callback for the LAN certificate source.
 func (r *lanServiceRef) certDNSNames() []string { return r.names().DNSNames }
+
+// rename applies a new box name live, satisfying hostnameRenamer. When the LAN
+// service is not running there is nothing advertising a name, so the derived
+// set is returned without a live effect and the caller reports AppliedLive
+// accordingly — it must never claim a rename took effect when it did not.
+func (r *lanServiceRef) rename(name string) (lan.NameSet, error) {
+	if s := r.get(); s != nil {
+		return s.SetHostname(name)
+	}
+	clean := lan.SanitizeHostname(name)
+	if clean == "" {
+		return lan.NameSet{}, fmt.Errorf("%q is not a valid box name", name)
+	}
+	r.mu.Lock()
+	r.hostname = clean
+	r.mu.Unlock()
+	return lan.NewNameSet(r.instanceID, clean), nil
+}
+
+// nameTaken runs the same mDNS conflict probe the advertiser uses, so the
+// install wizard can tell an owner a name is taken WHILE THEY TYPE IT instead
+// of letting avahi silently rename the losing box hours later.
+func (r *lanServiceRef) nameTaken(name string) (bool, string) {
+	clean := lan.SanitizeHostname(name)
+	if clean == "" {
+		return false, ""
+	}
+	return lan.NameTaken(clean+".local", lan.DetectLANIP())
+}
 
 // certIPs is the IP SAN callback for the LAN certificate source.
 //
@@ -220,4 +251,23 @@ func registerLANPairingRoutes(mux *http.ServeMux, cfg *config.Config, certSrc la
 		}
 		writeJSON(w, info)
 	})
+}
+
+// startupBoxHostname resolves the name the server installs as the system
+// hostname at startup on the Docker path.
+//
+// It used to be the hard-coded literal "vulos", which silently UNDID an owner's
+// rename on every boot: POST /api/identity/hostname persisted "study", and the
+// next startup wrote "vulos" back over it. Deriving it means a rename survives
+// a restart, and it means two boxes do not both install the same name.
+//
+// The fallback is the PER-INSTANCE default rather than the generic "vulos",
+// because a box whose configured name is unusable must still not collide with
+// its sibling — that collision is what made vulos.local resolve to a random
+// box (measured 2026-08-17).
+func startupBoxHostname(instanceID, configured string) string {
+	if name := lan.SanitizeHostname(configured); name != "" {
+		return name
+	}
+	return lan.DefaultHostname(instanceID)
 }
