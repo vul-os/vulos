@@ -472,10 +472,14 @@ So: **box64 first for anything delivered as ELF files into a prefix we control**
 crashes on. Neither helps a Flatpak, for the reason in §4.4 — and note that the
 prior recommendation is not merely refined here, it is **reversed**.
 
-**And check rung 2 before either.** `DISTRO-SOURCED-APPS.md` measures that **6 of
-these 17** — Blender, OBS Studio, HandBrake, Thunderbird, OpenSCAD, Cura — have a
-**native Debian arm64 build**. Emulating an app a distribution already compiles
-natively is the worst of the available choices.
+**And note what is being given up.** `DISTRO-SOURCED-APPS.md` measures that **6
+of these 17** — Blender, OBS Studio, HandBrake, Thunderbird, OpenSCAD, Cura —
+have a **native Debian arm64 build**, and that Blender installs from one and
+renders images. Consuming those builds needs a pinned-closure install vehicle,
+which was **parked by founder decision on 2026-08-17** ("one app does not justify
+a third vehicle"). So these six stay on the emulation path or unavailable, **by
+choice rather than because no build exists** — a distinction worth keeping,
+because the second invites nobody to look again.
 
 Either way this is an **opt-in, per-app, non-GPU** path (exceptions E2/E3), never a
 default posture.
@@ -646,8 +650,11 @@ recommendation, which is a sync change, and only lastly by emulation.
    control, box64 reaches the host's real GL stack (§4.3.1).
 5a. **A foreign-arch Flatpak DOES install** (`--arch=x86_64`, measured, 1.4 GB
    deployed on an aarch64 box). Whether it runs is `untestable-on-arm64-mac`.
-5b. **6 of the 17 have a native Debian arm64 build** and should never reach the
-   emulation question at all — `roadmap/DISTRO-SOURCED-APPS.md`.
+5b. **6 of the 17 have a native Debian arm64 build** and need not reach the
+   emulation question at all — but consuming them needs an install vehicle that
+   was **parked by founder decision 2026-08-17**. Blender was installed from one
+   and rendered an image before the decision landed:
+   `roadmap/DISTRO-SOURCED-APPS.md`.
 6. **Ship labels, not silence.** An app that vanishes on the ARM laptop is a bug report;
    an app that says *"installed on studio-box, which is amd64"* is one OS being honest.
 7. **Two catalogue ids are wrong today** and will fail at install: `org.krita.krita` →

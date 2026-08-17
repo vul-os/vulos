@@ -1,14 +1,28 @@
 # When a distribution is the only party doing the ARM build work
 
-> **Status, 2026-08-17.** Measurement + design.
-> **Blender 4.3.2 was built for arm64 by Debian, installed into a private prefix
-> from a 350-package frozen closure, and rendered a real image — §4.4.** The
-> measurements are reproducible (`scripts/freeze-debian-closure.sh`,
-> `scripts/arch-emulation-bench.sh dynamic`).
-> **The mechanism is NOT built**: vehicle C needs installer code in
-> `backend/services/appnet/**`, which is another agent's file. §9 is the handoff,
-> §10 is what is still unproven, and the staged registry fragment is `_disabled`
-> because no installer can execute it yet.
+> ## Status: **PARKED by founder decision, 2026-08-17. Do not build this.**
+>
+> *"leave Blender out for now … Blender is one app and it is no longer worth the
+> machinery."* **Blender ships amd64-only and badged honestly (§8.1). The
+> frozen-closure vehicle is NOT to be built.**
+>
+> This document is kept because **the measurements outlive the decision** and
+> three of them contradict things this repo currently records as settled:
+>
+> 1. **Debian builds an arm64 Blender** — `4.3.2+dfsg-2` — and 6 of the 17
+>    x86_64-only catalogue apps have Debian arm64 builds (§2, §1.1).
+>    INSTALL-METHODOLOGY §7.1's *"there is nothing to pin"* is true of
+>    blender.org and false of the world.
+> 2. **box64 was rejected on a test it cannot pass by construction** (§5). On a
+>    dynamically linked binary it is correct, 1.40× native against qemu-user's
+>    2.32×, and it binds the **host's own** aarch64 GL stack.
+> 3. **A foreign-architecture Flatpak installs** (§6), which `arch.go`'s
+>    `EmulationCanServe` comment says it cannot.
+>
+> §9 is the written handoff to the `backend/services/appnet/**` owner — **not
+> edited here.** §10 is what was never proven. §11 is what was not reached.
+> `scripts/freeze-debian-closure.sh` is committed, self-tested and **unused**;
+> it is evidence for §4's costing, not a component of anything.
 
 ## 0. The one-paragraph answer
 
@@ -40,7 +54,7 @@ more convenient answer.**
 | # | Rung | Test | What the user gets |
 |---|---|---|---|
 | **1** | **Native, upstream** | upstream publishes a build for this arch (Flathub ref exists / vendor artefact exists) | Install button. No badge. |
-| **2** | **Native, distribution-sourced** | a distribution builds it from source for this arch — measured with `apt-cache policy <pkg>` in a container of that arch | Install button. No badge. **This rung is the subject of this document and it did not exist before.** |
+| **2** | **Native, distribution-sourced** | a distribution builds it from source for this arch — measured with `apt-cache policy <pkg>` in a container of that arch | Install button. No badge. **PARKED 2026-08-17 — this rung is designed and costed (§4) but deliberately NOT built (§8). Until it is, apps that would land here fall through to rung 3 or 5.** |
 | **3** | **Emulated, and the user is told what they are getting** | the app is delivered as ELF files into a prefix we control (vehicle B or C — **not** Flatpak), an emulator is present, and `emulation_policy: "opt-in"` | `Needs emulation` badge, the cost stated in the sentence, off until the user turns it on |
 | **4** | **Available elsewhere in the fleet** | a synced sibling instance runs it | `On your other instance`, naming the instance |
 | **5** | **Declared unavailable, with the reason** | none of the above | `Not available on this box` + why. **Never a bare "Unavailable", never a silent disappearance.** |
@@ -75,9 +89,11 @@ Measured (§3, §5). "Debian arm64" is rung 2; the rest fall to rung 3 or 5.
 | torbrowser-launcher | 5 | package exists, **no arm64 candidate** |
 | protontricks, marktext, heroic, bottles, lutris, PCSX2, Signal, Upscayl, Sober, Insomnia | 3 or 5 | not packaged by Debian at all; rung 3 only if a per-arch **binary** artefact exists to emulate, else rung 5 |
 
-**Six of seventeen move from "not available" to "native".** That is the whole
-return on this mechanism, and it is why it is worth building for more than
-Blender.
+**Six of seventeen would move from "not available" to "native"** if rung 2 were
+built. It is not, and today all six sit at rung 3 or 5. That count is the
+trigger condition for revisiting the decision in §8: the argument against
+building rung 2 is *"one app does not justify a third vehicle"*, and the honest
+answer to that is **six**, not one.
 
 ---
 
@@ -665,27 +681,58 @@ indistinguishable from a slow network. Timeouts and `--speed-limit` are now set.
 
 ---
 
-## 8. Recommendation
+## 8. Recommendation, and the decision that overrode it
 
-**Build it, for the six apps at rung 2.** The cost question has a measured
-answer: a frozen Debian arm64 closure for Blender is **262 MB / 997 MiB**, which
-is **less** than the 477 MB / 1.1 GB Flathub x86_64 build that is already an
-accepted vehicle, and it yields a **native** app rather than an emulated one.
-Six of the seventeen x86_64-only catalogue apps move from "not available on this
-box" to "installs natively", which is a larger coverage gain than the entire
-Flatpak migration produced for arm64.
+**What the measurement recommended:** build it for the six rung-2 apps. The cost
+question has a measured answer — a frozen Debian arm64 closure for Blender is
+**262 MB / 997 MiB**, **less** than the 477 MB / 1.1 GB Flathub x86_64 build
+already accepted as a vehicle, and it yields a native app that **renders images**
+(§4.4) rather than an emulated one.
 
-**Sequencing.** ARCH-PLACEMENT §5 still holds: the installed app set does not
-sync at all yet, so none of this is on the critical path. What *is* immediately
-true is that a single arm64 user loses Blender today, and rung 2 fixes that
-independently of sync.
+**What was decided, 2026-08-17:** *"leave Blender out for now … Blender is one
+app and it is no longer worth the machinery."* **The mechanism is parked.**
 
-**Do not build a shared package store.** One prefix per app, libc duplicated per
-app. The moment packages are shared, the box needs to know which app needs which
+Both are recorded because the reasoning differs from the outcome and a future
+reader needs to know which is which. The decision is not a rebuttal of §4 — it
+is a judgement that **one app does not justify a third install vehicle**, which
+is a different and entirely defensible claim. The number that would reverse it is
+not Blender's cost; it is **how many apps land on rung 2**. That number is **6**
+today (§1.1) and every one of them is a desktop application a user would notice.
+
+### 8.1 What Blender ships as
+
+`registry.d/apt-to-flatpak.json` already stages Blender correctly for this
+outcome — `arch: ["amd64"]`, Flathub vehicle, `_disabled` absent — so **no
+registry change is required and none was made.** `EvaluateArch` will render:
+
+> **Not available on this box** — *Blender ships for amd64 only and needs
+> graphics acceleration, which emulation cannot provide. It stays available on
+> your amd64 instances.*
+
+That is honest and it is the accepted outcome. **One correction is owed to that
+entry's `_note`, which is now factually wrong** and is a handoff rather than an
+edit, because the fragment belongs to another agent:
+
+> The `_note` currently reads *"blender.org publishes no official Linux aarch64
+> build either, so no `artifacts` entry can recover arm64 coverage; there is
+> nothing to pin."*
+> **Measured false.** Debian trixie ships `blender 4.3.2+dfsg-2` for arm64 and it
+> was installed and made to render on this machine (§4.4). The accurate sentence
+> is: *"An arm64 build exists — Debian compiles one — but consuming it needs a
+> pinned-closure install vehicle that Vulos deliberately does not have. Parked by
+> founder decision 2026-08-17: one app does not justify a third vehicle. See
+> roadmap/DISTRO-SOURCED-APPS.md."*
+
+The distinction matters: **"no build exists" invites nobody to look again;
+"a build exists and we chose not to consume it" is a decision with a trigger
+condition.**
+
+### 8.2 If it is ever unparked
+
+Do not build a shared package store. One prefix per app, libc duplicated per
+app. The moment packages are shared the box must know which app needs which
 version of what, and that is a dependency solver — the thing §4.6 refuses. The
-duplication is the price of not becoming a distribution and it should be paid.
-
-**Do not enable rung 3 by default.** §5.2's 1-in-30 SIGILL is why.
+duplication is the price of not becoming a distribution.
 
 ---
 
@@ -789,3 +836,45 @@ simpler and gives up Flathub's amd64 build.
 - **Whether a foreign-arch Flatpak runs** — §6, `untestable-on-arm64-mac`.
 - **Cura 5.0.0 in Debian is well behind upstream.** Rung 2 trades currency for
   coverage and a rung-2 entry must state its version gap.
+
+---
+
+## 11. What was NOT reached
+
+Ordered by how much it would cost someone to pick up.
+
+- **`freeze-debian-closure.sh` has never produced a manifest.** Two full runs
+  were started against `snapshot.debian.org`; the first was sequential and
+  abandoned as unusable, the second was parallelised and stopped mid-run when
+  the work was parked. `--self-test` passes (14 fixtures, 13 mutations killed),
+  `--resolve-only` is verified against a real package, and every step it
+  performs was executed by hand in §4.4 — **but the tool end to end is
+  unexercised.** Its `FETCH_SECONDS` figure, which is the only thing that would
+  settle whether snapshot.debian.org can serve a 350-file closure at an
+  acceptable rate, **was never obtained.** That is the single most important
+  missing number in this document.
+- **345 of 350 packages were never fetched from `snapshot.debian.org`.** Five
+  were, and all five match (§4.5). The end-to-end proof in §4.4 used
+  `deb.debian.org`, which is a **moving target** — so the app that ran is the
+  right app, but not from the URLs a real manifest would carry.
+- **The amd64 side of every closure is unmeasured.** Only arm64 was resolved.
+- **The other five rung-2 candidates were confirmed only by `apt-cache
+  policy`** — OBS Studio, HandBrake, Thunderbird, OpenSCAD and Cura have arm64
+  candidates, and nothing beyond that was measured. No closure size, no install,
+  no launch. Blender's four failed attempts (§4.4) are a warning that
+  "the package exists" is a long way from "the app runs".
+- **Whether a foreign-arch Flatpak RUNS with binfmt registered** (§6, Q3).
+  Blocked three ways on this machine — bwrap namespaces, no visible
+  `binfmt_misc`, and Rosetta contaminating any result. **Needs a real arm64
+  Linux box.** This is the one open question that directly changes §9.1's
+  recommendation, because if it runs badly that is evidence, and if it does not
+  run at all `EmulationCanServe`'s current answer is right for the wrong reason.
+- **box64 was never run against a GPU.** §5.3 proves it binds the host's native
+  GL stack; on a GPU-less container that stack is `llvmpipe`. **Hardware
+  acceleration under box64 is asserted by mechanism, not measured.**
+- **No Go was written or run.** §9 is prose. `go build` was not invoked for
+  either target, because nothing in `backend/` was touched.
+- **No App Hub copy was implemented.** §1's badge table is a specification.
+- **`roadmap/app-verification-ledger.json` is untouched.** Blender was launched
+  in a container, not through `scripts/verify-app-recipe.sh`, so no ledger row
+  was earned and none was written.
