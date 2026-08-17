@@ -158,6 +158,8 @@ export function resetPrefsForTest(): void {
   pending = {}
   hydratedFor = null
   applyingRemote = false
+  preHydrateCommands.clear()
+  lastServerView = {}
   pusher = null
   if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null }
   try { localStorage.removeItem(PENDING_KEY) } catch { /* noop */ }
@@ -320,8 +322,37 @@ export function exceedsSyncLimit(value: string | null | undefined): boolean {
  * has a value for are queued as deletions, so removing the last widget removes
  * the rail server-side instead of leaving the old placements to come back.
  */
-export function pushPrefGroup(name: string): void {
-  if (applyingRemote || hydratedFor === null) return
+/**
+ * Groups whose local state was set by a DELIBERATE user command issued before
+ * the box had answered, and which must therefore win over what the box says.
+ *
+ * There is exactly one such command today and it is the reason this exists: the
+ * `?desktop-layout=stock` escape hatch. It runs at module load — before any
+ * profile can arrive — for the case where the keyboard is not available and the
+ * chosen layout has made the revert control hard to find (a kiosk, a
+ * touch-only box). Ordinary pre-hydrate writes are dropped, because they are
+ * mount effects re-persisting what they just read. This one is not: dropping it
+ * meant hydration cheerfully pushed the layout the user was trying to escape
+ * straight back onto the screen, and the last-resort revert became the one
+ * revert that could not work.
+ */
+const preHydrateCommands = new Set<string>()
+
+export interface PushGroupOptions {
+  /**
+   * Mark this as a user command rather than a persistence side effect. A
+   * deliberate write made before the first hydrate is REMEMBERED and applied
+   * afterwards instead of being dropped.
+   */
+  deliberate?: boolean
+}
+
+export function pushPrefGroup(name: string, opts: PushGroupOptions = {}): void {
+  if (applyingRemote) return
+  if (hydratedFor === null) {
+    if (opts.deliberate) preHydrateCommands.add(name)
+    return
+  }
   const group = groups.find((g) => g.name === name)
   if (!group) return
   const local = group.read()
@@ -436,6 +467,15 @@ export function hydratePrefs(
         else delete effective[k]
       }
 
+      // A deliberate command issued before the box answered wins over the box.
+      // Without this the escape hatch below loses a race it must never lose:
+      // the user asks for stock, the layout resets, and hydration then applies
+      // the very layout they were escaping.
+      if (preHydrateCommands.has(group.name)) {
+        for (const k of Object.keys(effective)) if (local[k] === undefined) delete effective[k]
+        for (const [k, v] of Object.entries(local)) effective[k] = v
+      }
+
       // A local value too large for the bag is re-asserted last, and this is
       // load-bearing rather than tidy.
       //
@@ -454,6 +494,11 @@ export function hydratePrefs(
   } finally {
     applyingRemote = false
   }
+
+  // Now that hydratedFor is set, the remembered commands can queue their diff
+  // against what the box turned out to be holding.
+  for (const name of preHydrateCommands) pushPrefGroup(name)
+  preHydrateCommands.clear()
 
   emit()
 

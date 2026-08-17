@@ -329,6 +329,42 @@ describe('not fighting the sync engine', () => {
   })
 })
 
+describe('a command issued before the box answered', () => {
+  it('wins over what the box turns out to be holding', () => {
+    // The ?desktop-layout=stock escape hatch, in miniature. It runs at module
+    // load — before any profile can arrive — for the case where the keyboard is
+    // unavailable and the chosen layout has made the revert control hard to
+    // find. Ordinary pre-hydrate writes are dropped as mount-effect echoes;
+    // dropping THIS one meant hydration put the layout the user was escaping
+    // straight back on the screen, and the last-resort revert became the one
+    // revert that could not work. An E2E run caught it.
+    localStorage.setItem(LS, 'side-dock')
+
+    // The user's command: clear it, before anything has hydrated.
+    localStorage.removeItem(LS)
+    pushPrefGroup('test', { deliberate: true })
+    expect(pendingPrefPatch(), 'nothing can be queued before hydrate').toEqual({})
+
+    // The box answers, still holding the layout that was just escaped.
+    hydratePrefs('user-1', { [BAG]: 'side-dock' })
+
+    expect(prefRead(LS), 'the box overrode a deliberate revert').toBe('')
+    expect(pendingPrefPatch(), 'the revert never reached the box').toEqual({ [BAG]: '' })
+  })
+
+  it('does not remember an ordinary pre-hydrate write', () => {
+    // The control. Without it the test above would pass on a build that simply
+    // stopped dropping pre-hydrate pushes altogether, which is the behaviour
+    // that makes every reload a write.
+    localStorage.setItem(LS, 'side-dock')
+    pushPrefGroup('test') // not deliberate
+
+    hydratePrefs('user-1', { [BAG]: 'from-the-box' })
+
+    expect(prefRead(LS)).toBe('from-the-box')
+  })
+})
+
 describe('removal', () => {
   it('queues a DELETION for a key the group no longer has a value for', () => {
     // Remove your last widget. Without an explicit deletion the box keeps the

@@ -389,7 +389,14 @@ export function resetToStock(): DesktopLayout {
   // Reverting is a DECISION, and it has to reach the box or the next load pulls
   // the old layout back down. commit() is not on this path (it removes the key
   // rather than writing one), so the push is explicit here.
-  pushPrefGroup(PREF_GROUP_DESKTOP)
+  //
+  // `deliberate` matters for exactly one of the three routes: the
+  // ?desktop-layout=stock escape hatch runs at MODULE LOAD, before any profile
+  // has arrived, and an ordinary pre-hydrate push is dropped as a mount-effect
+  // echo. Dropped, this revert lost to hydration — the user asked for stock and
+  // the box put the old layout straight back. The last-resort revert is the one
+  // that must survive every race, which is why it is the one marked.
+  pushPrefGroup(PREF_GROUP_DESKTOP, { deliberate: true })
   return current
 }
 
