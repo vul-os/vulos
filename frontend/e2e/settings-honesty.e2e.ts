@@ -74,10 +74,21 @@ test.describe('Settings does not assert what the box never said', () => {
     expect(await gotoSection(page, 'About')).toBe(true)
 
     const panel = page.locator('[class*="@container/win"]')
-    await expect(panel).toContainText('Vulos OS')          // the pane did render
-    await expect(panel).not.toContainText('Tier 0')        // no GPU tier was measured
-    await expect(panel).not.toContainText('X11 SHM')       // no capture path was measured
-    await expect(panel).not.toContainText('Debian Linux')  // no OS version was reported
+    await expect(panel).toContainText('Vulos OS')    // the pane did render
+    await expect(panel).not.toContainText('Tier 0')  // no GPU tier was measured
+    await expect(panel).not.toContainText('X11 SHM') // no capture path was measured
+
+    // The OS row, scoped. A pane-wide `not.toContainText('Debian Linux')` was
+    // the first thing written here and it failed on CORRECT code: the string
+    // also appears twice as honest static text on this pane — the Backend row
+    // reads "Go + Debian Linux" and the footer reads "Powered by Debian Linux",
+    // neither of which is a measurement of anything. The assertion was
+    // measuring branding. What the defect was about is the OS row, which used
+    // to fall back to the bare claim "Debian Linux" when the box had reported
+    // no version at all; that is the row this pins.
+    const osRow = panel.locator('div.grid').filter({ hasText: /^OS/ })
+    await expect(osRow).toHaveCount(1) // a row that resolves to nothing would satisfy the next line vacuously
+    await expect(osRow).not.toContainText('Debian')
   })
 
   /**

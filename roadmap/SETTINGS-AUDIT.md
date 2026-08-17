@@ -238,9 +238,9 @@ Tab/Shift+Tab within it, and restores focus to the opener on close. The
 |---|---|---|---|
 | S1 | `StorageModeSettings` prose, ~3196 | "The default sends every read and write directly to hosted Tigris." | `DefaultMode = ModeLocalFS` since D-STORE-LOCAL-DEFAULT. The default sends them to this box's own disk. |
 | S2 | `StorageModeSettings` "Current mode", ~3206 | a two-state readout | the selector below it has had three states since `local-fs` landed |
-| S3 | `DensityPicker` comment, ~970 | "Applied eagerly on load in main.jsx" | `main.tsx`, and it is applied by the `density` pref group, not just at load |
+| S3 | `DensityPicker` comment, ~970 | names the entry file with a `.jsx` extension, and says density is applied "eagerly on load" | the file is `frontend/src/main.tsx`, and the value is also applied by the `density` pref group whenever one arrives from the box — not only at load |
 | S4 | `NotificationsSettings` comment, ~3913 | "All prefs persist to localStorage" | they ride `Profile.Settings` under `shell.notifications.prefs` and follow the user |
-| S5 | footer comment, ~3908 | "`./settings/ui.jsx`" | `ui.tsx` |
+| S5 | footer comment, ~3908 | points at the shared kit with a `.jsx` extension | the kit is `frontend/src/core/settings/ui.tsx`; it was moved to TypeScript and the two trailing comments were left behind |
 
 S1 and S2 are the same defect as D2 seen from the prose side, and are load-
 bearing: a user reading this panel to decide whether to opt *out* of hosted
