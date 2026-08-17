@@ -476,6 +476,37 @@ func ParseEmulationPolicy(s string) EmulationPolicy {
 	return EmulationNever
 }
 
+// emulationOptedIn is the BOX-level half of exception E2. The entry's
+// EmulationPolicy says whether an app MAY be offered emulated; this says whether
+// this box's owner has agreed to be offered them at all. Both must hold.
+var emulationOptedIn atomic.Bool
+
+// SetEmulationOptedIn records the box owner's decision to be offered emulated
+// apps. Default false, and the default is the product decision, not caution: an
+// app that is present and crawls reads as a Vulos defect rather than as a
+// hardware limit (roadmap/DISTRO-SOURCED-APPS.md §1, rung 3).
+func SetEmulationOptedIn(v bool) { emulationOptedIn.Store(v) }
+
+// EmulationOptedIn reports whether this box offers emulated apps.
+//
+// VULOS_EMULATION_OPTIN forces it on. Like VULOS_BOX_ARCH and
+// VULOS_EMULATED_ARCHES it is read from the SERVER process's own environment and
+// can never arrive from a client — a browser must not be able to opt a box into
+// running translated binaries.
+//
+// THERE IS NO UI FOR THIS YET, and the copy in EvaluateArch is written to match:
+// the not-yet-enabled sentence says emulated apps are turned off on this box and
+// deliberately does NOT tell the user to go and turn them on in Settings, because
+// there is no Settings screen in this build (frontend/src/builtin/ has no
+// settings app). Naming a control that does not exist is the same defect class
+// as a badge that claims a measurement nobody took.
+func EmulationOptedIn() bool {
+	if v := os.Getenv("VULOS_EMULATION_OPTIN"); v == "1" || v == "true" {
+		return true
+	}
+	return emulationOptedIn.Load()
+}
+
 // binfmtMiscDir is the kernel's registration table. A variable so tests can
 // point it at a fixture; never configurable at runtime.
 var binfmtMiscDir = "/proc/sys/fs/binfmt_misc"
@@ -908,19 +939,54 @@ type ArchRequest struct {
 	OtherInstance string
 }
 
-// ArchAvailability is the rendered answer.
+// ArchAvailability is the rendered answer, and it is rendered HERE rather than
+// in the browser. Every string on it is shown to a person verbatim; the App Hub
+// composes no sentence of its own about architecture, so there is one place the
+// wording can be got wrong and one place a test can catch it.
 type ArchAvailability struct {
 	State             string `json:"state"`
 	Installable       bool   `json:"installable"`
 	RequiresEmulation bool   `json:"requires_emulation"`
-	Badge             string `json:"badge"`
-	Detail            string `json:"detail"`
-	BoxArch           string `json:"box_arch"`
-	Undeclared        bool   `json:"undeclared"` // nobody audited this entry
+	// Badge is the §1 badge and it heads the detail panel. Empty for a native
+	// app — rung 1 is "Install button, no badge", and a badge on the apps that
+	// simply work is noise on every card in the catalogue.
+	Badge string `json:"badge"`
+	// CardBadge is the same fact at CARD width, and it exists because the two
+	// places have different budgets, not because two wordings are nicer.
+	//
+	// The panel has a paragraph; a card has a chip in a wrapping tag row beside
+	// the source and type badges. "Not available on this box" is the right
+	// heading and the wrong chip — it says nothing the user can act on, where
+	// "Needs amd64" names the fact that decides it. Both come from here, so a
+	// card and its own panel cannot disagree.
+	CardBadge  string `json:"card_badge"`
+	Detail     string `json:"detail"`
+	BoxArch    string `json:"box_arch"`
+	Undeclared bool   `json:"undeclared"` // nobody audited this entry
+	// Needs is the architectures the app declares, normalised to Debian spelling
+	// and de-duplicated, for display. It is computed here for the same reason
+	// the sentences are: an entry that lists both `x86_64` and `amd64` (Flathub
+	// metadata merged with Debian's) renders "amd64, amd64" if each caller folds
+	// the spellings itself, and that is exactly the fold the App Hub used to own.
+	Needs []string `json:"needs"`
 }
 
 // EvaluateArch decides what this box does with this app, and says it in one
 // sentence the App Hub can show verbatim.
+//
+// The rungs are §1 of roadmap/DISTRO-SOURCED-APPS.md, applied in order, stopping
+// at the first that holds and never skipping one to reach a more convenient
+// answer:
+//
+//	1  native            the box is one of the machines the app is built for
+//	3  emulated          an emulator here can serve it, and the user is TOLD
+//	                     what they are getting (rung 2, distribution-sourced, is
+//	                     parked — §8 — so nothing lands there)
+//	4  other-instance    not here, but a synced sibling runs it, named
+//	5  unavailable       none of the above, WITH the reason
+//
+// Rung 4 sits BELOW rung 3 deliberately: an app that runs on this box, slowly
+// and labelled, beats one the user has to walk to another machine for.
 func EvaluateArch(req ArchRequest) ArchAvailability {
 	box := "unknown"
 	if len(req.Supported) > 0 {
@@ -930,7 +996,8 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 	if name == "" {
 		name = "This app"
 	}
-	av := ArchAvailability{BoxArch: box, Undeclared: !ArchDeclared(req.Declared)}
+	needs := declaredList(req.Declared)
+	av := ArchAvailability{BoxArch: box, Undeclared: !ArchDeclared(req.Declared), Needs: needs}
 
 	if ArchSupported(req.Declared, req.Supported) {
 		av.State = ArchStateNative
@@ -938,7 +1005,6 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 		return av
 	}
 
-	needs := declaredList(req.Declared)
 	needsStr := strings.Join(needs, " or ")
 	if needsStr == "" {
 		needsStr = "an architecture this box does not have"
@@ -961,24 +1027,18 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 	case !EmulationCanInstall(req.Delivery):
 		// The resolver refuses before any instruction is executed. Nothing was
 		// downloaded, so there is nothing for an emulator to emulate.
-		av.State = ArchStateUnavailable
-		av.Badge = "Not available on this box"
-		av.Detail = name + " ships for " + needsStr + " only, and this box is " + box +
-			". " + deliveryClause(req.Delivery) + elsewhereClause(req, needsStr)
-		return av
+		return av.refused(req, needs, name+" ships for "+needsStr+" only, and this box is "+box+
+			". "+deliveryClause(req.Delivery), needsStr)
 
 	case !EmulationRunsWell(req.Delivery):
 		// The bits CAN get here — measured, for Flatpak — and we decline. Say
 		// that, rather than repeating the sentence above, which would be a
 		// claim we now know to be false. Note what this does NOT say: that it
 		// would fail to run. That case is untested (see EmulationRunsWell).
-		av.State = ArchStateUnavailable
-		av.Badge = "Not available on this box"
-		av.Detail = name + " ships for " + needsStr + " only. This box is " + box +
-			" and could install the " + needsStr + " build, but it would bring its own " +
-			needsStr + " graphics libraries, which emulation cannot accelerate — so it is " +
-			"not offered here." + elsewhereClause(req, needsStr)
-		return av
+		return av.refused(req, needs, name+" ships for "+needsStr+" only. This box is "+box+
+			" and could install the "+needsStr+" build, but it would bring its own "+
+			needsStr+" graphics libraries, which emulation cannot accelerate — so it is "+
+			"not offered here.", needsStr)
 
 	case req.NeedsGPU && !req.EmulatorBindsHostLibraries:
 		// E3, RE-SCOPED. It used to fire for every GPU-bound app regardless of
@@ -988,18 +1048,21 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 		// prefix, where an x86_64 glxinfo reported this machine's own aarch64
 		// Mesa 25.0.7 / LLVM 19.1.7. So the exception belongs to the emulator
 		// and the delivery, not to the app.
-		av.State = ArchStateUnavailable
-		av.Badge = "Not available on this box"
-		av.Detail = name + " ships for " + needsStr + " only and needs graphics acceleration, " +
-			"which the emulation available on this box cannot provide." + elsewhereClause(req, needsStr)
-		return av
+		return av.refused(req, needs, name+" ships for "+needsStr+" only and needs graphics acceleration, "+
+			"which the emulation available on this box cannot provide.", needsStr)
 
-	case req.Policy != EmulationOptIn, !emulatorPresent:
-		av.State = ArchStateUnavailable
-		av.Badge = "Not available on this box"
-		av.Detail = name + " ships for " + needsStr + " only and this box is " + box +
-			", with no emulation available for it." + elsewhereClause(req, needsStr)
-		return av
+	case !emulatorPresent:
+		return av.refused(req, needs, name+" ships for "+needsStr+" only and this box is "+box+
+			", with no emulator installed for it.", needsStr)
+
+	case req.Policy != EmulationOptIn:
+		// SPLIT from the case above 2026-08-17, and the split is the point: an
+		// emulator IS installed here and the catalogue entry has not been
+		// cleared for it. Saying "no emulation available" — which is what both
+		// arms used to say — is a claim about the BOX that is false, and it
+		// sends the reader looking for an emulator they already have.
+		return av.refused(req, needs, name+" ships for "+needsStr+" only, and this box is "+box+
+			". It is not cleared to run under emulation, so it is not offered here.", needsStr)
 	}
 
 	av.State = ArchStateEmulated
@@ -1007,14 +1070,56 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 	if req.EmulationEnabled {
 		av.Installable = true
 		av.Badge = "Runs emulated"
+		av.CardBadge = "Runs emulated"
 		av.Detail = name + " ships for " + needsStr + " only and will run on this " + box +
 			" box through emulation — noticeably slower, " + graphicsClause(req) + "."
 		return av
 	}
 	av.Badge = "Needs emulation"
+	av.CardBadge = "Needs emulation"
+	// It does NOT say "turn it on in Settings". There is no Settings screen in
+	// this build, and pointing at a control that does not exist is a claim about
+	// the product exactly as unmeasured as a claim about the hardware would be.
+	// See EmulationOptedIn.
 	av.Detail = name + " ships for " + needsStr + " only. This box is " + box +
 		" and can run it through emulation — noticeably slower, " + graphicsClause(req) +
-		". Turn on emulated apps in Settings to install it."
+		". Emulated apps are turned off on this box."
+	return av
+}
+
+// refused finishes an app that this box will not install natively or emulate.
+// It is where rungs 4 and 5 are told apart, and having ONE place to do it is
+// what stopped five refusal arms each having to remember the sibling-instance
+// case — the shape in which one of them would quietly not.
+func (av ArchAvailability) refused(req ArchRequest, needs []string, reason, needsStr string) ArchAvailability {
+	if req.OtherInstance != "" {
+		// Rung 4. The app has not vanished from the fleet, and saying WHICH
+		// machine has it is what makes a heterogeneous fleet read as one OS.
+		av.State = ArchStateOtherInstance
+		av.Badge = "On your other instance"
+		av.CardBadge = "On " + req.OtherInstance
+		av.Detail = reason + " It is installed on " + req.OtherInstance + " and stays available there."
+		return av
+	}
+	// Rung 5. Never the bare word "Unavailable" — it reads as broken rather
+	// than as a fact about this piece of hardware.
+	av.State = ArchStateUnavailable
+	av.Badge = "Not available on this box"
+	av.CardBadge = "Not available here"
+	if len(needs) > 0 {
+		av.CardBadge = "Needs " + strings.Join(needs, "/")
+	}
+	// The closing clause says "any … instance you run", not "your … instances".
+	// The second asserts the user HAS one, which nothing here knows: OtherInstance
+	// is empty precisely because no sibling was found running this app. And when
+	// the app names no architecture at all, needsStr is a whole clause of its own
+	// ("an architecture this box does not have") that cannot be spliced in as an
+	// adjective without producing a sentence no one wrote.
+	if len(needs) > 0 {
+		av.Detail = reason + " It stays available on any " + needsStr + " instance you run."
+	} else {
+		av.Detail = reason + " It stays available on any instance that has the architecture it needs."
+	}
 	return av
 }
 
@@ -1035,14 +1140,13 @@ func graphicsClause(req ArchRequest) string {
 	return "and without graphics acceleration"
 }
 
-// elsewhereClause is the sentence that turns a fleet into one OS: when the app
-// works on a sibling instance, say which one and never let it just vanish.
-func elsewhereClause(req ArchRequest, needsStr string) string {
-	if req.OtherInstance != "" {
-		return " It is installed on " + req.OtherInstance + " and stays available there."
-	}
-	return " It stays available on your " + needsStr + " instances."
-}
+// elsewhereClause is GONE. It used to append the sibling-instance sentence to a
+// verdict that was ALWAYS ArchStateUnavailable, so an app that a sibling
+// instance was running still reported "unavailable" in the field the UI
+// switches on and mentioned the sibling only in prose. ArchStateOtherInstance
+// existed as a constant and nothing ever produced it — rung 4 was a string in a
+// const block. The clause now lives in ArchAvailability.refused, which sets the
+// STATE as well as the sentence.
 
 func deliveryClause(k DeliveryKind) string {
 	switch k {

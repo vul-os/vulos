@@ -1656,10 +1656,29 @@ type RegistryListEntry struct {
 	// compare itself — the whole failure mode this closes is a comparison that
 	// mixes naming schemes (Debian amd64/arm64 vs Flatpak x86_64/aarch64) and
 	// silently matches nothing. See arch.go.
+	//
+	// It is now a PROJECTION of Availability.Installable rather than a second
+	// call to ArchSupported. The two agreed while identity was the only rule; an
+	// emulated app is installable and is not natively supported, so the moment
+	// rung 3 became reachable they would have disagreed, and the disagreement
+	// would have been between two lines that read as if they said the same thing.
 	Installable bool `json:"installable"`
 	// InstallableReason explains a false Installable in one sentence a UI can
-	// show verbatim ("requires amd64; this box is arm64"). Empty when installable.
+	// show verbatim. Empty when installable. It is Availability.Detail — the
+	// same sentence, not a second wording of it.
 	InstallableReason string `json:"installable_reason,omitempty"`
+	// Availability is THE answer: which rung this app lands on for this box, the
+	// badge, the sentence and the architectures it needs, all computed by
+	// EvaluateArch on the machine that can actually observe binfmt, box64,
+	// qemu-user and the arches the installed flatpak will resolve.
+	//
+	// The App Hub renders this and composes nothing of its own about
+	// architecture. Before it existed the hub ran `app.arch.includes(systemArch)`
+	// in the browser — a raw string comparison in which `x86_64` never matched
+	// `amd64`, so most of the Flathub catalogue read as incompatible on every
+	// box, silently and consistently. Sourcing the box's arch from the server
+	// patched that instance; moving the DECISION is what stops the next one.
+	Availability ArchAvailability `json:"availability"`
 	// BoxArch is the architecture of the BOX, Debian spelling — the server
 	// process's own runtime.GOARCH, never anything derived from the request.
 	// Desktop apps are streamed FROM the box, so a user on an arm64 Mac driving
@@ -1677,8 +1696,10 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 	flatpakApps := InstalledFlatpaks()
 	// ARCH-01: resolved ONCE per listing, not per entry — SupportedArches may
 	// shell out to flatpak, and the answer cannot differ between two entries of
-	// the same response.
-	supported := SupportedArches()
+	// the same response. The emulator probe and the box's emulation opt-in ride
+	// the same resolution for the same reason.
+	env := currentArchEnvironment()
+	supported := env.supported
 	boxArch := supported[0]
 	var entries []RegistryListEntry
 	for id, entry := range r.Apps {
@@ -1706,6 +1727,17 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 		if recipe := entry.GetRecipe(entry.LatestVersion()); recipe != nil {
 			flatpakID = recipe.FlatpakID
 		}
+		availability := env.evaluate(entry)
+		// InstallableReason's contract is "why NOT", so it stays empty for an
+		// installable app even though Availability.Detail is not: an emulated
+		// app that the box has opted into is installable AND carries a sentence
+		// ("noticeably slower, …"), and putting that in a field named "reason
+		// it cannot be installed" would make the App Hub warn about an app it is
+		// about to offer.
+		installableReason := ""
+		if !availability.Installable {
+			installableReason = availability.Detail
+		}
 		entries = append(entries, RegistryListEntry{
 			ID:          id,
 			Name:        entry.Name,
@@ -1724,8 +1756,9 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 			License:     entry.License,
 			Keywords:    entry.Keywords,
 
-			Installable:       ArchSupported(entry.Arch, supported),
-			InstallableReason: ArchUnavailableReason(entry.Arch, supported),
+			Availability:      availability,
+			Installable:       availability.Installable,
+			InstallableReason: installableReason,
 			BoxArch:           boxArch,
 		})
 	}

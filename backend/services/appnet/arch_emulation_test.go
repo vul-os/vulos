@@ -414,6 +414,264 @@ func TestParseEmulationPolicy_DefaultsClosed(t *testing.T) {
 	}
 }
 
+// ── item 7: the rungs the App Hub actually renders ──────────────────────────
+
+// TestEvaluateArch_RungFourWasAConstantNothingProduced.
+//
+// ArchStateOtherInstance has been in the const block since the file was written
+// and `elsewhereClause` mentioned a sibling instance in PROSE while every
+// refusal arm still set State = unavailable. So a UI switching on `state` — which
+// is the field the wire type exists for — could not tell rung 4 from rung 5, and
+// the one string that carried the difference was the one nobody parses.
+func TestEvaluateArch_RungFourWasAConstantNothingProduced(t *testing.T) {
+	base := ArchRequest{
+		AppName:   "Lutris",
+		Declared:  []string{"amd64"},
+		Supported: []string{"arm64"},
+		Delivery:  DeliveryFlatpak,
+	}
+
+	alone := EvaluateArch(base)
+	if alone.State != ArchStateUnavailable {
+		t.Fatalf("with no sibling instance the app must be rung 5, got %+v", alone)
+	}
+
+	withSibling := base
+	withSibling.OtherInstance = "studio-box"
+	av := EvaluateArch(withSibling)
+	if av.State != ArchStateOtherInstance {
+		t.Fatalf("a sibling instance runs this app and the state is still %q. Rung 4 is a "+
+			"state, not a sentence — a hub switching on `state` renders %q identically to an "+
+			"app nothing in the fleet can run: %+v", av.State, av.State, av)
+	}
+	if !strings.Contains(av.Detail, "studio-box") || !strings.Contains(av.CardBadge, "studio-box") {
+		t.Errorf("rung 4 does not NAME the instance. Naming it is the whole difference between "+
+			"a fleet that is one OS and an app that vanished: badge=%q detail=%q",
+			av.CardBadge, av.Detail)
+	}
+	if av.Installable {
+		t.Error("rung 4 reported installable — the app runs on ANOTHER box; offering an install " +
+			"here is the thing rung 5 refuses, wearing a friendlier badge")
+	}
+	// Rung 3 outranks rung 4: an app that runs here, slowly and labelled, beats
+	// one the user has to walk to another machine for.
+	emulatable := withSibling
+	emulatable.Delivery = DeliveryBinary
+	emulatable.Emulated = []string{"amd64"}
+	emulatable.Policy = EmulationOptIn
+	if av := EvaluateArch(emulatable); av.State != ArchStateEmulated {
+		t.Errorf("an app this box can emulate was sent to the sibling instead — §1 applies the "+
+			"rungs in order and 3 is above 4: %+v", av)
+	}
+}
+
+// TestEvaluateArch_NoEmulatorAndNotClearedReadDifferently. These two used to be
+// one switch arm saying "with no emulation available for it", which is a claim
+// about the BOX and is FALSE on a box that has box64 installed and an entry that
+// simply has not been cleared for emulation. It sends the reader looking for an
+// emulator they already have.
+func TestEvaluateArch_NoEmulatorAndNotClearedReadDifferently(t *testing.T) {
+	base := ArchRequest{
+		AppName: "Bottles", Declared: []string{"amd64"}, Supported: []string{"arm64"},
+		Delivery: DeliveryBinary,
+	}
+
+	noEmulator := base
+	noEmulator.Policy = EmulationOptIn // cleared, but nothing here to run it
+
+	notCleared := base
+	notCleared.Emulated = []string{"amd64"} // box64 IS here
+	notCleared.Policy = EmulationNever
+
+	a, b := EvaluateArch(noEmulator), EvaluateArch(notCleared)
+	for _, av := range []ArchAvailability{a, b} {
+		if av.State != ArchStateUnavailable {
+			t.Fatalf("expected rung 5, got %+v", av)
+		}
+	}
+	if a.Detail == b.Detail {
+		t.Fatalf("both refusals produce the SAME sentence:\n  %s\n"+
+			"One box has no emulator; the other has one and the entry is not cleared to use it.", a.Detail)
+	}
+	if strings.Contains(b.Detail, "no emulator") || strings.Contains(b.Detail, "no emulation") {
+		t.Errorf("a box WITH a working emulator is told it has none: %s", b.Detail)
+	}
+}
+
+// TestEvaluateArch_CardBadgeIsShortAndNamesTheFact.
+//
+// The card chip and the panel heading are different budgets, and the reason is
+// measured: AppHub.tsx records that an app needing `ppc64el` squeezed the card
+// body to 74px at every width from 768 to 1600 when the status sat in the
+// `flex: none` action column. The chip therefore says the actionable fact and
+// the panel says the §1 badge — and BOTH come from here, so a card and its own
+// panel cannot disagree.
+func TestEvaluateArch_CardBadgeIsShortAndNamesTheFact(t *testing.T) {
+	unavailable := EvaluateArch(ArchRequest{
+		AppName: "Lutris", Declared: []string{"x86_64"}, Supported: []string{"arm64"},
+		Delivery: DeliveryFlatpak,
+	})
+	if unavailable.CardBadge != "Needs amd64" {
+		t.Errorf("card badge = %q, want \"Needs amd64\" — the chip has to name the fact the "+
+			"user can act on, and %q is the panel heading", unavailable.CardBadge, unavailable.Badge)
+	}
+	if unavailable.Badge != "Not available on this box" {
+		t.Errorf("panel badge = %q, want the §1 wording", unavailable.Badge)
+	}
+
+	twoArches := EvaluateArch(ArchRequest{
+		AppName: "Lutris", Declared: []string{"x86_64", "amd64", "i686"}, Supported: []string{"arm64"},
+		Delivery: DeliveryFlatpak,
+	})
+	if twoArches.CardBadge != "Needs amd64/i386" {
+		t.Errorf("card badge = %q — x86_64 and amd64 are ONE requirement and must not render "+
+			"as two", twoArches.CardBadge)
+	}
+	if len(twoArches.Needs) != 2 || twoArches.Needs[0] != "amd64" || twoArches.Needs[1] != "i386" {
+		t.Errorf("needs = %v, want [amd64 i386] — the App Hub renders this list and folds no "+
+			"spellings of its own", twoArches.Needs)
+	}
+
+	native := EvaluateArch(ArchRequest{
+		AppName: "Gitea", Declared: []string{"arm64"}, Supported: []string{"arm64"},
+	})
+	if native.CardBadge != "" || native.Badge != "" {
+		t.Errorf("a native app carries badges %q/%q — rung 1 is \"Install button, no badge\", "+
+			"and a badge on every app that simply works is noise on every card in the catalogue",
+			native.Badge, native.CardBadge)
+	}
+}
+
+// unmeasuredClaims are the phrases NO user-facing string may contain, each with
+// the measurement that is missing.
+//
+// This is the §9.1/§9.2 discipline made general. The two existing tests above
+// check the specific verdicts they are about; this list is applied to EVERY
+// string of EVERY state, so copy added later cannot slip a claim in through a
+// path those two do not visit.
+var unmeasuredClaims = []struct{ phrase, why string }{
+	{"cannot run", "§6 Q3 got `bwrap: Operation not permitted`, a CONTAINER PRIVILEGE limit that " +
+		"would have stopped a NATIVE app in the same container. Whether a foreign-arch Flatpak runs " +
+		"is recorded untestable-on-arm64-mac and nobody has measured it."},
+	{"will not run", "same: nobody has measured whether it runs."},
+	{"would not run", "same: nobody has measured whether it runs."},
+	{"fails to run", "same: nobody has measured whether it runs."},
+	{"hardware acceleration", "§5.3 ran in a container with NO GPU, where the host stack is llvmpipe. " +
+		"What was proved is which stack box64 bound, not that it reaches hardware."},
+	{"gpu-accelerated", "same: unproven on a GPU-less machine."},
+	{"full graphics acceleration", "same: unproven on a GPU-less machine."},
+	{"in settings", "there is no Settings screen in this build (frontend/src/builtin/ has no " +
+		"settings app). Naming a control that does not exist is as unmeasured as naming a benchmark " +
+		"nobody ran."},
+	{"x86_64", "Debian spelling only — mixing amd64 and x86_64 in one paragraph makes one box look " +
+		"like two."},
+	{"aarch64", "Debian spelling only."},
+}
+
+// TestEvaluateArch_NoUnmeasuredClaimReachesTheUser sweeps every rung and every
+// string on the answer.
+func TestEvaluateArch_NoUnmeasuredClaimReachesTheUser(t *testing.T) {
+	arm := []string{"arm64"}
+	cases := []struct {
+		name string
+		req  ArchRequest
+	}{
+		{"native", ArchRequest{AppName: "Gitea", Declared: []string{"arm64"}, Supported: arm}},
+		{"flatpak, no build here", ArchRequest{AppName: "Steam", Declared: []string{"x86_64"},
+			Supported: arm, Delivery: DeliveryFlatpak}},
+		{"package, dpkg refuses", ArchRequest{AppName: "Steam", Declared: []string{"x86_64"},
+			Supported: arm, Delivery: DeliveryPackage}},
+		{"flatpak that could install and is declined", ArchRequest{AppName: "Blender",
+			Declared: []string{"amd64"}, Supported: arm, Delivery: DeliveryFlatpak,
+			Emulated: []string{"amd64"}, Policy: EmulationOptIn}},
+		{"unclassified recipe", ArchRequest{AppName: "Mystery", Declared: []string{"amd64"},
+			Supported: arm}},
+		{"declares nothing usable", ArchRequest{AppName: "Broken", Declared: []string{""},
+			Supported: arm, Delivery: DeliveryBinary}},
+		{"gpu app, qemu only", ArchRequest{AppName: "Blender", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Emulated: []string{"amd64"},
+			Policy: EmulationOptIn, NeedsGPU: true}},
+		{"no emulator installed", ArchRequest{AppName: "Bottles", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Policy: EmulationOptIn}},
+		{"emulator here, entry not cleared", ArchRequest{AppName: "Bottles", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Emulated: []string{"amd64"}}},
+		{"emulated, box opted out", ArchRequest{AppName: "Heroic", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Emulated: []string{"amd64"}, Policy: EmulationOptIn}},
+		{"emulated, box opted in, box64", ArchRequest{AppName: "Heroic", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Emulated: []string{"amd64"}, Policy: EmulationOptIn,
+			EmulationEnabled: true, EmulatorBindsHostLibraries: true}},
+		{"emulated, box opted in, qemu only", ArchRequest{AppName: "Heroic", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryBinary, Emulated: []string{"amd64"}, Policy: EmulationOptIn,
+			EmulationEnabled: true}},
+		{"sibling instance has it", ArchRequest{AppName: "Steam", Declared: []string{"amd64"},
+			Supported: arm, Delivery: DeliveryFlatpak, OtherInstance: "desk-box"}},
+	}
+
+	seenStates := map[string]bool{}
+	for _, c := range cases {
+		av := EvaluateArch(c.req)
+		seenStates[av.State] = true
+		for _, field := range []struct{ what, s string }{
+			{"badge", av.Badge}, {"card_badge", av.CardBadge}, {"detail", av.Detail},
+		} {
+			low := strings.ToLower(field.s)
+			for _, banned := range unmeasuredClaims {
+				if strings.Contains(low, banned.phrase) {
+					t.Errorf("%s: %s says %q.\n  %s\n  full text: %s",
+						c.name, field.what, banned.phrase, banned.why, field.s)
+				}
+			}
+		}
+		if av.Badge == "Unavailable" || av.CardBadge == "Unavailable" {
+			t.Errorf("%s: the bare word \"Unavailable\" — it reads as broken rather than as a "+
+				"fact about this piece of hardware", c.name)
+		}
+		if av.State != ArchStateNative && av.Detail == "" {
+			t.Errorf("%s: state %q with no sentence at all — the user is told the app is not "+
+				"offered and never told why", c.name, av.State)
+		}
+	}
+
+	// COVERAGE. Without this the sweep passes by never producing a rung: every
+	// guard in this suite that lacked a coverage-count assertion has at some
+	// point gone green over an empty examination.
+	for _, want := range []string{ArchStateNative, ArchStateEmulated, ArchStateOtherInstance, ArchStateUnavailable} {
+		if !seenStates[want] {
+			t.Fatalf("the sweep never produced state %q, so nothing it asserts has been applied "+
+				"to that rung's copy. seen: %v", want, seenStates)
+		}
+	}
+	if len(cases) < 13 {
+		t.Fatalf("the case table has shrunk to %d — it is the coverage, and a sweep over "+
+			"fewer inputs asserts less while reporting the same PASS", len(cases))
+	}
+}
+
+// TestEmulationOptedIn_DefaultsOffAndIsTheServersOwn. The box-level half of E2.
+// An app that is present and crawls reads as a Vulos defect rather than as a
+// hardware limit, so the default is off — and the override is the SERVER's
+// environment, never anything a browser could send.
+func TestEmulationOptedIn_DefaultsOffAndIsTheServersOwn(t *testing.T) {
+	SetEmulationOptedIn(false)
+	defer SetEmulationOptedIn(false)
+	if EmulationOptedIn() {
+		t.Error("emulated apps are ON by default — rung 3 is opt-in and labelled, which is the " +
+			"whole reason it is not rung 2")
+	}
+	SetEmulationOptedIn(true)
+	if !EmulationOptedIn() {
+		t.Error("the box owner's opt-in did not take effect, so rung 3 is unreachable by design " +
+			"rather than by policy")
+	}
+	SetEmulationOptedIn(false)
+
+	t.Setenv("VULOS_EMULATION_OPTIN", "1")
+	if !EmulationOptedIn() {
+		t.Error("VULOS_EMULATION_OPTIN=1 did not opt the box in — without a server-side seam the " +
+			"emulated rung cannot be exercised on any developer machine")
+	}
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 func withBoxArch(t *testing.T, arch string) {
