@@ -181,7 +181,7 @@
             "filesystem"
           ],
           "port": 8080,
-          "post_install": "",
+          "post_install": "mkdir -p data && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -247,7 +247,7 @@
             "filesystem"
           ],
           "port": 6167,
-          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml",
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -430,7 +430,7 @@
             "filesystem"
           ],
           "port": 3000,
-          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini",
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -490,7 +490,7 @@
             "filesystem"
           ],
           "port": 3000,
-          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini",
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -552,7 +552,7 @@
             "filesystem"
           ],
           "port": 5230,
-          "post_install": "",
+          "post_install": "mkdir -p data && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -673,7 +673,7 @@
             "filesystem"
           ],
           "port": 4533,
-          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml",
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml && chown -R 65534:65534 data",
           "singleton": true
         }
       },
@@ -735,7 +735,7 @@
             "filesystem"
           ],
           "port": 8384,
-          "post_install": "",
+          "post_install": "mkdir -p data && chown -R 65534:65534 data",
           "singleton": true
         }
       },
