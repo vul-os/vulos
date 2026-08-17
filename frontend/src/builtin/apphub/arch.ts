@@ -1,189 +1,155 @@
 /**
- * Architecture: what THE BOX can run, and how to say so.
+ * Architecture: what the BOX decided, narrowed off the wire.
  *
- * ── The trap this module exists to close ────────────────────────────────────
+ * ── What this file used to be, and why none of it is left ───────────────────
  *
- * The architecture that decides whether an app can be installed is the BOX's,
- * never the browser's. Vulos streams desktop apps from the box into a browser
- * window, so someone on an ARM Mac connected to an amd64 box must be offered
- * amd64 apps — and someone on an x86 laptop connected to an ARM box must not.
- * Anything derived from `navigator.platform`, `navigator.userAgent` or
- * `navigator.userAgentData` answers a question nobody asked, and it answers it
- * *plausibly*, which is worse than answering it wrongly: it agrees with the
- * server on every machine a developer is likely to test on, and disagrees on
- * exactly the mixed setups this OS is built for.
+ * It held the decision: `archCompat(app.arch, boxArch)`, an alias table folding
+ * `x86_64` onto `amd64`, a set of words meaning "runs anywhere", and
+ * `requiredArches` to canonicalise the list for display. All of it was correct,
+ * and all of it was the SECOND implementation of a policy the box already owns.
  *
- * There is therefore NO client-side detection anywhere in this file. The box's
- * architecture arrives from the server or it is unknown, and "unknown" has its
- * own honest behaviour (see isCompatible).
+ * It got there by patching a defect one layer too high. The original comparison
+ * was `app.arch.includes(systemArch)` — a raw string match in which a Flathub
+ * entry declaring `x86_64` never matched an `amd64` box, so most of the desktop
+ * catalogue read as incompatible on every box, silently and consistently. The
+ * fix was to fold the spellings here and source the box's architecture from the
+ * server. That closed the instance. It left the DECISION in the browser, where
+ * it could not see any of:
  *
- * ── The naming trap ─────────────────────────────────────────────────────────
+ *   - whether a kernel binfmt_misc handler is registered for a foreign ELF;
+ *   - whether box64 or qemu-user is on the box's PATH, which is not the same
+ *     question — box64 is invoked by name and registers nothing in a container;
+ *   - WHICH of those two would serve an app, which decides whether it gets
+ *     graphics at all (measured: box64 bound the host's own aarch64 Mesa;
+ *     qemu-user could not obtain a GL visual);
+ *   - which architectures the INSTALLED flatpak will actually resolve refs for;
+ *   - whether the app's delivery mechanism can be emulated at all, which is a
+ *     property of the recipe and never reaches this side of the wire.
  *
- * Two ecosystems, two spellings for the same silicon:
+ * A browser cannot observe one of those. So the answer is computed on the box —
+ * services/appnet/arch.go, EvaluateArch — and arrives per entry as
+ * `availability`. This file narrows it and nothing more. There is deliberately
+ * no normalisation, no alias table and no comparison here: a second fold that
+ * agrees with the server today is the shape that disagrees with it later.
  *
- *   Debian / dpkg / apt      amd64      arm64
- *   Flatpak / uname / OCI    x86_64     aarch64
+ * ── The one thing still fetched, and why it is not a decision ───────────────
  *
- * registry.json uses the Debian spelling; Flathub metadata, `uname -m` and most
- * container tooling use the other. A comparison that mixes them matches NOTHING
- * — and because "no match" and "incompatible" are the same value, it fails
- * silently and consistently: every Flathub app would read as unavailable on
- * every box, or, with the comparison inverted, every app would read as
- * installable on every box. Neither produces an error anyone would notice.
- *
- * So every comparison in the hub goes through normalizeArch() and there is
- * exactly one of it. The tests exercise both spellings on both sides.
+ * fetchBoxArch reads the box's own architecture for the HEADER LABEL, so the
+ * hub can name the machine before the catalogue has loaded, or when the
+ * catalogue is empty. It is a fact for display. Nothing switches on it.
  */
-
-export type ArchCompat =
-  /** The box can run it. */
-  | 'yes'
-  /** The box cannot run it — `required` says what it would need. */
-  | 'no'
-  /** The box's architecture is not known yet, so nothing may be claimed. */
-  | 'unknown'
 
 /**
- * Canonical architecture names, keyed by every spelling seen in the wild.
+ * The rungs of roadmap/DISTRO-SOURCED-APPS.md §1, as the box reports them.
  *
- * Debian's name is the canonical one because registry.json is written in it.
- * Values are what everything downstream compares and displays.
+ * Rung 2 (native, distribution-sourced) has no state of its own: it produces a
+ * native install and is reported as `native`. It is parked in any case.
  */
-const ARCH_ALIASES: Record<string, string> = {
-  // 64-bit x86
-  amd64: 'amd64',
-  x86_64: 'amd64',
-  'x86-64': 'amd64',
-  x64: 'amd64',
-  // 64-bit ARM
-  arm64: 'arm64',
-  aarch64: 'arm64',
-  'arm64-v8a': 'arm64',
-  // 32-bit ARM
-  armhf: 'armhf',
-  armv7l: 'armhf',
-  armv7: 'armhf',
-  // 32-bit x86
-  i386: 'i386',
-  i686: 'i386',
-  x86: 'i386',
-  // RISC-V
-  riscv64: 'riscv64',
+export type ArchState = 'native' | 'emulated' | 'other-instance' | 'unavailable'
+
+const ARCH_STATES: ArchState[] = ['native', 'emulated', 'other-instance', 'unavailable']
+
+/**
+ * The box's answer for one app. Every string is shown to a person VERBATIM —
+ * the hub composes no sentence of its own about architecture, so there is one
+ * place the wording can be got wrong and one place a test can catch it.
+ *
+ * Mirrors services/appnet/arch.go's ArchAvailability.
+ */
+export interface ArchAvailability {
+  /** Which rung. */
+  state: ArchState
+  /** Whether an install may be offered here. Emulated-and-opted-in is TRUE. */
+  installable: boolean
+  /** Whether that install would run translated. */
+  requiresEmulation: boolean
+  /** The badge that heads the detail panel. Empty for a native app — rung 1 is
+   *  "Install button, no badge", and a badge on every app that simply works is
+   *  noise on every card in the catalogue. */
+  badge: string
+  /** The same fact at card width: "Needs amd64", "Runs emulated", "On studio-box". */
+  cardBadge: string
+  /** The sentence. */
+  detail: string
+  /** The BOX's architecture, Debian spelling, as the box reports itself. */
+  boxArch: string
+  /** True when the entry declares no architecture at all — which means NOBODY
+   *  CHECKED, not "runs anywhere". */
+  undeclared: boolean
+  /** The architectures the app needs, already folded to one spelling and
+   *  de-duplicated by the box. Rendered, never compared. */
+  needs: string[]
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function str(x: unknown): string {
+  return typeof x === 'string' ? x : ''
 }
 
 /**
- * Names meaning "runs anywhere" rather than naming a machine.
+ * Narrow `availability` off a registry entry.
  *
- * A web app or a shell script has no architecture, and the registry expresses
- * that either by an empty `arch` array or by one of these words. Treating
- * "all" as if it were a CPU would mark every web app in the catalogue
- * unavailable on every box.
+ * Returns null when the box did not answer — an older backend, a response shape
+ * that changed, a field that failed to marshal. Null is NOT folded into either
+ * verdict, and both foldings are worse than the gap:
+ *
+ *  - folding it to "unavailable" marks the whole catalogue unrunnable on any
+ *    backend that does not send the field, which is every backend before this
+ *    field existed;
+ *  - folding it to "available" is the lie the user pays for — the install is
+ *    offered, runs, and fails.
+ *
+ * The hub renders a null as "no compatibility claim": the app is offered, with
+ * no badge and no sentence attached to it. That is the same honest behaviour
+ * the old `'unknown'` compat value had, kept for the same reason.
  */
-const UNIVERSAL = new Set(['all', 'any', 'noarch', 'universal'])
-
-/**
- * Fold a spelling onto its canonical Debian name.
- *
- * Unknown values pass through lower-cased rather than being dropped: a registry
- * that starts shipping `ppc64el` should render "ppc64el" and compare
- * consistently, not silently become universal (which would offer an impossible
- * install) or silently become incompatible (which would hide a working app).
- */
-export function normalizeArch(raw: string): string {
-  const key = raw.trim().toLowerCase()
-  return ARCH_ALIASES[key] ?? key
-}
-
-/** True for the names that mean "no particular architecture". */
-export function isUniversalArch(raw: string): boolean {
-  return UNIVERSAL.has(raw.trim().toLowerCase())
-}
-
-/** How an architecture is shown to a person. Debian's spelling, as displayed. */
-export function archLabel(raw: string): string {
-  return normalizeArch(raw)
-}
-
-/**
- * Can this box install this app?
- *
- * `appArch` is the registry's `arch` array; `boxArch` is what the SERVER said
- * this box is, or null if that is not known yet.
- *
- * The three answers are deliberately distinct, and 'unknown' is not folded into
- * either of the others:
- *
- *  - Folding unknown into 'no' marks the entire catalogue unavailable for the
- *    moment before the box's architecture arrives, and permanently on any
- *    backend that does not report it — which is every backend today.
- *  - Folding unknown into 'yes' is what the code did before this module
- *    existed, and it is a lie the user pays for: the install is offered, runs,
- *    and fails in apt.
- *
- * Rendering distinguishes them, so an unverified app is offered without a
- * compatibility claim attached to it.
- */
-export function archCompat(appArch: string[] | undefined, boxArch: string | null): ArchCompat {
-  // No declared architecture, or an explicitly universal one: runs anywhere.
-  if (!appArch || appArch.length === 0) return 'yes'
-  if (appArch.some(isUniversalArch)) return 'yes'
-  if (!boxArch) return 'unknown'
-  const box = normalizeArch(boxArch)
-  return appArch.some((a) => normalizeArch(a) === box) ? 'yes' : 'no'
+export function toArchAvailability(x: unknown): ArchAvailability | null {
+  if (!isRecord(x)) return null
+  const raw = x.availability
+  if (!isRecord(raw)) return null
+  const state = str(raw.state)
+  // An unrecognised state is a null, not a default. A future rung this build
+  // has never heard of must not be silently rendered as one of the four it
+  // knows — least of all as the one that hides an install button.
+  if (!ARCH_STATES.includes(state as ArchState)) return null
+  return {
+    state: state as ArchState,
+    installable: raw.installable === true,
+    requiresEmulation: raw.requires_emulation === true,
+    badge: str(raw.badge),
+    cardBadge: str(raw.card_badge),
+    detail: str(raw.detail),
+    boxArch: str(raw.box_arch),
+    undeclared: raw.undeclared === true,
+    needs: Array.isArray(raw.needs) ? raw.needs.filter((a): a is string => typeof a === 'string') : [],
+  }
 }
 
 /**
- * The architectures an app needs, canonicalised and de-duplicated, for display.
+ * The box's own architecture, for the header label.
  *
- * De-duplication matters because normalising can collide: an entry listing both
- * `x86_64` and `amd64` (Flathub metadata merged with Debian's) would otherwise
- * render "amd64, amd64".
- */
-export function requiredArches(appArch: string[] | undefined): string[] {
-  return [...new Set((appArch ?? []).filter((a) => !isUniversalArch(a)).map(normalizeArch))]
-}
-
-// ── The backend seam ──────────────────────────────────────────────────────────
-
-/**
- * The shape this UI needs from the server, and the only thing it will believe.
+ *     GET /api/system/arch  ->  200 {"arch": "amd64", "supported": ["amd64"]}
  *
- * PREFERRED (does not exist yet — requested from the backend owner):
- *
- *     GET /api/system/arch  ->  200 {"arch": "amd64"}
- *
- *   `arch` is the BOX's architecture in Debian spelling ("amd64" | "arm64" |
- *   …). normalizeArch() above accepts `uname -m` spellings too, so a backend
- *   that finds it easier to return "x86_64" will still work — but the declared
- *   contract is Debian's, because that is what registry.json's `arch` field is
- *   written in and a single spelling on the wire is one fewer thing to get
- *   wrong.
- *
- * FALLBACK (exists today):
- *
- *     GET /api/packages/cache  ->  200 {"ready": bool, "arch": "amd64"|null}
- *
- *   This is the apt-cache status endpoint, which happens to carry the box's
- *   architecture. It is used because it is what is available, not because it is
- *   the right home for the fact: an endpoint about the Debian package index
- *   reports nothing on a box with no apt, and its `arch` is null until the
- *   index has been read at least once. Hence the dedicated endpoint above.
- *
- * Order matters: the dedicated endpoint wins when both answer, so connecting
- * the backend needs no change here.
+ * Debian spelling, because that is what registry.json is written in and what
+ * every `availability.box_arch` carries. It is returned AS SENT: a fold here
+ * would be the second implementation this file exists to have deleted, and the
+ * value is never compared to anything — it is printed.
  */
 export async function fetchBoxArch(): Promise<string | null> {
   try {
     const res = await fetch('/api/system/arch')
     if (res.ok) {
       const data: unknown = await res.json()
-      if (data && typeof data === 'object' && typeof (data as { arch?: unknown }).arch === 'string') {
-        const a = (data as { arch: string }).arch.trim()
-        if (a) return normalizeArch(a)
+      if (isRecord(data) && typeof data.arch === 'string') {
+        const a = data.arch.trim()
+        if (a) return a
       }
     }
   } catch {
-    // Not wired up yet. The fallback below is the whole reason this is a seam.
+    // No endpoint, no network: the header simply does not name the box.
   }
   return null
 }

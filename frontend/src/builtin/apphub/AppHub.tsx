@@ -3,7 +3,7 @@ import { refreshInstalled } from '../../core/AppRegistry'
 import { AppIconTile } from '../../core/AppIcons'
 import { useFocusTrap } from '../../shell/useFocusTrap'
 import { useHubMode } from './hubMode'
-import { archCompat, requiredArches, fetchBoxArch, type ArchCompat } from './arch'
+import { toArchAvailability, fetchBoxArch, type ArchAvailability } from './arch'
 import './apphub.css'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -26,7 +26,17 @@ interface StoreApp {
   id: string
   name: string
   type?: string
-  arch?: string[]
+  /**
+   * The BOX's verdict for this app — which rung it lands on, the badge, the
+   * sentence and the architectures it needs.
+   *
+   * `arch` is deliberately NOT narrowed onto this type even though the registry
+   * still sends it. Keeping it would leave the raw declaration within reach of
+   * the next person who wants "just a quick check", which is exactly how
+   * `app.arch.includes(systemArch)` got here. The only architecture fact this
+   * component can see is one the box has already decided.
+   */
+  availability: ArchAvailability | null
   flatpak_id?: string
   description: string
   category: string
@@ -47,7 +57,7 @@ function toStoreApp(x: unknown): StoreApp | null {
     id: x.id,
     name: x.name,
     type: typeof x.type === 'string' ? x.type : undefined,
-    arch: Array.isArray(x.arch) ? x.arch.filter((a): a is string => typeof a === 'string') : undefined,
+    availability: toArchAvailability(x),
     flatpak_id: typeof x.flatpak_id === 'string' ? x.flatpak_id : undefined,
     description: typeof x.description === 'string' ? x.description : '',
     category: typeof x.category === 'string' ? x.category : '',
@@ -79,17 +89,14 @@ function toInstalledAppRefs(x: unknown): InstalledAppRef[] {
     : []
 }
 
-// GET /api/packages/cache returns {"ready": bool, "arch": string}.
-interface PackageCacheStatus {
-  ready: boolean
-  arch: string | null
-}
-
-function toPackageCacheStatus(x: unknown): PackageCacheStatus {
-  return {
-    ready: isRecord(x) && typeof x.ready === 'boolean' ? x.ready : false,
-    arch: isRecord(x) && typeof x.arch === 'string' ? x.arch : null,
-  }
+// GET /api/packages/cache reports whether the Debian package index has been
+// read. It also carries an `arch`, which this component NO LONGER READS: an
+// endpoint about the apt index is not the home for the box's identity, its arch
+// is null until the index has been read once, and the box now states its own
+// architecture on every entry it answers about. Two sources for one fact is the
+// shape that produces a hub disagreeing with itself.
+function toPackageCacheReady(x: unknown): boolean {
+  return isRecord(x) && typeof x.ready === 'boolean' ? x.ready : false
 }
 
 // ── Labels ────────────────────────────────────────────────────────────────────
@@ -265,14 +272,18 @@ export default function AppHub() {
       if (!regRes.ok) throw new Error(`registry unavailable (HTTP ${regRes.status})`)
       const regData = toStoreApps(await regRes.json())
       const instData = toInstalledAppRefs(await instRes.json().catch(() => []))
-      const cacheData = toPackageCacheStatus(await cacheRes.json().catch(() => ({})))
       setApps(regData)
       setInstalled(instData)
-      setCacheReady(cacheData.ready)
-      // The BOX's architecture, from the server, never from `navigator`.
-      // The dedicated endpoint wins; the apt-cache endpoint is the fallback
-      // that exists today. See arch.ts for the contract and why it is a seam.
-      setSystemArch(dedicatedArch ?? cacheData.arch)
+      setCacheReady(toPackageCacheReady(await cacheRes.json().catch(() => ({}))))
+      // The BOX's architecture, for the header label only.
+      //
+      // The catalogue's own answer wins: every entry carries the box_arch the
+      // verdicts were computed against, so the label and the badges cannot
+      // describe two different machines. /api/system/arch is the fallback for
+      // the case the catalogue cannot cover — an empty catalogue, where there
+      // is no entry to read it from.
+      const fromCatalogue = regData.find(a => a.availability?.boxArch)?.availability?.boxArch
+      setSystemArch(fromCatalogue || dedicatedArch)
       setLoadError(null)
     } catch (e) {
       setApps([])
@@ -350,15 +361,26 @@ export default function AppHub() {
   /**
    * Can this box run this app?
    *
-   * Delegated to arch.ts so the Debian/Flatpak spelling fold happens in ONE
-   * place. What used to be here was `app.arch.includes(systemArch)` — a raw
-   * string match, which means a Flathub entry declaring `x86_64` never matched
-   * an `amd64` box and every such app read as unavailable, silently and
-   * consistently. Three quarters of the desktop catalogue is Flathub.
+   * ASKED, not answered. The verdict is computed by services/appnet/arch.go's
+   * EvaluateArch on the box, which is the only place that can see binfmt_misc,
+   * box64 and qemu-user on PATH, which of the two would serve the app, the
+   * architectures the installed flatpak will resolve, and the recipe's delivery
+   * mechanism. This component has none of those and used to decide anyway:
+   * first with `app.arch.includes(systemArch)`, which never matched `x86_64`
+   * against `amd64`, and then with a spelling fold that was right and was still
+   * a second implementation of the box's own policy.
+   *
+   * `null` means the box did not answer, and it is NOT a verdict — see
+   * toArchAvailability. An app with no answer is offered with no claim
+   * attached, which is what `installableIn` and the badges below check for.
    */
-  const compatOf = useCallback(
-    (app: StoreApp): ArchCompat => archCompat(app.arch, systemArch),
-    [systemArch],
+  const availabilityOf = useCallback((app: StoreApp) => app.availability, [])
+
+  /** True only when the box SAID this app cannot be installed here. An
+   *  unanswered app is not counted as refused. */
+  const refused = useCallback(
+    (app: StoreApp) => !!app.availability && !app.availability.installable,
+    [],
   )
 
   const installedIds = useMemo(() => new Set(installed.map(a => a.id)), [installed])
@@ -387,10 +409,10 @@ export default function AppHub() {
       (app.keywords || []).some(k => k.toLowerCase().includes(query))
   }), [scoped, category, query])
 
-  /** How many of the current matches this box cannot run. */
+  /** How many of the current matches this box will not install. */
   const incompatibleCount = useMemo(
-    () => matched.filter(a => compatOf(a) === 'no').length,
-    [matched, compatOf],
+    () => matched.filter(refused).length,
+    [matched, refused],
   )
 
   /**
@@ -420,12 +442,10 @@ export default function AppHub() {
    * default avoids.
    */
   const browseList = useMemo(() => {
-    const list = (onlyCompatible && !query)
-      ? matched.filter(a => compatOf(a) !== 'no')
-      : matched
+    const list = (onlyCompatible && !query) ? matched.filter(a => !refused(a)) : matched
     // Stable: equal-rank apps keep the registry's alphabetical order.
-    return [...list].sort((a, b) => Number(compatOf(a) === 'no') - Number(compatOf(b) === 'no'))
-  }, [matched, onlyCompatible, query, compatOf])
+    return [...list].sort((a, b) => Number(refused(a)) - Number(refused(b)))
+  }, [matched, onlyCompatible, query, refused])
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>()
@@ -766,7 +786,7 @@ export default function AppHub() {
                     installed={isInstalled(app)}
                     installing={installing === app.id}
                     removing={uninstalling === app.id}
-                    compat={compatOf(app)}
+                    availability={availabilityOf(app)}
                     busy={!!installing}
                     onOpen={() => selectApp(app)}
                     onInstall={() => installApp(app.id, app.latest)}
@@ -854,20 +874,51 @@ export default function AppHub() {
                   </div>
                   <button className="hub-btn hub-btn-danger" onClick={() => uninstallApp(liveSelected.id)}>Remove</button>
                 </div>
-              ) : compatOf(liveSelected) === 'no' ? (
-                <div className="hub-notice" data-tone="danger" style={{ marginBottom: 0 }}>
-                  <Glyph d={I.block} />
+              ) : refused(liveSelected) ? (
+                /*
+                  The refusal, in the box's own words.
+
+                  What was here composed its own sentence — "Installing it here
+                  would fail" — from the arch list and the box's architecture.
+                  Two things were wrong with that beyond the duplication. It
+                  asserted an OUTCOME nobody measured: for a foreign-arch
+                  Flatpak the install genuinely succeeds (`flatpak install
+                  --arch=x86_64` deploys the app and its 1.4 GB platform onto an
+                  aarch64 box, measured), and whether the result then runs is
+                  recorded untestable-on-arm64-mac. And it had exactly one
+                  sentence for five different reasons — no build published, a
+                  build that could be installed and is declined on graphics
+                  grounds, a GPU app whose only emulator has no GL, no emulator
+                  installed, an entry not cleared for emulation. The box knows
+                  which; the browser could not.
+                */
+                <div
+                  className="hub-notice"
+                  data-tone={availabilityOf(liveSelected)?.state === 'other-instance' ? 'accent' : 'danger'}
+                  style={{ marginBottom: 0 }}
+                >
+                  <Glyph d={availabilityOf(liveSelected)?.state === 'other-instance' ? I.info : I.block} />
                   <div className="hub-notice-body">
-                    <div className="hub-notice-title">Not available for this machine</div>
-                    <p className="hub-notice-text">
-                      {liveSelected.name} is built for{' '}
-                      {requiredArches(liveSelected.arch).join(' or ') || 'other architectures'}, and
-                      this box is {systemArch}. Installing it here would fail.
-                    </p>
+                    <div className="hub-notice-title">{availabilityOf(liveSelected)?.badge}</div>
+                    <p className="hub-notice-text">{availabilityOf(liveSelected)?.detail}</p>
                   </div>
                 </div>
               ) : (
-                <div className="hub-actions">
+                <div className="hub-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                  {/* Rung 3: installable, and the user is TOLD what they are
+                      getting BEFORE they press the button. That labelling is the
+                      whole difference between rung 3 and rung 2 — an app that is
+                      present and crawls reads as a Vulos defect rather than as a
+                      hardware limit. */}
+                  {availabilityOf(liveSelected)?.requiresEmulation && (
+                    <div className="hub-notice" data-tone="accent" style={{ marginBottom: 0 }}>
+                      <Glyph d={I.info} />
+                      <div className="hub-notice-body">
+                        <div className="hub-notice-title">{availabilityOf(liveSelected)?.badge}</div>
+                        <p className="hub-notice-text">{availabilityOf(liveSelected)?.detail}</p>
+                      </div>
+                    </div>
+                  )}
                   <button
                     className="hub-btn hub-btn-primary"
                     disabled={!!installing}
@@ -905,12 +956,22 @@ export default function AppHub() {
                 <Fact label="Source" value={liveSelected.flatpak_id ? 'Flathub' : liveSelected.type === 'web' ? 'Web service' : 'Debian'} />
                 <Fact label="Category" value={categoryLabel(liveSelected.category)} />
                 <Fact label="License" value={liveSelected.license || 'Not stated'} />
-                {/* Canonicalised, so a Flathub entry saying `x86_64` and a
-                    Debian one saying `amd64` do not read as two different
-                    requirements for the same silicon. */}
+                {/* The box's list, already folded — a Flathub entry saying
+                    `x86_64` and a Debian one saying `amd64` do not read as two
+                    different requirements for the same silicon.
+
+                    "Not stated" and "Any" are NOT the same answer and are not
+                    collapsed. An entry that declares no architecture means
+                    NOBODY CHECKED (arch.go's policy block: 19 shipped entries
+                    are in that state), and printing "Any" over it turns an
+                    unverified entry into a claim to every machine Vulos ships.
+                    The box marks that case `undeclared`. */}
                 <Fact
                   label="Architecture"
-                  value={requiredArches(liveSelected.arch).join(', ') || 'Any'}
+                  value={
+                    availabilityOf(liveSelected)?.needs.join(', ') ||
+                    (availabilityOf(liveSelected)?.undeclared ? 'Not stated' : 'Any')
+                  }
                 />
                 {liveSelected.homepage && <Fact label="Website" value={liveSelected.homepage} link />}
               </dl>
@@ -930,23 +991,27 @@ interface AppCardProps {
   installed: boolean
   installing: boolean
   removing: boolean
-  compat: ArchCompat
+  availability: ArchAvailability | null
   busy: boolean
   onOpen: () => void
   onInstall: () => void
 }
 
-function AppCard({ app, selected, installed, installing, removing, compat, busy, onOpen, onInstall }: AppCardProps) {
-  const needs = requiredArches(app.arch)
+function AppCard({ app, selected, installed, installing, removing, availability, busy, onOpen, onInstall }: AppCardProps) {
+  // The box said no. An unanswered app (`null`) is not refused — see arch.ts.
+  const refused = !!availability && !availability.installable
   return (
     <article
       className="hub-card"
       data-selected={selected}
       data-app-id={app.id}
       // Drives the de-emphasis in CSS. An attribute rather than a class so the
-      // e2e gates can assert on the STATE the component decided, not on a
-      // styling detail that could be renamed underneath them.
-      data-compat={compat}
+      // e2e gates can assert on the STATE, not on a styling detail that could
+      // be renamed underneath them — and it carries the RUNG the box named
+      // rather than a yes/no the browser worked out, because "runs here
+      // translated" and "runs on your other box" are two different things a
+      // single boolean cannot hold.
+      data-arch-state={availability?.state ?? 'unknown'}
     >
       <span className="hub-card-icon">
         <AppIconTile id={app.id} size={42} unicode={app.icon} />
@@ -967,21 +1032,25 @@ function AppCard({ app, selected, installed, installing, removing, compat, busy,
             .hub-card-body to 74px at EVERY width from 768 to 1600, and the two
             badges it still had to hold overflowed it by 9px. The tag row wraps,
             so a long architecture name costs a line instead of the layout.
+
+            The WORDS are the box's — availability.card_badge, written by
+            EvaluateArch, whose tests own the wording. That matters beyond
+            tidiness: an emulated app must read "Runs emulated" and one a
+            sibling instance holds must name the sibling, and a browser deciding
+            between those from an arch list would be guessing at the two facts
+            it cannot see.
           */}
-          {compat === 'no' && (
-            <span
-              className="hub-badge" data-tone="off"
-              title={`This app is built for ${needs.join(' or ')}; this box is a different architecture`}
-            >
-              <Glyph d={I.block} />
-              {needs.length ? `Needs ${needs.join('/')}` : 'Unavailable'}
+          {availability && availability.cardBadge !== '' && (
+            <span className="hub-badge" data-tone={refused ? 'off' : 'warn'} title={availability.detail}>
+              <Glyph d={refused ? I.block : I.info} />
+              {availability.cardBadge}
             </span>
           )}
         </div>
       </div>
       {/* No action column at all when there is no action: an empty 30px slot
           beside a card that cannot be installed is just a hole in the row. */}
-      {compat !== 'no' && <div className="hub-card-action">
+      {!refused && <div className="hub-card-action">
         {installing ? (
           <span className="hub-state" role="status">
             <span className="spinner" style={{ width: 14, height: 14 }} />

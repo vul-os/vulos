@@ -626,13 +626,21 @@
  * so the eye sorts it out without the text paying for it.
  *
  * The "Needs amd64" badge is the actual signal, and it is words.
+ *
+ * Keyed on the RUNG the box named, not on a yes/no. `unavailable` and
+ * `other-instance` are both "not from here" and get the same secondary surface;
+ * `emulated` deliberately does NOT — it is installable, it has an action, and
+ * flattening it would put a card the user can press in the pile of ones they
+ * cannot. `native` and `unknown` are the ordinary card.
  */
-.hub-card[data-compat='no'] {
+.hub-card[data-arch-state='unavailable'],
+.hub-card[data-arch-state='other-instance'] {
   background: var(--bg-base);
   border-style: dashed;
 }
 
-.hub-card[data-compat='no']:hover {
+.hub-card[data-arch-state='unavailable']:hover,
+.hub-card[data-arch-state='other-instance']:hover {
   transform: none;
   box-shadow: none;
   background: var(--bg-hover);
@@ -761,7 +769,8 @@
 
 /* The "Needs amd64" badge. Same pill as the others so it reads as one of the
    card's facts, with the block glyph carrying the difference. */
-.hub-badge[data-tone='off'] svg { flex: none; width: 13px; height: 13px; color: var(--text-tertiary); }
+.hub-badge[data-tone='off'] svg,
+.hub-badge[data-tone='warn'] svg { flex: none; width: 13px; height: 13px; color: var(--text-tertiary); }
 
 /* ═══ Install / installed affordances ═════════════════════════════════════ */
 
