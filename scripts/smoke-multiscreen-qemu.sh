@@ -6,9 +6,15 @@
 # somewhere that is not a booted OS:
 #
 #   scripts/smoke-multiscreen.sh   labwc places windows by windowRule +
-#                                  MoveToOutput — but with a config the test
-#                                  wrote, `foot` terminals, and HEADLESS-N
-#                                  outputs from wlroots' headless backend.
+#                                  MoveToOutput, driving cog through the
+#                                  shipping generator — but on HEADLESS-N
+#                                  outputs from wlroots' software backend.
+#                                  (Until 2026-08-15 this line said "a config
+#                                  the test wrote, `foot` terminals". Both
+#                                  stopped being true when that gate was
+#                                  rebuilt around the client the box ships;
+#                                  the description outlived the code by two
+#                                  days and was still being quoted as current.)
 #   scripts/smoke-kiosk-multiscreen.sh
 #                                  the real launcher enumerates outputs and
 #                                  takes the multi-output branch — but in a

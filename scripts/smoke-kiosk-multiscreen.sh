@@ -2,7 +2,9 @@
 # smoke-kiosk-multiscreen.sh — run the REAL kiosk launcher on two screens.
 #
 # scripts/smoke-multiscreen.sh proves labwc's windowRule/MoveToOutput places
-# windows, but it does so with a config written by the test. This one runs
+# windows, driving cog through the shipping generator, but it copies the
+# generator in and invokes it itself. (Until 2026-08-15 it wrote the config
+# itself and this line said so; the sentence outlived the code.) This one runs
 # scripts/vulos-kiosk.sh — the exact file build.sh installs into the image —
 # and lets it do the whole job: enumerate connectors, generate the labwc config
 # via vulos-kiosk-genconfig, start labwc, launch one browser per screen.

@@ -14,8 +14,12 @@ written down somewhere that is not a commit message.
 
 Everything else about multi-screen was proved somewhere that is not a booted
 OS. `scripts/smoke-multiscreen.sh` proves labwc's `windowRule` +
-`MoveToOutput` place windows, using a config the test wrote, `foot` terminals,
-and wlroots' *headless* backend. `scripts/smoke-kiosk-multiscreen.sh` proves
+`MoveToOutput` place windows, driving **cog** — the client the box ships —
+through `scripts/vulos-kiosk-genconfig.sh`, the generator the box ships, on
+wlroots' *headless* backend. (Until 2026-08-15 that gate used `foot --title`
+and this sentence said so; both were rewritten when the gate was rebuilt around
+`app_id`, and this description was left behind.)
+`scripts/smoke-kiosk-multiscreen.sh` proves
 the real launcher enumerates outputs and takes the multi-output branch, in a
 container, against a faked `/sys/class/drm`, with the compositor never
 starting.

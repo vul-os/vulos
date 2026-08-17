@@ -268,13 +268,18 @@ own, and the windowRule/MoveToOutput pair is doing the work.
 That failure mode is precisely what this design exists to prevent, and it is
 now reproducible on demand rather than imagined.
 
-Still short of a real boot: the harness uses `foot` on HEADLESS-N outputs
-rather than `cog` on DRM connectors, because the mechanism under test is
-labwc's and not the browser's. The last mile is a QEMU boot with two virtual
-displays. A wrong rule fails the way everything in this area fails: silently,
-with every browser on one monitor and nothing in any log saying why. Verify by
-running labwc with two virtual outputs under QEMU and reading a screendump —
-the verification this feature needs regardless.
+**Superseded 2026-08-17.** This paragraph used to read: "Still short of a real
+boot: the harness uses `foot` on HEADLESS-N outputs rather than `cog` on DRM
+connectors, because the mechanism under test is labwc's and not the browser's."
+That reasoning was the defect — see "It uses `foot`, and the shipping client is
+`cog`" below. The mechanism under test was never labwc's alone; it is labwc's
+rule matching against an attribute the CLIENT has to set, and `foot` set it
+while `cog` does not. SCREENS-01 now drives cog on HEADLESS-N outputs; what
+remains short of a real boot is only the outputs, and SCREENS-02
+(`roadmap/SCREENS-QEMU.md`) is the harness whose outputs are DRM connectors.
+
+A wrong rule still fails the way everything in this area fails: silently, with
+every browser on one monitor and nothing in any log saying why.
 
 ## What the QEMU verification actually found (RUN 2026-08-14)
 
@@ -562,14 +567,46 @@ statement of what was wrong before.
 - **Not more than two screens.** Three-screen boxes are a supported
   configuration per `roadmap/SCREENS-COST.md` and no gate exercises three.
 
-**Two stale cross-references, named rather than fixed** because they are in
-files this work did not own. `scripts/smoke-multiscreen-qemu.sh:9-10` describes
-SCREENS-01 as running "with a config the test wrote, `foot` terminals";
-`scripts/smoke-kiosk-multiscreen.sh:5` says "with a config written by the
-test". Neither is true any more: the config is the shipping generator's own
+**Two stale cross-references, ~~named rather than fixed~~ FIXED 2026-08-17.**
+`scripts/smoke-multiscreen-qemu.sh:9-10` described SCREENS-01 as running "with
+a config the test wrote, `foot` terminals"; `scripts/smoke-kiosk-multiscreen.sh:5`
+said "with a config written by the test"; `roadmap/SCREENS-QEMU.md` repeated the
+first. Neither was true any more: the config is the shipping generator's own
 output and the client is cog. `smoke-kiosk-multiscreen.sh`'s other reference,
 at line 40, still holds — SCREENS-01 does set the compositor's environment
 itself rather than inheriting the kiosk's.
+
+Leaving them named was the wrong call, and the cost was measured: a later brief
+was written **from those three sentences** and asserted as current fact that
+"the gate still drives `foot --title`… it passes and covers nothing." It does
+not, and it had not for two days. A stale description of a gate is not a
+documentation defect — it is read as evidence about the gate, and it sends work
+at a defect that is already fixed while the real one goes unlooked-at. Fixing a
+gate now includes fixing every sentence that describes it, whoever owns the
+file.
+
+**Re-verified 2026-08-17**, on this Mac (arm64, `vulos-screens01:trixie`):
+
+```
+BASELINE               exit 0
+  cog set app_id org.vulos.kiosk.out-HEADLESS-1  ✓
+  cog set app_id org.vulos.kiosk.out-HEADLESS-2  ✓
+  titles cog sent: Cog
+  normal        S1 #ff0000 79%     S2 #0000ff 79%
+  same-app-id   none #000000 100%  S2 #0000ff 79%   (control red as it must)
+  no-rules      none #000000 100%  S1 #ff0000 79%   (control red as it must)
+  PASS
+
+--break title          exit 1
+  normal        none #000000 100%  S1 #ff0000 79%
+  FAIL: normal: expected S1 on HEADLESS-1 and S2 on HEADLESS-2, got 'none' and 'S1'.
+  SCREENS-01 FAILED
+```
+
+`--break title` rebuilds the original defect — match on `title=` instead of on
+the app id — and the gate goes red. A gate that has never been observed to fail
+is not known to work; this one now has been, on the machine that ships the
+image.
 
 ---
 
