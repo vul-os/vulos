@@ -767,3 +767,65 @@ func TestLiveBootGetsNoOwnerStateMounts(t *testing.T) {
 		}
 	}
 }
+
+// TestImageShipsNoFilesUnderTheDataDir is the hazard OWNSTATE-01 creates and
+// the one it cannot detect from mount topology.
+//
+// On a netboot-installed boot the hook now mounts the ON-DISK /root/.vulos over
+// ${rootmnt}/root/.vulos. A bind SHADOWS its mountpoint completely: anything the
+// squashfs ships underneath is invisible for the life of the machine. Today that
+// costs nothing, because build.sh only ever `mkdir`s there —
+//
+//	mkdir -p "$ROOTFS/root/.vulos/data" "$ROOTFS/root/.vulos/db" \
+//	    "$ROOTFS/root/.vulos/sandbox" "$ROOTFS/root/.vulos/browser/extensions"
+//
+// — four empty directories the server recreates with os.MkdirAll anyway. The
+// moment a FILE is shipped there (a seeded browser extension, a default config,
+// a bundled model) it would be silently absent on exactly one boot path, and
+// present everywhere else. That is the worst shape a bug can have: it works on
+// the developer's --disk box and on the live-USB, and only the installed
+// machines are wrong.
+//
+// Nothing in the mount-topology tests can see this — they assert where mounts
+// point, not what is underneath them — so it is checked at the source that
+// would cause it.
+func TestImageShipsNoFilesUnderTheDataDir(t *testing.T) {
+	src := readRepoFile(t, "build.sh")
+	const marker = `$ROOTFS/root/.vulos`
+
+	lines := strings.Split(src, "\n")
+	var offenders []string
+	// A `mkdir -p a \` continues onto the next line, so the command a line
+	// belongs to is the last line that began one.
+	command := ""
+	continued := false
+	for i, line := range lines {
+		if !continued {
+			command = strings.TrimSpace(line)
+		}
+		if strings.Contains(line, marker) {
+			verb := strings.Fields(command)
+			if len(verb) == 0 || verb[0] != "mkdir" {
+				offenders = append(offenders, fmt.Sprintf("build.sh:%d: %s", i+1, strings.TrimSpace(line)))
+			}
+		}
+		continued = strings.HasSuffix(strings.TrimRight(line, " \t"), `\`)
+	}
+
+	if !strings.Contains(src, marker) {
+		t.Fatalf("build.sh no longer mentions %s at all; this test is checking a path the "+
+			"image build has moved away from, and would pass vacuously", marker)
+	}
+	if len(offenders) > 0 {
+		t.Errorf(`build.sh writes FILES into the image's data directory:
+
+%s
+
+scripts/initramfs/vulos-live mounts the ON-DISK /root/.vulos over this path on a
+netboot-installed boot (OWNSTATE-01, roadmap/OWNER-STATE-PERSISTENCE.md), and a
+bind shadows its mountpoint completely — so anything shipped here is present on
+a --disk box and on a live-USB, and MISSING on every installed machine. If the
+file is genuinely needed, seed it from the running server into the data dir at
+startup instead of shipping it inside the squashfs.`, strings.Join(offenders, "\n"))
+	}
+}
