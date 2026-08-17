@@ -275,6 +275,79 @@ func TestVerifyDeps_MissingPackageIsAnError(t *testing.T) {
 	}
 }
 
+// TestVerifyDeps_ReportsTheMissingOnes drives VerifyDeps with real dpkg output
+// through the depStatusQuery seam.
+//
+// This test exists because the FIRST version of it did not, and a mutation
+// found the hole: `if len(missing) > 0` was replaced with `if false` — VerifyDeps
+// reporting nothing missing, ever — and the suite stayed GREEN. On macOS there
+// is no dpkg-query, so every call returned ErrNoPackageDB before the missing
+// list was ever consulted, and TestVerifyDeps_MissingPackageIsAnError was
+// passing for a reason that had nothing to do with the package. The assertion
+// looked like a result. Feeding fixtures through the seam is what makes the
+// accumulate-and-report branch reachable on a machine with no dpkg.
+//
+// Every fixture line below was copied from real `dpkg-query -W -f
+// '${Status}\t${Version}'` output measured in debian:trixie-slim on 2026-08-17.
+func TestVerifyDeps_ReportsTheMissingOnes(t *testing.T) {
+	fixture := map[string]string{
+		"liburing2":       "install ok installed\t2.9-1",
+		"ca-certificates": "deinstall ok config-files\t20250419", // removed; conffiles remain
+		"git":             "",                                    // dpkg has never heard of it
+	}
+	orig := depStatusQuery
+	depStatusQuery = func(ctx context.Context, name string) (string, error) {
+		return fixture[name], nil
+	}
+	defer func() { depStatusQuery = orig }()
+
+	// The satisfied case must pass, or every assertion below it is about a
+	// function that refuses everything.
+	if err := VerifyDeps(context.Background(), []string{"liburing2"}); err != nil {
+		t.Errorf("an INSTALLED package was reported missing: %v", err)
+	}
+
+	err := VerifyDeps(context.Background(), []string{"liburing2", "ca-certificates", "git"})
+	if err == nil {
+		t.Fatal("DEPS-01: two of three declared dependencies are not on the box and VerifyDeps " +
+			"reported them satisfied")
+	}
+	for _, want := range []string{"ca-certificates", "git", "config-files"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not mention %q — it must name which dependency is "+
+				"missing and what dpkg says about it: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "liburing2") {
+		t.Errorf("the refusal names liburing2, which IS installed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "2 of 3") {
+		t.Errorf("the refusal does not count the missing ones (want \"2 of 3\"): %v", err)
+	}
+}
+
+// TestVerifyDeps_NoPackageDBIsItsOwnAnswer keeps the two unanswerable-vs-absent
+// cases apart. A box with no dpkg cannot say whether a package is installed,
+// and reporting that as "your dependency is missing" would send whoever reads
+// it looking for a package that may well be there.
+func TestVerifyDeps_NoPackageDBIsItsOwnAnswer(t *testing.T) {
+	orig := depStatusQuery
+	depStatusQuery = func(ctx context.Context, name string) (string, error) {
+		return "", ErrNoPackageDB
+	}
+	defer func() { depStatusQuery = orig }()
+
+	err := VerifyDeps(context.Background(), []string{"liburing2"})
+	if err == nil {
+		t.Fatal("a box that cannot answer the question reported the dependency satisfied — " +
+			"that is a guard that checks nothing")
+	}
+	if !strings.Contains(err.Error(), "dpkg-query") {
+		t.Errorf("the refusal does not say the TOOL is missing, so it reads as a missing "+
+			"package: %v", err)
+	}
+}
+
 // TestVerifyDeps_RejectsFlagInjection keeps SEC-PKG-01 answering for the new
 // function too: a dep name is passed to an exec'd command, so the allowlist
 // must still run. A leading '-' would otherwise become a dpkg-query flag.

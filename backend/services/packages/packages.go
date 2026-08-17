@@ -4,6 +4,7 @@ package packages
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -252,11 +253,6 @@ func VerifyDeps(ctx context.Context, deps []string) error {
 	if len(deps) == 0 {
 		return nil
 	}
-	dpkg, err := exec.LookPath("dpkg-query")
-	if err != nil {
-		return fmt.Errorf("cannot verify the declared dependencies %v: this box has no dpkg-query, "+
-			"so whether they are present is unknowable here (DEPS-02)", deps)
-	}
 
 	var missing []string
 	for _, dep := range deps {
@@ -264,12 +260,15 @@ func VerifyDeps(ctx context.Context, deps []string) error {
 		if err := validatePkgName(name); err != nil {
 			return fmt.Errorf("declared dependency %q: %w", dep, err)
 		}
-		out, err := exec.CommandContext(ctx, dpkg, "-W", "-f", "${Status}\t${Version}", name).Output()
-		if err != nil {
-			missing = append(missing, name+" (not installed)")
-			continue
+		line, err := depStatusQuery(ctx, name)
+		if errors.Is(err, ErrNoPackageDB) {
+			return fmt.Errorf("cannot verify the declared dependencies %v: this box has no dpkg-query, "+
+				"so whether they are present is unknowable here (DEPS-02)", deps)
 		}
-		if why := depUnsatisfied(string(out), wantVer, versioned); why != "" {
+		if err != nil {
+			return fmt.Errorf("cannot verify declared dependency %q: %w", name, err)
+		}
+		if why := depUnsatisfied(line, wantVer, versioned); why != "" {
 			missing = append(missing, name+" ("+why+")")
 		}
 	}
@@ -280,6 +279,38 @@ func VerifyDeps(ctx context.Context, deps []string) error {
 			len(missing), len(deps), strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+// ErrNoPackageDB is returned when the box has no dpkg at all, which is a
+// different fact from "the package is not installed" and gets a different
+// sentence: one is a missing dependency, the other is an unanswerable question.
+var ErrNoPackageDB = errors.New("no dpkg-query on this box")
+
+// depStatusQuery asks dpkg about ONE package and returns its raw
+// `${Status}\t${Version}` line. It is a variable for the reason binfmtMiscDir
+// in services/appnet is: without it the accumulate-and-report branch of
+// VerifyDeps is unreachable on every machine this suite runs on, because
+// macOS has no dpkg and the function returns ErrNoPackageDB before it gets
+// there. A mutation that made that branch report NOTHING missing survived the
+// first mutation round for exactly that reason — the test could not tell "the
+// dependency is absent" from "this box cannot answer".
+var depStatusQuery = dpkgQueryStatus
+
+// dpkgQueryStatus is the real query. A package dpkg has never heard of makes
+// dpkg-query exit non-zero with an empty stdout; that is reported as an empty
+// line rather than an error, because "dpkg does not know this name" is the
+// strongest possible statement that the package is not installed, and
+// depUnsatisfied already reads an empty status as unsatisfied.
+func dpkgQueryStatus(ctx context.Context, name string) (string, error) {
+	dpkg, err := exec.LookPath("dpkg-query")
+	if err != nil {
+		return "", ErrNoPackageDB
+	}
+	out, err := exec.CommandContext(ctx, dpkg, "-W", "-f", "${Status}\t${Version}", name).Output()
+	if err != nil {
+		return "", nil
+	}
+	return string(out), nil
 }
 
 // depUnsatisfied reads one `dpkg-query -W -f '${Status}\t${Version}'` line and
