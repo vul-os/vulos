@@ -590,13 +590,54 @@ export default function LifePulse({ compact = false, className = '' }: LifePulse
           )}
         </StatusButton>
 
-        <div className="w-px h-3.5 bg-neutral-700/40 mx-0.5" />
+        <div className="hidden min-[360px]:block w-px h-3.5 bg-neutral-700/40 mx-0.5" />
 
-        {/* Clock + Calendar */}
-        <div className="relative" ref={clockRef}>
+        {/* ── Clock + Calendar, in three tiers ──────────────────────────────
+            The cluster this sits in has a MIN-CONTENT width, and on a phone it
+            is the binding constraint on the whole status bar. Measured on the
+            shipping build, with every control at the 44px touch floor
+            core/touch-chrome.css puts under `.vsp-compact button`:
+
+              trust badge 48 · wifi 44 · battery 44 · notifications 44 ·
+              theme 44 · clock 72 · gaps ~12        =  ~317px
+
+            Against a 320px viewport there is no arrangement of the bar that
+            fits — layouts/MobileStack.tsx had already given back everything it
+            had (the wordmark truncates to nothing, the row's padding is 6px),
+            and the shell was still 32px short. The clock is the widest single
+            control and the only one whose information the DEVICE ALREADY SHOWS:
+            clients/android/DECISIONS.md MOB-12 deliberately does NOT take
+            immersive mode, precisely so the user keeps their own clock, battery
+            and notification icons in the system bar directly above this one. So
+            Vulos's clock is the redundant one at widths where something has to
+            go, and it steps aside in two stages rather than one:
+
+              < 360px   nothing. The system bar's clock is 44px above it.
+              < 390px   the glyph only — still a 44px target that opens the
+                        calendar, at 44px instead of 72px.
+              >= 390px  the time.
+              >= 640px  the time and the date (the original rule, unchanged).
+
+            The time string stays in the DOM at every width as `sr-only`, so the
+            button's accessible name is the time exactly as it has always been
+            and a screen-reader user loses nothing at any size.
+
+            These are VIEWPORT queries, and deliberately: `.vsp-compact` in the
+            phone shell is inside `.vmob-bar`, which is a flex child of a
+            `fixed inset-0` root and is therefore always the width of the screen.
+            A container query would be the right instrument if that were not
+            true, and it would cost a stacking context this element cannot
+            afford — the dropdowns below are `absolute … z-[100]` children.
+            ────────────────────────────────────────────────────────────────── */}
+        <div className="hidden min-[360px]:block relative" ref={clockRef}>
           <StatusButton onClick={() => toggleDropdown('clock')} active={openDropdown === 'clock'} wide>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-neutral-300">{formatTime(now)}</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true"
+                className="min-[390px]:hidden w-4 h-4 shrink-0 text-neutral-300"
+                fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="8" r="6" /><path d="M8 4.6V8l2.4 1.6" />
+              </svg>
+              <span className="sr-only min-[390px]:not-sr-only text-xs font-medium text-neutral-300">{formatTime(now)}</span>
               {/* Date is hidden on phone-width screens. The compact bar also
                   carries wifi/battery/notifications/theme and the public-apps
                   warning, and at 390px the row overflowed — pushing the warning

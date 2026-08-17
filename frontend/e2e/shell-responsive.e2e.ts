@@ -121,29 +121,25 @@ const KNOWN_BAR_TARGETS = new Set([
 ])
 
 /**
- * The one width the shell cannot lay out, with the arithmetic that says so.
+ * There is no longer a width at which the shell is allowed to overflow.
  *
- * At 320px the compact status cluster's own MIN-CONTENT width is 317px: five
- * controls at the 44px touch floor core/touch-chrome.css puts under them, plus a
- * 48px trust badge, plus a 56px clock. Against a 320px viewport there is no
- * arrangement of the bar that fits — with the identity collapsed to nothing and
- * the padding at zero it still needs 317px, and adding an app title (the
- * fullscreen branch) takes it to ~357px. The shell cannot fix this by layout.
+ * This constant used to be 360, carrying a 74px budget for the status bar at
+ * 320×568 with the note that the shell could not fix it: the compact cluster's
+ * own MIN-CONTENT width was 317px — five controls at the 44px touch floor, a
+ * 48px trust badge and a 72px clock — against a 320px viewport, with
+ * MobileStack having already given back everything it had.
  *
- * What closes it is one line in core/SystemPulse.tsx: the clock's time text
- * needs a narrow tier, the same way the battery percentage already has one
- * (`hidden sm:inline`, line 568). 56px is more than the 3px the bar is short.
- * That file belongs to another workstream; see roadmap/SHELL-RESPONSIVE.md.
- *
- * So 320 stays IN the sweep and stays measured — it is asserted against its
- * known state rather than dropped, which is the difference between a recorded
- * defect and a hole in a gate. It may not get worse, it may not spread beyond
- * the status bar, and it may not appear at any width the shell CAN lay out.
+ * It is 0 now because the clock gained a narrow tier in core/SystemPulse.tsx
+ * (nothing below 360, glyph-only below 390, the time above it), which is the
+ * one change that could close it. The constant survives rather than being
+ * deleted so that the exemption's ABSENCE is explicit: `width < 0` is never
+ * true, so every case takes the hard branch, and anyone reintroducing a
+ * tolerance has to raise a number that is sitting here with its history
+ * attached rather than quietly widening an `if`.
  */
-const NARROW_SPILL_MAX_WIDTH = 360
-/** Measured 69px at 320×568. Room for font-metric drift, not for a regression. */
+const NARROW_SPILL_MAX_WIDTH = 0
+/** Kept with the constant above; unreachable while it is 0. */
 const NARROW_SPILL_BUDGET_PX = 74
-/** Every escaping element must be inside the status bar, and nowhere else. */
 const NARROW_SPILL_ROOT = '.vmob-bar'
 
 /**
@@ -357,18 +353,17 @@ test.describe('an iPad-class tablet in landscape, with a window open', () => {
  * only half-tested until the other branch is on screen.
  */
 test.describe('a phone with an app open', () => {
-  // 390, this suite's enforced standard width. At 360 the SAME state leaves the
-  // back button 31.5px WIDE — the status cluster's 317px min-content takes the
-  // row down to 25px of free space and flex squeezes the title away. That is
-  // R-3's arithmetic reappearing in the fullscreen branch, it has the same
-  // single cause and the same single fix in core/SystemPulse.tsx, and it is
-  // recorded in roadmap/SHELL-RESPONSIVE.md rather than gated at a width the
-  // shell cannot currently satisfy.
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 })
+  // 320, the NARROWEST profile in the sweep, and the one this case could not be
+  // run at before. The fullscreen branch is the hardest state in the shell: the
+  // status cluster's min-content competes with a back chevron and the app's
+  // title on a single 44px row, and it is where R-3's arithmetic bit hardest —
+  // measured 31.5px wide for the back button at 360 before the clock gained its
+  // narrow tier. Running it at the widest phone would have proved nothing.
+  test.use({ viewport: { width: 320, height: 568 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 })
 
   test('the status bar still fits with an app title in it', async ({ page }) => {
     test.setTimeout(120_000)
-    const vp: Viewport = { label: 'phone 390 portrait, app open', width: 390, height: 844, touch: true }
+    const vp: Viewport = { label: 'phone 320 portrait, app open', width: 320, height: 568, touch: true }
     await bootShell(page, vp)
     await page.locator('[data-home-tile="vulos-calendar"]').tap()
     await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible({ timeout: 20_000 })

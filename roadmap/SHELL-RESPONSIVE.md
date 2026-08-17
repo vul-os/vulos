@@ -24,7 +24,7 @@ HEIGHT the shell's own bars consume.
 |---|---|---|---|---|---|
 | R-1 | **every width**, both orientations, all 3 tablets | mobile | The phone home grid draws **every app name at 11px** | 35 sub-floor text nodes per viewport | **FIXED** — 12px, `mobile/MobileHome.tsx` |
 | R-2 | 360×800 | mobile | Status-bar cluster painted **29px past the right edge**; the clock is off screen | cluster 317px wide, right edge at 389px | **FIXED** — identity yields, `layouts/MobileStack.tsx` + `mobile/mobile.css` |
-| R-3 | 320×568 | mobile | Same, **69px** | as above | **NOT FIXED — cannot be from the shell.** See §3 |
+| R-3 | 320×568 | mobile | Same, **69px** | as above | **FIXED** — and read §3, because the first diagnosis of this one was wrong |
 | R-4 | 1194×834, 1366×1024 (coarse pointer) | **desktop** | An iPad in landscape runs DesktopCanvas. `.vwin-light` window controls are **12×12px**, and their glyphs are `opacity: 0` until `.vwin-lights:hover` — three identical dots, one of which discards the window | 12×12, glyph opacity 0 | **FIXED** — 44px hit area + drawn glyphs under `(pointer: coarse)`, `shell/shell-chrome.css` |
 | R-5 | 1194×834, 1366×1024 (coarse pointer) | desktop | **6 menu-bar controls under 44px** on a device with no mouse | System menu 69×32; Applications, Mission Control, Chat, Toggle fullscreen 28×28; Theme 24×24 | **NOT FIXED — needs a file this workstream does not own.** See §4 |
 | R-6 | 568×320 (phone landscape) | mobile | The shell's own chrome is **40.6% of the viewport height** — 130px of 320px | bar 44px + dock 86px | **BOUNDED, not redesigned.** §5 |
@@ -33,7 +33,7 @@ HEIGHT the shell's own bars consume.
 | R-9 | mobile status bar | mobile | Notification count badge at **9px** — the only thing that says how many are waiting | 9px | **FIXED** — 12px |
 | R-10 | notification panel | both | The row's dismiss control is `opacity-0` until `group-hover` — on a finger, an **invisible but still tappable** target | opacity 0 | **FIXED** — revealed on coarse pointers |
 | R-11 | 1194×834 with a window open | desktop | The R-4 fix asked for 44px lights and the gate read **40×40** — twice. Not a layout defect: `.win-anim[data-win-anim="opening"]` is `scale(0.92)` (`index.css:778`) and `getBoundingClientRect` returns the **transformed** box. 44 × 0.92 = 40.5 | 40×40 while `getComputedStyle().width` said 44px | **NOT A DEFECT — a capture artifact.** The gate settles the open transform before measuring. Recorded because the first diagnosis was wrong (flex-shrink) and a fix credited to the wrong cause is worse than no fix |
-| R-12 | 360×800 and 390×844, **app open** | mobile | The "Back to home" button — the labelled way out of a fullscreen app, and the only thing carrying the app's title — is **31.5 × 36**, under the floor in BOTH axes | 31.5×36 at 360; 36px tall at every phone width | **HEIGHT FIXED** (`h-9`→`h-11`, the row is already 44px so the bar does not grow). **WIDTH open below 390** — same 317px cluster, same one-line fix in core/. §3 |
+| R-12 | 320×568 / 360×800, **app open** | mobile | The "Back to home" button — the labelled way out of a fullscreen app, and the only thing carrying the app's title — is **31.5 × 36**, under the floor in BOTH axes | 31.5×36 at 360; 26×44 at 320; 36px tall at every phone width | **FIXED** — `h-9`→`h-11` for the height (the row is already 44px, so the bar does not grow), and the clock's narrow tier for the width. §3 |
 
 ### What the sweep did NOT find, and that is worth recording
 
@@ -94,36 +94,67 @@ viewport — is the home grid, and that is where it went.
 
 ---
 
-## 3. R-3 — 320px, and why the shell cannot fix it
+## 3. R-3 and R-12 at 320px — closed, and one of the two diagnoses here was wrong
 
-At 320px the compact status cluster's own **min-content width is 317px**:
+At 320px the compact status cluster's own **min-content width was 317px**:
 
 | Part | Width | Where it comes from |
 |---|---|---|
-| Trust badge hit area | 44px | `core/touch-chrome.css` `.vtrust-hit` |
+| Trust badge hit area | 48px | `core/touch-chrome.css` `.vtrust-hit` |
 | Wi-Fi | 44px | `core/touch-chrome.css` `.vsp-compact button` |
 | Battery | 44px | same |
 | Notifications | 44px | same |
 | Theme | 44px | same |
-| Clock | ~56px | its own text, `core/SystemPulse.tsx:599` |
-| gaps | ~10px | |
+| Clock | ~72px (56px of it text) | `core/SystemPulse.tsx` |
+| gaps + divider | ~12px | |
 | **total** | **~317px** | against a **320px** viewport |
 
-With the identity collapsed to nothing and the padding at zero the row still needs 317px, and
-the fullscreen branch (a back chevron plus the app's title) takes it to ~357px. **There is no
-arrangement of this bar that fits.** The 44px floors are correct and are not the bug.
+### What actually fixed the home screen — and the claim that was wrong
 
-**The one-line change that closes it lives in `core/SystemPulse.tsx`.** The clock's time text
-needs a narrow tier — exactly what the battery percentage already has at line 568
-(`hidden sm:inline`, with a comment recording the same 8px-overflow-at-390px measurement that
-motivated it). 56px is far more than the 3px the bar is short. **Reported, not patched**: the
-file belongs to another workstream, and the systemic version of this is "the compact cluster
-has no narrow tier", not "the phone status bar is laid out wrong" — patching it locally would
-hide that, which is the convention `MOBILE-SHELL.md` §7 already sets.
+This note previously said 320px "cannot be fixed by layout" and that only `core/` could close
+it. **That was wrong about the home screen.** What closed 320×568 on Home was the shell's own
+change: the identity block gaining `min-w-0` + `truncate` so flexbox would shrink it, plus the
+row's padding dropping from 24px to 12px. The reason the error survived is worth more than the
+correction: the gate was carrying 320 under a *known-open exemption*, so the case was being
+asserted against its old broken shape and **never ran the hard branch that would have shown it
+passing**. An exemption does not only hide regressions — it hides repairs, and it hid this one
+for four runs.
 
-320 stays **in** the gate. It is asserted against its known state — nothing outside
-`.vmob-bar` may escape, and the overflow may not exceed a 74px budget — rather than dropped,
-which is the difference between a recorded defect and a hole in a gate.
+Setting `NARROW_SPILL_MAX_WIDTH` to 0 is what surfaced it. The constant is still in the file,
+at 0, precisely so that the exemption's absence is explicit rather than a deleted `if`.
+
+### What the clock's narrow tier actually closed
+
+The **fullscreen branch**. With an app open the row carries a back chevron and the app's title
+as well, and there the 317px cluster left the back button at **31.5px wide at 360** and
+**26px at 320** — under the 44px floor, with the app's title squeezed to nothing. That is
+R-12's width, and no amount of shell-side yielding reaches it: the identity block is already
+at its content minimum.
+
+So the clock gained a narrow tier in `core/SystemPulse.tsx`, in the same idiom the battery
+percentage has used since the 390px overflow was found (`hidden sm:inline`, line 568), one
+tier further down:
+
+| Viewport | What the clock draws | Width |
+|---|---|---|
+| `< 360px` | nothing | 0 |
+| `< 390px` | the glyph only, still a 44px target that opens the calendar | 44px |
+| `>= 390px` | the time | ~72px |
+| `>= 640px` | the time and the date | unchanged |
+
+The time string stays in the DOM at every width as `sr-only`, so the button's accessible name
+is the time exactly as it always was and a screen-reader user loses nothing at any size.
+
+**Why the clock and not something else.** It is the widest single control, and it is the only
+one whose information the device *already shows*: `clients/android/DECISIONS.md` MOB-12
+deliberately does **not** take immersive mode, precisely so the user keeps their own clock,
+battery and notification icons in the system bar directly above this one. Vulos's clock is the
+redundant one at a width where something has to go.
+
+**Measured after:** 320×568 Home and 320×568 **with an app open** both clean — no overflow, no
+sub-44px target, back button 44px in both axes. The app-open case in the gate runs at 320 now,
+the narrowest profile in the sweep, rather than at the widest phone where it would prove
+nothing.
 
 ---
 
