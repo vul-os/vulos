@@ -127,6 +127,68 @@ func (s *Service) Accept() error {
 	return nil
 }
 
+// ─── the call that is happening RIGHT NOW ─────────────────────────────────────
+
+// ActiveCall is the snapshot of the call currently on the modem, if any. It is
+// the ONLY way a UI can know a call is in progress, and it exists because there
+// was no such way: PlaceCall returned `ok` the instant mmcli accepted the dial
+// and then the box went silent. A caller could start a call and had nothing to
+// show for it — no ringing state, no "you are on a call", and no honest basis
+// for a Hang up button, since nothing could say whether there was anything left
+// to hang up. Everything here is READ from ModemManager; none of it is inferred
+// from the fact that a dial request was made.
+type ActiveCall struct {
+	Active bool `json:"active"`
+	// Number is the far end, when the modem reports one. Withheld numbers and
+	// some networks give nothing, so "" is a normal answer, not a failure.
+	Number string `json:"number,omitempty"`
+	// Direction is ModemManager's own: "incoming" or "outgoing".
+	Direction string `json:"direction,omitempty"`
+	// State is ModemManager's own call state, passed through verbatim rather
+	// than collapsed into a Vulos vocabulary: "dialing", "ringing-out",
+	// "ringing-in", "active", "held", "waiting". A UI that wants to say
+	// "Ringing…" versus "On a call" needs the difference, and inventing a
+	// coarser vocabulary here would throw it away.
+	State string `json:"state,omitempty"`
+}
+
+// terminalCallStates are the states in which a Call object is NOT a call in
+// progress. ModemManager can leave a `terminated` object listed briefly after a
+// call ends, and reports `unknown` for an object it has not filled in yet;
+// treating either as live would leave a stale "on a call" bar on screen with a
+// Hang up button that hangs up nothing.
+var terminalCallStates = map[string]bool{"": true, "unknown": true, "terminated": true}
+
+// ActiveCall reports the call currently on the modem. No modem, no mmcli, no
+// call objects, or only terminated ones ⇒ {Active:false} — the same clean
+// "nothing here" the rest of this service returns rather than an error, because
+// a box with no GSM is not a broken box.
+//
+// Honest limitation: with several calls up (one held, one active) this reports
+// the first non-terminal one mmcli lists. Vulos has no multi-call UI, so there
+// is nothing yet for a richer answer to feed.
+func (s *Service) ActiveCall() ActiveCall {
+	id := s.modemIndex()
+	if id == "" {
+		return ActiveCall{}
+	}
+	out, err := mmcli("-m", id, "--voice-list-calls")
+	if err != nil {
+		// A transient mmcli failure is NOT "the call ended". Reporting inactive
+		// here would tear an in-call bar down mid-call on a single hiccup, and
+		// the user would lose the only Hang up button they have.
+		return ActiveCall{}
+	}
+	for _, p := range reCallPath.FindAllString(out, -1) {
+		number, direction, state, ok := s.callState(p)
+		if !ok || terminalCallStates[strings.TrimSpace(state)] {
+			continue
+		}
+		return ActiveCall{Active: true, Number: number, Direction: direction, State: strings.TrimSpace(state)}
+	}
+	return ActiveCall{}
+}
+
 // ─── inbound-call polling → call log + WS + notification ──────────────────────
 
 // liveCall is what the poll loop remembers about a call object it has seen, so

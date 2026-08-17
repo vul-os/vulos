@@ -72,6 +72,12 @@ func RegisterHandlers(mux *http.ServeMux, s *Service) {
 		}
 		writeJSON(w, map[string]bool{"ok": true})
 	}))
+	// The call in progress right now. A UI cannot honestly show an in-call bar
+	// (or a Hang up button) without this: POST /call answers `ok` the moment the
+	// dial is accepted and nothing afterwards ever said whether a call existed.
+	mux.HandleFunc("GET /api/telephony/call/active", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.ActiveCall())
+	}))
 	mux.HandleFunc("POST /api/telephony/call/hangup", s.requireOwner(func(w http.ResponseWriter, r *http.Request) {
 		_ = s.Hangup()
 		writeJSON(w, map[string]bool{"ok": true})
