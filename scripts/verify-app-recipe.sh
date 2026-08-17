@@ -211,8 +211,31 @@ assert_native() {
   # download recipes must land inside the app dir.
   local dl; dl="$(fact '.download_url')"
   local inst; inst="$(fact '.install')"
+  local arts; arts="$(fact '.artifacts_arches')"
   local real; real="$(readlink -f "$resolved")"
-  if [[ -n "$dl" ]]; then
+  if [[ -n "$arts" ]]; then
+    # The Vulos-native vehicle (roadmap/INSTALL-METHODOLOGY.md). Two separate
+    # claims, because "it landed somewhere" and "it landed here" are not the
+    # same assertion and only the second one is worth anything.
+    if [[ "$real" == "$app_dir"/* ]]; then
+      record OK artifact-provenance "pinned per-arch artefact unpacked under the app dir (offers: $arts)"
+    else
+      record FAIL artifact-provenance "artifacts recipe but $real is outside $app_dir"
+    fi
+    # arch-correct: the assertion that catches a resolver handing over the
+    # WRONG architecture's artefact. A wrong binary passes its own checksum and
+    # installs perfectly; only reading the ELF header notices.
+    local want_elf; want_elf="$(uname -m)"
+    local got_elf; got_elf="$(file -b "$real" 2>/dev/null || echo unknown)"
+    case "$want_elf:$got_elf" in
+      x86_64:*x86-64*|aarch64:*aarch64*)
+        record OK arch-correct "installed binary is $want_elf, matching the box" ;;
+      *:*ELF*)
+        record FAIL arch-correct "box is $want_elf but the installed binary is: $got_elf" ;;
+      *)
+        record INFO arch-correct "not an ELF (script or static bundle): $got_elf" ;;
+    esac
+  elif [[ -n "$dl" ]]; then
     if [[ "$real" == "$app_dir"/* ]]; then
       record OK artifact-provenance "installed under the app dir by the static-download path"
     else
@@ -810,10 +833,13 @@ for aid,e in reg.items():
         md=s.get("metadata") or {}
         mb=round((s.get("installed_size") or 0)/1048576)+round((md.get("runtimeInstalledSize") or 0)/1048576)
         rows.append((mb,aid,"flathub",f"app+runtime ≈ {mb} MB, download {round((s.get('download_size') or 0)/1048576)} MB"))
+    elif r.get("artifacts"):
+        rows.append((300,aid,"vulos-native",
+                     "pinned per-arch artefacts: " + ",".join(sorted(r["artifacts"]))))
     elif r.get("download_url"):
-        rows.append((300,aid,"vendor-download","size unknown (static download)"))
-    elif "apt" in (r.get("install") or ""):
-        rows.append((400,aid,"debian/apt","size unknown (apt closure)"))
+        rows.append((300,aid,"vendor-download","REFUSED by the installer (DOWNLOAD-01)"))
+    elif (r.get("install") or "").strip():
+        rows.append((400,aid,"shell/apt","REFUSED by the installer (INSTALL-01)"))
     else:
         rows.append((200,aid,"other","size unknown"))
 rows.sort()
@@ -876,11 +902,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"vulos/backend/services/appnet"
 	"vulos/backend/services/signing"
 )
+
+// artifactArches lists the architectures a recipe pins, comma-joined, so the
+// shell side can tell a Vulos-native recipe from every other shape without
+// re-parsing the registry. Empty for a recipe that pins none.
+func artifactArches(r *appnet.VersionRecipe) string {
+	if len(r.Artifacts) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(r.Artifacts))
+	for a := range r.Artifacts {
+		out = append(out, appnet.NormalizeArch(a))
+	}
+	sort.Strings(out)
+	return strings.Join(out, ",")
+}
 
 func main() {
 	registryPath := flag.String("registry", "/verify/registry.json", "registry.json to install from")
@@ -948,6 +991,8 @@ func main() {
 		"install":          recipe.Install,
 		"download_url":     recipe.DownloadURL,
 		"checksum":         recipe.Checksum,
+		"artifacts_arches": artifactArches(recipe),
+		"extract_dir":      recipe.ExtractDir,
 		"command":          recipe.Command,
 		"manifest_command": manifestCmd,
 		"deps":             recipe.Deps,
