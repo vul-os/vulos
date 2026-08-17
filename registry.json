@@ -5,9 +5,10 @@
       "vetted": true,
       "type": "desktop",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
-      "description": "Professional digital audio workstation — multi-track recording, editing, mixing, and mastering",
+      "description": "Professional digital audio workstation \u2014 multi-track recording, editing, mixing, and mastering",
       "category": "media",
       "author": "Paul Davis and The Ardour Community",
       "homepage": "https://ardour.org",
@@ -23,13 +24,14 @@
         "studio"
       ],
       "license": "GPL-2.0",
+      "_note": "apt -> Flathub. org.ardour.Ardour publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"] to both \u2014 arm64 boxes gain Ardour. Flathub publisher NOT verified (upstream Ardour sells official builds; the Flathub package is community-maintained). Flatpak command is ardour9; the old apt recipe ran ardour8.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends ardour",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.ardour.Ardour",
           "download_url": "",
           "archive_strip": 0,
-          "command": "ardour8",
+          "command": "flatpak run org.ardour.Ardour",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -43,14 +45,14 @@
           "auto_start": false
         }
       },
-      "signature": "RERtiwKWieK/mE1WFiPq7VeHP9ZK9sQBH5/ecXT6hNPqtsTqMYEyvox3CgqS3w5ojZ9R+/jftDsxJTZ4M8ScAA=="
+      "signature": ""
     },
     "audacity": {
       "name": "Audacity",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Audio editor and recorder — multi-track editing, effects, noise reduction, and format conversion",
+      "description": "Audio editor and recorder \u2014 multi-track editing, effects, noise reduction, and format conversion",
       "category": "media",
       "author": "Audacity Team",
       "homepage": "https://www.audacityteam.org",
@@ -88,10 +90,14 @@
       "signature": "vstvJ4wCkaPxAQZ/0KZl9l9paZe4YMah5XEzx2f3KUSG6+QAoL6UFj8JBVecUi8u9sWPNIwizqfEgqEK8V3FAQ=="
     },
     "audiomass": {
-      "arch": null,
+      "_note": "`git clone --depth=1` of the DEFAULT BRANCH -> a COMMIT-pinned source archive. AudioMass publishes no GitHub release at all (the releases API returns 404), so there is no tag to pin and the old recipe installed whatever master happened to be that day \u2014 the reproducibility failure this whole migration is about, in its purest form. Pinned to commit 2ac3801a476822c236d9914f9ef4d2d01f9131e6 (2026-05-25). The site lives in src/, so archive_strip is 2. The version key is the commit date because upstream declares no version. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "pkalogiros",
       "category": "media",
-      "description": "Browser-based audio editor — lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
+      "description": "Browser-based audio editor \u2014 lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
       "homepage": "https://audiomass.co",
       "icon": "AudioMass",
       "icon_url": "",
@@ -103,39 +109,97 @@
         "web",
         "audacity"
       ],
-      "lane": {
-        "web": true
-      },
       "license": "MIT",
       "name": "AudioMass",
-      "signature": "fln+YRynk2HaX7nXT0lPd1EKisGY2LRdjY+9vWXIQhzZgKcgkT25wWfBGV5kb6F29IsdiNfCTZrCVeM+LtawDA==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "2026-05-25": {
+          "archive_strip": 2,
+          "artifacts": {
+            "any": {
+              "checksum": "0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103",
+              "download_url": "https://github.com/pkalogiros/AudioMass/archive/2ac3801a476822c236d9914f9ef4d2d01f9131e6.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "bitwarden": {
+      "name": "Bitwarden",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Password manager client for the Bitwarden service. The app is GPL-3.0, but your vault lives on Bitwarden's servers (or a self-hosted Bitwarden/Vaultwarden) \u2014 this is a client, not local-only storage.",
+      "category": "system",
+      "author": "Bitwarden Inc.",
+      "homepage": "https://bitwarden.com",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "password",
+        "vault",
+        "manager",
+        "security",
+        "totp",
+        "credentials"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). NOT extra-data \u2014 the manifest pulls Bitwarden's GitHub release tarball per arch at BUILD time. Sandbox: devices=[all,dri]; filesystems are NativeMessagingHosts dirs + xdg-download + ~/.mozilla; system-bus talk to login1 and PolicyKit1. SOVEREIGNTY: pairs with the registry's existing self-hostable 'vaultwarden' server entry; keepassxc remains the offline-only option. OVERLAP: builtin 'vault' app.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 https://github.com/pkalogiros/AudioMass.git static/",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "com.bitwarden.desktop",
           "download_url": "",
           "archive_strip": 0,
-          "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
+          "command": "flatpak run com.bitwarden.desktop",
+          "port": 0,
+          "post_install": "",
           "deps": null,
           "env": null,
           "permissions": [
-            "network"
+            "network",
+            "filesystem"
           ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
         }
       },
-      "vetted": true
+      "signature": ""
     },
     "blender": {
-      "arch": null,
+      "arch": [
+        "amd64"
+      ],
       "author": "Blender Foundation",
       "category": "media",
-      "description": "3D creation suite — modelling, animation, rendering, compositing, and video editing",
+      "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
       "homepage": "https://www.blender.org",
       "icon": "blender",
       "icon_url": "",
@@ -152,15 +216,15 @@
       },
       "license": "GPL-3.0",
       "name": "Blender",
-      "signature": "CMe/fkRmAAi/Mok4H7A7VXSYOEbB7E0xDjpt0L0JlfaSTtJmFXz1oNwU/rNeMLBI2WDAMSYT3ByUxgpCiF6lDw==",
+      "_note": "REVISED 2026-08-17, and this is a LOSS that must not be quiet. The earlier decision \u2014 'stays on apt, because org.blender.Blender is x86_64-only on Flathub (measured: `flatpak remote-info flathub --arch=aarch64` -> Can't find ref) while Debian trixie ships blender 4.3.2 for amd64 AND arm64' \u2014 was correct while apt was still an install vehicle. It is not any more (roadmap/INSTALL-METHODOLOGY.md). blender.org publishes no official Linux aarch64 build, so no upstream `artifacts` entry can recover arm64 coverage. CORRECTED 2026-08-17: an earlier revision of this note said 'there is nothing to pin'. That is MEASURED FALSE and the distinction matters. Debian builds blender 4.3.2+dfsg-2 for arm64, its 350-package closure was resolved, extracted into a private prefix and RUN on an arm64 box (Blender 4.3.2, exit 0, a 128x128 Cycles render written as a valid PNG), and snapshot.debian.org serves those .debs byte-identically \u2014 so it is pinnable, and at 261.9 MB it is CHEAPER than Flathub's x86_64 build at 477.4 MB. See roadmap/DISTRO-SOURCED-APPS.md. ARM64 BOXES LOSE BLENDER because the founder PARKED the distro-sourced vehicle on 2026-08-17 ('leave Blender out for now'), not because the world offers nothing to pin. They will see the honest 'requires amd64; this box is arm64' rather than an install that fails. Reversing this means building that vehicle \u2014 it does NOT mean restoring an unpinned apt path.",
       "type": "desktop",
       "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends blender",
-          "flatpak_id": "",
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.blender.Blender",
           "download_url": "",
           "archive_strip": 0,
-          "command": "blender",
+          "command": "flatpak run org.blender.Blender",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -174,16 +238,117 @@
           "auto_start": false
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": ""
+    },
+    "brave": {
+      "name": "Brave",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Chromium-based browser with ad and tracker blocking on by default. Core browser is MPL-2.0; the optional rewards/VPN features are Brave-operated services.",
+      "category": "internet",
+      "author": "Brave Software",
+      "homepage": "https://brave.com",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "brave",
+        "privacy",
+        "adblock",
+        "chromium"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website, brave.com). NOT extra-data \u2014 the manifest fetches Brave's official release zip per arch at Flathub BUILD time (flathub/com.brave.Browser master, `type: file`, only-arches x86_64/aarch64), so Flathub's own signing does cover the bytes. Sandbox: devices=[all], filesystems include host-etc, /tmp, xdg-desktop; system-bus talk to Avahi/UPower/bluez.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.brave.Browser",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.brave.Browser",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "chromium": {
+      "name": "Chromium",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Open-source web browser \u2014 the upstream project Chrome, Brave, Edge and Vivaldi are built from, with no vendor account, sync or telemetry layer.",
+      "category": "internet",
+      "author": "The Chromium Authors",
+      "homepage": "https://www.chromium.org/Home/",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "chromium",
+        "open source"
+      ],
+      "license": "BSD-3-Clause AND LGPL-2.1+ AND Apache-2.0 AND MIT AND others",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub (community-maintained packaging of an open-source project \u2014 source is auditable, which is why this is acceptable where an unverified proprietary package would not be). Built from source on Flathub builders; NOT extra-data. Sandbox: filesystems=[home], devices=[all], shared=[ipc,network]. SOVEREIGNTY: this is the entry to recommend over Chrome \u2014 same engine, no proprietary blob, no vendor terms.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.chromium.Chromium",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.chromium.Chromium",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "cinny": {
-      "name": "Cinny",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Modern Matrix client — clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
-      "category": "network",
+      "_note": "raw shell -> artifacts. The old recipe was wget + inline sha256sum + tar, which is the exact shape INSTALL-01 removes; the digest it checked is byte-identical to the one measured here. The payload is a static bundle and therefore architecture-independent, declared with the exclusive `any` artefact key. extract_dir keeps it out of the app root: `--directory .` would serve data/, which is a symlink to the owner's data directory. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Cinny Contributors",
+      "category": "network",
+      "description": "Modern Matrix client \u2014 clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
       "homepage": "https://cinny.in",
       "icon": "C",
       "icon_url": "",
@@ -196,35 +361,51 @@
         "element-alternative"
       ],
       "license": "AGPL-3.0",
+      "name": "Cinny",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "4.12.1": {
-          "install": "wget -qO /tmp/cinny.tar.gz https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz && echo 'b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc  /tmp/cinny.tar.gz' | sha256sum -c - && tar xzf /tmp/cinny.tar.gz -C static/ --strip-components=1 && rm /tmp/cinny.tar.gz",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
+          "archive_strip": 1,
+          "artifacts": {
+            "any": {
+              "checksum": "b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
+              "download_url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
           "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network"
           ],
-          "checksum": "sha256:b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
-          "singleton": true,
-          "auto_start": false
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "JxNsfyEEE5KVSY3Ax/wZ9mC85w8Xm1/qayTEMEOmJwJzbPxwgGUVEtq6e6gTiUC5OEpYwbaGfa1w8r6OJYEmDw=="
+      "vetted": true
     },
     "cockpit": {
-      "name": "Cockpit",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Web-based server management — terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
-      "category": "system",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. cockpit is a Debian-integrated system component (cockpit-ws, -bridge, -system, -networkmanager, -storaged, -packagekit) that installs into /usr/lib and talks to systemd and PackageKit on the host. Upstream publishes no self-contained per-architecture artefact, so there is nothing to pin. If Vulos wants a Cockpit-like panel it belongs in the base image, not in a per-app catalogue that installs into $HOME/.vulos/apps. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Red Hat / Cockpit Project",
+      "category": "system",
+      "description": "Web-based server management \u2014 terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
       "homepage": "https://cockpit-project.org",
       "icon": "cockpit",
       "icon_url": "",
@@ -238,33 +419,41 @@
         "dashboard"
       ],
       "license": "LGPL-2.1",
+      "name": "Cockpit",
+      "signature": "",
+      "type": "web",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
-          "port": 9090,
-          "post_install": "",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 9090,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "QJV3ohIcsrpqS01W101T2h2tZgqkzwk1T2xUm2sWKcEtZk5C22rMVcJ0UtpeS2bAd/pQ0yNOUR7w+cNe7rzuAw=="
+      "vetted": true
     },
     "code-server": {
-      "arch": null,
+      "_note": "THE ENTRY THAT NAMED THIS PROBLEM. Its recipe carried a FABRICATED sha256 piped into `|| true`, so `dpkg -i` ran whatever the network returned. Now pinned to real per-arch digests measured today, and arm64 is gained (the old recipe was amd64 .deb only). IT STAYS _disabled DELIBERATELY: it was disabled for a TRUST failure, and re-enabling it on the strength of an install nobody has run would be the same mistake in the other direction. Enable it after `scripts/verify-app-recipe.sh code-server` passes, not before.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Coder Technologies",
       "category": "developer",
-      "description": "VS Code in the browser — full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
+      "description": "VS Code in the browser \u2014 full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
       "homepage": "https://coder.com/docs/code-server",
       "icon": "code-server",
       "icon_url": "",
@@ -278,46 +467,56 @@
         "extensions",
         "browser"
       ],
-      "lane": {
-        "web": true
-      },
       "license": "MIT",
       "name": "code-server",
-      "signature": "0jEcbYd71UGfD9SI6PGy687EvRDYvkjqW03C8j3couggeTQRa1Lw/VWhdi7hMFDvFT7n5y4eWno4Z4rNFw4hCA==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "4.100.2": {
           "_disabled": true,
-          "_note": "disabled pending pinned sha256 for the .deb artifact; re-enable once a verified checksum is confirmed from upstream release notes",
-          "archive_strip": 0,
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "dd43f789bd218f56985d771306c19c4424cd75adcf9955a9183e546f81a6ce44",
+              "download_url": "https://github.com/coder/code-server/releases/download/v4.100.2/code-server-4.100.2-linux-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "13eb5e281c93080a5a0cbb807892e675d98e9ccd5144a9d4dd39533977b94a32",
+              "download_url": "https://github.com/coder/code-server/releases/download/v4.100.2/code-server-4.100.2-linux-arm64.tar.gz"
+            }
+          },
           "auto_start": false,
           "checksum": "",
-          "command": "code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
+          "command": "bin/code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
           "deps": null,
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends curl && curl -fsSL https://github.com/coder/code-server/releases/download/v4.100.2/code-server_4.100.2_amd64.deb -o /tmp/code-server.deb && echo '0e8c35b53e52b1d5a9e1e6b0a5e8d6a7f3c2d1b0a9e8d7c6b5a4f3e2d1c0b9a8  /tmp/code-server.deb' | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/code-server.deb && rm -f /tmp/code-server.deb",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
           "port": 8080,
-          "post_install": "mkdir -p data",
+          "post_install": "",
           "singleton": true
         }
       },
       "vetted": true
     },
     "conduit": {
-      "_note": "upstream famedly/conduit (conduit.rs) still ships GitLab source-archive-only releases (no prebuilt binary) as of 2026-07-19, so this entry tracks Continuwuity (continuwuity.org) instead — the actively-maintained community continuation of Conduit/conduwuit, which publishes signed prebuilt linux-amd64/arm64 binaries. The v0.5.9 conduwuit-linux-amd64 binary was downloaded directly and its sha256 computed locally (no vendor-published digest exists to compare against) and functionally boot-tested (fresh RocksDB store, admin room created, listened on 127.0.0.1:6167) in a debian:trixie-slim container matching the box runtime image.",
-      "admin_only": true,
+      "_note": "amd64 -> amd64+arm64. The shipped recipe named the binary `bin/conduwuit-linux-amd64` in `command`, so the arm64 asset that has been in the same release all along could never be used: one command string, one arch-specific filename. binary_name pins both to bin/conduwuit. The port is a LITERAL because ${PORT} is not expanded during post_install (only into `command`, at launch) and appPort is taken verbatim from this recipe's `port`. The amd64 digest is byte-identical to the one the shipped entry already carried, which is the control on this whole measurement run.",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
       "author": "Continuwuity Contributors (community continuation of Famedly's Conduit / conduwuit)",
       "category": "network",
-      "description": "Lightweight Matrix homeserver written in Rust — RocksDB backend, federation-ready, single binary, runs on localhost. Ships as Continuwuity, the actively maintained continuation of Conduit/conduwuit.",
+      "description": "Lightweight Matrix homeserver written in Rust \u2014 RocksDB backend, federation-ready, single binary, runs on localhost. Ships as Continuwuity, the actively maintained continuation of Conduit/conduwuit.",
       "homepage": "https://continuwuity.org",
       "icon": "C",
       "icon_url": "",
@@ -333,42 +532,151 @@
       ],
       "license": "Apache-2.0",
       "name": "Conduit",
-      "signature": "ZOmzrMu0wKlNCfs0z9pQpt0A66GFdbBfsICzjAlD6HzCo8AEZ6NarX8KtqsQk7L5NlVzFUb0srRRHB97cVVwBg==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "service",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "0.5.9": {
-          "install": "",
-          "flatpak_id": "",
-          "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-amd64",
           "archive_strip": 0,
-          "command": "bin/conduwuit-linux-amd64 --config data/conduit.toml",
-          "port": 6167,
-          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"%s\"\\naddress = [\"127.0.0.1\"]\\nport = %s\\ndatabase_path = \"%s/data/db\"\\nallow_registration = false\\n' \"${SERVER_NAME:-localhost}\" \"${PORT}\" \"$APP_DIR\" > data/conduit.toml",
+          "artifacts": {
+            "amd64": {
+              "checksum": "4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de",
+              "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "d325133456241bf64e4dec5dc905fc0513b1e3fb7eaaa927f51726b801a9d3d2",
+              "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-arm64"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "conduwuit",
+          "checksum": "",
+          "command": "bin/conduwuit --config data/conduit.toml",
           "deps": [
             "liburing2",
             "ca-certificates"
           ],
-          "env": {
-            "SERVER_NAME": "localhost"
-          },
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de",
-          "singleton": true,
-          "auto_start": false
+          "port": 6167,
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml",
+          "singleton": true
         }
       },
       "vetted": true
     },
+    "cryptomator": {
+      "name": "Cryptomator",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Client-side encryption for cloud folders \u2014 creates an encrypted vault on this box that mounts as a normal folder, so files are encrypted before they ever leave.",
+      "category": "system",
+      "author": "Skymatic GmbH",
+      "homepage": "https://cryptomator.org/",
+      "icon": "K",
+      "icon_url": "",
+      "keywords": [
+        "encryption",
+        "vault",
+        "cloud",
+        "privacy",
+        "crypto",
+        "files"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "CATALOGUE DEFECT FIXED: roadmap/APP-CATALOG.md lists `org.cryptomator.Crypt`, which returns 404 from the Flathub API \u2014 that id does not exist. Correct id is org.cryptomator.Cryptomator. Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). NOT extra-data. Sandbox: filesystems=[home, host-etc:ro] + KeePassXC browser-server sockets; devices=[all]; sockets=[x11] ONLY \u2014 no wayland socket, so under the cage/labwc v2 stack it needs XWayland.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.cryptomator.Cryptomator",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.cryptomator.Cryptomator",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "czkawka": {
+      "name": "Czkawka",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Finds duplicate files, empty folders, similar images and broken symlinks on THIS BOX's disks and helps remove them.",
+      "category": "system",
+      "author": "Rafa\u0142 Mikrut",
+      "homepage": "https://github.com/qarmin/czkawka",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "duplicate",
+        "cleanup",
+        "disk",
+        "space",
+        "similar",
+        "files"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host]; no network. COST: runtime is org.gnome.Platform/49, the same second-runtime problem as Warehouse (~1.07GB on top of /50). DESTRUCTIVE: it deletes files on the box; the Flatpak sandbox grants host, and the streamed session runs as root, so there is no second line of defence.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.qarmin.czkawka",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.qarmin.czkawka",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
     "darktable": {
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
       "author": "Darktable Developers",
       "category": "media",
-      "description": "Photography workflow and RAW developer — non-destructive editing, colour grading, and print/export pipeline",
+      "description": "Photography workflow and RAW developer \u2014 non-destructive editing, colour grading, and print/export pipeline",
       "homepage": "https://www.darktable.org",
       "icon": "darktable",
       "icon_url": "",
@@ -386,15 +694,15 @@
       },
       "license": "GPL-3.0",
       "name": "Darktable",
-      "signature": "3bcNuqY0rD14zZ45x7xs4d+7aTivb0Wmn6a70HVN5z+XYbbFqbz4hBL08Cbnk/bYZRKfwk6RFuEC8ahfNaLhDA==",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest grants --device=all (superset of dri), so the needs_gpu lane is satisfied inside the sandbox.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends darktable",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.darktable.Darktable",
           "download_url": "",
           "archive_strip": 0,
-          "command": "darktable",
+          "command": "flatpak run org.darktable.Darktable",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -408,13 +716,14 @@
           "auto_start": false
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": ""
     },
     "diagrams-net": {
       "arch": null,
       "author": "JGraph Ltd",
       "category": "productivity",
-      "description": "Open-source diagramming and whiteboard tool — flowcharts, UML, network diagrams, BPMN, ER, and Visio-compatible files; replaces draw.io / Visio",
+      "description": "Open-source diagramming and whiteboard tool \u2014 flowcharts, UML, network diagrams, BPMN, ER, and Visio-compatible files; replaces draw.io / Visio",
       "homepage": "https://www.diagrams.net",
       "icon": "diagrams.net",
       "icon_url": "",
@@ -526,13 +835,14 @@
       }
     },
     "drawio": {
-      "name": "draw.io",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Powerful open-source diagramming tool — flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
-      "category": "productivity",
+      "_note": "FIXES A BROKEN SHIPPED ENTRY. draw.war is drawio's only published artefact and a WAR is a ZIP by specification, but `.war` matched neither archive branch: the file was copied to bin/draw.war, chmod 0755, and the install REPORTED SUCCESS while static/ stayed empty and the server had nothing to serve. The entry also carried BOTH a download_url and a dead apt install string. The measured digest equals the one the shipped entry already carried. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "JGraph Ltd",
+      "category": "productivity",
+      "description": "Powerful open-source diagramming tool \u2014 flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
       "homepage": "https://www.drawio.com",
       "icon": "drawio",
       "icon_url": "",
@@ -546,33 +856,47 @@
         "whiteboard"
       ],
       "license": "Apache-2.0",
+      "name": "draw.io",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "30.0.1": {
-          "install": "apt-get install -y --no-install-recommends unzip && wget -qO /tmp/draw.war https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war && mkdir -p static && unzip -q /tmp/draw.war -d static/ && rm /tmp/draw.war",
-          "flatpak_id": "",
-          "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war",
           "archive_strip": 0,
+          "artifacts": {
+            "any": {
+              "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
+              "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
           "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network"
           ],
-          "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
-          "singleton": true,
-          "auto_start": false
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "e29AqdpTuGAfApAPsrrFfSunB9s95p0UKyxKdwaXhY/vpKWXan7ZRsjmzsZweDvb2DdKWpp3PR53jKkda3/bBw=="
+      "vetted": true
     },
     "element": {
       "name": "Element",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Secure, decentralized messaging and collaboration client for the Matrix protocol — chat, voice, and video calls across any Matrix homeserver (works with a local Conduit instance or any public server)",
+      "description": "Secure, decentralized messaging and collaboration client for the Matrix protocol \u2014 chat, voice, and video calls across any Matrix homeserver (works with a local Conduit instance or any public server)",
       "category": "network",
       "author": "Element (New Vector Ltd / Matrix.org Foundation)",
       "homepage": "https://element.io",
@@ -613,11 +937,14 @@
       "signature": "E0r0Kv0Yau2mjUejPPFXTq17BBVoMWejCgTIqa2NzCFSdOSS8IWGS23LozULt7ELNUpszA7E0z5v1IZyAY+TAA=="
     },
     "element-call": {
-      "_note": "Static frontend only — requires a LiveKit SFU (or compatible focus) and a Matrix homeserver that supports MSC3401 group calls; edit static/config.json post-install to point at them. This is the 'hosted-web experience the user configures' shape, same as Cinny needing a homeserver URL.",
-      "arch": null,
+      "_note": "raw shell -> artifacts, same shape as cinny; the inline digest it checked is byte-identical to the measured one. Static bundle, declared with the exclusive `any` artefact key. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Element (New Vector Ltd / Matrix.org Foundation)",
       "category": "network",
-      "description": "Native Matrix group video calling (MSC3401) — static web client that plugs into any Matrix homeserver + a LiveKit SFU for group calls; configure your homeserver and SFU URL in config.json after install (also embeddable inside Element/Cinny as a widget)",
+      "description": "Native Matrix group video calling (MSC3401) \u2014 static web client that plugs into any Matrix homeserver + a LiveKit SFU for group calls; configure your homeserver and SFU URL in config.json after install (also embeddable inside Element/Cinny as a widget)",
       "homepage": "https://element.io/call",
       "icon": "E",
       "icon_url": "",
@@ -632,27 +959,36 @@
       ],
       "license": "AGPL-3.0",
       "name": "Element Call",
-      "signature": "Cdv9Y1187qXHzIhApPnRrbDOcewF1pwMBCqUIFofErMesCaYbx+qba+kcpCozgAPjmNL+rdlnD9U1EljANqEDw==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "0.21.0": {
-          "install": "wget -qO /tmp/element-call.tar.gz https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz && echo '6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36  /tmp/element-call.tar.gz' | sha256sum -c - && tar xzf /tmp/element-call.tar.gz -C static/ --strip-components=1 && rm /tmp/element-call.tar.gz",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
+          "archive_strip": 1,
+          "artifacts": {
+            "any": {
+              "checksum": "6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
+              "download_url": "https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
           "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8082,
-          "post_install": "mkdir -p static",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
-            "network",
-            "camera",
-            "microphone"
+            "network"
           ],
-          "checksum": "sha256:6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
-          "singleton": true,
-          "auto_start": false
+          "port": 8082,
+          "post_install": "",
+          "singleton": true
         }
       },
       "vetted": true
@@ -662,7 +998,7 @@
       "vetted": true,
       "type": "web",
       "arch": null,
-      "description": "Virtual whiteboard for sketching hand-drawn-like diagrams — collaborative, end-to-end encrypted, and privacy-first",
+      "description": "Virtual whiteboard for sketching hand-drawn-like diagrams \u2014 collaborative, end-to-end encrypted, and privacy-first",
       "category": "productivity",
       "author": "Excalidraw Team",
       "homepage": "https://excalidraw.com",
@@ -680,7 +1016,7 @@
       "versions": {
         "0.18.0": {
           "_disabled": true,
-          "_note": "awaiting checksum — GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz",
+          "_note": "awaiting checksum \u2014 GitHub release asset v0.18.0 digest is null (no sha256 published); re-enable once upstream publishes a verifiable sha256 for excalidraw-0.18.0.tgz",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -705,7 +1041,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "FTP/SFTP/FTPS client — fast file transfers, site manager, directory comparison",
+      "description": "FTP/SFTP/FTPS client \u2014 fast file transfers, site manager, directory comparison",
       "category": "network",
       "author": "FileZilla Project",
       "homepage": "https://filezilla-project.org",
@@ -747,7 +1083,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Privacy-focused web browser by Mozilla — built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
+      "description": "Privacy-focused web browser by Mozilla \u2014 built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
       "category": "internet",
       "author": "Mozilla Foundation",
       "homepage": "https://www.mozilla.org/firefox",
@@ -786,12 +1122,201 @@
       },
       "signature": "2Mkm2D6nl+f9f9RpQTccCAu3QI2+WhDpylPnkSBvoNMQ6d/2H+FAiDTQGaIFlLCyptPtxkWOr1RJs69+NZeQBQ=="
     },
+    "flatseal": {
+      "name": "Flatseal",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Flatpak permission editor \u2014 review and change what each installed Flatpak app on this box may reach: files, devices, sockets and D-Bus services.",
+      "category": "system",
+      "author": "Martin Abente Lahaye",
+      "homepage": "https://github.com/tchx84/flatseal",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "permissions",
+        "sandbox",
+        "security",
+        "portal",
+        "override"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/tchx84). Sandbox: filesystems=[xdg-data/flatpak/overrides:create, /var/lib/flatpak/app:ro, xdg-data/flatpak/app:ro]; no network. Edits USER overrides (~/.local/share/flatpak/overrides), which do apply to the system-wide installs FlatpakInstall creates. Talks org.freedesktop.impl.portal.PermissionStore \u2014 confirm xdg-desktop-portal actually runs in the streamed session, or the portal pane is inert.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.tchx84.Flatseal",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.tchx84.Flatseal",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "flatsweep": {
+      "name": "Flatsweep",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Removes leftover data directories that uninstalled Flatpak apps left behind on this box.",
+      "category": "system",
+      "author": "Giant Pink Robots!",
+      "homepage": "https://github.com/giantpinkrobots/flatsweep",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "cleanup",
+        "leftover",
+        "disk",
+        "uninstall"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/giantpinkrobots). Sandbox: filesystems=[~/.var/app, ~/.local/share/flatpak/app:ro, /var/lib/flatpak/app:ro]; no network. OVERLAP: FlatpakUninstall already runs `flatpak uninstall -y --unused` (flatpak.go:110); Flatsweep covers the ~/.var/app residue that command leaves.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.giantpinkrobots.flatsweep",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.giantpinkrobots.flatsweep",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "fragments": {
+      "name": "Fragments",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Simple BitTorrent client. Torrents download to THIS BOX's disk, not to the machine you are viewing from \u2014 use Files to retrieve them.",
+      "category": "network",
+      "author": "Felix H\u00e4cker",
+      "homepage": "https://apps.gnome.org/Fragments/",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). Sandbox: filesystems=[host], shared=[network,ipc]. STREAMED-MODEL: description must say downloads land on the box; that is the whole point of a sovereign box, but it is not what a desktop user assumes. OVERLAP: qbittorrent is already in the registry; Fragments is the simple alternative, not a replacement.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "de.haeckerfelix.Fragments",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run de.haeckerfelix.Fragments",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "frog": {
+      "name": "Frog",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Extracts text from any image or screenshot by OCR, including QR codes, and copies it to the clipboard. Runs against images on this box.",
+      "category": "productivity",
+      "author": "Tender Owl",
+      "homepage": "https://getfrog.app",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "ocr",
+        "text",
+        "extract",
+        "screenshot",
+        "qr",
+        "clipboard",
+        "tesseract"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[xdg-pictures] only; shared=[network,ipc] (used to download Tesseract language packs). STREAMED-MODEL: OCR of an on-box image is fine; 'grab from screen' captures the BOX's virtual display, which is what the user is looking at, so it behaves as expected.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.tenderowl.frog",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.tenderowl.frog",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
     "geany": {
       "name": "Geany",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Lightweight IDE and code editor — syntax highlighting, code folding, auto-completion, and build system",
+      "description": "Lightweight IDE and code editor \u2014 syntax highlighting, code folding, auto-completion, and build system",
       "category": "developer",
       "author": "Geany Project",
       "homepage": "https://www.geany.org",
@@ -833,7 +1358,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Professional image editor — layers, filters, brushes, and advanced photo manipulation tools",
+      "description": "Professional image editor \u2014 layers, filters, brushes, and advanced photo manipulation tools",
       "category": "media",
       "author": "GIMP Team",
       "homepage": "https://www.gimp.org",
@@ -871,13 +1396,14 @@
       "signature": "ySIsCQyM2f3vtOiCfBwXUS2QJvMh58PlTxuCeTXzVTuc940yqTA+n0Vqhi1DKdLOwC7YUH86tYYoD6jpvoJwDw=="
     },
     "gitea": {
-      "name": "Gitea",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
-      "category": "developer",
+      "_note": "amd64-in-practice -> amd64+arm64. The shipped recipe was a shell string that curl'd the amd64 asset, checked a sha256 inline, and symlinked the binary into /usr/local/bin \u2014 a write outside the app dir that no boot path preserves. The digest it checked is byte-identical to the one measured here, so the recipe was honest; the SHAPE was the problem.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Gitea",
+      "category": "developer",
+      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
       "homepage": "https://gitea.io",
       "icon": "gitea",
       "icon_url": "",
@@ -890,36 +1416,55 @@
         "ci"
       ],
       "license": "MIT",
+      "name": "Gitea",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "1.22.0": {
-          "install": "curl -fSL -o bin/gitea https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64 && echo 'a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d  bin/gitea' | sha256sum -c - && chmod +x bin/gitea && ln -sf \"$(pwd)/bin/gitea\" /usr/local/bin/gitea",
-          "flatpak_id": "",
-          "download_url": "",
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
+              "download_url": "https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "ef6afed370b14d33b2b8dcc0c7ea56105b73ce9a3361090708985a878475d94b",
+              "download_url": "https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-arm64"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "gitea",
+          "checksum": "",
           "command": "bin/gitea web --config data/app.ini",
-          "port": 3000,
-          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = %s\\nROOT_URL = http://localhost:%s/\\n[repository]\\nROOT = %s/data/repositories\\n' \"${PORT}\" \"${PORT}\" \"$APP_DIR\" > data/app.ini",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
-          "singleton": true,
-          "auto_start": false
+          "port": 3000,
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini",
+          "singleton": true
         }
       },
-      "signature": "Es4PX+/3NwG2TE7fseuEugpOMkmHRRC4pVQEezVyPLMGdK+3bFjH2xZmi5UHtdsfI7iaKN7q/Z8mJfkg+yhsDg=="
+      "vetted": true
     },
     "gnucash": {
       "name": "GnuCash",
       "vetted": true,
       "type": "desktop",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
-      "description": "Personal and small-business finance manager — double-entry accounting, budgeting, invoicing, and reports",
+      "description": "Personal and small-business finance manager \u2014 double-entry accounting, budgeting, invoicing, and reports",
       "category": "productivity",
       "author": "GnuCash Development Team",
       "homepage": "https://www.gnucash.org",
@@ -935,13 +1480,14 @@
         "bookkeeping"
       ],
       "license": "GPL-2.0",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED by Flathub via gnucash.org.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends gnucash",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.gnucash.GnuCash",
           "download_url": "",
           "archive_strip": 0,
-          "command": "gnucash",
+          "command": "flatpak run org.gnucash.GnuCash",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -954,16 +1500,67 @@
           "auto_start": false
         }
       },
-      "signature": "TnLaoHMJVs5UJNAmNh9+GOINfabnFWf9zIZEqBXhS2Q7XJxpl97DVpWuXzdLg1Jyr5NTNWRE/Awl9NcWziL+Bg=="
+      "signature": ""
+    },
+    "google-chrome": {
+      "name": "Google Chrome",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Google's proprietary web browser. The Flathub package is a thin wrapper that downloads Google's binary from dl.google.com at install time; Google's servers and terms govern it, not Vulos.",
+      "category": "internet",
+      "author": "Google LLC",
+      "homepage": "https://www.google.com/chrome/",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "chrome",
+        "google",
+        "proprietary"
+      ],
+      "license": "Proprietary",
+      "flathub_verified": false,
+      "extra_data": true,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub. EXTRA-DATA CONFIRMED by reading the manifest (flathub/com.google.Chrome/master/com.google.Chrome.yaml lines 98 and 112: `type: extra-data`, url dl.google.com, per-arch). So neither Flathub nor Vulos ever holds the payload; the sha256 in the manifest is the only integrity check and it points at Google's server. Sandbox: filesystems include host-etc and xdg-*; devices=[all]; system-bus talk to Avahi/UPower/bluez. Offered for compatibility only \u2014 prefer 'chromium'.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.google.Chrome",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.google.Chrome",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "grafana": {
-      "name": "Grafana",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Monitoring dashboards — visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
-      "category": "developer",
+      "_note": "vendor-apt -> pinned upstream tarball, amd64+arm64. The tarball carries bin/, conf/ and public/ under one top-level directory, so archive_strip 1 unpacks it at the app root and --homepath . is the app dir the launcher sets as cwd. Replaces `wget -qO- apt.grafana.com/gpg.key | gpg --dearmor` \u2014 a key fetched over the network with no pin, which is what the old recipe's integrity rested on. dl.grafana.com publishes a .sha256 beside each asset; it was NOT cross-checked here, only the bytes were hashed.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Grafana Labs",
+      "category": "developer",
+      "description": "Monitoring dashboards \u2014 visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
       "homepage": "https://grafana.com",
       "icon": "grafana",
       "icon_url": "",
@@ -976,33 +1573,51 @@
         "observability"
       ],
       "license": "AGPL-3.0",
+      "name": "Grafana",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
-        "11": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https software-properties-common && wget -qO- https://apt.grafana.com/gpg.key | gpg --dearmor -o /usr/share/keyrings/grafana.gpg && echo \"deb [signed-by=/usr/share/keyrings/grafana.gpg] https://apt.grafana.com stable main\" > /etc/apt/sources.list.d/grafana.list && apt-get update && apt-get install -y --no-install-recommends grafana",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
-          "command": "grafana server --homepath /usr/share/grafana --config data/grafana.ini",
-          "port": 3000,
-          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = %s/data\\nplugins = %s/data/plugins\\n[server]\\nhttp_port = %s\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/grafana.ini",
-          "deps": null,
-          "env": null,
-          "permissions": [
-            "network"
-          ],
+        "11.6.16": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "b4f5e9d773c1400f2282de30ca2177d787fd6c67aba4de0e1c82f65dbab6d86a",
+              "download_url": "https://dl.grafana.com/oss/release/grafana-11.6.16.linux-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "8a7628c8f838369a4a3d35b6002822faac0fb1fd9762bc4f97fc009345b89bbe",
+              "download_url": "https://dl.grafana.com/oss/release/grafana-11.6.16.linux-arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
           "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "command": "bin/grafana server --homepath . --config data/grafana.ini",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 3000,
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini",
+          "singleton": true
         }
       },
-      "signature": "YRM2KHPuxyXfJXHUbGUfmDGm1ViMFksBJA71NhDQ0wxlk77xbT13dv8mSMZU89R2gY6ef6GL8VTTBpUGrE0BCw=="
+      "vetted": true
     },
     "hoppscotch": {
       "name": "Hoppscotch",
       "vetted": true,
       "type": "web",
       "arch": null,
-      "description": "Open-source API development ecosystem — REST, GraphQL, WebSocket, and SSE testing with a fast, clean web UI",
+      "description": "Open-source API development ecosystem \u2014 REST, GraphQL, WebSocket, and SSE testing with a fast, clean web UI",
       "category": "developer",
       "author": "Hoppscotch Inc.",
       "homepage": "https://hoppscotch.io",
@@ -1021,7 +1636,7 @@
       "versions": {
         "2026.4.1": {
           "_disabled": true,
-          "_note": "awaiting checksum — GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum",
+          "_note": "awaiting checksum \u2014 GitHub auto-generated source archive for tag 2026.4.1 has no published sha256; upstream publishes no pre-built static SPA bundle with a verifiable checksum",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -1042,13 +1657,15 @@
       "signature": "42Dj9I91nOp4HFCL8GF3kai92aEdEkTVc2KcOdnXiSDDgumV53bQzOZYTVa1itwIBRWmHDvMZMACj7NkZiSNDw=="
     },
     "httpbin": {
-      "name": "httpbin",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "HTTP request and response testing — inspect headers, methods, status codes",
-      "category": "developer",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. httpbin was `pip3 install --break-system-packages httpbin gunicorn`. pip is a package manager with the SAME unpinned-resolution problem as apt \u2014 `pip install httpbin` on two days gives two httpbins \u2014 so swapping one for the other would trade nothing. There is no single pinned artefact for a Python app plus its dependency tree, and building one is a wheel-bundling project, not a recipe edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Kenneth Reitz",
+      "category": "developer",
+      "description": "HTTP request and response testing \u2014 inspect headers, methods, status codes",
       "homepage": "https://httpbin.org",
       "icon": "httpbin",
       "icon_url": "",
@@ -1059,32 +1676,36 @@
         "debug"
       ],
       "license": "ISC",
+      "name": "httpbin",
+      "signature": "",
+      "type": "web",
       "versions": {
         "0.9": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
-          "port": 8080,
-          "post_install": "",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
           "permissions": [
             "network"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "RcAP3N1LEgowchjcVTCj7cOvqx70d6ZKrLBEeRkWcE2XVDG0jroe8fuA4F+xez75eB76c9tVoTFpT0IFIRGZBA=="
+      "vetted": true
     },
     "immich": {
       "arch": null,
       "author": "Immich Contributors",
       "category": "media",
-      "description": "Self-hosted photo and video backup — mobile app sync, AI-powered search, albums, and face recognition; replaces Google Photos",
+      "description": "Self-hosted photo and video backup \u2014 mobile app sync, AI-powered search, albums, and face recognition; replaces Google Photos",
       "homepage": "https://immich.app",
       "icon": "Immich",
       "icon_url": "",
@@ -1128,12 +1749,60 @@
       },
       "vetted": true
     },
+    "impression": {
+      "name": "Impression",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Writes an ISO or disk image to a USB stick or SD card PLUGGED INTO THIS BOX. It cannot see removable media attached to the device you are viewing from.",
+      "category": "system",
+      "author": "Khaleel Al-Adhami",
+      "homepage": "https://apps.gnome.org/Impression/",
+      "icon": "I",
+      "icon_url": "",
+      "keywords": [
+        "usb",
+        "iso",
+        "image",
+        "flash",
+        "bootable",
+        "sd card"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: NO static filesystem grants; reaches drives via system-bus talk to org.freedesktop.UDisks2 and the portal. STREAMED-MODEL WARNING \u2014 the sharpest in this batch: the drive list is the BOX's drives. Combined with the streamed session running as root (stream/pool.go:416 has no uid drop, no netns, no cgroup), a mis-click writes an image over one of the box's own disks. The description above is the mitigation; a confirm-step in the shell would be better.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.adhami3310.Impression",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.adhami3310.Impression",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "usb",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
     "inkscape": {
       "name": "Inkscape",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Vector graphics editor — SVG editing, illustration, diagrams, and logo design",
+      "description": "Vector graphics editor \u2014 SVG editing, illustration, diagrams, and logo design",
       "category": "media",
       "author": "Inkscape Project",
       "homepage": "https://inkscape.org",
@@ -1170,48 +1839,65 @@
       "signature": "mt/o201dRM1YH7e9arEu/tG5RfLXPRvyC7ojVEDRcMDWMTvCJgDe7EuDl85iCStV0MEiBkBMTHCTjtL+X4OIDw=="
     },
     "jellyfin": {
-      "arch": null,
-      "author": "Jellyfin Contributors",
+      "_note": "PARKED FOR HONEST IGNORANCE UNTIL 2026-08-17; BOTH MISSING MEASUREMENTS TAKEN, AND ONE OF THEM SAYS ENABLE AND THE OTHER SAYS NOT YET. (1) SELF-CONTAINMENT: MEASURED, and the answer is yes \u2014 the amd64 tarball (110228765 bytes) carries libcoreclr.so, libhostfxr.so, libhostpolicy.so, libclrjit.so and the whole System.*.dll set, so the .NET runtime is INSIDE the payload and the image does not need one. jellyfin-web ships in the same tarball (2331 members under jellyfin/jellyfin-web/), so the web client is not a second package either. The apphost was checked per architecture and they are genuinely different builds: amd64 is 'ELF 64-bit LSB pie executable, x86-64' and arm64 is 'ELF 64-bit LSB pie executable, ARM aarch64' \u2014 not the kerf v0.1.9 shape. (2) FFMPEG: MEASURED, and the answer is no \u2014 zero members of the tarball match ffmpeg or ffprobe, and neither is in scripts/image-packages.txt. Jellyfin without ffprobe cannot analyse a library or transcode, so the recipe stays _disabled: an entry that installs and cannot do the thing the app is for is the defect class this format exists to remove. ENABLING IT IS ONE EDIT once ffmpeg is in the base image and scripts/verify-app-recipe.sh jellyfin passes. THIRD DEFECT FOUND WHILE MEASURING: the retired recipe ran `jellyfin --port ${PORT}`, and jellyfin HAS NO --port OPTION \u2014 the option names compiled into jellyfin.dll are exactly cachedir, configdir, datadir, ffmpeg, logdir, nowebclient, published-server-url, service, webdir. The port lives in network.xml, which post_install writes with the literal 8096 this recipe declares; the element names InternalHttpPort/PublicHttpPort were read out of the shipped MediaBrowser.Common.dll, not guessed. UNVERIFIED: no install has been run, so `command`, the XML and the port are unproven. Upstream publishes NO digest file beside these assets (the directory holds only the .tar.gz and .tar.xz), so unlike minio there is no second opinion on these two sha256s \u2014 they are ours alone. NOT MEASURED, and named rather than assumed: whether the image carries ICU. A self-contained .NET app that is not built invariant-globalization needs libicuuc/libicui18n at startup, and scripts/image-packages.txt does not list libicu \u2014 chromium is expected to pull it in transitively, which is an inference and not a measurement. Whoever enables this entry measures it in the image, not from a package list.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Jellyfin Project",
       "category": "media",
-      "description": "Free self-hosted media server — stream movies, TV shows, music, and photos to any device via a web UI; replaces VLC for media playback",
+      "description": "Free software media system \u2014 stream your own films, series and music library to any device, with a web client bundled in the same payload",
       "homepage": "https://jellyfin.org",
-      "icon": "Jellyfin",
+      "icon": "jellyfin",
       "icon_url": "",
       "keywords": [
         "media",
+        "video",
         "streaming",
         "movies",
+        "tv",
         "music",
-        "photos",
-        "dlna",
-        "plex",
-        "server"
+        "server",
+        "plex-alternative"
       ],
-      "lane": {
-        "web": true
-      },
       "license": "GPL-2.0",
       "name": "Jellyfin",
-      "signature": "u81o8FG0HLEoxO8g1WhTy1oYVIkyTdLbVRJFkpx43BmKOwJAbwVB/O/lqIlNSs7lNxnHTseHMaXiqVoZbnbMDw==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
-        "10": {
-          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg && curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg && echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' > /etc/apt/sources.list.d/jellyfin.list && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
-          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --port ${PORT}",
-          "port": 8096,
-          "post_install": "mkdir -p data/media/movies data/media/music data/media/photos",
+        "10.11.11": {
+          "_disabled": true,
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "9f7f194a7e37777cfde0d107c088fc47e81c7904440046ac0ceb7a289546cf79",
+              "download_url": "https://repo.jellyfin.org/files/server/linux/stable/v10.11.11/amd64/jellyfin_10.11.11-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "31f86f51f72f006dfe2d9daabc25e75a9bbbfdad8dc1cbac7d14ea616de1fa40",
+              "download_url": "https://repo.jellyfin.org/files/server/linux/stable/v10.11.11/arm64/jellyfin_10.11.11-arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/jellyfin --datadir data/ --webdir bin/jellyfin-web",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8096,
+          "post_install": "mkdir -p data/config data/cache && printf '<?xml version=\"1.0\" encoding=\"utf-8\"?>\\n<NetworkConfiguration>\\n  <InternalHttpPort>8096</InternalHttpPort>\\n  <PublicHttpPort>8096</PublicHttpPort>\\n  <EnableHttps>false</EnableHttps>\\n</NetworkConfiguration>\\n' > data/config/network.xml",
+          "singleton": true
         }
       },
       "vetted": true
@@ -1221,7 +1907,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Free, open-source video conferencing — join any Jitsi deployment (including the public meet.jit.si) with no account required; screen sharing, chat, and end-to-end encrypted calls",
+      "description": "Free, open-source video conferencing \u2014 join any Jitsi deployment (including the public meet.jit.si) with no account required; screen sharing, chat, and end-to-end encrypted calls",
       "category": "network",
       "author": "8x8, Inc. (Jitsi)",
       "homepage": "https://jitsi.org",
@@ -1262,13 +1948,15 @@
       "signature": "w4hpHvs05UvUClt2aW/wZfrMYNpz3HdgZKedR6MCfkzsu3y3KShuQLMNmFLVA64BZAC/e3buVRF6ZL2YsK1CAw=="
     },
     "jupyter": {
-      "name": "Jupyter Lab",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Interactive notebooks for Python, data science, and computation — web-based IDE with rich output",
-      "category": "developer",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. same as httpbin: `python3 -m pip install jupyterlab`, an unpinned dependency resolution at install time. JupyterLab has no self-contained Linux artefact. This is a real product loss and is the strongest argument for a THIRD vehicle later (a pinned wheel set, or a Flathub entry) \u2014 it is deliberately not invented here. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Project Jupyter",
+      "category": "developer",
+      "description": "Interactive notebooks for Python, data science, and computation \u2014 web-based IDE with rich output",
       "homepage": "https://jupyter.org",
       "icon": "jupyter",
       "icon_url": "",
@@ -1281,33 +1969,37 @@
         "computation"
       ],
       "license": "BSD-3-Clause",
+      "name": "Jupyter Lab",
+      "signature": "",
+      "type": "web",
       "versions": {
         "4": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
-          "port": 8888,
-          "post_install": "",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8888,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "16VPynMw6uAswKXNtOsWY/N/fU6riJ8LxrfIe8ZtkZ6BVaGxtd26VqICDP1R7tAF+7G9bSuKuCh4cktIEygqCQ=="
+      "vetted": true
     },
     "kdenlive": {
       "arch": null,
       "author": "KDE Community",
       "category": "media",
-      "description": "Non-linear video editor — multi-track timeline, effects, transitions, and proxy editing",
+      "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
       "homepage": "https://kdenlive.org",
       "icon": "kdenlive",
       "icon_url": "",
@@ -1353,7 +2045,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Offline password manager — AES-256 encrypted vault, TOTP, browser integration, auto-type",
+      "description": "Offline password manager \u2014 AES-256 encrypted vault, TOTP, browser integration, auto-type",
       "category": "system",
       "author": "KeePassXC Team",
       "homepage": "https://keepassxc.org",
@@ -1394,7 +2086,7 @@
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Electronic design automation — schematic capture, PCB layout, 3D viewer, and Gerber export",
+      "description": "Electronic design automation \u2014 schematic capture, PCB layout, 3D viewer, and Gerber export",
       "category": "developer",
       "author": "KiCad Developers",
       "homepage": "https://www.kicad.org",
@@ -1436,8 +2128,11 @@
       "name": "LibreOffice",
       "vetted": true,
       "type": "desktop",
-      "arch": null,
-      "description": "Full office suite — word processor, spreadsheets, presentations, and database with MS Office compatibility",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Full office suite \u2014 word processor, spreadsheets, presentations, and database with MS Office compatibility",
       "category": "productivity",
       "author": "The Document Foundation",
       "homepage": "https://www.libreoffice.org",
@@ -1456,13 +2151,14 @@
         "xlsx"
       ],
       "license": "MPL-2.0",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch made explicit (was null). Publisher VERIFIED via libreoffice.org. Version key changed \"26.2\" -> \"latest\": a Flatpak tracks Flathub's stable branch, so pinning a version number in the key would assert a version Vulos does not control.",
       "versions": {
-        "26.2": {
-          "install": "apt-get install -y --no-install-recommends libreoffice",
-          "flatpak_id": "",
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.libreoffice.LibreOffice",
           "download_url": "",
           "archive_strip": 0,
-          "command": "libreoffice",
+          "command": "flatpak run org.libreoffice.LibreOffice",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -1475,18 +2171,20 @@
           "auto_start": false
         }
       },
-      "signature": "9RxVnoDnG8x38jiazE21NO0fsGECOK9PcTZIHcK2YvjWz1jBExCRl9vaOhNtBHeYDx5lKF4msLwCUtEFKpUUAQ=="
+      "signature": ""
     },
     "libretranslate": {
-      "name": "LibreTranslate",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Offline machine translation server — translate text between languages locally with no data leaving your device",
-      "category": "productivity",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. `pip3 install libretranslate==1.5.3`, plus a post_install that downloaded language models over the network and swallowed its own failure with `|| true` \u2014 refused twice over by POSTINSTALL-02 and POSTINSTALL-03. The models are the real blocker: they are fetched at first run and are not expressible as a pinned artefact today. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "LibreTranslate",
+      "category": "productivity",
+      "description": "Offline machine translation server \u2014 translate text between languages locally with no data leaving your device",
       "homepage": "https://libretranslate.com",
-      "icon": "🌐",
+      "icon": "\ud83c\udf10",
       "icon_url": "",
       "keywords": [
         "translation",
@@ -1497,26 +2195,79 @@
         "privacy"
       ],
       "license": "AGPL-3.0",
+      "name": "LibreTranslate",
+      "signature": "",
+      "type": "web",
       "versions": {
         "1.5.3": {
-          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
+          "permissions": [
+            "network"
+          ],
           "port": 5000,
           "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2>/dev/null || true",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "librewolf": {
+      "name": "LibreWolf",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Firefox fork with telemetry, sponsored content and studies removed and stricter privacy defaults compiled in. No vendor account.",
+      "category": "internet",
+      "author": "LibreWolf Community",
+      "homepage": "https://librewolf.net/",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "firefox",
+        "privacy",
+        "librewolf",
+        "fork"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). NOT extra-data. Sandbox is the TIGHTEST of the six browsers: filesystems=[xdg-download, xdg-run/speech-dispatcher:ro] only \u2014 no home, no host. devices=[dri] not [all]. That matters here because a streamed desktop app otherwise runs as root against the box's whole filesystem (see roadmap/APP-CATALOG-SYSTEM-BROWSERS-UTILITIES.md).",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.librewolf-community",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.librewolf-community",
+          "port": 0,
+          "post_install": "",
           "deps": null,
           "env": null,
           "permissions": [
-            "network"
+            "network",
+            "gpu"
           ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
         }
       },
-      "signature": "izvArJDFh9kd2tSD8bhVW+S9FRCtUJMrpHJRftx781lx0NjgoJUE30qu1VOc/6VXqPZamECImJ/+srHB0cB2Cg=="
+      "signature": ""
     },
     "lilmail": {
       "_note": "SOURCE vulos (first-party). NEW ENTRY. PER-ARCHITECTURE: pins both linux zips from vul-os/lilmail v1.14.0 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each zip downloaded fresh and sha256'd locally, and each digest equals BOTH its line in the release's published SHA256SUMS AND the digest GitHub publishes for the asset (amd64 c3d0fa78..., arm64 7689dd62...). ZIP: these are the first registry artefacts that are .zip rather than .tar.gz or a raw binary. staticInstall previously recognised only tar formats, so a .zip fell through to the plain-binary branch and was installed as bin/<name>.zip chmod 0755 - a SUCCESSFUL install of an app that could never start. That gap is now closed by extractZip (archive/zip, in-process, so the gated image package set needs no `unzip`). ARCHIVE_STRIP 1 drops the leading lilmail/ directory, leaving ./lilmail and config.toml.example at the app root; binary_name is deliberately ABSENT because it applies only to single-binary downloads and validateRecipeSecurity refuses it on an archive rather than ignoring it. BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; `file` confirmed the per-arch binary really is x86-64 resp. ARM aarch64, `./lilmail -version` reports lilmail 1.14.0, GET / returns 302 to /login and GET /login returns the real page (HTTP 200, <title>lilmail</title>), with the bolt store created under cache/. PORT: lilmail has no port flag - config.LoadConfig(\"config.toml\") is read relative to the working directory, which the launcher sets to the app dir - so the port is a LITERAL in config.toml, equal to this recipe's `port` field for the same reason as diwan. SECRETS: [jwt].secret and [encryption].key are REQUIRED (LoadConfig rejects a key that is not 16/24/32 bytes), so post_install mints both from /dev/urandom and REFUSES (exit 1) rather than writing weak or empty ones; no credential is baked into this registry. CACHE DIR: cache/ must exist before launch or lilmail logs `scheduled send unavailable (store open failed)` and runs degraded - observed, then fixed here. MAILBOX: lilmail hosts no mail and has no account system; the [imap]/[smtp] hosts written here are placeholders the owner edits to point at their OWN mailbox. CHOWN: as for diwan, the runtime uid 65534 is given the state directories. See roadmap/PER-ARCH-ARTIFACTS.md.",
@@ -1588,9 +2339,10 @@
       "vetted": true,
       "type": "desktop",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
-      "description": "Linux MultiMedia Studio — beat+bassline editor, song editor, synthesizers, and VST plugin support",
+      "description": "Linux MultiMedia Studio \u2014 beat+bassline editor, song editor, synthesizers, and VST plugin support",
       "category": "media",
       "author": "LMMS Developers",
       "homepage": "https://lmms.io",
@@ -1606,13 +2358,14 @@
         "sequencer"
       ],
       "license": "GPL-2.0",
+      "_note": "apt -> Flathub. Correct id is io.lmms.LMMS (capitals). APP-CATALOG.md lists io.lmms.lmms, which is a 404 \u2014 flatpak ids are case-sensitive. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest shares ipc only, NOT network \u2014 the recipe never claimed network, so no regression.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends lmms",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "io.lmms.LMMS",
           "download_url": "",
           "archive_strip": 0,
-          "command": "lmms",
+          "command": "flatpak run io.lmms.LMMS",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -1626,13 +2379,15 @@
           "auto_start": false
         }
       },
-      "signature": "HtADyb8bpCk7sRiWlwrcWZ6hgL6SRDXxcL5515+abYq3PIGkDBFk6PeNZiWUWO9Mx+Ewy0S6R77UcIaykDRICw=="
+      "signature": ""
     },
     "lutris": {
-      "arch": null,
+      "arch": [
+        "amd64"
+      ],
       "author": "Lutris Project",
       "category": "games",
-      "description": "Open-source gaming platform — manage and launch games from GOG, Epic, Steam, emulators, and Windows installers",
+      "description": "Open-source gaming platform \u2014 manage and launch games from GOG, Epic, emulators, and Windows installers",
       "homepage": "https://lutris.net",
       "icon": "lutris",
       "icon_url": "",
@@ -1650,43 +2405,41 @@
       },
       "license": "GPL-3.0",
       "name": "Lutris",
-      "signature": "Sd5s5Pu1vEs5gDPKBgaHnfIACn87ic9+V6yHsVIBXa1PtbI2zNf4C59nGmIp+ytA5hnZiw8BiTfmM2WuOPblDg==",
+      "_note": "apt -> Flathub. DEFECT FIX: entry arch was null (= all arches), so arm64 boxes were offered Lutris and the install could not work; net.lutris.Lutris is x86_64-only, and entry-level arch is the only arch field the installer enforces. The per-recipe \"arch\": \"amd64\" that used to sit inside this version is DEAD DATA \u2014 VersionRecipe has no Arch field, it lands in Extra and is never read. Dropped env VULOS_GAMING=1: no code in the tree reads it, and a bare `flatpak run` would not carry it into the sandbox anyway. Description no longer claims Steam (Steam is out of catalogue scope). Publisher VERIFIED via lutris.net.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "arch": "amd64",
-          "archive_strip": 0,
-          "auto_start": false,
-          "checksum": "",
-          "command": "lutris",
-          "deps": null,
+          "install": "",
+          "flatpak_id": "net.lutris.Lutris",
           "download_url": "",
-          "env": {
-            "VULOS_GAMING": "1"
-          },
-          "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends lutris",
+          "archive_strip": 0,
+          "command": "flatpak run net.lutris.Lutris",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
           "permissions": [
-            "display",
             "filesystem",
             "network",
             "gpu"
           ],
-          "port": 0,
-          "post_install": "lutris --init 2>/dev/null || true",
-          "singleton": true
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": ""
     },
     "memos": {
-      "name": "Memos",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Lightweight self-hosted memo and microblog — quick capture, tags, search, and personal feed",
-      "category": "productivity",
+      "_note": "Two defects fixed. (1) The shipped download_url was WRONG \u2014 it asked for memos_0.22.4_linux_amd64.tar.gz; the published asset is memos_v0.22.4_..., with a `v`. (2) Its checksum was empty, so it could never install anyway. Now pinned per-arch, arm64 gained. STAYS _disabled: no install has been verified, and this entry's history is exactly why an unverified re-enable is not worth the risk.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Memos Project",
+      "category": "productivity",
+      "description": "Lightweight self-hosted memo and microblog \u2014 quick capture, tags, search, and personal feed",
       "homepage": "https://www.usememos.com",
       "icon": "memos",
       "icon_url": "",
@@ -1699,17 +2452,34 @@
         "microblog"
       ],
       "license": "MIT",
+      "name": "Memos",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "0.22.4": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (upstream artifact is memos_v0.22.4_linux_amd64.tar.gz with v-prefix; no checksum file published by upstream for v0.22.4); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "6d4d8954f561bf7f0551143a77100983e792b5d0d4d8fbeb02783b855ba65ef5",
+              "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_v0.22.4_linux_amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "419fa168b3ca0973cdb4635d8050b9b1bdc825a957f21dfd024d133cf1d11514",
+              "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_v0.22.4_linux_arm64.tar.gz"
+            }
+          },
           "auto_start": false,
           "checksum": "",
-          "command": "memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
+          "command": "bin/memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
           "deps": null,
-          "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_0.22.4_linux_amd64.tar.gz",
+          "download_url": "",
           "env": null,
+          "extract_dir": "bin",
           "flatpak_id": "",
           "install": "",
           "permissions": [
@@ -1717,45 +2487,110 @@
             "filesystem"
           ],
           "port": 5230,
-          "post_install": "mkdir -p data",
+          "post_install": "",
           "singleton": true
         }
       },
-      "signature": "g0bHVeI00x9DW5HMapx71WuCWfCFF49u2hblx9yHt1WIYl41Smqx9zKxlp8k6oCN8YvsyVX4d1uLZiD4KdxOBw=="
+      "vetted": true
+    },
+    "metadata-cleaner": {
+      "name": "Metadata Cleaner",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Strips EXIF, author, GPS and other hidden metadata from documents, images, audio and video stored on this box before you share them.",
+      "category": "system",
+      "author": "Metadata Cleaner Developers",
+      "homepage": "https://gitlab.com/metadatacleaner/metadatacleaner",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "metadata",
+        "exif",
+        "privacy",
+        "strip",
+        "gps",
+        "anonymise"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "CATALOGUE DEFECT FIXED: roadmap/APP-CATALOG.md lists `fr.romainvigier.MetadataCleaner`, which the Flathub API reports is_eol=true (the project moved namespace). Shipping an EOL id gets a user a package that stops receiving updates. Correct current id is io.gitlab.metadatacleaner.metadatacleaner (is_eol=false, publisher verified by website). Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Sandbox: NO static filesystem grants and NO network \u2014 file access is portal-mediated only. Best-isolated app in this batch.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.gitlab.metadatacleaner.metadatacleaner",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.gitlab.metadatacleaner.metadatacleaner",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "minio": {
-      "name": "MinIO",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "High-performance S3-compatible object storage — self-hosted, scalable, with SSE-C encryption support",
-      "category": "storage",
+      "_note": "UNPINNABLE -> PINNED, and the 404 that blocked it was a real dead end rather than a typo. dl.min.io/.../archive/minio.RELEASE.2025-10-15T17-29-55Z returns 404 because that release publishes NO binary at all \u2014 its GitHub release carries an empty asset list. The previous release, RELEASE.2025-09-07T16-13-09Z, publishes real per-architecture Linux binaries as GitHub release assets, which is a pinned immutable URL rather than the moving dl.min.io/server/minio/release/linux-amd64/minio the old recipe used. CROSS-CHECKED: MinIO publishes a .sha256sum beside each asset, and both of ours match it byte for byte \u2014 two independent statements per artefact, which is what \u00a711 of the methodology asks for and what the other entries here do not have. Sizes 110989496 and 105251000 bytes match the GitHub API's asset sizes. STAYS _disabled: it is disabled today, no install has been run, and this build is from the series where the embedded console UI was removed upstream, which is a product question for the founder rather than a packaging one. NO deps: both binaries are STATICALLY LINKED (measured \u2014 'ELF 64-bit LSB executable, x86-64, statically linked' and 'ELF 64-bit LSB executable, ARM aarch64, statically linked'), and each key holds the machine type it names, so this is not the kerf shape either.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "MinIO, Inc.",
+      "category": "developer",
+      "description": "S3-compatible object storage server \u2014 buckets, versioning and presigned URLs over an API any S3 client already speaks",
       "homepage": "https://min.io",
       "icon": "minio",
       "icon_url": "",
       "keywords": [
         "storage",
         "s3",
-        "object-storage",
-        "minio",
+        "object",
         "bucket",
-        "encryption"
+        "self-hosted",
+        "api"
       ],
       "license": "AGPL-3.0",
+      "name": "MinIO",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "service",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
-        "latest": {
+        "RELEASE.2025-09-07T16-13-09Z": {
           "_disabled": true,
-          "_note": "disabled until pinned checksum added; storageprov pkg owns real install",
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f",
+              "download_url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-amd64.RELEASE.2025-09-07T16-13-09Z"
+            },
+            "arm64": {
+              "checksum": "5c83cd2cf151717ba0243f73e1c7802ff36e272b67144bdd7f1f7d684fd6f03d",
+              "download_url": "https://github.com/minio/minio/releases/download/RELEASE.2025-09-07T16-13-09Z/minio.linux-arm64.RELEASE.2025-09-07T16-13-09Z"
+            }
+          },
           "auto_start": false,
+          "binary_name": "minio",
           "checksum": "",
-          "command": "minio server ${DATA_DIR:-data} --address 0.0.0.0:${PORT}",
+          "command": "bin/minio server data/ --address 0.0.0.0:${PORT}",
           "deps": null,
           "download_url": "",
           "env": null,
           "flatpak_id": "",
-          "install": "wget -qO /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio && chmod +x /usr/local/bin/minio",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
@@ -1765,13 +2600,17 @@
           "singleton": true
         }
       },
-      "signature": "GOqyc1uzyMbCgb9d5v0qPriSgFxynSTVCmPimXfeEi+ijPUxCRa31vueZJu4QsHx40rAEmja8joo+GaNhBVdCA=="
+      "vetted": true
     },
     "minipaint": {
-      "arch": null,
+      "_note": "`git clone --depth=1 --branch v4.10.0` -> a checksum-pinned source archive. The clone pinned a TAG, which upstream can move; the digest cannot. CAVEAT, stated rather than buried: GitHub generates tag archives on demand, and a regenerated archive would change the digest. That fails CLOSED \u2014 a loud checksum mismatch \u2014 which is strictly better than a clone silently fetching different bytes. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "viliusle",
       "category": "media",
-      "description": "Browser-based raster image editor — layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
+      "description": "Browser-based raster image editor \u2014 layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
       "homepage": "https://github.com/viliusle/miniPaint",
       "icon": "miniPaint",
       "icon_url": "",
@@ -1784,44 +2623,53 @@
         "web",
         "gimp"
       ],
-      "lane": {
-        "web": true
-      },
       "license": "MIT",
       "name": "miniPaint",
-      "signature": "h5StPINtO+pL+GqwoVhC+Rra44tcXLhVBLx7AWXDDHpxwWFXokDgr3EyH89adNy7y0tHwWOnpcbxnGBiTvMBBw==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "4.10.0": {
-          "install": "apt-get install -y --no-install-recommends git && git clone --depth=1 --branch v4.10.0 https://github.com/viliusle/miniPaint.git static/",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
+          "archive_strip": 1,
+          "artifacts": {
+            "any": {
+              "checksum": "1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9",
+              "download_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.10.0.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
           "command": "python3 -m http.server ${PORT} --directory static/",
-          "port": 8080,
-          "post_install": "mkdir -p static",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
         }
       },
       "vetted": true
     },
     "navidrome": {
-      "name": "Navidrome",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Self-hosted music streaming server — your own Spotify with web UI and Subsonic API",
-      "category": "media",
+      "_note": "amd64-only -> amd64+arm64. The tarball has no top-level directory (LICENSE, README.md, navidrome at the root), so archive_strip is 0 and extract_dir puts them under bin/, which is what `command` names. Port literal: ${PORT} is not expanded in post_install and this entry relied on it. amd64 digest matches the one the shipped entry already carried.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Navidrome Project",
+      "category": "media",
+      "description": "Self-hosted music streaming server \u2014 your own Spotify with web UI and Subsonic API",
       "homepage": "https://www.navidrome.org",
-      "icon": "🎵",
+      "icon": "\ud83c\udfb5",
       "icon_url": "",
       "keywords": [
         "music",
@@ -1831,36 +2679,56 @@
         "self-hosted"
       ],
       "license": "GPL-3.0",
+      "name": "Navidrome",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
         "0.54.5": {
-          "install": "",
-          "flatpak_id": "",
-          "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz",
           "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
+              "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "1e5372efbdc36ee907f9bb122026f5858eb322eea165dc1c2d37e814160ab455",
+              "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
           "command": "bin/navidrome --configfile data/navidrome.toml",
-          "port": 4533,
-          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"%s/data/music\"\\nDataFolder = \"%s/data\"\\nPort = %s\\nAddress = \"0.0.0.0\"\\n' \"$APP_DIR\" \"$APP_DIR\" \"${PORT}\" > data/navidrome.toml",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
-          "singleton": true,
-          "auto_start": false
+          "port": 4533,
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml",
+          "singleton": true
         }
       },
-      "signature": "GBjNxeJDxdwzS1LHtlW+UR/Iet9suxChoxBiFJYJjqDohh/ufI75DO4i8GljSaLTERoe+HC3NJNOlDvcZCIEAA=="
+      "vetted": true
     },
     "nginx": {
-      "name": "Nginx",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "High-performance HTTP server and reverse proxy — serve static sites, proxy other services",
-      "category": "network",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. nginx publishes source only. Everything installable is a distribution package. It was also never really an app: the recipe apt-installed the system nginx and then ran it against a generated conf, which is a service the image should own. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "F5 / Igor Sysoev",
+      "category": "network",
+      "description": "High-performance HTTP server and reverse proxy \u2014 serve static sites, proxy other services",
       "homepage": "https://nginx.org",
       "icon": "nginx",
       "icon_url": "",
@@ -1873,26 +2741,30 @@
         "nginx"
       ],
       "license": "BSD-2-Clause",
+      "name": "Nginx",
+      "signature": "",
+      "type": "web",
       "versions": {
         "1": {
-          "install": "apt-get install -y --no-install-recommends nginx",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "nginx -c data/nginx.conf -g 'daemon off;'",
-          "port": 8080,
-          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends nginx",
           "permissions": [
             "network"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8080,
+          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
+          "singleton": true
         }
       },
-      "signature": "H6Frg0i0Prv/z9krlKqaWQKXzczeK9Nd2ollJyv0gm3kkgfbgeQUwRO4T9fRMt8WKkzFw3gkaWR4IeMaq8OxCw=="
+      "vetted": true
     },
     "obs-studio": {
       "arch": [
@@ -1900,7 +2772,7 @@
       ],
       "author": "OBS Project",
       "category": "media",
-      "description": "Open Broadcaster Software — screen recording and live streaming with scenes, sources, and filters",
+      "description": "Open Broadcaster Software \u2014 screen recording and live streaming with scenes, sources, and filters",
       "homepage": "https://obsproject.com",
       "icon": "obs",
       "icon_url": "",
@@ -1918,15 +2790,15 @@
       },
       "license": "GPL-2.0",
       "name": "OBS Studio",
-      "signature": "bnIGjU9vqNTh3T8mxfYt9ukdEPapqKRTfT/9gHR4TfCMURgOwgT15CJJ9dVBOmUdL9ttIJW3c1Rx6wd5im59Bw==",
+      "_note": "apt -> Flathub. com.obsproject.Studio is x86_64-only, which MATCHES the arch [\"amd64\"] this entry already declared \u2014 so unlike Blender, this conversion loses nothing. Publisher VERIFIED via obsproject.com. Flathub manifest grants --device=all and xdg-run/pipewire-0, which is what screen capture needs.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends obs-studio",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "com.obsproject.Studio",
           "download_url": "",
           "archive_strip": 0,
-          "command": "obs",
+          "command": "flatpak run com.obsproject.Studio",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -1942,16 +2814,18 @@
           "auto_start": false
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": ""
     },
     "octave": {
       "name": "GNU Octave",
       "vetted": true,
       "type": "desktop",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
-      "description": "High-level language for numerical computations — MATLAB-compatible syntax, plotting, and signal processing",
+      "description": "High-level language for numerical computations \u2014 MATLAB-compatible syntax, plotting, and signal processing",
       "category": "productivity",
       "author": "GNU Project",
       "homepage": "https://www.gnu.org/software/octave",
@@ -1967,13 +2841,14 @@
         "engineering"
       ],
       "license": "GPL-3.0",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via octave.org. NOTE: this app's runtime is org.kde.Sdk/6.10, an SDK rather than a Platform \u2014 roughly a gigabyte more on disk than a Platform-based app. Deliberate upstream choice (Octave builds mex files at runtime), not a packaging error.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends octave",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.octave.Octave",
           "download_url": "",
           "archive_strip": 0,
-          "command": "octave --gui",
+          "command": "flatpak run org.octave.Octave",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -1986,14 +2861,112 @@
           "auto_start": false
         }
       },
-      "signature": "08eYpFPxEGV1szTIbIptybSqD4gIxEuurL+B3JwxgiLN+2iiG+lYKTtyGBgr3ffvGyWyKV437fEnCaIBJLz4Ag=="
+      "signature": ""
+    },
+    "peazip": {
+      "name": "PeaZip",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Archive manager for THIS BOX's filesystem \u2014 creates and extracts 7z, zip, tar, rar, iso and ~200 other formats, with AES-256 encrypted archives.",
+      "category": "system",
+      "author": "Giorgio Tani",
+      "homepage": "https://peazip.github.io",
+      "icon": "Z",
+      "icon_url": "",
+      "keywords": [
+        "archive",
+        "zip",
+        "7z",
+        "tar",
+        "rar",
+        "extract",
+        "compress",
+        "encryption"
+      ],
+      "license": "LGPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host, xdg-config/kdeglobals:ro]; no network. RUNTIME: org.kde.Platform/6.10 \u2014 shared with the registry's existing qbittorrent entry, so the ~1.05GB is not additional if that is installed. REJECTED ALTERNATIVES: org.gnome.FileRoller (GNOME/50, would share the runtime with Flatseal, but its sandbox is filesystems=[home] only \u2014 cannot reach the box's data outside a home dir, which is the streamed case that matters); org.kde.ark (equivalent sandbox and runtime to PeaZip, fewer formats); org.xarchiver.Xarchiver (NOT on Flathub, 404).",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.peazip.PeaZip",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.peazip.PeaZip",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pika-backup": {
+      "name": "Pika Backup",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Scheduled deduplicating backups (BorgBackup) of THIS BOX's data to a local disk or a remote host over SSH. It backs up the box, not the device you are viewing from.",
+      "category": "storage",
+      "author": "Small Mammal Collective",
+      "homepage": "https://apps.gnome.org/PikaBackup/",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "backup",
+        "borg",
+        "snapshot",
+        "restore",
+        "schedule",
+        "ssh"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github login provider). Sandbox: filesystems=[host, /var:ro, ~/.var/app, gvfs]; devices=[all]; sockets include ssh-auth; shared=[ipc,network]. STREAMED-MODEL: correct and genuinely useful \u2014 a box that backs itself up is the point. NOTE: 'background' is in ValidPermissions but is NOT enforced by anything (manifest.go:19-31 vs the four read sites); scheduled runs depend on the app staying alive in its stream session.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.gnome.World.PikaBackup",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.gnome.World.PikaBackup",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "background"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "qbittorrent": {
       "name": "qBittorrent",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Feature-rich BitTorrent client — search, RSS, sequential download, IP filtering, and torrent creation",
+      "description": "Feature-rich BitTorrent client \u2014 search, RSS, sequential download, IP filtering, and torrent creation",
       "category": "network",
       "author": "qBittorrent Project",
       "homepage": "https://www.qbittorrent.org",
@@ -2034,9 +3007,10 @@
       "vetted": true,
       "type": "desktop",
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
-      "description": "Free and open-source GIS — view, edit, and analyse geospatial data with layers, plugins, and map export",
+      "description": "Free and open-source GIS \u2014 view, edit, and analyse geospatial data with layers, plugins, and map export",
       "category": "productivity",
       "author": "QGIS Development Team",
       "homepage": "https://www.qgis.org",
@@ -2052,13 +3026,14 @@
         "layers"
       ],
       "license": "GPL-2.0",
+      "_note": "apt -> Flathub. flatpak_id MUST stay branch-qualified as org.qgis.qgis//stable. QGIS publishes TWO branches (stable and lts) and FlatpakInstall runs `flatpak install -y --noninteractive flathub <id>` with no branch, which for a bare id exits 1: \"Multiple branches available for org.qgis.qgis, you must specify one of: .../stable, .../lts\". Verified that the //stable suffix resolves cleanly through that same argv. Flathub's API reports a single \"branch\":\"stable\" for this app, so metadata alone does NOT catch this. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via qgis.org.",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends qgis",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.qgis.qgis//stable",
           "download_url": "",
           "archive_strip": 0,
-          "command": "qgis",
+          "command": "flatpak run org.qgis.qgis",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -2072,15 +3047,65 @@
           "auto_start": false
         }
       },
-      "signature": "lK/tS7IHcoK/7eVei1qT5PCsrvN2ZTMgnqtjhcq6wi2El7kRxqWaMLQyhl9IvVV9YGg64RDmj77bba6VNTH7Ag=="
+      "signature": ""
+    },
+    "resources": {
+      "name": "Resources",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "System monitor \u2014 CPU, memory, GPU, disk, network and per-process usage FOR THIS BOX, not for the machine you are viewing from.",
+      "category": "system",
+      "author": "nokyan",
+      "homepage": "https://apps.gnome.org/app/net.nokyan.Resources/",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "monitor",
+        "system",
+        "cpu",
+        "memory",
+        "gpu",
+        "processes",
+        "disk"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (website). Sandbox: filesystems include host:ro \u2014 reads the whole box read-only, which is what makes the readings real. STREAMED-MODEL: correct by construction (it reports the box). OVERLAP: duplicates builtin 'system-info' and 'activity'.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.nokyan.Resources",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.nokyan.Resources",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "shotcut": {
       "arch": [
-        "amd64"
+        "amd64",
+        "arm64"
       ],
       "author": "Meltytech, LLC",
       "category": "media",
-      "description": "Free, open-source video editor — multi-track timeline, 4K support, hundreds of filters and transitions",
+      "description": "Free, open-source video editor \u2014 multi-track timeline, 4K support, hundreds of filters and transitions",
       "homepage": "https://www.shotcut.org",
       "icon": "shotcut",
       "icon_url": "",
@@ -2098,15 +3123,15 @@
       },
       "license": "GPL-3.0",
       "name": "Shotcut",
-      "signature": "KLbyQb+6dE05KHupuyLf/LQVJZc/2bGZMbW3L+KZ/ggrdZouZ14V34fYC7xZ+UTWgfJVm5zWcqxIPI9iR1eHAw==",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via shotcut.org. Flathub manifest grants --device=all, satisfying the needs_gpu lane inside the sandbox.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "install": "apt-get install -y --no-install-recommends shotcut",
-          "flatpak_id": "",
+          "install": "",
+          "flatpak_id": "org.shotcut.Shotcut",
           "download_url": "",
           "archive_strip": 0,
-          "command": "shotcut",
+          "command": "flatpak run org.shotcut.Shotcut",
           "port": 0,
           "post_install": "",
           "deps": null,
@@ -2120,13 +3145,19 @@
           "auto_start": false
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": ""
     },
     "steam": {
-      "arch": null,
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. Removed from the catalogue by APP-CATALOG policy 1a (proprietary apps excluded, founder call 2026-08-15, explicitly reversible) \u2014 not by this migration. Also amd64-only on every vehicle (Debian's steam-installer and Flathub's com.valvesoftware.Steam alike), and its Flathub package is extra-data: a 35.5 MB download for a 52.5 MB install, i.e. a stub that fetches the real client from Valve. Disabled rather than deleted so reopening policy 1a is one edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Valve Corporation",
       "category": "games",
-      "description": "Steam gaming client — access your Steam library, store, community, and Proton-powered Windows game compatibility",
+      "description": "Steam gaming client \u2014 access your Steam library, store, community, and Proton-powered Windows game compatibility",
       "homepage": "https://store.steampowered.com",
       "icon": "steam",
       "icon_url": "",
@@ -2139,15 +3170,13 @@
         "store",
         "library"
       ],
-      "lane": {
-        "game": true
-      },
       "license": "proprietary",
       "name": "Steam",
-      "signature": "tV4WLKspeqklbaIk6i2SA1VMpQOZ0hOw6gzNjBxrJqmuqeh+AJEXowNGJvu5Jk7TJKSw0YQ14B76bAll2l/DBQ==",
+      "signature": "",
       "type": "desktop",
       "versions": {
         "latest": {
+          "_disabled": true,
           "arch": "amd64",
           "archive_strip": 0,
           "auto_start": false,
@@ -2175,60 +3204,72 @@
       "vetted": true
     },
     "svg-edit": {
-      "arch": null,
+      "_note": "THE PINNED RELEASE DID NOT EXIST. The shipped recipe fetched github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip: there is no v7.3.0 tag (the tags are v.7.3.3, v7.2.0, v.7.1.2-beta.1, v5.1.0 and older) and NO SVG-Edit release carries any asset at all \u2014 measured against the GitHub releases API, ten releases, every asset list empty. _disabled is the only reason nobody hit that 404. The one published BUILD of SVG-Edit is its npm package, which is immutable per version and carries dist/editor/ prebuilt \u2014 index.html, Editor.js, svgedit.css, components/, extensions/ and images/ \u2014 so no build step is needed. CROSS-CHECKED TWICE: the npm registry publishes dist.integrity and dist.shasum for this exact tarball, and our sha512 and sha1 computed from the downloaded bytes match both. The tarball also carries the project's source and docs, so `command` serves static/dist/editor/ specifically rather than static/ \u2014 serving the app dir would publish data/, which is a symlink to the owner's data directory. STAYS _disabled: no install has been run and the served bundle is unproven.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "SVG-Edit Contributors",
       "category": "media",
-      "description": "Browser-based SVG vector editor — draw, edit, and export SVG graphics without installing a desktop app; replaces Inkscape for light vector work",
-      "homepage": "https://svgedit.netlify.app",
-      "icon": "SVG-Edit",
+      "description": "Browser-based vector graphics editor \u2014 draw and edit SVG in the browser with layers, paths and text",
+      "homepage": "https://github.com/SVG-Edit/svgedit",
+      "icon": "svg-edit",
       "icon_url": "",
       "keywords": [
         "svg",
         "vector",
         "editor",
+        "drawing",
         "graphics",
-        "illustration",
         "web",
         "inkscape"
       ],
-      "lane": {
-        "web": true
-      },
       "license": "MIT",
       "name": "SVG-Edit",
-      "signature": "jxFx9UUz8JovngIJyfZNr1M9WE48KEtu7BBrI2z0VAOxfd0XE9Qn0S8vyV71wFqNITN60GWWcQU5Kv7iTr0FDg==",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
       "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
-        "7.3.0": {
+        "7.4.2": {
           "_disabled": true,
-          "_note": "disabled: no verified sha256 published by SVG-Edit for v7.3.0 release zip; re-enable once upstream publishes a checksum",
-          "archive_strip": 0,
+          "archive_strip": 1,
+          "artifacts": {
+            "any": {
+              "checksum": "249cc66750a5b4ac39fc79ee8723ab71b581c48946aaea1ee58054fd91db98a7",
+              "download_url": "https://registry.npmjs.org/svgedit/-/svgedit-7.4.2.tgz"
+            }
+          },
           "auto_start": false,
           "checksum": "",
-          "command": "python3 -m http.server ${PORT} --directory static/",
+          "command": "python3 -m http.server ${PORT} --directory static/dist/editor/",
           "deps": null,
           "download_url": "",
           "env": null,
+          "extract_dir": "static",
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends wget unzip && wget -qO /tmp/svgedit.zip https://github.com/SVG-Edit/svgedit/releases/download/v7.3.0/svgedit-v7.3.0.zip && unzip -q /tmp/svgedit.zip -d static/ && rm /tmp/svgedit.zip",
+          "install": "",
           "permissions": [
             "network"
           ],
           "port": 8080,
-          "post_install": "mkdir -p static",
+          "post_install": "",
           "singleton": true
         }
       },
       "vetted": true
     },
     "syncthing": {
-      "name": "Syncthing",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Peer-to-peer file synchronization with web UI — sync folders across devices without a cloud",
-      "category": "productivity",
+      "_note": "vendor-apt -> pinned upstream tarball, amd64+arm64. Replaces a recipe that added apt.syncthing.net with a GPG key fetched at install time and NOT pinned by sha256 \u2014 which APP-RECIPE-STANDARD \u00a72.2 already says is vendor-download with extra steps. VERSION BUMP, and it is a real one: Debian/apt shipped the 1.x series and this pins 2.1.3, which changed the database format. Upstream's own sha256sum.txt.asc is published beside the assets and was NOT cross-checked here; only the bytes were hashed.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Syncthing Foundation",
+      "category": "productivity",
+      "description": "Peer-to-peer file synchronization with web UI \u2014 sync folders across devices without a cloud",
       "homepage": "https://syncthing.net",
       "icon": "syncthing",
       "icon_url": "",
@@ -2242,36 +3283,56 @@
         "web"
       ],
       "license": "MPL-2.0",
+      "name": "Syncthing",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
       "versions": {
-        "1": {
-          "install": "apt-get install -y --no-install-recommends curl apt-transport-https && curl -s https://syncthing.net/release-key.gpg | gpg --dearmor -o /usr/share/keyrings/syncthing.gpg && echo \"deb [signed-by=/usr/share/keyrings/syncthing.gpg] https://apt.syncthing.net/ syncthing stable\" > /etc/apt/sources.list.d/syncthing.list && apt-get update && apt-get install -y --no-install-recommends syncthing",
-          "flatpak_id": "",
-          "download_url": "",
-          "archive_strip": 0,
-          "command": "syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
-          "port": 8384,
-          "post_install": "",
+        "2.1.3": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "f929eb8e5b72a85543eeeefb2c38f34a68e0c530e70758a2905b78840c76602c",
+              "download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.3/syncthing-linux-amd64-v2.1.3.tar.gz"
+            },
+            "arm64": {
+              "checksum": "a5c046965b590a8de2f8c8c16a0dbf9201d99600b0cafd604040232b603e4586",
+              "download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.3/syncthing-linux-arm64-v2.1.3.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 8384,
+          "post_install": "",
+          "singleton": true
         }
       },
-      "signature": "+RJh+JNUNbAXZZovfXcbOhZyHF7u1aYBbyyY1bVaqQOJsQIOjPWbKImDostJfEUzZEygWdHluifAtyYKG9AgCg=="
+      "vetted": true
     },
     "transmission": {
-      "name": "Transmission",
-      "vetted": true,
-      "type": "web",
-      "arch": null,
-      "description": "Lightweight BitTorrent client with web UI — simple, fast, low resource usage",
-      "category": "network",
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. transmission publishes source only; transmission-daemon is a distribution package. No per-architecture artefact exists to pin. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Transmission Project",
+      "category": "network",
+      "description": "Lightweight BitTorrent client with web UI \u2014 simple, fast, low resource usage",
       "homepage": "https://transmissionbt.com",
       "icon": "transmission",
       "icon_url": "",
@@ -2284,34 +3345,38 @@
         "web"
       ],
       "license": "GPL-2.0",
+      "name": "Transmission",
+      "signature": "",
+      "type": "web",
       "versions": {
         "4": {
-          "install": "apt-get install -y --no-install-recommends transmission-daemon",
-          "flatpak_id": "",
-          "download_url": "",
+          "_disabled": true,
           "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
           "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
-          "port": 9091,
-          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
           "deps": null,
+          "download_url": "",
           "env": null,
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends transmission-daemon",
           "permissions": [
             "network",
             "filesystem"
           ],
-          "checksum": "",
-          "singleton": true,
-          "auto_start": false
+          "port": 9091,
+          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
+          "singleton": true
         }
       },
-      "signature": "RHb7Nlp6gMlrJnFPpJoOp2Igq0fv/KGbYW9WSLLztkgFFXd4GndGUGP4akzDVDtl6dQ8VdxqhNl8cJHXjSPEBw=="
+      "vetted": true
     },
     "uptime-kuma": {
       "name": "Uptime Kuma",
       "vetted": true,
       "type": "web",
       "arch": null,
-      "description": "Self-hosted monitoring and status pages — HTTP/TCP/DNS/ping checks with notifications and dashboards",
+      "description": "Self-hosted monitoring and status pages \u2014 HTTP/TCP/DNS/ping checks with notifications and dashboards",
       "category": "system",
       "author": "Louis Lam",
       "homepage": "https://github.com/louislam/uptime-kuma",
@@ -2329,7 +3394,7 @@
       "versions": {
         "1.23.16": {
           "_disabled": true,
-          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 — update download_url and obtain a checksum before re-enabling",
+          "_note": "H1-followup: download_url returns HTTP 404 (release 1.23.16 ships only dist.tar.gz, not uptime-kuma-1.23.16.tar.gz; upstream publishes no sha256 checksum file for any 1.23.16 asset); cannot supply verified sha256 \u2014 update download_url and obtain a checksum before re-enabling",
           "archive_strip": 1,
           "auto_start": false,
           "checksum": "",
@@ -2355,11 +3420,11 @@
       "vetted": true,
       "type": "web",
       "arch": null,
-      "description": "Bitwarden-compatible self-hosted password vault — end-to-end encrypted, supports all Bitwarden clients and browser extensions",
+      "description": "Bitwarden-compatible self-hosted password vault \u2014 end-to-end encrypted, supports all Bitwarden clients and browser extensions",
       "category": "system",
       "author": "dani-garcia",
       "homepage": "https://github.com/dani-garcia/vaultwarden",
-      "icon": "🔑",
+      "icon": "\ud83d\udd11",
       "icon_url": "",
       "keywords": [
         "password",
@@ -2374,7 +3439,7 @@
       "versions": {
         "1.32.7": {
           "_disabled": true,
-          "_note": "awaiting verified upstream checksum — pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
+          "_note": "awaiting verified upstream checksum \u2014 pin a sha256 from https://github.com/dani-garcia/vaultwarden/releases before enabling",
           "archive_strip": 0,
           "auto_start": false,
           "checksum": "",
@@ -2400,12 +3465,63 @@
       },
       "signature": "iATST0SgEo0OVigwinLzddb5r6O5ztwTuco5Z554NfQBdWNaRQICCvI52bJMAuD88CFs7Dd83qQ/jCDU07QVDw=="
     },
+    "vivaldi": {
+      "name": "Vivaldi",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Proprietary Chromium-based browser with heavy UI customisation, built-in mail, calendar and feed reader. Free of charge, closed source.",
+      "category": "internet",
+      "author": "Vivaldi Technologies",
+      "homepage": "https://vivaldi.com/",
+      "icon": "V",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "vivaldi",
+        "customisable",
+        "proprietary",
+        "mail"
+      ],
+      "license": "Proprietary",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher NOT verified on Flathub. CORRECTION TO roadmap/APP-CATALOG.md POLICY 1: Vivaldi is NOT extra-data. Its manifest (flathub/com.vivaldi.Vivaldi master, lines 92-109) uses `type: file` on downloads.vivaldi.com .deb per arch, consumed at Flathub BUILD time. Flathub therefore does hold and sign the payload for Vivaldi, unlike Chrome. Verified by reading the manifest, not assumed. Sandbox: devices=[all], filesystems include xdg-desktop and ~/.local/share/applications:create.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.vivaldi.Vivaldi",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.vivaldi.Vivaldi",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu",
+            "filesystem",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
     "vlc": {
       "name": "VLC",
       "vetted": true,
       "type": "desktop",
       "arch": null,
-      "description": "Universal media player — plays virtually any video and audio format, streams, DVDs, and network sources",
+      "description": "Universal media player \u2014 plays virtually any video and audio format, streams, DVDs, and network sources",
       "category": "media",
       "author": "VideoLAN",
       "homepage": "https://www.videolan.org",
@@ -2441,6 +3557,53 @@
         }
       },
       "signature": "zO+bS9Da3WrrcmeHX8Z+S7vdqpAVHgUr+pkD+6oaNsUsOOktV5O3O+tNisfMDI8pzr8Z7cmQA10rybJnrwvAAw=="
+    },
+    "warehouse": {
+      "name": "Warehouse",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Flatpak manager \u2014 inspect installed Flatpaks on this box, view and copy their manifests, manage per-app user data, and batch-remove leftovers.",
+      "category": "system",
+      "author": "Heliguy / flattool",
+      "homepage": "https://github.com/flattool/warehouse",
+      "icon": "W",
+      "icon_url": "",
+      "keywords": [
+        "flatpak",
+        "manage",
+        "packages",
+        "inspect",
+        "cleanup",
+        "manifest"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "Flathub AppStream+summary API 2026-08-15: id resolves 200, arches [aarch64,x86_64], not EOL. Publisher verified (github/flattool). Sandbox: filesystems=[~/.var/app, /var/lib/flatpak:ro, ~/.local/share/flatpak:ro, host-etc]; session-bus talk=org.freedesktop.Flatpak (that is full host-side Flatpak control, not a sandboxed subset). COST: runtime is org.gnome.Platform/49 while every other GNOME app here is /50 \u2014 installing Warehouse pulls a SECOND ~1.07GB GNOME runtime.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.flattool.Warehouse",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.flattool.Warehouse",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
     },
     "wede": {
       "_note": "SOURCE vulos (first-party). REPLACES the previous entry, which could not work at all: its `install` was empty, its `download_url` was empty, and its `command` was /root/.local/bin/wede - nothing ever placed that binary. PER-ARCHITECTURE: pins both linux binaries from vul-os/wede v0.1.3 via `artifacts`. CHECKSUM EVIDENCE 2026-08-16: each downloaded fresh and sha256'd locally, each digest matching both the release's checksums.txt and GitHub's published asset digest (amd64 275ed918..., arm64 73800e85...). BOOT EVIDENCE: installed by appnet.InstallFromRegistry and launched as specified in debian:trixie-slim on linux/amd64 AND linux/arm64; the binary reports `wede v0.1.3`, logs `loaded config from $APP_DIR/wede.config.json`, GET / returns the real IDE (HTTP 200, <title>WEDE | Web Development Environment</title>), and POST /api/auth/login with the generated password returns {\"role\":\"owner\"} - so the credential this recipe mints actually authenticates. CONFIG IS MANDATORY: wede v0.1.3 calls log.Fatal when it cannot find wede.config.json and rejects an empty password, so it fails loudly rather than starting half-configured. post_install mints a 32-character password from /dev/urandom and REFUSES (exit 1) if it cannot produce 32, rather than writing a weak or empty one; the owner reads it from wede-password.txt and no credential is baked into this registry. PORT: arrives via `-port ${PORT}`, which the launcher DOES expand (launcher.go:248); the 9090 inside the config is the file's own self-consistent default and the flag overrides it. DEPS: git is a genuine runtime dependency - wede shells out to the git binary (backend/internal/chat/chat.go:509) - not decoration. See roadmap/FIRST-PARTY-REGISTRY-TRUTH.md.",
@@ -2510,10 +3673,12 @@
       }
     },
     "wine": {
-      "arch": null,
+      "arch": [
+        "amd64"
+      ],
       "author": "WineHQ Project",
       "category": "games",
-      "description": "Windows compatibility layer — run Windows applications and games on Linux without a virtual machine",
+      "description": "Windows compatibility layer \u2014 run Windows applications and games on Linux without a virtual machine",
       "homepage": "https://www.winehq.org",
       "icon": "wine",
       "icon_url": "",
@@ -2530,33 +3695,31 @@
       },
       "license": "LGPL-2.1",
       "name": "Wine",
-      "signature": "ZHj9HD564qwCE+zLa7jMB+caPmBeJEG/Ds+GYk3s3yzW747P8TmZAkatQrX5nkolhBUucDvy5mvZiHNWfx0/Dw==",
+      "_note": "PARKED, NOT MIGRATED, 2026-08-17. wine has no expressible vehicle left and inventing one would be worse than saying so. (1) apt is gone. (2) WineHQ publishes .deb packages and no portable per-architecture tarball, so there is no artefact to pin \u2014 an `artifacts` entry here would require a URL that does not exist. (3) org.winehq.Wine on Flathub publishes SEVEN branches (stable-21.08 \u2026 stable-25.08, wow64-24.08, wow64-25.08) and NONE is named plain `stable`, so the bare id fails under FlatpakInstall; the `//branch` suffix does resolve (proved on QGIS) but every candidate is a dated branch that ages out, and WHICH one currently resolves is a `flatpak remote-info` measurement THAT WAS NOT RUN HERE. Guessing it is exactly the fabricated-value failure this work exists to remove. Disabled rather than deleted so the measured metadata survives for whoever runs that command. arch corrected to [amd64] regardless \u2014 that defect was independent of the vehicle.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "arch": "amd64",
-          "archive_strip": 0,
-          "auto_start": false,
-          "checksum": "",
-          "command": "wine",
-          "deps": null,
-          "download_url": "",
-          "env": {
-            "VULOS_GAMING": "1"
-          },
+          "install": "",
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends wine winetricks",
-          "permissions": [
-            "display",
-            "filesystem",
-            "network"
-          ],
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "wine",
           "port": 0,
-          "post_install": "wineboot --init",
-          "singleton": false
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
         }
       },
-      "vetted": true
+      "vetted": true,
+      "signature": "",
+      "_disabled": true
     }
   }
 }

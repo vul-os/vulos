@@ -253,21 +253,39 @@ func TestRegistryJSON_NavidromeEntry(t *testing.T) {
 		t.Errorf("navidrome: type = %q, want web", entry.Type)
 	}
 
-	// Verify at least one version has a non-empty download_url.
+	// MIGRATED to the per-architecture vehicle (roadmap/INSTALL-METHODOLOGY.md).
+	// The old loop keyed everything off `recipe.DownloadURL != ""` — the
+	// retired field — so once navidrome migrated, `found` stayed false AND the
+	// command/port checks inside the branch stopped running entirely. A test
+	// that goes quiet when its subject changes shape is the failure this suite
+	// keeps finding, so the replacement asserts the vehicle that exists now and
+	// checks command/port UNCONDITIONALLY rather than inside a branch.
 	found := false
 	for ver, recipe := range entry.Versions {
 		if recipe.DownloadURL != "" {
-			found = true
-			if recipe.Command == "" {
-				t.Errorf("navidrome version %s: command is empty", ver)
+			t.Errorf("navidrome version %s: still carries a top-level download_url — the retired vehicle", ver)
+		}
+		if !recipe.HasArtifacts() {
+			continue
+		}
+		found = true
+		for arch, a := range recipe.Artifacts {
+			if !strings.HasPrefix(a.DownloadURL, "https://") {
+				t.Errorf("navidrome %s[%s]: download_url must be https, got %q", ver, arch, a.DownloadURL)
 			}
-			if recipe.Port == 0 {
-				t.Errorf("navidrome version %s: port is 0", ver)
+			if len(a.Checksum) != 64 {
+				t.Errorf("navidrome %s[%s]: checksum %q is not a bare 64-char sha256 hex digest", ver, arch, a.Checksum)
 			}
+		}
+		if recipe.Command == "" {
+			t.Errorf("navidrome version %s: command is empty", ver)
+		}
+		if recipe.Port == 0 {
+			t.Errorf("navidrome version %s: port is 0", ver)
 		}
 	}
 	if !found {
-		t.Error("navidrome: no version has a non-empty download_url")
+		t.Error("navidrome: no version declares per-architecture artifacts")
 	}
 }
 

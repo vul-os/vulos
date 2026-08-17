@@ -252,11 +252,13 @@ func TestInstall_RefusesWrongArch(t *testing.T) {
 // branch in ArchSupported has nothing bounding it.
 //
 // The ceiling is a LITERAL transcribed from a measurement of registry.json on
-// 2026-08-17, deliberately NOT computed from the file under test. A ratchet
+// 2026-08-17, deliberately NOT computed from the file under test. RATCHETED
+// 44 -> 19 when the catalogue migration declared arch on 25 entries; the test
+// itself demanded this, refusing to let its own bound go slack. A ratchet
 // that derives its own bound from its subject proves only that the file agrees
 // with itself — the self-consistency trap that already let a size-limit test
 // pass while its constant was raised a thousandfold.
-const undeclaredArchCeiling = 44
+const undeclaredArchCeiling = 19
 
 // registryTotalFloor guards the guard. If registry.json moves, shrinks, or
 // fails to parse, a count of zero undeclared entries would read as PERFECT

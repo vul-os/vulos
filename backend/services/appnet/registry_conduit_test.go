@@ -51,17 +51,32 @@ func TestAppStore_ConduitEntry_Enabled(t *testing.T) {
 	if recipe.Disabled {
 		t.Errorf("conduit: version %q is still _disabled", version)
 	}
-	if recipe.DownloadURL == "" {
-		t.Error("conduit: expected a non-empty download_url (static install path)")
+	// MIGRATED to the per-architecture vehicle (roadmap/INSTALL-METHODOLOGY.md).
+	// This block used to assert a single top-level download_url + checksum,
+	// which DOWNLOAD-01 now refuses — so those assertions were not merely
+	// obsolete, they asserted the defect. The replacement is strictly stronger:
+	// every architecture must carry its OWN https URL and its OWN bare sha256,
+	// so the pair that used to be checked once is now checked per arch, and an
+	// entry offering no architecture at all fails instead of passing vacuously.
+	if recipe.DownloadURL != "" {
+		t.Errorf("conduit: still carries a top-level download_url %q — the retired vehicle", recipe.DownloadURL)
 	}
-	if !strings.HasPrefix(recipe.DownloadURL, "https://") {
-		t.Errorf("conduit: download_url must be https, got %q", recipe.DownloadURL)
+	if recipe.Checksum != "" {
+		t.Errorf("conduit: still carries a top-level checksum %q — the retired vehicle", recipe.Checksum)
 	}
-	if recipe.Checksum == "" {
-		t.Error("conduit: missing sha256 checksum for its downloaded binary — must be computed, never invented (SEC-H3/SECAUDIT2-H1)")
+	if !recipe.HasArtifacts() {
+		t.Fatal("conduit: no artifacts — nothing declares what to install on any architecture")
 	}
-	if len(recipe.Checksum) != 64 {
-		t.Errorf("conduit: checksum %q is not a bare 64-char sha256 hex digest", recipe.Checksum)
+	for arch, a := range recipe.Artifacts {
+		if !strings.HasPrefix(a.DownloadURL, "https://") {
+			t.Errorf("conduit[%s]: download_url must be https, got %q", arch, a.DownloadURL)
+		}
+		if a.Checksum == "" {
+			t.Errorf("conduit[%s]: missing sha256 — must be computed, never invented (SEC-H3/SECAUDIT2-H1)", arch)
+		}
+		if len(a.Checksum) != 64 {
+			t.Errorf("conduit[%s]: checksum %q is not a bare 64-char sha256 hex digest", arch, a.Checksum)
+		}
 	}
 	if recipe.Command == "" {
 		t.Error("conduit: missing run command")

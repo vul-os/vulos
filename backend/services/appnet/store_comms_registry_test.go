@@ -15,6 +15,7 @@ package appnet
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -121,8 +122,27 @@ func TestAppStore_CommsEntries_ElementCall(t *testing.T) {
 	if recipe.FlatpakID != "" {
 		t.Errorf("element-call: expected no FlatpakID (static web bundle), got %q", recipe.FlatpakID)
 	}
-	if recipe.Checksum == "" {
-		t.Error("element-call: missing checksum — its install script downloads a binary directly (SEC-H3 requires one)")
+	// MIGRATED to the per-architecture vehicle (roadmap/INSTALL-METHODOLOGY.md).
+	// The comment this replaces described "its install script downloads a
+	// binary directly" — that script is exactly what INSTALL-01 now refuses,
+	// so the sentence documented a vehicle the installer will not run. SEC-H3's
+	// requirement is unchanged and now lands per architecture instead of once.
+	if recipe.DownloadURL != "" {
+		t.Errorf("element-call: still carries a top-level download_url %q — the retired vehicle", recipe.DownloadURL)
+	}
+	if recipe.Checksum != "" {
+		t.Errorf("element-call: still carries a top-level checksum %q — the retired vehicle", recipe.Checksum)
+	}
+	if !recipe.HasArtifacts() {
+		t.Fatal("element-call: no artifacts — nothing declares what to install on any architecture")
+	}
+	for arch, a := range recipe.Artifacts {
+		if !strings.HasPrefix(a.DownloadURL, "https://") {
+			t.Errorf("element-call[%s]: download_url must be https, got %q", arch, a.DownloadURL)
+		}
+		if len(a.Checksum) != 64 {
+			t.Errorf("element-call[%s]: checksum %q is not a bare 64-char sha256 (SEC-H3)", arch, a.Checksum)
+		}
 	}
 	if recipe.Port == 0 {
 		t.Error("element-call: expected a non-zero listen port for a static web bundle")
