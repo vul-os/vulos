@@ -45,6 +45,7 @@ Read it like this:
 | Notifications | [`NOTIFICATIONS.md`](NOTIFICATIONS.md) | Structured notification model, notification center, DND, action buttons, push-via-peering | shipped |
 | Client offline | [`OFFLINE.md`](OFFLINE.md) | Client↔box offline: cache-not-truth, outbox queue, per-app offline scope, degraded state. Not a CRDT — see SYNC.md for box↔box | design only |
 | Offline auth | [`OFFLINE-AUTH.md`](OFFLINE-AUTH.md) | The OS auth gate for offline access: local unwrap of the cached master-key envelope (reuses `masterKey.js`), fail-closed, per-app HKDF keys. Apps own cache; OS owns the gate | design only |
+| Process control | [`PROCESS-CONTROL.md`](PROCESS-CONTROL.md) | Activity Monitor: listing processes/apps/connections, `(pid, starttime)` identity, the never-signal list, SIGTERM→SIGKILL escalation, and what "not responding" actually measures | shipped |
 | Peering | [`PEERING.md`](PEERING.md) | The big one: Ed25519 identity, contacts, signed S2S envelopes, messaging, media, WebRTC calls, SFU, drop, relays, feeds | shipped |
 | Device profiles | [`DEVICE-PROFILES.md`](DEVICE-PROFILES.md) | pc / tv / car / watch — different layouts, focus models, and behaviors per form factor | shipped |
 | Streaming optimizations | [`STREAMING-OPTIMIZATIONS.md`](STREAMING-OPTIMIZATIONS.md) | GPU encoder selection, NVENC/VA-API low-latency tuning, adaptive bitrate, audio backends, Wayland capture | shipped |
