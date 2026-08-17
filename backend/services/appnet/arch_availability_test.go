@@ -96,6 +96,46 @@ func TestListEntries_CarriesTheServersAnswer(t *testing.T) {
 	}
 }
 
+// TestListEntries_AnInstallableEmulatedAppCarriesNoRefusal.
+//
+// The one input where `installable` and `installable_reason` are not the same
+// question: rung 3 is INSTALLABLE and still has a sentence ("noticeably
+// slower, …"). Putting that sentence in a field named "reason it cannot be
+// installed" makes the App Hub warn about an app it is about to offer — and no
+// native-only fixture can catch it, because a native app's sentence is empty and
+// so is its reason either way.
+func TestListEntries_AnInstallableEmulatedAppCarriesNoRefusal(t *testing.T) {
+	withBoxArch(t, "arm64")
+	withNoBinfmt(t)
+	withEmulatorsOnPath(t, "box64")
+	SetEmulationOptedIn(true)
+	t.Cleanup(func() { SetEmulationOptedIn(false) })
+
+	var entry RegistryEntry
+	if err := json.Unmarshal([]byte(
+		`{"name":"Heroic","type":"desktop","arch":["amd64"],"emulation_policy":"opt-in",`+
+			`"versions":{"1.0":{"artifacts":{"amd64":{}}}}}`), &entry); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	reg := &Registry{Apps: map[string]*RegistryEntry{"heroic": &entry}}
+	entries := reg.ListEntries(t.TempDir())
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries", len(entries))
+	}
+	e := entries[0]
+	if e.Availability.State != ArchStateEmulated || !e.Installable {
+		t.Fatalf("the fixture did not reach rung 3, so this test measures nothing: %+v", e.Availability)
+	}
+	if e.Availability.Detail == "" {
+		t.Fatal("rung 3 with no sentence — the user is not told what they are getting, which is " +
+			"the entire difference between rung 3 and rung 2")
+	}
+	if e.InstallableReason != "" {
+		t.Errorf("an app the hub is about to OFFER carries a reason it cannot be installed: %q",
+			e.InstallableReason)
+	}
+}
+
 // TestListEntries_AnswerSurvivesJSON. The App Hub reads JSON, not a Go struct.
 // A field that does not marshal is a field the hub silently falls back from,
 // and the fallback it used to have was the client-side comparison.
