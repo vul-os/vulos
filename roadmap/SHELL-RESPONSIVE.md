@@ -26,9 +26,9 @@ HEIGHT the shell's own bars consume.
 | R-2 | 360×800 | mobile | Status-bar cluster painted **29px past the right edge**; the clock is off screen | cluster 317px wide, right edge at 389px | **FIXED** — identity yields, `layouts/MobileStack.tsx` + `mobile/mobile.css` |
 | R-3 | 320×568 | mobile | Same, **69px** | as above | **FIXED** — and read §3, because the first diagnosis of this one was wrong |
 | R-4 | 1194×834, 1366×1024 (coarse pointer) | **desktop** | An iPad in landscape runs DesktopCanvas. `.vwin-light` window controls are **12×12px**, and their glyphs are `opacity: 0` until `.vwin-lights:hover` — three identical dots, one of which discards the window | 12×12, glyph opacity 0 | **FIXED** — 44px hit area + drawn glyphs under `(pointer: coarse)`, `shell/shell-chrome.css` |
-| R-5 | 1194×834, 1366×1024 (coarse pointer) | desktop | **6 menu-bar controls under 44px** on a device with no mouse | System menu 69×32; Applications, Mission Control, Chat, Toggle fullscreen 28×28; Theme 24×24 | **NOT FIXED — needs a file this workstream does not own.** See §4 |
+| R-5 | 1194×834, 1366×1024 (coarse pointer) | desktop | **6 menu-bar controls under 44px** on a device with no mouse | System menu 69×32; Applications, Mission Control, Chat, Toggle fullscreen 28×28; Theme 24×24 | **FIXED** — one `--menubar-h` token read by all three sites that used to carry the bar's height as separate literals, plus a `.vshell-bar` rule reaching all six controls. See §4 |
 | R-6 | 568×320 (phone landscape) | mobile | The shell's own chrome is **40.6% of the viewport height** — 130px of 320px | bar 44px + dock 86px | **BOUNDED, not redesigned.** §5 |
-| R-7 | every desktop width 768–1440 | desktop | **19 sub-12px text nodes**: 18 in the widget rail (10.5–11.5px), 1 in the wallpaper wordmark ("alpha", 10px) | `src/widgets/host/widgets.css`, `layouts/DesktopCanvas.tsx:160` | **NOT FIXED — other owners.** §4 |
+| R-7 | every desktop width 768–1440 | desktop | **19 sub-12px text nodes**: 18 in the widget rail (10.5–11.5px), 1 in the wallpaper wordmark ("alpha", 10px) | `src/widgets/host/widgets.css`, `layouts/DesktopCanvas.tsx:160` | **FIXED** — one `--vwidget-fs-min` token in `src/widgets/host/widgets.css` (18 nodes) and the wordmark raised 10px → 12px in `layouts/DesktopCanvas.tsx`. See §4 |
 | R-8 | mobile chrome, all widths | mobile | Toast dismiss button **16×16 with a 10px glyph**; Toasts IS mounted in MobileStack | 16×16 | **FIXED** — 24px visible / 44px on coarse, 12px glyph |
 | R-9 | mobile status bar | mobile | Notification count badge at **9px** — the only thing that says how many are waiting | 9px | **FIXED** — 12px |
 | R-10 | notification panel | both | The row's dismiss control is `opacity-0` until `group-hover` — on a finger, an **invisible but still tappable** target | opacity 0 | **FIXED** — revealed on coarse pointers |
@@ -158,36 +158,73 @@ nothing.
 
 ---
 
-## 4. R-5 and R-7 — reported, in files this workstream does not own
+## 4. R-5 and R-7 — closed in commit `ee1af016`
 
-**R-5, the desktop menu bar on a coarse pointer.** `.vshell-btn` is 28px inside a 32px bar.
-The bar's height is hard-coded in **three files that must agree**:
+**Both were reported rather than fixed for as long as this section said so.** That was the
+right call at the time: the bar's own height lived in three files that could not see each
+other, and growing it in two without the third would have opened every window 12px underneath
+the menu bar on exactly the devices the fix was for. `ee1af016` ("The bar's height lived in
+three files that could not see each other, so the touch floor was reported instead of fixed")
+made the coordinated change and closed both. What follows is HOW, not a plan for how it could
+be done.
 
-| File | Value | What it controls |
-|---|---|---|
-| `shell/TopBar.tsx:148` | `h-8` | the bar itself |
-| `layouts/DesktopCanvas.tsx:174` | `pt-8` | the origin every window is positioned against |
-| `shell/windowTiling.ts:10` | `MENU_BAR_H = 32` | the geometry a window OPENS with |
+**R-5, the desktop menu bar on a coarse pointer.** `.vshell-btn` was 28px inside a 32px bar.
+The bar's height was hard-coded in **three files with no way of knowing about each other**:
 
-Two of those three are in this workstream's territory and the middle one is not. Growing the
-bar in two of three would open every window **12px underneath the menu bar**, on exactly the
-tablets the change is for. There is also a `--menubar-h: 2rem` token in `src/index.css` that
-two rules in `shell-chrome.css` already read and the three above ignore — the correct fix is
-to make all four read it and put it behind `(pointer: coarse)`, which is one coordinated
-change across `index.css`, `TopBar.tsx`, `DesktopCanvas.tsx` and `windowTiling.ts`.
+| File | Was | Now | What it controls |
+|---|---|---|---|
+| `shell/TopBar.tsx` | `h-8` | `h-[var(--menubar-h)]` | the bar itself |
+| `layouts/DesktopCanvas.tsx` | `pt-8` | `pt-[var(--menubar-h)]` | the origin every window is positioned against |
+| `shell/windowTiling.ts` | `MENU_BAR_H = 32` | `MENU_BAR_H = resolveMenuBarHeight()`, reading `--menubar-h` from the DOM at import, falling back to 32 on any failure | the geometry a window OPENS with |
 
-The gate asserts the open set **by accessible name** (`System menu`, `Applications`,
-`Mission Control`, `Chat`, `Toggle fullscreen`). A sixth offender fails. Fixing one does not
-fail — a gate that goes red when someone repairs the thing it guards teaches people to delete
-gates.
+All three now read the one `--menubar-h` token that already existed in `src/index.css` (two
+unrelated rules in `shell-chrome.css` read it before; nothing else did). A
+`@media (pointer: coarse) { :root:root { --menubar-h: 44px; } }` block in `shell-chrome.css`
+raises it to 44px on a coarse pointer — the selector repeats (`:root:root`, not `:root`) so the
+override wins on specificity rather than on CSS bundle order, which is a function of import
+order this rule does not control and this repo has been bitten by that assumption before.
 
-**R-7, sub-12px type on the desktop.** 18 of the 19 nodes are the widget rail
+The six controls themselves are covered by one rule on the bar rather than six edits across
+three components, two of which are outside this workstream (`core/SystemPulse.tsx`,
+`core/ThemeToggle.tsx`, `shell/TopBar.tsx`):
+
+```css
+.vshell-bar button,
+.vshell-bar [role='button'] {
+  min-width: var(--touch-min, 44px);
+  min-height: var(--touch-min, 44px);
+}
+```
+
+**R-7, sub-12px type on the desktop.** 18 of the 19 nodes were the widget rail
 (`src/widgets/host/widgets.css`: `.vwidget-title` 10.5px, `.vwidget-clock-when` 10.5px,
-`.vwidget-label` 11.5px, `.vwidget-railbtn` 11px) and the 19th is
-`layouts/DesktopCanvas.tsx:160`, the wallpaper's "alpha" wordmark at 10px. Both are outside
-this territory. The gate's type floor is scoped to the shell's own chrome roots and says so in
-the file — folding a defect it cannot fix into a gate it owns is how a floor becomes a thing
-people route around.
+`.vwidget-label` 11.5px, `.vwidget-railbtn` 11px and eleven more declarations) and the 19th was
+`layouts/DesktopCanvas.tsx`, the wallpaper's "alpha" wordmark at 10px (now `text-[12px]`, up
+from `text-[10px]`). The widget-rail fifteen declarations became one token,
+`--vwidget-fs-min: 12px`, set on `.vwidget-rail, .vwidget-gallery, .vwidget-config` and read by
+every affected rule — a scale consolidation rather than fifteen separate numbers, which is what
+lets the guard count text nodes rather than distinct sizes without a scale cleanup reading as a
+regression.
+
+**The gate's own exemption sets are now empty, and that emptiness is asserted.**
+`KNOWN_BAR_TARGETS` in `frontend/e2e/shell-responsive.e2e.ts` used to name the six open
+controls by accessible name (`System menu`, `Applications`, `Mission Control`, `Chat`, `Toggle
+fullscreen`, `Theme mode`); it is now `new Set<string>([])`, and a coverage-count assertion
+(`expect(KNOWN_BAR_TARGETS.size, ...).toBe(0)`) fails the suite if anyone reintroduces an
+exemption without adding it back as a defended name. `.vwidget-rail` was added to `SHELL_ROOTS`
+so its own text is swept rather than exempted.
+
+**The gate itself was the finding this pass turned up.** Its first version passed 24/24 with
+the half-done fix planted (`--menubar-h` reverted to `2rem` while the controls kept their 44px
+floor) — the old check only asked whether a *control* cleared 44px, never whether the *bar*
+could hold it. A control 44px tall inside a 32px bar is still "44px" by that measurement while
+painted 6px above and below the bar's own box, over the window underneath it. The gate now
+carries a `barFit()` check (`frontend/e2e/shell-responsive-harness.ts`) that measures the bar's
+own height against its tallest control and asserts nothing escapes it, plus a check that the
+window layer's inset (`windowInsetTop`) equals the bar's painted height — the two numbers that
+used to live in separate files and could silently disagree. Reverting `--menubar-h` to `2rem`
+under the strengthened gate now fails 2/24 (the two coarse-pointer viewports) with "menu-bar
+control(s) painted outside the bar — bar 32px, tallest control 44px".
 
 ---
 
@@ -219,7 +256,9 @@ at all.** Every mobile spec in this repository before it set portrait viewports 
    element's box against the viewport. Neither subsumes the other, and R-2/R-3 are the proof:
    69px of content off screen with a document `scrollWidth` of exactly 320.
 2. **A 12px rendered type floor** over the shell's own chrome.
-3. **A 44px touch floor** on every coarse-pointer profile, with R-5's open set named.
+3. **A 44px touch floor** on every coarse-pointer profile, plus a `barFit()` check that the
+   bar contains its tallest control and the window layer's inset agrees with the bar's painted
+   height (added when R-5 closed — see §4).
 4. **Chrome ≤ 45% of viewport height.**
 5. **Window controls operable with a finger**, in a *tablet-landscape case that opens a
    window* — because window chrome does not exist until there is a window, and a sweep of the
