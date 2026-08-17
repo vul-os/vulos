@@ -283,6 +283,7 @@ export interface PhoneContact {
   phones: string[]
   emails: string[]
   org: string
+  note: string
   sources: string[]
 }
 
@@ -307,6 +308,10 @@ export async function getContacts(): Promise<PhoneContact[]> {
     phones: Array.isArray(c.phones) ? c.phones.filter((p): p is string => typeof p === 'string') : [],
     emails: Array.isArray(c.emails) ? c.emails.filter((e): e is string => typeof e === 'string') : [],
     org: str(c.org),
+    // Carried because this is now the ONE read of the unified list in the app:
+    // the people pane merges these rows onto its editable cards and shows the
+    // note on device/SIM-only contacts, which have no card of their own.
+    note: str(c.note),
     sources: Array.isArray(c.sources) ? c.sources.filter((s): s is string => typeof s === 'string') : [],
   }))
 }

@@ -32,21 +32,16 @@ import { listContacts, createContact, updateContact, deleteContact } from './con
 import type { Contact, ContactAddress, ContactFormInput } from './contactsApi'
 import { nativeBridge } from '../../core/nativeBridge'
 import type { CallSession } from '../phone/useCallSession'
+import type { PhoneContact } from '../phone/telephonyApi'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
 
-// A wire field is honoured only when it actually is the expected type —
-// matches the original `a || b || ''` fallback chain for the realistic wire
-// shape, while degrading a malformed field to the fallback instead of leaking
-// an unexpected runtime type into the render tree.
-function str(x: unknown): string {
-  return typeof x === 'string' ? x : ''
-}
-function strList(x: unknown): string[] {
-  return Array.isArray(x) ? x.filter((e): e is string => typeof e === 'string') : []
-}
+// The `str` / `strList` wire-field narrowers that used to live here are gone
+// with the raw /api/contacts/unified fetch they existed for. The unified rows
+// now arrive already narrowed, once, by telephonyApi.getContacts — which is
+// the point of reading that endpoint in one place instead of two.
 
 // errMessage extracts a real `.message` off a caught value honestly (`.catch`
 // callers are always `unknown` under strict), matching the original
@@ -233,26 +228,26 @@ function keyOf(x: { name: string; emails: string[] }): string[] {
 // Merge the unified list onto the editable CardDAV list: annotate each CardDAV
 // contact with its sources (matched by email/name), and append device/SIM-only
 // contacts as read-only rows. Falls back to plain CardDAV when unified is off.
-function mergeUnified(cardContacts: Contact[], unified: Record<string, unknown>[]): MergedContact[] {
-  const uByKey = new Map<string, Record<string, unknown>>()
-  for (const u of unified) for (const k of keyOf({ name: str(u.name), emails: strList(u.emails) })) if (!uByKey.has(k)) uByKey.set(k, u)
+function mergeUnified(cardContacts: Contact[], unified: PhoneContact[]): MergedContact[] {
+  const uByKey = new Map<string, PhoneContact>()
+  for (const u of unified) for (const k of keyOf(u)) if (!uByKey.has(k)) uByKey.set(k, u)
 
-  const matchedU = new Set<Record<string, unknown>>()
+  const matchedU = new Set<PhoneContact>()
   const annotated: MergedContact[] = cardContacts.map((c) => {
     let sources = ['vulos']
     for (const k of keyOf(c)) {
       const u = uByKey.get(k)
-      if (u) { sources = Array.isArray(u.sources) ? strList(u.sources) : sources; matchedU.add(u); break }
+      if (u) { sources = u.sources.length ? u.sources : sources; matchedU.add(u); break }
     }
     return { ...c, sources }
   })
 
   const extras: MergedContact[] = unified
-    .filter((u) => !matchedU.has(u) && !strList(u.sources).includes('vulos'))
+    .filter((u) => !matchedU.has(u) && !u.sources.includes('vulos'))
     .map((u) => ({
-      id: 'u:' + (str(u.id) || str(u.name)), name: str(u.name) || '(no name)', org: str(u.org), title: '',
-      note: str(u.note), emails: strList(u.emails), phones: strList(u.phones),
-      sources: strList(u.sources), _readonly: true,
+      id: 'u:' + (u.id || u.name), name: u.name || '(no name)', org: u.org, title: '',
+      note: u.note, emails: u.emails, phones: u.phones,
+      sources: u.sources, _readonly: true,
     }))
   return [...annotated, ...extras]
 }
@@ -260,6 +255,22 @@ function mergeUnified(cardContacts: Contact[], unified: Record<string, unknown>[
 export interface PeopleViewProps {
   /** The ONE call session the app shell holds. Never mounted per pane. */
   session: CallSession
+  /**
+   * The box's unified address book (CardDAV + box SIM + pushed phone book),
+   * read ONCE by the app shell and handed down.
+   *
+   * This pane used to fetch /api/contacts/unified for itself while the shell
+   * fetched the same endpoint to put names on call rows — two readers of one
+   * resource inside one app, which is the exact drift that merging the two
+   * apps was meant to end.
+   */
+  unified: PhoneContact[]
+  /**
+   * The unified read FAILED. Not fatal (the editable cards below are real and
+   * usable) but it means people are MISSING from the list, which an address
+   * book must never hide.
+   */
+  unifiedError: string
   /**
    * Single-pane layout. Comes from the APP's own measured width, not the
    * viewport: this surface lives in a desktop window whose width the user
@@ -269,12 +280,11 @@ export interface PeopleViewProps {
   narrow: boolean
 }
 
-export default function PeopleView({ session, narrow }: PeopleViewProps) {
+export default function PeopleView({ session, unified, unifiedError, narrow }: PeopleViewProps) {
   const { openWindow } = useShell()
-  const [contacts, setContacts] = useState<MergedContact[]>([])
+  const [cards, setCards] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [sourcesError, setSourcesError] = useState('')
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editing, setEditing] = useState<ContactForm | null>(null)
@@ -286,36 +296,20 @@ export default function PeopleView({ session, narrow }: PeopleViewProps) {
   // user-triggered reload() is the one that turns the spinner back on. Same
   // shape as usePhoneData's loaders, for the same reason.
   const load = useCallback(() => {
-    // The editable CardDAV list is authoritative for create/edit/delete; the
-    // unified list adds source badges + any device/SIM-only rows.
-    //
-    // A FAILURE HERE IS NOT NOTHING. This read used to end in `.catch(() => [])`,
-    // so a 500 from /api/contacts/unified was indistinguishable from a box with
-    // no SIM and no linked phone: every contact that lives ONLY on the box SIM
-    // or the pushed phone book silently vanished from the list, and the app
-    // rendered a shorter address book with complete confidence. It is still
-    // non-fatal — the CardDAV list is genuinely usable without it — but it is
-    // now SAID.
-    const unified: Promise<{ rows: Record<string, unknown>[]; err: string }> = fetch('/api/contacts/unified')
-      .then(async (r) => {
-        if (!r.ok) return { rows: [], err: `the box answered ${r.status}` }
-        const d: unknown = await r.json()
-        if (!(isRecord(d) && Array.isArray(d.contacts))) {
-          return { rows: [], err: 'the box answered something unreadable' }
-        }
-        return { rows: d.contacts.filter(isRecord), err: '' }
-      })
-      .catch((e: unknown) => ({ rows: [], err: errMessage(e, 'the box could not be reached') }))
+    // Only the EDITABLE CardDAV cards are read here — they are authoritative
+    // for create/edit/delete. The unified list arrives as a prop, read once by
+    // the app shell, so a failure of one source cannot be mistaken for the
+    // other and neither is fetched twice.
     listContacts()
-      .then(async (cs) => {
-        const u = await unified
-        setContacts(mergeUnified(cs, u.rows))
-        setSourcesError(u.err)
-        setError('')
-      })
-      .catch((e: unknown) => { setError(errMessage(e, 'unavailable')); setContacts([]) })
+      .then((cs) => { setCards(cs); setError('') })
+      .catch((e: unknown) => { setError(errMessage(e, 'unavailable')); setCards([]) })
       .finally(() => setLoading(false))
   }, [])
+
+  // The list the panes render: the editable cards annotated with where each
+  // person also lives, plus the device/SIM-only people who have no card at all.
+  const contacts = useMemo(() => mergeUnified(cards, unified), [cards, unified])
+  const sourcesError = unifiedError
 
   /** A user-triggered re-read — this one shows the spinner again. */
   const reload = useCallback(() => { setLoading(true); load() }, [load])

@@ -49,10 +49,12 @@ export default function Contacts() {
 
   const lines = useLines()
   const session = useCallSession()
-  // The unified address book, used HERE only to put names on call and SMS rows.
-  // The people pane reads lilmail's editable cards for itself — this is the
-  // box's merged view (CardDAV + box SIM + pushed phone book), which is the
-  // right index for "whose number is +2783…" and the wrong one for editing.
+  // THE box's unified address book (CardDAV + box SIM + pushed phone book),
+  // read ONCE here and used for both jobs it is good for: putting names on
+  // call and SMS rows, and telling the people pane where each person also
+  // lives. It was read twice — once here and once inside the people pane —
+  // which is precisely the duplication that merging the two apps set out to
+  // remove. Editing still goes to lilmail's cards, which the people pane owns.
   const book = useContacts()
   const calls = useCalls(lines.active?.id ?? null, book.names)
 
@@ -82,7 +84,7 @@ export default function Contacts() {
 
   const body =
     current === 'contacts' ? (
-      <PeopleView session={session} narrow={narrow} />
+      <PeopleView session={session} unified={book.contacts} unifiedError={book.error} narrow={narrow} />
     ) : current === 'recents' ? (
       <RecentsTab
         calls={calls.calls} loading={calls.loading || lines.loading} error={calls.error} size={size}

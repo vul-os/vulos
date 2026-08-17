@@ -227,6 +227,46 @@ describe('the in-call bar shows what the MODEM says, not what we asked for', () 
   })
 })
 
+describe('the box SIM and the linked phone are part of the address book', () => {
+  // The unified list is read ONCE by the app shell and handed to the people
+  // pane. Nothing covered what the pane then DOES with it, so the whole merge
+  // could have been dropped in the re-plumbing and every other test stayed
+  // green — a mutation that replaced the unified rows with [] survived until
+  // these two existed.
+  const UNIFIED_WITH_SIM = {
+    contacts: [
+      // Same person as the editable card, seen on the box SIM as well.
+      { id: 'u1', name: 'Ada Lovelace', phones: ['+27 83 111 2222'], emails: ['ada@x.com'], org: 'Vulos', sources: ['vulos', 'box-sim'] },
+      // Lives ONLY on the box SIM: no CardDAV card exists for her at all.
+      { id: 's9', name: 'Nomsa Dube', phones: ['+27 82 444 5555'], emails: [], org: '', note: 'from the SIM', sources: ['box-sim'] },
+    ],
+    sources_active: ['vulos', 'box-sim'],
+  }
+
+  it('lists a contact that exists only on the box SIM', async () => {
+    routes['GET /api/contacts/unified'] = UNIFIED_WITH_SIM
+    render(<Contacts />)
+
+    // She has no editable card, so if the unified rows are dropped she simply
+    // vanishes — silently, with the list looking perfectly healthy.
+    await waitFor(() => expect(screen.getByText('Nomsa Dube')).toBeInTheDocument())
+  })
+
+  it('badges a card with the other places that person also lives', async () => {
+    routes['GET /api/contacts/unified'] = UNIFIED_WITH_SIM
+    render(<Contacts />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    const detail = await waitFor(() => {
+      const el = document.querySelector('[data-contact-detail]')
+      if (!el) throw new Error('no detail pane')
+      return el
+    })
+    await waitFor(() => expect(detail.textContent).toContain('Box SIM'))
+  })
+})
+
 describe('an incomplete address book is never rendered as a complete one', () => {
   it('says so when the box SIM / linked-phone sources fail to load', async () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
