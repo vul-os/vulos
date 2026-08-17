@@ -330,6 +330,19 @@ Non-negotiable constraints, recorded so nobody has to re-derive them:
 
 ---
 
+## 5a. What I could not run, and why
+
+`vitest` could not run on this Mac for most of this work: `frontend/node_modules`
+carried only the **linux**-arm64 rolldown native binding, so `npx vitest` failed
+to start for **every** test, mine and pre-existing alike. I ran the suite in a
+`node:22-bookworm` linux/arm64 container instead, and later — after another
+agent reinstalled `node_modules` and it gained the darwin binding — natively on
+the Mac. Both were used; the results quoted here are from the native run.
+
+That binding set is shared, concurrently-mutated state. If `npx vitest` dies at
+startup with a `@rolldown/binding-*` MODULE_NOT_FOUND, that is the platform of
+the last `npm install`, not a broken test.
+
 ## 6. Still open
 
 - **Test one real Android phone** with Chrome against a box. Highest-value
@@ -345,10 +358,13 @@ Non-negotiable constraints, recorded so nobody has to re-derive them:
   outcome (the pre-existing behaviour), and it cannot affect the per-instance
   names, which differ by construction. Full RFC 6762 §8.2 tie-breaking would
   close it.
-- **The install wizard UI** (`frontend/src/auth/Setup.tsx`) is not updated: it
-  should call `GET /api/identity/hostname/available` while the user types, and
-  it must surface `applied_live=false` + `notice` instead of a success tick.
-  Held by another agent.
+- ~~The install wizard UI~~ **DONE** (`af40e889`). The name field prefills with
+  the box's per-instance `default_hostname` (it was EMPTY, and an empty field
+  made the step skip its POST, which is what left every box on the shared
+  name); it checks availability on a 400ms debounce while the owner types; and
+  it shows `notice` and refuses to advance when the box answers
+  `applied_live:false`. `saveToBox` had been discarding the success body, so
+  no caller could tell a live rename from an inert one.
 - **Two mDNS responders run on a bare-metal box** — avahi-daemon (from
   `cmd/init`) and our in-process pion responder. They coexist (MEASURED) and
   agree on the address, but it is duplicated machinery; consolidating on one is
