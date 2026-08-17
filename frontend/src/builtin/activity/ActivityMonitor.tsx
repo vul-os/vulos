@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useTelemetry } from '../../core/useTelemetry'
+import { useAuth } from '../../auth/AuthProvider'
 import {
   loadJSON, toProcesses, toNetConns, toAppList, signalProcess, closeApp, processKey,
   type ProcessInfo, type NetConn, type AppStatus, type ApiFailure,
@@ -199,6 +200,7 @@ interface PendingAction {
 
 export default function ActivityMonitor() {
   const { stats: rawStats, connected } = useTelemetry()
+  const { profile } = useAuth()
   const stats = toTelemetryStats(rawStats)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [processes, setProcesses] = useState<ProcessInfo[]>([])
@@ -377,6 +379,24 @@ export default function ActivityMonitor() {
   // one. The tab labels already show "(—)" on a failed feed; these agree.
   const procKnown = procLoaded && procError === null
   const netKnown = netLoaded && netError === null
+
+  // Ending a process is admin-only, and the box enforces that — POST
+  // /api/system/processes/signal and /api/proc/apps/close both answer 403 to
+  // anyone else. What follows is an AFFORDANCE, not a second gate: it decides
+  // what to OFFER, never what to allow. Deleting it would cost no security and
+  // would restore a UI that invites the most dangerous action in the OS,
+  // accepts a confirmation for it, and only then reports that it was never
+  // permitted.
+  //
+  // It fails toward OFFERING. `profile` is null while the session is loading
+  // and AuthProfile types `role` as unknown, so the control is withdrawn only
+  // when the answer is positively "not an admin". Guessing the other way would
+  // show a real admin dead buttons for as long as the profile takes to arrive,
+  // and a dead button with no explanation is indistinguishable from a broken
+  // feature — while guessing this way costs a non-admin nothing worse than the
+  // 403 they would have got anyway.
+  const role = typeof profile?.role === 'string' ? profile.role : null
+  const mayEnd = role === null || role === 'admin'
   // Matching on the full key is what makes a recycled pid DESELECT rather than
   // re-aim. When the number is handed to a new process the key no longer
   // matches, find() misses, and the action bar falls back to "Select a process
@@ -593,6 +613,7 @@ export default function ActivityMonitor() {
       {tab === 'processes' && (
         <ActionBar
           selected={selected}
+          mayEnd={mayEnd}
           onQuit={() => selected && setPending({
             kind: 'process', mode: 'quit', proc: selected,
             label: `${selected.name || 'process'} (${selected.pid})`,
@@ -645,7 +666,7 @@ export default function ActivityMonitor() {
           />
         ) : tab === 'apps' ? (
           <AppTable
-            apps={apps} search={search}
+            apps={apps} search={search} mayEnd={mayEnd}
             onClose={(a, mode) => setPending({
               kind: 'app', mode, appID: a.app_id, label: a.name || a.app_id,
               session: a.kind === 'stream',
@@ -700,20 +721,27 @@ function FeedError({ error, onRetry }: { error: ApiFailure; onRetry: () => void 
 }
 
 /* ── Action bar ── */
-function ActionBar({ selected, onQuit, onForce }: {
+function ActionBar({ selected, mayEnd, onQuit, onForce }: {
   selected: ProcessInfo | null
+  mayEnd: boolean
   onQuit: () => void
   onForce: () => void
 }) {
-  // Three reasons a row cannot be ended, and each gets its own sentence. A
+  // Four reasons a row cannot be ended, and each gets its own sentence. A
   // single disabled button with no explanation reads as a broken feature.
-  const reason = !selected
-    ? 'Select a process to end it'
-    : selected.protected
-      ? selected.protected_reason || 'this process is protected'
-      : typeof selected.start !== 'number'
-        ? 'no start time recorded for this process — refresh the list'
-        : null
+  //
+  // The permission check comes FIRST because it is the only one that does not
+  // depend on the selection: telling a non-admin to "select a process to end
+  // it" walks them into an action the box will refuse.
+  const reason = !mayEnd
+    ? 'Only an administrator can end processes on this box'
+    : !selected
+      ? 'Select a process to end it'
+      : selected.protected
+        ? selected.protected_reason || 'this process is protected'
+        : typeof selected.start !== 'number'
+          ? 'no start time recorded for this process — refresh the list'
+          : null
   const canAct = selected !== null && reason === null
 
   return (
@@ -743,6 +771,34 @@ function ActionBar({ selected, onQuit, onForce }: {
 }
 
 /* ── Confirm dialog ── */
+/**
+ * The last thing standing between a click and a SIGKILL, so it has to behave
+ * like a dialog and not merely look like one.
+ *
+ * It declared `aria-modal="true"` and enforced none of what that promises.
+ * What that cost, concretely:
+ *
+ *   - Focus stayed wherever it was — on the Quit button in the action bar,
+ *     behind the overlay. A keyboard user pressing Enter to "confirm" instead
+ *     re-triggered Quit, and a screen-reader user was never told a dialog had
+ *     opened at all, because nothing moved focus into it.
+ *   - Tab walked straight out of the dialog and through the process table
+ *     underneath, which `aria-modal` had already told assistive technology to
+ *     ignore. The user could reach controls that were being announced as
+ *     absent.
+ *   - Escape did nothing. Escape is how every other dialog in this OS is
+ *     dismissed, and the one place it was missing is the one place where the
+ *     alternative to dismissing is destroying someone's unsaved work.
+ *   - On cancel, focus was dropped to the document body, so the next Tab
+ *     restarted from the top of the app rather than from the row the user had
+ *     been working with.
+ *
+ * All four are handled below. The confirm button takes initial focus rather
+ * than Cancel: this dialog is only ever reached by a deliberate click on an
+ * already-disabled-unless-valid control, and the destructive button is the one
+ * the user came for — but Escape and Cancel are both one keystroke away, which
+ * is what makes that safe.
+ */
 function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
   pending: PendingAction
   busy: boolean
@@ -751,15 +807,59 @@ function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
 }) {
   const force = pending.mode === 'force'
   const session = pending.session === true
+  const panelRef = useRef<HTMLDivElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  // Captured at mount, restored on unmount: whatever had focus when the dialog
+  // opened is where the user was, and it is where they should be returned to
+  // however the dialog closes.
+  const returnTo = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    returnTo.current = document.activeElement as HTMLElement | null
+    confirmRef.current?.focus()
+    const restore = returnTo.current
+    return () => {
+      // Only if it is still in the document — the row the user came from may
+      // have been unmounted by the poll that ran after the kill.
+      if (restore && document.contains(restore)) restore.focus()
+    }
+  }, [])
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      if (!busy) onCancel()
+      return
+    }
+    if (e.key !== 'Tab') return
+    // The focus trap. Querying on each keypress rather than caching: the
+    // dialog's own buttons become disabled while a kill is in flight, and a
+    // cached list would keep offering a control that is no longer focusable.
+    const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    if (!focusable || focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'var(--overlay)' }}
       role="dialog"
       aria-modal="true"
+      onKeyDown={onKeyDown}
       aria-label={session ? 'Confirm end session' : force ? 'Confirm force quit' : 'Confirm quit'}
     >
-      <div className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
+      <div ref={panelRef} className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-4 shadow-2xl">
         <h2 className="text-sm font-semibold text-neutral-100">
           {session ? 'End session' : force ? 'Force quit' : 'Quit'} {pending.label}?
         </h2>
@@ -801,6 +901,7 @@ function ConfirmDialog({ pending, busy, onCancel, onConfirm }: {
               white is 6.47:1 regardless of what is behind it, because nothing
               shows through. */}
           <button
+            ref={confirmRef}
             onClick={onConfirm}
             disabled={busy}
             className="px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors disabled:opacity-50 border"
@@ -844,6 +945,33 @@ function ProcessTable({
 
   const sorted = [...filtered].sort(compareProcesses(sortCol, sortAsc))
 
+  // Roving-tabindex focus position. Kept as an index into `sorted` rather than
+  // an identity, because it is about WHERE THE CURSOR IS in the list on screen,
+  // not about which process is selected — those are different things, and
+  // conflating them is what makes a list jump when it re-sorts.
+  const [focusIdx, setFocusIdx] = useState(0)
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  const moveFocus = (to: number) => {
+    const i = Math.max(0, Math.min(sorted.length - 1, to))
+    setFocusIdx(i)
+    rowRefs.current[i]?.focus()
+  }
+
+  const onRowKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>, i: number, k: string) => {
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); moveFocus(i + 1); break
+      case 'ArrowUp': e.preventDefault(); moveFocus(i - 1); break
+      case 'Home': e.preventDefault(); moveFocus(0); break
+      case 'End': e.preventDefault(); moveFocus(sorted.length - 1); break
+      case 'Enter':
+      case ' ':
+        e.preventDefault()
+        setSelectedKey(prev => (prev === k ? null : k))
+        break
+    }
+  }
+
   const cols: { key: ProcessSortKey, label: string, w: string, align: string }[] = [
     { key: 'pid', label: 'PID', w: '55px', align: '' },
     { key: 'name', label: 'Process Name', w: '1fr', align: '' },
@@ -859,19 +987,38 @@ function ProcessTable({
     <div className="flex flex-col h-full min-h-0 rounded-lg border border-neutral-700 bg-neutral-900/40 overflow-hidden">
       {/* Scroll region — horizontal on narrow screens, vertical always */}
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-[590px]">
+        {/*
+          role="grid", and the rows below are role="row" INSIDE it.
+          A bare role="row" was already there with no table, grid or rowgroup
+          above it. That is not untidy markup, it is invalid: a row outside a
+          grid has nowhere to belong, so assistive technology cannot report
+          position ("row 4 of 312"), cannot expose the column a cell sits in,
+          and aria-selected — which this listing sets on every row — is only
+          defined for a row within a grid or treegrid. The selection state that
+          decides which process is about to be killed was being announced by
+          nothing.
+
+          grid rather than table because these rows are SELECTABLE and
+          interactive; a plain table's rows support neither.
+        */}
+        <div role="grid" aria-label="Processes" aria-rowcount={sorted.length} className="min-w-[590px]">
           {/* Header */}
-          <div className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
+          <div role="row" className="grid gap-2 px-3 py-1.5 text-[12px] uppercase tracking-wider text-neutral-400 border-b border-neutral-700 sticky top-0 z-10 bg-neutral-900 backdrop-blur-sm" style={{ gridTemplateColumns: gridTemplate }}>
             {cols.map(c => (
-              <button
+              <span
                 key={c.key}
-                type="button"
-                aria-label={`Sort by ${c.label}`}
-                className={`cursor-pointer select-none hover:text-neutral-200 transition-colors text-left ${sortCol === c.key ? 'text-neutral-100' : ''} ${c.align}`}
-                onClick={() => handleSort(c.key)}
+                role="columnheader"
+                aria-sort={sortCol === c.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
               >
-                {c.label}{sortCol === c.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
-              </button>
+                <button
+                  type="button"
+                  aria-label={`Sort by ${c.label}`}
+                  className={`cursor-pointer select-none hover:text-neutral-200 transition-colors text-left w-full ${sortCol === c.key ? 'text-neutral-100' : ''} ${c.align}`}
+                  onClick={() => handleSort(c.key)}
+                >
+                  {c.label}{sortCol === c.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                </button>
+              </span>
             ))}
           </div>
           {/* Rows */}
@@ -882,33 +1029,62 @@ function ProcessTable({
                 : 'No processes match this filter'}
             </div>
           )}
-          {sorted.map(p => {
+          {sorted.map((p, i) => {
             const k = processKey(p)
             // The React key is the identity too, not the pid. Keyed on pid, a
             // recycled number reuses the same DOM node and the row simply
             // changes its text under the highlight; keyed on identity, React
             // unmounts the old row and mounts a new one, so the change is a
             // change rather than a substitution.
+            const locked = p.protected === true
+            const why = p.protected_reason || 'this process is protected'
             return (
             <div
               key={k}
               role="row"
-              tabIndex={0}
+              aria-rowindex={i + 1}
+              // Roving tabindex: exactly ONE row is a tab stop, and the arrow
+              // keys move between them. Every row carried tabIndex={0} before,
+              // which on a box running three hundred processes meant three
+              // hundred presses of Tab to get past this table — the keyboard
+              // equivalent of the list being unusable.
+              tabIndex={i === focusIdx ? 0 : -1}
+              ref={el => { rowRefs.current[i] = el }}
               aria-selected={selectedKey === k}
+              onFocus={() => setFocusIdx(i)}
               onClick={() => setSelectedKey(prev => (prev === k ? null : k))}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedKey(prev => (prev === k ? null : k)) } }}
+              onKeyDown={e => onRowKeyDown(e, i, k)}
               className={`grid gap-2 items-center px-3 py-1 text-[12px] border-b border-neutral-800/40 cursor-pointer transition-colors ${
                 selectedKey === k ? 'bg-neutral-800' : 'hover:bg-neutral-800/40'
               }`}
               style={gridStyle(gridTemplate, selectedKey === k)}
             >
-              <span className="text-neutral-400 font-mono">{p.pid}</span>
-              <span className="text-neutral-200 truncate" title={p.command}>{p.name}</span>
-              <span className="text-neutral-400 truncate">{p.user}</span>
-              <StateIndicator state={p.state} />
-              <span className="text-right font-mono text-neutral-300">{Number(p.cpu) < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
-              <span className="text-right text-neutral-400 font-mono">{fmtBytes(p.mem_rss)}</span>
-              <span className="text-right text-neutral-400">{p.threads}</span>
+              <span role="gridcell" className="text-neutral-400 font-mono">{p.pid}</span>
+              <span role="gridcell" className="text-neutral-200 truncate flex items-center gap-1.5 min-w-0" title={p.command}>
+                <span className="truncate">{p.name}</span>
+                {/*
+                  A protected row said nothing until it was selected, so the
+                  only way to discover that init or the Vulos server cannot be
+                  ended was to pick it and read the disabled button's excuse.
+                  The mark is a LOCK GLYPH plus an accessible name, not a
+                  colour: colour alone is not information, and this listing is
+                  read by people who cannot see it at all.
+                */}
+                {locked && (
+                  <span
+                    className="shrink-0 text-neutral-400"
+                    title={why}
+                    aria-label={`Protected: ${why}`}
+                  >
+                    🔒
+                  </span>
+                )}
+              </span>
+              <span role="gridcell" className="text-neutral-400 truncate">{p.user}</span>
+              <span role="gridcell"><StateIndicator state={p.state} /></span>
+              <span role="gridcell" className="text-right font-mono text-neutral-300">{Number(p.cpu) < 0.1 ? '0.0' : p.cpu?.toFixed(1)}</span>
+              <span role="gridcell" className="text-right text-neutral-400 font-mono">{fmtBytes(p.mem_rss)}</span>
+              <span role="gridcell" className="text-right text-neutral-400">{p.threads}</span>
             </div>
             )
           })}
@@ -966,9 +1142,10 @@ function StateIndicator({ state }: { state?: string }) {
  * tab from Processes: only SOME of what this box runs can be asked whether it
  * is servicing its event loop, and the answer must carry how it was reached.
  */
-function AppTable({ apps, search, onClose }: {
+function AppTable({ apps, search, mayEnd, onClose }: {
   apps: AppStatus[]
   search: string
+  mayEnd: boolean
   onClose: (a: AppStatus, mode: SignalMode) => void
 }) {
   const filtered = apps.filter(a => {
@@ -998,7 +1175,7 @@ function AppTable({ apps, search, onClose }: {
               No apps are running on this box right now.
             </div>
           )}
-          {filtered.map(a => <AppRow key={a.app_id} a={a} gridTemplate={gridTemplate} onClose={onClose} />)}
+          {filtered.map(a => <AppRow key={a.app_id} a={a} gridTemplate={gridTemplate} mayEnd={mayEnd} onClose={onClose} />)}
         </div>
       </div>
       <div className="px-3 py-1.5 text-[12px] text-neutral-400 border-t border-neutral-700 shrink-0 bg-neutral-900/80">
@@ -1036,16 +1213,24 @@ function AppTable({ apps, search, onClose }: {
  * loses the command line, the env and the owner. It needs one endpoint in
  * services/stream; see the report accompanying this change.
  */
-function AppRow({ a, gridTemplate, onClose }: {
+function AppRow({ a, gridTemplate, mayEnd, onClose }: {
   a: AppStatus
   gridTemplate: string
+  mayEnd: boolean
   onClose: (a: AppStatus, mode: SignalMode) => void
 }) {
   const session = a.kind === 'stream'
   const stalled = a.responding.status === 'display_not_responding'
+  // The app's own name, for the accessible names below. Every one of these
+  // buttons reads "Close" or "Force" as its label, so a screen-reader user
+  // moving through the list heard "button, button, button" beside a column of
+  // names they could not associate with them — on controls that destroy work.
+  // The visible label stays short; the accessible name carries the target.
+  const who = a.name || a.app_id
+  const denied = 'Only an administrator can end apps on this box'
   return (
     <div className="grid gap-2 items-center px-3 py-1.5 text-[12px] border-b border-neutral-800/40" style={{ gridTemplateColumns: gridTemplate }}>
-      <span className="text-neutral-200 truncate">{a.name || a.app_id}</span>
+      <span className="text-neutral-200 truncate">{who}</span>
       <span className="text-neutral-400">{a.kind}</span>
       <RespBadge r={a.responding} />
       <span className="text-right text-neutral-400 font-mono">{a.mem_rss ? fmtBytes(a.mem_rss) : '—'}</span>
@@ -1053,10 +1238,12 @@ function AppRow({ a, gridTemplate, onClose }: {
         {a.closable && (session ? (
           <button
             onClick={() => onClose(a, 'force')}
-            title={stalled
+            disabled={!mayEnd}
+            aria-label={`End the session running ${who}`}
+            title={!mayEnd ? denied : stalled
               ? 'Ends the whole session. It will not repair this app — the display it draws on is what stopped answering.'
               : 'Ends the whole session: the display, the window manager and everything drawing on it.'}
-            className="px-2 py-1 text-[12px] rounded border transition-colors"
+            className="px-2 py-1 text-[12px] rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
           >
             End session
@@ -1065,15 +1252,19 @@ function AppRow({ a, gridTemplate, onClose }: {
           <>
             <button
               onClick={() => onClose(a, 'quit')}
-              title="Ask it to exit, then end it if it does not"
-              className="px-2 py-1 text-[12px] rounded border border-neutral-600 text-neutral-100 hover:bg-neutral-800 transition-colors"
+              disabled={!mayEnd}
+              aria-label={`Close ${who}`}
+              title={!mayEnd ? denied : 'Ask it to exit, then end it if it does not'}
+              className="px-2 py-1 text-[12px] rounded border border-neutral-600 text-neutral-100 enabled:hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Close
             </button>
             <button
               onClick={() => onClose(a, 'force')}
-              title="End it immediately. Unsaved work is lost."
-              className="px-2 py-1 text-[12px] rounded border transition-colors"
+              disabled={!mayEnd}
+              aria-label={`Force quit ${who}`}
+              title={!mayEnd ? denied : 'End it immediately. Unsaved work is lost.'}
+              className="px-2 py-1 text-[12px] rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ borderColor: 'var(--status-danger)', color: 'var(--text-primary)' }}
             >
               Force

@@ -30,6 +30,14 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
  * button is enabled, and the same request IS sent, when the identity holds.
  */
 
+// The Activity Monitor asks who you are before it offers to end anything.
+// Admin by default here so these tests stay about what they are testing; the
+// non-admin affordance has its own file.
+const mockProfile: Record<string, unknown> | null = { role: 'admin' }
+vi.mock('../../../auth/AuthProvider', () => ({
+  useAuth: () => ({ profile: mockProfile }),
+}))
+
 vi.mock('../../../core/useTelemetry', () => ({
   // connected: true so the "telemetry is down" banner — itself a role=status
   // — is not rendered. These tests assert on the ACTION notice's role, and two

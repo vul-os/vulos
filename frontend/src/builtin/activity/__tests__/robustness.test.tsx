@@ -14,6 +14,14 @@ import { render, screen, cleanup, fireEvent, act, within } from '@testing-librar
  * healthy box, because on a healthy box every one of them happens to be right.
  */
 
+// The Activity Monitor asks who you are before it offers to end anything.
+// Admin by default here so these tests stay about what they are testing; the
+// non-admin affordance has its own file.
+const mockProfile: Record<string, unknown> | null = { role: 'admin' }
+vi.mock('../../../auth/AuthProvider', () => ({
+  useAuth: () => ({ profile: mockProfile }),
+}))
+
 vi.mock('../../../core/useTelemetry', () => ({
   useTelemetry: () => mockTelemetry,
 }))
