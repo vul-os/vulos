@@ -39,6 +39,32 @@ func LoadCertSource(certFile, keyFile string, hosts []string, ips []net.IP) Cert
 	}
 }
 
+// LoadDynamicCertSource is LoadCertSource with the self-signed fallback's SANs
+// supplied by callbacks rather than fixed at construction.
+//
+// This is what the OS server uses: the box can be renamed live
+// (POST /api/identity/hostname) and DHCP can move it to a new address, and the
+// fallback certificate must follow both — a certificate that names neither the
+// box's current name nor its current IP produces a NAME MISMATCH warning on
+// top of the unknown-issuer one, which is two errors where there should be one.
+// See NewDynamicSelfSignedCertSource for the re-mint rules and why re-minting
+// does not break SPKI pinning.
+//
+// The externally issued cert at certFile/keyFile (LANCERT-01) is unaffected:
+// its SANs are whatever the issuer put in it, and it still wins whenever it is
+// present and parses.
+func LoadDynamicCertSource(certFile, keyFile string, hostsFn func() []string, ipsFn func() []net.IP) CertSource {
+	fallback := NewDynamicSelfSignedCertSource(hostsFn, ipsFn, defaultSelfSignedKeyPath())
+	if certFile == "" || keyFile == "" {
+		return fallback
+	}
+	return &fileCertSource{
+		certFile: certFile,
+		keyFile:  keyFile,
+		fallback: fallback,
+	}
+}
+
 // fileCertSource serves a cert+key pair read from disk, reloading when the
 // files' modification times change so cert renewals take effect without a
 // listener restart. Parse/read failures degrade gracefully to the fallback.

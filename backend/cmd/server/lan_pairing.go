@@ -23,12 +23,79 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"sync"
 
 	"vulos/backend/internal/config"
 	"vulos/backend/internal/lan"
 )
+
+// lanServiceRef is a race-free holder for the LAN service, plus the two
+// callbacks the LAN certificate source reads its SANs from.
+//
+// WHY A HOLDER. The certificate source is built BEFORE lan.New runs (it is an
+// input to it), but the authoritative name set and LAN IP live ON the service.
+// The callbacks fire from inside the TLS handshake, on arbitrary goroutines, so
+// reading a bare package-level *lan.Service would be a data race. This holder
+// takes the lock and falls back to the config-derived name set for handshakes
+// that arrive before the service is up.
+type lanServiceRef struct {
+	instanceID string
+	hostname   string
+
+	mu  sync.RWMutex
+	svc *lan.Service
+}
+
+func newLANServiceRef(instanceID, hostname string) *lanServiceRef {
+	return &lanServiceRef{instanceID: instanceID, hostname: hostname}
+}
+
+func (r *lanServiceRef) set(s *lan.Service) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.svc = s
+}
+
+func (r *lanServiceRef) get() *lan.Service {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.svc
+}
+
+// names returns the box's CURRENT name set — from the running service when it
+// exists (so a live rename is reflected immediately), otherwise derived from
+// the startup config.
+func (r *lanServiceRef) names() lan.NameSet {
+	if s := r.get(); s != nil {
+		return s.Names()
+	}
+	return lan.NewNameSet(r.instanceID, r.hostname)
+}
+
+// certDNSNames is the DNS SAN callback for the LAN certificate source.
+func (r *lanServiceRef) certDNSNames() []string { return r.names().DNSNames }
+
+// certIPs is the IP SAN callback for the LAN certificate source.
+//
+// The box's LAN IP has to be a SAN because https://<lan-ip> is the ONLY
+// address that works on a client which cannot resolve .local — Chrome on
+// Android is the case that forced this (see roadmap/LAN-NAME-RESOLUTION.md).
+// Without it that fallback raises a NAME MISMATCH on top of the unknown-issuer
+// warning: two errors where there should be one, and on some Chrome builds the
+// mismatch is the harder one to click past.
+//
+// 127.0.0.1 is included so the same certificate also covers a loopback visit
+// from the box's own kiosk browser.
+func (r *lanServiceRef) certIPs() []net.IP {
+	ips := []net.IP{net.IPv4(127, 0, 0, 1)}
+	if ip := lan.DetectLANIP(); ip != nil && !ip.IsLoopback() {
+		ips = append(ips, ip)
+	}
+	return ips
+}
 
 // lanPairingCertSource builds the CertSource used to fingerprint this box for
 // pairing purposes. It resolves the LAN cert/key paths EXACTLY the way the
@@ -47,7 +114,6 @@ import (
 // is unset — the persisted key (and thus the pin) exists independently of
 // whether the LAN HTTPS listener is currently running.
 func lanPairingCertSource(instanceID string) lan.CertSource {
-	lanHost := lan.BoxHostname(instanceID)
 	certPath, keyPath := lan.DefaultCertPath, lan.DefaultKeyPath
 	if v := os.Getenv("VULOS_LAN_CERT"); v != "" {
 		certPath = v
@@ -55,7 +121,17 @@ func lanPairingCertSource(instanceID string) lan.CertSource {
 	if v := os.Getenv("VULOS_LAN_KEY"); v != "" {
 		keyPath = v
 	}
-	return lan.LoadCertSource(certPath, keyPath, []string{"vulos.local", lanHost}, nil)
+	// Same derivation as the VULOS_LAN_ENABLE block in main(): lan.NewNameSet
+	// is the single source of truth for the box's names, so the fingerprint
+	// printed here always belongs to a certificate carrying the same SANs the
+	// LAN listener serves. Hostname is read from the environment the same way
+	// config does, because -print-pairing can run without a loaded Config.
+	hostname := os.Getenv("VULOS_HOSTNAME")
+	if hostname == "" {
+		hostname, _ = os.Hostname()
+	}
+	ref := newLANServiceRef(instanceID, hostname)
+	return lan.LoadDynamicCertSource(certPath, keyPath, ref.certDNSNames, ref.certIPs)
 }
 
 // lanPairingHTTPSAddr resolves the LAN HTTPS listener's configured address

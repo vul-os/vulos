@@ -71,15 +71,37 @@ func TLSConfig(src CertSource) *tls.Config {
 // SANs track the box's current LAN IP. See defaultSelfSignedKeyPath for the
 // on-disk location and loadOrCreateKey for the reuse/rotate rules.
 type SelfSignedCertSource struct {
-	once    sync.Once
-	mu      sync.RWMutex
-	cert    *tls.Certificate
-	err     error
-	hosts   []string
-	ips     []net.IP
+	mu   sync.Mutex
+	cert *tls.Certificate
+	err  error
+
+	// Static SANs, used when hostsFn/ipsFn are nil.
+	hosts []string
+	ips   []net.IP
+
+	// Dynamic SANs. When set, they are consulted (at most once per
+	// sanRecheckInterval) and the certificate is RE-MINTED whenever the answer
+	// changes — see Certificate for why that is required rather than nice.
+	hostsFn func() []string
+	ipsFn   func() []net.IP
+
+	// What the cached certificate was actually minted for.
+	mintedHosts []string
+	mintedIPs   []string
+	lastCheck   time.Time
+
 	ttl     time.Duration
 	keyPath string
 }
+
+// sanRecheckInterval bounds how often a dynamic source re-reads its SAN inputs.
+//
+// Certificate() runs on EVERY TLS handshake (tls.Config.GetCertificate), and
+// the IP provider does a UDP socket dial, so consulting it per handshake would
+// put a syscall in the handshake path for no benefit. A DHCP lease change that
+// takes up to this long to appear in the certificate is acceptable; a lease
+// change that NEVER appears is the defect being fixed.
+const sanRecheckInterval = 30 * time.Second
 
 // NewSelfSignedCertSource returns a self-signed source covering the given DNS
 // names and IP addresses. The certificate is generated lazily on first use and
@@ -105,6 +127,22 @@ func NewSelfSignedCertSourceWithKeyPath(hosts []string, ips []net.IP, keyPath st
 	}
 }
 
+// NewDynamicSelfSignedCertSource is NewSelfSignedCertSource with SANs supplied
+// by callbacks instead of fixed at construction, so the certificate tracks a
+// box that is renamed (hostsFn) or that DHCP moves to a new address (ipsFn).
+//
+// Either callback may be nil, in which case that half stays static. The
+// callbacks are invoked at most once per sanRecheckInterval, from inside the
+// TLS handshake path, so they must be cheap and must not block.
+func NewDynamicSelfSignedCertSource(hostsFn func() []string, ipsFn func() []net.IP, keyPath string) *SelfSignedCertSource {
+	return &SelfSignedCertSource{
+		hostsFn: hostsFn,
+		ipsFn:   ipsFn,
+		ttl:     10 * 365 * 24 * time.Hour,
+		keyPath: keyPath,
+	}
+}
+
 // defaultSelfSignedKeyPath is where the self-signed LAN identity's private
 // key is persisted so a reboot reuses the same SPKI (see the type doc on
 // SelfSignedCertSource for why that matters). Follows the datadir.Join
@@ -116,16 +154,92 @@ func defaultSelfSignedKeyPath() string {
 
 // Certificate implements CertSource. The ClientHelloInfo is ignored — the
 // self-signed cert already carries every configured SAN.
+// RE-MINTING (fixed 2026-08-17). This used to be a sync.Once: the certificate
+// was minted on the first handshake and then frozen for the life of the
+// process. Two things move underneath it:
+//
+//   - The BOX'S LAN IP. https://192.168.1.50 is the universal fallback for
+//     every client that cannot resolve .local — Android's browser above all —
+//     so the IP has to be in the SANs, and a cert minted before DHCP moved the
+//     box would name the wrong one until the next restart.
+//   - The BOX'S NAME. POST /api/identity/hostname renames the box live; a
+//     frozen certificate would then name only the old name.
+//
+// Re-minting is safe for pinning: loadOrCreateKey PERSISTS the private key, so
+// every re-mint reuses the same key and therefore the same SPKI. Native clients
+// pin the SPKI (fingerprint.go / clients/core/pair.go) and browsers key their
+// "accept this certificate" exception to the same public key, so neither is
+// invalidated by a new certificate carrying new SANs. Verified by
+// TestSelfSignedRemintKeepsSPKI.
 func (s *SelfSignedCertSource) Certificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	s.once.Do(func() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hosts, ips := s.currentSANs()
+
+	fresh := s.cert == nil && s.err == nil
+	changed := !equalStrings(hosts, s.mintedHosts) || !equalStrings(ipStrings(ips), s.mintedIPs)
+
+	if fresh || changed {
+		if !fresh && changed {
+			log.Printf("[lan] LAN SANs changed (names %v -> %v, ips %v -> %v) — re-minting the self-signed certificate; the persisted key and therefore every SPKI pin is unchanged",
+				s.mintedHosts, hosts, s.mintedIPs, ipStrings(ips))
+		}
+		s.hosts, s.ips = hosts, ips
 		cert, err := s.generate()
-		s.mu.Lock()
 		s.cert, s.err = cert, err
-		s.mu.Unlock()
-	})
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+		s.mintedHosts = append([]string(nil), hosts...)
+		s.mintedIPs = ipStrings(ips)
+	}
 	return s.cert, s.err
+}
+
+// currentSANs resolves the SANs this source should be covering right now,
+// consulting the dynamic providers at most once per sanRecheckInterval.
+func (s *SelfSignedCertSource) currentSANs() ([]string, []net.IP) {
+	if s.hostsFn == nil && s.ipsFn == nil {
+		return s.hosts, s.ips
+	}
+	if s.cert != nil && time.Since(s.lastCheck) < sanRecheckInterval {
+		return s.hosts, s.ips
+	}
+	s.lastCheck = time.Now()
+
+	hosts, ips := s.hosts, s.ips
+	if s.hostsFn != nil {
+		hosts = s.hostsFn()
+	}
+	if s.ipsFn != nil {
+		ips = s.ipsFn()
+	}
+	return hosts, ips
+}
+
+// equalStrings reports whether two string slices are identical in order and
+// content. Order matters: the SAN list is derived deterministically, so a
+// reorder means the derivation changed.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ipStrings renders IPs canonically for comparison and logging.
+func ipStrings(ips []net.IP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		out = append(out, ip.String())
+	}
+	return out
 }
 
 func (s *SelfSignedCertSource) generate() (*tls.Certificate, error) {

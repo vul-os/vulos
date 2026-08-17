@@ -4593,7 +4593,26 @@ func main() {
 		if v := os.Getenv("VULOS_LAN_KEY"); v != "" {
 			lanKeyPath = v
 		}
-		certSrc := lan.LoadCertSource(lanCertPath, lanKeyPath, []string{"vulos.local", lanHost}, nil)
+		// NAME DERIVATION (2026-08-17): the SAN list is no longer a literal.
+		// It is derived from lan.NewNameSet — the SAME function that produces
+		// the mDNS advertisement — so the certificate can never name a
+		// different set of names than the box answers to. That hard-coded
+		// []string{"vulos.local", lanHost} was the root cause of three
+		// measured defects at once: two boxes both claiming vulos.local, a
+		// renamed box answering to a name its cert never mentioned, and (via
+		// the nil IP list) a NAME MISMATCH on the https://<lan-ip> fallback
+		// that every non-mDNS client — Android's browser above all — depends
+		// on. See internal/lan/names.go.
+		//
+		// Both halves are DYNAMIC callbacks rather than a snapshot: the box
+		// can be renamed live (POST /api/identity/hostname) and DHCP can move
+		// it, and a certificate minted once at boot would track neither.
+		// Re-minting reuses the persisted key, so SPKI pins survive.
+		lanRef := newLANServiceRef(cfg.InstanceID, cfg.Hostname)
+		log.Printf("[lan] box names: %s", lanRef.names())
+		certSrc := lan.LoadDynamicCertSource(lanCertPath, lanKeyPath,
+			lanRef.certDNSNames, lanRef.certIPs,
+		)
 		httpsAddr := ":443"
 		if v := os.Getenv("VULOS_LAN_HTTPS_ADDR"); v != "" {
 			httpsAddr = v
@@ -4898,6 +4917,7 @@ func main() {
 
 		lanCfg := lan.Config{
 			InstanceID: cfg.InstanceID,
+			Hostname:   cfg.Hostname,
 			CertSource: certSrc,
 			Handler:    lanHandler,
 			HTTPSAddr:  httpsAddr,
@@ -4910,7 +4930,8 @@ func main() {
 			log.Printf("[lan] failed to start: %v", err)
 		} else {
 			lanSvc = s
-			log.Printf("[lan] reachable at https://%s and %s (mDNS vulos.local)", lanHost, s.HTTPSAddr())
+			lanRef.set(s)
+			log.Printf("[lan] reachable at https://%s and %s (mDNS: %v)", lanHost, s.HTTPSAddr(), s.AdvertisedNames())
 		}
 		_ = fabricSvc
 

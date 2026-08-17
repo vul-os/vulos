@@ -122,7 +122,7 @@ func TestService_RequiresCertSourceAndHandler(t *testing.T) {
 }
 
 func TestMDNSAdvertiser_AdvertisesVulosLocal(t *testing.T) {
-	m, err := newMDNSAdvertiser(net.IPv4(192, 168, 1, 42), mdnsHostname)
+	m, err := newMDNSAdvertiser(net.IPv4(192, 168, 1, 42), []string{mdnsHostname})
 	if err != nil {
 		// Multicast binding is unavailable in some sandboxes/CI; that path is
 		// best-effort by design, so skip rather than fail.
@@ -135,7 +135,7 @@ func TestMDNSAdvertiser_AdvertisesVulosLocal(t *testing.T) {
 }
 
 func TestMDNSAdvertiser_RejectsNonLocalName(t *testing.T) {
-	if _, err := newMDNSAdvertiser(net.IPv4(192, 168, 1, 42), "box.x.lan.vulos.org"); err == nil {
+	if _, err := newMDNSAdvertiser(net.IPv4(192, 168, 1, 42), []string{"box.x.lan.vulos.org"}); err == nil {
 		t.Error("expected error for non-.local mDNS name")
 	}
 }

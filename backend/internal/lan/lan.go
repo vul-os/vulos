@@ -13,9 +13,12 @@ import (
 	"time"
 )
 
-// mdnsHostname is the zero-config name the box advertises over multicast DNS.
-// Clients on the same LAN can reach the box at this name with no configuration.
-const mdnsHostname = "vulos.local"
+// mdnsHostname is the zero-config name a single box on a LAN answers to.
+//
+// It is NOT the only name advertised any more, and it is no longer claimed
+// unconditionally: see names.go for the full derivation and mdns.go for the
+// conflict probe that stops two boxes both answering for it.
+const mdnsHostname = GenericHostname + mdnsSuffix
 
 // lanDomainSuffix is the suffix the local DNS responder is authoritative for.
 // The full name is box.<id>.lan.vulos.org — resolvable even with public DNS
@@ -37,6 +40,12 @@ func BoxHostname(instanceID string) string {
 type Config struct {
 	// InstanceID is the box's stable ULID; it forms the box.<id>.lan.vulos.org name.
 	InstanceID string
+
+	// Hostname is the owner-chosen box name (config.Hostname / VULOS_HOSTNAME /
+	// the identity store). Empty or unusable falls back to
+	// lan.DefaultHostname(InstanceID), which is per-instance and therefore does
+	// not collide with a sibling box. See names.go.
+	Hostname string
 
 	// CertSource supplies the TLS cert+key for the HTTPS listener. Required.
 	CertSource CertSource
@@ -78,6 +87,8 @@ type Service struct {
 	hostname string // box.<id>.lan.vulos.org
 	lanIP    net.IP
 
+	names NameSet // every name this box answers to; the single source of truth
+
 	mu      sync.Mutex
 	mdns    *mdnsAdvertiser
 	dns     *dnsResponder
@@ -111,7 +122,68 @@ func New(cfg Config) (*Service, error) {
 		cfg:      cfg,
 		hostname: BoxHostname(cfg.InstanceID),
 		lanIP:    lanIP,
+		names:    NewNameSet(cfg.InstanceID, cfg.Hostname),
 	}, nil
+}
+
+// Names returns the box's derived name set: the same values that produced the
+// mDNS advertisement and that must produce the certificate's SANs.
+func (s *Service) Names() NameSet {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.names
+}
+
+// AdvertisedNames returns the ".local" names the box is ACTUALLY answering for
+// right now — which can be a subset of Names().MDNS when a sibling box already
+// claimed one of them. Nil when mDNS is off or failed to start.
+func (s *Service) AdvertisedNames() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mdns.Names()
+}
+
+// SetHostname renames the box live: it re-derives the name set and restarts the
+// mDNS advertisement so the new name resolves on the LAN immediately, with no
+// reboot.
+//
+// It returns the new NameSet so the caller can report exactly which names took
+// effect, and an error if the name is not a usable DNS label.
+//
+// It deliberately does NOT touch the certificate: the CertSource owns that, and
+// wiring it here would give the cert two owners. Callers pass a
+// NameSetCertSource (certsource.go) whose SANs are re-derived from this same
+// Service, so the cert follows the rename on its next mint. See
+// cmd/server/routes_identity.go for the live-rename endpoint that uses both.
+func (s *Service) SetHostname(name string) (NameSet, error) {
+	clean := SanitizeHostname(name)
+	if clean == "" {
+		return NameSet{}, fmt.Errorf("lan: %q is not a valid box name (1-63 chars of a-z, 0-9 and -, not starting or ending with -)", name)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.names = NewNameSet(s.cfg.InstanceID, clean)
+	if !s.started || s.cfg.DisableMDNS {
+		return s.names, nil
+	}
+
+	// Restart the advertisement so the new name is claimed and the old one is
+	// released. A rename that leaves the daemon advertising the OLD name is the
+	// silent no-op this project keeps finding, so the restart is not optional.
+	if s.mdns != nil {
+		_ = s.mdns.Close()
+		s.mdns = nil
+	}
+	m, err := newMDNSAdvertiser(s.lanIP, s.names.MDNS)
+	if err != nil {
+		log.Printf("[lan] mDNS re-advertisement after rename to %q failed: %v", clean, err)
+		return s.names, nil
+	}
+	s.mdns = m
+	log.Printf("[lan] renamed to %q; now advertising %v over mDNS", clean, m.Names())
+	return s.names, nil
 }
 
 // Hostname returns the box's LAN hostname (box.<id>.lan.vulos.org).
@@ -201,14 +273,14 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}
 
-	// mDNS advertisement — vulos.local on the LAN.
+	// mDNS advertisement — every name in the derived set, conflict-probed.
 	if !s.cfg.DisableMDNS {
-		m, err := newMDNSAdvertiser(s.lanIP, mdnsHostname)
+		m, err := newMDNSAdvertiser(s.lanIP, s.names.MDNS)
 		if err != nil {
 			log.Printf("[lan] mDNS disabled: %v", err)
 		} else {
 			s.mdns = m
-			log.Printf("[lan] advertising %s over mDNS", mdnsHostname)
+			log.Printf("[lan] advertising %v over mDNS (requested %v)", m.Names(), s.names.MDNS)
 		}
 	}
 
