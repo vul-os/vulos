@@ -91,6 +91,7 @@ IMAGE=${VULOS_LANNAME_IMAGE:-vulos-lanname:trixie}
 LOOKUPS=6
 APP_VETH=vh_bae456
 APP_IP=10.200.23.1
+LAN_IF=lan0
 
 WORK=$(mktemp -d)
 cleanup() {
@@ -115,13 +116,32 @@ arm=$1
 BREAK=${BREAK:-}
 APP_VETH=${APP_VETH:-vh_bae456}
 APP_IP=${APP_IP:-10.200.23.1}
+LAN_IF=${LAN_IF:-lan0}
 LOOKUPS=${LOOKUPS:-6}
 out=/work/out
 
-# The box's real LAN address, before anything else touches the network. This is
-# the answer every lookup below must produce.
-lanip=$(ip -4 -o addr show dev eth0 | awk '{print $4}' | cut -d/ -f1 | head -1)
-printf '%s\n' "$lanip" > "$out/lanip-$arm.txt"
+# ── The box's LAN, with a REAL DHCP SERVER on it ─────────────────────────────
+#
+# This is not decoration and the first version of this gate was wrong without
+# it. Run against docker's own eth0 there is no DHCP server on the link, so
+# dhcpcd IPv4LL-addresses the LAN INTERFACE ITSELF and avahi then answers with
+# THAT link-local — the 'fixed' arm failed for a reason that has nothing to do
+# with app veths. A box on a network with no DHCP server taking an IPv4LL
+# address on its LAN NIC is correct behaviour and must not be "fixed".
+#
+# So the container runs with --network none and builds its own LAN: a veth to a
+# network namespace running dnsmasq, which hands out a real lease. That is the
+# shape of every box this matters on.
+ip netns add lansrv
+ip link add "$LAN_IF" type veth peer name lansrv0
+ip link set lansrv0 netns lansrv
+ip netns exec lansrv ip link set lo up
+ip netns exec lansrv ip addr add 192.168.77.1/24 dev lansrv0
+ip netns exec lansrv ip link set lansrv0 up
+ip netns exec lansrv dnsmasq --interface=lansrv0 --bind-interfaces --port=0 \
+    --dhcp-range=192.168.77.50,192.168.77.99,12h \
+    --log-facility="$out/dnsmasq-$arm.log" --log-dhcp
+ip link set "$LAN_IF" up
 
 # An appnet-shaped app link: veth pair, host side addressed statically exactly
 # as backend/services/appnet/namespace.go does it (HostIP + "/24").
@@ -147,6 +167,13 @@ sleep 40
 
 ip -4 -o addr show > "$out/addr-$arm.txt"
 
+# The box's LAN address is whatever the DHCP server gave it — read AFTER
+# dhcpcd, and never a link-local, so that a LAN interface that failed to get a
+# lease is visible as an empty value rather than silently redefining "the LAN
+# address" to be the very kind of address this gate exists to reject.
+lanip=$(ip -4 -o addr show dev "$LAN_IF" | awk '{print $4}' | cut -d/ -f1 | grep -v '^169\.254\.' | head -1)
+printf '%s\n' "$lanip" > "$out/lanip-$arm.txt"
+
 mkdir -p /run/dbus
 dbus-daemon --system --fork
 sleep 1
@@ -167,7 +194,7 @@ docker build -t "$IMAGE" - >/dev/null <<'DOCKERFILE'
 FROM debian:trixie
 RUN apt-get update -qq \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-      avahi-daemon avahi-utils dhcpcd5 iproute2 dbus \
+      avahi-daemon avahi-utils dhcpcd5 iproute2 iptables dnsmasq dbus \
  && rm -rf /var/lib/apt/lists/*
 DOCKERFILE
 
@@ -179,8 +206,12 @@ ARMS="stock fixed"
 ran=0
 for arm in $ARMS; do
     echo "▸ arm '$arm': dhcpcd + avahi on a box with an app veth…"
-    docker run --rm --privileged -h vulos -v "$WORK:/work" \
-        -e "BREAK=$BREAK" -e "APP_VETH=$APP_VETH" -e "APP_IP=$APP_IP" -e "LOOKUPS=$LOOKUPS" \
+    # --network none: the scenario builds its OWN LAN (see run.sh). Inheriting
+    # docker's bridge would give the box a LAN interface with no DHCP server on
+    # it, which is a different situation with a different correct answer.
+    docker run --rm --privileged --network none -h vulos -v "$WORK:/work" \
+        -e "BREAK=$BREAK" -e "APP_VETH=$APP_VETH" -e "APP_IP=$APP_IP" \
+        -e "LAN_IF=$LAN_IF" -e "LOOKUPS=$LOOKUPS" \
         "$IMAGE" sh /work/run.sh "$arm" >/dev/null
     ran=$((ran + 1))
 done
@@ -210,6 +241,10 @@ answers() { awk '{print $2}' "$WORK/out/resolve-$1.txt" | sort -u | tr '\n' ' ';
 
 echo "A — did the scenario reproduce the defect? (control)"
 lan_stock=$(cat "$WORK/out/lanip-stock.txt")
+if [ -z "$lan_stock" ] || [ -z "$(cat "$WORK/out/lanip-fixed.txt")" ]; then
+    bad "an arm's LAN interface never got a DHCP lease — the scenario did not build a"
+    bad "      box, so nothing below is measuring what it claims to measure."
+fi
 a_stock=$(answers stock)
 say "arm stock: LAN address is $lan_stock, vulos.local answered: $a_stock"
 if [ "$a_stock" = "$lan_stock " ]; then
@@ -245,8 +280,9 @@ if [ "$ll_fixed" -ne 0 ]; then
     bad "dhcpcd still IPv4LL-addressed $APP_VETH with the shipping config applied."
 fi
 # dhcpcd must still be doing its actual job on the LAN interface.
-if ! grep -q "^eth0" "$WORK/out/dhcpcd-fixed.log" && ! grep -q "eth0:" "$WORK/out/dhcpcd-fixed.log"; then
-    bad "dhcpcd stopped managing eth0 too — the deny-list is too broad."
+if ! grep -q "$LAN_IF: leased " "$WORK/out/dhcpcd-fixed.log"; then
+    bad "dhcpcd did not take a DHCP lease on $LAN_IF with the shipping config applied —"
+    bad "      the deny-list is too broad and has switched off the box's own DHCP client."
 fi
 
 if [ "$fail" != 0 ]; then
