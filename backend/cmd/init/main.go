@@ -678,12 +678,100 @@ func mountDataPartition() {
 	log.Printf("data partition: %s mounted at %s", device, target)
 }
 
-func setHostname() {
-	name := "vulos"
-	if data, err := os.ReadFile("/etc/hostname"); err == nil {
-		name = string(data)
+// etcHostnamePath is a seam: tests point it at a temp file so the real
+// setHostname() (syscall included) can be exercised without a hard-coded /etc
+// path. Production always uses /etc/hostname.
+var etcHostnamePath = "/etc/hostname"
+
+// defaultHostname is used when /etc/hostname is missing, empty, comment-only,
+// or holds something that is not a legal DNS label.
+const defaultHostname = "vulos"
+
+// parseEtcHostname extracts the hostname from the raw bytes of an
+// /etc/hostname file, per hostname(5): the first non-empty, non-comment line,
+// with surrounding whitespace stripped. It returns "" when the file yields no
+// usable name.
+//
+// MEASURED DEFECT (2026-08-17): this used to be `name = string(data)` with no
+// trimming at all. build.sh writes the file with `echo "vulos" >`, and
+// /etc/hostname is SUPPOSED to be newline-terminated (hostname(5)), so the
+// bare-metal box called Sethostname("vulos\n"). The kernel does not validate
+// hostname bytes and accepted it verbatim — confirmed in a privileged
+// container running this exact function:
+//
+//	PROBE: os.Hostname() after  = "vulos\n"
+//	PROBE: uname(2) nodename    = "vulos\n"
+//	PROBE: len(after)=6 hex=76756c6f730a
+//
+// It was invisible under Docker/systemd because systemd sets the hostname from
+// /etc/hostname itself and trims correctly; on bare metal cmd/init is PID 1 and
+// startSystemd() only logs, so this value stood.
+//
+// avahi-daemon turned out to normalise the stray newline away (it still
+// published a clean `vulos.local`, verified resolvable from a second host), so
+// this was NOT a .local resolution failure. It was still wrong everywhere the
+// value is READ BACK rather than re-derived: os.Hostname() feeds
+// config.Hostname and config.NodeID, which flow into the pairing payload's
+// box name, cluster node metadata, telemetry and kit backups.
+func parseEtcHostname(data []byte) string {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return line
 	}
-	syscall.Sethostname([]byte(name))
+	return ""
+}
+
+// validHostnameLabel reports whether s is a legal RFC-1123 hostname label —
+// the same shape POST /api/identity/hostname enforces (see
+// cmd/server/routes_identity.go's hostnameRE). The kernel will happily accept
+// arbitrary bytes via sethostname(2), so this is the only place a malformed
+// /etc/hostname is caught before it propagates into names, certs and metadata.
+func validHostnameLabel(s string) bool {
+	if len(s) == 0 || len(s) > 63 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-':
+			if i == 0 || i == len(s)-1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// resolveHostname reads etcHostnamePath and returns the hostname to install,
+// falling back to defaultHostname when the file is absent or unusable.
+func resolveHostname() string {
+	data, err := os.ReadFile(etcHostnamePath)
+	if err != nil {
+		return defaultHostname
+	}
+	name := parseEtcHostname(data)
+	if !validHostnameLabel(name) {
+		if name != "" {
+			log.Printf("hostname: %q in %s is not a valid hostname label — using %q",
+				name, etcHostnamePath, defaultHostname)
+		}
+		return defaultHostname
+	}
+	return name
+}
+
+func setHostname() {
+	name := resolveHostname()
+	if err := syscall.Sethostname([]byte(name)); err != nil {
+		log.Printf("hostname: sethostname(%q) failed: %v", name, err)
+		return
+	}
 	log.Printf("hostname: %s", name)
 }
 
