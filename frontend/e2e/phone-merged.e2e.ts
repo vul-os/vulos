@@ -240,8 +240,25 @@ test.describe('a broken box never wears the face of an empty one', () => {
     await expect(app(page)).not.toContainText('No calls yet')
   })
 
-  test('a 500 on the editable cards shows the unavailable state, NOT an empty book', async ({ page }) => {
+  test('a 500 on the editable cards keeps the SIM contacts and SAYS the mail half failed', async ({ page }) => {
+    // Merging the two apps created this case: the box SIM and the linked phone
+    // can still be carrying people when lilmail is down. Showing them is right
+    // — "Contacts unavailable" over a list that exists would be a lie — but
+    // showing them SILENTLY is the same defect as a swallowed error, in the
+    // other direction: a short address book presented as a complete one.
     await bootPhone(page, 'dark', { 'GET /api/pim/contacts/cards': json({ error: 'boom' }, 502) })
+
+    await expect(app(page)).toContainText('Sipho Dlamini')
+    await expect(app(page).getByRole('alert')).toContainText(/mail account.*couldn’t be loaded/i)
+    await expect(app(page).getByRole('alert')).toContainText(/may be missing people/i)
+    await expect(app(page)).not.toContainText('No contacts yet')
+  })
+
+  test('a 500 on BOTH sources is the honest dead end, not a blank list', async ({ page }) => {
+    await bootPhone(page, 'dark', {
+      'GET /api/pim/contacts/cards': json({ error: 'boom' }, 502),
+      'GET /api/contacts/unified': json({ error: 'boom' }, 500),
+    })
 
     await expect(app(page)).toContainText(/Contacts unavailable/i)
     await expect(app(page)).not.toContainText('No contacts yet')

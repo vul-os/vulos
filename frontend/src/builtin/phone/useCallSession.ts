@@ -190,8 +190,15 @@ export function useCallSession(): CallSession {
   const answer = useCallback(() => act(answerCall), [act])
   const decline = useCallback(() => act(declineCall), [act])
 
+  // While the probe is in flight `canCall` is false, so every Call control is
+  // already disabled — but with an EMPTY reason it is a dead control with no
+  // explanation, which reads exactly like a broken button. Say what is going on
+  // instead. This is also why `probing` is a separate fact from `blockedReason`:
+  // "we don't know yet" and "there is no modem" must not be the same state.
+  const reason = probing ? 'Checking this box for a modem…' : blockedReason
+
   return {
-    canCall: voice, blockedReason, probing, dialling, error, active: activeCall,
+    canCall: voice, blockedReason: reason, probing, dialling, error, active: activeCall,
     call, hangup, answer, decline, clearError: () => setError(''),
   }
 }

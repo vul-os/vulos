@@ -421,7 +421,20 @@ export default function PeopleView({ session, unified, unifiedError, narrow }: P
     }
   }
 
+  // The whole book failed AND there is nothing to show from anywhere else.
   const unavailable = !!error && contacts.length === 0
+
+  // A PARTIAL book: one source failed but another still has people in it, so
+  // the full-screen "Contacts unavailable" state would be a lie and a bare list
+  // would be a worse one. This case appeared the moment the two apps merged —
+  // before it, a failed card read emptied the list and the app fell into the
+  // unavailable state, whereas now the box SIM and the linked phone can still
+  // be carrying people. Rendering those without a word would be the same defect
+  // as the swallowed unified error, in the other direction: a short address
+  // book presented as a complete one.
+  const partial: string[] = []
+  if (error && contacts.length > 0) partial.push(`your mail account’s contacts couldn’t be loaded (${error})`)
+  if (sourcesError) partial.push(`contacts from your box SIM and linked phone couldn’t be loaded (${sourcesError})`)
 
   // NARROW: show ONE pane — the list, or the detail/editor (with a back button)
   // once a contact is picked. The wider layout keeps both panes side by side.
@@ -432,7 +445,11 @@ export default function PeopleView({ session, unified, unifiedError, narrow }: P
 
   if (unavailable) {
     return (
-      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6 py-10 overflow-y-auto animate-[fadeIn_0.2s_ease-out]" data-contacts-app>
+      // `data-contacts-app` is NOT repeated here. It marks the APP ROOT, which
+      // is now the shell in Contacts.tsx; carrying it on this pane too made the
+      // selector resolve to two nested elements and every spec using it fail on
+      // Playwright strict mode. `data-people-pane` names this pane instead.
+      <div className="h-full grid place-items-center bg-neutral-950 text-center px-6 py-10 overflow-y-auto animate-[fadeIn_0.2s_ease-out]" data-people-pane>
         <div className="w-full max-w-sm">
           <div className="w-16 h-16 mx-auto mb-5 grid place-items-center rounded-2xl border border-neutral-800"
             style={{ background: 'var(--accent-soft)' }}>
@@ -453,7 +470,7 @@ export default function PeopleView({ session, unified, unifiedError, narrow }: P
   }
 
   return (
-    <div className="h-full flex bg-neutral-950 text-neutral-100 select-none" data-contacts-app>
+    <div className="h-full flex bg-neutral-950 text-neutral-100 select-none" data-people-pane>
       {/* List rail — full width on mobile, a sized rail on desktop. The rail
           grows a step at ≥1280px so long names/addresses stop truncating on the
           wide desktop the founder actually runs it on. */}
@@ -501,18 +518,18 @@ export default function PeopleView({ session, unified, unifiedError, narrow }: P
             )}
           </div>
         </div>
-        {sourcesError && (
-          // NOT a full-app failure — the CardDAV list beside it is real and
-          // editable. It is a warning that the list is INCOMPLETE, which is the
-          // one thing an address book must never hide.
+        {partial.length > 0 && (
+          // NOT a full-app failure — whatever is listed below is real. It is a
+          // warning that the list is INCOMPLETE, which is the one thing an
+          // address book must never hide.
           <div role="alert" className="shrink-0 px-3 py-2 text-[12px] leading-snug"
             style={{
               background: 'color-mix(in srgb, var(--status-warning) 12%, var(--bg-surface))',
               borderBottom: '1px solid color-mix(in srgb, var(--status-warning) 30%, transparent)',
               color: 'var(--text-primary)',
             }}>
-            Contacts from your box SIM and linked phone couldn’t be loaded ({sourcesError}), so this
-            list may be missing people.{' '}
+            {partial.map((p, i) => (i === 0 ? p.charAt(0).toUpperCase() + p.slice(1) : p)).join(', and ')}
+            , so this list may be missing people.{' '}
             <button type="button" onClick={reload} className="underline font-medium focus-primary">Retry</button>
           </div>
         )}

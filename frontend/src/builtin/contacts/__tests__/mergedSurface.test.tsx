@@ -283,6 +283,35 @@ describe('an incomplete address book is never rendered as a complete one', () =>
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
     await screen.findByText(/may be missing people/i)
   })
+
+  it('says so when the mail half fails but the box SIM still has people', async () => {
+    // The mirror image, and a case that only exists because the two apps
+    // merged: before, a failed card read emptied the list and the app fell
+    // into "Contacts unavailable". Now the SIM can still be carrying people,
+    // and showing them without a word is the same defect in reverse.
+    api.listContacts.mockRejectedValue(new Error('lilmail unreachable'))
+    routes['GET /api/contacts/unified'] = {
+      contacts: [{ id: 's9', name: 'Nomsa Dube', phones: ['+27 82 444 5555'], emails: [], org: '', sources: ['box-sim'] }],
+      sources_active: ['box-sim'],
+    }
+
+    render(<Contacts />)
+    await waitFor(() => expect(screen.getByText('Nomsa Dube')).toBeInTheDocument())
+    await screen.findByText(/mail account.*couldn’t be loaded/i)
+    expect(screen.queryByText(/Contacts unavailable/i)).toBeNull()
+  })
+
+  it('falls back to the honest dead end when EVERY source is down', async () => {
+    api.listContacts.mockRejectedValue(new Error('lilmail unreachable'))
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input).replace(/^https?:\/\/[^/]+/, '').split('?')[0]
+      if (path === '/api/contacts/unified') return new Response(JSON.stringify({ error: 'boom' }), { status: 500 })
+      return new Response(JSON.stringify(defaultFor(`GET ${path}`)), { status: 200 })
+    }) as unknown as typeof fetch
+
+    render(<Contacts />)
+    await screen.findByText(/Contacts unavailable/i)
+  })
 })
 
 describe('toActiveCall', () => {
