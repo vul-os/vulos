@@ -606,6 +606,13 @@ is wrong. The remaining six (`cinny`, `element-call`, `drawio`, `minipaint`,
 `audiomass`, `svg-edit`) are static bundles that were always
 architecture-independent.
 
+**drawio's fix was checked against the artefact, not only against the schema.**
+`draw.war` is a valid ZIP of **3570 members with `index.html` at its root**, so
+`archive_strip: 0` plus `extract_dir: "static"` puts `index.html` exactly where
+`--directory static/` looks for it. The shipped entry produced `bin/draw.war`
+mode 0755 and an empty `static/`, and reported success. Same digest,
+`b412cb32…`, re-fetched and re-hashed while checking the layout.
+
 **Three of the fifteen ship `_disabled` on purpose**, and a fourth pair already
 did. `code-server` and `memos` were disabled for trust failures; `jellyfin`,
 `minio` and `svg-edit` are newly pinned but nobody has run their installs, and
