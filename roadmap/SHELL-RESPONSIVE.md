@@ -212,6 +212,25 @@ mutation testing; every one that lacked one did not.
 - The window-controls case asserts it measured **≥3 lights** before asserting anything about
   their size.
 
+### The gate was mutation-tested
+
+Three mutations, each applied to the **thing** the gate guards (never to the check), each
+applied and reverted by exact-string replacement rather than `git checkout` — other agents
+have uncommitted work in this tree. Every run went through `e2e-isolated.mjs` and every one
+printed `PROOF 1 ok` and `PROOF 2 ok — marker absent` in its own log, which is what says the
+mutated build is the build the browser ran. That matters here specifically: `MOBILE-SHELL.md`
+§1 records a mutation in this repo that "passed" because the build had failed and the test ran
+against a stale bundle.
+
+| Mutation | The thing broken | Result |
+|---|---|---|
+| **A** | `MobileHome.tsx` tile label 12px → 11px | **13 failed / 11 passed.** Every mobile-shell case red with *"shell chrome text below 12px"*; the desktop cases correctly stayed green, because the phone home grid is not mounted there |
+| **B** | `.vwin-light` 44px → 0.75rem in the coarse block | **1 failed / 23 passed.** Exactly the tablet-landscape window case: *"window controls under 44px on a coarse pointer: [{"label":"Close window","w":24,"h":24}, …]"* |
+| **C** | the status bar's identity block loses `flex-1 min-w-0` | **1 failed / 23 passed.** Exactly 360×800: *"painted outside the viewport — `div.vmob-bar-status` right: 21"*. 320 stayed green inside its known budget and 390+ stayed green, which is the discrimination the fix was for |
+
+After all three reverts, `git status --porcelain` shows none of this workstream's files, and
+the suite is **24 passed** again.
+
 ---
 
 ## 6b. Two things about the harness, for whoever runs this next
