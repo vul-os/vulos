@@ -1,11 +1,12 @@
 {
+  "_arch_independent": "Five entries (audiomass, cinny, drawio, element-call, minipaint) pin ONE artefact under the exclusive `any` key. Listing the same URL and digest under both amd64 and arm64 would look identical in the data to a curator pinning the amd64 asset under both \u2014 the kerf v0.1.9 shape \u2014 and scripts/verify-firstparty-artifacts.sh refuses two architectures sharing one sha256 for exactly that reason. The recipe states which it means instead of a checker guessing.",
   "_measurement": "EVERY checksum below was computed from bytes downloaded on 2026-08-17 and was written into this file BY A SCRIPT reading those measurements \u2014 no digest was typed by hand, because hand-copying twenty-two digests is exactly how a fabricated one enters a catalogue. Five of them (conduit amd64, gitea amd64, navidrome amd64, cinny, element-call, drawio) turned out to be byte-identical to digests the shipped registry already carried from an independent earlier measurement; those six agreements are the control on the run.",
   "_not_verified": "NO INSTALL WAS RUN. These recipes are pinned and their archive layouts were read out of the downloaded archives, but scripts/verify-app-recipe.sh has not been executed for any of them and roadmap/app-verification-ledger.json is untouched. `command`, `port` and `post_install` are therefore UNPROVEN. Every entry that ships _disabled today stays _disabled here.",
   "_signing": "UNSIGNED BY CONSTRUCTION \u2014 every entry carries \"signature\": \"\". VerifyEntrySignature fails closed on an empty signature, so these are inert until the founder's ceremony (`make sign-registry RELEASE_PRIV=\u2026`). Do not set VULOS_SIGN_ALLOW_KEY_MISMATCH.",
   "_source": "registry.d/vulos-native.json \u2014 the apt/raw-shell/single-download entries re-expressed in the ONE Vulos-native install format (roadmap/INSTALL-METHODOLOGY.md). Staged for the single writer of registry.json; do NOT merge without re-signing.",
   "apps": {
     "audiomass": {
-      "_note": "`git clone --depth=1` of the DEFAULT BRANCH -> a COMMIT-pinned source archive. AudioMass publishes no GitHub release at all (the releases API returns 404), so there is no tag to pin and the old recipe installed whatever master happened to be that day \u2014 the reproducibility failure this whole migration is about, in its purest form. Pinned to commit 2ac3801a476822c236d9914f9ef4d2d01f9131e6 (2026-05-25). The site lives in src/, so archive_strip is 2. The version key is the commit date because upstream declares no version.",
+      "_note": "`git clone --depth=1` of the DEFAULT BRANCH -> a COMMIT-pinned source archive. AudioMass publishes no GitHub release at all (the releases API returns 404), so there is no tag to pin and the old recipe installed whatever master happened to be that day \u2014 the reproducibility failure this whole migration is about, in its purest form. Pinned to commit 2ac3801a476822c236d9914f9ef4d2d01f9131e6 (2026-05-25). The site lives in src/, so archive_strip is 2. The version key is the commit date because upstream declares no version. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
       "arch": [
         "amd64",
         "arm64"
@@ -36,11 +37,7 @@
         "2026-05-25": {
           "archive_strip": 2,
           "artifacts": {
-            "amd64": {
-              "checksum": "0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103",
-              "download_url": "https://github.com/pkalogiros/AudioMass/archive/2ac3801a476822c236d9914f9ef4d2d01f9131e6.tar.gz"
-            },
-            "arm64": {
+            "any": {
               "checksum": "0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103",
               "download_url": "https://github.com/pkalogiros/AudioMass/archive/2ac3801a476822c236d9914f9ef4d2d01f9131e6.tar.gz"
             }
@@ -65,7 +62,7 @@
       "vetted": true
     },
     "cinny": {
-      "_note": "raw shell -> artifacts. The old recipe was wget + inline sha256sum + tar, which is the exact shape INSTALL-01 removes; the digest it checked is byte-identical to the one measured here. The payload is a static bundle and therefore architecture-independent, so it is listed under BOTH arches with one URL and one digest. extract_dir keeps it out of the app root: `--directory .` would serve data/, which is a symlink to the owner's data directory.",
+      "_note": "raw shell -> artifacts. The old recipe was wget + inline sha256sum + tar, which is the exact shape INSTALL-01 removes; the digest it checked is byte-identical to the one measured here. The payload is a static bundle and therefore architecture-independent, declared with the exclusive `any` artefact key. extract_dir keeps it out of the app root: `--directory .` would serve data/, which is a symlink to the owner's data directory. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
       "arch": [
         "amd64",
         "arm64"
@@ -96,11 +93,7 @@
         "4.12.1": {
           "archive_strip": 1,
           "artifacts": {
-            "amd64": {
-              "checksum": "b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
-              "download_url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz"
-            },
-            "arm64": {
+            "any": {
               "checksum": "b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
               "download_url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz"
             }
@@ -254,7 +247,7 @@
       "vetted": true
     },
     "drawio": {
-      "_note": "FIXES A BROKEN SHIPPED ENTRY. draw.war is drawio's only published artefact and a WAR is a ZIP by specification, but `.war` matched neither archive branch: the file was copied to bin/draw.war, chmod 0755, and the install REPORTED SUCCESS while static/ stayed empty and the server had nothing to serve. The entry also carried BOTH a download_url and a dead apt install string. The measured digest equals the one the shipped entry already carried.",
+      "_note": "FIXES A BROKEN SHIPPED ENTRY. draw.war is drawio's only published artefact and a WAR is a ZIP by specification, but `.war` matched neither archive branch: the file was copied to bin/draw.war, chmod 0755, and the install REPORTED SUCCESS while static/ stayed empty and the server had nothing to serve. The entry also carried BOTH a download_url and a dead apt install string. The measured digest equals the one the shipped entry already carried. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
       "arch": [
         "amd64",
         "arm64"
@@ -286,11 +279,7 @@
         "30.0.1": {
           "archive_strip": 0,
           "artifacts": {
-            "amd64": {
-              "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
-              "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war"
-            },
-            "arm64": {
+            "any": {
               "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
               "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war"
             }
@@ -315,7 +304,7 @@
       "vetted": true
     },
     "element-call": {
-      "_note": "raw shell -> artifacts, same shape as cinny; the inline digest it checked is byte-identical to the measured one. Static bundle, so both arches share one artefact.",
+      "_note": "raw shell -> artifacts, same shape as cinny; the inline digest it checked is byte-identical to the measured one. Static bundle, declared with the exclusive `any` artefact key. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
       "arch": [
         "amd64",
         "arm64"
@@ -347,11 +336,7 @@
         "0.21.0": {
           "archive_strip": 1,
           "artifacts": {
-            "amd64": {
-              "checksum": "6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
-              "download_url": "https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz"
-            },
-            "arm64": {
+            "any": {
               "checksum": "6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
               "download_url": "https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz"
             }
@@ -559,7 +544,7 @@
       "vetted": true
     },
     "minipaint": {
-      "_note": "`git clone --depth=1 --branch v4.10.0` -> a checksum-pinned source archive. The clone pinned a TAG, which upstream can move; the digest cannot. CAVEAT, stated rather than buried: GitHub generates tag archives on demand, and a regenerated archive would change the digest. That fails CLOSED \u2014 a loud checksum mismatch \u2014 which is strictly better than a clone silently fetching different bytes.",
+      "_note": "`git clone --depth=1 --branch v4.10.0` -> a checksum-pinned source archive. The clone pinned a TAG, which upstream can move; the digest cannot. CAVEAT, stated rather than buried: GitHub generates tag archives on demand, and a regenerated archive would change the digest. That fails CLOSED \u2014 a loud checksum mismatch \u2014 which is strictly better than a clone silently fetching different bytes. ARCH KEY: this uses artifacts.any rather than the same URL listed under amd64 and arm64. Those two encodings are indistinguishable from the data, and the second one IS the kerf v0.1.9 defect \u2014 three 'per-platform' tarballs that were one identical file. `any` is a claim that the payload carries no machine code, and it is exclusive so it can never act as a fallback.",
       "arch": [
         "amd64",
         "arm64"
@@ -591,11 +576,7 @@
         "4.10.0": {
           "archive_strip": 1,
           "artifacts": {
-            "amd64": {
-              "checksum": "1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9",
-              "download_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.10.0.tar.gz"
-            },
-            "arm64": {
+            "any": {
               "checksum": "1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9",
               "download_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.10.0.tar.gz"
             }

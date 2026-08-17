@@ -227,11 +227,30 @@ defect class being removed. Both sides go through `NormalizeArch`, the single
 normalisation point, so a registry saying `x86_64` still matches a box saying
 `amd64`.
 
-**An architecture-independent payload is listed under every architecture the
-entry declares**, with the same URL and the same digest — see `cinny`, `drawio`,
-`minipaint`. There is deliberately **no `"any"` key**: the map is per-arch by
-construction, so a curator cannot express "one artefact, unknown architecture
-coverage", which is exactly what the old single `download_url` silently was.
+**An architecture-independent payload uses the exclusive `"any"` key** — a
+static web bundle, a WAR, a source archive:
+
+```jsonc
+"artifacts": { "any": { "download_url": "…/cinny-v4.12.1.tar.gz", "checksum": "b67f8a59…" } }
+```
+
+The first draft of this standard did the obvious thing instead: list the same
+URL and digest under both `amd64` and `arm64`. **An independent checker refused
+it, and it was right.** That encoding is indistinguishable, from the data alone,
+from the real defect — a curator pinning the *amd64* asset under both keys, so
+an arm64 box downloads an x86-64 binary, passes its checksum, installs cleanly
+and cannot `exec`. That is not hypothetical: kerf v0.1.9 published three
+"per-platform" tarballs that were one identical file, and the entry looked
+plausible while being unusable.
+
+So the recipe **states which it means** rather than a checker guessing. `any` is
+a claim by the curator that the payload carries no machine code, and
+**ARTIFACTS-02 makes it exclusive**: combining it with a real architecture key is
+refused, because that would make one of the two a silent fallback — and a
+fallback is how an arm64 box ends up with an amd64 binary in the first place.
+`scripts/verify-firstparty-artifacts.sh`'s "two architectures cannot share one
+sha256" rule is **unchanged in strictness** for every recipe that really claims
+two architectures.
 
 ### 4.4 The two path fields, and why each is refused rather than ignored
 
@@ -386,6 +405,7 @@ In order:
 | POSTINSTALL-03 | a `post_install` that swallows failure refused |
 | ARTIFACTS-01 | both forms set; a top-level checksum beside `artifacts`; a null artefact; an artefact with no URL or no checksum; one arch spelled two ways; `binary_name` on an archive or containing a path |
 | **DOWNLOAD-01** | a non-empty `download_url` refused — use `artifacts` |
+| **ARTIFACTS-02** | `any` combined with a real architecture key — `any` is exclusive, never a fallback |
 | **EXTRACT-01** | `extract_dir` absolute, traversing, or on a non-archive |
 | **INSTALL-02** | neither `flatpak_id` nor `artifacts` — an unclassified recipe gets no install path |
 
@@ -609,6 +629,14 @@ had one.
 | minipaint 4.10.0 | both | 4226993 | `1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9` |
 | audiomass @2ac3801a | both | 13972572 | `0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103` |
 
+**Independently re-verified.** `scripts/verify-firstparty-artifacts.sh
+registry.d/vulos-native.json` re-downloaded all 22 artefacts and recomputed every
+digest with a **different implementation** from the one that produced them. All
+22 `artifact-digest` assertions report `matches`, with byte counts. Its
+`--self-test` (17 synthetic fixtures — two controls that must go green, fifteen
+rules that must go red) passes, so the checker is not a gate that prints PASS
+while checking nothing.
+
 **✔ = byte-identical to a digest the shipped registry already carried**, computed
 independently and earlier by someone else. **Six comparisons were possible and
 all six agree.** That is the control on this entire run; without it the other
@@ -699,11 +727,12 @@ that signing succeeded. Only `make verify-registry-prod` is.
 
 ## 10. How the guards were proved
 
-Reading a guard does not clear it. Fourteen mutations were planted **one at a
+Reading a guard does not clear it. Twenty mutations were planted **one at a
 time in the shipping source**, each anchor asserted to match exactly once, each
 kill required to produce a real `--- FAIL` marker — a non-zero exit with no
 marker is scored an ERROR, because a compile failure looks identical to a caught
-mutation. **14 planted, 14 killed, 0 survivors**, working tree restored.
+mutation. **20 planted, 19 killed, 1 equivalent mutant, 0 unexplained
+survivors**, working tree restored after every run.
 
 | # | mutation | killed by |
 | --- | --- | --- |
@@ -722,6 +751,10 @@ mutation. **14 planted, 14 killed, 0 survivors**, working tree restored.
 | M13 | `binary_name` stops seeing `.war` as an archive | `TestWarCountsAsAnArchiveForBinaryName` |
 | M14 | the source guard reads a function that does not exist | `TestInstallFromRegistry_ExecsNoInstallShell` |
 | M15 | CATALOG-01 never fires | `TestAppStore_Install_RequiresChecksum` |
+| M17 | ARTIFACTS-02 never fires | `TestArtifactAny_IsExclusive` |
+| M18 | the `any` artefact never resolves | `TestArtifactAny_ResolvesOnEveryArchitecture` |
+| M19 | `any` becomes a general per-arch fallback | `TestArtifactPerArch_StillRefusesAMissingArch` |
+| M20 | the checker treats *every* recipe as architecture-independent | `verify-firstparty-artifacts.sh --self-test` |
 
 M11, M12 and M14 are **over-broad** mutations on purpose. A rule that refuses
 everything passes every negative test ever written for it; only a control that

@@ -456,3 +456,77 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 	}
 	return buf.Bytes()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. ARTIFACTS-02 — `any` is an exclusive claim, not a fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestArtifactAny_ResolvesOnEveryArchitecture pins the behaviour a static
+// bundle needs: one payload, every box.
+func TestArtifactAny_ResolvesOnEveryArchitecture(t *testing.T) {
+	r := &VersionRecipe{Artifacts: map[string]*Artifact{
+		ArchAny: {DownloadURL: "https://example.test/site.tar.gz", Checksum: strings.Repeat("a", 64)},
+	}}
+	for _, box := range []string{"amd64", "arm64", "x86_64", "aarch64", "riscv64"} {
+		url, ck, err := r.ResolveArtifact(box)
+		if err != nil {
+			t.Fatalf("ResolveArtifact(%q) on an `any` recipe failed: %v", box, err)
+		}
+		if url != "https://example.test/site.tar.gz" || ck != strings.Repeat("a", 64) {
+			t.Fatalf("ResolveArtifact(%q) returned %q/%q", box, url, ck)
+		}
+	}
+}
+
+// TestArtifactAny_IsExclusive is ARTIFACTS-02.
+//
+// The reason `any` exists at all is that listing ONE url+digest under both
+// "amd64" and "arm64" is indistinguishable, from the data, from a curator
+// pinning the amd64 asset under both — which is the kerf v0.1.9 defect, where
+// three "per-platform" tarballs were one identical file. Allowing `any`
+// ALONGSIDE a real architecture would reintroduce exactly that ambiguity as a
+// silent fallback.
+func TestArtifactAny_IsExclusive(t *testing.T) {
+	r := &VersionRecipe{
+		Command: "x",
+		Artifacts: map[string]*Artifact{
+			ArchAny: {DownloadURL: "https://example.test/site.tar.gz", Checksum: strings.Repeat("a", 64)},
+			"amd64": {DownloadURL: "https://example.test/app-amd64", Checksum: strings.Repeat("b", 64)},
+		},
+	}
+	err := validateRecipeSecurity(r)
+	if err == nil {
+		t.Fatal("ARTIFACTS-02 REGRESSION: `any` was accepted alongside a per-architecture key — " +
+			"one of the two would silently become a fallback")
+	}
+	if !strings.Contains(err.Error(), "ARTIFACTS-02") {
+		t.Errorf("expected an ARTIFACTS-02 refusal, got: %v", err)
+	}
+
+	// Control: `any` on its own must be ACCEPTED. Without this the rule could be
+	// satisfied by refusing `any` entirely, which would make five staged
+	// entries unexpressible and send them back to the ambiguous encoding.
+	ok := &VersionRecipe{
+		Command:    "python3 -m http.server ${PORT} --directory static/",
+		ExtractDir: "static",
+		Artifacts: map[string]*Artifact{
+			ArchAny: {DownloadURL: "https://example.test/site.tar.gz", Checksum: strings.Repeat("a", 64)},
+		},
+	}
+	if err := validateRecipeSecurity(ok); err != nil {
+		t.Fatalf("a lone `any` artefact was refused: %v", err)
+	}
+}
+
+// TestArtifactPerArch_StillRefusesAMissingArch is the guard that `any` did not
+// quietly become a general fallback for every recipe. A real per-arch map that
+// does not cover this box must still refuse, loudly, naming what it offers.
+func TestArtifactPerArch_StillRefusesAMissingArch(t *testing.T) {
+	r := &VersionRecipe{Artifacts: map[string]*Artifact{
+		"amd64": {DownloadURL: "https://example.test/app-amd64", Checksum: strings.Repeat("a", 64)},
+	}}
+	if _, _, err := r.ResolveArtifact("arm64"); err == nil {
+		t.Fatal("a per-arch recipe with no arm64 artefact resolved on an arm64 box — " +
+			"that is a successful install of a binary that cannot exec")
+	}
+}

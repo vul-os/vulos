@@ -168,7 +168,20 @@ for app_id in sorted(apps):
             # is offered in the App Hub and then refused at install time.
             declared = set(arch) if isinstance(arch, list) else set()
             offered = set(artifacts)
-            if declared and declared != offered:
+            # ARTIFACTS-02: `any` is the exclusive key for a payload that carries
+            # no machine code (a static bundle, a WAR, a source archive). It
+            # covers every declared architecture by definition. The engine
+            # refuses it alongside a real architecture key, so it can never act
+            # as a fallback — which is why accepting it here does not weaken the
+            # per-arch rules below by one inch.
+            arch_independent = offered == {"any"}
+            if arch_independent:
+                ok(tag, "arch-coverage", "any (architecture-independent payload)")
+            elif "any" in offered:
+                bad(tag, "arch-coverage",
+                    f"artifacts mixes 'any' with per-architecture keys {sorted(offered)} — "
+                    "'any' is exclusive; the engine refuses this (ARTIFACTS-02)")
+            elif declared and declared != offered:
                 bad(tag, "arch-coverage",
                     f"entry declares arch {sorted(declared)} but artifacts cover {sorted(offered)} — "
                     "every declared architecture needs its own artefact")
@@ -179,13 +192,19 @@ for app_id in sorted(apps):
                              for a in sorted(artifacts)]
         else:
             ok(tag, "one-artifact-form", "single download_url")
+            arch_independent = False
             artefact_list = [(None, url, checksum)]
 
         if not any(u for _, u, _ in artefact_list):
             bad(tag, "pinned-artifact", "no download_url — nothing places the binary")
             continue
 
-        ARCHIVE_EXT = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip")
+        # Must match appnet's tarExtensions + zipExtensions exactly. `.war` is
+        # dispatched to extractZip because a WAR is a ZIP by specification; when
+        # the checker did not know that, it predicted drawio's artefact would
+        # land at bin/draw.war — which is what the ENGINE used to do, and the
+        # broken install that motivated the fix.
+        ARCHIVE_EXT = (".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".zip", ".war")
         good_artefacts = []
         for a, u, c in artefact_list:
             atag = tag if a is None else f"{tag}[{a}]"
@@ -220,7 +239,12 @@ for app_id in sorted(apps):
             if c:
                 digests.setdefault(c, []).append(a)
         dupes = {c: v for c, v in digests.items() if len(v) > 1}
-        if artifacts and dupes:
+        if artifacts and arch_independent:
+            # One artefact, one digest — there is no pair of "different builds"
+            # to be suspicious of. The rule below is UNCHANGED for every recipe
+            # that really does claim two architectures.
+            ok(tag, "distinct-per-arch-digests", "single architecture-independent artefact")
+        elif artifacts and dupes:
             bad(tag, "distinct-per-arch-digests",
                 f"architectures {sorted(sum(dupes.values(), []))} share one sha256 — "
                 "they cannot be different builds")
@@ -257,6 +281,20 @@ for app_id in sorted(apps):
             bad(tag, "command-matches-artifact",
                 f"binary_name {binary_name!r} is set on an ARCHIVE recipe, where it does nothing — "
                 "the engine refuses this (ARTIFACTS-01)")
+        else:
+            # EXTRACT-01: an archive unpacks into extract_dir when one is set,
+            # and into the app dir otherwise. A command that names neither is
+            # pointing at a path the installer will not create.
+            extract_dir = (r.get("extract_dir") or "").strip().strip("/")
+            if extract_dir:
+                if extract_dir + "/" in command or extract_dir + " " in command:
+                    ok(tag, "command-matches-artifact", f"archive unpacks into {extract_dir}/")
+                else:
+                    bad(tag, "command-matches-artifact",
+                        f"archive unpacks into {extract_dir!r} (extract_dir) but command "
+                        f"{command!r} never names it")
+            else:
+                ok(tag, "command-matches-artifact", "archive unpacks into the app dir")
 
         # Port reachability. appPort is taken verbatim from this recipe's `port`
         # (main.go:1853) and ${PORT} is substituted ONLY into `command`, at launch

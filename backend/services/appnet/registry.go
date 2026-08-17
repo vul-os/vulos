@@ -449,8 +449,38 @@ func isTarURL(url string) bool {
 // refuse a binary_name that would silently do nothing.
 func isArchiveURL(url string) bool { return isTarURL(url) || isZipURL(url) }
 
+// ArchAny is the artifacts key for a payload that is genuinely the same bytes on
+// every architecture — a static web bundle, a WAR, a source archive.
+//
+// It exists because the obvious encoding is ambiguous in a dangerous way.
+// Listing one URL and one digest under BOTH "amd64" and "arm64" is
+// indistinguishable, from the data alone, from the real defect: a curator
+// pinning the amd64 asset under both keys, so an arm64 box downloads an x86-64
+// binary, passes its checksum, installs cleanly and cannot exec. That is not
+// hypothetical — kerf v0.1.9 published three "per-platform" tarballs that were
+// one identical file, and the entry looked plausible while being unusable.
+// `scripts/verify-firstparty-artifacts.sh` refuses two architectures sharing one
+// sha256 for exactly that reason, and it is right to.
+//
+// So the recipe says which it means, rather than a checker guessing. "any" is a
+// CLAIM by the curator that the payload carries no machine code, and it is
+// exclusive: combining it with a real architecture key is refused, because that
+// would be a fallback, and a fallback is how an arm64 box ends up with an amd64
+// binary in the first place.
+const ArchAny = "any"
+
 // HasArtifacts reports whether this recipe uses the per-architecture form.
 func (v *VersionRecipe) HasArtifacts() bool { return len(v.Artifacts) > 0 }
+
+// artifactAny returns the architecture-independent artefact, or nil.
+func (v *VersionRecipe) artifactAny() *Artifact {
+	for k, a := range v.Artifacts {
+		if strings.ToLower(strings.TrimSpace(k)) == ArchAny {
+			return a
+		}
+	}
+	return nil
+}
 
 // ResolveArtifact returns the download URL and checksum this recipe installs on
 // a box of architecture boxArch (Debian spelling; normalised here, so either
@@ -466,6 +496,13 @@ func (v *VersionRecipe) HasArtifacts() bool { return len(v.Artifacts) > 0 }
 func (v *VersionRecipe) ResolveArtifact(boxArch string) (url, checksum string, err error) {
 	if !v.HasArtifacts() {
 		return v.DownloadURL, v.Checksum, nil
+	}
+	// An architecture-independent payload resolves to itself on every box. This
+	// is not a fallback: validateRecipeSecurity refuses "any" alongside a real
+	// architecture key, so reaching here means the recipe pins exactly one
+	// artefact and claims it carries no machine code.
+	if a := v.artifactAny(); a != nil {
+		return a.DownloadURL, a.Checksum, nil
 	}
 	want := NormalizeArch(boxArch)
 	offered := make([]string, 0, len(v.Artifacts))
@@ -570,6 +607,21 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 		if strings.TrimSpace(recipe.Checksum) != "" {
 			return fmt.Errorf("recipe sets a top-level checksum alongside artifacts — " +
 				"each artifact carries its own checksum; a shared one cannot be right for two different binaries (ARTIFACTS-01)")
+		}
+		// ARTIFACTS-02: "any" is exclusive. Combining it with a real
+		// architecture would make it a FALLBACK, and a fallback is precisely how
+		// an arm64 box ends up executing an amd64 binary that passed its own
+		// checksum — the defect the strict resolver exists to remove.
+		if recipe.artifactAny() != nil && len(recipe.Artifacts) > 1 {
+			offered := make([]string, 0, len(recipe.Artifacts))
+			for k := range recipe.Artifacts {
+				offered = append(offered, k)
+			}
+			sort.Strings(offered)
+			return fmt.Errorf("artifacts sets %q alongside per-architecture keys (%s) — "+
+				"%q means one payload serves every architecture and is exclusive; two forms "+
+				"would make one of them a silent fallback (ARTIFACTS-02)",
+				ArchAny, strings.Join(offered, ", "), ArchAny)
 		}
 		seen := make(map[string]string, len(recipe.Artifacts))
 		for arch, a := range recipe.Artifacts {
