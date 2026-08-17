@@ -85,9 +85,19 @@ func newMockCloud(t *testing.T, authHeader string, pendingPolls int, certPEM, ke
 
 // seedSelfSignedPEMs produces a real cert+key pair PEM-encoded, reusing the
 // in-package self-signed generator so the puller can verify a parseable cert.
-func seedSelfSignedPEMs(t *testing.T) (certPEM, keyPEM string) {
+// It returns the on-disk path of the key it used so a caller can point a
+// puller's OwnKeyPath at the same file.
+//
+// The key path is a TEMP DIR, never defaultSelfSignedKeyPath(). It used to be
+// the default, which meant this unit test read and WROTE the developer's real
+// ~/.vulos/tls/lan-selfsigned.key: the box identity of whatever machine ran
+// `go test`. That made the outcome depend on whether that file already existed
+// — on a clean machine one path was exercised and on a developer's machine
+// another — and it mutated real state outside the test's temp dir.
+func seedSelfSignedPEMs(t *testing.T) (certPEM, keyPEM, keyPath string) {
 	t.Helper()
-	gen := NewSelfSignedCertSource([]string{"box.test.lan.vulos.org"}, nil)
+	keyPath = filepath.Join(t.TempDir(), "lan-selfsigned.key")
+	gen := NewSelfSignedCertSourceWithKeyPath([]string{"box.test.lan.vulos.org"}, nil, keyPath)
 	c, err := gen.Certificate(nil)
 	if err != nil {
 		t.Fatalf("seed cert: %v", err)
@@ -98,7 +108,7 @@ func seedSelfSignedPEMs(t *testing.T) (certPEM, keyPEM string) {
 		t.Fatalf("marshal key: %v", err)
 	}
 	keyBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
-	return string(certBytes), string(keyBytes)
+	return string(certBytes), string(keyBytes), keyPath
 }
 
 func TestPullerEnabled(t *testing.T) {
@@ -212,7 +222,7 @@ func spkiPin(t *testing.T, cert *x509.Certificate) string {
 // self-signed cert. This is the audit P0-2 MITM defence: a first-boot box must
 // not accept an arbitrary chain for the control plane.
 func TestLANCertPuller_PinnedClient_AcceptsMatchingPinRejectsWrong(t *testing.T) {
-	certPEM, keyPEM := seedSelfSignedPEMs(t)
+	certPEM, keyPEM, ownKeyPath := seedSelfSignedPEMs(t)
 	const secret = "shh"
 	cloud := newMockTLSCloud(t, secret, certPEM, keyPEM)
 
@@ -238,6 +248,11 @@ func TestLANCertPuller_PinnedClient_AcceptsMatchingPinRejectsWrong(t *testing.T)
 		RenewCheckInterval: time.Hour,
 		PinnedCACertPEM:    caPEM,
 		PinnedSPKISHA256:   []string{goodPin},
+		// This test is about the control plane's TLS pinning, not about key
+		// installation. Point OwnKeyPath at the keypair the mock issuer echoes
+		// so resolveKeyPEM's SPKI guard is satisfied and cannot mask a pinning
+		// regression behind an unrelated refusal.
+		OwnKeyPath: ownKeyPath,
 	})
 	if err != nil {
 		t.Fatalf("NewLANCertPuller (good pin): %v", err)
@@ -329,7 +344,7 @@ func newMockTLSCloud(t *testing.T, authHeader, certPEM, keyPEM string) *mockClou
 // cloud returns 202 twice, then 200 with PEMs. The puller must report the IP,
 // keep polling with backoff, and write the cert+key atomically.
 func TestLANCertPuller_PollAcceptedThenOK(t *testing.T) {
-	certPEM, keyPEM := seedSelfSignedPEMs(t)
+	certPEM, keyPEM, ownKeyPath := seedSelfSignedPEMs(t)
 	const secret = "shh-test-secret"
 	cloud := newMockCloud(t, secret, 2, certPEM, keyPEM)
 
@@ -343,6 +358,11 @@ func TestLANCertPuller_PollAcceptedThenOK(t *testing.T) {
 		BoxID:        "test-box-01",
 		CertPath:     certPath,
 		KeyPath:      keyPath,
+		// The mock issuer echoes back the box's OWN keypair, which is what a
+		// conforming CSR-based issuer effectively does. Pointing OwnKeyPath at
+		// the same file makes that explicit instead of leaving it to whatever
+		// key happens to sit in the developer's home directory.
+		OwnKeyPath: ownKeyPath,
 		LANIPProvider: func() net.IP {
 			return net.IPv4(10, 0, 0, 42)
 		},
