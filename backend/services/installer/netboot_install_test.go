@@ -694,3 +694,126 @@ func TestWriteSlotABootEntry_OptionsIsOneLine(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// OWNSTATE-01 — the owner's state directories
+// ---------------------------------------------------------------------------
+//
+// THE DEFECT THESE EXIST TO STOP, observed on a real arm64 QEMU boot of a
+// netboot-installed disk with dm-verity active: an owner account was created,
+// the guest was rebooted, and afterwards /api/auth/status answered
+// {"has_users":false} and the login 401'd. /root/.vulos had been recreated from
+// nothing. The cause is the one NETB-03 fixed for /var/cache/vulos — the final
+// `mount -o bind $MERGED $rootmnt` in scripts/initramfs/vulos-live shadows the
+// ext4, so the data directory resolves inside the overlay whose upper layer is
+// a tmpfs in RAM.
+//
+// The initramfs binds the on-disk subtree back out, and it can only bind a
+// directory that already exists: until that rebind the partition is $rootmnt
+// mounted read-only, and a mkdir into it is exactly the failure
+// roadmap/BOOT-FOUR-ERRORS.md documents. The running OS cannot create it
+// either — once the overlay is bound over $rootmnt the partition is unreachable
+// by path for the life of the machine. So the installer is the only place these
+// can come from, and if this step stops running the fix silently stops working
+// while every mount-topology assertion in backend/internal/docsref stays green
+// (that harness fabricates the directories).
+
+func TestCreateOwnerStateDirs(t *testing.T) {
+	m := newMockCmd()
+	svc := newWithCommander(m)
+
+	if err := svc.createOwnerStateDirs(context.Background(), "/mnt/target"); err != nil {
+		t.Fatalf("createOwnerStateDirs: %v", err)
+	}
+
+	if len(ownerStateDirs) == 0 {
+		t.Fatal("ownerStateDirs is empty, so this test asserts nothing")
+	}
+	for _, d := range ownerStateDirs {
+		target := "/mnt/target/" + d.rel
+		if !m.called("mkdir", "-p", "-m", d.mode, target) {
+			t.Errorf("no `mkdir -p -m %s %s`; without it the initramfs has nothing to bind "+
+				"and the owner's account goes back to living in RAM.\ncalls: %v",
+				d.mode, target, m.calls)
+		}
+		// mkdir -m applies the mode only when it CREATES the directory. On a
+		// re-install over an existing partition it would silently keep whatever
+		// mode was there, so the chmod is not redundant.
+		if !m.called("chmod", d.mode, target) {
+			t.Errorf("no `chmod %s %s`; mkdir -m does not fix the mode of a directory that "+
+				"already existed.\ncalls: %v", d.mode, target, m.calls)
+		}
+	}
+}
+
+// TestOwnerStateDirsCoverTheDataDirAndVarLib pins WHICH directories, not just
+// that some are created. Both are load-bearing and for different reasons, and
+// a list that lost either would still pass the test above.
+func TestOwnerStateDirsCoverTheDataDirAndVarLib(t *testing.T) {
+	have := map[string]string{}
+	for _, d := range ownerStateDirs {
+		have[d.rel] = d.mode
+	}
+
+	// backend/internal/datadir resolves to $HOME/.vulos, and the vulos.service
+	// build.sh writes sets HOME=/root and never sets VULOS_DATA_DIR. This is
+	// auth.db, auth.key, db/instance.json, the peering identity, the device key
+	// and the vaults.
+	if mode, ok := have["root/.vulos"]; !ok {
+		t.Errorf("ownerStateDirs no longer contains root/.vulos — that is the box's data "+
+			"directory, and without it on the partition the owner's account does not "+
+			"survive a reboot on a netboot-installed disk. have: %v", have)
+	} else if mode != "0700" {
+		t.Errorf("root/.vulos is created %s, not 0700. It holds the owner's password hash, "+
+			"live session records, the session-signing secret, the box's Ed25519 private "+
+			"key and the credential vaults, none of which is encrypted at rest — this "+
+			"project ships no LUKS on any boot path. The directory mode is the only "+
+			"access control there is.", mode)
+	}
+
+	// NOT under the data dir: cmd/server hardcodes /var/lib/vulos for the
+	// .setup-complete marker, the LAN TLS cert/key and the signing epoch floor.
+	// Persisting only the data dir would leave a box that has an owner re-running
+	// the setup wizard and forgetting its OTA anti-rollback floor on every boot.
+	if _, ok := have["var/lib/vulos"]; !ok {
+		t.Errorf("ownerStateDirs no longer contains var/lib/vulos — cmd/server writes the "+
+			".setup-complete marker, the LAN TLS material and the signing epoch floor "+
+			"there, outside the data directory. have: %v", have)
+	}
+
+	// A mountpoint, not a store: the initramfs mounts a tmpfs back over it so an
+	// installed-app manifest cannot outlive the Flatpak payload in /var/lib/flatpak
+	// that it points at (roadmap/APP-DIR-PERSISTENCE.md).
+	if _, ok := have["root/.vulos/apps"]; !ok {
+		t.Errorf("ownerStateDirs no longer contains root/.vulos/apps. The initramfs mounts "+
+			"a tmpfs over it to keep app manifests as volatile as their payloads, and it "+
+			"cannot mkdir a mountpoint into $rootmnt. have: %v", have)
+	}
+}
+
+// TestNetbootPipelineActuallyRunsTheStateDirsStep closes the gap between "the
+// function is correct" and "the function is called".
+//
+// runNetbootInstall builds its step list inline, and netboot_e2e_linux_test.go
+// restates that list rather than sharing it. So a step can be present in one and
+// absent from the other, and every other test in this package would stay green —
+// including the E2E one, which would then be installing a disk the real
+// installer does not produce. Both are read here.
+func TestNetbootPipelineActuallyRunsTheStateDirsStep(t *testing.T) {
+	for _, f := range []string{
+		"netboot_install.go",        // the shipped pipeline
+		"netboot_e2e_linux_test.go", // the pipeline the smoke harness proves
+	} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		if !strings.Contains(string(src), "createOwnerStateDirs(ctx") {
+			t.Errorf("%s never calls createOwnerStateDirs. The directories it makes are the "+
+				"only thing scripts/initramfs/vulos-live can bind the owner's account out "+
+				"of; without this step a netboot-installed box loses its owner on every "+
+				"reboot, and every mount-topology test still passes because that harness "+
+				"fabricates the directories itself.", f)
+		}
+	}
+}

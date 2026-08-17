@@ -310,6 +310,12 @@ func (s *Service) runNetbootInstall(req NetbootInstallRequest, hub *progressHub)
 		{name: "mount", pct: 15, fn: func() error {
 			return s.mountNetboot(ctx, espPart, rootPart)
 		}},
+		// OWNSTATE-01: create the directories the initramfs binds the owner's
+		// state out of. This has to happen at install time and nowhere else —
+		// see createOwnerStateDirs.
+		{name: "state-dirs", pct: 17, fn: func() error {
+			return s.createOwnerStateDirs(ctx, netbootInstallMount)
+		}},
 		{name: "write-seed", pct: 30, fn: func() error {
 			return s.writeSeedFiles(ctx)
 		}},
@@ -759,6 +765,66 @@ func (s *Service) writeInitialBootState(ctx context.Context) error {
 		return fmt.Errorf("save boot-state: %w", err)
 	}
 	log.Printf("[netboot-install] boot-state.json written (active=a, counter=0, last_known_good=a)")
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// OWNSTATE-01 — the owner's state directories
+// ---------------------------------------------------------------------------
+
+// ownerStateDirs are the directories that must exist on the installed root
+// partition for scripts/initramfs/vulos-live to be able to keep the owner's
+// account on the disk. Each is (path relative to the partition root, mode).
+//
+// Why a mode matters here and not for /var/cache/vulos: what lands under
+// /root/.vulos is not a cache. It is auth.db (the owner's password hash, live
+// sessions, the encrypted recovery and master-key blobs), auth.key (the secret
+// every session cookie is signed with), the box's Ed25519 peering private key,
+// the software device key, and the credential/TOTP vaults. None of it is
+// encrypted at rest — this repository ships no LUKS on any path, deliberately
+// (build.sh installs cryptsetup-bin, not cryptsetup) — so 0700 is the only
+// access control there is once the machine is running.
+var ownerStateDirs = []struct {
+	rel  string
+	mode string
+}{
+	// The data directory backend/internal/datadir resolves to on a shipped box:
+	// the server unit sets HOME=/root and never sets VULOS_DATA_DIR.
+	{"root/.vulos", "0700"},
+	// A mountpoint, not a store. The initramfs mounts a tmpfs back over this so
+	// installed-app manifests keep dying with the Flatpak/apt payload they point
+	// at (roadmap/APP-DIR-PERSISTENCE.md). Creating it here means the hook never
+	// has to mkdir into $rootmnt to get a mountpoint.
+	{"root/.vulos/apps", "0755"},
+	// NOT under the data dir: cmd/server hardcodes /var/lib/vulos for the
+	// .setup-complete marker, the LAN TLS material and the signing epoch floor.
+	{"var/lib/vulos", "0755"},
+}
+
+// createOwnerStateDirs lays down the owner-state directories on the freshly
+// formatted root partition.
+//
+// It has to be the installer that does this. The initramfs cannot: until its
+// final rebind, that partition is $rootmnt mounted read-only, and a mkdir into
+// $rootmnt is exactly the failure roadmap/BOOT-FOUR-ERRORS.md is about. The
+// running OS cannot either: once the hook binds the overlay over $rootmnt the
+// partition is unreachable by path for the life of the machine. So a disk whose
+// installer did not run this step keeps its owner state in RAM, and the hook
+// says so on the console rather than pretending otherwise.
+func (s *Service) createOwnerStateDirs(ctx context.Context, root string) error {
+	for _, d := range ownerStateDirs {
+		target := filepath.Join(root, d.rel)
+		if _, err := s.cmd.Output(ctx, "mkdir", "-p", "-m", d.mode, target); err != nil {
+			return fmt.Errorf("mkdir %s: %w", target, err)
+		}
+		// -m applies to the final component only; a parent created along the way
+		// (/root, /var/lib) keeps the umask default, which is correct — the
+		// secrecy that matters is on .vulos itself.
+		if _, err := s.cmd.Output(ctx, "chmod", d.mode, target); err != nil {
+			return fmt.Errorf("chmod %s %s: %w", d.mode, target, err)
+		}
+	}
+	log.Printf("[netboot-install] owner-state dirs created: /root/.vulos (0700), /root/.vulos/apps, /var/lib/vulos")
 	return nil
 }
 

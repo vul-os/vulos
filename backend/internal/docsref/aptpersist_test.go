@@ -385,9 +385,20 @@ func mkfsLabels(t *testing.T, rel string) []string {
 // ─── What the hook actually leaves reachable ─────────────────────────────────
 
 // rescuedSubtrees returns the paths under $rootmnt that a driven run of the
-// hook mounts AFTER the overlay bind — i.e. the subtrees that are pulled back
-// out of the overlay and onto persistent storage. Everything not in this list
-// resolves inside the overlay, whose upper layer is the tmpfs.
+// hook mounts AFTER the overlay bind FROM A SOURCE OUTSIDE $rootmnt — i.e. the
+// subtrees that are pulled back out of the overlay and onto persistent storage.
+// Everything not in this list resolves inside the overlay, whose upper layer is
+// the tmpfs.
+//
+// Two mounts are deliberately NOT counted, and the distinction is the whole
+// point of classifying rather than just listing:
+//
+//   - a bind whose SOURCE is under $rootmnt. It reads from the overlay's own
+//     empty directory, not the disk, so it persists nothing — that is mutation
+//     3 of the NETB-03 work, and it must not be able to masquerade as a rescue.
+//   - a tmpfs. That is the opposite operation: it puts a subtree back INTO RAM
+//     on purpose (OWNSTATE-01 does it to /root/.vulos/apps). See
+//     revolatilisedSubtrees.
 func rescuedSubtrees(t *testing.T, r liveHookRun) []string {
 	t.Helper()
 	bind := -1
@@ -402,8 +413,43 @@ func rescuedSubtrees(t *testing.T, r liveHookRun) []string {
 	}
 	var out []string
 	for _, m := range r.mounts[bind+1:] {
+		src, tgt := mountArgs(m)
+		if !strings.HasPrefix(tgt, r.rootmnt+"/") {
+			continue
+		}
+		if !strings.Contains(m, "-o bind") || strings.HasPrefix(src, r.rootmnt) {
+			continue
+		}
+		out = append(out, strings.TrimPrefix(tgt, r.rootmnt))
+	}
+	return out
+}
+
+// revolatilisedSubtrees is the counterpart: the paths under $rootmnt that the
+// hook mounts a TMPFS over after the overlay bind, deliberately putting them
+// back in RAM.
+//
+// There is exactly one today — /root/.vulos/apps — and it is there because
+// roadmap/APP-DIR-PERSISTENCE.md measured that persisting an app manifest above
+// a Flatpak payload that stays in RAM is strictly worse than persisting
+// neither. Pinning this set exactly is what stops a future edit from quietly
+// dropping that tmpfs and re-creating the ghost-app shape while every other
+// assertion here stays green.
+func revolatilisedSubtrees(t *testing.T, r liveHookRun) []string {
+	t.Helper()
+	bind := -1
+	for i, m := range r.mounts {
+		if _, tgt := mountArgs(m); tgt == r.rootmnt && strings.Contains(m, "-o bind") {
+			bind = i
+		}
+	}
+	if bind < 0 {
+		t.Fatalf("the hook never bound the overlay onto $rootmnt:\n%v", r.mounts)
+	}
+	var out []string
+	for _, m := range r.mounts[bind+1:] {
 		_, tgt := mountArgs(m)
-		if strings.HasPrefix(tgt, r.rootmnt+"/") {
+		if strings.HasPrefix(tgt, r.rootmnt+"/") && strings.Contains(m, "-t tmpfs") {
 			out = append(out, strings.TrimPrefix(tgt, r.rootmnt))
 		}
 	}
@@ -425,12 +471,18 @@ func rescuedSubtrees(t *testing.T, r liveHookRun) []string {
 // tmpfs in RAM.
 func TestOnlyVarCacheVulosIsRescuedFromTheOverlay(t *testing.T) {
 	for _, tc := range []struct {
-		mode string
-		want []string
-		why  string
+		mode    string
+		want    []string
+		wantRAM []string
+		why     string
 	}{
-		{"live", nil, "a live-USB has no on-disk state to keep, so the hook rescues nothing"},
-		{"netboot", []string{"/var/cache/vulos"}, "NETB-03 re-exposes the A/B slot cache, and only that"},
+		{"live", nil, nil, "a live-USB has no on-disk state to keep, so the hook rescues nothing"},
+		{"netboot",
+			[]string{"/var/cache/vulos", "/root/.vulos", "/var/lib/vulos"},
+			[]string{"/root/.vulos/apps"},
+			"NETB-03 re-exposes the A/B slot cache; OWNSTATE-01 adds the owner's data " +
+				"directory and the hardcoded /var/lib/vulos, and puts the app directory " +
+				"straight back in RAM so a manifest cannot outlive its Flatpak payload"},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			r := driveLiveHook(t, tc.mode)
@@ -445,6 +497,24 @@ func TestOnlyVarCacheVulosIsRescuedFromTheOverlay(t *testing.T) {
 
 mounts, in order:
 %s`, tc.mode, tc.want, tc.why, got, strings.Join(r.mounts, "\n"))
+			}
+
+			gotRAM := revolatilisedSubtrees(t, r)
+			if strings.Join(gotRAM, "\x00") != strings.Join(tc.wantRAM, "\x00") {
+				t.Errorf(`the set of subtrees deliberately put BACK IN RAM changed on the %s boot.
+
+  want: %v
+  got:  %v
+
+/root/.vulos/apps is in that set on purpose: 13 of the 16 installable registry
+entries are Flatpak SYSTEM installs whose payload lands in /var/lib/flatpak,
+which is not persisted. Dropping this tmpfs makes the manifest outlive the
+payload — the App Hub lists an app that cannot launch, and
+AppStore.RealisedVersions() reports it realised so nothing re-installs it.
+roadmap/APP-DIR-PERSISTENCE.md is the measurement.
+
+mounts, in order:
+%s`, tc.mode, tc.wantRAM, gotRAM, strings.Join(r.mounts, "\n"))
 			}
 
 			// The point of the whole exercise: apt's write targets are not
@@ -474,20 +544,52 @@ apt registry entries. Update the note.`, target, tc.mode, g)
 // the answer inverts, and it must not be able to do so silently.
 func assertWritableLayerIsRAM(t *testing.T, r liveHookRun) {
 	t.Helper()
-	var rw, ovl string
+	// There is more than one tmpfs on a netboot-installed boot now — OWNSTATE-01
+	// mounts a second one over /root/.vulos/apps to keep installed-app manifests
+	// in RAM. So this cannot simply take the last tmpfs it sees (it did, and the
+	// assertion then compared the overlay against the wrong mount). The tmpfs
+	// under test is specifically the one the overlay names as its upperdir.
+	var ovl string
+	var tmpfsDirs []string
 	for _, m := range r.mounts {
 		switch {
 		case strings.Contains(m, "-t tmpfs"):
-			rw = m
+			_, d := mountArgs(m)
+			tmpfsDirs = append(tmpfsDirs, d)
 		case strings.Contains(m, "-t overlay"):
 			ovl = m
 		}
 	}
-	if rw == "" {
+	if len(tmpfsDirs) == 0 {
 		t.Fatalf("the hook mounted no tmpfs; the writable layer is not what this answer "+
 			"assumes:\n%s", strings.Join(r.mounts, "\n"))
 	}
-	_, rwDir := mountArgs(rw)
+	if ovl == "" {
+		t.Fatalf("the hook mounted no overlay at all:\n%s", strings.Join(r.mounts, "\n"))
+	}
+	rwDir := ""
+	for _, d := range tmpfsDirs {
+		if strings.Contains(ovl, "upperdir="+d+"/") {
+			rwDir = d
+		}
+	}
+	if rwDir == "" {
+		t.Errorf(`no tmpfs backs the overlay's upperdir.
+
+  tmpfs mounted at: %v
+  overlay:          %s
+
+If the upper layer has moved to a block device then writes to / — including
+every apt-get install — now persist, and the answer in
+roadmap/APT-INSTALL-PERSISTENCE.md is obsolete.`, tmpfsDirs, ovl)
+		return
+	}
+	rw := ""
+	for _, m := range r.mounts {
+		if _, d := mountArgs(m); strings.Contains(m, "-t tmpfs") && d == rwDir {
+			rw = m
+		}
+	}
 	if !strings.Contains(ovl, "upperdir="+rwDir+"/") {
 		t.Errorf(`the overlay's upperdir is no longer inside the tmpfs.
 

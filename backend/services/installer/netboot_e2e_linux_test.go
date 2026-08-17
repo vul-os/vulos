@@ -267,6 +267,14 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 	step("mount", func() error {
 		return svc.mountNetboot(ctx, espPart, rootPart)
 	})
+	// OWNSTATE-01. The initramfs can only bind a directory that ALREADY exists
+	// on the partition — until its final rebind that partition is $rootmnt
+	// mounted read-only, and a mkdir into it is the failure
+	// roadmap/BOOT-FOUR-ERRORS.md is about. So the installer is the only thing
+	// that can create them, and this is the step that does it.
+	step("state-dirs", func() error {
+		return svc.createOwnerStateDirs(ctx, netbootInstallMount)
+	})
 	step("write-seed", func() error {
 		return svc.writeSeedFiles(ctx)
 	})
@@ -282,6 +290,41 @@ func TestNetbootInstall_RealPipeline_E2E(t *testing.T) {
 	step("bootloader", func() error {
 		return svc.installNetbootLoader(ctx)
 	})
+
+	// OWNSTATE-01, verified on the REAL filesystem before it is unmounted. The
+	// mocked test asserts the argv; this asserts the result — the directories
+	// exist, with the modes claimed, on the ext4 the initramfs will bind out of.
+	// Without them the hook's `[ -d ]` gate fails on every boot and the owner's
+	// account goes back to living in RAM, silently.
+	for _, d := range ownerStateDirs {
+		p := filepath.Join(netbootInstallMount, d.rel)
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatalf("OWNSTATE-01: %s does not exist on the installed disk: %v\n"+
+				"scripts/initramfs/vulos-live binds this directory out of the overlay so "+
+				"the owner's account survives a reboot; it cannot create it, because that "+
+				"partition is read-only until the rebind. Without it the box loses its "+
+				"owner on every restart.", p, err)
+		}
+		if !fi.IsDir() {
+			t.Fatalf("OWNSTATE-01: %s is not a directory", p)
+		}
+		var want os.FileMode
+		if _, err := fmt.Sscanf(d.mode, "%o", &want); err != nil {
+			t.Fatalf("ownerStateDirs mode %q is not octal: %v", d.mode, err)
+		}
+		if got := fi.Mode().Perm(); got != want.Perm() {
+			t.Errorf("OWNSTATE-01: %s has mode %04o, want %04o. This tree holds auth.db "+
+				"(the owner's password hash and live sessions), auth.key (the secret every "+
+				"session cookie is signed with), the box's Ed25519 peering private key and "+
+				"the credential vaults. None of it is encrypted at rest — this project "+
+				"ships no LUKS on any boot path — so the directory mode is the only access "+
+				"control there is.", p, got, want.Perm())
+		}
+	}
+	t.Logf("OWNSTATE-01: owner-state dirs present on the installed partition with the "+
+		"declared modes: %v", ownerStateDirs)
+
 	step("unmount", func() error {
 		return svc.unmountNetboot(ctx)
 	})

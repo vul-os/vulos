@@ -201,6 +201,15 @@ func driveLiveHook(t *testing.T, mode string) liveHookRun {
 		}
 		write(filepath.Join(slot, "os-core.squashfs"), "", 0o644)
 		write(filepath.Join(rootmnt, "var/cache/vulos/boot-state.json"), `{"active":"a"}`, 0o644)
+		// OWNSTATE-01: the owner-state directories the netboot installer's
+		// `state-dirs` step lays down. They are fabricated from the installer's
+		// own list rather than restated, so a disk layout change cannot leave
+		// this harness driving a shape the installer no longer produces.
+		for _, rel := range netbootInstallerStateDirs(t) {
+			if err := os.MkdirAll(filepath.Join(rootmnt, rel), 0o755); err != nil {
+				t.Fatalf("mkdir owner-state dir %s: %v", rel, err)
+			}
+		}
 		cmdlineText = installedDiskKernelCmdline(t)
 	}
 	cmdline := filepath.Join(dir, "cmdline")
@@ -513,5 +522,243 @@ output:
 	} else if _, tgt := mountArgs(lastRemount); tgt != r.rootmnt {
 		t.Errorf("the final remount targets %q, not $rootmnt; it cannot be remounting the "+
 			"data partition.", tgt)
+	}
+}
+
+// ─── The netboot-installed disk's OWNER ACCOUNT ──────────────────────────────
+//
+// WHAT WAS OBSERVED, on a real arm64 QEMU boot of a netboot-installed disk with
+// dm-verity active — not reasoned from mount topology, seen:
+//
+//	/api/auth/status  →  {"has_users":false}
+//	login as founder  →  401 invalid username or password
+//	/root/.vulos/*    →  entirely recreated at reboot time
+//
+// The owner's account did not survive a reboot. The cause is the one NETB-03
+// above is about, applied to a second subtree: `mount -o bind $MERGED $rootmnt`
+// shadows the ext4, /root/.vulos resolves inside the overlay, and its tmpfs
+// upper layer is RAM. auth.db, auth.key, db/instance.json, the peering Ed25519
+// identity, the device key, the passkey/TOTP/credential vaults and the user's
+// files all went with it, and so did /var/lib/vulos — the .setup-complete
+// marker, the LAN TLS material and the signing epoch floor, which cmd/server
+// hardcodes outside the data dir.
+//
+// WHY NOTHING CAUGHT IT. Every auth test constructs a store in a t.TempDir(), so
+// persistence is assumed rather than exercised, and the two boot paths that are
+// easy to test (--disk, and the live-USB where ephemerality is the design) are
+// the two that were never broken.
+
+// netbootInstallerStateDirs returns the partition-relative directories the
+// netboot installer's `state-dirs` step creates, read out of the installer
+// source rather than restated. The initramfs hook can only bind a directory
+// that already exists on the disk, so if that list ever changes without this
+// harness changing with it, the fabricated disk stops being the disk the
+// installer produces and every assertion below becomes meaningless.
+func netbootInstallerStateDirs(t *testing.T) []string {
+	t.Helper()
+	const installerGo = "backend/services/installer/netboot_install.go"
+	src := readRepoFile(t, installerGo)
+	const marker = "var ownerStateDirs = []struct {"
+	i := strings.Index(src, marker)
+	if i < 0 {
+		t.Fatalf("%s no longer declares %s; the initramfs hook binds directories this "+
+			"installer is supposed to create, and nothing here knows which they are "+
+			"any more", installerGo, marker)
+	}
+	// The declaration is `var ownerStateDirs = []struct { … }{ … }`: the field
+	// list comes FIRST and is itself brace-terminated, so the literal's entries
+	// only start after the `}{`. Scanning for the first `\n}` without skipping
+	// that lands on the type's closing brace and parses an empty list — which is
+	// how this helper failed the first time it ran.
+	rest := src[i+len(marker):]
+	open := strings.Index(rest, "}{")
+	if open < 0 {
+		t.Fatalf("%s: ownerStateDirs is no longer an anonymous-struct slice literal", installerGo)
+	}
+	rest = rest[open+2:]
+	end := strings.Index(rest, "\n}")
+	if end < 0 {
+		t.Fatalf("%s: unterminated ownerStateDirs literal", installerGo)
+	}
+	var out []string
+	for _, line := range strings.Split(rest[:end], "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, `{"`) {
+			continue
+		}
+		q := strings.Index(line[1:], `"`)
+		r := strings.Index(line[q+2:], `"`)
+		if q < 0 || r < 0 {
+			continue
+		}
+		out = append(out, line[q+2:q+2+r])
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s declares ownerStateDirs but this harness parsed no entries out of it", installerGo)
+	}
+	return out
+}
+
+// TestNetbootInstalledDiskKeepsTheOwnerAccountOnDisk is the guard for the
+// observed defect. Like the /var/cache/vulos one it asserts MOUNT TOPOLOGY,
+// because topology is the only thing that decides whether a write to
+// /root/.vulos/db/auth.db reaches the disk or the RAM.
+func TestNetbootInstalledDiskKeepsTheOwnerAccountOnDisk(t *testing.T) {
+	r := driveLiveHook(t, "netboot")
+	r.assertHarnessActuallyRanTheHook(t)
+
+	if !strings.Contains(r.output, "/var/cache/vulos/slot-a/os-core.squashfs") {
+		t.Fatalf("the hook did not select the on-disk slot image, so this run is not a "+
+			"netboot-installed boot at all:\n%s", r.output)
+	}
+
+	bind := -1
+	for i, m := range r.mounts {
+		if _, tgt := mountArgs(m); tgt == r.rootmnt && strings.Contains(m, "-o bind") {
+			bind = i
+		}
+	}
+	if bind < 0 {
+		t.Fatalf("the hook never bound the overlay onto $rootmnt:\n%v", r.mounts)
+	}
+
+	// Each subtree that has to come back out of the overlay, and what is lost
+	// when it does not. The message is the diagnosis, because the only person
+	// who will ever read it is looking at a box whose owner cannot log in.
+	for _, tc := range []struct {
+		rel  string
+		lost string
+	}{
+		{"/root/.vulos", "the owner's account (auth.db), the session-signing secret " +
+			"(auth.key), db/instance.json, the box's Ed25519 peering identity, the " +
+			"device key, the passkey/TOTP/credential vaults and every file the user " +
+			"stored"},
+		{"/var/lib/vulos", "the .setup-complete marker (so the setup wizard runs " +
+			"again on a box that already has an owner), the LAN TLS certificate and " +
+			"key, and the signing epoch floor that stops an OTA downgrade"},
+	} {
+		target := r.rootmnt + tc.rel
+		idx := -1
+		for i, m := range r.mounts {
+			src, tgt := mountArgs(m)
+			if tgt != target || !strings.Contains(m, "-o bind") {
+				continue
+			}
+			idx = i
+			if strings.HasPrefix(src, r.rootmnt) {
+				t.Errorf("the mount that re-exposes %s takes its source from %q, which is "+
+					"UNDER the overlay bind and therefore resolves to the overlay's own "+
+					"empty directory, not the disk. The on-disk subtree has to be captured "+
+					"at a path outside $rootmnt BEFORE the rebind shadows it.", tc.rel, src)
+			}
+		}
+		if idx < 0 {
+			t.Errorf(`%s leaves %s INSIDE THE OVERLAY on a netboot-installed disk.
+
+Nothing mounts %s after "mount -o bind $MERGED $rootmnt", and nothing outside
+the initramfs remounts that partition — there is no fstab and no .mount unit on
+this image. So every write the running OS makes there lands in the overlay's
+tmpfs upper layer and is gone on the next boot. What that costs the user:
+%s.
+
+This was OBSERVED, not inferred: an owner account created on a real
+netboot-installed arm64 boot was gone after a reboot, /api/auth/status answered
+{"has_users":false}, and the login 401'd.
+
+mounts the hook performed, in order:
+%s
+output:
+%s`, initramfsH, tc.rel, target, tc.lost, strings.Join(r.mounts, "\n"), r.output)
+			continue
+		}
+		if idx < bind {
+			t.Errorf("the on-disk %s is mounted BEFORE the overlay bind onto $rootmnt "+
+				"(index %d vs %d), so the rebind buries it immediately. klibc's mount has "+
+				"no --rbind, so a plain bind of $MERGED does not carry submounts: this one "+
+				"has to come after.", tc.rel, idx, bind)
+		}
+	}
+
+	// The app directory must NOT come with it. roadmap/APP-DIR-PERSISTENCE.md
+	// measured why: 13 of the 16 installable registry entries are Flatpak SYSTEM
+	// installs whose payload lands in /var/lib/flatpak, outside ~/.vulos and
+	// still in the tmpfs. A surviving manifest above a dead payload is strictly
+	// worse than no manifest — AppStore.RealisedVersions() has no flatpak
+	// liveness check, so the reconciler reads it as realised, plans nothing, and
+	// the app stays broken forever instead of being re-installed.
+	appsDir := r.rootmnt + "/root/.vulos/apps"
+	appsIdx := -1
+	for i, m := range r.mounts {
+		if _, tgt := mountArgs(m); tgt == appsDir {
+			appsIdx = i
+			if !strings.Contains(m, "-t tmpfs") {
+				t.Errorf("the mount over %s is %q, not a tmpfs. Anything else leaves the "+
+					"installed-app manifests on the disk while their Flatpak/apt payload "+
+					"stays in RAM.", appsDir, m)
+			}
+		}
+	}
+	if appsIdx < 0 {
+		t.Errorf(`%s now persists /root/.vulos/apps along with the owner's account.
+
+roadmap/APP-DIR-PERSISTENCE.md stopped exactly this on measurement: for 13 of
+the 16 installable registry entries the payload is a Flatpak SYSTEM install in
+/var/lib/flatpak, which is NOT persisted and dies with the tmpfs. A manifest
+that outlives its payload makes the App Hub list an app that cannot launch, and
+AppStore.RealisedVersions() reports it as realised so nothing ever re-installs
+it. Today the manifest dies with the payload and the box recovers. Keep it that
+way: mount a tmpfs back over %s after the state bind.
+
+mounts, in order:
+%s`, initramfsH, appsDir, strings.Join(r.mounts, "\n"))
+	} else {
+		homeIdx := -1
+		for i, m := range r.mounts {
+			if _, tgt := mountArgs(m); tgt == r.rootmnt+"/root/.vulos" && strings.Contains(m, "-o bind") {
+				homeIdx = i
+			}
+		}
+		if homeIdx >= 0 && appsIdx < homeIdx {
+			t.Errorf("the tmpfs over %s is mounted BEFORE the /root/.vulos bind (index %d "+
+				"vs %d), so the bind covers it and the app manifests land on the disk "+
+				"after all.", appsDir, appsIdx, homeIdx)
+		}
+	}
+
+	// And the partition has to be left WRITABLE, or all of the above is a
+	// read-only window onto the disk and the account still cannot be saved.
+	lastRemount := ""
+	for _, m := range r.mounts {
+		if strings.Contains(m, "remount,") {
+			lastRemount = m
+		}
+	}
+	if lastRemount == "" {
+		t.Errorf("no remount at all on a netboot-installed boot; the cmdline says `ro`, so " +
+			"the disk is read-only and creating the owner account fails at the first write.")
+	} else if !strings.Contains(lastRemount, "remount,rw") {
+		t.Errorf("the last remount is %q — the disk is left READ-ONLY, so /root/.vulos is a "+
+			"read-only window and the owner account cannot be written at all.", lastRemount)
+	}
+}
+
+// TestLiveBootGetsNoOwnerStateMounts pins the other half: a live-USB and a live
+// ESP have nowhere to persist anything, and the honest behaviour there is to add
+// NOT ONE mount rather than to pretend. The gate is the /var/cache/vulos/slot-*
+// layout only.
+func TestLiveBootGetsNoOwnerStateMounts(t *testing.T) {
+	r := driveLiveHook(t, "live")
+	r.assertHarnessActuallyRanTheHook(t)
+
+	for _, rel := range []string{"/root/.vulos", "/root/.vulos/apps", "/var/lib/vulos"} {
+		for _, m := range r.mounts {
+			if _, tgt := mountArgs(m); tgt == r.rootmnt+rel {
+				t.Errorf("a live boot mounted %s (%q). There is no durable storage on that "+
+					"path — the whole medium is a squashfs plus a tmpfs — so a mount here "+
+					"either fails or persists onto the USB stick the user is about to pull "+
+					"out. The gate is the netboot-installed slot layout, and it must stay "+
+					"that way.", rel, m)
+			}
+		}
 	}
 }

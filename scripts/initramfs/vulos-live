@@ -855,6 +855,7 @@ fi
 # the capture is sourced from outside $rootmnt, the re-exposure comes AFTER the
 # rebind, and the last remount leaves the partition rw.
 CACHE_CAPTURE=""
+DISK_RW=""
 case "$SQUASHFS_PATH" in
     /var/cache/vulos/slot-*)
         if [ -d "${rootmnt}/var/cache/vulos" ]; then
@@ -862,6 +863,7 @@ case "$SQUASHFS_PATH" in
             if [ -z "$_cc_dev" ]; then
                 log_warning_msg "vulos-live: no device for ${rootmnt} in /proc/mounts — /var/cache/vulos will be READ-ONLY this boot"
             elif mount -o remount,rw "$_cc_dev" "$rootmnt" 2>/dev/null; then
+                DISK_RW=1
                 log_begin_msg "vulos-live: ${_cc_dev} remounted rw so /var/cache/vulos persists"
             else
                 log_warning_msg "vulos-live: could not remount ${_cc_dev} rw — /var/cache/vulos will be READ-ONLY this boot"
@@ -874,6 +876,103 @@ case "$SQUASHFS_PATH" in
             fi
         else
             log_warning_msg "vulos-live: booting ${SQUASHFS_PATH} but ${rootmnt}/var/cache/vulos does not exist — nothing to keep persistent"
+        fi
+        ;;
+esac
+
+# ── OWNSTATE-01: keep THE OWNER'S ACCOUNT on the disk too ────────────────────
+#
+# WHAT WAS OBSERVED, on a real arm64 QEMU boot of a netboot-installed disk with
+# dm-verity active. An agent created an owner account and rebooted. Afterwards:
+#
+#   /api/auth/status  →  {"has_users":false}
+#   login as founder  →  401 invalid username or password
+#   /root/.vulos/*    →  entirely recreated at reboot time
+#
+# This is the same defect as NETB-03 above, on a second subtree, and it is much
+# worse than losing an update counter: a person sets up their box, reboots, and
+# their account, their keys and their recovery material are gone. Every unit
+# test passes throughout, because they all run against a real directory.
+#
+# WHICH SUBTREES. The server unit build.sh writes sets `HOME=/root` and does NOT
+# set VULOS_DATA_DIR, so backend/internal/datadir resolves to /root/.vulos, and
+# that is where auth.db (users, sessions, recovery_blobs, master_key_blobs),
+# auth.key, db/instance.json, the peering Ed25519 identity, the device key, the
+# passkey/TOTP/credential vaults and the user's files all live. A second,
+# NON-datadir tree matters as well: cmd/server hardcodes /var/lib/vulos for the
+# .setup-complete marker, the LAN TLS material and the signing epoch floor —
+# lose it and a box that has an owner re-runs the setup wizard and forgets its
+# anti-rollback floor. Both are captured here.
+#
+# THE APP DIRECTORY IS DELIBERATELY EXCLUDED, and that is not an oversight.
+# roadmap/APP-DIR-PERSISTENCE.md measured it: 13 of the 16 installable registry
+# entries are Flatpak SYSTEM installs whose payload lands in /var/lib/flatpak —
+# outside ~/.vulos and still in the tmpfs. A persistent /root/.vulos/apps would
+# therefore be a persistent MANIFEST above a payload that dies with the RAM, and
+# AppStore.RealisedVersions() has no flatpak liveness check, so the reconciler
+# would read the survivor as realised, plan nothing, and leave the app broken
+# forever. Today the manifest dies with its payload and the box re-installs it,
+# which is the correct behaviour and must not change here. So a tmpfs is mounted
+# back over ${rootmnt}/root/.vulos/apps after the state bind: the app directory
+# keeps sharing the fate of the payload it points at, exactly as before.
+#
+# THE SOURCE DIRECTORIES HAVE TO ALREADY EXIST ON THE DISK. Nothing here may
+# mkdir into $rootmnt — that is the read-only data partition until the rebind,
+# and the four-errors work above exists precisely because two lines tried. So
+# the netboot installer creates /root/.vulos, /root/.vulos/apps and
+# /var/lib/vulos on the target partition (netboot_install.go's `state-dirs`
+# step, pinned by TestNetbootInstallCreatesTheOwnerStateDirs). A disk installed
+# BEFORE that step existed has none of them, `[ -d ]` fails, and this block does
+# nothing: such a box keeps its old volatile behaviour until it is reinstalled.
+# That is stated rather than papered over — there is no way to create a
+# directory on that partition from here without the write this hook must not do.
+#
+# Everything else — why the capture must precede the rebind and the re-exposure
+# must follow it, why klibc has no --rbind, why the remount is not optional —
+# is identical to the NETB-03 block above and is not restated.
+HOME_CAPTURE=""
+VARLIB_CAPTURE=""
+case "$SQUASHFS_PATH" in
+    /var/cache/vulos/slot-*)
+        if [ -z "$DISK_RW" ]; then
+            # The cache block above is what normally remounts rw; it only runs
+            # when /var/cache/vulos exists. If it did not, do it here, or every
+            # bind below is a READ-ONLY window onto the disk and the owner's
+            # account still will not survive.
+            _os_dev="$(rootmnt_device "$rootmnt")" || _os_dev=""
+            if [ -n "$_os_dev" ] && mount -o remount,rw "$_os_dev" "$rootmnt" 2>/dev/null; then
+                DISK_RW=1
+                log_begin_msg "vulos-live: ${_os_dev} remounted rw so the owner's account persists"
+            else
+                log_warning_msg "vulos-live: could not remount ${rootmnt} rw — the OWNER ACCOUNT will be VOLATILE this boot"
+            fi
+        fi
+
+        if [ -d "${rootmnt}/root/.vulos" ]; then
+            mkdir -p /run/vulos/state-home "${MERGED}/root/.vulos"
+            if mount -o bind "${rootmnt}/root/.vulos" /run/vulos/state-home; then
+                HOME_CAPTURE="/run/vulos/state-home"
+                # Make sure the tmpfs below has a mountpoint even on a disk whose
+                # installer laid down /root/.vulos without it. This writes THROUGH
+                # the capture — a path under /run, not under $rootmnt — so the
+                # no-mkdir-into-$rootmnt rule is untouched.
+                mkdir -p /run/vulos/state-home/apps
+            else
+                log_warning_msg "vulos-live: could not capture the on-disk /root/.vulos before the overlay rebind — the OWNER ACCOUNT, device keys and recovery material will be VOLATILE this boot"
+            fi
+        else
+            log_warning_msg "vulos-live: ${rootmnt}/root/.vulos does not exist on the data partition — this disk predates the installer's state-dirs step, and the OWNER ACCOUNT will NOT survive a reboot until it is reinstalled"
+        fi
+
+        if [ -d "${rootmnt}/var/lib/vulos" ]; then
+            mkdir -p /run/vulos/state-varlib "${MERGED}/var/lib/vulos"
+            if mount -o bind "${rootmnt}/var/lib/vulos" /run/vulos/state-varlib; then
+                VARLIB_CAPTURE="/run/vulos/state-varlib"
+            else
+                log_warning_msg "vulos-live: could not capture the on-disk /var/lib/vulos before the overlay rebind — the setup marker, LAN TLS material and signing epoch floor will be VOLATILE this boot"
+            fi
+        else
+            log_warning_msg "vulos-live: ${rootmnt}/var/lib/vulos does not exist on the data partition — the setup wizard will run again after every reboot until this disk is reinstalled"
         fi
         ;;
 esac
@@ -892,6 +991,35 @@ if [ -n "$CACHE_CAPTURE" ]; then
         log_end_msg "vulos-live: /var/cache/vulos is the on-disk partition (persistent boot counter / OTA staging)"
     else
         log_warning_msg "vulos-live: FAILED to expose the on-disk /var/cache/vulos above the overlay — the boot counter, MarkHealthy and OTA staging will be VOLATILE this boot"
+    fi
+fi
+
+# OWNSTATE-01: re-expose the owner's state ON TOP of the overlay. Same reasoning
+# as the cache above; see the OWNSTATE-01 block before the rebind.
+if [ -n "$HOME_CAPTURE" ]; then
+    if mount -o bind "$HOME_CAPTURE" "${rootmnt}/root/.vulos"; then
+        log_end_msg "vulos-live: /root/.vulos is the on-disk partition (the owner's account, keys and files persist)"
+        # The app directory goes straight back into RAM. Its payload —
+        # /var/lib/flatpak for 13 of the 16 installable entries, /usr for the
+        # apt ones — is in the overlay's tmpfs and stays there, and a manifest
+        # that outlives its payload is strictly worse than one that does not:
+        # AppStore.RealisedVersions() would report the app as realised, the
+        # reconciler would plan nothing, and it would never be re-installed.
+        # roadmap/APP-DIR-PERSISTENCE.md is the measurement.
+        if mount -t tmpfs -o mode=0755 tmpfs-apps "${rootmnt}/root/.vulos/apps"; then
+            log_end_msg "vulos-live: /root/.vulos/apps kept in RAM (its Flatpak/apt payload is)"
+        else
+            log_warning_msg "vulos-live: FAILED to keep /root/.vulos/apps in RAM — installed-app MANIFESTS will now outlive their payloads, which lists apps that cannot launch (roadmap/APP-DIR-PERSISTENCE.md)"
+        fi
+    else
+        log_warning_msg "vulos-live: FAILED to expose the on-disk /root/.vulos above the overlay — the OWNER ACCOUNT, device keys and recovery material will be VOLATILE this boot"
+    fi
+fi
+if [ -n "$VARLIB_CAPTURE" ]; then
+    if mount -o bind "$VARLIB_CAPTURE" "${rootmnt}/var/lib/vulos"; then
+        log_end_msg "vulos-live: /var/lib/vulos is the on-disk partition (setup marker, LAN TLS, signing epoch floor)"
+    else
+        log_warning_msg "vulos-live: FAILED to expose the on-disk /var/lib/vulos above the overlay — the setup wizard will run again on every boot"
     fi
 fi
 
