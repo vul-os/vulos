@@ -229,16 +229,27 @@ Shipping the binary does not retire that: a launch can still fail on a box with 
 
 Four defects in one session share a single cause, and they are worth naming as a class rather than listing as four unrelated bugs.
 
-**A check that only ever runs against the Docker image is structurally blind to all four.** Docker has the file, the binary, the credential drop — so the check passes, and the product is still broken on the hardware it ships to.
+**A check that only ever runs against the Docker image is structurally blind to all four... for three of the four.** Docker has the file, the binary — so the check passes, and the product is still broken on the hardware it ships to. Row 2 is corrected below: the credential-drop claim it made about Docker does not hold up.
 
 | # | Defect | Docker | Bare metal |
 |---|---|---|---|
 | 1 | `/opt/vulos/apps` shipped empty — `build.sh` copied from `$ROOT_DIR/apps` after the tree moved to `frontend/apps/` (`dbebd593`) | apps present | **zero apps**, two releases running |
-| 2 | `scripts/vulos.service` sets `User=vulos`, but on the bare-metal path `cmd/init/main.go` is PID 1 and performs no credential drop | streamed apps run as `vulos` | streamed apps run as **root** |
+| 2 | Streamed-app process credential — see the correction immediately below the table. Neither Docker nor the OS image drops it; the doc previously cited a systemd unit file that neither of them loads | streamed apps run as **root** (unconfirmed comparison — see below) | streamed apps run as **root** |
 | 3 | The built-in browser binary. `services/webbrowser/chrome.go` execs chromium; `Dockerfile:145` installs it; the debootstrap rootfs never did | Chrome works | `500 {"error":"chromium not found"}` on every box |
 | 4 | `xrandr` (`x11-xserver-utils`). `pool.go:384` resizes the Xvfb display from its 3840×2160 maximum down to the requested resolution; `Dockerfile:153` installs it **with a comment naming that exact binary**; the rootfs did not | correct resolution | every streamed window captured at **4K regardless of the size requested** — a logged warning, not an error |
 
 Nos. 3 and 4 also cover `xvfb`, `xdotool` and `matchbox-window-manager`, all Dockerfile-only and all on the streamed-app execution path (`pool.go` uses cage **only** when the GPU tier is not software; every other box takes the Xvfb path).
+
+**Row 2 correction — `scripts/vulos.service` was the wrong citation, and the Docker side of the comparison it supported doesn't check out either.** The unit that file describes (`User=vulos`, `ExecStart=/usr/local/bin/vulos serve --config /etc/vulos/vulos.yaml`) is installed by `scripts/install-vulos.sh` for a third deployment path — a manually-installed self-host bundle — and is loaded by **neither** Docker **nor** the OS image `build.sh` produces. It is not dead code (do not delete it; that is a founder call, not this workstream's), but it was cited here as if it described one of the two environments actually being compared, and it describes neither.
+
+What the two real paths do:
+- **Docker:** `ENTRYPOINT ["tini", "--"]` / `CMD ["/usr/local/bin/vulos-server", "-env", "local"]` (`Dockerfile:286-287`). No `USER` directive anywhere in `Dockerfile`, no `useradd`/`adduser` for a `vulos` account, base image is `debian:trixie-slim` (root by default). The container runs `vulos-server`, and everything it execs, as root.
+- **OS image (bare metal, installed):** `build.sh` bakes its own `vulos.service` (`build.sh:1322-1350`) — `ExecStart=/usr/local/bin/vulos-server -env prod`, no `User=`/`Group=` line at all. Also root.
+- **OS image (bare metal, live/netboot):** `cmd/init/main.go` is PID 1 and execs `vulos-server` directly (`findBinary("vulos-server", ...)` around line 1087), no systemd, no credential drop.
+
+None of the three paths that actually run in this product creates or drops to a `vulos` user for the **streamed-app** process. Checked directly for a privilege-drop mechanism in `backend/services/stream/pool.go` and `stream.go` (the package that owns Xvfb/cage/GStreamer streamed sessions): every `SysProcAttr` set on a spawned process is `{Setpgid: true}` only — no `Setuid`, `Setgid`, or `Credential`. For contrast, the codebase does have a real privilege-drop mechanism, just for a different app category: `backend/services/appnet/launcher.go` (`ISOLATION-PRIV-01`) wraps **installed native apps** (the apt/Flatpak registry path, not streamed ones) with `setpriv` to drop to `nobody`/`nogroup` inside a mount namespace. Streamed apps don't go through that launcher.
+
+So the original framing — Docker gets a credential drop that bare metal is missing — is not supported by anything found in the source. What's directly verifiable is that **streamed apps run as root on bare metal** (unchanged from the original finding); whether they also run as root in Docker could not be checked further than "no mechanism exists that would prevent it" without an actual container run, so treat the Docker column as UNVERIFIED-but-not-demonstrated-safe rather than confirmed root. Either way, the check this section credits with catching Nos. 1/3/4 (`imagebins_test.go`, a rootfs-package-vs-source-binary comparison) does not and cannot catch a credential-drop gap — that would need a different assertion entirely, and none currently exists for this.
 
 **The gate:** `backend/internal/docsref/imagebins_test.go` reads the *source* against the *rootfs package list*, so the container it happens to run in is irrelevant. It scans `services/{webbrowser,stream,desktop}` for every literal binary handed to `exec.Command` / `lookPath` / `findBin`, and requires each to be either mapped to the package that provides it or exempted **with a reason**. An unclassified binary is a hard failure naming the binary and the file that execs it.
 
