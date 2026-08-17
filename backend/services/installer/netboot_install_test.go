@@ -799,21 +799,31 @@ func TestOwnerStateDirsCoverTheDataDirAndVarLib(t *testing.T) {
 // absent from the other, and every other test in this package would stay green —
 // including the E2E one, which would then be installing a disk the real
 // installer does not produce. Both are read here.
+// The anchors below are STEP-LIST entries, not bare call sites. The first
+// version of this test looked for "createOwnerStateDirs(ctx" — which is also
+// how the function's own DEFINITION begins, so deleting the pipeline step left
+// it green. A mutation caught that; the anchors are now the step declarations,
+// which exist only where the step is actually scheduled.
 func TestNetbootPipelineActuallyRunsTheStateDirsStep(t *testing.T) {
-	for _, f := range []string{
-		"netboot_install.go",        // the shipped pipeline
-		"netboot_e2e_linux_test.go", // the pipeline the smoke harness proves
+	for _, tc := range []struct {
+		file, anchor string
+	}{
+		{"netboot_install.go", `{name: "state-dirs"`},      // the shipped pipeline
+		{"netboot_e2e_linux_test.go", `step("state-dirs"`}, // the pipeline the smoke harness proves
 	} {
-		src, err := os.ReadFile(f)
+		src, err := os.ReadFile(tc.file)
 		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+			t.Fatalf("read %s: %v", tc.file, err)
 		}
-		if !strings.Contains(string(src), "createOwnerStateDirs(ctx") {
-			t.Errorf("%s never calls createOwnerStateDirs. The directories it makes are the "+
+		if !strings.Contains(string(src), tc.anchor) {
+			t.Errorf("%s no longer schedules a %s step. The directories it makes are the "+
 				"only thing scripts/initramfs/vulos-live can bind the owner's account out "+
 				"of; without this step a netboot-installed box loses its owner on every "+
 				"reboot, and every mount-topology test still passes because that harness "+
-				"fabricates the directories itself.", f)
+				"fabricates the directories itself.", tc.file, tc.anchor)
+		}
+		if !strings.Contains(string(src), "createOwnerStateDirs(ctx") {
+			t.Errorf("%s no longer calls createOwnerStateDirs at all.", tc.file)
 		}
 	}
 }

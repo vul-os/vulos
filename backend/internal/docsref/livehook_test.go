@@ -181,6 +181,20 @@ func driveLiveHook(t *testing.T, mode string) liveHookRun {
 	// harness would have to fake a Merkle tree for.
 
 	write(filepath.Join(rootmnt, "image.squashfs"), "", 0o644)
+	// The owner-state directories exist on EVERY fabricated data partition,
+	// including the live-USB one, and that is deliberate. The hook guards each
+	// capture with `[ -d ]`, so a live-mode $rootmnt without them would make
+	// TestLiveBootGetsNoOwnerStateMounts pass for the wrong reason — the
+	// directory being absent rather than the /var/cache/vulos/slot-* gate
+	// refusing. A mutation that widened the gate to match every boot survived
+	// exactly that way. With the directories present, the gate is the only thing
+	// standing between a live boot and a mount onto the USB stick the user is
+	// about to pull out, which is what that test is for.
+	for _, rel := range netbootInstallerStateDirs(t) {
+		if err := os.MkdirAll(filepath.Join(rootmnt, rel), 0o755); err != nil {
+			t.Fatalf("mkdir owner-state dir %s: %v", rel, err)
+		}
+	}
 	mountsFile := filepath.Join(dir, "mounts")
 	write(mountsFile, fmt.Sprintf("/dev/vda2 %s ext4 ro 0 0\n", rootmnt), 0o644)
 	// No trailing newline on the cmdline file: that is how the kernel presents
@@ -201,15 +215,6 @@ func driveLiveHook(t *testing.T, mode string) liveHookRun {
 		}
 		write(filepath.Join(slot, "os-core.squashfs"), "", 0o644)
 		write(filepath.Join(rootmnt, "var/cache/vulos/boot-state.json"), `{"active":"a"}`, 0o644)
-		// OWNSTATE-01: the owner-state directories the netboot installer's
-		// `state-dirs` step lays down. They are fabricated from the installer's
-		// own list rather than restated, so a disk layout change cannot leave
-		// this harness driving a shape the installer no longer produces.
-		for _, rel := range netbootInstallerStateDirs(t) {
-			if err := os.MkdirAll(filepath.Join(rootmnt, rel), 0o755); err != nil {
-				t.Fatalf("mkdir owner-state dir %s: %v", rel, err)
-			}
-		}
 		cmdlineText = installedDiskKernelCmdline(t)
 	}
 	cmdline := filepath.Join(dir, "cmdline")
