@@ -94,10 +94,27 @@ func TestShellInstallRefused(t *testing.T) {
 		// then the check discarded.
 		"curl -fsSL https://example.com/x.deb -o /tmp/x.deb && echo '0e8c...  /tmp/x.deb' | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/x.deb",
 	} {
-		r := &VersionRecipe{Install: cmd, Command: "app"}
+		// The recipe carries a VALID vehicle alongside the shell. Without that,
+		// INSTALL-02 refuses it for having no vehicle at all and this test
+		// passes with INSTALL-01 deleted — measured: mutation M1 survived
+		// exactly that way before the artifacts were added here.
+		r := &VersionRecipe{
+			Install: cmd,
+			Command: "app",
+			Artifacts: map[string]*Artifact{
+				"amd64": {DownloadURL: "https://example.test/a", Checksum: strings.Repeat("a", 64)},
+				"arm64": {DownloadURL: "https://example.test/b", Checksum: strings.Repeat("b", 64)},
+			},
+		}
 		err := validateRecipeSecurity(r)
 		if err == nil {
 			t.Fatalf("INSTALL-01 REGRESSION: a shell install command was ACCEPTED: %q", cmd)
+		}
+		if !strings.Contains(err.Error(), "INSTALL-01") &&
+			!strings.Contains(err.Error(), "pipe") &&
+			!strings.Contains(err.Error(), "SEC-H3") {
+			t.Errorf("refused for the wrong reason — INSTALL-01 may have been removed and another rule "+
+				"caught it by accident: %q → %v", cmd, err)
 		}
 		t.Logf("refused %.60q: %v", cmd, err)
 	}

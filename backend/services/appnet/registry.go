@@ -1665,6 +1665,22 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 	// against, via the same NormalizeArch table. Nothing here reads a request
 	// header: desktop apps are streamed FROM the box, so the box's arch is the
 	// only one that can matter.
+	// extract_dir is screened FIRST, before anything is fetched. It is the one
+	// recipe field that becomes a filesystem path outside the app dir if it is
+	// wrong, and a box that has already downloaded the payload before noticing
+	// has done the attacker's transfer for them. Order is the check.
+	extractRoot := appDir
+	if d := strings.TrimSpace(recipe.ExtractDir); d != "" {
+		if err := validateExtractDir(d); err != nil {
+			return err
+		}
+		extractRoot = filepath.Join(appDir, filepath.Clean(d))
+		if !strings.HasPrefix(filepath.Clean(extractRoot)+string(os.PathSeparator),
+			filepath.Clean(appDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("refusing extract_dir %q: it resolves outside the app directory (EXTRACT-01)", d)
+		}
+	}
+
 	url, checksum, err := recipe.ResolveArtifact(BoxArch())
 	if err != nil {
 		return err
@@ -1720,20 +1736,7 @@ func staticInstall(ctx context.Context, recipe *VersionRecipe, appDir string) er
 	// mutually exclusive by construction: a zip must reach extractZip and must
 	// never fall through to `tar`, because whether that fallthrough "works"
 	// depends on which tar the host has (see tarExtensions).
-	// Where an archive unpacks. Empty extract_dir keeps the historical
-	// behaviour (the app dir itself); a set one is re-screened here rather than
-	// trusted from validateRecipeSecurity, because this is the line that turns
-	// the value into a path.
-	extractRoot := appDir
-	if d := strings.TrimSpace(recipe.ExtractDir); d != "" {
-		if err := validateExtractDir(d); err != nil {
-			return err
-		}
-		extractRoot = filepath.Join(appDir, filepath.Clean(d))
-		if !strings.HasPrefix(filepath.Clean(extractRoot)+string(os.PathSeparator),
-			filepath.Clean(appDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("refusing extract_dir %q: it resolves outside the app directory", d)
-		}
+	if extractRoot != appDir {
 		if err := os.MkdirAll(extractRoot, 0755); err != nil {
 			return fmt.Errorf("create extract_dir %s: %w", extractRoot, err)
 		}
