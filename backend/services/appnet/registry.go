@@ -1576,6 +1576,17 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 		}
 	}
 
+	// STATE-01: hand the state directory to the uid the app actually runs as.
+	// LAST, so it covers what post_install wrote and follows the data symlink
+	// this step may just have created. See state_owner.go for the model: code
+	// stays root-owned, state does not.
+	if err := handOffStateDir(appDir); err != nil {
+		return fmt.Errorf("install %s@%s: the app directory was built but its state directory "+
+			"could not be handed to uid %d, which is the uid the launcher runs the app as — "+
+			"the app would install and then fail on its first write (STATE-01): %w",
+			appID, version, appUID, err)
+	}
+
 	log.Printf("[registry] installed %s@%s → %s", appID, version, appDir)
 	return nil
 }

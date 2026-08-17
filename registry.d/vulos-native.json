@@ -1,5 +1,6 @@
 {
   "_arch_independent": "Five entries (audiomass, cinny, drawio, element-call, minipaint) pin ONE artefact under the exclusive `any` key. Listing the same URL and digest under both amd64 and arm64 would look identical in the data to a curator pinning the amd64 asset under both \u2014 the kerf v0.1.9 shape \u2014 and scripts/verify-firstparty-artifacts.sh refuses two architectures sharing one sha256 for exactly that reason. The recipe states which it means instead of a checker guessing.",
+  "_ownership": "NO RECIPE HERE CHOWNS ITS OWN STATE. Seven of these entries used to carry `chown -R 65534:65534 data` in post_install — a stopgap repeated seven times, silently absent from the eighth, and a PRIVILEGED command inside a string that also runs on a developer box, where it fails and POSTINSTALL-01 turns that failure into a failed install. InstallFromRegistry now hands the state directory to uid 65534 centrally, after post_install and through the data symlink (STATE-01, backend/services/appnet/state_owner.go). bin/ and static/ stay ROOT-owned on purpose: they are code, and an app that can rewrite its own binary keeps any compromise across a restart.",
   "_measurement": "EVERY checksum below was computed from bytes downloaded on 2026-08-17 and was written into this file BY A SCRIPT reading those measurements \u2014 no digest was typed by hand, because hand-copying twenty-two digests is exactly how a fabricated one enters a catalogue. Five of them (conduit amd64, gitea amd64, navidrome amd64, cinny, element-call, drawio) turned out to be byte-identical to digests the shipped registry already carried from an independent earlier measurement; those six agreements are the control on the run.",
   "_not_verified": "NO INSTALL WAS RUN. These recipes are pinned and their archive layouts were read out of the downloaded archives, but scripts/verify-app-recipe.sh has not been executed for any of them and roadmap/app-verification-ledger.json is untouched. `command`, `port` and `post_install` are therefore UNPROVEN. Every entry that ships _disabled today stays _disabled here.",
   "_signing": "UNSIGNED BY CONSTRUCTION \u2014 every entry carries \"signature\": \"\". VerifyEntrySignature fails closed on an empty signature, so these are inert until the founder's ceremony (`make sign-registry RELEASE_PRIV=\u2026`). Do not set VULOS_SIGN_ALLOW_KEY_MISMATCH.",
@@ -174,7 +175,7 @@
             "filesystem"
           ],
           "port": 8080,
-          "post_install": "mkdir -p data && chown -R 65534:65534 data",
+          "post_install": "",
           "singleton": true
         }
       },
@@ -240,7 +241,7 @@
             "filesystem"
           ],
           "port": 6167,
-          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml && chown -R 65534:65534 data",
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml",
           "singleton": true
         }
       },
@@ -415,7 +416,7 @@
             "filesystem"
           ],
           "port": 3000,
-          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini && chown -R 65534:65534 data",
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini",
           "singleton": true
         }
       },
@@ -475,7 +476,7 @@
             "filesystem"
           ],
           "port": 3000,
-          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini && chown -R 65534:65534 data",
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini",
           "singleton": true
         }
       },
@@ -537,7 +538,7 @@
             "filesystem"
           ],
           "port": 5230,
-          "post_install": "mkdir -p data && chown -R 65534:65534 data",
+          "post_install": "",
           "singleton": true
         }
       },
@@ -654,7 +655,7 @@
             "filesystem"
           ],
           "port": 4533,
-          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml && chown -R 65534:65534 data",
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml",
           "singleton": true
         }
       },
@@ -716,7 +717,7 @@
             "filesystem"
           ],
           "port": 8384,
-          "post_install": "mkdir -p data && chown -R 65534:65534 data",
+          "post_install": "",
           "singleton": true
         }
       },
