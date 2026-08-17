@@ -365,7 +365,204 @@ the last `npm install`, not a broken test.
   it shows `notice` and refuses to advance when the box answers
   `applied_live:false`. `saveToBox` had been discarding the success body, so
   no caller could tell a live rename from an inert one.
-- **Two mDNS responders run on a bare-metal box** — avahi-daemon (from
+- ~~**Two mDNS responders run on a bare-metal box** — avahi-daemon (from
   `cmd/init`) and our in-process pion responder. They coexist (MEASURED) and
-  agree on the address, but it is duplicated machinery; consolidating on one is
-  worth a look.
+  agree on the address~~ — **BOTH HALVES OF THAT WERE WRONG. See §7.** They do
+  not agree on the address; that disagreement was the defect. And avahi is not
+  started by `cmd/init` on any shipping box: both shipped boot paths run systemd
+  as PID 1, so avahi-daemon is started by its packaged unit and `cmd/init`'s
+  `initnetAvahi` never runs. A sentence saying two responders "agree" is the
+  reason nobody looked at the second one for three weeks. Consolidating on one
+  responder is still worth a look.
+
+---
+
+## 7. The box published an app's address as its own name (2026-08-17)
+
+### The measurement
+
+On a booted arm64 box with one app running:
+
+```
+avahi-resolve -n vulos.local  ->  169.254.23.36
+avahi-resolve -a 10.0.2.15    ->  vulos.local
+```
+
+The box was `10.0.2.15`. `169.254.23.36` was an IPv4LL address on `vh_bae456`
+— the host side of **one application's** veth pair
+(`backend/services/appnet/namespace.go:140`). Reverse resolution was right;
+forward resolution was not.
+
+That is worse than a routing failure. §2 made `internal/lan/names.go` the single
+derivation feeding both the mDNS advertisement and the certificate's SANs
+precisely so the two could never disagree — and the certificate carries the LAN
+IP as a SAN (`cmd/server/lan_pairing.go`, `certIPs`). An address that is in
+neither is a **TLS name mismatch on top of the routing failure**.
+
+### Why nothing saw it
+
+Everything in §2 and §3 tests **our** responder — the in-process pion one, which
+answers with `lan.DetectLANIP()`. avahi-daemon is a **third publisher**: the
+image installs it, systemd starts it, it derives its answer from its own view of
+the interfaces, and no test in this repo had ever asked it a question. §6's
+"they agree on the address" was an assertion, not a measurement.
+
+### The mechanism, and which layer owns it
+
+Reproduced end to end in a Debian trixie container, arm64, dhcpcd 10.1.0 and
+avahi 0.8-16 (`scripts/smoke-lan-name.sh`). Two mechanisms combine.
+
+**1. dhcpcd manages the app veths.** The image writes no `/etc/dhcpcd.conf`, so
+Debian's default applies, and Debian's unit is literally
+`Description=DHCP Client Daemon on all interfaces` with
+`ExecStart=/usr/sbin/dhcpcd -q -b` — manager mode, no `denyinterfaces`.
+Measured, with an appnet-shaped veth present:
+
+```
+vh_bae456: soliciting a DHCP lease
+vh_bae456: probing for an IPv4LL address
+vh_bae456: using IPv4LL address 169.254.69.120
+vh_bae456: adding IP address 169.254.69.120/16 broadcast 169.254.255.255
+vh_bae456: adding default route
+```
+
+The last line is why this half is not cosmetic. dhcpcd broadcasts DHCP DISCOVER
+**into every application's network namespace** and will accept whatever answers.
+An app that runs a DHCP server on its own side of the veth can hand the **host**
+a default route and a set of resolvers. dhcpcd has no business on an app's link
+at all: appnet already addresses both ends statically.
+
+**2. avahi publishes the box's name on those links — and this half OWNS the
+reported defect.** Fixing (1) alone does not fix it. Measured, with no
+link-local anywhere and only appnet's own static addressing present:
+
+```
+vulos.local   10.200.23.1      (6 lookups, 6 identical answers)
+```
+
+Still not the box, still in no SAN list. An app-network interface acquiring an
+address is arguably fine; publishing it as the box's identity is not.
+
+### Why an allow-list and not a deny-list
+
+`deny-interfaces` in `avahi-daemon.conf` takes **exact names only**. Measured,
+same container, same scenario:
+
+| config | `avahi-resolve -n vulos.local` |
+|---|---|
+| `deny-interfaces=vh_*` | `10.200.23.1` — **no effect, globs are not supported** |
+| `deny-interfaces=vh_bae456` | `192.168.215.13` — works |
+
+App veth names are derived from a hash of the app id and appear and vanish as
+apps start and stop, so an exact-name deny-list cannot be written in advance.
+The set of LAN interfaces, by contrast, is knowable when avahi starts. Hence
+`scripts/vulos-lan-ifaces.sh` computes an **allow-list**, wired as an
+`ExecStartPre` on `avahi-daemon.service` so it is recomputed on every start and
+restart rather than once at image build (which would compute it on a developer
+Mac).
+
+It **fails open**: a box whose interfaces it cannot classify gets an
+unrestricted avahi, not an empty allow-list. A box with no mDNS name at all is a
+worse failure than the one being fixed, and it would only appear on hardware
+nobody here owns. `TestLANIfacesFailsOpen` pins that, because "always write the
+allow-list" is the natural hardening edit.
+
+Both halves are configured from that one file: the dhcpcd `denyinterfaces`
+stanza is **generated** from the same glob list the avahi exclusion uses, so the
+two cannot disagree about what an app link is.
+
+### What a LAN client actually saw — a correction to the brief
+
+The brief for this work said "a LAN client that picks that record gets somewhere
+unroutable." **Measured, that is not what avahi does.** Two containers on one
+bridge, the box holding `169.254.23.36` on its app veth, a second host
+resolving over the wire:
+
+```
+vulos.local  192.168.117.2
+vulos.local  192.168.117.2      (5 of 5 identical)
+```
+
+avahi registers host address records **per interface** and answers a query
+arriving on `eth0` with `eth0`'s records only. So over the wire avahi did not
+leak the app address, and the `avahi-resolve` result above is what the box's
+**own** resolver sees. That still matters — anything on the box, and anything in
+an app namespace, resolving `vulos.local` got an address the LAN listener is not
+bound to and the certificate does not name — but the failure is on-box, not
+over-the-wire, and the fix should not be sold as more than it is.
+
+The over-the-wire leak vector is our **pion** responder, which sets
+`cfg.LocalAddress` once and answers with it on every interface. It is correct
+today only because `detectLANIP()` happened to pick the right address; nothing
+asserts it cannot pick an app-network one. See "Still open" below.
+
+### The gate
+
+`scripts/smoke-lan-name.sh` — **LANNAME-01**, wired into CI. It builds the box's
+network shape in a container: a LAN interface with a **real DHCP server**
+(dnsmasq in a network namespace), plus an appnet-shaped veth. Then it runs the
+real daemons and asks the box what its own name resolves to.
+
+The control is the point. The `stock` arm runs with no Vulos config and **must**
+resolve the name incorrectly; if it ever resolves correctly the scenario has
+stopped reproducing the defect and the gate fails rather than reporting a pass
+it has not earned.
+
+Observed:
+
+```
+arm stock: LAN address is 192.168.77.56, vulos.local answered: 169.254.122.114
+control stock: went red as it must
+arm fixed:  LAN address is 192.168.77.58, vulos.local answered: 192.168.77.58
+every one of the 6 lookups answered with the LAN address
+IPv4LL addresses on vh_bae456 — stock: 1, fixed: 0
+PASS
+```
+
+Both mutations red:
+
+| mutation | result |
+|---|---|
+| `--break avahi` | `fixed` answered `10.200.23.1` — exit 1 |
+| `--break dhcpcd` | IPv4LL on `vh_bae456` — stock 1, **fixed 1** — exit 1 |
+
+Note what `--break dhcpcd` shows: name resolution was still *correct*, because
+the avahi allow-list already excluded the app link. Assertion C is what caught
+it. That is the layering working as designed — avahi owns the name, dhcpcd owns
+not being on an app's link — and it is why both assertions have to exist.
+
+The first version of this gate was itself wrong, and in an instructive way: run
+against docker's own `eth0` there is no DHCP server on the link, so dhcpcd
+IPv4LL-addressed **the LAN interface itself** and the `fixed` arm failed for a
+reason that had nothing to do with app veths. A box on a network with no DHCP
+server taking an IPv4LL address on its LAN NIC is correct behaviour and must not
+be "fixed". The scenario was wrong, not the config.
+
+### What this does NOT prove
+
+- **It runs in Docker.** There is no udevd, so dhcpcd is given `nodev` — without
+  it dhcpcd prints "waiting for interface to initialise" for every interface,
+  finds none, and exits, which would have made the gate green for the wrong
+  reason. Nothing that depends on real udev ordering, real NIC drivers, wifi
+  association, or systemd unit ordering on a real boot is covered.
+- **No Vulos image is booted.** `TestLANIfacesReachesBothBuildPaths` reads
+  `build.sh` and asserts both the image path and the ssh-deploy path install and
+  wire the script; that is a source assertion, not a boot.
+- **One app veth.** Nothing here says anything about many.
+- **The `ExecStartPre` snapshot.** The allow-list is recomputed on every avahi
+  start, but a NIC that appears *later* — a USB ethernet adapter hotplugged into
+  a running box — is not in it until avahi restarts. Real gap, not addressed.
+- **The fix has not been observed on a booted box.** The measurement that opened
+  this section came from one; the measurement that closes it did not.
+
+### Still open
+
+- **`detectLANIP()` can return an app-network address.** Its fallback
+  (`internal/lan/lan.go`) returns the first `IsPrivate()` IPv4 across all
+  interfaces, and appnet's `10.200.0.0/16` is private. The primary path — a UDP
+  `connect` toward `192.168.1.1` — masks it on any box with a default route, so
+  this is latent rather than live. But that value is both what pion advertises
+  **to the whole LAN** and what goes into the certificate's IP SAN, so unlike
+  the avahi case it would be a genuine over-the-wire failure. It should select
+  by interface (excluding the same app globs) rather than by address range, and
+  nothing currently asserts it.

@@ -1311,6 +1311,44 @@ jobs:
         run: bash scripts/smoke-multiscreen.sh
         timeout-minutes: 30
 
+  smoke-lan-name:
+    # LANNAME-01 — does the box's own name resolve to the box?
+    #
+    # Measured on a booted arm64 box, with one app running:
+    #     avahi-resolve -n vulos.local  ->  169.254.23.36
+    #     avahi-resolve -a 10.0.2.15    ->  vulos.local
+    # The box was 10.0.2.15. 169.254.23.36 was an IPv4LL address dhcpcd had put
+    # on vh_bae456 — one APPLICATION's veth. The box was publishing an app
+    # link's address as its own identity, and that address is in no
+    # certificate's SAN list, so it is a TLS name mismatch as well as a routing
+    # failure.
+    #
+    # Nothing in the tree could see it: internal/lan's tests cover OUR mDNS
+    # advertiser, and avahi-daemon is a SECOND responder the image installs,
+    # systemd starts, and no test had ever asked anything.
+    #
+    # THE CONTROL IS THE POINT. The 'stock' arm runs with no Vulos network
+    # config and MUST resolve the box's name incorrectly. If it ever resolves
+    # correctly the scenario has stopped reproducing the defect and the gate
+    # fails rather than reporting a pass it has not earned.
+    #
+    # `bash scripts/smoke-lan-name.sh --break avahi|dhcpcd` shows it red on
+    # demand — each half of the fix alone is insufficient and both breaks are
+    # required to go red.
+    #
+    # Separate job for the same reason as SCREENS-01: it needs docker and
+    # --privileged (veth pairs, network namespaces, dhcpcd's raw sockets), and
+    # a failure should be legible as itself.
+    name: LANNAME-01 — the box's own name resolves to the box
+    runs-on: ubuntu-latest
+    needs: [backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the LAN-name resolution smoke test
+        run: bash scripts/smoke-lan-name.sh
+        timeout-minutes: 20
+
   smoke-relay-nat:
     # REACH-NAT — the one promise in docs/REACH.md that had no automated
     # evidence: "Most boxes sit behind NAT, CGNAT, or a router nobody can
