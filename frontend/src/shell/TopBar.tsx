@@ -145,7 +145,12 @@ export default function TopBar() {
   const narrow = useNarrow(680)
 
   return (
-    <div className="vshell-bar absolute top-0 left-0 right-0 z-40 h-8 flex items-center justify-between px-2 backdrop-blur-xl safe-px">
+    // The height is `--menubar-h`, not `h-8`. See layouts/DesktopCanvas.tsx for
+    // why all three places that carried the number 32 now read one token; the
+    // short version is that this bar and the origin windows are positioned
+    // against must agree, and on a coarse pointer the token becomes 44px so the
+    // affordances below can clear the touch floor.
+    <div className="vshell-bar absolute top-0 left-0 right-0 z-40 h-[var(--menubar-h)] flex items-center justify-between px-2 backdrop-blur-xl safe-px">
       {/* Left cluster */}
       <div className="flex items-center gap-0.5 min-w-0">
         <LifePulse />

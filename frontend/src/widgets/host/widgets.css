@@ -15,6 +15,34 @@
    is not read from a token at animation time in every engine.
    ════════════════════════════════════════════════════════════════════════════ */
 
+/* ── The type floor ───────────────────────────────────────────────────────────
+   Every rendered string in this rail clears 12px.
+
+   It did not. Measured in Chromium on the shipping build, at EVERY desktop
+   width from 768 to 1440 and on both landscape tablet profiles: 18 text nodes
+   below the floor — .vwidget-title and .vwidget-title-right at 10.5px,
+   .vwidget-clock-when at 10.5px, .vwidget-label / .vwidget-sub and five more at
+   11.5px, .vwidget-railbtn and three more at 11px. Fifteen declarations across
+   four hundred lines, none of them wrong on their own, all of them under the
+   floor this suite enforces everywhere else.
+
+   The fix is ONE token rather than fifteen numbers, for the reason
+   e2e/apphub-responsive.ts records from the App Hub's identical case: six stray
+   `font-size: 11px` declarations there became one token, and the guard that
+   found them counts TEXT NODES rather than distinct sizes precisely so that
+   consolidating a scale cannot look like a regression.
+
+   The hierarchy the three old sizes carried is not lost — it was never doing
+   the work. .vwidget-title is uppercase, 600 weight and 0.1em tracking;
+   .vwidget-big is 30px; the scale that remains is 12 / 12.5 / 15 / 30 and it
+   still reads. Gated by e2e/shell-responsive.e2e.ts.
+   ─────────────────────────────────────────────────────────────────────────── */
+.vwidget-rail,
+.vwidget-gallery,
+.vwidget-config {
+  --vwidget-fs-min: 12px;
+}
+
 /* ── The rail ─────────────────────────────────────────────────────────────── */
 
 /* The scroll region.
@@ -143,22 +171,24 @@
   flex: 0 0 auto;
 }
 .vwidget-title {
-  font-size: 10.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  /* --text-tertiary, not --text-faint. At 10.5px this is the smallest text in
-     the rail and it sits on the translucent card, where --text-faint measures
-     right at the AA line in light. Tertiary clears it in both themes with room
-     to spare, and the visual hierarchy still reads because of the size and the
-     weight rather than because of the dimness. */
+  /* --text-tertiary, not --text-faint. This is the smallest text in the rail
+     (the 12px floor above) and it sits on the translucent card, where
+     --text-faint measures right at the AA line in light. Tertiary clears it in
+     both themes with room to spare, and the visual hierarchy still reads
+     because of the uppercase, the weight and the tracking rather than because
+     of the dimness — which is what let the size come up to the floor without
+     the rail flattening. */
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .vwidget-title-right {
-  font-size: 10.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   color: var(--text-tertiary);
   flex: 0 0 auto;
 }
@@ -173,11 +203,11 @@
 }
 .vwidget-sub {
   margin-top: 3px;
-  font-size: 11.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   color: var(--text-tertiary);
 }
 
-.vwidget-label { font-size: 11.5px; line-height: 1.35; }
+.vwidget-label { font-size: var(--vwidget-fs-min, 12px); line-height: 1.35; }
 .vwidget-label.mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -202,7 +232,7 @@
   min-height: 0;
 }
 .vwidget-empty-text {
-  font-size: 11.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   line-height: 1.4;
   color: var(--text-tertiary);
 }
@@ -215,7 +245,7 @@
 }
 
 .vwidget-link {
-  font-size: 11.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   font-weight: 500;
   color: var(--accent-text, var(--accent));
   border-radius: var(--radius-xs);
@@ -277,7 +307,7 @@
 }
 .vwidget-clock-when {
   display: block;
-  font-size: 10.5px;
+  font-size: var(--vwidget-fs-min, 12px);
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -348,7 +378,7 @@
   gap: 5px;
   padding: 4px 9px;
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: var(--vwidget-fs-min, 12px);
   font-weight: 550;
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
@@ -398,7 +428,7 @@
   height: 22px;
   padding: 0 6px;
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: var(--vwidget-fs-min, 12px);
   font-weight: 600;
   line-height: 1;
   color: var(--text-secondary);
@@ -451,7 +481,7 @@
   border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 55%, transparent);
 }
 .vwidget-panel-title {
-  font-size: 11px;
+  font-size: var(--vwidget-fs-min, 12px);
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -474,8 +504,8 @@
    Identical in kind to the world-clock defect, and identically invisible to
    every DOM assertion, which is why both were only found by looking. */
 .vwidget-gallery-name { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
-.vwidget-gallery-desc { display: block; font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 2px; }
-.vwidget-gallery-meta { display: block; font-size: 10.5px; color: var(--text-tertiary); margin-top: 4px; }
+.vwidget-gallery-desc { display: block; font-size: var(--vwidget-fs-min, 12px); line-height: 1.4; color: var(--text-tertiary); margin-top: 2px; }
+.vwidget-gallery-meta { display: block; font-size: var(--vwidget-fs-min, 12px); color: var(--text-tertiary); margin-top: 4px; }
 
 /* A permission line. `data-leaves` marks the ones that can send something off
    the box — the only distinction that matters to a user of this product, so it
@@ -493,11 +523,11 @@
 }
 .vwidget-perm[data-leaves='true'] .vwidget-perm-dot { background: var(--status-warning); }
 .vwidget-perm-title { display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.vwidget-perm-detail { display: block; font-size: 11.5px; line-height: 1.4; color: var(--text-tertiary); margin-top: 1px; }
+.vwidget-perm-detail { display: block; font-size: var(--vwidget-fs-min, 12px); line-height: 1.4; color: var(--text-tertiary); margin-top: 1px; }
 
 .vwidget-field { display: block; padding: 7px 2px; }
-.vwidget-field-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
-.vwidget-field-help { display: block; font-size: 11px; line-height: 1.4; color: var(--text-tertiary); margin-top: 4px; }
+.vwidget-field-label { display: block; font-size: var(--vwidget-fs-min, 12px); font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.vwidget-field-help { display: block; font-size: var(--vwidget-fs-min, 12px); line-height: 1.4; color: var(--text-tertiary); margin-top: 4px; }
 .vwidget-input {
   width: 100%;
   padding: 5px 8px;

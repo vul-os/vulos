@@ -1,13 +1,79 @@
 // windowTiling.js — pure geometry + state-machine helpers for window snapping,
 // keyboard tiling, and window cycling.
 //
-// Everything here is a pure function of its arguments (no DOM, no React) so the
-// windowing behaviour can be unit-tested in isolation and reused by both the
+// Every FUNCTION here is a pure function of its arguments (no DOM, no React) so
+// the windowing behaviour can be unit-tested in isolation and reused by both the
 // pointer-drag snap path (Window.jsx) and the keyboard-tiling path
 // (useWindowShortcuts). The shell's menu bar occupies the top MENU_BAR_H px, so
 // the usable area for tiling starts below it.
+//
+// ONE exception, stated here rather than discovered: MENU_BAR_H is read from the
+// `--menubar-h` CSS token at import, because it has to agree with the bar the
+// user is actually looking at. See its own comment below. The functions still
+// take the inset as a parameter; this is only the default they fall back to.
 
-export const MENU_BAR_H = 32
+/**
+ * The menu bar's height, READ FROM THE TOKEN THAT DRAWS IT.
+ *
+ * ── Why this one value is not a literal ─────────────────────────────────────
+ *
+ * The number 32 used to live in three files that had no way of knowing about
+ * each other: `h-8` in shell/TopBar.tsx (the bar), `pt-8` in
+ * layouts/DesktopCanvas.tsx (the origin every window is positioned against) and
+ * here (the geometry a window OPENS with, and the top of every tile zone).
+ * `--menubar-h` already existed in src/index.css and only two unrelated rules in
+ * shell-chrome.css read it.
+ *
+ * That was survivable while the answer was always 32. It stopped being
+ * survivable when the bar had to become 44px on a coarse pointer so its
+ * affordances could clear the touch floor — an iPad in landscape runs the
+ * DESKTOP canvas (TOUCH_STACK_MAX is 1024) and its menu bar was six controls at
+ * 28x28 and smaller. Growing the bar in two of the three places would have
+ * opened every window 12px UNDERNEATH it, on exactly the devices the change is
+ * for. So all three read the token, and this is where the number crosses from
+ * CSS into JS.
+ *
+ * ── What this does to the file's purity claim ───────────────────────────────
+ *
+ * The header above says "no DOM". That is still true of every FUNCTION here —
+ * they take `menuBar` as a parameter and this is only its default. What is no
+ * longer true is that the module has no DOM read at all, and pretending
+ * otherwise would be worse than saying so: this runs once, at import.
+ *
+ * Every failure mode resolves to 32, which is the value that was hard-coded
+ * before, so the worst case is exactly today's behaviour rather than a new one:
+ * no `window` (unit tests run in jsdom, where index.css is not loaded and the
+ * property reads empty), an unparseable value, or a number outside a sane band.
+ * The band is a tripwire on absurdity, not a measurement — the same shape as the
+ * 96px inset bound in mobile/safeAreaInsets.ts.
+ */
+const MENU_BAR_H_FALLBACK = 32
+const MENU_BAR_H_MAX = 96
+
+function resolveMenuBarHeight(): number {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return MENU_BAR_H_FALLBACK
+  try {
+    const root = document.documentElement
+    const raw = getComputedStyle(root).getPropertyValue('--menubar-h').trim()
+    if (!raw) return MENU_BAR_H_FALLBACK
+    // getPropertyValue returns a custom property's SPECIFIED value, so the unit
+    // arrives as written — `2rem` from index.css, `44px` from the coarse-pointer
+    // override. Both have to be understood; anything else falls back rather than
+    // guessing, because a wrong number here is a window under the menu bar.
+    const n = parseFloat(raw)
+    if (!Number.isFinite(n)) return MENU_BAR_H_FALLBACK
+    let px: number
+    if (raw.endsWith('rem')) px = n * (parseFloat(getComputedStyle(root).fontSize) || 16)
+    else if (raw.endsWith('px')) px = n
+    else return MENU_BAR_H_FALLBACK
+    if (!(px > 0) || px > MENU_BAR_H_MAX) return MENU_BAR_H_FALLBACK
+    return Math.round(px)
+  } catch {
+    return MENU_BAR_H_FALLBACK
+  }
+}
+
+export const MENU_BAR_H = resolveMenuBarHeight()
 
 // Bottom inset reserved for the dock: its 58px toolbar plus the 10px
 // (0.625rem) it floats above the viewport edge — measured from the rendered

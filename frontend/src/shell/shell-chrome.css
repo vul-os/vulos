@@ -1046,14 +1046,32 @@
    touchscreen laptop reports `pointer: fine` (its mouse is primary) and keeps
    the dense chrome untouched, so nothing on a real desktop moves.
 
-   Note what is NOT here: the menu bar's own affordances. `.vshell-btn` is 28px
-   inside a 32px bar, and the bar's height is hard-coded in THREE places that
-   must agree — `h-8` in shell/TopBar.tsx, `pt-8` in layouts/DesktopCanvas.tsx
-   and `MENU_BAR_H = 32` in shell/windowTiling.ts (the last is what keeps a
-   window from opening underneath the bar). Growing the bar here and not there
-   would put every window 12px under the menu bar on exactly the devices this
-   block is for. It is reported rather than half-done.
+   This includes the MENU BAR, which an earlier pass reported rather than fixed
+   because the bar's height was hard-coded in three files that had to agree —
+   `h-8` in shell/TopBar.tsx, `pt-8` in layouts/DesktopCanvas.tsx (the origin
+   every window is positioned against) and `MENU_BAR_H = 32` in
+   shell/windowTiling.ts (the geometry a window OPENS with). Growing it in some
+   and not the rest would have put every window 12px underneath the bar on
+   exactly the devices this block is for. All three read `--menubar-h` now, so
+   the bar can grow, and it does — below.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The menu bar's own height, on a coarse pointer.
+ *
+ * `:root:root`, not `:root`. --menubar-h is declared on a bare `:root` in
+ * src/index.css, which is the SAME specificity as a bare `:root` here, so which
+ * one wins would be decided by CSS bundle order — and that is a function of
+ * import order across files this rule does not control. A media query adds ZERO
+ * specificity of its own; this repository has been bitten by exactly that
+ * assumption before (roadmap/, the landing render gate). Repeating the selector
+ * takes it to 0-2-0 and makes the outcome a property of the rule rather than of
+ * the bundler.
+ *
+ * 44px is the touch floor, so the bar is exactly tall enough to hold a
+ * compliant target and not one pixel taller. */
+@media (pointer: coarse) {
+  :root:root { --menubar-h: 44px; }
+}
 
 /* An opt-in 44px floor for a control whose CONTAINER can absorb it. Used rather
    than index.css's unconditional `.touch-target` because these controls live in
@@ -1115,6 +1133,26 @@
   .vwin-lights {
     gap: 0;
     margin-inline-start: -6px;
+  }
+
+  /* EVERY control in the menu bar, including the ones drawn by components this
+     file does not import.
+
+     Measured at 1194×834 and 1366×1024 on a coarse pointer, six of them:
+     System menu 69×32 (core/SystemPulse.tsx), Applications / Mission Control /
+     Chat / Toggle fullscreen 28×28 (shell/TopBar.tsx), Theme 24×24
+     (core/ThemeToggle.tsx). Three components, two of them outside this
+     workstream.
+
+     A rule on the BAR reaches all six without editing any of them, and leaves no
+     hole in the floor shaped like whoever happens to own which control — the
+     same argument core/touch-chrome.css makes for putting its rule on
+     `.vsp-compact` rather than on five components. Anything added to this bar
+     later inherits the floor for free. */
+  .vshell-bar button,
+  .vshell-bar [role='button'] {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
   }
 
   /* Title-bar chrome buttons (pop-to-native, save-AI-app) — 20px. */

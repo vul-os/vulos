@@ -157,7 +157,12 @@ export default function DesktopCanvas() {
               <img src={DEFAULT_WALLPAPER} alt="" className="w-20 h-20 sm:w-24 sm:h-24" style={{ opacity: isDark ? 0.9 : 0.6, filter: isDark ? 'brightness(1.55)' : 'none' }} />
               <div className="text-center">
                 <div className="text-3xl sm:text-4xl font-semibold tracking-[0.28em] pl-[0.28em]" style={{ color: 'var(--text-primary)', opacity: isDark ? 0.95 : 0.9 }}>Vulos</div>
-                <div className="text-[10px] font-medium uppercase tracking-[0.36em] pl-[0.36em] mt-2" style={{ color: 'var(--accent-text, var(--accent))' }}>alpha</div>
+                {/* 12px, not 10. The 19th and last of the sub-floor text nodes
+                    the responsive sweep found on the desktop — the other 18 were
+                    the widget rail. It reads as small because of the 0.36em
+                    tracking and the uppercase, not because of the size, so the
+                    floor costs it nothing. */}
+                <div className="text-[12px] font-medium uppercase tracking-[0.36em] pl-[0.36em] mt-2" style={{ color: 'var(--accent-text, var(--accent))' }}>alpha</div>
               </div>
             </div>
           </>
@@ -170,8 +175,19 @@ export default function DesktopCanvas() {
       {/* PUBWEB-06: amber banner when focused app is publicly visible */}
       <PublicAppBanner />
 
-      {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS */}
-      <div className="absolute inset-0 pt-8">
+      {/* Windows area — render ALL windows persistently, hide inactive desktops via CSS.
+          The top inset is `--menubar-h`, NOT a hard-coded `pt-8`. This is the
+          origin every window is positioned against, and it has to agree with the
+          bar's actual height or windows open underneath the bar. Three files
+          carried the number 32 independently — `h-8` in shell/TopBar.tsx, this
+          padding, and `MENU_BAR_H` in shell/windowTiling.ts — with a
+          `--menubar-h` token already in index.css that only two unrelated rules
+          in shell-chrome.css read. All of them read it now, which is what makes
+          it safe for the bar to become 44px on a coarse pointer (see the
+          `@media (pointer: coarse)` block in shell/shell-chrome.css); growing it
+          in some of the three and not the rest would have put every window 12px
+          under the menu bar on exactly the tablets the change is for. */}
+      <div className="absolute inset-0 pt-[var(--menubar-h)]">
         {/* The desktop is the WALLPAPER. Home used to render here as a
             full-bleed backdrop whenever no window was open, which is what made
             this read as a web page rather than an OS: the wallpaper was never

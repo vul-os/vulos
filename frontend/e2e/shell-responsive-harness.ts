@@ -333,6 +333,77 @@ export async function scanned(page: Page, roots: string[]): Promise<Scanned> {
   }, roots)
 }
 
+export interface BarFit {
+  /** The bar's own height, as painted. */
+  barH: number
+  /** The tallest control inside it. */
+  tallest: number
+  /** Controls whose box extends outside the bar's box, with the overhang. */
+  escaping: { label: string; above: number; below: number; h: number }[]
+  /** Controls counted — the denominator. */
+  controls: number
+  /** The window layer's top inset: where the shell believes the bar ends. */
+  windowInsetTop: number
+}
+
+/**
+ * Does the menu bar actually CONTAIN its controls, and does the window layer
+ * agree with where it ends?
+ *
+ * This exists because the touch-floor check could not tell two very different
+ * things apart. `smallTargets` measures a control's own box, so a 44px button is
+ * a 44px button whether the bar around it is 44px or 32px — and in the second
+ * case the control is painted 6px above and below the bar, over the window
+ * underneath it, with the bar's background not behind it. Measured: mutating
+ * `--menubar-h` back to 2rem while leaving the controls' 44px floor in place
+ * left the whole suite GREEN.
+ *
+ * `windowInsetTop` is the other half. The bar's height and the origin every
+ * window is positioned against are separate numbers in separate files
+ * (`--menubar-h` vs `pt-8` in layouts/DesktopCanvas.tsx vs `MENU_BAR_H` in
+ * shell/windowTiling.ts). If they disagree, windows open underneath the bar —
+ * which is the exact reason an earlier pass refused to grow it at all.
+ */
+export async function barFit(page: Page): Promise<BarFit | null> {
+  return page.evaluate(() => {
+    const bar = document.querySelector('.vshell-bar') as HTMLElement | null
+    if (!bar) return null
+    const b = bar.getBoundingClientRect()
+    const escaping: { label: string; above: number; below: number; h: number }[] = []
+    let tallest = 0
+    let controls = 0
+    for (const el of bar.querySelectorAll('button, [role="button"]')) {
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) continue
+      controls++
+      tallest = Math.max(tallest, r.height)
+      const above = Math.round(b.top - r.top)
+      const below = Math.round(r.bottom - b.bottom)
+      if (above > 1 || below > 1) {
+        escaping.push({
+          label: (el.getAttribute('aria-label') || el.textContent || '?').toString().trim().slice(0, 44),
+          above, below, h: Math.round(r.height * 10) / 10,
+        })
+      }
+    }
+    // The window layer is the element the shell insets by the bar's height.
+    // Located by its computed padding-top rather than by a class, because the
+    // point is what the LAYOUT does, not what the markup is called.
+    let windowInsetTop = -1
+    for (const el of document.querySelectorAll('div')) {
+      const cs = getComputedStyle(el)
+      if (cs.position !== 'absolute') continue
+      const pt = parseFloat(cs.paddingTop)
+      if (!(pt > 0)) continue
+      const r = el.getBoundingClientRect()
+      if (r.width < window.innerWidth - 2 || r.height < window.innerHeight - 2) continue
+      windowInsetTop = Math.round(pt)
+      break
+    }
+    return { barH: Math.round(b.height), tallest: Math.round(tallest), escaping, controls, windowInsetTop }
+  })
+}
+
 /** How much of the viewport HEIGHT the shell's own chrome consumes, as a fraction. */
 export async function chromeShare(page: Page): Promise<{ px: number; frac: number; parts: Record<string, number> }> {
   return page.evaluate(() => {

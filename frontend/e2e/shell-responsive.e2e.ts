@@ -42,17 +42,21 @@ import { mkdirSync } from 'node:fs'
 import {
   PHONE_PORTRAIT, PHONE_LANDSCAPE, TABLET, DESKTOP, ALL_VIEWPORTS,
   MIN_FONT_PX, TOUCH_FLOOR, bootShell, shellKind, docSpill, spillingElements,
-  tinyText, smallTargets, scanned, chromeShare, type Viewport,
+  tinyText, smallTargets, scanned, chromeShare, barFit, type Viewport,
 } from './shell-responsive-harness'
 
 const SHOTS = 'test-results/shell-responsive'
 mkdirSync(SHOTS, { recursive: true })
 
 /**
- * The shell's own chrome, in both idioms.
+ * Every surface the shell itself draws, in both idioms.
  *
- * `.vshell-bar` is present but its sub-floor targets are handled separately —
- * see KNOWN_BAR_TARGETS below.
+ * `.vwidget-rail` is in this list and did not use to be. It carried 18 of the
+ * 19 sub-12px text nodes this sweep found on the desktop, in
+ * src/widgets/host/widgets.css — a file nobody owned. It was listed as reported-
+ * not-fixed for exactly as long as that was true, and folded in the moment it
+ * stopped being true. That is the whole lifecycle a named exemption is supposed
+ * to have; the failure mode is one that never ends.
  */
 const SHELL_ROOTS = [
   '.vmob-bar',                            // phone status bar
@@ -62,6 +66,7 @@ const SHELL_ROOTS = [
   '.vshell-bar',                          // desktop menu bar
   '.vdock-layer',                         // desktop dock
   '.vwin-titlebar',                       // window chrome
+  '.vwidget-rail',                        // desktop widget rail
 ]
 
 /**
@@ -94,31 +99,27 @@ const MIN_SCANNED: Record<'mobile' | 'desktop', Denominators> = {
 }
 
 /**
- * The desktop menu bar's sub-44px controls on a coarse pointer, by accessible
- * name, as measured at 1194×834 and 1366×1024.
+ * The desktop menu bar's sub-44px controls on a coarse pointer — EMPTY, and
+ * kept as an empty set on purpose.
  *
- * These are NOT exempt — they are an open defect with a reason, and asserting
- * the set by NAME is what keeps that honest. A seventh offender fails. Fixing
- * one of these does NOT fail (the assertion is containment, not equality),
- * because a gate that goes red when someone repairs the thing it guards teaches
- * people to delete gates.
+ * It used to hold six, measured at 1194×834 and 1366×1024: System menu 69×32
+ * (core/SystemPulse.tsx), Applications / Mission Control / Chat / Toggle
+ * fullscreen 28×28 (shell/TopBar.tsx), Theme 24×24 (core/ThemeToggle.tsx).
+ * `.vshell-btn` was 28px inside a 32px bar, and the bar's height was hard-coded
+ * in three files that had to agree — `h-8` in TopBar, `pt-8` in
+ * layouts/DesktopCanvas.tsx and `MENU_BAR_H = 32` in shell/windowTiling.ts —
+ * so growing it in some and not the rest would have opened every window 12px
+ * underneath it. All three read `--menubar-h` now, the token becomes 44px on a
+ * coarse pointer, and one rule on `.vshell-bar` gives all six controls the floor
+ * without editing the three components that draw them.
  *
- * Why they are open: `.vshell-btn` is 28px inside a 32px bar, and the bar's
- * height is hard-coded in THREE files that must agree — `h-8` in
- * shell/TopBar.tsx, `pt-8` in layouts/DesktopCanvas.tsx (the origin every window
- * is positioned against) and `MENU_BAR_H = 32` in shell/windowTiling.ts. Growing
- * the bar in the two this workstream owns and not the third would open every
- * window 12px UNDER the menu bar, on exactly the tablets the fix is for. See
- * roadmap/SHELL-RESPONSIVE.md.
+ * The set stays because the ASSERTION it feeds is the interesting part: any
+ * sub-44px control in the menu bar whose name is not in here fails. With the set
+ * empty that is simply "none", which is the strongest form of the rule and the
+ * one that needs no maintenance. Anyone reintroducing an exemption has to add a
+ * name to a list that documents what a name in it costs.
  */
-const KNOWN_BAR_TARGETS = new Set([
-  'System menu',        // core/SystemPulse.tsx  — 69×32
-  'Applications',       // shell/TopBar.tsx      — 28×28
-  'Mission Control',    // shell/TopBar.tsx      — 28×28
-  'Chat',               // shell/TopBar.tsx      — 28×28
-  'Toggle fullscreen',  // shell/TopBar.tsx      — 28×28
-  'Theme mode',         // core/ThemeToggle.tsx  — 24×24
-])
+const KNOWN_BAR_TARGETS = new Set<string>([])
 
 /**
  * There is no longer a width at which the shell is allowed to overflow.
@@ -216,13 +217,62 @@ async function assertTouchTargets(page: Page, vp: Viewport) {
   expect(rest, `${label}: sub-${TOUCH_FLOOR}px targets in the shell chrome — ${JSON.stringify(rest, null, 2)}`)
     .toEqual([])
 
-  // The menu bar's open set, by name. Anything not on the list is new.
-  const unexpected = barOnly.filter((s) => ![...KNOWN_BAR_TARGETS].some((k) => s.label.startsWith(k)))
+  // The menu bar, against its exemption set — which is empty, so this reads as
+  // "none, at all". Written as a filter rather than as `toEqual([])` so that
+  // reintroducing an exemption is a NAME someone has to add and defend, not an
+  // `if` someone can widen.
+  const exempt = [...KNOWN_BAR_TARGETS]
+  const unexpected = barOnly.filter((s) => !exempt.some((k) => s.label.startsWith(k)))
   expect(
     unexpected,
-    `${label}: a NEW sub-${TOUCH_FLOOR}px control in the desktop menu bar — ${JSON.stringify(unexpected, null, 2)}\n` +
-    `The known-open set is ${[...KNOWN_BAR_TARGETS].join(', ')}; see roadmap/SHELL-RESPONSIVE.md.`,
+    `${label}: sub-${TOUCH_FLOOR}px control(s) in the desktop menu bar — ${JSON.stringify(unexpected, null, 2)}\n` +
+    (exempt.length
+      ? `The known-open set is ${exempt.join(', ')}; see roadmap/SHELL-RESPONSIVE.md.`
+      : 'There is no known-open set: the menu bar clears the floor on a coarse pointer ' +
+        'via --menubar-h and the .vshell-bar rule in shell/shell-chrome.css.'),
   ).toEqual([])
+
+  /**
+   * And the bar CONTAINS them.
+   *
+   * Without this, the check above is satisfied by a 44px control overflowing a
+   * 32px bar — painted above and below it, over the window underneath, with the
+   * bar's background not behind it. Measured, and this is not hypothetical:
+   * mutating `--menubar-h` back to 2rem while leaving the controls' floor in
+   * place left all 24 cases GREEN. A guard that cannot distinguish "the bar grew
+   * to hold a compliant target" from "a compliant target burst the bar" is not
+   * measuring the fix, it is measuring one number the fix happens to move.
+   */
+  const fit = await barFit(page)
+  if (fit) {
+    expect(fit.controls, `${label}: no menu-bar controls were measured`).toBeGreaterThanOrEqual(4)
+    expect(
+      fit.escaping,
+      `${label}: menu-bar control(s) painted outside the bar — bar ${fit.barH}px, ` +
+      `tallest control ${fit.tallest}px — ${JSON.stringify(fit.escaping, null, 2)}`,
+    ).toEqual([])
+    expect(
+      fit.barH,
+      `${label}: the menu bar is ${fit.barH}px and its tallest control is ${fit.tallest}px`,
+    ).toBeGreaterThanOrEqual(fit.tallest)
+
+    /**
+     * The window layer's top inset agrees with the bar's height.
+     *
+     * Three files carry this number — `--menubar-h`, `pt-…` in
+     * layouts/DesktopCanvas.tsx, and MENU_BAR_H in shell/windowTiling.ts — and
+     * the reason an earlier pass refused to grow the bar at all was that
+     * growing some of them and not the rest opens every window UNDERNEATH it.
+     * That is now a rule rather than a promise.
+     */
+    if (fit.windowInsetTop >= 0) {
+      expect(
+        fit.windowInsetTop,
+        `${label}: windows are positioned against a ${fit.windowInsetTop}px top inset ` +
+        `while the menu bar is ${fit.barH}px tall — they open under the bar`,
+      ).toBe(fit.barH)
+    }
+  }
 }
 
 // ── the sweep is the size it says it is ─────────────────────────────────────
@@ -238,6 +288,12 @@ test('the sweep covers every bucket it claims to', () => {
   // that no previous mobile spec in this repository had.
   expect(PHONE_LANDSCAPE.every((v) => v.width > v.height), 'a "landscape" case is not landscape').toBe(true)
   expect(PHONE_PORTRAIT.every((v) => v.height > v.width), 'a "portrait" case is not portrait').toBe(true)
+  // The exemption sets are counted, not just consulted. Every tolerance this
+  // gate ever carried is now zero, and a hard-coded zero is what makes adding
+  // one back a visible, reviewable act rather than an edit inside a filter.
+  expect(KNOWN_BAR_TARGETS.size, 'a menu-bar touch-floor exemption was reintroduced').toBe(0)
+  expect(NARROW_SPILL_MAX_WIDTH, 'a horizontal-overflow tolerance was reintroduced').toBe(0)
+
   // And the narrowest phone and the widest tablet are actually in it.
   expect(Math.min(...PHONE_PORTRAIT.map((v) => v.width))).toBeLessThanOrEqual(360)
   expect(Math.max(...TABLET.map((v) => v.width))).toBeGreaterThanOrEqual(1366)
