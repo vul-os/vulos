@@ -219,7 +219,12 @@ export default function MobileStack() {
             <button
               onClick={() => setView('home')}
               aria-label="Back to home"
-              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-2 flex flex-1 items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
+              // h-11, not h-9. Measured 31.5×36 on a 360px phone with an app
+              // open: this is the labelled way out of a fullscreen app and it
+              // was under the 44px floor in BOTH axes at every phone width. The
+              // row is already 44px tall, so filling it costs no screen — the
+              // bar does not grow, the target does.
+              className="focus-primary -ml-1.5 h-11 pl-1.5 pr-2 flex flex-1 items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
               <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
               {/* The app's mark, and the first thing to go on a narrow phone —

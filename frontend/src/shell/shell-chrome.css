@@ -1081,14 +1081,23 @@
   .vwin-light {
     width: var(--touch-min, 44px);
     height: var(--touch-min, 44px);
+    /* `flex: none` — a control carrying a floor must not be shrinkable. This is
+       precautionary and is NOT the fix for anything measured: the 40×40 these
+       lights reported twice was `.win-anim`'s `scale(0.92)` open transform still
+       running when the box was read (index.css:778), not flex-shrink, and the
+       gate settles the animation now instead. Recorded that way round on
+       purpose — a fix credited to the wrong cause is how a repository ends up
+       with three fixes for one bug and no idea which one worked. `.vwin-lights`
+       IS a flex row, its main axis IS width, and the title beside these is
+       `flex-1 truncate`, so the shrink is real and available; it simply has not
+       been observed to bite. */
+    flex: none;
     padding: 12px;
     background-clip: content-box;
-    background-origin: content-box;
-  }
-  /* The state colours are declared with plain `background`, which the
-     shorthand-free rules above do not disturb — but the inset ring is drawn on
-     the border box and would ring the whole 44px square. */
-  .vwin-light {
+    /* The state colours (`.vwin[data-active] .vwin-light-close` and friends) are
+       plain `background` declarations, so they inherit this clip and stay inside
+       the 20px dot. The inset hairline cannot: it is drawn on the BORDER box and
+       would ring the whole 44px square, so it goes. */
     box-shadow: none;
   }
   /* And the glyphs come ON. `.vwin-light > svg` is `opacity: 0`, revealed only
