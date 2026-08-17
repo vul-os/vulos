@@ -217,3 +217,51 @@ func TestSetSystemHostnameRefusesGarbage(t *testing.T) {
 		t.Error("setSystemHostname accepted a 64-character name (RFC-1123 label max is 63)")
 	}
 }
+
+// TestIdentityExposesAUniqueDefaultName pins the prefill that stops the
+// collision being the default outcome.
+//
+// While every box defaulted to the bare "vulos", an owner who just clicked Next
+// landed on the same name as every sibling box — measured as vulos.local
+// resolving to a random box, with TLS succeeding on the wrong one because both
+// certificates carried that name. The wizard can only prefill a unique name if
+// the box tells it one.
+func TestIdentityExposesAUniqueDefaultName(t *testing.T) {
+	f := newFakeRenamer("01HZZZZZZZZZZZZZZZZZK3N7Q2", "")
+	mux := http.NewServeMux()
+	registerIdentityRoutes(mux, t.TempDir(), f)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/identity", nil))
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+
+	// The wizard reads data.ulid and data.hostname at the TOP LEVEL. Wrapping
+	// the instance would break both silently.
+	if _, ok := body["ulid"]; !ok {
+		t.Fatalf("ulid is no longer a top-level field: %s", rec.Body.String())
+	}
+	if _, ok := body["hostname"]; !ok {
+		t.Fatalf("hostname is no longer a top-level field: %s", rec.Body.String())
+	}
+
+	def, _ := body["default_hostname"].(string)
+	if def == "" {
+		t.Fatal("default_hostname is empty — the wizard has no unique name to prefill, so clicking Next puts every box on the same name")
+	}
+	if def == "vulos" {
+		t.Fatal("default_hostname is the shared \"vulos\" — this is exactly the collision")
+	}
+	if def != lan.DefaultHostname("01HZZZZZZZZZZZZZZZZZK3N7Q2") {
+		t.Fatalf("default_hostname = %q, want the derived per-instance name %q", def, lan.DefaultHostname("01HZZZZZZZZZZZZZZZZZK3N7Q2"))
+	}
+	if !lan.ValidHostnameLabel(def) {
+		t.Fatalf("default_hostname %q is not a valid hostname label", def)
+	}
+}

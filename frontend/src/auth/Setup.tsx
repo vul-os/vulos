@@ -84,7 +84,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
  * the wizard shows it and lets the user retry or knowingly continue, rather
  * than silently pretending.
  */
-type SaveResult = { ok: true } | { ok: false; message: string }
+type SaveResult = { ok: true; data: unknown } | { ok: false; message: string }
 
 async function saveToBox(url: string, init: RequestInit): Promise<SaveResult> {
   try {
@@ -93,7 +93,16 @@ async function saveToBox(url: string, init: RequestInit): Promise<SaveResult> {
       headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
       credentials: 'include',
     })
-    if (res.ok) return { ok: true }
+    // The success BODY is returned, not discarded. POST /api/identity/hostname
+    // answers 200 with applied_live:false when the box saved the name but is
+    // still answering to its old one on the network — and a caller that only
+    // sees `ok` cannot tell that apart from a rename that actually took
+    // effect. Throwing the body away here is what would force every caller to
+    // report success on a no-op.
+    if (res.ok) {
+      const body: unknown = await res.json().catch(() => null)
+      return { ok: true, data: body }
+    }
     const raw: unknown = await res.json().catch(() => ({}))
     const data = isRecord(raw) ? raw : {}
     const detail = typeof data.error === 'string' && data.error ? data.error : ''
@@ -2113,7 +2122,10 @@ function DesktopLayoutChoice() {
 // ═══════════════════════════════════
 // INIT-05: Identity Step
 // ═══════════════════════════════════
-function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
+// Exported for tests. The step is the only place the collision and the
+// not-live rename become visible to a human, so it is worth testing directly
+// rather than only through the whole wizard.
+export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
   const [IS05_loading, IS05_setLoading] = useState(true)
   const [IS05_saving, IS05_setSaving] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
@@ -2122,6 +2134,18 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
   // yet" from "we could not ask" — the wizard used to render both as the
   // literal string "auto-generated" in the Instance ID field.
   const [IS05_unreachable, IS05_setUnreachable] = useState(false)
+  // Availability of the typed name on the LAN: 'idle' | 'checking' | 'free' | 'taken'.
+  // A collision is surfaced WHILE THE OWNER TYPES. Without this, two boxes both
+  // claim the name and avahi silently renames the loser to vulos-2 hours later
+  // — a name that is in no certificate, so that box then fails TLS with no
+  // explanation the owner could connect to anything they did.
+  const [IS05_avail, IS05_setAvail] = useState<'idle' | 'checking' | 'free' | 'taken'>('idle')
+  const [IS05_takenBy, IS05_setTakenBy] = useState('')
+  // Set when the box SAVED the name but is still answering to its old one.
+  // The step refuses to advance until this has been shown once — a rename that
+  // reports success and changes nothing is the failure this project keeps
+  // finding, and the UI must not be the layer that reintroduces it.
+  const [IS05_notice, IS05_setNotice] = useState('')
 
   const t = (s: string) => s
 
@@ -2136,8 +2160,18 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
         const data = isRecord(raw) ? raw : {}
         const ulid = (typeof data.ulid === 'string' && data.ulid) || (typeof data.instance_id === 'string' && data.instance_id) || ''
         update('IS05_ulid', ulid)
+        // PREFILL WITH A UNIQUE NAME. This field used to be left EMPTY when the
+        // box had no chosen name, and an empty field meant handleNext skipped
+        // the POST entirely — so every box kept the shared default "vulos".
+        // Two boxes on one LAN then answered the same mDNS query: measured as a
+        // coin flip, with TLS succeeding on the WRONG box because both
+        // certificates carried that name. default_hostname is the box's
+        // per-instance name (vulos-<6 ULID chars>), so an owner who just clicks
+        // Next cannot collide with a sibling box.
         if (!IS05_hostnameEdited) {
-          update('IS05_hostname', (typeof data.hostname === 'string' && data.hostname) || '')
+          const chosen = typeof data.hostname === 'string' ? data.hostname : ''
+          const fallback = typeof data.default_hostname === 'string' ? data.default_hostname : ''
+          update('IS05_hostname', chosen || fallback)
         }
       })
       .catch(() => {
@@ -2154,8 +2188,45 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
       .finally(() => IS05_setLoading(false))
   }, [])
 
+  // Ask the box whether the typed name is already claimed on this LAN. Runs on
+  // a debounce so a fast typist does not emit a probe per keystroke; each probe
+  // costs a multicast query and up to ~750ms of waiting on the box.
+  useEffect(() => {
+    const name = config.IS05_hostname
+    if (!IS05_hostnameEdited || !name) {
+      IS05_setAvail('idle')
+      return
+    }
+    let cancelled = false
+    IS05_setAvail('checking')
+    const timer = setTimeout(() => {
+      fetch(`/api/identity/hostname/available?name=${encodeURIComponent(name)}`, { credentials: 'include' })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((raw: unknown) => {
+          if (cancelled) return
+          const data = isRecord(raw) ? raw : {}
+          if (data.available === false) {
+            IS05_setAvail('taken')
+            IS05_setTakenBy(typeof data.taken_by === 'string' ? data.taken_by : '')
+          } else {
+            IS05_setAvail('free')
+            IS05_setTakenBy('')
+          }
+        })
+        .catch(() => {
+          // Could not ask. Report NOTHING rather than a green tick: claiming a
+          // name is free when we never checked is worse than staying quiet.
+          if (!cancelled) IS05_setAvail('idle')
+        })
+    }, 400)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [config.IS05_hostname, IS05_hostnameEdited])
+
   const handleNext = async () => {
     IS05_setError('')
+    // The not-live notice has been shown; the owner pressed Continue again.
+    if (IS05_notice) { onNext(); return }
+
     if (config.IS05_hostname && IS05_hostnameEdited) {
       IS05_setSaving(true)
       const r = await saveToBox('/api/identity/hostname', {
@@ -2168,6 +2239,21 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
       // wizard as though the hostname had been set.
       if (!r.ok) {
         IS05_setError(`Could not set the hostname. ${r.message}`)
+        return
+      }
+      // A 200 is NOT the same as "the box is now answering to this name". The
+      // box replies applied_live:false when it saved the name but could not
+      // apply it to the running system (not root, no LAN service, not Linux),
+      // and it sends a notice saying a restart is needed. Advancing silently
+      // here would make the UI report a success the box explicitly declined to
+      // claim — the exact silent no-op this endpoint was fixed for. Show it,
+      // and require a second Continue so it cannot be missed.
+      const body = isRecord(r.data) ? r.data : {}
+      if (body.applied_live === false) {
+        const notice = typeof body.notice === 'string' && body.notice
+          ? body.notice
+          : 'The name is saved, but this box is still answering to its previous name on the network. Restart the box to finish the rename.'
+        IS05_setNotice(notice)
         return
       }
     }
@@ -2214,8 +2300,39 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
             placeholder="my-vulos-node"
             className="input text-base py-3 font-mono"
           />
-          <p className="text-[12px] wz-dim mt-1">{t('Lowercase letters, numbers and hyphens only')}</p>
+          <p className="text-[12px] wz-dim mt-1">
+            {t('Lowercase letters, numbers and hyphens only. Other devices reach this box at')}{' '}
+            <span className="wz-mono">{(config.IS05_hostname || 'name') + '.local'}</span>
+          </p>
+
+          {/* Availability on THIS LAN, while the owner types. */}
+          {IS05_avail === 'checking' && (
+            <p className="text-[12px] wz-dim mt-1" role="status">{t('Checking whether this name is free on your network…')}</p>
+          )}
+          {IS05_avail === 'free' && (
+            <p className="text-[12px] wz-dim mt-1" role="status">
+              {t('This name is free on your network.')}
+            </p>
+          )}
+          {IS05_avail === 'taken' && (
+            <p role="alert" className="wz-note wz-note--danger mt-2">
+              <span className="wz-note-icon" aria-hidden="true">!</span>
+              <span>
+                {t('Another Vulos box on this network already answers to that name')}
+                {IS05_takenBy ? ` (${IS05_takenBy})` : ''}
+                {t('. Pick a different one, or both boxes will end up unreachable by name.')}
+              </span>
+            </p>
+          )}
         </div>
+
+        {/* The box saved the name but is still answering to its old one. */}
+        {IS05_notice && (
+          <p role="alert" className="wz-note mt-2">
+            <span className="wz-note-icon" aria-hidden="true">!</span>
+            <span>{IS05_notice}</span>
+          </p>
+        )}
 
         {IS05_error && (
           <p role="alert" className="wz-note wz-note--danger">
@@ -2225,7 +2342,11 @@ function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps) {
         )}
       </div>
 
-      <NavBar onPrev={onPrev} onNext={handleNext} nextLabel={IS05_saving ? t('Saving…') : t('Continue')} />
+      <NavBar
+        onPrev={onPrev}
+        onNext={handleNext}
+        nextLabel={IS05_saving ? t('Saving…') : IS05_notice ? t('Continue anyway') : t('Continue')}
+      />
     </div>
   )
 }

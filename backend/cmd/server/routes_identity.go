@@ -65,6 +65,23 @@ type hostnameResponse struct {
 	TakenBy     string             `json:"taken_by,omitempty"`  // availability check only
 }
 
+// identityResponse is GET /api/identity's body.
+//
+// DefaultHostname is the per-instance name the box would use if nobody chose
+// one (lan.DefaultHostname — "vulos-<6 ULID chars>"). The wizard PREFILLS the
+// name field with it, and that prefill is load-bearing rather than cosmetic:
+// while every box defaulted to the bare "vulos", an owner who simply clicked
+// Next ended up on the same name as every sibling box, and two boxes on one
+// LAN then answered the same mDNS query — measured as a coin flip, with TLS
+// succeeding on the wrong box because both certificates carried that name.
+// Showing a unique name by default is what stops the collision being the
+// default outcome.
+type identityResponse struct {
+	*identity.Instance
+	DefaultHostname string   `json:"default_hostname"`
+	Names           []string `json:"names,omitempty"`
+}
+
 // registerIdentityRoutes wires the identity API into mux.
 //
 //	GET  /api/identity                    — returns the current Instance as JSON
@@ -80,8 +97,20 @@ func registerIdentityRoutes(mux *http.ServeMux, home string, renamer hostnameRen
 	}
 
 	mux.HandleFunc("GET /api/identity", func(w http.ResponseWriter, r *http.Request) {
+		// The Instance's own fields stay at the TOP LEVEL (embedded, untagged),
+		// because the wizard reads data.ulid and data.hostname directly and a
+		// wrapper would silently break both. The derived fields are added
+		// alongside.
+		resp := identityResponse{Instance: inst}
+		if renamer != nil {
+			ns := renamer.names()
+			resp.DefaultHostname = ns.Unique
+			resp.Names = ns.MDNS
+		} else {
+			resp.DefaultHostname = lan.DefaultHostname(inst.ULID)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(inst)
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// AVAILABILITY CHECK — the good answer to the two-box collision.
