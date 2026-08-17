@@ -187,7 +187,10 @@ async function main() {
     cwd: FE, encoding: 'utf8', stdio: 'inherit',
     // E2E_PORT points both the config's baseURL and assert-correct-app at OUR
     // server; reuseExistingServer then adopts it instead of building again.
-    env: { ...process.env, E2E_PORT: String(PORT) },
+    // E2E_OUT_DIR points build-freshness.e2e.ts at the directory actually being
+    // served. Without it that spec inspects the shared dist/, which is not what
+    // this run put on the wire.
+    env: { ...process.env, E2E_PORT: String(PORT), E2E_OUT_DIR: OUT_DIR },
   })
   if (pw.status !== 0) process.exitCode = pw.status ?? 1
 }

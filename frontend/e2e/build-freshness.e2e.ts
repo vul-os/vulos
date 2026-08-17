@@ -24,6 +24,22 @@ import { dirname, resolve, join, relative } from 'node:path'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
+/**
+ * The directory actually being SERVED.
+ *
+ * This file used to hard-code `dist/`, which made it a check about the
+ * filesystem while the browser reads a socket. scripts/e2e-isolated.mjs builds
+ * into a private outDir and serves that, precisely so a run cannot be handed
+ * another agent's bundle — and against such a run the old check inspected a
+ * `dist/` nobody was serving and reported on it either way. It failed loudly
+ * there (a stale shared dist/), which was luck: had the shared dist/ been fresh
+ * it would have reported PASS about bytes no browser ever fetched.
+ *
+ * So the subject comes from the harness. Default `dist` keeps the plain
+ * `npm run test:e2e` path unchanged.
+ */
+const OUT_DIR = process.env.E2E_OUT_DIR || 'dist'
+
 /** Newest mtime under a directory, and which file it was. */
 function newest(dir: string): { mtime: number; file: string | null } {
   let best: { mtime: number; file: string | null } = { mtime: 0, file: null }
@@ -50,16 +66,16 @@ function newest(dir: string): { mtime: number; file: string | null } {
 
 test('the served bundle is not older than the source', () => {
   const src = newest(resolve(ROOT, 'src'))
-  const dist = newest(resolve(ROOT, 'dist'))
+  const dist = newest(resolve(ROOT, OUT_DIR))
 
   expect(src.file, 'no source files were found; this check would pass vacuously').not.toBeNull()
-  expect(dist.file, 'no dist/ was found — nothing was built for these tests to run against').not.toBeNull()
+  expect(dist.file, `no ${OUT_DIR}/ was found — nothing was built for these tests to run against`).not.toBeNull()
 
   // Two seconds covers a build writing its own output. A real edit leaves minutes.
   const staleBySeconds = (src.mtime - dist.mtime) / 1000
   expect(
     staleBySeconds,
-    `dist/ is ${staleBySeconds.toFixed(0)}s older than src/.\n` +
+    `${OUT_DIR}/ is ${staleBySeconds.toFixed(0)}s older than src/.\n` +
       `  newest source: ${src.file}\n` +
       `  newest built:  ${dist.file}\n` +
       'playwright.config.js reuses an existing preview server locally, which SKIPS the ' +
@@ -82,7 +98,7 @@ test('a token from the source appears in the built bundle', () => {
   expect(accent, 'could not read --accent from src/index.css; this check needs updating').not.toBeNull()
 
   const wanted = accent![1].toLowerCase()
-  const assets = resolve(ROOT, 'dist/assets')
+  const assets = resolve(ROOT, `${OUT_DIR}/assets`)
   let found = false
   let files = 0
   for (const f of readdirSync(assets)) {
@@ -97,6 +113,6 @@ test('a token from the source appears in the built bundle', () => {
   expect(
     found,
     `--accent is ${wanted} in src/index.css and appears in none of the ${files} built ` +
-      'stylesheets — dist/ was produced from different source than the one on disk.',
+      `stylesheets — ${OUT_DIR}/ was produced from different source than the one on disk.`,
   ).toBe(true)
 })
