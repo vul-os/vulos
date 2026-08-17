@@ -56,6 +56,17 @@ const ROUTES = {
     ],
     sources_active: ['vulos', 'phone', 'box-sim'],
   }),
+  // The EDITABLE cards. Now that Contacts and Phone are one surface, the
+  // contacts page is the real address book rather than the dialler's read-only
+  // copy — without these it would render its empty state and the contrast scan
+  // would measure a nearly blank pane while reporting a pass.
+  'GET /api/pim/contacts/cards': json({
+    contacts: [
+      { uid: 'u1', name: 'Priya Naidoo', org: 'Kestrel Labs', title: 'Field engineer', note: 'Prefers a call before nine.', emails: ['priya@example.org'], phones: ['+27 83 111 2222'] },
+      { uid: 'u3', name: 'Ayanda Khumalo', org: '', title: '', note: '', emails: ['ayanda@example.org'], phones: ['+27 82 999 8888'] },
+    ],
+  }),
+  'GET /api/telephony/call/active': json({ active: false }),
 }
 
 const THEMES = ['dark', 'light'] as const

@@ -1,5 +1,14 @@
-// phone-merged.e2e.ts — the merged Phone app (Recents + Contacts + Keypad +
-// Messages) in a real browser, against a deterministic fake box.
+// phone-merged.e2e.ts — the ONE contacts-and-calls surface in a real browser,
+// against a deterministic fake box.
+//
+// WHAT MERGED, AND WHAT THAT DID TO THIS FILE. Vulos had two surfaces over one
+// address book: `vulos-contacts` (editable cards) and `vulos-phone` (a dialler
+// carrying its own read-only copy). They are now one component with PEOPLE on
+// the front page, and both app ids render it. The assertions here that assumed
+// the old vehicle — that the app opens on Recents, that its contacts tab is a
+// read-only list of its own, that a modem-less box shows a dead end with an
+// "Open contacts" button — have been rewritten against the new one. The
+// PROPERTIES they protect are unchanged and are all still asserted below.
 //
 // The properties these tests exist to protect, in order of how badly they
 // failed before:
@@ -18,6 +27,12 @@
 //      POST /api/telephony/call with status 200 and an error body when there is
 //      no modem, so checking res.ok alone reports a call that never happened as
 //      a success.
+//
+//   4. A box with NO modem — most Vulos boxes — gets a complete address book
+//      and is not offered a dial pad or an SMS inbox it can never use.
+//
+//   5. The in-call bar reflects what the MODEM reports, never the fact that a
+//      dial was posted.
 
 import { test, expect, type Page } from '@playwright/test'
 import { installBackend, json } from './mock-backend.js'
@@ -57,13 +72,31 @@ const CONTACTS = {
 
 type Routes = Record<string, unknown>
 
+// The EDITABLE cards, which are what the people pane reads. Distinct from the
+// unified list above, which is the box's merged index (CardDAV + box SIM +
+// pushed phone book) and is what puts names on call rows.
+const CARDS = {
+  contacts: [
+    { uid: 'u1', name: 'Priya Naidoo', org: 'Kestrel Labs', title: '', note: '', emails: ['priya@example.org'], phones: ['+27 83 111 2222'] },
+  ],
+}
+
+const NO_CALL = { active: false }
+
 const ROUTES_OK: Routes = {
   'GET /api/telephony/status': json(MODEM_PRESENT),
   'GET /api/telephony/virtual/status': json({ configured: false, can_call: false }),
   'GET /api/telephony/calls': json(GSM_CALLS),
+  'GET /api/telephony/call/active': json(NO_CALL),
   'GET /api/telephony/sms/threads': json([]),
   'GET /api/peering/call/history': json(PEER_CALLS),
   'GET /api/contacts/unified': json(CONTACTS),
+  'GET /api/pim/contacts/cards': json(CARDS),
+}
+
+/** Move to a page of the merged surface. Contacts is where it opens. */
+async function openTab(page: Page, name: 'Contacts' | 'Recents' | 'Keypad' | 'Messages') {
+  await page.locator('[data-phone-app]').getByRole('tab', { name }).click()
 }
 
 async function bootPhone(page: Page, theme: 'dark' | 'light', overrides: Routes = {}) {
@@ -101,6 +134,10 @@ test.describe('Phone works on a box whose modem is not a phone', () => {
 
     await expect(app(page)).toContainText('SMS only')
 
+    // Recents is where the call buttons live now that the surface opens on
+    // people — the pages moved, the property did not.
+    await openTab(page, 'Recents')
+
     // Every call button is disabled, and the reason is on the button itself.
     const callButtons = app(page).locator('button[aria-label^="Call"]')
     const n = await callButtons.count()
@@ -111,23 +148,53 @@ test.describe('Phone works on a box whose modem is not a phone', () => {
     }
   })
 
-  test('a box with no modem names the hardware to plug in, and still hands over contacts', async ({ page }) => {
+  test('a box with no modem opens straight onto a working address book', async ({ page }) => {
+    // THE COMMON CASE. Most Vulos boxes have no modem, and on those this
+    // surface has to be a good Contacts app — not a dialler apologising for
+    // itself. It used to open on a dead end with an "Open contacts" escape
+    // hatch; now the address book IS the app and the telephony pages are
+    // simply not there.
     await bootPhone(page, 'dark', { 'GET /api/telephony/status': json(MODEM_NONE) })
 
+    await expect(app(page)).toContainText('Priya Naidoo')
+
+    // A dial pad and an SMS inbox could only ever be empty and could only ever
+    // fail, so neither is offered at all.
+    await expect(app(page).getByRole('tab', { name: 'Keypad' })).toHaveCount(0)
+    await expect(app(page).getByRole('tab', { name: 'Messages' })).toHaveCount(0)
+  })
+
+  test('a box with no modem names the hardware to plug in, generically', async ({ page }) => {
+    await bootPhone(page, 'dark', {
+      'GET /api/telephony/status': json(MODEM_NONE),
+      'GET /api/telephony/calls': json([]),
+      'GET /api/peering/call/history': json([]),
+    })
+
+    // Recents is where "why is there no dialler here?" gets answered.
+    await openTab(page, 'Recents')
     await expect(app(page)).toContainText('No SIM or modem on this box')
     await expect(app(page)).toContainText(/USB LTE/i)
     await expect(app(page)).toContainText(/ModemManager/i)
     expect((await app(page).innerText()).toLowerCase()).not.toContain('android')
+  })
 
-    // The address book is not hardware-dependent, so it is still reachable.
-    await app(page).getByRole('button', { name: 'Open contacts' }).click()
-    await expect(app(page)).toContainText('Priya Naidoo')
+  test('a contact’s number says why it cannot be called, rather than pretending', async ({ page }) => {
+    await bootPhone(page, 'dark', { 'GET /api/telephony/status': json(MODEM_NONE) })
+
+    await app(page).getByText('Priya Naidoo').first().click()
+    const detail = app(page).locator('[data-contact-detail]')
+    await expect(detail).toBeVisible()
+    await expect(detail.locator('[data-call-number]')).toBeDisabled()
+    await expect(detail).toContainText(/No modem is connected to this box/i)
+    expect((await detail.innerText()).toLowerCase()).not.toContain('android')
   })
 })
 
 test.describe('Recents is one list', () => {
   test('merges GSM and Vulos-to-Vulos calls in time order, and resolves names from the address book', async ({ page }) => {
     await bootPhone(page, 'dark')
+    await openTab(page, 'Recents')
 
     // The GSM row's raw number is +27831112222; the contact stores it as
     // "+27 83 111 2222". Matching on the last 9 digits is what makes the call
@@ -152,6 +219,7 @@ test.describe('Recents is one list', () => {
 
   test('a peer row offers no redial, because a Vulos call has no number and cannot be placed', async ({ page }) => {
     await bootPhone(page, 'dark')
+    await openTab(page, 'Recents')
     const peerRow = app(page).locator('li').filter({ hasText: 'Thandi Mokoena' })
     await expect(peerRow.locator('button[aria-label^="Call"]')).toHaveCount(0)
     // The GSM rows next to it DO offer it.
@@ -166,17 +234,29 @@ test.describe('a broken box never wears the face of an empty one', () => {
       'GET /api/telephony/calls': json({ error: 'internal' }, 500),
       'GET /api/peering/call/history': json([]),
     })
+    await openTab(page, 'Recents')
 
     await expect(app(page).getByRole('alert')).toBeVisible()
     await expect(app(page)).not.toContainText('No calls yet')
   })
 
-  test('a 500 on contacts shows an error, NOT "No contacts yet"', async ({ page }) => {
-    await bootPhone(page, 'dark', { 'GET /api/contacts/unified': json({ error: 'boom' }, 500) })
-    await app(page).getByRole('tab', { name: 'Contacts' }).click()
+  test('a 500 on the editable cards shows the unavailable state, NOT an empty book', async ({ page }) => {
+    await bootPhone(page, 'dark', { 'GET /api/pim/contacts/cards': json({ error: 'boom' }, 502) })
 
-    await expect(app(page).getByRole('alert')).toBeVisible()
+    await expect(app(page)).toContainText(/Contacts unavailable/i)
     await expect(app(page)).not.toContainText('No contacts yet')
+  })
+
+  test('a 500 on the UNIFIED sources says the list is short, instead of hiding it', async ({ page }) => {
+    // The nastier half of the same defect, and the one that was live: the
+    // people pane's unified read ended in `.catch(() => [])`, so a broken box
+    // silently dropped every contact that lives only on the box SIM or the
+    // pushed phone book. The editable cards still render — this is a WARNING
+    // on a working list, not a dead app — but the omission must be stated.
+    await bootPhone(page, 'dark', { 'GET /api/contacts/unified': json({ error: 'boom' }, 500) })
+
+    await expect(app(page)).toContainText('Priya Naidoo')
+    await expect(app(page).getByRole('alert')).toContainText(/may be missing people/i)
   })
 
   test('an unreadable body (a JSON object where a list belongs) is an error, not an empty list', async ({ page }) => {
@@ -187,9 +267,70 @@ test.describe('a broken box never wears the face of an empty one', () => {
       'GET /api/telephony/calls': json({ notAList: true }),
       'GET /api/peering/call/history': json([]),
     })
+    await openTab(page, 'Recents')
 
     await expect(app(page).getByRole('alert')).toBeVisible()
     await expect(app(page)).not.toContainText('No calls yet')
+  })
+})
+
+test.describe('the call that is happening right now', () => {
+  test('the in-call bar is drawn from the MODEM, not from the dial we sent', async ({ page }) => {
+    // The box reports no call, whatever we post. A bar driven by "we posted a
+    // dial" would appear here and offer a Hang up that hangs up nothing.
+    await bootPhone(page, 'dark')
+    await page.route('**/api/telephony/call', (route) =>
+      route.fulfill(json({ ok: true }) as Parameters<typeof route.fulfill>[0]))
+
+    await app(page).getByText('Priya Naidoo').first().click()
+    await app(page).locator('[data-call-number]').click()
+
+    await expect(app(page).locator('[data-in-call-bar]')).toHaveCount(0)
+  })
+
+  test('a call the modem reports gets a bar and a Hang up that reaches the box', async ({ page }) => {
+    await bootPhone(page, 'dark', {
+      'GET /api/telephony/call/active': json({ active: true, number: '+27831112222', direction: 'outgoing', state: 'active' }),
+    })
+
+    const bar = app(page).locator('[data-in-call-bar]')
+    await expect(bar).toBeVisible({ timeout: 10_000 })
+    await expect(bar).toContainText('On a call')
+    // Resolved against the address book: the modem reports +27831112222 and the
+    // card stores "+27 83 111 2222".
+    await expect(bar).toContainText('Priya Naidoo')
+
+    const posts: string[] = []
+    await page.route('**/api/telephony/call/hangup', async (route) => {
+      posts.push(route.request().url())
+      await route.fulfill(json({ ok: true }) as Parameters<typeof route.fulfill>[0])
+    })
+    await bar.locator('[data-call-hangup]').click()
+    await expect.poll(() => posts.length).toBeGreaterThan(0)
+  })
+
+  test('a ringing inbound call offers Answer and Decline, not Hang up', async ({ page }) => {
+    await bootPhone(page, 'dark', {
+      'GET /api/telephony/call/active': json({ active: true, number: '+27831112222', direction: 'incoming', state: 'ringing-in' }),
+    })
+
+    const bar = app(page).locator('[data-in-call-bar]')
+    await expect(bar).toBeVisible({ timeout: 10_000 })
+    await expect(bar).toContainText('Incoming call')
+    await expect(bar.locator('[data-call-answer]')).toBeVisible()
+    await expect(bar.locator('[data-call-hangup]')).toHaveCount(0)
+  })
+
+  test('a box with no modem never draws an in-call bar', async ({ page }) => {
+    // The poll is not even issued without a line — but the guarantee that
+    // matters to a user is the absence of the bar, so that is what is asserted.
+    await bootPhone(page, 'dark', {
+      'GET /api/telephony/status': json(MODEM_NONE),
+      'GET /api/telephony/call/active': json({ active: true, number: '+27831112222', direction: 'incoming', state: 'active' }),
+    })
+
+    await expect(app(page)).toContainText('Priya Naidoo')
+    await expect(app(page).locator('[data-in-call-bar]')).toHaveCount(0)
   })
 })
 
@@ -207,7 +348,7 @@ test.describe('dialling', () => {
       await route.fulfill(json({ ok: true }) as Parameters<typeof route.fulfill>[0])
     })
 
-    await app(page).getByRole('tab', { name: 'Keypad' }).click()
+    await openTab(page, 'Keypad')
     for (const k of ['0', '8', '3', '1', '2', '3', '4', '5', '6', '7']) {
       await app(page).getByRole('button', { name: k, exact: true }).click()
     }
@@ -225,7 +366,7 @@ test.describe('dialling', () => {
       'POST /api/telephony/call': json({ error: 'telephony: no modem' }),
     })
 
-    await app(page).getByRole('tab', { name: 'Keypad' }).click()
+    await openTab(page, 'Keypad')
     for (const k of ['0', '8', '3', '1', '2', '3', '4', '5', '6', '7']) {
       await app(page).getByRole('button', { name: k, exact: true }).click()
     }
@@ -262,6 +403,7 @@ test.describe('layout follows the app’s own width, not the viewport', () => {
     await drag(1180)
     await expect.poll(() => el.getAttribute('data-phone-size'), { timeout: 10_000 }).toBe('wide')
     // Wide is the two-pane layout: a list rail AND a detail pane.
+    await openTab(page, 'Recents')
     await expect(el).toContainText('Pick a call')
 
     await drag(420)
