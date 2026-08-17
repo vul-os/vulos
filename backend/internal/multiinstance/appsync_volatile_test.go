@@ -598,3 +598,58 @@ func ageReRealisationIfAny(t *testing.T, b *box, instanceULID string, d time.Dur
 		t.Fatalf("age re-realisation: %v", err)
 	}
 }
+
+// TestAnOrdinaryLocalWriteDoesNotEraseTheRerealisationCount pins the claim that
+// makes the counter safe to have added to a row with a dozen existing writers.
+//
+// LocalInstall, LocalUninstall, ReportRealiseFailure and the three partial rows
+// mergeEntry builds for its LWW tie-breaks all pass the zero value for the
+// count, because none of them knows it exists. Under last-write-wins each of
+// them is NEWER than the re-realisation that set it, so each would erase it —
+// and the erasure would be invisible, because every one of those writes is
+// correct in every other respect.
+func TestAnOrdinaryLocalWriteDoesNotEraseTheRerealisationCount(t *testing.T) {
+	const ulidA = "01HWZMINST00000000000ERAS"
+	_, as := openTempAppSync(t)
+	if _, err := as.GenerateAndSetIdentity(ulidA); err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	if err := as.DesireInstall(ulidA, "browser", "1.0.0"); err != nil {
+		t.Fatalf("DesireInstall: %v", err)
+	}
+	if _, err := as.Reconcile(context.Background(), ulidA, newVolatileRealiser(nil, liveOverlayReason)); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	if _, err := as.Reconcile(context.Background(), ulidA, newVolatileRealiser(nil, liveOverlayReason)); err != nil {
+		t.Fatalf("re-realise: %v", err)
+	}
+
+	for _, step := range []struct {
+		name string
+		do   func() error
+	}{
+		{"LocalInstall", func() error { return as.LocalInstall(ulidA, "browser", "1.0.0") }},
+		{"ReportRealiseFailure", func() error {
+			return as.ReportRealiseFailure(ulidA, "browser", "1.0.0", "download timed out")
+		}},
+		{"LocalUninstall", func() error { return as.LocalUninstall(ulidA, "browser") }},
+	} {
+		if err := step.do(); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		rows, err := as.ListAppsForInstance(ulidA, true)
+		if err != nil {
+			t.Fatalf("list after %s: %v", step.name, err)
+		}
+		var count int
+		for _, r := range rows {
+			if r.AppID == "browser" {
+				count = r.ReRealiseCount
+			}
+		}
+		if count != 1 {
+			t.Fatalf("%s reset the re-realisation count to %d (want 1) — it is a grow-only counter and that write knows nothing about it; "+
+				"the box would forget it had ever re-downloaded anything the next time it reported an ordinary install", step.name, count)
+		}
+	}
+}
