@@ -119,6 +119,26 @@ describe('a box with no telephony hardware', () => {
     expect(shown.toLowerCase()).not.toContain('android')
   })
 
+  it('a BROKEN telephony service never wears the face of a missing modem', async () => {
+    // These two ask the user to do completely different things: one means buy
+    // hardware, the other means the box is broken and the modem may be sitting
+    // there working fine. Rendering them the same way sends someone shopping.
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input).replace(/^https?:\/\/[^/]+/, '').split('?')[0]
+      if (path === '/api/telephony/status') {
+        return new Response(JSON.stringify({ error: 'boom' }), { status: 500 })
+      }
+      return new Response(JSON.stringify(defaultFor(`GET ${path}`)), { status: 200 })
+    }) as unknown as typeof fetch
+
+    render(<Contacts />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('tab', { name: /Recents/ }))
+
+    await screen.findByText(/Telephony isn’t answering/i)
+    expect(screen.queryByText(/No SIM or modem on this box/i)).toBeNull()
+  })
+
   it('says on the contact card itself why the number cannot be called', async () => {
     render(<Contacts />)
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument())
