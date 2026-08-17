@@ -176,9 +176,72 @@ describe('icon coverage — every reachable app id resolves, and none collide', 
   // so the guard is tightened to the actual data source: an id must resolve
   // via ART or APP_LOGOS specifically, not merely "AppIconTile produced some
   // element."
-  it('every statically-registered app id has its OWN bundled art or logo (not just the network-dependent desktop-icon fallback)', () => {
-    const unbundled = STATIC_APP_IDS.filter((id) => !hasArt(id) && !Object.prototype.hasOwnProperty.call(APP_LOGOS, id))
-    expect(unbundled, 'ids relying on the desktop-icon/letter fallback instead of shipping their own art or logo').toEqual([])
+  // "Has an icon" is NOT the same question for a first-party app and for
+  // somebody else's Flatpak, and asking it as one question is what made this
+  // block go red when the catalogue grew 56 → 74.
+  //
+  //   - A builtin, a default web app, or a first-party product must ship its
+  //     OWN tile. Nobody else will provide one, so the alternative is a bare
+  //     letter in the launcher. That stays a hard failure.
+  //
+  //   - A `type: "desktop"` catalogue entry is a third-party application whose
+  //     real icon ships INSIDE the Flatpak; the box serves it from the
+  //     installed desktop entry at /api/desktop/icon/<id>. Bundling a copy
+  //     would mean vendoring a third party's logo into this repo, or drawing a
+  //     lookalike — and this fleet's policy is that an icon is never invented:
+  //     an app with no legitimate icon of ours gets the honest fallback. So
+  //     those ids take the runtime path DELIBERATELY.
+  //
+  // The classification is READ OFF THE REGISTRY's own `type` field rather than
+  // written out as a list of 18 ids, because a hand-maintained exemption table
+  // is exactly how this fleet's icon sets drifted from their source in the
+  // first place. The three assertions below then make the exemption prove
+  // itself: it must be non-trivial, it must not swallow a first-party app, and
+  // the path it points at must actually render.
+  const desktopCatalogIds = new Set(
+    Object.entries(registry.apps as Record<string, { type?: string }>)
+      .filter(([, entry]) => entry?.type === 'desktop')
+      .map(([id]) => id),
+  )
+  const mustBundleIds = STATIC_APP_IDS.filter((id) => !desktopCatalogIds.has(id))
+
+  it('every first-party id (builtin, web app, non-desktop catalogue entry) ships its OWN bundled art or logo', () => {
+    // Guard the guard: if `type` is ever renamed, desktopCatalogIds goes empty
+    // and this becomes the old, over-strict question; if it matches everything,
+    // this assertion inspects nothing. Both fail here first.
+    expect(mustBundleIds.length, 'ids held to the bundled-icon rule').toBeGreaterThanOrEqual(45)
+    expect(desktopCatalogIds.size, 'type:"desktop" catalogue entries').toBeGreaterThanOrEqual(20)
+
+    const unbundled = mustBundleIds.filter((id) => !hasArt(id) && !Object.prototype.hasOwnProperty.call(APP_LOGOS, id))
+    expect(unbundled, 'first-party ids relying on the desktop-icon/letter fallback instead of shipping their own art or logo').toEqual([])
+  })
+
+  it('the desktop-entry exemption cannot be used to excuse a first-party app', () => {
+    // A first-party app must not become exempt by being catalogued as
+    // type:"desktop" — that would turn the rule above into a switch anyone can
+    // flip, and a Vulos product has no third-party desktop entry to fall back
+    // on.
+    const firstParty = new Set([...builtinIds, ...webAppIds])
+    const excused = [...desktopCatalogIds].filter((id) => firstParty.has(id))
+    expect(excused, 'first-party ids catalogued as type:"desktop", which would exempt them from shipping an icon').toEqual([])
+  })
+
+  it('every id taking the desktop-entry exemption actually renders that fallback, not a bare letter', () => {
+    const exempt = [...desktopCatalogIds].filter((id) => !hasArt(id) && !Object.prototype.hasOwnProperty.call(APP_LOGOS, id))
+    // If nothing is exempt the assertion below would pass vacuously, and the
+    // catalogue would have quietly gained 18 bundled logos nobody reviewed.
+    expect(exempt.length, 'ids relying on the desktop-entry icon').toBeGreaterThan(0)
+
+    const notRendering: string[] = []
+    for (const id of exempt) {
+      const { container, unmount } = render(createElement(AppIconTile, { id, size: 48 }))
+      const img = container.querySelector('img')
+      if (img?.getAttribute('src') !== `/api/desktop/icon/${id}`) {
+        notRendering.push(`${id} → ${img?.getAttribute('src') ?? 'no <img>'}`)
+      }
+      unmount()
+    }
+    expect(notRendering, 'these ids are exempt from bundling an icon on the grounds that the box serves the installed desktop entry — so that is what they must render').toEqual([])
   })
 
   it('no two statically-registered ids render the identical icon', () => {
