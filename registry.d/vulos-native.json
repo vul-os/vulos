@@ -1,0 +1,745 @@
+{
+  "_measurement": "EVERY checksum below was computed from bytes downloaded on 2026-08-17 and was written into this file BY A SCRIPT reading those measurements \u2014 no digest was typed by hand, because hand-copying twenty-two digests is exactly how a fabricated one enters a catalogue. Five of them (conduit amd64, gitea amd64, navidrome amd64, cinny, element-call, drawio) turned out to be byte-identical to digests the shipped registry already carried from an independent earlier measurement; those six agreements are the control on the run.",
+  "_not_verified": "NO INSTALL WAS RUN. These recipes are pinned and their archive layouts were read out of the downloaded archives, but scripts/verify-app-recipe.sh has not been executed for any of them and roadmap/app-verification-ledger.json is untouched. `command`, `port` and `post_install` are therefore UNPROVEN. Every entry that ships _disabled today stays _disabled here.",
+  "_signing": "UNSIGNED BY CONSTRUCTION \u2014 every entry carries \"signature\": \"\". VerifyEntrySignature fails closed on an empty signature, so these are inert until the founder's ceremony (`make sign-registry RELEASE_PRIV=\u2026`). Do not set VULOS_SIGN_ALLOW_KEY_MISMATCH.",
+  "_source": "registry.d/vulos-native.json \u2014 the apt/raw-shell/single-download entries re-expressed in the ONE Vulos-native install format (roadmap/INSTALL-METHODOLOGY.md). Staged for the single writer of registry.json; do NOT merge without re-signing.",
+  "apps": {
+    "audiomass": {
+      "_note": "`git clone --depth=1` of the DEFAULT BRANCH -> a COMMIT-pinned source archive. AudioMass publishes no GitHub release at all (the releases API returns 404), so there is no tag to pin and the old recipe installed whatever master happened to be that day \u2014 the reproducibility failure this whole migration is about, in its purest form. Pinned to commit 2ac3801a476822c236d9914f9ef4d2d01f9131e6 (2026-05-25). The site lives in src/, so archive_strip is 2. The version key is the commit date because upstream declares no version.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "pkalogiros",
+      "category": "media",
+      "description": "Browser-based audio editor \u2014 lightweight waveform editing, cut/copy/paste, effects, and format export; replaces Audacity for quick edits",
+      "homepage": "https://audiomass.co",
+      "icon": "AudioMass",
+      "icon_url": "",
+      "keywords": [
+        "audio",
+        "editor",
+        "waveform",
+        "effects",
+        "web",
+        "audacity"
+      ],
+      "license": "MIT",
+      "name": "AudioMass",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "2026-05-25": {
+          "archive_strip": 2,
+          "artifacts": {
+            "amd64": {
+              "checksum": "0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103",
+              "download_url": "https://github.com/pkalogiros/AudioMass/archive/2ac3801a476822c236d9914f9ef4d2d01f9131e6.tar.gz"
+            },
+            "arm64": {
+              "checksum": "0e6d9bbab74dc6864ba6925a960aae7650b2cd07002c46e678c0847de808f103",
+              "download_url": "https://github.com/pkalogiros/AudioMass/archive/2ac3801a476822c236d9914f9ef4d2d01f9131e6.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "cinny": {
+      "_note": "raw shell -> artifacts. The old recipe was wget + inline sha256sum + tar, which is the exact shape INSTALL-01 removes; the digest it checked is byte-identical to the one measured here. The payload is a static bundle and therefore architecture-independent, so it is listed under BOTH arches with one URL and one digest. extract_dir keeps it out of the app root: `--directory .` would serve data/, which is a symlink to the owner's data directory.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Cinny Contributors",
+      "category": "network",
+      "description": "Modern Matrix client \u2014 clean, fast web UI for chatting on any Matrix homeserver including a local Conduit instance",
+      "homepage": "https://cinny.in",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "chat",
+        "client",
+        "messaging",
+        "web",
+        "element-alternative"
+      ],
+      "license": "AGPL-3.0",
+      "name": "Cinny",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "4.12.1": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
+              "download_url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz"
+            },
+            "arm64": {
+              "checksum": "b67f8a597d607eef7c286fcc7dc6999b4aad093238f4d48298902bc56a0d0dfc",
+              "download_url": "https://github.com/cinnyapp/cinny/releases/download/v4.12.1/cinny-v4.12.1.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "code-server": {
+      "_note": "THE ENTRY THAT NAMED THIS PROBLEM. Its recipe carried a FABRICATED sha256 piped into `|| true`, so `dpkg -i` ran whatever the network returned. Now pinned to real per-arch digests measured today, and arm64 is gained (the old recipe was amd64 .deb only). IT STAYS _disabled DELIBERATELY: it was disabled for a TRUST failure, and re-enabling it on the strength of an install nobody has run would be the same mistake in the other direction. Enable it after `scripts/verify-app-recipe.sh code-server` passes, not before.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Coder Technologies",
+      "category": "developer",
+      "description": "VS Code in the browser \u2014 full IDE with extensions, terminal, Git integration, and language servers, served over HTTP",
+      "homepage": "https://coder.com/docs/code-server",
+      "icon": "code-server",
+      "icon_url": "",
+      "keywords": [
+        "vscode",
+        "ide",
+        "editor",
+        "developer",
+        "code",
+        "terminal",
+        "extensions",
+        "browser"
+      ],
+      "license": "MIT",
+      "name": "code-server",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "4.100.2": {
+          "_disabled": true,
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "dd43f789bd218f56985d771306c19c4424cd75adcf9955a9183e546f81a6ce44",
+              "download_url": "https://github.com/coder/code-server/releases/download/v4.100.2/code-server-4.100.2-linux-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "13eb5e281c93080a5a0cbb807892e675d98e9ccd5144a9d4dd39533977b94a32",
+              "download_url": "https://github.com/coder/code-server/releases/download/v4.100.2/code-server-4.100.2-linux-arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/code-server --bind-addr 0.0.0.0:${PORT} --auth none --disable-telemetry data/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "conduit": {
+      "_note": "amd64 -> amd64+arm64. The shipped recipe named the binary `bin/conduwuit-linux-amd64` in `command`, so the arm64 asset that has been in the same release all along could never be used: one command string, one arch-specific filename. binary_name pins both to bin/conduwuit. The port is a LITERAL because ${PORT} is not expanded during post_install (only into `command`, at launch) and appPort is taken verbatim from this recipe's `port`. The amd64 digest is byte-identical to the one the shipped entry already carried, which is the control on this whole measurement run.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Continuwuity Contributors (community continuation of Famedly's Conduit / conduwuit)",
+      "category": "network",
+      "description": "Lightweight Matrix homeserver written in Rust \u2014 RocksDB backend, federation-ready, single binary, runs on localhost. Ships as Continuwuity, the actively maintained continuation of Conduit/conduwuit.",
+      "homepage": "https://continuwuity.org",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "chat",
+        "homeserver",
+        "messaging",
+        "federation",
+        "self-hosted",
+        "conduwuit",
+        "continuwuity"
+      ],
+      "license": "Apache-2.0",
+      "name": "Conduit",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "service",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "0.5.9": {
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "4189cd91086b0e46b6ab8b0b3677ccd4abfca6686e66915e1857a963430564de",
+              "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "d325133456241bf64e4dec5dc905fc0513b1e3fb7eaaa927f51726b801a9d3d2",
+              "download_url": "https://forgejo.ellis.link/continuwuation/continuwuity/releases/download/v0.5.9/conduwuit-linux-arm64"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "conduwuit",
+          "checksum": "",
+          "command": "bin/conduwuit --config data/conduit.toml",
+          "deps": [
+            "liburing2",
+            "ca-certificates"
+          ],
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 6167,
+          "post_install": "mkdir -p data && printf '[global]\\nserver_name = \"localhost\"\\naddress = [\"0.0.0.0\"]\\nport = 6167\\ndatabase_path = \"data/db\"\\nallow_registration = false\\n' > data/conduit.toml",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "drawio": {
+      "_note": "FIXES A BROKEN SHIPPED ENTRY. draw.war is drawio's only published artefact and a WAR is a ZIP by specification, but `.war` matched neither archive branch: the file was copied to bin/draw.war, chmod 0755, and the install REPORTED SUCCESS while static/ stayed empty and the server had nothing to serve. The entry also carried BOTH a download_url and a dead apt install string. The measured digest equals the one the shipped entry already carried.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "JGraph Ltd",
+      "category": "productivity",
+      "description": "Powerful open-source diagramming tool \u2014 flowcharts, network diagrams, UML, ER diagrams, and more, served as a static SPA",
+      "homepage": "https://www.drawio.com",
+      "icon": "drawio",
+      "icon_url": "",
+      "keywords": [
+        "diagram",
+        "flowchart",
+        "uml",
+        "network",
+        "drawing",
+        "chart",
+        "whiteboard"
+      ],
+      "license": "Apache-2.0",
+      "name": "draw.io",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "30.0.1": {
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
+              "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war"
+            },
+            "arm64": {
+              "checksum": "b412cb3203e394ad4e0aa8a07288088792ecec96d69c8a3eb7f56ac32f145aaf",
+              "download_url": "https://github.com/jgraph/drawio/releases/download/v30.0.1/draw.war"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "element-call": {
+      "_note": "raw shell -> artifacts, same shape as cinny; the inline digest it checked is byte-identical to the measured one. Static bundle, so both arches share one artefact.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Element (New Vector Ltd / Matrix.org Foundation)",
+      "category": "network",
+      "description": "Native Matrix group video calling (MSC3401) \u2014 static web client that plugs into any Matrix homeserver + a LiveKit SFU for group calls; configure your homeserver and SFU URL in config.json after install (also embeddable inside Element/Cinny as a widget)",
+      "homepage": "https://element.io/call",
+      "icon": "E",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "video",
+        "calls",
+        "webrtc",
+        "conferencing",
+        "meet-alternative",
+        "livekit"
+      ],
+      "license": "AGPL-3.0",
+      "name": "Element Call",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "0.21.0": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
+              "download_url": "https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz"
+            },
+            "arm64": {
+              "checksum": "6d0ef79f76e670521ecf38688d29ec70ff439b64b6f969e83c144c8887197f36",
+              "download_url": "https://github.com/element-hq/element-call/releases/download/v0.21.0/element-call-0.21.0.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8082,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "gitea": {
+      "_note": "amd64-in-practice -> amd64+arm64. The shipped recipe was a shell string that curl'd the amd64 asset, checked a sha256 inline, and symlinked the binary into /usr/local/bin \u2014 a write outside the app dir that no boot path preserves. The digest it checked is byte-identical to the one measured here, so the recipe was honest; the SHAPE was the problem.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Gitea",
+      "category": "developer",
+      "description": "Lightweight self-hosted Git forge with issues, pull requests, CI/CD, and package registry",
+      "homepage": "https://gitea.io",
+      "icon": "gitea",
+      "icon_url": "",
+      "keywords": [
+        "git",
+        "repository",
+        "code",
+        "version-control",
+        "forge",
+        "ci"
+      ],
+      "license": "MIT",
+      "name": "Gitea",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "1.22.0": {
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "a31086f073cb9592d28611394b2de3655db515d961e4fdcf5b549cb40753ef3d",
+              "download_url": "https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-amd64"
+            },
+            "arm64": {
+              "checksum": "ef6afed370b14d33b2b8dcc0c7ea56105b73ce9a3361090708985a878475d94b",
+              "download_url": "https://github.com/go-gitea/gitea/releases/download/v1.22.0/gitea-1.22.0-linux-arm64"
+            }
+          },
+          "auto_start": false,
+          "binary_name": "gitea",
+          "checksum": "",
+          "command": "bin/gitea web --config data/app.ini",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 3000,
+          "post_install": "mkdir -p data/repositories data/lfs && printf '[server]\\nHTTP_PORT = 3000\\nROOT_URL = http://localhost:3000/\\n[repository]\\nROOT = data/repositories\\n' > data/app.ini",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "grafana": {
+      "_note": "vendor-apt -> pinned upstream tarball, amd64+arm64. The tarball carries bin/, conf/ and public/ under one top-level directory, so archive_strip 1 unpacks it at the app root and --homepath . is the app dir the launcher sets as cwd. Replaces `wget -qO- apt.grafana.com/gpg.key | gpg --dearmor` \u2014 a key fetched over the network with no pin, which is what the old recipe's integrity rested on. dl.grafana.com publishes a .sha256 beside each asset; it was NOT cross-checked here, only the bytes were hashed.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Grafana Labs",
+      "category": "developer",
+      "description": "Monitoring dashboards \u2014 visualize metrics from Prometheus, InfluxDB, PostgreSQL, and more",
+      "homepage": "https://grafana.com",
+      "icon": "grafana",
+      "icon_url": "",
+      "keywords": [
+        "monitoring",
+        "dashboard",
+        "metrics",
+        "grafana",
+        "visualization",
+        "observability"
+      ],
+      "license": "AGPL-3.0",
+      "name": "Grafana",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "11.6.16": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "b4f5e9d773c1400f2282de30ca2177d787fd6c67aba4de0e1c82f65dbab6d86a",
+              "download_url": "https://dl.grafana.com/oss/release/grafana-11.6.16.linux-amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "8a7628c8f838369a4a3d35b6002822faac0fb1fd9762bc4f97fc009345b89bbe",
+              "download_url": "https://dl.grafana.com/oss/release/grafana-11.6.16.linux-arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/grafana server --homepath . --config data/grafana.ini",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 3000,
+          "post_install": "mkdir -p data/plugins data/dashboards && printf '[paths]\\ndata = data\\nplugins = data/plugins\\n[server]\\nhttp_port = 3000\\n' > data/grafana.ini",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "memos": {
+      "_note": "Two defects fixed. (1) The shipped download_url was WRONG \u2014 it asked for memos_0.22.4_linux_amd64.tar.gz; the published asset is memos_v0.22.4_..., with a `v`. (2) Its checksum was empty, so it could never install anyway. Now pinned per-arch, arm64 gained. STAYS _disabled: no install has been verified, and this entry's history is exactly why an unverified re-enable is not worth the risk.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Memos Project",
+      "category": "productivity",
+      "description": "Lightweight self-hosted memo and microblog \u2014 quick capture, tags, search, and personal feed",
+      "homepage": "https://www.usememos.com",
+      "icon": "memos",
+      "icon_url": "",
+      "keywords": [
+        "notes",
+        "memo",
+        "self-hosted",
+        "markdown",
+        "tags",
+        "microblog"
+      ],
+      "license": "MIT",
+      "name": "Memos",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "0.22.4": {
+          "_disabled": true,
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "6d4d8954f561bf7f0551143a77100983e792b5d0d4d8fbeb02783b855ba65ef5",
+              "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_v0.22.4_linux_amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "419fa168b3ca0973cdb4635d8050b9b1bdc825a957f21dfd024d133cf1d11514",
+              "download_url": "https://github.com/usememos/memos/releases/download/v0.22.4/memos_v0.22.4_linux_arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/memos --mode production --port ${PORT} --addr 0.0.0.0 --data data/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 5230,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "minipaint": {
+      "_note": "`git clone --depth=1 --branch v4.10.0` -> a checksum-pinned source archive. The clone pinned a TAG, which upstream can move; the digest cannot. CAVEAT, stated rather than buried: GitHub generates tag archives on demand, and a regenerated archive would change the digest. That fails CLOSED \u2014 a loud checksum mismatch \u2014 which is strictly better than a clone silently fetching different bytes.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "viliusle",
+      "category": "media",
+      "description": "Browser-based raster image editor \u2014 layers, filters, tools, and effects in a lightweight web UI; replaces GIMP/Photoshop for everyday editing",
+      "homepage": "https://github.com/viliusle/miniPaint",
+      "icon": "miniPaint",
+      "icon_url": "",
+      "keywords": [
+        "image",
+        "editor",
+        "raster",
+        "photo",
+        "paint",
+        "web",
+        "gimp"
+      ],
+      "license": "MIT",
+      "name": "miniPaint",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "4.10.0": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9",
+              "download_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.10.0.tar.gz"
+            },
+            "arm64": {
+              "checksum": "1198efefdd9505a4d866d9ba4c6a7bccaae4fec300af9071fbcd3196ada4e1e9",
+              "download_url": "https://github.com/viliusle/miniPaint/archive/refs/tags/v4.10.0.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "python3 -m http.server ${PORT} --directory static/",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "static",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network"
+          ],
+          "port": 8080,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "navidrome": {
+      "_note": "amd64-only -> amd64+arm64. The tarball has no top-level directory (LICENSE, README.md, navidrome at the root), so archive_strip is 0 and extract_dir puts them under bin/, which is what `command` names. Port literal: ${PORT} is not expanded in post_install and this entry relied on it. amd64 digest matches the one the shipped entry already carried.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Navidrome Project",
+      "category": "media",
+      "description": "Self-hosted music streaming server \u2014 your own Spotify with web UI and Subsonic API",
+      "homepage": "https://www.navidrome.org",
+      "icon": "\ud83c\udfb5",
+      "icon_url": "",
+      "keywords": [
+        "music",
+        "streaming",
+        "audio",
+        "subsonic",
+        "self-hosted"
+      ],
+      "license": "GPL-3.0",
+      "name": "Navidrome",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "0.54.5": {
+          "archive_strip": 0,
+          "artifacts": {
+            "amd64": {
+              "checksum": "73c1a42958dc2c96fa9787fb060e36f664bb0d9f58f66c07b3b3ba12be4a3ca1",
+              "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_amd64.tar.gz"
+            },
+            "arm64": {
+              "checksum": "1e5372efbdc36ee907f9bb122026f5858eb322eea165dc1c2d37e814160ab455",
+              "download_url": "https://github.com/navidrome/navidrome/releases/download/v0.54.5/navidrome_0.54.5_linux_arm64.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/navidrome --configfile data/navidrome.toml",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 4533,
+          "post_install": "mkdir -p data/music && printf 'MusicFolder = \"data/music\"\\nDataFolder = \"data\"\\nPort = 4533\\nAddress = \"0.0.0.0\"\\n' > data/navidrome.toml",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    },
+    "syncthing": {
+      "_note": "vendor-apt -> pinned upstream tarball, amd64+arm64. Replaces a recipe that added apt.syncthing.net with a GPG key fetched at install time and NOT pinned by sha256 \u2014 which APP-RECIPE-STANDARD \u00a72.2 already says is vendor-download with extra steps. VERSION BUMP, and it is a real one: Debian/apt shipped the 1.x series and this pins 2.1.3, which changed the database format. Upstream's own sha256sum.txt.asc is published beside the assets and was NOT cross-checked here; only the bytes were hashed.",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "Syncthing Foundation",
+      "category": "productivity",
+      "description": "Peer-to-peer file synchronization with web UI \u2014 sync folders across devices without a cloud",
+      "homepage": "https://syncthing.net",
+      "icon": "syncthing",
+      "icon_url": "",
+      "keywords": [
+        "sync",
+        "files",
+        "p2p",
+        "backup",
+        "share",
+        "folders",
+        "web"
+      ],
+      "license": "MPL-2.0",
+      "name": "Syncthing",
+      "proprietary": false,
+      "signature": "",
+      "source": "vulos-native",
+      "type": "web",
+      "verified": true,
+      "verified_by": "sha256-pin",
+      "versions": {
+        "2.1.3": {
+          "archive_strip": 1,
+          "artifacts": {
+            "amd64": {
+              "checksum": "f929eb8e5b72a85543eeeefb2c38f34a68e0c530e70758a2905b78840c76602c",
+              "download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.3/syncthing-linux-amd64-v2.1.3.tar.gz"
+            },
+            "arm64": {
+              "checksum": "a5c046965b590a8de2f8c8c16a0dbf9201d99600b0cafd604040232b603e4586",
+              "download_url": "https://github.com/syncthing/syncthing/releases/download/v2.1.3/syncthing-linux-arm64-v2.1.3.tar.gz"
+            }
+          },
+          "auto_start": false,
+          "checksum": "",
+          "command": "bin/syncthing serve --gui-address=0.0.0.0:${PORT} --home=data/ --no-browser",
+          "deps": null,
+          "download_url": "",
+          "env": null,
+          "extract_dir": "bin",
+          "flatpak_id": "",
+          "install": "",
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "port": 8384,
+          "post_install": "",
+          "singleton": true
+        }
+      },
+      "vetted": true
+    }
+  }
+}

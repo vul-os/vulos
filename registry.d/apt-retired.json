@@ -1,0 +1,397 @@
+{
+  "_source": "registry.d/apt-retired.json \u2014 the eight still-enabled apt entries that CANNOT be expressed in the one install format, disabled with a per-app reason. Staged for the single writer of registry.json. See roadmap/INSTALL-METHODOLOGY.md \u00a77.",
+  "_why_disabled_not_deleted": "An entry that is refused at install time but still LISTED is the worse of the two failures: the App Hub offers a button that always errors. `_disabled` makes InstallFromRegistry refuse by name before anything else runs, and keeps the curated metadata (arch, keywords, icon, the reason) on disk so re-enabling any of these is one field, not a fresh investigation. Deleting them would throw away the only record of why they are gone.",
+  "_honest_cost": "This is a REAL product loss: eight apps leave the catalogue, and jupyter and jellyfin are the two most likely to be missed. Nothing here claims they were replaced.",
+  "_signing": "UNSIGNED BY CONSTRUCTION. Every entry carries \"signature\": \"\" and is inert until `make sign-registry` is run by the founder.",
+  "apps": {
+    "cockpit": {
+      "name": "Cockpit",
+      "description": "Web-based server management \u2014 terminal, logs, processes, networking, storage, and system monitoring in one dashboard",
+      "category": "system",
+      "author": "Red Hat / Cockpit Project",
+      "homepage": "https://cockpit-project.org",
+      "icon": "cockpit",
+      "icon_url": "",
+      "keywords": [
+        "admin",
+        "server",
+        "management",
+        "terminal",
+        "monitoring",
+        "logs",
+        "dashboard"
+      ],
+      "license": "LGPL-2.1",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. cockpit is a Debian-integrated system component (cockpit-ws, -bridge, -system, -networkmanager, -storaged, -packagekit) that installs into /usr/lib and talks to systemd and PackageKit on the host. Upstream publishes no self-contained per-architecture artefact, so there is nothing to pin. If Vulos wants a Cockpit-like panel it belongs in the base image, not in a per-app catalogue that installs into $HOME/.vulos/apps. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "latest": {
+          "install": "apt-get install -y --no-install-recommends cockpit cockpit-ws cockpit-bridge cockpit-system cockpit-networkmanager cockpit-storaged cockpit-packagekit",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "/usr/lib/cockpit/cockpit-ws --no-tls --port ${PORT}",
+          "port": 9090,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "httpbin": {
+      "name": "httpbin",
+      "description": "HTTP request and response testing \u2014 inspect headers, methods, status codes",
+      "category": "developer",
+      "author": "Kenneth Reitz",
+      "homepage": "https://httpbin.org",
+      "icon": "httpbin",
+      "icon_url": "",
+      "keywords": [
+        "http",
+        "api",
+        "testing",
+        "debug"
+      ],
+      "license": "ISC",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. httpbin was `pip3 install --break-system-packages httpbin gunicorn`. pip is a package manager with the SAME unpinned-resolution problem as apt \u2014 `pip install httpbin` on two days gives two httpbins \u2014 so swapping one for the other would trade nothing. There is no single pinned artefact for a Python app plus its dependency tree, and building one is a wheel-bundling project, not a recipe edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "0.9": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3 && pip3 install --break-system-packages httpbin gunicorn",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "gunicorn -b 0.0.0.0:${PORT} httpbin:app",
+          "port": 8080,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "jellyfin": {
+      "name": "Jellyfin",
+      "description": "Free self-hosted media server \u2014 stream movies, TV shows, music, and photos to any device via a web UI; replaces VLC for media playback",
+      "category": "media",
+      "author": "Jellyfin Contributors",
+      "homepage": "https://jellyfin.org",
+      "icon": "Jellyfin",
+      "icon_url": "",
+      "keywords": [
+        "media",
+        "streaming",
+        "movies",
+        "music",
+        "photos",
+        "dlna",
+        "plex",
+        "server"
+      ],
+      "license": "GPL-2.0",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. NOT migrated, and the reason is honest ignorance rather than absence. jellyfin DOES publish pinnable per-architecture portable tarballs and their URLs were confirmed to exist by HTTP HEAD on 2026-08-17 \u2014 repo.jellyfin.org/files/server/linux/stable/v10.11.11/{amd64,arm64}/jellyfin_10.11.11-{amd64,arm64}.tar.gz, 110228765 and 107416274 bytes. They were NOT downloaded and NOT hashed, and two things were not measured: whether the portable build is self-contained or needs a .NET runtime the image does not carry, and whether ffmpeg is present. An entry pinned on an unhashed URL is a fabricated checksum waiting to happen, so it is parked with the URLs recorded. This is the cheapest of the eight to finish. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "10": {
+          "install": "apt-get install -y --no-install-recommends apt-transport-https curl gnupg && curl -fsSL https://repo.jellyfin.org/debian/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg && echo 'deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main' > /etc/apt/sources.list.d/jellyfin.list && apt-get update && apt-get install -y --no-install-recommends jellyfin-server jellyfin-web",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "jellyfin --datadir data/ --webdir /usr/share/jellyfin/web --port ${PORT}",
+          "port": 8096,
+          "post_install": "mkdir -p data/media/movies data/media/music data/media/photos",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "jupyter": {
+      "name": "Jupyter Lab",
+      "description": "Interactive notebooks for Python, data science, and computation \u2014 web-based IDE with rich output",
+      "category": "developer",
+      "author": "Project Jupyter",
+      "homepage": "https://jupyter.org",
+      "icon": "jupyter",
+      "icon_url": "",
+      "keywords": [
+        "notebook",
+        "python",
+        "data",
+        "science",
+        "jupyter",
+        "computation"
+      ],
+      "license": "BSD-3-Clause",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. same as httpbin: `python3 -m pip install jupyterlab`, an unpinned dependency resolution at install time. JupyterLab has no self-contained Linux artefact. This is a real product loss and is the strongest argument for a THIRD vehicle later (a pinned wheel set, or a Flathub entry) \u2014 it is deliberately not invented here. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-venv && python3 -m pip install --break-system-packages jupyterlab",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "jupyter lab --ip=0.0.0.0 --port=${PORT} --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=data/",
+          "port": 8888,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "libretranslate": {
+      "name": "LibreTranslate",
+      "description": "Offline machine translation server \u2014 translate text between languages locally with no data leaving your device",
+      "category": "productivity",
+      "author": "LibreTranslate",
+      "homepage": "https://libretranslate.com",
+      "icon": "\ud83c\udf10",
+      "icon_url": "",
+      "keywords": [
+        "translation",
+        "translate",
+        "language",
+        "nlp",
+        "offline",
+        "privacy"
+      ],
+      "license": "AGPL-3.0",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. `pip3 install libretranslate==1.5.3`, plus a post_install that downloaded language models over the network and swallowed its own failure with `|| true` \u2014 refused twice over by POSTINSTALL-02 and POSTINSTALL-03. The models are the real blocker: they are fetched at first run and are not expressible as a pinned artefact today. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "1.5.3": {
+          "install": "apt-get install -y --no-install-recommends python3-pip python3-dev && pip3 install --break-system-packages libretranslate==1.5.3",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "libretranslate --load-only en,es,fr,de --port ${PORT} --host 0.0.0.0",
+          "port": 5000,
+          "post_install": "libretranslate --load-only en,es,fr,de --port 15000 --host 127.0.0.1 --update-models 2>/dev/null || true",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "nginx": {
+      "name": "Nginx",
+      "description": "High-performance HTTP server and reverse proxy \u2014 serve static sites, proxy other services",
+      "category": "network",
+      "author": "F5 / Igor Sysoev",
+      "homepage": "https://nginx.org",
+      "icon": "nginx",
+      "icon_url": "",
+      "keywords": [
+        "web",
+        "server",
+        "proxy",
+        "reverse-proxy",
+        "http",
+        "nginx"
+      ],
+      "license": "BSD-2-Clause",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. nginx publishes source only. Everything installable is a distribution package. It was also never really an app: the recipe apt-installed the system nginx and then ran it against a generated conf, which is a service the image should own. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "1": {
+          "install": "apt-get install -y --no-install-recommends nginx",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "nginx -c data/nginx.conf -g 'daemon off;'",
+          "port": 8080,
+          "post_install": "printf 'worker_processes 1;\\nevents { worker_connections 128; }\\nhttp {\\n  include /etc/nginx/mime.types;\\n  server {\\n    listen %s;\\n    root %s/static;\\n    index index.html;\\n  }\\n}\\n' \"${PORT}\" \"$APP_DIR\" > data/nginx.conf && mkdir -p static && echo '<h1>Nginx is running</h1>' > static/index.html",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    },
+    "steam": {
+      "name": "Steam",
+      "description": "Steam gaming client \u2014 access your Steam library, store, community, and Proton-powered Windows game compatibility",
+      "category": "games",
+      "author": "Valve Corporation",
+      "homepage": "https://store.steampowered.com",
+      "icon": "steam",
+      "icon_url": "",
+      "keywords": [
+        "games",
+        "gaming",
+        "steam",
+        "valve",
+        "proton",
+        "store",
+        "library"
+      ],
+      "license": "proprietary",
+      "type": "desktop",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. Removed from the catalogue by APP-CATALOG policy 1a (proprietary apps excluded, founder call 2026-08-15, explicitly reversible) \u2014 not by this migration. Also amd64-only on every vehicle (Debian's steam-installer and Flathub's com.valvesoftware.Steam alike), and its Flathub package is extra-data: a 35.5 MB download for a 52.5 MB install, i.e. a stub that fetches the real client from Valve. Disabled rather than deleted so reopening policy 1a is one edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "latest": {
+          "arch": "amd64",
+          "archive_strip": 0,
+          "auto_start": false,
+          "checksum": "",
+          "command": "steam",
+          "deps": null,
+          "download_url": "",
+          "env": {
+            "VULOS_GAMING": "1"
+          },
+          "flatpak_id": "",
+          "install": "apt-get install -y --no-install-recommends steam-installer",
+          "permissions": [
+            "display",
+            "filesystem",
+            "network",
+            "gpu",
+            "audio"
+          ],
+          "port": 0,
+          "post_install": "steam --reset 2>/dev/null || true",
+          "singleton": true,
+          "_disabled": true
+        }
+      }
+    },
+    "transmission": {
+      "name": "Transmission",
+      "description": "Lightweight BitTorrent client with web UI \u2014 simple, fast, low resource usage",
+      "category": "network",
+      "author": "Transmission Project",
+      "homepage": "https://transmissionbt.com",
+      "icon": "transmission",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer",
+        "web"
+      ],
+      "license": "GPL-2.0",
+      "type": "web",
+      "vetted": true,
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "_disabled": true,
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. transmission publishes source only; transmission-daemon is a distribution package. No per-architecture artefact exists to pin. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "signature": "",
+      "versions": {
+        "4": {
+          "install": "apt-get install -y --no-install-recommends transmission-daemon",
+          "flatpak_id": "",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "transmission-daemon --foreground --config-dir data/ --port ${PORT} --no-auth",
+          "port": 9091,
+          "post_install": "mkdir -p data/downloads data/incomplete && printf '{\"rpc-authentication-required\":false,\"rpc-whitelist-enabled\":false,\"rpc-host-whitelist-enabled\":false,\"rpc-port\":%s}' \"${PORT}\" > data/settings.json",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
+        }
+      }
+    }
+  }
+}

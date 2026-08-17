@@ -1,23 +1,34 @@
 {
-  "_source": "registry.d/apt-to-flatpak.json — apt -> Flathub conversion, staged for merge into registry.json",
+  "_source": "registry.d/apt-to-flatpak.json \u2014 apt -> Flathub conversion, staged for merge into registry.json | REVISED 2026-08-17 for roadmap/INSTALL-METHODOLOGY.md: blender converts to Flathub after all (amd64 only \u2014 arm64 is LOST, see its _note) and wine is PARKED with _disabled, because with apt gone neither can stay where it was.",
   "_signing": "UNSIGNED BY CONSTRUCTION. Every entry below carries \"signature\": \"\". Nothing verifies registry.d fragments; registry.json is the only signed app artifact. After merging these entries, run `make sign-registry` (re-signs ALL entries in sorted-id order) and then `make verify-registry-prod`. Any byte changed after signing invalidates that entry.",
-  "_verified_by": "scripts/verify-flatpak-candidates.sh (Flathub API + real `flatpak remote-info` in a debian:trixie container). Resolvability and architecture are measured. Launch/render behaviour is NOT proven here — that is scripts/verify-app-recipe.sh's job.",
-  "_excluded": "steam — removed per APP-CATALOG policy 1a (proprietary apps out of scope, reversible). Findings retained in roadmap/FLATPAK-MIGRATION.md.",
+  "_verified_by": "scripts/verify-flatpak-candidates.sh (Flathub API + real `flatpak remote-info` in a debian:trixie container). Resolvability and architecture are measured. Launch/render behaviour is NOT proven here \u2014 that is scripts/verify-app-recipe.sh's job.",
+  "_excluded": "steam \u2014 removed per APP-CATALOG policy 1a (proprietary apps out of scope, reversible). Findings retained in roadmap/FLATPAK-MIGRATION.md.",
   "apps": {
     "ardour": {
       "name": "Ardour",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "Professional digital audio workstation — multi-track recording, editing, mixing, and mastering",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Professional digital audio workstation \u2014 multi-track recording, editing, mixing, and mastering",
       "category": "media",
       "author": "Paul Davis and The Ardour Community",
       "homepage": "https://ardour.org",
       "icon": "ardour",
       "icon_url": "",
-      "keywords": ["audio", "daw", "recording", "mixing", "mastering", "music", "studio"],
+      "keywords": [
+        "audio",
+        "daw",
+        "recording",
+        "mixing",
+        "mastering",
+        "music",
+        "studio"
+      ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. org.ardour.Ardour publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"] to both — arm64 boxes gain Ardour. Flathub publisher NOT verified (upstream Ardour sells official builds; the Flathub package is community-maintained). Flatpak command is ardour9; the old apt recipe ran ardour8.",
+      "_note": "apt -> Flathub. org.ardour.Ardour publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"] to both \u2014 arm64 boxes gain Ardour. Flathub publisher NOT verified (upstream Ardour sells official builds; the Flathub package is community-maintained). Flatpak command is ardour9; the old apt recipe ran ardour8.",
       "versions": {
         "latest": {
           "install": "",
@@ -29,7 +40,10 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "microphone"],
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -38,31 +52,45 @@
       "signature": ""
     },
     "blender": {
-      "arch": ["amd64", "arm64"],
+      "arch": [
+        "amd64"
+      ],
       "author": "Blender Foundation",
       "category": "media",
-      "description": "3D creation suite — modelling, animation, rendering, compositing, and video editing",
+      "description": "3D creation suite \u2014 modelling, animation, rendering, compositing, and video editing",
       "homepage": "https://www.blender.org",
       "icon": "blender",
       "icon_url": "",
-      "keywords": ["3d", "modelling", "animation", "rendering", "video", "compositing"],
-      "lane": { "needs_gpu": true },
+      "keywords": [
+        "3d",
+        "modelling",
+        "animation",
+        "rendering",
+        "video",
+        "compositing"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
       "license": "GPL-3.0",
       "name": "Blender",
-      "_note": "STAYS ON APT — deliberate, not an oversight. org.blender.Blender is x86_64-ONLY on Flathub (measured: `flatpak remote-info flathub --arch=aarch64 org.blender.Blender` -> \"Can't find ref\"). Debian trixie ships blender 4.3.2 for amd64 AND arm64. Converting would delete Blender from every arm64 box to gain a newer version on amd64. Revisit the moment Flathub publishes an aarch64 build. arch made explicit (was null) — measured, not assumed.",
+      "_note": "REVISED 2026-08-17, and this is a LOSS that must not be quiet. The earlier decision \u2014 'stays on apt, because org.blender.Blender is x86_64-only on Flathub (measured: `flatpak remote-info flathub --arch=aarch64` -> Can't find ref) while Debian trixie ships blender 4.3.2 for amd64 AND arm64' \u2014 was correct while apt was still an install vehicle. It is not any more (roadmap/INSTALL-METHODOLOGY.md), so the choice is no longer Flathub-versus-Debian, it is Flathub-versus-NOTHING. blender.org publishes no official Linux aarch64 build either, so no `artifacts` entry can recover arm64 coverage; there is nothing to pin. ARM64 BOXES LOSE BLENDER, and they will see the honest 'requires amd64; this box is arm64' rather than an install that fails. This is the single largest capability loss in the migration and it is the founder's to reverse \u2014 reversing it means keeping an unpinned apt path for one app.",
       "type": "desktop",
       "versions": {
-        "4": {
-          "install": "apt-get install -y --no-install-recommends blender",
-          "flatpak_id": "",
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.blender.Blender",
           "download_url": "",
           "archive_strip": 0,
-          "command": "blender",
+          "command": "flatpak run org.blender.Blender",
           "port": 0,
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "gpu"],
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -72,15 +100,28 @@
       "signature": ""
     },
     "darktable": {
-      "arch": ["amd64", "arm64"],
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Darktable Developers",
       "category": "media",
-      "description": "Photography workflow and RAW developer — non-destructive editing, colour grading, and print/export pipeline",
+      "description": "Photography workflow and RAW developer \u2014 non-destructive editing, colour grading, and print/export pipeline",
       "homepage": "https://www.darktable.org",
       "icon": "darktable",
       "icon_url": "",
-      "keywords": ["photography", "raw", "editor", "colour", "grading", "lightroom", "darkroom"],
-      "lane": { "needs_gpu": true },
+      "keywords": [
+        "photography",
+        "raw",
+        "editor",
+        "colour",
+        "grading",
+        "lightroom",
+        "darkroom"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
       "license": "GPL-3.0",
       "name": "Darktable",
       "_note": "apt -> Flathub. Publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest grants --device=all (superset of dri), so the needs_gpu lane is satisfied inside the sandbox.",
@@ -96,7 +137,10 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "gpu"],
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -109,14 +153,25 @@
       "name": "GnuCash",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "Personal and small-business finance manager — double-entry accounting, budgeting, invoicing, and reports",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Personal and small-business finance manager \u2014 double-entry accounting, budgeting, invoicing, and reports",
       "category": "productivity",
       "author": "GnuCash Development Team",
       "homepage": "https://www.gnucash.org",
       "icon": "gnucash",
       "icon_url": "",
-      "keywords": ["finance", "accounting", "budget", "invoicing", "money", "double-entry", "bookkeeping"],
+      "keywords": [
+        "finance",
+        "accounting",
+        "budget",
+        "invoicing",
+        "money",
+        "double-entry",
+        "bookkeeping"
+      ],
       "license": "GPL-2.0",
       "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED by Flathub via gnucash.org.",
       "versions": {
@@ -130,7 +185,9 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem"],
+          "permissions": [
+            "filesystem"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -142,14 +199,28 @@
       "name": "LibreOffice",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "Full office suite — word processor, spreadsheets, presentations, and database with MS Office compatibility",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Full office suite \u2014 word processor, spreadsheets, presentations, and database with MS Office compatibility",
       "category": "productivity",
       "author": "The Document Foundation",
       "homepage": "https://www.libreoffice.org",
       "icon": "libreoffice",
       "icon_url": "",
-      "keywords": ["office", "word", "spreadsheet", "presentation", "document", "writer", "calc", "excel", "docx", "xlsx"],
+      "keywords": [
+        "office",
+        "word",
+        "spreadsheet",
+        "presentation",
+        "document",
+        "writer",
+        "calc",
+        "excel",
+        "docx",
+        "xlsx"
+      ],
       "license": "MPL-2.0",
       "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch made explicit (was null). Publisher VERIFIED via libreoffice.org. Version key changed \"26.2\" -> \"latest\": a Flatpak tracks Flathub's stable branch, so pinning a version number in the key would assert a version Vulos does not control.",
       "versions": {
@@ -163,7 +234,9 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem"],
+          "permissions": [
+            "filesystem"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -175,16 +248,27 @@
       "name": "LMMS",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "Linux MultiMedia Studio — beat+bassline editor, song editor, synthesizers, and VST plugin support",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Linux MultiMedia Studio \u2014 beat+bassline editor, song editor, synthesizers, and VST plugin support",
       "category": "media",
       "author": "LMMS Developers",
       "homepage": "https://lmms.io",
       "icon": "lmms",
       "icon_url": "",
-      "keywords": ["music", "studio", "daw", "beats", "synthesizer", "vst", "sequencer"],
+      "keywords": [
+        "music",
+        "studio",
+        "daw",
+        "beats",
+        "synthesizer",
+        "vst",
+        "sequencer"
+      ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. Correct id is io.lmms.LMMS (capitals). APP-CATALOG.md lists io.lmms.lmms, which is a 404 — flatpak ids are case-sensitive. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest shares ipc only, NOT network — the recipe never claimed network, so no regression.",
+      "_note": "apt -> Flathub. Correct id is io.lmms.LMMS (capitals). APP-CATALOG.md lists io.lmms.lmms, which is a 404 \u2014 flatpak ids are case-sensitive. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest shares ipc only, NOT network \u2014 the recipe never claimed network, so no regression.",
       "versions": {
         "latest": {
           "install": "",
@@ -196,7 +280,10 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "microphone"],
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -205,18 +292,30 @@
       "signature": ""
     },
     "lutris": {
-      "arch": ["amd64"],
+      "arch": [
+        "amd64"
+      ],
       "author": "Lutris Project",
       "category": "games",
-      "description": "Open-source gaming platform — manage and launch games from GOG, Epic, emulators, and Windows installers",
+      "description": "Open-source gaming platform \u2014 manage and launch games from GOG, Epic, emulators, and Windows installers",
       "homepage": "https://lutris.net",
       "icon": "lutris",
       "icon_url": "",
-      "keywords": ["games", "gaming", "launcher", "gog", "epic", "emulator", "wine"],
-      "lane": { "game": true },
+      "keywords": [
+        "games",
+        "gaming",
+        "launcher",
+        "gog",
+        "epic",
+        "emulator",
+        "wine"
+      ],
+      "lane": {
+        "game": true
+      },
       "license": "GPL-3.0",
       "name": "Lutris",
-      "_note": "apt -> Flathub. DEFECT FIX: entry arch was null (= all arches), so arm64 boxes were offered Lutris and the install could not work; net.lutris.Lutris is x86_64-only, and entry-level arch is the only arch field the installer enforces. The per-recipe \"arch\": \"amd64\" that used to sit inside this version is DEAD DATA — VersionRecipe has no Arch field, it lands in Extra and is never read. Dropped env VULOS_GAMING=1: no code in the tree reads it, and a bare `flatpak run` would not carry it into the sandbox anyway. Description no longer claims Steam (Steam is out of catalogue scope). Publisher VERIFIED via lutris.net.",
+      "_note": "apt -> Flathub. DEFECT FIX: entry arch was null (= all arches), so arm64 boxes were offered Lutris and the install could not work; net.lutris.Lutris is x86_64-only, and entry-level arch is the only arch field the installer enforces. The per-recipe \"arch\": \"amd64\" that used to sit inside this version is DEAD DATA \u2014 VersionRecipe has no Arch field, it lands in Extra and is never read. Dropped env VULOS_GAMING=1: no code in the tree reads it, and a bare `flatpak run` would not carry it into the sandbox anyway. Description no longer claims Steam (Steam is out of catalogue scope). Publisher VERIFIED via lutris.net.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -229,7 +328,11 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "network", "gpu"],
+          "permissions": [
+            "filesystem",
+            "network",
+            "gpu"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -239,18 +342,30 @@
       "signature": ""
     },
     "obs-studio": {
-      "arch": ["amd64"],
+      "arch": [
+        "amd64"
+      ],
       "author": "OBS Project",
       "category": "media",
-      "description": "Open Broadcaster Software — screen recording and live streaming with scenes, sources, and filters",
+      "description": "Open Broadcaster Software \u2014 screen recording and live streaming with scenes, sources, and filters",
       "homepage": "https://obsproject.com",
       "icon": "obs",
       "icon_url": "",
-      "keywords": ["streaming", "recording", "screen", "broadcast", "obs", "twitch", "youtube"],
-      "lane": { "needs_gpu": true },
+      "keywords": [
+        "streaming",
+        "recording",
+        "screen",
+        "broadcast",
+        "obs",
+        "twitch",
+        "youtube"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
       "license": "GPL-2.0",
       "name": "OBS Studio",
-      "_note": "apt -> Flathub. com.obsproject.Studio is x86_64-only, which MATCHES the arch [\"amd64\"] this entry already declared — so unlike Blender, this conversion loses nothing. Publisher VERIFIED via obsproject.com. Flathub manifest grants --device=all and xdg-run/pipewire-0, which is what screen capture needs.",
+      "_note": "apt -> Flathub. com.obsproject.Studio is x86_64-only, which MATCHES the arch [\"amd64\"] this entry already declared \u2014 so unlike Blender, this conversion loses nothing. Publisher VERIFIED via obsproject.com. Flathub manifest grants --device=all and xdg-run/pipewire-0, which is what screen capture needs.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -263,7 +378,12 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "gpu", "microphone", "camera"],
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "microphone",
+            "camera"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -276,16 +396,27 @@
       "name": "GNU Octave",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "High-level language for numerical computations — MATLAB-compatible syntax, plotting, and signal processing",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "High-level language for numerical computations \u2014 MATLAB-compatible syntax, plotting, and signal processing",
       "category": "productivity",
       "author": "GNU Project",
       "homepage": "https://www.gnu.org/software/octave",
       "icon": "octave",
       "icon_url": "",
-      "keywords": ["math", "numerical", "matlab", "scientific", "plotting", "computation", "engineering"],
+      "keywords": [
+        "math",
+        "numerical",
+        "matlab",
+        "scientific",
+        "plotting",
+        "computation",
+        "engineering"
+      ],
       "license": "GPL-3.0",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via octave.org. NOTE: this app's runtime is org.kde.Sdk/6.10, an SDK rather than a Platform — roughly a gigabyte more on disk than a Platform-based app. Deliberate upstream choice (Octave builds mex files at runtime), not a packaging error.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via octave.org. NOTE: this app's runtime is org.kde.Sdk/6.10, an SDK rather than a Platform \u2014 roughly a gigabyte more on disk than a Platform-based app. Deliberate upstream choice (Octave builds mex files at runtime), not a packaging error.",
       "versions": {
         "latest": {
           "install": "",
@@ -297,7 +428,9 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem"],
+          "permissions": [
+            "filesystem"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -309,14 +442,25 @@
       "name": "QGIS",
       "vetted": true,
       "type": "desktop",
-      "arch": ["amd64", "arm64"],
-      "description": "Free and open-source GIS — view, edit, and analyse geospatial data with layers, plugins, and map export",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Free and open-source GIS \u2014 view, edit, and analyse geospatial data with layers, plugins, and map export",
       "category": "productivity",
       "author": "QGIS Development Team",
       "homepage": "https://www.qgis.org",
       "icon": "qgis",
       "icon_url": "",
-      "keywords": ["gis", "mapping", "geospatial", "cartography", "spatial", "geography", "layers"],
+      "keywords": [
+        "gis",
+        "mapping",
+        "geospatial",
+        "cartography",
+        "spatial",
+        "geography",
+        "layers"
+      ],
       "license": "GPL-2.0",
       "_note": "apt -> Flathub. flatpak_id MUST stay branch-qualified as org.qgis.qgis//stable. QGIS publishes TWO branches (stable and lts) and FlatpakInstall runs `flatpak install -y --noninteractive flathub <id>` with no branch, which for a bare id exits 1: \"Multiple branches available for org.qgis.qgis, you must specify one of: .../stable, .../lts\". Verified that the //stable suffix resolves cleanly through that same argv. Flathub's API reports a single \"branch\":\"stable\" for this app, so metadata alone does NOT catch this. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via qgis.org.",
       "versions": {
@@ -330,7 +474,10 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "network"],
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -339,15 +486,28 @@
       "signature": ""
     },
     "shotcut": {
-      "arch": ["amd64", "arm64"],
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
       "author": "Meltytech, LLC",
       "category": "media",
-      "description": "Free, open-source video editor — multi-track timeline, 4K support, hundreds of filters and transitions",
+      "description": "Free, open-source video editor \u2014 multi-track timeline, 4K support, hundreds of filters and transitions",
       "homepage": "https://www.shotcut.org",
       "icon": "shotcut",
       "icon_url": "",
-      "keywords": ["video", "editor", "timeline", "4k", "filters", "transitions", "film"],
-      "lane": { "needs_gpu": true },
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "4k",
+        "filters",
+        "transitions",
+        "film"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
       "license": "GPL-3.0",
       "name": "Shotcut",
       "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via shotcut.org. Flathub manifest grants --device=all, satisfying the needs_gpu lane inside the sandbox.",
@@ -363,7 +523,10 @@
           "post_install": "",
           "deps": null,
           "env": null,
-          "permissions": ["filesystem", "gpu"],
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
           "checksum": "",
           "singleton": true,
           "auto_start": false
@@ -373,39 +536,53 @@
       "signature": ""
     },
     "wine": {
-      "arch": ["amd64"],
+      "arch": [
+        "amd64"
+      ],
       "author": "WineHQ Project",
       "category": "games",
-      "description": "Windows compatibility layer — run Windows applications and games on Linux without a virtual machine",
+      "description": "Windows compatibility layer \u2014 run Windows applications and games on Linux without a virtual machine",
       "homepage": "https://www.winehq.org",
       "icon": "wine",
       "icon_url": "",
-      "keywords": ["windows", "compatibility", "emulation", "games", "exe", "win32"],
-      "lane": { "game": true },
+      "keywords": [
+        "windows",
+        "compatibility",
+        "emulation",
+        "games",
+        "exe",
+        "win32"
+      ],
+      "lane": {
+        "game": true
+      },
       "license": "LGPL-2.1",
       "name": "Wine",
-      "_note": "STAYS ON APT — deliberate. org.winehq.Wine exists on Flathub but is the weakest of the three options: publisher NOT verified, x86_64-only, and it publishes SEVEN branches with none named plain \"stable\" (stable-21.08/22.08/23.08/24.08/25.08, wow64-24.08, wow64-25.08), so the bare id exits 1 under FlatpakInstall and any fix pins a dated branch that ages out and needs re-signing each cycle. Debian trixie ships wine 10.0. Bottles is the Flathub-native answer but is a DIFFERENT PRODUCT (a prefix manager wrapping wine), so shipping it under the id \"wine\" would be a silent substitution — it belongs as its own entry, and APP-CATALOG.md already schedules com.usebottles.bottles separately. DEFECT FIX: entry arch was null (= all arches), offering wine on arm64 boxes where it cannot work; now [\"amd64\"].",
+      "_note": "PARKED, NOT MIGRATED, 2026-08-17. wine has no expressible vehicle left and inventing one would be worse than saying so. (1) apt is gone. (2) WineHQ publishes .deb packages and no portable per-architecture tarball, so there is no artefact to pin \u2014 an `artifacts` entry here would require a URL that does not exist. (3) org.winehq.Wine on Flathub publishes SEVEN branches (stable-21.08 \u2026 stable-25.08, wow64-24.08, wow64-25.08) and NONE is named plain `stable`, so the bare id fails under FlatpakInstall; the `//branch` suffix does resolve (proved on QGIS) but every candidate is a dated branch that ages out, and WHICH one currently resolves is a `flatpak remote-info` measurement THAT WAS NOT RUN HERE. Guessing it is exactly the fabricated-value failure this work exists to remove. Disabled rather than deleted so the measured metadata survives for whoever runs that command. arch corrected to [amd64] regardless \u2014 that defect was independent of the vehicle.",
       "type": "desktop",
       "versions": {
         "latest": {
-          "arch": "amd64",
-          "archive_strip": 0,
-          "auto_start": false,
-          "checksum": "",
-          "command": "wine",
-          "deps": null,
-          "download_url": "",
-          "env": { "VULOS_GAMING": "1" },
+          "install": "",
           "flatpak_id": "",
-          "install": "apt-get install -y --no-install-recommends wine winetricks",
-          "permissions": ["filesystem", "network"],
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "wine",
           "port": 0,
-          "post_install": "wineboot --init",
-          "singleton": false
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false,
+          "_disabled": true
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "_disabled": true
     }
   }
 }

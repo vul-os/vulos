@@ -348,6 +348,11 @@ func TestWarCountsAsAnArchiveForBinaryName(t *testing.T) {
 // entries, it has exactly one writer, and a test that went green only after
 // somebody else's merge would be a test about the future.
 func TestStagedRegistryFragmentsUseOnlyTheTwoVehicles(t *testing.T) {
+	// NOTE for whoever runs this by hand: `go test` caches a result keyed on the
+	// FILES a test opened, and a directory walk is not a file open. Adding a
+	// fragment to registry.d/ therefore does NOT invalidate the cache, and this
+	// test will happily re-report a stale count. Measured while writing it: a
+	// run reported 45 recipes after 8 more had been staged. Use -count=1.
 	dir := ""
 	for _, c := range []string{"../../../registry.d", "../../../../registry.d"} {
 		if st, err := os.Stat(c); err == nil && st.IsDir() {
