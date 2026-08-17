@@ -32,6 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -84,11 +85,41 @@ func cmdExportAnchor(args []string) {
 
 // ─── sign-registry ────────────────────────────────────────────────────────────
 
+// resolveRegistryPath makes a -registry value absolute for REPORTING.
+//
+// Every -registry flag here defaults to the bare relative string
+// "registry.json", and the documented cwd for these commands is `backend/`
+// (see the Makefile: `cd $(BACKEND) && go run ./cmd/sign …`). The canonical
+// registry lives at the REPO ROOT, one level up, so the Makefile passes
+// `-registry ../registry.json` explicitly and is correct.
+//
+// A human debugging by hand types `go run ./cmd/sign sign-registry` without
+// the flag, and then the default resolves against `backend/`. On 2026-08-17 an
+// untracked `backend/registry.json` — a byte-identical stale duplicate of the
+// real one — was found sitting exactly there. Signing would have rewritten the
+// DUPLICATE and printed "signed and verified 74 entries in registry.json",
+// which is true of a file nothing ships, while the shipping registry stayed
+// unsigned. A success message that does not name the file it acted on cannot
+// be checked.
+//
+// So the path is resolved and printed in full. This changes no behaviour — the
+// same file is opened either way — it only makes the output say which one.
+// The duplicate itself is kept out of the tree by
+// TestNoStrayRegistryBesideTheSigner in internal/docsref.
+func resolveRegistryPath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p // reporting aid only; never fail the command over it
+	}
+	return abs
+}
+
 func cmdSignRegistry(args []string) {
 	fs := flag.NewFlagSet("sign-registry", flag.ExitOnError)
 	releasePrivPath := fs.String("release-priv", "", "path to the release private-key JSON file")
 	registryPath := fs.String("registry", "registry.json", "path to registry.json (rewritten in place)")
 	_ = fs.Parse(args)
+	*registryPath = resolveRegistryPath(*registryPath)
 
 	if *releasePrivPath == "" {
 		fatalf(1, "sign-registry: -release-priv is required")
@@ -147,6 +178,7 @@ func cmdVerifyRegistry(args []string) {
 	requireProd := fs.Bool("require-prod-keys", false,
 		"fail if the trust material is the well-known DEV keypair (use in release builds)")
 	_ = fs.Parse(args)
+	*registryPath = resolveRegistryPath(*registryPath)
 
 	anchor, err := signing.LoadAnchor(*anchorPath)
 	if err != nil {
@@ -243,6 +275,7 @@ func cmdPublishFeed(args []string) {
 	registryPath := fs.String("registry", "registry.json", "path to registry.json (read-only — the feed records its hash)")
 	feedPath := fs.String("feed", "registry-feed.json", "path to registry-feed.json (appended to in place)")
 	_ = fs.Parse(args)
+	*registryPath = resolveRegistryPath(*registryPath)
 
 	if *releasePrivPath == "" {
 		fatalf(1, "publish-feed: -release-priv is required")
