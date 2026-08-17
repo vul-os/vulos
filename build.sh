@@ -277,7 +277,7 @@ else
   # ── System packages (first time only) ──
   if $DEPLOY_ONLY; then
     echo "  ${DIM}--deploy-only: skipping package install${NC}"
-  elif ssh "$DEPLOY_HOST" "test -f /var/lib/vulos/.setup-complete" 2>/dev/null; then
+  elif ssh "$DEPLOY_HOST" "test -f /var/lib/vulos/.packages-installed" 2>/dev/null; then
     echo "  ${GREEN}✓${NC} System packages already installed (skipping)"
   else
     echo "${BLUE}▸ First-time setup — installing system packages...${NC}"
@@ -397,9 +397,20 @@ POL
 # Hostname
 echo "vulos" > /etc/hostname
 
-# Mark setup complete
-touch /var/lib/vulos/.setup-complete
-echo "System setup complete"
+# Mark SYSTEM PACKAGES installed. Its own sentinel, deliberately.
+#
+# This used to touch /var/lib/vulos/.setup-complete, and the check above used to
+# read it — apt state recorded in the file that means "the owner finished the
+# fifteen-step first-boot wizard". GET /api/setup/status is os.Stat on exactly
+# that path, so `build.sh --deploy` handed every remote box it provisioned a
+# first boot with no wizard: display name, username, password, desktop. No
+# timezone, no network, no identity keypair, no SSH keys, no recovery kit.
+#
+# Same symptom the rootfs pre-creation caused (see the long note next to
+# mkdir "$ROOTFS/var/lib/vulos"), reached down a different path, and it survived
+# that fix because the guard only looked at lines mentioning $ROOTFS.
+touch /var/lib/vulos/.packages-installed
+echo "System packages installed"
 SETUP_EOF
     echo "  ${GREEN}✓${NC} System packages installed"
   fi
