@@ -719,6 +719,18 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 			"set exactly one of `flatpak_id` (a Flathub app) or `artifacts` (per-architecture pinned payloads)")
 	}
 
+	// ── ARCH-02: no architecture in a string every architecture shares ───────
+	//
+	// LAST, and that is not an accident. It is the newest rule here, and every
+	// rule above it must still answer for the input it was written for —
+	// DOWNLOAD-01 in particular, since the entry that motivated this one
+	// (conduit) trips both. Putting a new rule first is how three shipped guards
+	// were made unreachable once already (§6.1); the test suite asserts WHICH
+	// rule answers for a recipe that violates two.
+	if err := rejectArchInSharedFields(recipe); err != nil {
+		return err
+	}
+
 	return nil
 }
 
