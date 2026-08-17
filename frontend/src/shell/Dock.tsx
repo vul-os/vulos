@@ -6,6 +6,8 @@ import { launchApp } from './launchApp'
 import { useDockProfile } from '../desktop'
 import type { DockProfile } from '../desktop'
 import type { ShellWindow } from '../providers/ShellProvider'
+import { DOCK_PINS_LS_KEY, DOCK_PINS_PREF_KEY } from '../core/prefKeys'
+import { prefRead, setPref, subscribePrefs } from '../core/syncedPrefs'
 import './shell-chrome.css'
 
 // Dock — the desktop's permanent launcher + window switcher.
@@ -46,19 +48,25 @@ import './shell-chrome.css'
 // preset's `items` list is the DEFAULT — it seeds an untouched box and is
 // ignored the moment the user has pinned anything themselves.
 
-const PIN_KEY = 'vulos-dock-pins'
+const PIN_KEY = DOCK_PINS_LS_KEY
 
 function loadPins(): string[] | null {
+  const raw = prefRead(PIN_KEY)
+  if (!raw) return null
   try {
-    const raw = localStorage.getItem(PIN_KEY)
-    if (!raw) return null
     const ids: unknown = JSON.parse(raw)
     return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : null
   } catch { return null }
 }
 
+/**
+ * Pinning is the most deliberate arrangement act a user performs, and it used
+ * to be stored where nothing could reach it — not another instance, not even
+ * the same box in another browser. It now goes to the profile, so a pin made on
+ * the laptop box is a pin on the desktop box.
+ */
 function savePins(ids: string[]): void {
-  try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)) } catch { /* noop */ }
+  setPref(DOCK_PINS_PREF_KEY, PIN_KEY, JSON.stringify(ids))
 }
 
 /**
@@ -91,6 +99,17 @@ export default function Dock() {
   const { windows, activeWindow, focusWindow, minimizeWindow, openWindow, setLaunchpad, launchpadOpen, chatOpen, toggleChat } = useShell()
   const profile = useDockProfile()
   const [storedPins, setStoredPins] = useState<string[] | null>(loadPins)
+
+  // Re-read when the cache changes under us — that is how pins made on another
+  // instance arrive. Compared as JSON rather than by identity: loadPins parses
+  // a fresh array every call, so an identity check would re-render on every
+  // unrelated preference change, and useSyncExternalStore would loop outright.
+  useEffect(() => subscribePrefs(() => {
+    setStoredPins((prev) => {
+      const next = loadPins()
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+    })
+  }), [])
   const [menu, setMenu] = useState<OpenMenu | null>(null)
   const appsVersion = useSyncExternalStore(subscribeApps, getAppsVersion, getAppsVersion)
   const stripRef = useRef<HTMLDivElement>(null)

@@ -27,6 +27,8 @@ import LocationPanel from './settings/LocationPanel'
 import DevicePanel from './settings/DevicePanel'
 import WidgetsPanel from './settings/WidgetsPanel'
 import { nativeBridge } from './nativeBridge'
+import { DENSITY_LS_KEY, DENSITY_PREF_KEY } from './prefKeys'
+import { prefRead, setPref, subscribePrefs as subscribeSyncedPrefs } from './syncedPrefs'
 import { SettingsIcon } from './AppIcons'
 import {
   DOCK_ALIGNS, DOCK_EDGES, DOCK_SIZES, LAYOUT_PRESETS, MOBILE_EDGES, MOBILE_SIZES,
@@ -529,9 +531,14 @@ export default function Settings({ initialSection }: SettingsProps) {
 }
 
 // updateProfile's shape (a partial patch merged server-side) — mirrors
-// AuthProvider.tsx's `updateProfile: (updates: Record<string, unknown>) =>
-// Promise<void>`, imported by every panel below that saves profile fields.
-type UpdateProfileFn = (updates: Record<string, unknown>) => Promise<void>
+// AuthProvider.tsx's updateProfile, imported by every panel below that saves
+// profile fields.
+//
+// It reports WHY a write did not land ('rejected' vs 'unreachable') because the
+// preference engine has to tell those apart — retrying a rejected patch forever
+// would block every later write behind it. The panels here ignore the result,
+// which is the pre-existing behaviour and not something this type changes.
+type UpdateProfileFn = (updates: Record<string, unknown>) => Promise<'ok' | 'rejected' | 'unreachable'>
 
 // --- AI ---
 interface AiStatus {
@@ -953,17 +960,22 @@ function DesktopLayoutSettings() {
 // DensityPicker — a real, persisted appearance pref. Writes
 // document.documentElement.dataset.density (consumed by index.css) and
 // localStorage so it survives reloads. Applied eagerly on load in main.jsx.
-const DENSITY_KEY = 'vulos.density'
+const DENSITY_KEY = DENSITY_LS_KEY
 function DensityPicker() {
-  const [density, setDensity] = useState<string>(() => {
-    try { return localStorage.getItem(DENSITY_KEY) || 'comfortable' } catch { return 'comfortable' }
-  })
-  // Apply the DOM/localStorage side-effects reactively when density changes.
+  // Read through the preference cache, not a copy seeded at mount: density now
+  // follows the user between instances, so it can change from outside React.
+  const density = useSyncExternalStore(
+    subscribeSyncedPrefs,
+    () => prefRead(DENSITY_KEY) || 'comfortable',
+    () => 'comfortable',
+  )
+  // <html data-density> is stamped by main.tsx before React mounts and by the
+  // 'density' pref group when a value arrives from the box. Kept here too so a
+  // click applies immediately rather than on the reload after next.
   useEffect(() => {
-    try { localStorage.setItem(DENSITY_KEY, density) } catch { /* noop */ }
     if (typeof document !== 'undefined') document.documentElement.dataset.density = density
   }, [density])
-  const apply = (v: string) => setDensity(v)
+  const apply = (v: string) => setPref(DENSITY_PREF_KEY, DENSITY_KEY, v)
   return (
     <div className="flex gap-2 max-w-[24rem]" role="radiogroup" aria-label="Interface density">
       {[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }].map(opt => (

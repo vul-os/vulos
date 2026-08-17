@@ -70,7 +70,7 @@ interface AuthContextValue {
   offline: boolean
   offlineMode: boolean
   logout: () => Promise<void>
-  updateProfile: (updates: Record<string, unknown>) => Promise<void>
+  updateProfile: (updates: Record<string, unknown>) => Promise<'ok' | 'rejected' | 'unreachable'>
   checkAuth: () => Promise<void>
   unlockOffline: (password: string) => Promise<boolean>
   // SESSION-TAKEOVER: when set (after a fresh sign-in that finds the account
@@ -205,17 +205,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logout()
   }, [logout])
 
-  const updateProfile = useCallback(async (updates: Record<string, unknown>) => {
-    if (!user || offlineMode) return // no server writes in an offline session
-    const res = await fetch(`/api/profiles/${user.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    })
-    if (res.ok) {
-      const updated: unknown = await res.json()
-      if (isRecord(updated)) setProfile(updated as AuthProfile)
+  /**
+   * Patch the profile on the box.
+   *
+   * Returns WHY it did not land, not merely that it did not. The preference
+   * engine (core/syncedPrefs.ts) retries an `unreachable` write forever — that
+   * is how a theme changed on a plane survives to landing — and must NOT retry
+   * a `rejected` one, because a patch the server refuses on its content will be
+   * refused identically every time and would block every later write behind it.
+   * A bare boolean cannot tell those apart, and a thrown-away failure (what
+   * this did before) cannot tell you anything.
+   */
+  const updateProfile = useCallback(async (updates: Record<string, unknown>): Promise<'ok' | 'rejected' | 'unreachable'> => {
+    if (!user || offlineMode) return 'unreachable' // no server writes in an offline session
+    let res: Response
+    try {
+      res = await fetch(`/api/profiles/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+    } catch {
+      return 'unreachable' // the box is not answering — keep the write queued
     }
+    if (res.ok) {
+      const updated: unknown = await res.json().catch(() => null)
+      if (isRecord(updated)) setProfile(updated as AuthProfile)
+      return 'ok'
+    }
+    // 4xx is a decision about this patch's content; 5xx and anything else may
+    // succeed later.
+    return res.status >= 400 && res.status < 500 ? 'rejected' : 'unreachable'
   }, [user, offlineMode])
 
   return (

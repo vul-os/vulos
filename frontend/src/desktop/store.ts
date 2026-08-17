@@ -53,6 +53,12 @@ import {
 import { validateLayout, validatePack, validateTokens } from './validate'
 import { DEFAULT_PRESET_ID, LAYOUT_PRESETS, getPreset, presetLayout, stockLayout } from './presets'
 import { resolveViewportLayout } from '../shell/viewportRule'
+import { pushPrefGroup } from '../core/syncedPrefs'
+import {
+  DESKTOP_PREF_KEYS, DESKTOP_PREF_KEY_CONTROLS, DESKTOP_PREF_KEY_DOCK_DESKTOP,
+  DESKTOP_PREF_KEY_DOCK_MOBILE, DESKTOP_PREF_KEY_PRESET, DESKTOP_PREF_KEY_TOKENS,
+  PREF_GROUP_DESKTOP,
+} from '../core/prefKeys'
 
 const KEY_LAYOUT = 'vulos.desktop.layout'
 const KEY_PACKS = 'vulos.desktop.packs'
@@ -218,7 +224,80 @@ function commit(next: DesktopLayout): DesktopLayout {
   persist(current)
   applyToDom(current)
   emit()
+  pushPrefGroup(PREF_GROUP_DESKTOP)
   return current
+}
+
+/* ── Syncing ──────────────────────────────────────────────────────────────── */
+
+/**
+ * The layout as preference-bag entries — FIVE keys, not one blob.
+ *
+ * A whole `DesktopLayout` measures 611 bytes with a full dock, against the
+ * bag's 512-byte per-value cap, so it cannot ride as one value. It is split
+ * along the model's OWN seams rather than chunked into a framing format nobody
+ * documented: reassembly hands the recomposed object straight back to
+ * validateLayout(), so a truncated or tampered value from a peer degrades to
+ * stock exactly as a tampered localStorage value already does. No new trust
+ * boundary is created by syncing.
+ *
+ * `vulos.desktop.packs` is deliberately NOT here. A third-party pack manifest
+ * is an install artifact, not a preference — see
+ * roadmap/USER-STATE-INVENTORY.md §7.
+ */
+/**
+ * Export the layout for the bag.
+ *
+ * Returns NOTHING for a stock layout. A box that has never been customized must
+ * not claim five keys of a 64-key budget to say "default", and — more
+ * importantly — must not overwrite a layout the user chose on their other
+ * instance simply by having been opened.
+ */
+export function exportLayoutFields(): Record<string, string> {
+  if (isStock()) return {}
+  return {
+    [DESKTOP_PREF_KEY_PRESET]: current.presetId,
+    [DESKTOP_PREF_KEY_CONTROLS]: current.windowControls,
+    [DESKTOP_PREF_KEY_DOCK_DESKTOP]: JSON.stringify(current.dock.desktop),
+    [DESKTOP_PREF_KEY_DOCK_MOBILE]: JSON.stringify(current.dock.mobile),
+    [DESKTOP_PREF_KEY_TOKENS]: JSON.stringify(current.tokens),
+  }
+}
+
+function parseField(raw: string | undefined): unknown {
+  if (!raw) return undefined
+  try { return JSON.parse(raw) } catch { return undefined }
+}
+
+/**
+ * Apply the box's copy of the layout.
+ *
+ * An EMPTY set means the box holds no layout, which means stock — the same
+ * meaning "absent" has everywhere else in the preference bag. Anything that
+ * fails validateLayout() falls back to stock rather than being repaired,
+ * because silently fixing data that arrived over a wire is how a validator
+ * becomes a parser for a format nobody wrote down.
+ */
+export function importLayoutFields(values: Record<string, string>): void {
+  const preset = values[DESKTOP_PREF_KEY_PRESET]
+  if (!preset) {
+    resetToStock()
+    return
+  }
+  const candidate = {
+    presetId: preset,
+    windowControls: values[DESKTOP_PREF_KEY_CONTROLS],
+    dock: {
+      desktop: parseField(values[DESKTOP_PREF_KEY_DOCK_DESKTOP]),
+      mobile: parseField(values[DESKTOP_PREF_KEY_DOCK_MOBILE]),
+    },
+    tokens: parseField(values[DESKTOP_PREF_KEY_TOKENS]) ?? {},
+  }
+  const result = validateLayout(candidate)
+  current = result.ok ? result.value : stockLayout()
+  persist(current)
+  applyToDom(current)
+  emit()
 }
 
 /* ── Public mutations ─────────────────────────────────────────────────────── */
@@ -306,6 +385,10 @@ export function resetToStock(): DesktopLayout {
   current = stockLayout()
   applyToDom(current)
   emit()
+  // Reverting is a DECISION, and it has to reach the box or the next load pulls
+  // the old layout back down. commit() is not on this path (it removes the key
+  // rather than writing one), so the push is explicit here.
+  pushPrefGroup(PREF_GROUP_DESKTOP)
   return current
 }
 

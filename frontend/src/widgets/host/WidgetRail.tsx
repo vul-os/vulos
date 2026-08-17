@@ -12,7 +12,7 @@
 // what makes a third-party widget indistinguishable from a builtin here, and is
 // the actual test of whether the API is real.
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react'
 import { useShell } from '../../providers/ShellProvider'
 import { getAppById } from '../../core/AppRegistry'
 import { launchApp } from '../../shell/launchApp'
@@ -22,7 +22,7 @@ import { probeProxy } from '../net'
 import { buildContext, seamsNeeded } from './context'
 import {
   addWidget, loadLayout, moveWidget, removeWidget, resizeWidget,
-  saveLayout, setGrants, setInstanceSetting,
+  railVersionSnapshot, saveLayout, setGrants, setInstanceSetting, subscribeRail,
 } from '../layout'
 import { finestTick, nowFor, useTicker } from './useTicker'
 import { CalendarSource, NotificationSource, TelemetrySource } from './capabilities'
@@ -75,6 +75,17 @@ export default function WidgetRail() {
   const { openWindow } = useShell()
 
   useEffect(() => { saveLayout(layout) }, [layout])
+
+  // The rail can also be replaced from OUTSIDE this tree: hydration applies the
+  // box's copy, which is how a widget added on another instance shows up here.
+  // Without this the reducer would keep rendering the layout it loaded at
+  // mount, and the effect above would write it straight back over the arriving
+  // one on the next edit.
+  const railVersion = useSyncExternalStore(subscribeRail, railVersionSnapshot, railVersionSnapshot)
+  useEffect(() => {
+    if (railVersion === 0) return // nothing has arrived yet; mount state stands
+    dispatch({ t: 'set', layout: loadLayout() })
+  }, [railVersion])
 
   // Ask the box ONCE whether it brokers widget requests. Until it answers (and
   // it answers "no" on every box shipping today), ctx.net is null everywhere and

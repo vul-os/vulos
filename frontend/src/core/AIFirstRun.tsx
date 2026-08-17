@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useShell } from '../providers/ShellProvider'
 import { useFocusTrap } from '../shell/useFocusTrap'
+import { AI_FIRSTRUN_LS_KEY, AI_FIRSTRUN_PREF_KEY } from './prefKeys'
+import { prefRead, setPref } from './syncedPrefs'
 
-const STORAGE_KEY = 'vulos-ai-firstrun-done'
+const STORAGE_KEY = AI_FIRSTRUN_LS_KEY
 
 interface Capability {
   icon: ReactNode
@@ -52,10 +54,12 @@ export default function AIFirstRun() {
   const trapRef = useFocusTrap(visible && !dismissed)
 
   useEffect(() => {
-    // Only show once — check persisted flag
-    let done = false
-    try { done = !!localStorage.getItem(STORAGE_KEY) } catch { done = false }
-    if (done) return
+    // Only show once — and "once" now means once per USER, not once per browser
+    // profile. This flag was localStorage, so a user with two instances was
+    // introduced to their assistant twice, and clearing site data introduced
+    // them to it again. It is the smallest entry in the sync inventory and the
+    // most directly on the directive's nose.
+    if (prefRead(STORAGE_KEY)) return
     // Brief delay so the desktop fully renders before the overlay appears
     const timer = setTimeout(() => setVisible(true), 800)
     return () => clearTimeout(timer)
@@ -82,7 +86,7 @@ export default function AIFirstRun() {
   }
 
   function persist(): void {
-    try { localStorage.setItem(STORAGE_KEY, '1') } catch (e) { void e }
+    setPref(AI_FIRSTRUN_PREF_KEY, STORAGE_KEY, '1')
   }
 
   if (!visible || dismissed) return null

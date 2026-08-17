@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { ThemeProvider } from './core/ThemeProvider'
 import { I18nProvider } from './core/i18n'
 import { WallpaperProvider } from './core/useWallpaper'
+import SyncedPrefsBridge from './core/SyncedPrefsBridge'
 import { DeviceProfileProvider, useDeviceProfile } from './core/useDeviceProfile'
 import { ShellProvider, useShell } from './providers/ShellProvider'
 import { SovereigntyProvider } from './core/useSovereignty'
@@ -402,6 +403,11 @@ export default function App() {
       <ThemeProvider>
         <WallpaperProvider>
           <AuthProvider>
+            {/* Preferences follow the USER, not the browser. Inside
+                AuthProvider because it needs the session; outside AuthGate
+                because hydration must happen whether or not the desktop is
+                the thing being rendered. Renders nothing itself. */}
+            <SyncedPrefsBridge />
             <AuthGate />
             <OfflineIndicator />
             {/* SESSION-TAKEOVER: global; renders only when a fresh sign-in

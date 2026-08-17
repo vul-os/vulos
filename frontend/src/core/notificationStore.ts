@@ -26,6 +26,8 @@
 //   }
 
 import { nativeBridge } from './nativeBridge'
+import { pushPrefGroup } from './syncedPrefs'
+import { NOTIFY_PREF_KEY, PREF_GROUP_NOTIFICATIONS } from './prefKeys'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -363,6 +365,42 @@ export function setPrefs(patch: NotificationPrefsPatch): void {
   // its key. Other scalar fields patch normally.
   const sources = patch.sources !== undefined ? patch.sources : prefs.sources
   prefs = coercePrefs({ ...prefs, ...patch, sources })
+  persistPrefs(); emitPrefs()
+  pushPrefGroup(PREF_GROUP_NOTIFICATIONS)
+}
+
+/* ── Syncing ──────────────────────────────────────────────────────────────────
+ *
+ * PREFERENCES sync; the LOG does not.
+ *
+ * They are different kinds of state. Preferences are a handful of user
+ * decisions — Do Not Disturb, the chime, which sources are off — and belong on
+ * the profile. The log is an append-only history whose real home is the box's
+ * own <root>/db/notifications.json, which SYNC-INVENTORY.md already records as
+ * a gap. Putting it here instead would make every arriving notification a
+ * rewrite of the single CRDT register that carries the user's whole profile.
+ *
+ * So `vulos.notifications.log.v1` stays local by exception, with the remedy
+ * named — roadmap/USER-STATE-INVENTORY.md §3, entry 20.
+ */
+/** The prefs as one bag value, or nothing at all when they are still stock. */
+export function exportNotificationPrefs(): Record<string, string> {
+  const encoded = JSON.stringify(prefs)
+  if (encoded === JSON.stringify(coercePrefs(null))) return {}
+  return { [NOTIFY_PREF_KEY]: encoded }
+}
+
+/**
+ * Apply the box's copy. Absent means stock, the same meaning absent has
+ * everywhere else in the bag. Everything goes through coercePrefs(), so a
+ * malformed value from a peer degrades to the defaults rather than reaching
+ * shouldToast() as an arbitrary object.
+ */
+export function importNotificationPrefs(values: Record<string, string>): void {
+  const raw = values[NOTIFY_PREF_KEY]
+  let parsed: unknown = null
+  if (raw) { try { parsed = JSON.parse(raw) } catch { parsed = null } }
+  prefs = coercePrefs(parsed)
   persistPrefs(); emitPrefs()
 }
 

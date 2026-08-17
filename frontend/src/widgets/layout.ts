@@ -15,6 +15,8 @@
 import { getWidget } from './registry'
 import { normalizeSettings } from './manifest'
 import { widgetClear } from './storage'
+import { MAX_SYNCED_VALUE, pushPrefGroup } from '../core/syncedPrefs'
+import { PREF_GROUP_WIDGETS, WIDGETS_PREF_KEY_COUNT, WIDGETS_PREF_KEY_PREFIX } from '../core/prefKeys'
 import {
   WIDGET_PERMISSIONS,
   type WidgetInstance, type WidgetLayout, type WidgetPermission,
@@ -163,6 +165,91 @@ export function loadLayout(): WidgetLayout {
 
 export function saveLayout(layout: WidgetLayout): void {
   try { localStorage.setItem(LS_KEY, JSON.stringify(layout)) } catch { /* private mode */ }
+  pushPrefGroup(PREF_GROUP_WIDGETS)
+}
+
+/* ── Syncing ─────────────────────────────────────────────────────────────────
+ *
+ * The rail is ONE key per placement, not one blob.
+ *
+ * Measured against the bag's 512-byte per-value cap: five placements serialise
+ * to 827 bytes and the 24-placement maximum to 3867. So the blob cannot ride as
+ * a value, and the split is per placement because that is the seam the data
+ * already has — every entry that comes back goes through reconcileInstance(),
+ * the SAME function that already drops unknown widget ids, clamps sizes the
+ * manifest no longer offers and intersects grants against what the widget still
+ * asks for. A placement arriving from another box gets exactly the treatment a
+ * placement read back off this disk gets.
+ *
+ * Per-widget STORAGE (widgets/storage.ts) does not sync. The consequence is
+ * worth stating plainly rather than leaving to be discovered: a widget arrives
+ * on the second box EMPTY rather than absent. That is a strict improvement over
+ * absent and it is not the finished state — roadmap/USER-STATE-INVENTORY.md §7.
+ */
+
+export function exportRailFields(): Record<string, string> {
+  const layout = loadLayout()
+  const out: Record<string, string> = {}
+  let n = 0
+  for (const inst of layout.instances) {
+    if (n >= MAX_INSTANCES) break
+    const encoded = JSON.stringify(inst)
+    // A placement whose settings push it past the cap is sent WITHOUT them
+    // rather than dropped: losing the widget entirely to keep its stock-ticker
+    // symbols is the wrong trade, and the settings normalise back to the
+    // manifest's defaults on arrival.
+    const value = encoded.length <= MAX_SYNCED_VALUE
+      ? encoded
+      : JSON.stringify({ ...inst, settings: {} })
+    if (value.length > MAX_SYNCED_VALUE) continue
+    out[`${WIDGETS_PREF_KEY_PREFIX}${n}`] = value
+    n++
+  }
+  out[WIDGETS_PREF_KEY_COUNT] = String(n)
+  return out
+}
+
+export function importRailFields(values: Record<string, string>): void {
+  const count = Number(values[WIDGETS_PREF_KEY_COUNT])
+  // No count means the box holds no rail, which is not the same as "an empty
+  // rail". Leave what is here alone; hydration only asserts what it was told.
+  if (!Number.isInteger(count) || count < 0) return
+  const instances: unknown[] = []
+  for (let i = 0; i < Math.min(count, MAX_INSTANCES); i++) {
+    const raw = values[`${WIDGETS_PREF_KEY_PREFIX}${i}`]
+    if (!raw) continue
+    try { instances.push(JSON.parse(raw)) } catch { /* dropped by parseLayout below */ }
+  }
+  const layout = parseLayout({ version: 1, instances }) ?? { version: 1 as const, instances: [] }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(layout)) } catch { /* private mode */ }
+  emitRail()
+}
+
+/* ── Change notification ──────────────────────────────────────────────────── */
+
+const railListeners = new Set<() => void>()
+let railVersion = 0
+
+/**
+ * Fires only when the rail is replaced from OUTSIDE the React tree that owns it
+ * — today, exactly one caller: importRailFields applying the box's copy.
+ *
+ * saveLayout does NOT emit. WidgetRail persists in an effect keyed on its own
+ * reducer state, so emitting there would feed its own write back to it every
+ * time a widget moved.
+ */
+export function subscribeRail(fn: () => void): () => void {
+  railListeners.add(fn)
+  return () => { railListeners.delete(fn) }
+}
+
+export function railVersionSnapshot(): number {
+  return railVersion
+}
+
+function emitRail(): void {
+  railVersion++
+  for (const fn of railListeners) fn()
 }
 
 // ── Pure layout operations ───────────────────────────────────────────────────

@@ -1,9 +1,14 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import {
+  createContext, useContext, useState, useEffect, useCallback, useMemo, useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import {
   accentText, accentSolid, worstSurfaceFor, compositeOver,
   ACCENT_TINT_RANGE, AA_TARGET,
 } from './accentContrast'
 import { getLayout, subscribeLayout } from '../desktop'
+import { prefRead, setPref, subscribePrefs } from './syncedPrefs'
+import { THEME_PREF_KEYS } from './prefKeys'
 
 type ResolvedTheme = 'light' | 'dark'
 
@@ -47,12 +52,55 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_ACCENT = '#3b82f6' // blue-500
 
+/**
+ * # There were two themes, and the one that synced was not the one you saw
+ *
+ * `profiles.Theme` is a real column on the replicated profile row, documented
+ * `"dark" | "light" | "auto"`, decoded by handleUpdateProfile — and nothing in
+ * frontend/src ever read or wrote it. What a user actually saw came from
+ * `vulos-theme` in localStorage, written here. So the row that replicated was
+ * not the setting that governed, and the setting that governed was per-BROWSER:
+ * set your theme on one box and the other opened in the old one, and so did the
+ * same box in a different browser.
+ *
+ * Resolved in favour of the COLUMN (roadmap/USER-STATE-INVENTORY.md §9). It
+ * already exists, already replicates, already has a wire field.
+ *
+ * `vulos-theme` is not deleted — it is DEMOTED to the pre-paint cache. main.tsx
+ * stamps `data-theme` onto <html> before React mounts, long before a profile
+ * can be fetched, and removing the local copy would reintroduce the
+ * flash-of-wrong-theme that key was added to prevent. Its two readers are this
+ * file and main.tsx's getInitialResolvedTheme(); both keep working, neither is
+ * authoritative any more.
+ *
+ * One widening, stated rather than left to be discovered: this shell has a
+ * FOURTH theme value, 'schedule', that the column's comment does not list. The
+ * column is a free string with no server-side validation, so it carries it; the
+ * comment on Profile.Theme now says so.
+ *
+ * Accent, night shift and the schedule times have no column and ride the
+ * preference bag.
+ */
+
+/**
+ * Read a theme preference out of the local cache.
+ *
+ * Still localStorage, but no longer the source of truth — see
+ * core/syncedPrefs.ts. `''` and "unset" are the same thing here, so an empty
+ * stored value falls back exactly as a missing one does.
+ */
 function ls(key: string, fallback: string): string {
-  try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
+  return prefRead(key) || fallback
 }
 
-function lsSet(key: string, val: string): void {
-  try { localStorage.setItem(key, val) } catch { /* noop */ }
+/**
+ * The stores a theme value can change underneath React: a user's own write
+ * (prefs), and the desktop layout, whose preset can carry an accent.
+ */
+function subscribeThemeSources(fn: () => void): () => void {
+  const offPrefs = subscribePrefs(fn)
+  const offLayout = subscribeLayout(fn)
+  return () => { offPrefs(); offLayout() }
 }
 
 /**
@@ -72,7 +120,7 @@ function layoutAccent(): string | null {
 }
 
 function hasExplicitAccent(): boolean {
-  try { return !!localStorage.getItem(STORAGE_KEYS.accent) } catch { return false }
+  return !!prefRead(STORAGE_KEYS.accent)
 }
 
 function initialAccent(): string {
@@ -164,28 +212,42 @@ interface ThemeProviderProps {
   children?: ReactNode
 }
 
+/**
+ * Read one theme preference, re-reading whenever the cache changes underneath.
+ *
+ * These used to be `useState` seeded once from localStorage, which was correct
+ * while localStorage was the only writer. It no longer is: a value arriving
+ * from the box lands in the cache from outside React, and a component holding
+ * a copy it seeded at mount would keep rendering the old theme until the next
+ * reload — the setting would sync and the screen would not.
+ */
+function useThemePref(key: string, fallback: string): string {
+  return useSyncExternalStore(
+    subscribeThemeSources,
+    () => ls(key, fallback),
+    () => fallback, // server render: no storage, no matchMedia
+  )
+}
+
 export function ThemeProvider({ children }: ThemeProviderProps) {
   // Default mode is System (follow the OS/browser prefers-color-scheme).
-  const [theme, setThemeState] = useState(() => ls(STORAGE_KEYS.theme, 'auto'))
+  const theme = useThemePref(STORAGE_KEYS.theme, 'auto')
   // Live mirror of the OS/browser colour-scheme. Kept in React state (not just a
   // one-off read) so that when the system flips while in System/Auto mode the
   // whole context recomputes and every consumer re-renders — not merely the
   // <html data-theme> attribute.
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme)
-  const [scheduleDark, setScheduleDarkState] = useState(() => ls(STORAGE_KEYS.scheduleDark, '20:00'))
-  const [scheduleLight, setScheduleLightState] = useState(() => ls(STORAGE_KEYS.scheduleLight, '07:00'))
-  const [nightShiftMode, setNightShiftModeState] = useState(() => ls(STORAGE_KEYS.nightShift, 'off'))
-  const [nightShiftFrom, setNightShiftFromState] = useState(() => ls(STORAGE_KEYS.nightShiftFrom, '20:00'))
-  const [nightShiftTo, setNightShiftToState] = useState(() => ls(STORAGE_KEYS.nightShiftTo, '07:00'))
-  const [nightShiftWarmth, setNightShiftWarmthState] = useState(() => parseInt(ls(STORAGE_KEYS.nightShiftWarmth, '40'), 10))
-  const [accent, setAccentState] = useState(initialAccent)
-
-  // Track the desktop layout's accent while the user has not picked one of their
-  // own, so applying a preset or installing a pack retints the shell live.
-  useEffect(() => subscribeLayout(() => {
-    if (hasExplicitAccent()) return
-    setAccentState(layoutAccent() ?? DEFAULT_ACCENT)
-  }), [])
+  const scheduleDark = useThemePref(STORAGE_KEYS.scheduleDark, '20:00')
+  const scheduleLight = useThemePref(STORAGE_KEYS.scheduleLight, '07:00')
+  const nightShiftMode = useThemePref(STORAGE_KEYS.nightShift, 'off')
+  const nightShiftFrom = useThemePref(STORAGE_KEYS.nightShiftFrom, '20:00')
+  const nightShiftTo = useThemePref(STORAGE_KEYS.nightShiftTo, '07:00')
+  const nightShiftWarmth = parseInt(useThemePref(STORAGE_KEYS.nightShiftWarmth, '40'), 10)
+  // The accent is the one value with a second source: a layout preset or an
+  // installed pack can ask for one, and it applies only while the user has not
+  // chosen their own. Both sources are in subscribeThemeSources, so a preset
+  // change and a synced accent both retint live.
+  const accent = useSyncExternalStore(subscribeThemeSources, initialAccent, () => DEFAULT_ACCENT)
 
   // Re-evaluate time-based modes every minute
   const [tick, setTick] = useState(0)
@@ -294,15 +356,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     el.style.setProperty('--accent-solid', accentSolid(accent, '#ffffff', AA_TARGET) ?? accent)
   }, [accent, resolved])
 
-  // Persisted setters
-  const setTheme = useCallback((t: string) => { setThemeState(t); lsSet(STORAGE_KEYS.theme, t) }, [])
-  const setScheduleDark = useCallback((t: string) => { setScheduleDarkState(t); lsSet(STORAGE_KEYS.scheduleDark, t) }, [])
-  const setScheduleLight = useCallback((t: string) => { setScheduleLightState(t); lsSet(STORAGE_KEYS.scheduleLight, t) }, [])
-  const setNightShiftMode = useCallback((m: string) => { setNightShiftModeState(m); lsSet(STORAGE_KEYS.nightShift, m) }, [])
-  const setNightShiftFrom = useCallback((t: string) => { setNightShiftFromState(t); lsSet(STORAGE_KEYS.nightShiftFrom, t) }, [])
-  const setNightShiftTo = useCallback((t: string) => { setNightShiftToState(t); lsSet(STORAGE_KEYS.nightShiftTo, t) }, [])
-  const setNightShiftWarmth = useCallback((v: number) => { setNightShiftWarmthState(v); lsSet(STORAGE_KEYS.nightShiftWarmth, String(v)) }, [])
-  const setAccent = useCallback((c: string) => { setAccentState(c); lsSet(STORAGE_KEYS.accent, c) }, [])
+  // Persisted setters. setPref writes the local cache (so the UI is correct
+  // immediately, and correct again before first paint on the next reload) and
+  // queues the patch for the box. Neither half waits on the other.
+  const setTheme = useCallback((t: string) => { setPref(THEME_PREF_KEYS.theme, STORAGE_KEYS.theme, t) }, [])
+  const setScheduleDark = useCallback((t: string) => { setPref(THEME_PREF_KEYS.scheduleDark, STORAGE_KEYS.scheduleDark, t) }, [])
+  const setScheduleLight = useCallback((t: string) => { setPref(THEME_PREF_KEYS.scheduleLight, STORAGE_KEYS.scheduleLight, t) }, [])
+  const setNightShiftMode = useCallback((m: string) => { setPref(THEME_PREF_KEYS.nightShift, STORAGE_KEYS.nightShift, m) }, [])
+  const setNightShiftFrom = useCallback((t: string) => { setPref(THEME_PREF_KEYS.nightShiftFrom, STORAGE_KEYS.nightShiftFrom, t) }, [])
+  const setNightShiftTo = useCallback((t: string) => { setPref(THEME_PREF_KEYS.nightShiftTo, STORAGE_KEYS.nightShiftTo, t) }, [])
+  const setNightShiftWarmth = useCallback((v: number) => { setPref(THEME_PREF_KEYS.nightShiftWarmth, STORAGE_KEYS.nightShiftWarmth, String(v)) }, [])
+  const setAccent = useCallback((c: string) => { setPref(THEME_PREF_KEYS.accent, STORAGE_KEYS.accent, c) }, [])
 
   const toggle = useCallback(() => {
     setTheme(resolved === 'dark' ? 'light' : 'dark')
