@@ -86,7 +86,7 @@ func jsReq(mux *http.ServeMux, method, target, remoteIP, userID, body string) *h
 func TestJoin_RateLimiter_429UnderBurst(t *testing.T) {
 	home := t.TempDir() // fresh, unprovisioned instance (no .vulos/db)
 	mux := http.NewServeMux()
-	registerJoinRoutes(mux, home)
+	registerJoinRoutes(mux, home, func() bool { return false })
 
 	const ip = "203.0.113.7"
 	var got429 bool
@@ -112,7 +112,7 @@ func TestJoin_RateLimiter_429UnderBurst(t *testing.T) {
 func TestJoin_RateLimiter_PerIP(t *testing.T) {
 	home := t.TempDir()
 	mux := http.NewServeMux()
-	registerJoinRoutes(mux, home)
+	registerJoinRoutes(mux, home, func() bool { return false })
 
 	// Burn IP #1 into the limited state.
 	for i := 0; i < 12; i++ {
@@ -129,12 +129,17 @@ func TestJoin_RateLimiter_PerIP(t *testing.T) {
 	}
 }
 
-// TestJoin_ProvisionedGate blocks the public join endpoints once the instance
-// is fully provisioned (bootmode "normal"): POST → 409, status GET → 403.
+// TestJoin_ProvisionedGate blocks the public join endpoints once an OWNER has
+// claimed the box: POST → 409, status GET → 403.
+//
+// The gate used to be derived from bootmode inside joinsync ("normal" =
+// db/instance.json exists). This test set up exactly that on-disk state and
+// watched the 409/403 arrive — but the server writes instance.json at startup,
+// so the same state exists on a pristine box and the join flow was refused
+// everywhere, forever. The predicate is now injected, and the test states the
+// ownership directly instead of smuggling it in through a file.
 func TestJoin_ProvisionedGate(t *testing.T) {
 	home := t.TempDir()
-	// Make bootmode.Detect report "normal": db dir + instance.json present,
-	// no active sync-state.
 	dbDir := filepath.Join(home, "db")
 	if err := os.MkdirAll(dbDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -144,7 +149,7 @@ func TestJoin_ProvisionedGate(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	registerJoinRoutes(mux, home)
+	registerJoinRoutes(mux, home, func() bool { return true })
 
 	// POST must be 409 (setup already complete) — and must NOT touch rate-limit.
 	wp := jsReq(mux, http.MethodPost, "/api/setup/join", "203.0.113.9", "",
@@ -164,7 +169,7 @@ func TestJoin_ProvisionedGate(t *testing.T) {
 func TestJoin_StatusUnprovisioned(t *testing.T) {
 	home := t.TempDir()
 	mux := http.NewServeMux()
-	registerJoinRoutes(mux, home)
+	registerJoinRoutes(mux, home, func() bool { return false })
 
 	w := jsReq(mux, http.MethodGet, "/api/setup/join/status", "203.0.113.9", "", "")
 	if w.Code != http.StatusOK {

@@ -4389,8 +4389,13 @@ func main() {
 	registerConflictRoutes(mux, dataDir, notifySvc)
 	// Join codes — cross-device cluster joins via short-codes / QR (INIT-10)
 	registerJoinCodeRoutes(mux, home, authStore)
-	// Cluster join from a NEW device — validate S3+passphrase, begin sync (INIT-08)
-	registerJoinRoutes(mux, home)
+	// Cluster join from a NEW device — validate S3+passphrase, begin sync (INIT-08).
+	// The gate is "has a human taken this box", NOT "does instance.json exist" —
+	// the server writes instance.json at startup, so the old predicate refused
+	// every join that has ever been attempted. See registerJoinRoutes.
+	registerJoinRoutes(mux, home, func() bool {
+		return setupIsComplete() || (authStore != nil && authStore.HasAnyUsers())
+	})
 	// Persistent notification store + prune endpoint (NOTIF-02)
 	registerNotifyPersistRoutes(mux, notifySvc, home, authStore)
 	// Account security (login/session anomaly feed + emergency lock). acctSecSvc

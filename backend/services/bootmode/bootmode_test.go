@@ -41,9 +41,9 @@ func writeJSON(t *testing.T, path string, v any) {
 // The types are in package bootmode so this compiles only if Result is exported.
 func TestBootmodeResultPrefix(t *testing.T) {
 	var r Result
-	r.Mode = "normal"
+	r.Mode = ModeInstanceReady
 	r.SyncState = ""
-	if r.Mode != "normal" {
+	if r.Mode != ModeInstanceReady {
 		t.Fatalf("expected normal, got %s", r.Mode)
 	}
 }
@@ -56,7 +56,7 @@ func TestDetect_FreshNoDBDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Mode != "setup" {
+	if result.Mode != ModeInstanceAbsent {
 		t.Errorf("expected setup, got %q", result.Mode)
 	}
 }
@@ -71,7 +71,7 @@ func TestDetect_DBDirNoInstanceJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Mode != "setup" {
+	if result.Mode != ModeInstanceAbsent {
 		t.Errorf("expected setup, got %q", result.Mode)
 	}
 }
@@ -91,7 +91,7 @@ func TestDetect_SyncStateSyncing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Mode != "sync" {
+	if result.Mode != ModeSyncing {
 		t.Errorf("expected sync, got %q", result.Mode)
 	}
 	if result.SyncState != "syncing" {
@@ -112,7 +112,7 @@ func TestDetect_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Mode != "normal" {
+	if result.Mode != ModeInstanceReady {
 		t.Errorf("expected normal, got %q", result.Mode)
 	}
 }
@@ -129,7 +129,7 @@ func TestDetect_SyncStateComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Mode != "normal" {
+	if result.Mode != ModeInstanceReady {
 		t.Errorf("expected normal (complete sync = done), got %q", result.Mode)
 	}
 }

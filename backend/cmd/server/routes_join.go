@@ -25,14 +25,29 @@ import (
 )
 
 // registerJoinRoutes wires the cluster-join endpoints onto mux.
-func registerJoinRoutes(mux *http.ServeMux, home string) {
+//
+// ownerClaimed answers "does this box already belong to somebody?" — the gate
+// that closes both public routes. It is injected because getting it wrong made
+// the entire join flow unreachable on real hardware for as long as it has
+// existed: the gate used to be joinsync.IsProvisioned(home), i.e. bootmode
+// "normal", i.e. "db/instance.json exists". The server writes instance.json at
+// startup, so the gate was true on every box that was up, and a brand-new
+// device answering the wizard's "join an existing system" got 409 from the POST
+// and 403 from the status poll. Nothing was ever able to join.
+//
+// The honest predicate is passed from main.go: the setup-complete marker
+// (routes_setup.go — the same authority the shell's first-run gate uses) OR any
+// account existing. Either one means a human has taken this box; neither is
+// true of the fresh device this flow is for.
+func registerJoinRoutes(mux *http.ServeMux, home string, ownerClaimed func() bool) {
 	rl := newJoinRateLimiter()
+	claimed := func() bool { return ownerClaimed != nil && ownerClaimed() }
 
 	mux.HandleFunc("POST /api/setup/join", func(w http.ResponseWriter, r *http.Request) {
-		// SECAUDIT2 L-2: block once the instance is fully provisioned.
+		// SECAUDIT2 L-2: block once somebody owns this box.
 		// The check is intentionally BEFORE rate-limit accounting so a
-		// provisioned instance does not burn the rate budget.
-		if joinsync.IsProvisioned(home) {
+		// claimed instance does not burn the rate budget.
+		if claimed() {
 			writeErr(w, http.StatusConflict, "setup already complete — this instance is provisioned")
 			return
 		}
@@ -51,7 +66,7 @@ func registerJoinRoutes(mux *http.ServeMux, home string) {
 			return
 		}
 
-		result, err := joinsync.Join(req, home)
+		result, err := joinsync.Join(req, home, claimed())
 		if err != nil {
 			rl.record(ip)
 			switch {
@@ -78,9 +93,9 @@ func registerJoinRoutes(mux *http.ServeMux, home string) {
 	})
 
 	mux.HandleFunc("GET /api/setup/join/status", func(w http.ResponseWriter, r *http.Request) {
-		// SECAUDIT2 L-2: block status polling once provisioned to avoid
-		// leaking sync-state.json contents to unauthenticated callers.
-		if joinsync.IsProvisioned(home) {
+		// SECAUDIT2 L-2: block status polling once somebody owns this box, to
+		// avoid leaking sync-state.json contents to unauthenticated callers.
+		if claimed() {
 			writeErr(w, http.StatusForbidden, "setup already complete — this instance is provisioned")
 			return
 		}

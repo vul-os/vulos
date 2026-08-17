@@ -6,7 +6,7 @@
 //  2. Join-existing path: accept user-supplied bucket creds + cluster
 //     passphrase, verify passphrase against join marker, pull first changeset.
 //  3. Standalone path: no cloud, no bucket — local-only OS account created,
-//     bootmode reaches "normal" without any S3 involvement.
+//     bootmode reaches instance_ready without any S3 involvement.
 //
 // All three paths use in-process mocks — no real AWS / minio is required.
 // The tests exercise the same code that the HTTP handlers call so they cover
@@ -178,12 +178,12 @@ func TestStandalone_LocalAccount(t *testing.T) {
 		t.Fatalf("standalone: instance.json not created: %v", err)
 	}
 
-	// 3. No sync-state.json → bootmode returns "normal".
+	// 3. No sync-state.json → bootmode returns instance_ready.
 	result, err := bootmode.Detect(home)
 	if err != nil {
 		t.Fatalf("standalone: bootmode.Detect: %v", err)
 	}
-	if result.Mode != "normal" {
+	if result.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("standalone: expected bootmode 'normal', got %q", result.Mode)
 	}
 
@@ -200,16 +200,16 @@ func TestStandalone_LocalAccount(t *testing.T) {
 func TestStandalone_IsNotProvisioned_UntilIdentityLoaded(t *testing.T) {
 	home := fbTmpHome(t)
 
-	// Before identity.Load: bootmode "setup".
+	// Before identity.Load: bootmode instance_absent.
 	r, err := bootmode.Detect(home)
 	if err != nil {
 		t.Fatalf("bootmode.Detect (fresh): %v", err)
 	}
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Fatalf("expected 'setup' before identity init, got %q", r.Mode)
 	}
 
-	// After identity.Load: bootmode "normal".
+	// After identity.Load: bootmode instance_ready.
 	if _, err := identity.Load(home); err != nil {
 		t.Fatalf("identity.Load: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestStandalone_IsNotProvisioned_UntilIdentityLoaded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootmode.Detect (after identity): %v", err)
 	}
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("expected 'normal' after identity init, got %q", r.Mode)
 	}
 }
@@ -245,7 +245,7 @@ func TestNewCluster_BucketCreatedPassphraseSavedCRDTInit(t *testing.T) {
 	drainFB(t, m, home)
 
 	req := fbValidJoinReq()
-	result, err := joinsync.Join(req, home)
+	result, err := joinsync.Join(req, home, false)
 	if err != nil {
 		t.Fatalf("new-cluster join: %v", err)
 	}
@@ -301,12 +301,12 @@ func TestNewCluster_BucketCreatedPassphraseSavedCRDTInit(t *testing.T) {
 	// Passphrase must be nowhere on disk.
 	fbAssertPassphraseNotOnDisk(t, home, req.Passphrase)
 
-	// After complete sync, bootmode should be "normal" (no active syncing).
+	// After complete sync, bootmode should be instance_ready (no active syncing).
 	bm, err := bootmode.Detect(home)
 	if err != nil {
 		t.Fatalf("new-cluster: bootmode.Detect: %v", err)
 	}
-	if bm.Mode != "normal" {
+	if bm.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("new-cluster: expected 'normal' after sync complete, got %q", bm.Mode)
 	}
 }
@@ -323,7 +323,7 @@ func TestNewCluster_PassphraseInMemoryOnly(t *testing.T) {
 	req := fbValidJoinReq()
 	req.Passphrase = "NEW_CLUSTER_SENTINEL_passphrase_must_not_leak"
 
-	if _, err := joinsync.Join(req, home); err != nil {
+	if _, err := joinsync.Join(req, home, false); err != nil {
 		t.Fatalf("new-cluster join: %v", err)
 	}
 
@@ -352,7 +352,7 @@ func TestNewCluster_PassphraseInMemoryOnly(t *testing.T) {
 //   - joinsync.Join writes storage.json + sync-state.json.
 //   - Pull reports the first changeset phase and completes.
 //   - sync-state.json reaches "complete".
-//   - bootmode "normal" after sync completion.
+//   - bootmode instance_ready after sync completion.
 func TestJoinExisting_BucketAcceptedPassphraseVerifiedFirstChangesetPulled(t *testing.T) {
 	m := newFBMockBackend()
 	// Existing cluster: validate succeeds (passphrase correct), pull delivers changesets.
@@ -361,7 +361,7 @@ func TestJoinExisting_BucketAcceptedPassphraseVerifiedFirstChangesetPulled(t *te
 	drainFB(t, m, home)
 
 	req := fbValidJoinReq()
-	result, err := joinsync.Join(req, home)
+	result, err := joinsync.Join(req, home, false)
 	if err != nil {
 		t.Fatalf("join-existing: %v", err)
 	}
@@ -417,12 +417,12 @@ func TestJoinExisting_BucketAcceptedPassphraseVerifiedFirstChangesetPulled(t *te
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	// bootmode must be "normal" once sync completes.
+	// bootmode must be instance_ready once sync completes.
 	bm, err := bootmode.Detect(home)
 	if err != nil {
 		t.Fatalf("join-existing: bootmode.Detect: %v", err)
 	}
-	if bm.Mode != "normal" {
+	if bm.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("join-existing: expected 'normal' after sync, got %q", bm.Mode)
 	}
 
@@ -441,7 +441,7 @@ func TestJoinExisting_WrongPassphraseRejected(t *testing.T) {
 	req := fbValidJoinReq()
 	req.Passphrase = "wrong-passphrase"
 
-	_, err := joinsync.Join(req, home)
+	_, err := joinsync.Join(req, home, false)
 	if !errors.Is(err, joinsync.ErrBadPassphrase) {
 		t.Fatalf("join-existing: expected ErrBadPassphrase, got %v", err)
 	}
@@ -454,12 +454,12 @@ func TestJoinExisting_WrongPassphraseRejected(t *testing.T) {
 		t.Fatal("join-existing: sync-state.json written despite bad passphrase")
 	}
 
-	// bootmode must remain "setup".
+	// bootmode must remain instance_absent.
 	bm, err := bootmode.Detect(home)
 	if err != nil {
 		t.Fatalf("join-existing: bootmode.Detect: %v", err)
 	}
-	if bm.Mode != "setup" {
+	if bm.Mode != bootmode.ModeInstanceAbsent {
 		t.Fatalf("join-existing: expected 'setup' after bad passphrase, got %q", bm.Mode)
 	}
 }
@@ -472,7 +472,7 @@ func TestJoinExisting_UnreachableBucketRejected(t *testing.T) {
 	joinsync.SetBackendForTest(t, m)
 	home := fbTmpHome(t)
 
-	_, err := joinsync.Join(fbValidJoinReq(), home)
+	_, err := joinsync.Join(fbValidJoinReq(), home, false)
 	if !errors.Is(err, joinsync.ErrUnreachable) {
 		t.Fatalf("join-existing: expected ErrUnreachable, got %v", err)
 	}
@@ -498,16 +498,16 @@ func TestBootmodeTransitions_FullLifecycle(t *testing.T) {
 
 	// State 1: fresh → "setup"
 	r, _ := bootmode.Detect(home)
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Fatalf("lifecycle: fresh home should be 'setup', got %q", r.Mode)
 	}
 
 	// State 2: after Join() → "sync"
-	if _, err := joinsync.Join(fbValidJoinReq(), home); err != nil {
+	if _, err := joinsync.Join(fbValidJoinReq(), home, false); err != nil {
 		t.Fatalf("lifecycle: join: %v", err)
 	}
 	r, _ = bootmode.Detect(home)
-	if r.Mode != "sync" {
+	if r.Mode != bootmode.ModeSyncing {
 		t.Fatalf("lifecycle: after join should be 'sync', got %q", r.Mode)
 	}
 
@@ -531,7 +531,7 @@ func TestBootmodeTransitions_FullLifecycle(t *testing.T) {
 	}
 
 	r, _ = bootmode.Detect(home)
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("lifecycle: after complete should be 'normal', got %q", r.Mode)
 	}
 }
@@ -544,7 +544,7 @@ func TestBootmodeTransitions_StandaloneDirectToNormal(t *testing.T) {
 
 	// Before identity: "setup"
 	r, _ := bootmode.Detect(home)
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Fatalf("standalone-direct: expected 'setup', got %q", r.Mode)
 	}
 
@@ -553,39 +553,72 @@ func TestBootmodeTransitions_StandaloneDirectToNormal(t *testing.T) {
 		t.Fatalf("standalone-direct: identity.Load: %v", err)
 	}
 	r, _ = bootmode.Detect(home)
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Fatalf("standalone-direct: expected 'normal', got %q", r.Mode)
 	}
 }
 
 // ─── Guard: provisioned instance refuses re-join ─────────────────────────────
 
-// TestProvisionedInstanceRefusesJoin ensures that once an instance is "normal"
-// the join endpoint refuses any attempt to overwrite configuration.
+// TestProvisionedInstanceRefusesJoin ensures that once an OWNER has claimed the
+// box, the join endpoint refuses any attempt to overwrite configuration.
+//
+// This test used to prove something else, and the something else was the bug:
+// it called identity.Load — which is what server startup does — asserted
+// joinsync.IsProvisioned was then true, and concluded that join was correctly
+// refused. Writing instance.json is not ownership. Under the old code every
+// booted box was "provisioned" and the join flow was unreachable in production
+// while this assertion stayed green.
 func TestProvisionedInstanceRefusesJoin(t *testing.T) {
 	m := newFBMockBackend()
 	joinsync.SetBackendForTest(t, m)
 	home := fbTmpHome(t)
 
-	// Provision the instance: write instance.json + no sync-state → "normal".
+	// Write the instance identity, exactly as server startup does. It DOES give
+	// the box an identity — and that is all it does.
 	if _, err := identity.Load(home); err != nil {
 		t.Fatalf("identity.Load: %v", err)
 	}
-	if !joinsync.IsProvisioned(home) {
-		t.Fatal("expected IsProvisioned=true after identity.Load")
+	if !joinsync.HasInstanceIdentity(home) {
+		t.Fatal("expected HasInstanceIdentity=true after identity.Load")
 	}
 
-	_, err := joinsync.Join(fbValidJoinReq(), home)
+	// Ownership is what refuses the join.
+	_, err := joinsync.Join(fbValidJoinReq(), home, true)
 	if !errors.Is(err, joinsync.ErrAlreadyProvisioned) {
 		t.Fatalf("expected ErrAlreadyProvisioned, got %v", err)
 	}
 
-	// Backend.validate must NOT have been called.
+	// Backend.validate must NOT have been called — the gate fires before any
+	// S3 or crypto work.
 	m.mu.Lock()
 	called := m.gotPassphrase != ""
 	m.mu.Unlock()
 	if called {
 		t.Fatal("provisioned guard: backend.validate was called despite provisioned gate")
+	}
+}
+
+// TestInstanceIdentityAloneDoesNotRefuseJoin is the other half, and the half
+// that was missing. db/instance.json exists on every box whose server has
+// started; if that is allowed to mean "already provisioned", a brand-new device
+// answering the wizard's "join an existing system" is refused, which is exactly
+// what shipped.
+func TestInstanceIdentityAloneDoesNotRefuseJoin(t *testing.T) {
+	m := newFBMockBackend()
+	joinsync.SetBackendForTest(t, m)
+	home := fbTmpHome(t)
+	drainFB(t, m, home)
+
+	if _, err := identity.Load(home); err != nil {
+		t.Fatalf("identity.Load: %v", err)
+	}
+	if !joinsync.HasInstanceIdentity(home) {
+		t.Fatal("expected HasInstanceIdentity=true after identity.Load")
+	}
+
+	if _, err := joinsync.Join(fbValidJoinReq(), home, false); err != nil {
+		t.Fatalf("an instance identity alone must not refuse a join, got %v", err)
 	}
 }
 

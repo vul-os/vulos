@@ -127,7 +127,7 @@ func TestJoin_RejectsMissingFields(t *testing.T) {
 	}
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := Join(req, home)
+			_, err := Join(req, home, false)
 			if !errors.Is(err, ErrBadRequest) {
 				t.Fatalf("expected ErrBadRequest, got %v", err)
 			}
@@ -141,7 +141,7 @@ func TestJoin_RejectsBadPassphrase(t *testing.T) {
 	withMock(t, m)
 	home := tmpHome(t)
 
-	_, err := Join(validReq(), home)
+	_, err := Join(validReq(), home, false)
 	if !errors.Is(err, ErrBadPassphrase) {
 		t.Fatalf("expected ErrBadPassphrase, got %v", err)
 	}
@@ -161,7 +161,7 @@ func TestJoin_RejectsUnreachableBucket(t *testing.T) {
 	withMock(t, m)
 	home := tmpHome(t)
 
-	_, err := Join(validReq(), home)
+	_, err := Join(validReq(), home, false)
 	if !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("expected ErrUnreachable, got %v", err)
 	}
@@ -176,7 +176,7 @@ func TestJoin_PersistsStorageWithoutPassphrase(t *testing.T) {
 	drainPull(t, m, home)
 
 	req := validReq()
-	res, err := Join(req, home)
+	res, err := Join(req, home, false)
 	if err != nil {
 		t.Fatalf("Join: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestJoin_WritesSyncStateSyncing(t *testing.T) {
 	home := tmpHome(t)
 	drainPull(t, m, home)
 
-	if _, err := Join(validReq(), home); err != nil {
+	if _, err := Join(validReq(), home, false); err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
@@ -287,7 +287,7 @@ func TestJoin_BackgroundPullCompletes(t *testing.T) {
 	home := tmpHome(t)
 	drainPull(t, m, home)
 
-	if _, err := Join(validReq(), home); err != nil {
+	if _, err := Join(validReq(), home, false); err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
@@ -322,7 +322,7 @@ func TestJoin_BackgroundPullErrorRecorded(t *testing.T) {
 	home := tmpHome(t)
 	drainPull(t, m, home)
 
-	if _, err := Join(validReq(), home); err != nil {
+	if _, err := Join(validReq(), home, false); err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 
@@ -363,7 +363,7 @@ func TestJoin_PassphrasePassedToBackendInMemoryOnly(t *testing.T) {
 	drainPull(t, m, home)
 
 	req := validReq()
-	if _, err := Join(req, home); err != nil {
+	if _, err := Join(req, home, false); err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 

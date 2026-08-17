@@ -6,6 +6,7 @@ import { useI18n } from '../core/i18n'
 import MasterKeyReveal from './MasterKeyReveal'
 import { nativeBridge } from '../core/nativeBridge'
 import { LAYOUT_PRESETS, DEFAULT_PRESET_ID, applyPreset } from '../desktop'
+import { isJoiningCluster, MODE_SYNCING, MODE_INSTANCE_READY } from '../lib/bootmode'
 import './setup.css'
 
 // Setup wizard config — every field the wizard steps read/write via
@@ -351,17 +352,30 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
   // INIT-09: whether mode check is done
   const [IS09_modeChecked, IS09_setModeChecked] = useState(false)
 
-  // INIT-09: On mount, check /api/setup/mode. If mode==="sync", jump straight to syncing.
+  // INIT-09: on mount, ask the box ONE question — is it mid-join? If it is,
+  // skip to the syncing step instead of asking a person to re-enter what the
+  // cluster is already sending.
+  //
+  // This effect used to ask a second question it had no business asking. On
+  // `mode === 'normal'` it called onComplete(), reasoning "already set up —
+  // shouldn't be here, but complete gracefully". `normal` never meant that: it
+  // meant db/instance.json exists, which the server writes at STARTUP. So the
+  // premise "this can only happen on a box that is already set up" was false on
+  // every first boot, and the graceful completion handed the founder a "Create
+  // your account" login form on a box with no accounts — see lib/bootmode.ts.
+  //
+  // The branch is gone rather than corrected, because there is no correct
+  // version of it. Whether setup is outstanding is decided ONCE, by
+  // /api/setup/status, before AuthGate renders this component (App.tsx). A
+  // wizard that can dismiss itself on the strength of a different endpoint is a
+  // second, unsynchronised answer to a question that already has an authority —
+  // and a box may legitimately re-enter first-run (a reboot that loses
+  // /root/.vulos), so "we shouldn't be here" is never a safe assumption.
   useEffect(() => {
     fetch('/api/setup/mode')
       .then(r => r.ok ? r.json() : null)
       .then((data: unknown) => {
-        if (isRecord(data) && data.mode === 'normal') {
-          // Already set up — shouldn't be here, but complete gracefully
-          onComplete()
-          return
-        }
-        if (isRecord(data) && data.mode === 'sync') {
+        if (isJoiningCluster(data)) {
           IS09_setFlowType('join')
           // Jump straight to the syncing step in the join flow
           const syncIdx = IS09_JOIN_STEPS.indexOf('IS09_syncing')
@@ -1046,10 +1060,13 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
         if (modeRes.ok) {
           const modeRaw: unknown = await modeRes.json()
           const modeData = isRecord(modeRaw) ? modeRaw : {}
-          const syncState = isRecord(modeData.sync_state) ? modeData.sync_state : {}
+          // bootmode's sync_state is a STRING ("syncing"), not an object — the
+          // phase is only ever available from /api/setup/join/status. Reading it
+          // as a record here always produced 'init'; kept explicit so the next
+          // reader does not mistake the fallback for a phase feed.
           data = {
-            phase: (typeof syncState.phase === 'string' && syncState.phase) || 'init',
-            done: modeData.mode !== 'sync',
+            phase: 'init',
+            done: modeData.mode !== MODE_SYNCING,
           }
         }
       }
@@ -1060,7 +1077,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
       IS09_setPhase(currentPhase)
       IS09_setPhaseIdx(phaseIdx >= 0 ? phaseIdx : 0)
 
-      if (data.done || data.phase === 'done' || data.mode === 'normal') {
+      if (data.done || data.phase === 'done' || data.mode === MODE_INSTANCE_READY) {
         IS09_setDone(true)
         clearInterval(IS09_pollRef.current)
         if (IS09_bgMode) {

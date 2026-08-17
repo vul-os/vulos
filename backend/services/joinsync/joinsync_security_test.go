@@ -32,7 +32,7 @@ func TestJoin_PassphraseNeverHitsDiskAnywhere(t *testing.T) {
 	// legitimately-persisted field, and not base64/hex of anything else here.
 	req.Passphrase = "ZZ_SECAUDIT2_PASSPHRASE_SENTINEL_do_not_persist_ZZ"
 
-	if _, err := Join(req, home); err != nil {
+	if _, err := Join(req, home, false); err != nil {
 		t.Fatalf("Join: %v", err)
 	}
 

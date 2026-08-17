@@ -73,8 +73,8 @@ describe('Setup IS09_JOIN_STEPS — the real join-flow step list', () => {
 
   it('IS09_syncing is a step the mode poll can jump to', () => {
     // Setup.tsx jumps to indexOf('IS09_syncing') when GET /api/setup/mode says
-    // 'sync'; a rename would make that indexOf return -1 and silently land the
-    // user back on step 0.
+    // 'syncing'; a rename would make that indexOf return -1 and silently land
+    // the user back on step 0.
     expect(IS09_JOIN_STEPS.indexOf('IS09_syncing')).toBeGreaterThan(0)
   })
 })

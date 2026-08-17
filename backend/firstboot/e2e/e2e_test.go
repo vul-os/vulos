@@ -277,7 +277,7 @@ func newE2EHarness(t *testing.T) *e2eHarness {
 // ─── E2E tests ────────────────────────────────────────────────────────────────
 
 // TestE2E_BmInit_FreshInstanceIsSetupMode verifies that a freshly imaged
-// instance (no instance.json, no sync-state.json) boots into "setup" mode —
+// instance (no instance.json, no sync-state.json) boots into instance_absent mode —
 // the bare-metal init condition before the first-boot wizard is completed.
 func TestE2E_BmInit_FreshInstanceIsSetupMode(t *testing.T) {
 	h := newE2EHarness(t)
@@ -286,14 +286,14 @@ func TestE2E_BmInit_FreshInstanceIsSetupMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootmode.Detect: %v", err)
 	}
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Errorf("bm-init: expected 'setup', got %q", r.Mode)
 	}
 }
 
 // TestE2E_FirstBootWizard_LocalAccount exercises the standalone path:
 // first-boot wizard creates a local account without cluster join.
-// Post-condition: bootmode "normal", instance.json written.
+// Post-condition: bootmode instance_ready, instance.json written.
 func TestE2E_FirstBootWizard_LocalAccount(t *testing.T) {
 	h := newE2EHarness(t)
 
@@ -310,7 +310,7 @@ func TestE2E_FirstBootWizard_LocalAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootmode.Detect: %v", err)
 	}
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Errorf("after local-account setup: expected 'normal', got %q", r.Mode)
 	}
 
@@ -365,7 +365,7 @@ func TestE2E_CreateAccount_TwoUsersSeeded(t *testing.T) {
 // TestE2E_JoinCluster_SeedPassphraseSetsNormal exercises the full join path:
 // POST /api/setup/join equivalent, using the mock backend that accepts the
 // seeded passphrase, pulls changesets, and completes.
-// Post-condition: bootmode "normal", no passphrase on disk.
+// Post-condition: bootmode instance_ready, no passphrase on disk.
 func TestE2E_JoinCluster_SeedPassphraseSetsNormal(t *testing.T) {
 	h := newE2EHarness(t)
 
@@ -378,7 +378,7 @@ func TestE2E_JoinCluster_SeedPassphraseSetsNormal(t *testing.T) {
 		Endpoint:   seedEndpoint,
 	}
 
-	result, err := joinsync.Join(req, h.home)
+	result, err := joinsync.Join(req, h.home, false)
 	if err != nil {
 		t.Fatalf("joinsync.Join: %v", err)
 	}
@@ -409,12 +409,12 @@ func TestE2E_JoinCluster_SeedPassphraseSetsNormal(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	// bootmode "normal".
+	// bootmode instance_ready.
 	r, err := bootmode.Detect(h.home)
 	if err != nil {
 		t.Fatalf("bootmode.Detect after join: %v", err)
 	}
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Errorf("after join complete: expected 'normal', got %q", r.Mode)
 	}
 
@@ -433,7 +433,7 @@ func TestE2E_JoinCluster_SeedPassphraseSetsNormal(t *testing.T) {
 }
 
 // TestE2E_JoinCluster_WrongPassphraseRejected verifies that a wrong passphrase
-// is rejected before any state is persisted and bootmode stays "setup".
+// is rejected before any state is persisted and bootmode stays instance_absent.
 func TestE2E_JoinCluster_WrongPassphraseRejected(t *testing.T) {
 	h := newE2EHarness(t)
 	h.mock.validateErr = joinsync.ErrBadPassphrase
@@ -447,13 +447,13 @@ func TestE2E_JoinCluster_WrongPassphraseRejected(t *testing.T) {
 		Endpoint:   seedEndpoint,
 	}
 
-	_, err := joinsync.Join(req, h.home)
+	_, err := joinsync.Join(req, h.home, false)
 	if !errors.Is(err, joinsync.ErrBadPassphrase) {
 		t.Fatalf("expected ErrBadPassphrase, got %v", err)
 	}
 
 	r, _ := bootmode.Detect(h.home)
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Errorf("after bad passphrase: expected 'setup', got %q", r.Mode)
 	}
 
@@ -471,12 +471,18 @@ func TestE2E_JoinCluster_WrongPassphraseRejected(t *testing.T) {
 	}
 }
 
-// TestE2E_JoinCluster_AlreadyProvisionedBlocked verifies that a provisioned
-// instance refuses join attempts (SECAUDIT2 L-2).
+// TestE2E_JoinCluster_AlreadyProvisionedBlocked verifies that a box whose owner
+// has claimed it refuses join attempts (SECAUDIT2 L-2).
+//
+// The ownership answer is now the CALLER's — it used to be derived inside Join
+// from bootmode, where "instance.json exists" stood in for "an owner has taken
+// this box". identity.Load below is what the server itself does at startup, so
+// that derivation refused every join on every running box; this test passed the
+// whole time. It now states the two cases separately.
 func TestE2E_JoinCluster_AlreadyProvisionedBlocked(t *testing.T) {
 	h := newE2EHarness(t)
 
-	// Provision the instance first.
+	// Write the instance identity, exactly as server startup does.
 	if _, err := identity.Load(h.home); err != nil {
 		t.Fatalf("identity.Load: %v", err)
 	}
@@ -488,7 +494,7 @@ func TestE2E_JoinCluster_AlreadyProvisionedBlocked(t *testing.T) {
 		Passphrase: seedClusterPassphrase,
 	}
 
-	_, err := joinsync.Join(req, h.home)
+	_, err := joinsync.Join(req, h.home, true)
 	if !errors.Is(err, joinsync.ErrAlreadyProvisioned) {
 		t.Fatalf("expected ErrAlreadyProvisioned, got %v", err)
 	}
@@ -660,7 +666,7 @@ func TestE2E_Reboot_BootmodeTransitionsAfterJoin(t *testing.T) {
 
 	// State 1: fresh (no instance.json) → setup.
 	r, _ := bootmode.Detect(h.home)
-	if r.Mode != "setup" {
+	if r.Mode != bootmode.ModeInstanceAbsent {
 		t.Fatalf("initial bootmode = %q, want setup", r.Mode)
 	}
 
@@ -673,12 +679,12 @@ func TestE2E_Reboot_BootmodeTransitionsAfterJoin(t *testing.T) {
 		Passphrase: seedClusterPassphrase,
 		Endpoint:   seedEndpoint,
 	}
-	if _, err := joinsync.Join(req, h.home); err != nil {
+	if _, err := joinsync.Join(req, h.home, false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 
 	r, _ = bootmode.Detect(h.home)
-	if r.Mode != "sync" {
+	if r.Mode != bootmode.ModeSyncing {
 		t.Fatalf("after join bootmode = %q, want sync", r.Mode)
 	}
 
@@ -701,7 +707,7 @@ func TestE2E_Reboot_BootmodeTransitionsAfterJoin(t *testing.T) {
 	}
 
 	r, _ = bootmode.Detect(h.home)
-	if r.Mode != "normal" {
+	if r.Mode != bootmode.ModeInstanceReady {
 		t.Errorf("after sync complete bootmode = %q, want normal", r.Mode)
 	}
 }
@@ -752,7 +758,7 @@ func TestE2E_SeedPassphrase_NeverOnDisk(t *testing.T) {
 		Passphrase: seedClusterPassphrase,
 		Endpoint:   seedEndpoint,
 	}
-	if _, err := joinsync.Join(req, h.home); err != nil {
+	if _, err := joinsync.Join(req, h.home, false); err != nil {
 		t.Fatalf("join: %v", err)
 	}
 

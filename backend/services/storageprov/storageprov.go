@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"vulos/backend/services/auth"
-	"vulos/backend/services/joinsync"
 )
 
 // storageprovRequest is the body accepted by POST /api/setup/storage.
@@ -57,6 +56,29 @@ const storageprovBucket = "vulos-cluster"
 
 var storageprovMu sync.Mutex
 
+// storageprovAlreadyProvisioned reports whether this box has ALREADY had its
+// object storage provisioned by this route — i.e. db/storage.json exists and
+// says enabled.
+//
+// Deliberately narrow. The guard's job is "do not let a second admin clobber a
+// working storage configuration", so it asks about the storage configuration
+// and nothing else. A missing, unreadable, malformed, or disabled storage.json
+// all mean "not provisioned", which lets the first-boot wizard through; the
+// cost of a wrong answer in that direction is a re-provision the admin asked
+// for, while a wrong answer the other way is a box that can never provision
+// storage at all — which is what shipped.
+func storageprovAlreadyProvisioned(home string) bool {
+	data, err := os.ReadFile(filepath.Join(home, "db", "storage.json"))
+	if err != nil {
+		return false
+	}
+	var st storageprovState
+	if json.Unmarshal(data, &st) != nil {
+		return false
+	}
+	return st.Enabled
+}
+
 // BucketPlaceFor returns the storage region slug for the given region.
 // Phase-0 (single cell): all regions resolve to "eu".
 // To add a second storage cell later: extend this function and set VULOS_REGION
@@ -85,10 +107,17 @@ func RegisterHandlers(mux *http.ServeMux, home string, authStore *auth.Store) {
 			storageprovWriteErr(w, http.StatusForbidden, "admin only")
 			return
 		}
-		// IsProvisioned guard: refuse re-provisioning once already set up
-		// (mirrors the /api/setup/join guard — prevents a second admin from
-		// clobbering an already-provisioned storage configuration).
-		if joinsync.IsProvisioned(home) {
+		// Refuse re-provisioning once STORAGE is provisioned — the thing this
+		// route provisions, checked by the file this route writes.
+		//
+		// It used to ask joinsync.IsProvisioned(home), i.e. bootmode "normal",
+		// i.e. "db/instance.json exists". The server writes instance.json at
+		// startup, so that was true on every running box and this route 409'd
+		// unconditionally — including at step 12 of the first-boot wizard, the
+		// one caller it exists to serve, on a box with no storage configured at
+		// all. Same misreading as the join gate and the wizard's own
+		// self-dismissal; see backend/services/bootmode/bootmode.go.
+		if storageprovAlreadyProvisioned(home) {
 			storageprovWriteErr(w, http.StatusConflict, "storage already provisioned — this instance is fully set up")
 			return
 		}

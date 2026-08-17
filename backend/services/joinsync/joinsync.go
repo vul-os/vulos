@@ -69,24 +69,29 @@ var (
 	ErrUnreachable = errors.New("joinsync: S3 bucket unreachable")
 	// ErrBadPassphrase indicates the passphrase failed to decrypt the marker.
 	ErrBadPassphrase = errors.New("joinsync: incorrect passphrase for this cluster")
-	// ErrAlreadyProvisioned is returned when Join is called on an instance that
-	// is already in "normal" (fully provisioned) bootmode. The join endpoint
-	// must be blocked after initial setup is complete (SECAUDIT2 L-2).
+	// ErrAlreadyProvisioned is returned when Join is called on a box that
+	// already belongs to someone. The unauthenticated join endpoint must be
+	// blocked once an owner has claimed the box (SECAUDIT2 L-2).
 	ErrAlreadyProvisioned = errors.New("joinsync: instance already provisioned — setup is complete")
 )
 
-// IsProvisioned reports whether home is a fully-provisioned instance
-// (bootmode "normal": instance.json exists and no active sync).
-// It returns false for "setup" and "sync" modes, so callers on those paths
-// continue to work normally.
-func IsProvisioned(home string) bool {
-	result, err := bootmode.Detect(home)
-	if err != nil {
-		// On a stat error we fail-open: let the handler proceed to its own
-		// error handling rather than silently gating a legitimate first-boot.
-		return false
-	}
-	return result.Mode == "normal"
+// HasInstanceIdentity reports whether this box has written its own instance
+// identity file (db/instance.json).
+//
+// THIS IS NOT "the box is provisioned", and it used to be. The predicate was
+// called IsProvisioned, was defined as bootmode "normal", and gated both
+// unauthenticated join routes plus Join itself. bootmode "normal" is
+// "instance.json exists and nothing is syncing", and the server writes
+// instance.json at startup (registerIdentityRoutes → identity.Load) — so it was
+// TRUE on every running box, including a pristine one with no accounts. The
+// join flow was therefore refused (409 / 403) on exactly the boxes it exists
+// for, on the same misreading that made the setup wizard dismiss itself.
+//
+// Whether a box already belongs to someone is now decided by the caller from
+// the authorities that actually know: the setup-complete marker and the user
+// table. See registerJoinRoutes in backend/cmd/server/routes_join.go.
+func HasInstanceIdentity(home string) bool {
+	return bootmode.HasInstanceIdentity(home)
 }
 
 // JoinRequest is the body accepted by POST /api/setup/join.
@@ -215,12 +220,16 @@ func s3ConfigFor(req JoinRequest) cluster.S3Config {
 // The passphrase is held only in memory for the lifetime of the pull
 // goroutine and is never written anywhere.
 //
-// SECAUDIT2 L-2: if the instance is already provisioned (bootmode "normal"),
-// Join refuses immediately with ErrAlreadyProvisioned. This closes the
-// unauthenticated config-write/SSRF surface once setup is complete while
-// leaving first-boot and sync-mode paths unchanged.
-func Join(req JoinRequest, home string) (*JoinResult, error) {
-	if IsProvisioned(home) {
+// SECAUDIT2 L-2: `ownerClaimed` closes the unauthenticated config-write/SSRF
+// surface once somebody owns this box — Join refuses immediately with
+// ErrAlreadyProvisioned. It is a PARAMETER rather than something computed here
+// on purpose: joinsync can see db/instance.json and nothing else, and
+// instance.json existing was mistaken for ownership for long enough to make the
+// whole join flow unreachable (see HasInstanceIdentity). The caller holds the
+// authorities that genuinely answer it — the setup-complete marker and the user
+// table — so the caller is made to state the answer.
+func Join(req JoinRequest, home string, ownerClaimed bool) (*JoinResult, error) {
+	if ownerClaimed {
 		return nil, ErrAlreadyProvisioned
 	}
 
