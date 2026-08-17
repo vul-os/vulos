@@ -410,31 +410,95 @@ func detectLANIPWaiting() net.IP {
 	}
 }
 
-// detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling
-// back to 127.0.0.1 when nothing routable is found (so the service is still
-// well-formed in an isolated/CI environment).
-func detectLANIP() net.IP {
-	// Prefer the address used to reach a well-known off-box target; this picks
-	// the interface the kernel would route LAN/WAN traffic through without
-	// actually sending anything (UDP "connect" is local-only).
-	if conn, err := net.Dial("udp", "192.168.1.1:9"); err == nil {
-		defer conn.Close()
-		if ua, ok := conn.LocalAddr().(*net.UDPAddr); ok && ua.IP != nil {
-			if v4 := ua.IP.To4(); v4 != nil && !v4.IsLoopback() {
-				return v4
+// ifaceAddr is one IPv4 address together with the interface holding it. The
+// interface NAME is the part that matters here and the part net.InterfaceAddrs
+// throws away — see pickLANIP.
+type ifaceAddr struct {
+	Iface string
+	IP    net.IP
+}
+
+// appIfacePrefixes / appIfaceNames are the interfaces that carry APPLICATION
+// traffic and must never be mistaken for the box's LAN interface.
+//
+// This is the Go half of scripts/vulos-lan-ifaces.sh's APP_IFACE_GLOBS, which
+// is the shell half, and TestAppIfaceGlobsMatchGo (internal/docsref) pins them
+// to each other. They are two declarations of one fact in two languages, which
+// is the shape this suite keeps finding defects in, so they are pinned rather
+// than trusted. Duplicated rather than shared because the shell half configures
+// daemons before this process exists and cannot import anything from it.
+var (
+	appIfacePrefixes = []string{"vh_", "vn_"}
+	appIfaceNames    = []string{"vulos-br0"}
+)
+
+// isAppIface reports whether name is one of appnet's per-application links.
+func isAppIface(name string) bool {
+	for _, p := range appIfacePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	for _, n := range appIfaceNames {
+		if name == n {
+			return true
+		}
+	}
+	return false
+}
+
+// pickLANIP chooses the box's LAN address from the kernel's own routing answer
+// plus the full interface list. Pure, so the scenarios below can be tested on a
+// machine that has none of them.
+//
+// WHY IT FILTERS AT ALL (measured 2026-08-17). This value is not a local
+// convenience: it is what the pion mDNS responder publishes to the WHOLE LAN as
+// this box's address (mdns.go's cfg.LocalAddress, which is per-process, not
+// per-interface) AND what cmd/server/lan_pairing.go puts in the certificate's
+// IP SAN list. Get it wrong and the box tells every client on the link to go
+// somewhere it cannot reach, with a certificate that does not name it either.
+//
+// Both of the old rules could return an application's address:
+//
+//  1. THE ROUTING PROBE. It accepted whatever source address the kernel picked
+//     for 192.168.1.1, excluding only loopback. On a real box dhcpcd was
+//     measured installing a DEFAULT ROUTE on an app's veth — "vh_bae456: adding
+//     default route", with an IPv4LL source address — and while that route is
+//     up the probe returns 169.254.x on an app link. That is the exact address
+//     that turned up in `avahi-resolve -n vulos.local`, arriving here by a
+//     completely different path.
+//
+//  2. THE FALLBACK. "First private IPv4 found across interfaces" — and appnet's
+//     10.200.0.0/16 is private (namespace.go: HostIP = "10.200.%d.1"). Whether
+//     an app address won depended on net.InterfaceAddrs' ordering, which is
+//     interface index order, which is start-up order.
+//
+// So: reject link-local and app interfaces on BOTH paths, and prefer the
+// routing answer only when it is not on an app link. Returning loopback when
+// every candidate is an app address is deliberate — detectLANIPWaiting keeps
+// polling and eventually says so out loud, which is a visible failure, whereas
+// advertising an app's address to the LAN is a silent one.
+func pickLANIP(dialed net.IP, addrs []ifaceAddr) net.IP {
+	usable := func(v4 net.IP) bool {
+		return v4 != nil && !v4.IsLoopback() && !v4.IsLinkLocalUnicast() && !v4.IsUnspecified()
+	}
+
+	if v4 := dialed.To4(); usable(v4) {
+		onApp := false
+		for _, a := range addrs {
+			if a.IP.To4() != nil && a.IP.To4().Equal(v4) && isAppIface(a.Iface) {
+				onApp = true
+				break
 			}
+		}
+		if !onApp {
+			return v4
 		}
 	}
 
-	// Fallback: first private IPv4 found across interfaces.
-	addrs, _ := net.InterfaceAddrs()
 	for _, a := range addrs {
-		ipNet, ok := a.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		v4 := ipNet.IP.To4()
-		if v4 == nil || v4.IsLoopback() {
+		v4 := a.IP.To4()
+		if !usable(v4) || isAppIface(a.Iface) {
 			continue
 		}
 		if v4.IsPrivate() {
@@ -442,4 +506,48 @@ func detectLANIP() net.IP {
 		}
 	}
 	return net.IPv4(127, 0, 0, 1)
+}
+
+// hostIfaceAddrs reads this machine's interfaces, keeping the names.
+func hostIfaceAddrs() []ifaceAddr {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []ifaceAddr
+	for _, ifi := range ifaces {
+		as, err := ifi.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range as {
+			if ipNet, ok := a.(*net.IPNet); ok {
+				out = append(out, ifaceAddr{Iface: ifi.Name, IP: ipNet.IP})
+			}
+		}
+	}
+	return out
+}
+
+// routingProbeIP returns the source address the kernel would use to reach a
+// well-known off-box target, without sending anything (a UDP "connect" is
+// local-only). Nil when there is no route.
+func routingProbeIP() net.IP {
+	conn, err := net.Dial("udp", "192.168.1.1:9")
+	if err != nil {
+		return nil
+	}
+	defer conn.Close() //nolint:errcheck // nothing was sent
+	ua, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return nil
+	}
+	return ua.IP
+}
+
+// detectLANIP returns the box's primary non-loopback IPv4 LAN address, falling
+// back to 127.0.0.1 when nothing routable is found (so the service is still
+// well-formed in an isolated/CI environment).
+func detectLANIP() net.IP {
+	return pickLANIP(routingProbeIP(), hostIfaceAddrs())
 }

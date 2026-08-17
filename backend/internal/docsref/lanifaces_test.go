@@ -124,6 +124,86 @@ func TestAppIfaceGlobsCoverAppnet(t *testing.T) {
 	}
 }
 
+// TestAppIfaceGlobsMatchGo pins the SHELL list of app interfaces to the GO list.
+//
+// Two declarations of one fact, in two languages, for two consumers that both
+// have to be right: the shell half configures dhcpcd and avahi before this
+// process exists, and the Go half (internal/lan's isAppIface) decides which
+// address pion advertises to the LAN and which goes into the certificate's IP
+// SAN. Sharing one definition is impossible — the shell half runs as an
+// ExecStartPre with no Go available — so they are pinned instead of trusted.
+//
+// A box where these disagree is a box where avahi says one thing and the
+// certificate says another, which is precisely the class of defect
+// internal/lan/names.go was created to end.
+func TestAppIfaceGlobsMatchGo(t *testing.T) {
+	shell := appIfaceGlobs(t)
+
+	src := readRepoFile(t, "backend/internal/lan/lan.go")
+	prefixes := goStringList(t, src, "appIfacePrefixes")
+	names := goStringList(t, src, "appIfaceNames")
+
+	// The Go halves, rendered in the shell's glob vocabulary.
+	var fromGo []string
+	for _, p := range prefixes {
+		fromGo = append(fromGo, p+"*")
+	}
+	fromGo = append(fromGo, names...)
+
+	// COVERAGE COUNT. Both sides must be non-trivial: an empty Go list would
+	// make every comparison below vacuous, and an empty shell list is already
+	// rejected in appIfaceGlobs.
+	if len(fromGo) < 2 {
+		t.Fatalf("parsed only %d app-interface patterns out of internal/lan/lan.go (%v); "+
+			"the parse has drifted and this comparison proves nothing", len(fromGo), fromGo)
+	}
+
+	shellSet := map[string]bool{}
+	for _, g := range shell {
+		shellSet[g] = true
+	}
+	goSet := map[string]bool{}
+	for _, g := range fromGo {
+		goSet[g] = true
+	}
+	for _, g := range fromGo {
+		if !shellSet[g] {
+			t.Errorf("internal/lan treats %q as an app interface and %s does not.\n"+
+				"dhcpcd and avahi would keep using that link while the advertiser and the "+
+				"certificate ignore it.", g, lanIfacesScript)
+		}
+	}
+	for _, g := range shell {
+		if !goSet[g] {
+			t.Errorf("%s treats %q as an app interface and internal/lan does not.\n"+
+				"pion would advertise its address to the LAN, and certIPs would put it in the "+
+				"certificate, while avahi correctly refuses to.", lanIfacesScript, g)
+		}
+	}
+}
+
+// goStringList extracts the elements of a `name = []string{...}` declaration.
+func goStringList(t *testing.T, src, name string) []string {
+	t.Helper()
+	re := regexp.MustCompile(name + `\s*=\s*\[\]string\{([^}]*)\}`)
+	m := re.FindStringSubmatch(src)
+	if m == nil {
+		t.Fatalf("internal/lan/lan.go no longer declares %s as a []string literal; "+
+			"this check has lost its subject", name)
+	}
+	var out []string
+	for _, raw := range strings.Split(m[1], ",") {
+		v := strings.Trim(strings.TrimSpace(raw), `"`)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("parsed %s as EMPTY; every comparison against it would be vacuous", name)
+	}
+	return out
+}
+
 // TestLANIfacesReachesBothBuildPaths asserts build.sh actually installs and
 // wires the script — on the image path AND the ssh-deploy path.
 //
