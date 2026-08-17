@@ -1,0 +1,670 @@
+# When a distribution is the only party doing the ARM build work
+
+> **Status, 2026-08-17.** Measurement + design. The **measurements are real and
+> reproducible** (`scripts/freeze-debian-closure.sh`,
+> `scripts/arch-emulation-bench.sh dynamic`). The **mechanism is not built**:
+> vehicle C needs installer code in `backend/services/appnet/**`, which is
+> another agent's file. §9 is the handoff. Nothing here claims to be shipped.
+
+## 0. The one-paragraph answer
+
+**Blender has an ARM64 build and Debian makes it.** `blender 4.3.2+dfsg-2` is in
+Debian trixie for `arm64`, measured, not inferred. The migration's conclusion —
+*"blender.org publishes no official Linux aarch64 build either, so no `artifacts`
+entry can recover the coverage: there is nothing to pin"* — is true about
+**blender.org** and false about **the world**. Debian compiles it from source for
+arm64 and has for years. So the founder's *"if blender does have arm have a way
+to install it"* is the branch that applies, and the answer is a **frozen Debian
+closure**: run the solver once, at catalogue time, freeze the exact package set
+with a SHA-256 per package pinned to `snapshot.debian.org`, and have the box
+extract that fixed list into the app's own private prefix with `dpkg-deb -x`.
+The box resolves nothing. And this is **not** a Blender special case: **6 of the
+17** x86_64-only catalogue apps have a Debian arm64 build.
+
+---
+
+## 1. The per-app decision order
+
+This is the rule the founder's two constraints resolve to. *"Efficient and good
+choices"* orders the options; *"everything must work everywhere"* forbids
+stopping before the bottom of the list. Both halves survive.
+
+**Apply in order. Stop at the first that holds. Never skip a rung to reach a
+more convenient answer.**
+
+| # | Rung | Test | What the user gets |
+|---|---|---|---|
+| **1** | **Native, upstream** | upstream publishes a build for this arch (Flathub ref exists / vendor artefact exists) | Install button. No badge. |
+| **2** | **Native, distribution-sourced** | a distribution builds it from source for this arch — measured with `apt-cache policy <pkg>` in a container of that arch | Install button. No badge. **This rung is the subject of this document and it did not exist before.** |
+| **3** | **Emulated, and the user is told what they are getting** | the app is delivered as ELF files into a prefix we control (vehicle B or C — **not** Flatpak), an emulator is present, and `emulation_policy: "opt-in"` | `Needs emulation` badge, the cost stated in the sentence, off until the user turns it on |
+| **4** | **Available elsewhere in the fleet** | a synced sibling instance runs it | `On your other instance`, naming the instance |
+| **5** | **Declared unavailable, with the reason** | none of the above | `Not available on this box` + why. **Never a bare "Unavailable", never a silent disappearance.** |
+
+Three things this ordering is deliberately strict about:
+
+- **Rung 2 is above rung 3.** A native Debian arm64 Blender beats an emulated
+  x86_64 Blender on every axis — speed, memory, robustness, GL — and it is
+  cheaper to download (§4). Reaching for emulation while a native build exists
+  is the "efficient and good choices" half being dropped.
+- **Rung 3 is above rung 5.** §5 measures that box64 runs a dynamically linked
+  x86_64 binary correctly, at 1.4× native, and binds the *host's own* aarch64 GL
+  stack. Declaring an app unavailable when that path exists is the "everything
+  must work everywhere" half being dropped. But rung 3 is **opt-in and labelled**
+  — an app that is present and crawls reads as a Vulos defect rather than a
+  hardware limit, which is why it is not rung 2.
+- **Rung 5 still ships a row in the App Hub.** ARCH-PLACEMENT §6 is unchanged:
+  E1–E3 are exceptions to uniform *availability*, never to uniform *visibility*.
+
+### 1.1 What the order does to the 17
+
+Measured (§3, §5). "Debian arm64" is rung 2; the rest fall to rung 3 or 5.
+
+| App | Rung | Why |
+|---|---|---|
+| Blender | **2** | `blender 4.3.2+dfsg-2` arm64 |
+| OBS Studio | **2** | `obs-studio 30.2.3+dfsg-3` arm64 |
+| HandBrake | **2** | `handbrake 1.9.2+ds1-1+b1` arm64 |
+| Thunderbird | **2** | `thunderbird 1:140.13.0esr-2~deb13u1` arm64 |
+| OpenSCAD | **2** | `openscad 2021.01-8+b2` arm64 |
+| Cura | **2** | `cura 5.0.0-6` arm64 (old — 5.0.0 vs upstream's 5.x; a rung-2 entry must state the version gap) |
+| torbrowser-launcher | 5 | package exists, **no arm64 candidate** |
+| protontricks, marktext, heroic, bottles, lutris, PCSX2, Signal, Upscayl, Sober, Insomnia | 3 or 5 | not packaged by Debian at all; rung 3 only if a per-arch **binary** artefact exists to emulate, else rung 5 |
+
+**Six of seventeen move from "not available" to "native".** That is the whole
+return on this mechanism, and it is why it is worth building for more than
+Blender.
+
+---
+
+## 2. Confirming the premise: does an ARM64 Blender exist?
+
+**Yes.** In a `debian:trixie-slim` **arm64** container:
+
+```
+=== uname -m in container ===
+aarch64
+=== dpkg architecture ===
+arm64
+=== apt-cache policy blender ===
+blender:
+  Installed: (none)
+  Candidate: 4.3.2+dfsg-2
+  Version table:
+     4.3.2+dfsg-2 500
+        500 http://deb.debian.org/debian trixie/main arm64 Packages
+EXIT_POLICY=0
+```
+
+Debian builds Blender from source for arm64. Flathub does not
+(`flatpak remote-info --arch=aarch64 flathub org.blender.Blender` →
+`Can't find ref org.blender.Blender/aarch64`, §6) and neither does blender.org.
+**Debian is the only party in the world doing this build work**, which is exactly
+the case the rule had no answer for.
+
+---
+
+## 3. Reframing the rule — pinned, per-architecture, checksummed
+
+INSTALL-METHODOLOGY §2.1 states the load-bearing objection to apt:
+
+> `apt-get install -y blender` installs whatever Debian ships **that day**. Two
+> instances that install a month apart get two different Blenders, and neither
+> the registry entry nor the sync wire records which.
+
+The defect named there is **unpinned, time-varying resolution**, not the letter
+`d`, `p`, `k`, `g`. Read the table in §2.1 again: the column is *"what it pins"*.
+apt scores "nothing" because nobody froze its answer — not because a `.deb` is
+unfreezable.
+
+**So freeze it.** Run the solver **once, offline, at catalogue time**; record the
+exact package set and a SHA-256 per package computed from bytes that arrived;
+ship that inside the Ed25519-signed entry. Two instances a year apart then
+install byte-identical Blenders, because they are fetching the same 315 files by
+the same immutable URLs and verifying the same 315 digests.
+
+Against §4.6's own list of what is deliberately not in the format:
+
+| §4.6 rule | Does a frozen closure violate it? |
+|---|---|
+| **No dependency solver** | **No.** The solver runs on a curator's machine, months earlier. The box does zero resolution — it iterates a fixed array. |
+| **No package manager** | **No, and this is the sharpest point.** `dpkg-deb -x` is an *archive extractor*: a `.deb` is an `ar` archive containing a `data.tar.xz`, and `-x` unpacks that tar. It touches no dpkg database, runs no maintainer script, resolves nothing, and writes nothing outside the target directory. It is `tar -x` with a different container format. |
+| **No optional integrity check** | **No.** Every package carries a mandatory SHA-256; a manifest with one missing is refused by `CLOSURE-01`. |
+| **No install shell** | **No.** There is no shell anywhere in this path. |
+| **No `latest` URLs** | **No.** `snapshot.debian.org/archive/debian/<stamp>/…` is immutable by construction. This is *stricter* than the status quo: `deb.debian.org/pool/…` is itself a moving target that 404s when Debian publishes the next version, which is why the frozen URL must be a snapshot URL and `CLOSURE-02` refuses a pool URL. |
+| **No mirror** | **No.** Vulos hosts nothing. The bytes come from Debian's own archive. |
+| **No arch-specific state on the sync wire** | **No.** The closure lives *inside* the signed entry, keyed by arch, exactly like `artifacts`. The wire still carries `app_desired(app_id, …)`. |
+
+The one rule it genuinely changes is *"one format, two vehicles"* → **three**.
+That is a real cost and §8 argues it anyway.
+
+### 3.1 The prefix, and why the system tree is not an option
+
+Extraction target is `$HOME/.vulos/apps/<id>/prefix`, the app's own directory —
+never `/usr`. On a live Vulos box the system tree is squashfs under dm-verity
+(read-only) and its writable overlay is a tmpfs, so a system-tree write is both
+**illegal** and **volatile**. A private prefix plus `LD_LIBRARY_PATH` is the only
+shape that works, and it is the same shape vehicle B already produces.
+
+It also gives the property that makes rung 3 possible at all: a private prefix of
+dynamically linked ELF files is precisely what box64 is built to accelerate, and
+precisely what a Flatpak sandbox denies it (§5.3).
+
+---
+
+## 4. The measured cost
+
+Everything below was measured on 2026-08-17 in `debian:trixie-slim` **arm64**
+containers on this machine.
+
+### 4.1 Closure size
+
+| Resolution | Packages | Download | Unpacked |
+|---|---:|---:|---:|
+| `apt-get install --print-uris -y blender` (with recommends) | 437 | 323.3 MB | — |
+| `--no-install-recommends` | **350** | **261.9 MB** | **997 MiB** |
+| `--no-install-recommends`, base already carrying curl/python3/ca-certificates | 315 | 251.4 MB | — |
+
+`--no-install-recommends` is the correct setting and not merely the smaller one:
+the 87 packages it drops are `systemd`, `dbus`, `adduser`, `gnupg` and friends —
+init-system components that have no business inside an application prefix.
+
+### 4.2 The comparison that decides it
+
+`flatpak remote-info --arch=x86_64 flathub org.blender.Blender`, run from an
+aarch64 installation:
+
+```
+        ID: org.blender.Blender
+       Ref: app/org.blender.Blender/x86_64/stable
+      Arch: x86_64
+  Download: 477.4 MB
+ Installed: 1.1 GB
+   Runtime: org.freedesktop.Platform/x86_64/25.08
+```
+
+| Vehicle | Download | Installed |
+|---|---:|---:|
+| Flathub Blender x86_64 (**already an accepted vehicle**) | 477.4 MB | 1.1 GB **plus the platform runtime** |
+| Debian arm64 frozen closure | **261.9 MB** | **997 MiB, self-contained** |
+
+**The mechanism being questioned on cost is cheaper than the vehicle already in
+the format**, on both axes, and it delivers a native build rather than an
+emulated one. The 997 MiB figure includes everything — libc, Python 3.13, the
+whole GL and codec stack — because the prefix carries its own world.
+
+That is the answer to "measure the cost before committing": **the cost is
+reasonable and the recommendation is to proceed.**
+
+### 4.3 The costs that are real, stated plainly
+
+- **315–350 HTTP fetches per app install.** One file per package.
+  `snapshot.debian.org` is a single, historically slow host. **This is the
+  weakest part of the mechanism** and it is an availability dependency on
+  infrastructure Vulos does not run. It should be measured under load before
+  rung 2 is enabled for a second app.
+- **~70 KB of JSON per architecture inside the signed entry.** 315 objects of
+  `{name, version, filename, url, size, sha256}`. Large but not absurd, and it
+  is data inside the signature, which is the property that makes it auditable.
+- **No sharing between apps.** Three rung-2 apps carry three copies of libc.
+  Blender + OBS + Thunderbird ≈ 3 GB where a shared system would use far less.
+  A content-addressed shared store would fix this and is **explicitly not
+  proposed here** — that is how a manifest becomes a distribution.
+- **A Debian security update re-freezes and re-signs the entry.** The frozen
+  closure is a *pin*, so it does not float to the fixed version by itself. This
+  is the same property `artifacts` already has, at 315× the surface.
+- **The closure is DIFFERENTIAL against a declared base.** `--print-uris`
+  reports what is missing from the container it ran in — 350 against
+  `debian:trixie-slim`, 315 against a slightly richer one. The manifest
+  therefore records `base_image`, `CLOSURE-03` refuses a manifest without one,
+  and **a box whose base differs must not use the manifest.** Leaving this
+  implicit is how a closure silently becomes wrong after an OS release.
+
+---
+
+## 5. box64 re-measured — the rejection did rest on a bad measurement
+
+ARCH-PLACEMENT §4.3 recorded box64 as failing with `Illegal instruction` and §5
+recommended qemu-user on that basis. The test binary was **`busybox-static`**.
+
+The same document explains, three paragraphs later, why that test could not have
+come out any other way:
+
+> **box64 gets its speed by *not* emulating libraries** — it intercepts calls and
+> substitutes native aarch64 ones. That requires the binary to be **dynamically
+> linked**.
+
+**A static binary is the one shape box64 structurally cannot serve.** The
+measurement exercised box64's known non-case and the verdict was generalised from
+it. §4.3 even flagged this and deferred the fair test to an empty §4.3.1. This is
+that test.
+
+### 5.1 Does box64 run a dynamically linked x86_64 binary? Yes.
+
+x86_64 sysroot assembled with `dpkg-deb -x` — the same shape vehicle C produces.
+Both emulators got the same tree.
+
+```
+under test : ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked,
+             interpreter /lib64/ld-linux-x86-64.so.2, ..., stripped
+native ctrl: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked,
+             interpreter /lib/ld-linux-aarch64.so.1, ..., stripped
+
+native ref: exit=0 bytes=2061307 md5=fbec53519a4315a13a5d192518adf61f
+box64       exit=0 bytes=2061307 md5=fbec53519a4315a13a5d192518adf61f
+```
+
+**Exit 0, and byte-identical output to the native run.** Not "it printed
+something" — the md5 of 2,061,307 bytes of gzip output matches the aarch64
+reference exactly. That is the correctness gate this document requires before any
+timing is believed.
+
+```
+=== 5 interleaved reps; a rep is DISCARDED unless exit=0 and bytes==ref ===
+rep=1 native ms=4000 exit=0 bytes=2061307
+rep=1 box64  ms=5367 exit=0 bytes=2061307
+rep=2 native ms=3707 exit=0 bytes=2061307
+rep=2 box64  ms=5370 exit=0 bytes=2061307
+rep=3 native ms=4216 exit=0 bytes=2061307
+rep=3 box64  ms=5951 exit=0 bytes=2061307
+rep=4 native ms=4167 exit=0 bytes=2061307
+rep=4 box64  ms=5736 exit=0 bytes=2061307
+rep=5 native ms=4709 exit=0 bytes=2061307
+rep=5 box64  ms=5967 exit=0 bytes=2061307
+```
+
+**Median 5736 ms vs 4167 ms native = 1.38× slower.** Against qemu-user's measured
+**3.80×** on the static control, that is not a refinement, it is a different
+verdict. **The record must be corrected: box64 was rejected on a test it could
+not pass by construction.**
+
+### 5.2 But box64 is not robust, and that is measured too
+
+```
+=== per-exec cost: 30 execs of `gzip --version`, successes counted ===
+native: 34 ms / 30 execs, 30/30 exited 0
+Illegal instruction  BOX64_LD_LIBRARY_PATH=... box64 /x86/usr/bin/gzip --version
+box64:  526 ms / 30 execs, 29/30 exited 0
+qemu:   881 ms / 30 execs, 30/30 exited 0
+```
+
+**One SIGILL in thirty identical invocations of the same binary.** Not a
+different binary, not a different argument — the same command, non-deterministic.
+Peak RSS: native 1812 KB, box64 27212 KB (15×).
+
+ARCH-PLACEMENT §4.5 predicted exactly this and it is now measured rather than
+asserted: **qemu-user is robust and slow; box64 is fast and not robust.** A 1-in-30
+crash rate is the reason rung 3 is opt-in and labelled, not a default posture.
+
+### 5.3 GL — the finding that matters most for desktop apps
+
+Under Xvfb, `glxinfo -B`:
+
+```
+-- native aarch64 glxinfo (control) --
+direct rendering: Yes
+    Vendor: Mesa (0xffffffff)
+    Device: llvmpipe (LLVM 19.1.7, 128 bits) (0xffffffff)
+    Version: 25.0.7
+D_NATIVE_EXIT=0
+
+-- x86_64 glxinfo under box64 --
+direct rendering: Yes
+    Vendor: Mesa (0xffffffff)
+    Device: llvmpipe (LLVM 19.1.7, 128 bits) (0xffffffff)
+    Version: 25.0.7
+    Max core profile version: 4.5
+D_BOX64_EXIT=0
+
+-- x86_64 glxinfo under qemu-user --
+Error: couldn't find RGB GLX visual or fbconfig
+D_QEMU_EXIT=0
+```
+
+An **x86_64** GL client under box64 reported the **host's own aarch64 Mesa
+25.0.7 / LLVM 19.1.7** — the identical renderer string, version and
+`direct rendering: Yes` as the native control. box64's native-library
+substitution reached the GL stack. Under qemu-user the same binary could not
+obtain a GL visual at all.
+
+**Two honest limits on this result:**
+
+1. **This is not proof of hardware acceleration.** A container has no GPU, so the
+   native stack here is `llvmpipe` and both lines say `Accelerated: no`. What is
+   proved is **which stack was bound** — box64 escaped emulation into the host's
+   real driver stack, which is the mechanism that would deliver hardware
+   acceleration on a box that has a GPU. That claim is untested and stays
+   untested until someone runs it on real hardware.
+2. **`D_QEMU_EXIT=0` on a run that plainly failed.** `glxinfo` exits 0 while
+   printing `Error: couldn't find RGB GLX visual`. Exit status alone would have
+   scored qemu as a success here. **Checking exit status is necessary and not
+   sufficient; the output has to be read too.**
+
+### 5.4 What this does to exception E3
+
+ARCH-PLACEMENT E3 says GPU-bound apps stay unavailable on arm64 *even with
+emulation enabled*, reasoning that "an x86_64 Mesa under emulation loses
+acceleration, and box64's native-GL wrapping cannot reach inside Flatpak's
+sandbox."
+
+The **Flatpak half of that sentence stands** and §6 does not disturb it. The
+**general half does not**: outside a Flatpak sandbox — in a private prefix, which
+is what vehicles B and C produce — box64's GL wrapping demonstrably works. So E3
+is correct *as a property of Flatpak delivery* and over-broad *as a property of
+the app*. It should be re-scoped to delivery, which is the shape `DeliveryKind`
+already has.
+
+---
+
+## 6. Foreign-architecture Flatpak — the asserted impossibility, tested
+
+`arch.go` states that a qemu-user binfmt handler "does not make an x86_64 ref
+appear in an aarch64 flatpak installation", so `EmulationCanServe` returns true
+only for `DeliveryBinary`.
+
+**On `flatpak --supported-arches`, that is right. On `--arch=x86_64`, it is not.**
+
+**Q1 — can an aarch64 installation *see* the x86_64 ref?** Yes:
+
+```
+$ flatpak remote-info --arch=x86_64 flathub org.blender.Blender
+        ID: org.blender.Blender
+       Ref: app/org.blender.Blender/x86_64/stable
+      Arch: x86_64
+  Download: 477.4 MB
+ Installed: 1.1 GB
+   Runtime: org.freedesktop.Platform/x86_64/25.08
+    Commit: f97247d9e87dca0bc28c6a01e51cd6425cf8b21c636d28514898b7315b21d521
+Q1_EXIT=0
+
+$ flatpak remote-info --arch=aarch64 flathub org.blender.Blender
+error: Error searching remote flathub: Can't find ref org.blender.Blender/aarch64
+```
+
+The aarch64 installation resolved a full x86_64 ref including its commit. Note
+also that the *failing* command reported `Q1B_EXIT=0` — flatpak exits 0 on that
+error, a second instance of §5.3's trap.
+
+**Q2 — does `flatpak install --arch=x86_64` actually deploy?** Yes, completely:
+
+```
+$ flatpak install -y --noninteractive --arch=x86_64 flathub org.gnome.Calculator
+Installing runtime/org.freedesktop.Platform.GL.default/x86_64/25.08
+Installing runtime/org.freedesktop.Platform.GL.default/x86_64/25.08-extra
+Installing runtime/org.freedesktop.Platform.codecs-extra/x86_64/25.08-extra
+Installing runtime/org.gnome.Calculator.Locale/x86_64/stable
+Installing runtime/org.gnome.Platform.Locale/x86_64/50
+Installing runtime/org.gnome.Platform/x86_64/50
+Installing app/org.gnome.Calculator/x86_64/stable
+
+$ flatpak list --columns=application,arch,branch,installation
+org.freedesktop.Platform.GL.default    x86_64  25.08         system
+org.freedesktop.Platform.GL.default    x86_64  25.08-extra   system
+org.freedesktop.Platform.codecs-extra  x86_64  25.08-extra   system
+org.gnome.Calculator                   x86_64  stable        system
+org.gnome.Platform                     x86_64  50            system
+```
+
+**An x86_64 application and its entire x86_64 GNOME platform runtime are
+installed on an aarch64 box** (1.4 GB deployed). The install-side claim in
+`arch.go` is wrong: `--arch=x86_64` is an explicit flag and it is honoured.
+
+**What this does and does not change.** The `EmulationCanServe` comment is right
+about *why* it says what it says (`--supported-arches` does not widen) and wrong
+about the *conclusion* (a foreign-arch Flatpak can be installed). But "can be
+installed" is not "should be offered": §5.3 measured that box64's GL wrapping
+cannot reach inside bwrap's namespace, which supplies the runtime's x86_64
+`/usr`, and qemu-user cannot get a GL visual at all. So the honest revision is
+that Flatpak's exclusion from rung 3 is a **policy** conclusion about quality,
+not a **capability** conclusion about possibility — and the two should not share
+one function. §9.1.
+
+**Q3 — does it run?** **Not established, and the reason is not architecture:**
+
+```
+$ flatpak run --arch=x86_64 org.gnome.Calculator --help
+bwrap: Creating new namespace failed: Operation not permitted
+error: ldconfig failed, exit status 256
+Q3_EXIT=0
+```
+
+`bwrap` could not create a user namespace — a **container privilege** limit, not
+an architecture one. The same failure would occur for a *native* aarch64 app in
+this container.
+
+> **NOT PROVEN, and it may not be proven here at all.** Three independent
+> reasons: (a) `bwrap` cannot create namespaces under Docker's default seccomp;
+> (b) `/proc/sys/fs/binfmt_misc` is **not visible in these containers**, so no
+> handler could be registered; (c) on this Apple-Silicon host a binfmt handler
+> would be serviced by **Rosetta 2**, which does not exist on any real arm64
+> Vulos box (ARCH-PLACEMENT §4.2) — so even a success would have been a
+> confidently wrong number. **This needs a real arm64 Linux box and is recorded
+> as `untestable-on-arm64-mac`.**
+
+Note again that `Q2_EXIT=0` and `Q3_EXIT=0` on runs that printed `bwrap:
+Operation not permitted`. That is the third command in this document to exit 0
+while failing.
+
+---
+
+## 7. The frozen-closure format
+
+`scripts/freeze-debian-closure.sh` emits, and `--self-test` enforces:
+
+```jsonc
+{
+  "schema": "vulos.debian-closure/1",
+  "app": "blender",
+  "package": "blender",
+  "suite": "trixie",
+  "base_image": "debian:trixie-slim",      // CLOSURE-03: the closure is DIFFERENTIAL
+  "snapshot": "20260816T000000Z",
+  "arches": {
+    "arm64": {
+      "resolved_version": "4.3.2+dfsg-2",
+      "package_count": 350,
+      "download_bytes": 261877420,
+      "packages": [
+        { "name": "blender", "version": "4.3.2+dfsg-2",
+          "filename": "blender_4.3.2+dfsg-2_arm64.deb",
+          "url": "https://snapshot.debian.org/archive/debian/20260816T000000Z/pool/main/b/blender/blender_4.3.2+dfsg-2_arm64.deb",
+          "size": 0, "sha256": "…" }
+      ]
+    }
+  }
+}
+```
+
+Rules, each with a fixture in `--self-test` that **names which rule must answer**:
+
+| id | rule |
+|---|---|
+| CLOSURE-01/09 | every package carries a 64-hex SHA-256 |
+| CLOSURE-02/04 | the URL is `https://snapshot.debian.org/archive/…` — a `deb.debian.org/pool/…` URL is a MOVING target and is refused |
+| CLOSURE-03 | `base_image` non-empty — a differential closure with no declared base is unusable |
+| CLOSURE-05 | two packages may not share one SHA-256 |
+| CLOSURE-06 | `package_count` must equal the list length |
+| CLOSURE-07 | `download_bytes` must equal the sum of sizes |
+| CLOSURE-08 | size > 0 |
+| CLOSURE-10 | arch keys are Debian spelling (`arm64`, never `aarch64`) |
+| CLOSURE-11 | the arches map is non-empty |
+| CLOSURE-12 | a filename may not escape the download directory |
+| CLOSURE-13 | unknown schema refused |
+| CLOSURE-14/16 | the snapshot stamp is well-formed and every URL is pinned to it |
+
+**Not one digest is copied from apt.** `--print-uris` emits an MD5 and sometimes
+nothing at all (trixie's `libexpat1` line carries no hash field, because it comes
+from the security archive). Every SHA-256 is computed by the tool **from the
+bytes the snapshot URL actually served**, so the digest and the URL cannot
+disagree by construction.
+
+### 7.1 How the guards were proved
+
+Reading a guard does not clear it. Thirteen mutations planted one at a time in
+the checker, each reverted programmatically from a private baseline copy:
+
+| # | mutation | result |
+|---|---|---|
+| M1 | sha256 hex check never fires | killed — CLOSURE-01 and CLOSURE-09 both go red |
+| M2 | snapshot-URL check never fires | killed — CLOSURE-04 red |
+| M3 | duplicate-sha256 check never fires | killed — CLOSURE-05 red |
+| M4 | **over-broad**: the validator refuses everything | killed **by the control**, not by any refusal fixture |
+| M5 | base_image check never fires | killed — CLOSURE-03 red |
+| M6 | arch-spelling check never fires | killed — CLOSURE-10 red |
+| M7 | filename-traversal check never fires | killed — CLOSURE-12 red |
+| M8 | size>0 check never fires | killed — CLOSURE-08 red |
+| M9 | package_count check never fires | killed — CLOSURE-06 red |
+| M10 | download_bytes check never fires | killed — CLOSURE-07 red |
+| M11 | schema check never fires | killed — CLOSURE-13 red |
+| M12 | empty-arches check never fires | killed — CLOSURE-11 red |
+
+**Two defects were found this way, in the checker, before it was used on
+anything.**
+
+1. **The first `--self-test` run reported 13 of 13 refusals behaving and its one
+   CONTROL rejected.** `validate_manifest` was defined *below* the self-test
+   block, so bash had not seen the function: every call died with "command not
+   found", which scores as a refusal. **All thirteen guards were passing
+   vacuously and only the control could tell.** This is why M4 exists — a rule
+   that refuses everything passes every negative test ever written for it.
+
+2. **Two fixtures were being answered by a neighbouring rule.** With the
+   snapshot-URL check disabled, CLOSURE-02's fixture stayed green because
+   CLOSURE-16 (*url not pinned to the declared snapshot*) answered instead; with
+   the size>0 check disabled, CLOSURE-08's fixture stayed green because
+   CLOSURE-07 (*download_bytes disagrees with the sizes*) answered instead.
+   Both guards could have been deleted with the suite green. Fixtures now assert
+   **which rule id answered**, and the same mutations now report
+   `wrong rule answered` naming the rule that actually fired. This is
+   INSTALL-METHODOLOGY §10's M1 defect, caught in a new checker before it
+   shipped.
+
+A third defect was found by the measurement itself rather than by a fixture: the
+downloader ran `curl` with `--retry` but **no `--connect-timeout` or
+`--max-time`**, and one `deb.debian.org` socket hung for over five minutes during
+the closure run. A 315-file sequential loop with one stalled socket is
+indistinguishable from a slow network. Timeouts and `--speed-limit` are now set.
+
+---
+
+## 8. Recommendation
+
+**Build it, for the six apps at rung 2.** The cost question has a measured
+answer: a frozen Debian arm64 closure for Blender is **262 MB / 997 MiB**, which
+is **less** than the 477 MB / 1.1 GB Flathub x86_64 build that is already an
+accepted vehicle, and it yields a **native** app rather than an emulated one.
+Six of the seventeen x86_64-only catalogue apps move from "not available on this
+box" to "installs natively", which is a larger coverage gain than the entire
+Flatpak migration produced for arm64.
+
+**Sequencing.** ARCH-PLACEMENT §5 still holds: the installed app set does not
+sync at all yet, so none of this is on the critical path. What *is* immediately
+true is that a single arm64 user loses Blender today, and rung 2 fixes that
+independently of sync.
+
+**Do not build a shared package store.** One prefix per app, libc duplicated per
+app. The moment packages are shared, the box needs to know which app needs which
+version of what, and that is a dependency solver — the thing §4.6 refuses. The
+duplication is the price of not becoming a distribution and it should be paid.
+
+**Do not enable rung 3 by default.** §5.2's 1-in-30 SIGILL is why.
+
+---
+
+## 9. Handoff to the `appnet` owner — do not apply these here
+
+`backend/services/appnet/**` is another agent's file. These are recommendations,
+not edits.
+
+### 9.1 `EmulationCanServe` conflates two questions and should be split
+
+Today: `func EmulationCanServe(k DeliveryKind) bool { return k == DeliveryBinary }`.
+
+The block comment above it justifies excluding Flatpak with *"the ref does not
+exist for this installation and the install fails at resolve time"*. §6 measured
+that the ref **does** resolve for an aarch64 installation via `--arch=x86_64`,
+and that x86_64 refs **do** deploy. The comment is right about
+`--supported-arches` and wrong about the conclusion drawn from it.
+
+The distinction that survives measurement is not *can it be installed* but *would
+it be any good*:
+
+```go
+// EmulationCanInstall — could the bits get here at all?
+//   binary  : yes (an ELF and a kernel handler)
+//   closure : yes (ELFs in a prefix we control)
+//   flatpak : yes — MEASURED 2026-08-17, `flatpak install --arch=x86_64`
+//             deploys x86_64 refs into an aarch64 installation.
+//   package : no  (dpkg architecture refuses first)
+//
+// EmulationRunsWell — would the result be worth offering?
+//   binary, closure : yes — box64 binds the HOST's native aarch64 GL stack,
+//                     measured identical renderer string to native.
+//   flatpak         : NO — bwrap supplies the runtime's x86_64 /usr, so box64
+//                     cannot reach the host's libraries and qemu-user cannot
+//                     obtain a GL visual at all.
+```
+
+`EvaluateArch` should gate on `CanInstall && RunsWell`, and the two failures
+should produce **different sentences**, because they are different facts about
+the user's box.
+
+### 9.2 `NeedsGPU` should be scoped to delivery, not applied to the app
+
+`EvaluateArch`'s first switch arm makes `NeedsGPU` an unconditional
+`ArchStateUnavailable`. §5.3 measured that in a private prefix box64 reaches the
+host GL stack, so for `DeliveryBinary`/closure that arm is a false negative. E3
+is a fact about **Flatpak**, not about Blender.
+
+### 9.3 `EmulatedArches()` misses box64 entirely
+
+It probes `/proc/sys/fs/binfmt_misc` only. **box64 does not register a binfmt
+handler by default** — it is invoked by name, which is how every measurement in
+§5 was taken. A box with box64 installed and working therefore reports *no
+emulation available*. It needs a second source: the presence and successful
+`--version` of a `box64` / `qemu-x86_64` binary. Keep it separate from
+`SupportedArches()`, exactly as §8.5 argues.
+
+### 9.4 A new `DeliveryKind` and a new vehicle
+
+`DeliveryKindOf` needs a `DeliveryDebianClosure` arm, and
+`validateRecipeSecurity` needs the CLOSURE-\* rules from §7 mirrored in Go with
+the same ordering discipline as §6.1 — `TestDownloadURLRulesStillReachable`'s
+lesson is that a rule added at the wrong end of the chain makes its neighbours
+unreachable while every test stays green. The dispatch gains a third arm and must
+keep its property that **no default branch installs**.
+
+### 9.5 A rung-2 entry is not a Flatpak entry wearing a hat
+
+`registry.d/apt-to-flatpak.json`'s `blender` entry currently declares
+`arch: ["amd64"]`, `lane.needs_gpu: true` and `flatpak_id:
+org.blender.Blender`. A rung-2 Blender is a **different entry shape**: `arch:
+["amd64","arm64"]`, a `flathub` vehicle for amd64 and a `debian-closure` vehicle
+for arm64 — which the current schema cannot express, because a recipe declares
+*one* vehicle. **Whether a single entry may mix vehicles per architecture is the
+first design question the `appnet` owner has to answer**, and it is not mine to
+settle. The alternative — a whole `debian-closure` entry for both arches — is
+simpler and gives up Flathub's amd64 build.
+
+---
+
+## 10. What is NOT proven
+
+- **No Blender was installed and launched from a frozen closure.** The
+  end-to-end run (fetch 315 debs → `dpkg-deb -x` into a private prefix →
+  `blender --version` → a headless Cycles CPU render) was **started and did not
+  finish** within this session: the host sat at load 90–145 and one
+  `deb.debian.org` socket hung for five minutes. **Rung 2 for Blender is
+  therefore a designed and costed path, not a demonstrated one**, and the
+  claim that stops short is: the closure resolves, the packages exist, the
+  sizes are measured. *That Blender runs from a private prefix is unproven.*
+- **No frozen manifest has been written for any app.** `--self-test` passes;
+  the tool has not been run to completion against a real package.
+- **`snapshot.debian.org` was confirmed reachable (`HTTP 200` on the archive
+  root) but no package was fetched from it and no snapshot digest was compared
+  against a `deb.debian.org` one.** The claim that the snapshot URL serves
+  identical bytes is *the design's central assumption* and it is **untested**.
+- **Hardware GL acceleration under box64 is unproven** — §5.3 proves which
+  stack was bound, on a machine with no GPU.
+- **Whether a foreign-arch Flatpak runs** — §6, `untestable-on-arm64-mac`.
+- **Cura 5.0.0 in Debian is well behind upstream.** Rung 2 trades currency for
+  coverage and a rung-2 entry must state its version gap.

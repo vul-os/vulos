@@ -254,7 +254,15 @@ plan=json.load(open('/plan.json'))
 res=[];bad=[]
 for i,o in enumerate(plan):
     p='/dl/'+os.path.basename(o['filename'])
-    rc=subprocess.call(['curl','-fsSL','--retry','4','--retry-delay','2','-o',p,o['url']])
+    # --connect-timeout / --max-time are NOT optional here. A curl with neither
+    # hung for five minutes on one deb.debian.org connection during the
+    # measurement run that produced this tool, and a 300-file sequential loop
+    # with one stalled socket looks exactly like a slow network. --speed-limit
+    # catches the other shape: a connection that stays open and dribbles.
+    rc=subprocess.call(['curl','-fsSL','--retry','4','--retry-delay','2',
+                        '--connect-timeout','20','--max-time','300',
+                        '--speed-limit','1024','--speed-time','30',
+                        '-o',p,o['url']])
     if rc!=0 or not os.path.exists(p):
         bad.append((o['filename'],o['url'],'curl rc=%d'%rc)); continue
     b=open(p,'rb').read()

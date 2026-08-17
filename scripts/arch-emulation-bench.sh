@@ -52,14 +52,17 @@
 #   handler         proof that an x86_64 binary runs through the binfmt handler
 #                   THIS REPO SHIPS, with the emulator never named on the
 #                   command line, and with its exit status checked.
-#   all             cost, then handler, then bench.
+#   dynamic         box64 and qemu-user on a DYNAMICALLY linked x86_64 binary,
+#                   which is the shape box64 is designed for and the shape
+#                   `bench` never tested. Includes a GL probe.
+#   all             cost, then handler, then bench, then dynamic.
 #
-# Usage: scripts/arch-emulation-bench.sh [bench|cost|handler|all] [reps]
+# Usage: scripts/arch-emulation-bench.sh [bench|cost|handler|dynamic|all] [reps]
 set -uo pipefail
 
 MODE="${1:-bench}"
 case "$MODE" in
-  bench|cost|handler|all) shift || true ;;
+  bench|cost|handler|dynamic|all) shift || true ;;
   ''|*[0-9]*) MODE=bench ;;          # back-compat: a bare rep count
   *) echo "unknown mode: $MODE" >&2; exit 2 ;;
 esac
@@ -423,13 +426,174 @@ exit "$FAILED"
 HANDLER
 }
 
+run_dynamic() {
+# ── Why this mode exists ────────────────────────────────────────────────────
+#
+# `bench` measured box64 against a STATICALLY linked busybox, recorded
+# "Illegal instruction", and roadmap/ARCH-PLACEMENT.md §5 generalised that to
+# "box64 failed on the test binary" and recommended qemu-user instead.
+#
+# That generalisation was unsound, and the same document says why three
+# paragraphs earlier: **box64 gets its speed by NOT emulating libraries** — it
+# intercepts the dynamic linker and binds calls to the host's NATIVE aarch64
+# libraries. That mechanism needs a dynamic linker to intercept. A static
+# binary is the one shape box64 structurally cannot serve, so `bench` exercised
+# box64's known non-case and the verdict was drawn from it.
+#
+# This mode tests the shape box64 is designed for: a DYNAMICALLY linked x86_64
+# binary, with an x86_64 sysroot assembled by `dpkg-deb -x` — which is also
+# exactly the shape roadmap/DISTRO-SOURCED-APPS.md's vehicle produces, so the
+# measurement is of the real product case rather than a laboratory one.
+#
+# ── Fairness rules, because the first attempt at this broke both ────────────
+#
+#  1. qemu-user needs the COMPLETE x86_64 library closure in its sysroot; box64
+#     does not, because it substitutes native ones. Give qemu an incomplete
+#     sysroot and it dies on a missing libcap while box64 sails past, and the
+#     ratio then measures the sysroot rather than the emulator. Both get the
+#     same tree, and the tree is checked before any timing runs.
+#  2. A rep is DISCARDED unless the process exited 0 **and** produced
+#     byte-identical output to native. §4.3 exists because a harness that
+#     checked neither timed a crashing box64 and reported a plausible 1.57x.
+#     Exit status alone is not enough either: `glxinfo` exits 0 while printing
+#     "couldn't find RGB GLX visual".
+docker run --rm -i --platform linux/arm64 debian:trixie-slim sh -s -- "$REPS" <<'DYN'
+set -u
+REPS="$1"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null 2>&1 || { echo "APT_UPDATE_FAILED"; exit 3; }
+apt-get install -y -qq box64 qemu-user file python3 time >/dev/null 2>&1 || { echo "TOOLS_FAILED"; exit 3; }
+dpkg --add-architecture amd64 && apt-get update -qq >/dev/null 2>&1 || { echo "MULTIARCH_FAILED"; exit 3; }
+
+mkdir -p /x86 /debs && cd /debs
+for p in libc6 coreutils gzip libgcc-s1 libselinux1 libpcre2-8-0 libattr1 libacl1 \
+         zlib1g libcap2 libcap-ng0 libmd0 libbsd0 libtinfo6 libstdc++6; do
+  apt-get download -q "$p:amd64" >/dev/null 2>&1 || echo "MISS $p"
+done
+for d in /debs/*.deb; do dpkg-deb -x "$d" /x86 2>/dev/null; done
+mkdir -p /x86/lib64
+cp -a /x86/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 /x86/lib64/ 2>/dev/null || { echo "NO_INTERP"; exit 4; }
+ln -sfn /x86/usr/lib /x86/lib
+LIB=/x86/usr/lib/x86_64-linux-gnu
+
+# Preconditions. Nothing below is believed unless all of these hold.
+[ -x /x86/usr/bin/gzip ] || { echo "PRECONDITION FAILED: no x86_64 gzip in the sysroot"; exit 4; }
+case "$(file -b /x86/usr/bin/gzip)" in
+  *x86-64*"dynamically linked"*) : ;;
+  *) echo "PRECONDITION FAILED: not a dynamically linked x86-64 ELF: $(file -b /x86/usr/bin/gzip)"; exit 4 ;;
+esac
+echo "under test : $(file -b /x86/usr/bin/gzip)"
+echo "native ctrl: $(file -b /usr/bin/gzip)"
+echo "x86_64 libs in sysroot: $(ls "$LIB"/*.so* 2>/dev/null | wc -l)"
+
+python3 -c "
+import sys,random
+random.seed(1234); w=[b'the quick brown fox ',b'vulos ',b'0123456789abcdef',b'\x00\x01\x02\x03']
+b=bytearray()
+while len(b)<48*1024*1024: b+=random.choice(w)
+sys.stdout.buffer.write(bytes(b[:48*1024*1024]))" > /payload.bin
+[ "$(stat -c %s /payload.bin)" -eq 50331648 ] || { echo "PRECONDITION FAILED: payload size"; exit 4; }
+
+/usr/bin/gzip -9 -c /payload.bin > /ref.gz || { echo "PRECONDITION FAILED: native gzip"; exit 4; }
+REF=$(stat -c %s /ref.gz); REFMD5=$(md5sum < /ref.gz | cut -d" " -f1)
+echo "native reference: $REF bytes md5=$REFMD5"
+
+echo
+echo "--- correctness gate: each emulator must exit 0 AND emit the reference bytes ---"
+BOX64_LD_LIBRARY_PATH="$LIB" box64 /x86/usr/bin/gzip -9 -c /payload.bin > /b.gz 2>/dev/null
+echo "box64 exit=$? md5=$(md5sum < /b.gz | cut -d" " -f1)"
+qemu-x86_64 -L /x86 /x86/usr/bin/gzip -9 -c /payload.bin > /q.gz 2>/dev/null
+echo "qemu  exit=$? md5=$(md5sum < /q.gz | cut -d" " -f1)"
+echo "reference                md5=$REFMD5"
+
+echo
+echo "--- $REPS interleaved reps; DISCARDED unless exit=0 and bytes==reference ---"
+i=1
+while [ "$i" -le "$REPS" ]; do
+  for c in native box64 qemu; do
+    S=$(date +%s%N)
+    case $c in
+      native) /usr/bin/gzip -9 -c /payload.bin > /o.gz 2>/dev/null; E=$? ;;
+      box64)  BOX64_LD_LIBRARY_PATH="$LIB" box64 /x86/usr/bin/gzip -9 -c /payload.bin > /o.gz 2>/dev/null; E=$? ;;
+      qemu)   qemu-x86_64 -L /x86 /x86/usr/bin/gzip -9 -c /payload.bin > /o.gz 2>/dev/null; E=$? ;;
+    esac
+    N=$(date +%s%N); MS=$(( (N-S)/1000000 )); SZ=$(stat -c %s /o.gz)
+    if [ "$E" -ne 0 ] || [ "$SZ" -ne "$REF" ]; then
+      echo "rep=$i $c DISCARDED exit=$E bytes=$SZ"
+    else
+      echo "rep=$i $c ms=$MS exit=$E bytes=$SZ"
+    fi
+  done
+  i=$((i+1))
+done
+
+echo
+echo "--- per-exec cost: 30 execs of gzip --version, successes counted ---"
+for c in native box64 qemu; do
+  S=$(date +%s%N); OK=0; k=1
+  while [ "$k" -le 30 ]; do
+    case $c in
+      native) /usr/bin/gzip --version >/dev/null 2>&1 ;;
+      box64)  BOX64_LD_LIBRARY_PATH="$LIB" box64 /x86/usr/bin/gzip --version >/dev/null 2>&1 ;;
+      qemu)   qemu-x86_64 -L /x86 /x86/usr/bin/gzip --version >/dev/null 2>&1 ;;
+    esac
+    [ $? -eq 0 ] && OK=$((OK+1))
+    k=$((k+1))
+  done
+  N=$(date +%s%N)
+  echo "$c: $(( (N-S)/1000000 )) ms / 30 execs, $OK/30 exited 0"
+done
+
+echo
+echo "--- peak RSS, one gzip pass ---"
+for c in native box64 qemu; do
+  case $c in
+    native) /usr/bin/time -v /usr/bin/gzip -9 -c /payload.bin >/dev/null 2>/tmp/t ;;
+    box64)  BOX64_LD_LIBRARY_PATH="$LIB" /usr/bin/time -v box64 /x86/usr/bin/gzip -9 -c /payload.bin >/dev/null 2>/tmp/t ;;
+    qemu)   /usr/bin/time -v qemu-x86_64 -L /x86 /x86/usr/bin/gzip -9 -c /payload.bin >/dev/null 2>/tmp/t ;;
+  esac
+  echo "$c exit=$? $(grep -i "Maximum resident" /tmp/t 2>/dev/null || echo "(time -v unavailable)")"
+done
+
+echo
+echo "--- GL: does box64 reach the host's NATIVE aarch64 GL stack? ---"
+apt-get install -y -qq xvfb mesa-utils libgl1 >/dev/null 2>&1
+for p in mesa-utils mesa-utils-bin libx11-6 libxcb1 libxau6 libxdmcp6 libbsd0 libmd0 \
+         libgl1 libglx-mesa0 libglvnd0 libglx0 libxext6 libxfixes3 libdrm2 libexpat1 \
+         libzstd1 libwayland-client0 libxcb-dri3-0 libxcb-present0 libxcb-sync1 \
+         libxcb-randr0 libxcb-shm0 libxcb-xfixes0 libxcb-glx0 libxshmfence1 libllvm19 \
+         libelf1t64 libffi8 libedit2 libxml2 liblzma5 libicu76 libbz2-1.0 libsensors5 \
+         libsensors-config; do
+  apt-get download -q "$p:amd64" >/dev/null 2>&1 || true
+done
+for d in /debs/*.deb; do dpkg-deb -x "$d" /x86 2>/dev/null; done
+Xvfb :99 -screen 0 1024x768x24 >/dev/null 2>&1 &
+sleep 3
+echo "native aarch64 glxinfo:"
+DISPLAY=:99 glxinfo -B 2>&1 | grep -E "Device:|direct rendering|rror" | sed "s/^/  /"
+echo "x86_64 glxinfo under box64:"
+DISPLAY=:99 BOX64_LD_LIBRARY_PATH="$LIB" box64 /x86/usr/bin/glxinfo -B 2>&1 | grep -E "Device:|direct rendering|rror" | sed "s/^/  /"
+echo "x86_64 glxinfo under qemu-user:"
+DISPLAY=:99 qemu-x86_64 -L /x86 /x86/usr/bin/glxinfo -B 2>&1 | grep -E "Device:|direct rendering|rror" | sed "s/^/  /"
+echo "(a Device: line MATCHING the native one means box64 bound the HOST'S own"
+echo " aarch64 Mesa, which is the entire reason box64 exists for 3D workloads."
+echo " It does NOT prove hardware acceleration: a container has no GPU, so the"
+echo " native stack here is llvmpipe. What is proved is which stack was used.)"
+DYN
+rc=$?
+[ "$rc" -eq 0 ] || echo "arch-emulation-bench: dynamic mode exited $rc — the numbers above, if any, are not trustworthy" >&2
+return "$rc"
+}
+
 case "$MODE" in
   bench)   run_bench;   RC=$? ;;
+  dynamic) run_dynamic; RC=$? ;;
   cost)    run_cost;    RC=$? ;;
   handler) run_handler; RC=$? ;;
   all)     run_cost;    RC=$?
            run_handler; RC=$((RC + $?))
-           run_bench;   RC=$((RC + $?)) ;;
+           run_bench;   RC=$((RC + $?))
+           run_dynamic; RC=$((RC + $?)) ;;
 esac
 [ "$RC" -eq 0 ] || echo "arch-emulation-bench: mode '$MODE' exited $RC — the numbers above, if any, are not trustworthy" >&2
 exit "$RC"
