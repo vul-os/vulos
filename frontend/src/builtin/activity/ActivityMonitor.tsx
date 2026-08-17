@@ -101,6 +101,60 @@ interface GraphDetail {
   value: string | number
 }
 
+/**
+ * UNKNOWN is what a card shows in place of a number it does not have.
+ *
+ * # Why `0` is the worst possible placeholder here
+ *
+ * Every value on these cards LOOKS like a measurement, because on a working
+ * box it is one. `0` is therefore not a neutral default and not a smaller kind
+ * of "unknown" — it is a specific, confident, and reassuring claim: an idle
+ * CPU, a box with no processes, a machine with no network connections.
+ *
+ * It is also stated at exactly the moment it is most wrong. `stats` is null
+ * until the telemetry socket delivers a frame, and the socket is most likely
+ * to be down when the box is in trouble — which is the moment a user opens
+ * this app. So a wedged box pegged at 100% rendered "CPU 0%", and a user
+ * reading that concludes the box is fine and the app is broken, or worse, that
+ * whatever they came to investigate is not the problem.
+ *
+ * This is the defect class this repo hits most often: a surface stating a
+ * measured-looking value it never measured. The rule enforced below is that a
+ * derived value is known only when EVERY input it derives from is known.
+ */
+const UNKNOWN = '—'
+
+/** A percentage, or UNKNOWN when the reading is absent. */
+function pctOf(v: number | undefined): string {
+  return typeof v === 'number' ? `${Math.round(v)}%` : UNKNOWN
+}
+
+/** A byte count, or UNKNOWN when the reading is absent. */
+function bytesOf(v: number | undefined): string {
+  return typeof v === 'number' ? fmtBytes(v) : UNKNOWN
+}
+
+/** A per-second byte rate, or UNKNOWN when the reading is absent. */
+function rateOf(v: number | undefined): string {
+  return typeof v === 'number' ? `${fmtBytes(v)}/s` : UNKNOWN
+}
+
+/**
+ * The sum of two readings as a rate — UNKNOWN unless BOTH are present.
+ *
+ * Not "sum what we have": a total that silently counts one direction of
+ * traffic is a wrong number rather than a partial one, and nothing on screen
+ * distinguishes it from a correct one.
+ */
+function sumRateOf(a: number | undefined, b: number | undefined): string {
+  return typeof a === 'number' && typeof b === 'number' ? `${fmtBytes(a + b)}/s` : UNKNOWN
+}
+
+/** A count derived from a fetched list — UNKNOWN unless that feed is current. */
+function countOf(known: boolean, n: number): string | number {
+  return known ? n : UNKNOWN
+}
+
 interface GraphSpec {
   id: GraphId
   label: string
@@ -156,6 +210,11 @@ export default function ActivityMonitor() {
   const [procError, setProcError] = useState<ApiFailure | null>(null)
   const [netError, setNetError] = useState<ApiFailure | null>(null)
   const [appError, setAppError] = useState<ApiFailure | null>(null)
+  // "Has this feed EVER produced a reading?" — distinct from "is it empty".
+  // Before the first response `processes` is [] and `netConns` is [], and a
+  // count taken from them is a statement about a box nobody has asked yet.
+  const [procLoaded, setProcLoaded] = useState(false)
+  const [netLoaded, setNetLoaded] = useState(false)
   const [expanded, setExpanded] = useState<GraphId | null>(null)
   const [tab, setTab] = useState<Tab>('processes')
   const [sortCol, setSortCol] = useState<ProcessSortKey>('cpu')
@@ -214,14 +273,38 @@ export default function ActivityMonitor() {
   // r.json() unconditionally — and because every /api/* service answers 5xx
   // with a body that parses cleanly, a dead backend produced a parsed error
   // object, an empty list, and this app's designed "No processes found" panel.
+  // pollSeq makes a response's ORDER OF ARRIVAL irrelevant.
+  //
+  // Three requests go out every three seconds and nothing guaranteed they came
+  // back in that order. A slow poll landing after a newer one overwrote fresh
+  // rows with older ones, and the display then showed a past state of the box
+  // as the present one — indefinitely, since nothing corrects it until the
+  // next poll happens to be well-ordered.
+  //
+  // That is not cosmetic on this screen. The rows carry the (pid, starttime)
+  // identity the kill path is built on, and a superseded listing can contain a
+  // process that has since exited. Selecting from it produces a request the
+  // server refuses — the safe outcome, but the user was shown a box that no
+  // longer exists and given no reason for the refusal.
+  //
+  // Every response now names the poll it belongs to and is dropped unless it
+  // is the newest. The counter is also bumped on unmount, which discards
+  // in-flight responses instead of setting state on a component that is gone.
+  const pollSeq = useRef(0)
+
   const poll = useCallback(() => {
+    const seq = ++pollSeq.current
+    const current = () => seq === pollSeq.current
     loadJSON('/api/system/processes', toProcesses).then(r => {
-      if (r.ok) { setProcesses(r.value); setProcError(null) } else { setProcError(r.error) }
+      if (!current()) return
+      if (r.ok) { setProcesses(r.value); setProcError(null); setProcLoaded(true) } else { setProcError(r.error) }
     })
     loadJSON('/api/system/network', toNetConns).then(r => {
-      if (r.ok) { setNetConns(r.value); setNetError(null) } else { setNetError(r.error) }
+      if (!current()) return
+      if (r.ok) { setNetConns(r.value); setNetError(null); setNetLoaded(true) } else { setNetError(r.error) }
     })
     loadJSON('/api/proc/apps', toAppList).then(r => {
+      if (!current()) return
       if (r.ok) { setApps(r.value); setAppError(null) } else { setAppError(r.error) }
     })
   }, [])
@@ -229,7 +312,8 @@ export default function ActivityMonitor() {
   useEffect(() => {
     poll()
     const id = setInterval(poll, 3000)
-    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the rule guards against a ref to a DOM NODE going stale before cleanup. This ref is a counter, and reading its LATEST value at cleanup is the whole point: bumping it invalidates whichever poll is in flight at unmount. Copying it into a variable inside the effect, as the rule suggests, would capture the value at mount and invalidate nothing.
+    return () => { clearInterval(id); pollSeq.current++ }
   }, [poll])
 
   // Plain function, not useCallback: it is passed to a dialog that only exists
@@ -287,8 +371,12 @@ export default function ActivityMonitor() {
   // wrong was the screen that refused to render.
   //
   // The graphs say so for themselves below; the tables carry on.
-  const cpuVal = Math.round(stats?.cpu || 0)
-  const memVal = Math.round(stats?.mem_percent || 0)
+  // A fetched count is only current while its feed is. `procError !== null`
+  // means the last attempt failed, so the rows still in state are stale — and
+  // a stale count presented as a live one is the same claim as a fabricated
+  // one. The tab labels already show "(—)" on a failed feed; these agree.
+  const procKnown = procLoaded && procError === null
+  const netKnown = netLoaded && netError === null
   // Matching on the full key is what makes a recycled pid DESELECT rather than
   // re-aim. When the number is handed to a new process the key no longer
   // matches, find() misses, and the action bar falls back to "Select a process
@@ -297,39 +385,47 @@ export default function ActivityMonitor() {
 
   const graphsById: Record<GraphId, GraphSpec> = {
     cpu: {
-      id: 'cpu', label: 'CPU', value: `${cpuVal}%`,
+      id: 'cpu', label: 'CPU', value: pctOf(stats?.cpu),
       details: [
-        { label: 'Usage', value: `${cpuVal}%` },
-        { label: 'Cores', value: stats?.num_cpu || '—' },
-        { label: 'Load', value: stats?.load_avg || '—' },
-        { label: 'Threads', value: processes.reduce((sum, p) => sum + (p.threads || 0), 0) },
-        { label: 'Processes', value: processes.length },
+        { label: 'Usage', value: pctOf(stats?.cpu) },
+        { label: 'Cores', value: stats?.num_cpu ?? UNKNOWN },
+        { label: 'Load', value: stats?.load_avg || UNKNOWN },
+        { label: 'Threads', value: countOf(procKnown, processes.reduce((sum, p) => sum + (p.threads || 0), 0)) },
+        { label: 'Processes', value: countOf(procKnown, processes.length) },
       ],
       data: history.map(h => h.cpu),
       color: '#3b82f6', fill: 'rgba(59,130,246,0.12)',
       border: 'border-blue-500/20', glow: 'from-blue-500/5',
     },
     memory: {
-      id: 'memory', label: 'Memory', value: `${memVal}%`,
+      id: 'memory', label: 'Memory', value: pctOf(stats?.mem_percent),
       details: [
-        { label: 'Used', value: fmtBytes(stats?.mem_used) },
-        { label: 'Total', value: fmtBytes(stats?.mem_total) },
-        { label: 'Free', value: fmtBytes((stats?.mem_total || 0) - (stats?.mem_used || 0)) },
-        { label: 'Swap', value: stats?.swap_used ? fmtBytes(stats.swap_used) : '—' },
-        { label: 'Cached', value: stats?.mem_cached ? fmtBytes(stats.mem_cached) : '—' },
+        { label: 'Used', value: bytesOf(stats?.mem_used) },
+        { label: 'Total', value: bytesOf(stats?.mem_total) },
+        // Free is DERIVED, so it needs both operands. The old form defaulted
+        // each to 0 and rendered "0 B" free — which reads as a box out of
+        // memory, the opposite of the "no reading yet" it actually meant.
+        {
+          label: 'Free',
+          value: typeof stats?.mem_total === 'number' && typeof stats?.mem_used === 'number'
+            ? fmtBytes(stats.mem_total - stats.mem_used)
+            : UNKNOWN,
+        },
+        { label: 'Swap', value: bytesOf(stats?.swap_used) },
+        { label: 'Cached', value: bytesOf(stats?.mem_cached) },
       ],
       data: history.map(h => h.mem),
       color: '#a855f7', fill: 'rgba(168,85,247,0.12)',
       border: 'border-purple-500/20', glow: 'from-purple-500/5',
     },
     network: {
-      id: 'network', label: 'Network', value: fmtBytes((stats?.net_rx || 0) + (stats?.net_tx || 0)) + '/s',
+      id: 'network', label: 'Network', value: sumRateOf(stats?.net_rx, stats?.net_tx),
       details: [
-        { label: 'Receiving', value: fmtBytes(stats?.net_rx) + '/s' },
-        { label: 'Sending', value: fmtBytes(stats?.net_tx) + '/s' },
-        { label: 'Connections', value: netConns.length },
-        { label: 'Listening', value: netConns.filter(c => c.state === 'LISTEN').length },
-        { label: 'Established', value: netConns.filter(c => c.state === 'ESTABLISHED').length },
+        { label: 'Receiving', value: rateOf(stats?.net_rx) },
+        { label: 'Sending', value: rateOf(stats?.net_tx) },
+        { label: 'Connections', value: countOf(netKnown, netConns.length) },
+        { label: 'Listening', value: countOf(netKnown, netConns.filter(c => c.state === 'LISTEN').length) },
+        { label: 'Established', value: countOf(netKnown, netConns.filter(c => c.state === 'ESTABLISHED').length) },
       ],
       data: history.map(h => (h.rx || 0) + (h.tx || 0)),
       color: '#22c55e', fill: 'rgba(34,197,94,0.12)',
@@ -337,13 +433,13 @@ export default function ActivityMonitor() {
       autoScale: true,
     },
     disk: {
-      id: 'disk', label: 'Disk', value: fmtBytes((stats?.disk_read || 0) + (stats?.disk_write || 0)) + '/s',
+      id: 'disk', label: 'Disk', value: sumRateOf(stats?.disk_read, stats?.disk_write),
       details: [
-        { label: 'Read', value: fmtBytes(stats?.disk_read) + '/s' },
-        { label: 'Write', value: fmtBytes(stats?.disk_write) + '/s' },
-        { label: 'Used', value: stats?.disk_used ? fmtBytes(stats.disk_used) : '—' },
-        { label: 'Total', value: stats?.disk_total ? fmtBytes(stats.disk_total) : '—' },
-        { label: 'Usage', value: stats?.disk_percent ? `${Math.round(stats.disk_percent)}%` : '—' },
+        { label: 'Read', value: rateOf(stats?.disk_read) },
+        { label: 'Write', value: rateOf(stats?.disk_write) },
+        { label: 'Used', value: bytesOf(stats?.disk_used) },
+        { label: 'Total', value: bytesOf(stats?.disk_total) },
+        { label: 'Usage', value: pctOf(stats?.disk_percent) },
       ],
       data: history.map(h => (h.disk_r || 0) + (h.disk_w || 0)),
       color: '#f59e0b', fill: 'rgba(245,158,11,0.12)',
@@ -746,29 +842,7 @@ function ProcessTable({
     return p.name?.toLowerCase().includes(q) || p.command?.toLowerCase().includes(q) || String(p.pid).includes(q) || p.user?.toLowerCase().includes(q)
   })
 
-  const sorted = [...filtered].sort((a, b) => {
-    const rawA = a[sortCol]
-    const rawB = b[sortCol]
-    // Every sortable column is either always-string or always-number (plus
-    // undefined when a row omits it) — never mixed. String columns compare
-    // case-insensitively, missing values sorting as ''. Numeric columns run
-    // through Number(), whose ToNumber(undefined) === NaN reproduces the
-    // original untyped code's raw `va < vb` behaviour (any comparison against
-    // undefined is false, so missing values never reorder relative to a
-    // defined value on either side) without defaulting a missing value to 0.
-    if (typeof rawA === 'string') {
-      const va = rawA.toLowerCase()
-      const vb = (typeof rawB === 'string' ? rawB : '').toLowerCase()
-      if (va < vb) return sortAsc ? -1 : 1
-      if (va > vb) return sortAsc ? 1 : -1
-      return 0
-    }
-    const va = Number(rawA)
-    const vb = Number(rawB)
-    if (va < vb) return sortAsc ? -1 : 1
-    if (va > vb) return sortAsc ? 1 : -1
-    return 0
-  })
+  const sorted = [...filtered].sort(compareProcesses(sortCol, sortAsc))
 
   const cols: { key: ProcessSortKey, label: string, w: string, align: string }[] = [
     { key: 'pid', label: 'PID', w: '55px', align: '' },
@@ -1102,6 +1176,87 @@ function noticeTone(tone: OutcomeReport['tone']): string {
  * A force quit that used SIGKILL alone is `ok`: it did exactly what the user
  * chose, having been told in the dialog what that costs.
  */
+/**
+ * compareProcesses builds the process table's comparator.
+ *
+ * # The old one was not an ordering
+ *
+ * It ran missing values through `Number()`, and `Number(undefined)` is NaN.
+ * Every comparison against NaN is false, so both `<` and `>` fell through and
+ * the comparator returned 0 — "these are equal". That makes a row with no
+ * value equal to EVERY row, while the rows it is equal to are not equal to
+ * each other:
+ *
+ *     cmp(noThreads, 1) === 0      // "equal"
+ *     cmp(noThreads, 900) === 0    // "equal"
+ *     cmp(1, 900) === -1           // but these are not
+ *
+ * That is intransitive, and a comparator that is not a consistent ordering has
+ * no defined result: V8's sort is free to produce a different arrangement for
+ * the same rows depending on the order they arrived in, which on a list that
+ * re-polls every three seconds means the table can reshuffle under the
+ * pointer. On this screen the row under the pointer is the one about to be
+ * killed.
+ *
+ * It was also asymmetric. The branch was chosen by the type of the LEFT
+ * operand only, so a string-vs-number pair compared as strings in one
+ * direction and as numbers in the other, and cmp(a,b) and cmp(b,a) could agree
+ * on a sign instead of opposing.
+ *
+ * # What replaces it
+ *
+ * A total order, in three tiers:
+ *
+ *  1. Rows WITHOUT a value for the sorted column sort last, in both
+ *     directions. They form one equivalence class at the end rather than a
+ *     value that compares equal to everything everywhere — which is what makes
+ *     the result transitive. Keeping them last regardless of direction is the
+ *     same convention as SQL's NULLS LAST, and it is the useful one: reversing
+ *     "CPU" should swap the busy and idle processes, not bury them under rows
+ *     that reported nothing.
+ *  2. Present values compare by type — strings case-insensitively, numbers
+ *     numerically — with the direction applied.
+ *  3. Ties break on pid, which is unique per listing. This is what makes the
+ *     output depend only on the SET of rows and not on the order they were
+ *     fetched in, so the assertion in the tests can be about the ordering
+ *     itself rather than about one lucky example.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- compareProcesses is exported so TRANSITIVITY can be asserted as a property over every triple. That is the defect the previous comparator had, and it is invisible in any single sorted example a component test could inspect.
+export function compareProcesses(
+  col: ProcessSortKey,
+  asc: boolean,
+): (a: ProcessInfo, b: ProcessInfo) => number {
+  // "Missing" covers undefined, null and NaN. NaN is the one that mattered:
+  // it is a number by type and unordered by behaviour, so it has to be
+  // classified here rather than left to the comparisons below.
+  const missing = (v: unknown): boolean =>
+    v === undefined || v === null || (typeof v === 'number' && Number.isNaN(v))
+
+  return (a, b) => {
+    const va = a[col]
+    const vb = b[col]
+    const ma = missing(va)
+    const mb = missing(vb)
+    if (ma && mb) return a.pid - b.pid
+    if (ma) return 1
+    if (mb) return -1
+
+    let d = 0
+    if (typeof va === 'string' || typeof vb === 'string') {
+      // Both sides coerced the SAME way, so the branch cannot depend on which
+      // operand happens to be on the left.
+      d = String(va).toLowerCase().localeCompare(String(vb).toLowerCase())
+    } else {
+      d = Number(va) - Number(vb)
+    }
+    if (d !== 0) return asc ? d : -d
+    // The tie-break is NOT reversed with the sort direction. Reversing it
+    // would make the two directions disagree about the order of equal rows,
+    // which is a reshuffle the user reads as movement that did not happen.
+    return a.pid - b.pid
+  }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- describeOutcome is exported so the ESCALATION REPORT can be asserted directly. What the user is told after a kill is the half of this feature that can be wrong while every pixel renders, and a test that re-implements the wording proves nothing about the wording that ships.
 export function describeOutcome(label: string, v: Record<string, unknown>): OutcomeReport {
   const outcome = typeof v.outcome === 'string' ? v.outcome : 'done'
