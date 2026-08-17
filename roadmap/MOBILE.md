@@ -68,39 +68,43 @@ flowchart TD
 
 Single Go binary, runs as a Vulos service on its own port (DNS-mapped like other Vulos apps).
 
-### ModemManager D-Bus Integration
-- [ ] Connect to ModemManager over D-Bus (`org.freedesktop.ModemManager1`)
-- [ ] Enumerate available modems
-- [ ] SMS: send, receive, list, delete via `org.freedesktop.ModemManager1.Modem.Messaging`
-- [ ] Voice calls: dial, answer, hang up, DTMF via `org.freedesktop.ModemManager1.Modem.Voice`
-- [ ] Signal strength, network registration, SIM info
-- [ ] Listen for incoming call/SMS events, push to WebSocket
+> **This whole checklist was written before the backend existed and had gone stale in the other direction — checked as built.** Below is verified against `backend/services/telephony/` (`git log`: `a6ab6009` MOBILE-03 voice calls, `dbebd3ed` call log, `288f8f86` contacts merge, `90604a3b` second-number seam, `cfaf7cfe` active-call reporting). It also connects a mismatch the plan didn't anticipate: the checklist assumed a **D-Bus library**; what shipped talks to ModemManager over the **`mmcli` CLI** (shell-out, key-value `-K` output parsed into a flat map — `telephony.go`'s own header explains why: `mmcli -K` output is stable across ModemManager versions, the JSON shape has drifted). The mermaid diagram above still shows "ModemManager Client (D-Bus)"; read that as `mmcli`, not a Go D-Bus binding.
+
+### ModemManager Integration (via `mmcli`, not D-Bus)
+- [x] Connect to ModemManager — `mmcliPresent()` / `mmcli()`, `backend/services/telephony/telephony.go`
+- [x] Enumerate available modems — `(*Service).modemIndex()`, same file
+- [x] SMS: send, receive, list via `mmcli` — `backend/services/telephony/sms.go` (`Send`, `Threads`, `ThreadFor`, `allSMS`, inbound poll). **Delete: not implemented** — no delete function or endpoint exists anywhere in the package
+- [x] Voice calls: dial, answer, hang up via `mmcli --voice-*` — `backend/services/telephony/calls.go` (`PlaceCall`, `Accept`, `Hangup`), best-effort per the Status note above (many data/SMS-only USB modems don't support `--voice-*`). **DTMF: not implemented** — no DTMF function, no route, no UI control
+- [x] Signal strength, network registration, SIM info — `(*Service).Status()`, `telephony.go`: `signal_quality`, `state`, `operator`, `own-numbers`
+- [x] Listen for incoming call/SMS events, push to WebSocket — `calls.go`'s `pollCalls()` broadcasts `call_incoming`/`call_ended`; `sms.go`'s `pollLoop()` broadcasts `sms` and additionally fires a sovereign notification (`onIncomingSMS`) — SMS gets both channels, incoming calls only get the WebSocket one (see the Remote Access correction below)
 
 ### WebSocket Server
-- [ ] Real-time push: incoming SMS, incoming call, call state changes
-- [ ] Commands from UI: send SMS, dial number, answer/reject/hangup, send DTMF
-- [ ] Contact sync (if contacts service exists)
-- [ ] Notification integration with Vulos notification system
+- [x] Real-time push: incoming SMS, incoming call, call state changes — `ws.go` + the broadcasts above
+- [x] Commands from UI: send SMS, dial number, answer/reject/hangup — `backend/services/telephony/handlers.go`: `POST /api/telephony/sms/send`, `/call`, `/call/hangup`, `/call/decline`, `/call/answer`. **Send DTMF: not implemented**, no route exists
+- [x] Contact sync — real, and it is a merge, not a stub: `backend/services/contacts/contacts.go` + `backend/cmd/server/routes_contacts.go:48` unify the SIM phonebook (`SIMPhonebook()`, reading `mmcli` `CPBR`) with the Vulos/CardDAV address book (commit `288f8f86`, "contacts: unified address book — merge Vulos/CardDAV + phone device/SIM + box SIM")
+- [x] Notification integration with Vulos notification system — inbound SMS fires a sovereign notification through the `Notifier` seam (`services/notify`), targeted to the owner so it web-pushes to a closed app (see the Status note above)
 
-### Call Audio Streaming
-Uses existing Vulos WebRTC streaming pipeline — no separate system.
+### Call Audio Streaming — NOT BUILT, and this is worse than the doc elsewhere admits
+"Uses existing Vulos WebRTC streaming pipeline" below was the plan. **None of it exists.** There is no reference to PipeWire, WebRTC, or an audio codec anywhere in `backend/services/telephony/` or in the phone app's frontend (`frontend/src/builtin/phone/`). What is built is **call CONTROL only** — dial/answer/hangup/status over HTTP + WebSocket (`useCallSession.ts` polls `GET /api/telephony/call/active` and drives `InCallBar.tsx`, which has no mute, speaker, or DTMF control). The call's actual audio path is whatever the GSM modem does with it natively (its own hardware audio jack/path, if the USB stick even has one) — it is **not routed to the browser at all**. This directly contradicts the "Remote Access" section's claim below that voice-call audio is "streamed via WebRTC"; that claim is corrected there.
 
-- [ ] Route modem audio device into PipeWire graph
-- [ ] Bidirectional WebRTC audio track for remote call participation
-- [ ] Echo cancellation via PipeWire filter node (`webrtc-audio-processing` module)
-- [ ] Opus codec (already used by WebRTC, efficient for voice)
-- [ ] Mute/unmute, speaker/earpiece toggle from UI
+- [ ] Route modem audio device into PipeWire graph — not built
+- [ ] Bidirectional WebRTC audio track for remote call participation — not built
+- [ ] Echo cancellation via PipeWire filter node (`webrtc-audio-processing` module) — not built (depends on the above)
+- [ ] Opus codec — not built (depends on the above)
+- [ ] Mute/unmute, speaker/earpiece toggle from UI — not built; no such control exists in `InCallBar.tsx`
 
 ### SMS Storage
-- [ ] SQLite database for conversation history
-- [ ] Thread-based view (grouped by contact)
-- [ ] Search across messages
-- [ ] MMS support via ModemManager (images, group messages)
-- [ ] Delivery reports
+- [ ] SQLite database for conversation history — not built. `Threads()` / `ThreadFor()` read live from ModemManager's own on-modem SMS store via `mmcli` on every call; there is no local cache or database
+- [x] Thread-based view (grouped by contact) — `groupThreads()` in `sms.go`, computed in-memory per request from the live `mmcli` read above (not a persisted store)
+- [ ] Search across messages — not built, no search function or endpoint in `sms.go` or `frontend/src/builtin/phone/MessagesTab.tsx`
+- [ ] MMS support via ModemManager (images, group messages) — not built, no MMS reference anywhere in the package
+- [ ] Delivery reports — not built
 
 ---
 
 ## eSIM Management
+
+**Confirmed still entirely unbuilt** — matches the Status note at the top of this doc ("eSIM/lpac is NOT built"). No reference to `lpac`, eSIM, or eUICC exists anywhere in `backend/services/telephony/` or `backend/cmd/server/`. All items below remain accurately unchecked.
 
 ### lpac Integration
 - [ ] Integrate [lpac](https://github.com/estkme-group/lpac) — open source local profile assistant
@@ -124,20 +128,22 @@ Uses existing Vulos WebRTC streaming pipeline — no separate system.
 
 Runs in Chromium (via cage) like all Vulos apps. DNS-mapped: `phone.vulos → localhost:<port>`
 
+> **Phone and Contacts merged into one surface.** `frontend/src/builtin/phone/Phone.tsx` is now a re-export of `frontend/src/builtin/contacts/Contacts.tsx`, which imports and composes `RecentsTab`, `Keypad`, and `MessagesTab` from `builtin/phone/` alongside its own `PeopleView`. The Dialer/Messages breakdown below is still accurate as a description of the components, just not as a description of two separate apps — there is one merged surface, and `Phone.tsx`'s own header notes the launcher still has two registry entries (`vulos-contacts` and `vulos-phone` in `frontend/src/core/AppRegistry.ts:307,321` and `frontend/src/shell/builtinApps.tsx:70,73`) pointing at it, called out there as reported-not-fixed rather than this doc's territory.
+
 ### Dialer
-- [ ] Numpad with T9-style layout
-- [ ] Contact search / autocomplete
-- [ ] Call history (recent, missed, all)
-- [ ] In-call screen: mute, speaker, DTMF pad, hold, hangup
-- [ ] Incoming call notification (full screen or banner depending on profile)
+- [x] Numpad with T9-style layout — `frontend/src/builtin/phone/Keypad.tsx`, letter legends per key
+- [x] Contact search / autocomplete — `Keypad.tsx` live-matches typed digits against the merged contact list as you type
+- [x] Call history (recent, missed, all) — `frontend/src/builtin/phone/RecentsTab.tsx`
+- [ ] In-call screen: mute, speaker, DTMF pad, hold, hangup — **partial.** `InCallBar.tsx` has answer/decline/hangup and a ringing/held state label, but mute, speaker toggle, DTMF pad, and an actual hold *action* are not implemented (no backend call, no route, no button) — `held` in the UI is a display state only
+- [ ] Incoming call notification (full screen or banner depending on profile) — **partially built.** `InCallBar.tsx` shows a ringing banner while the app is open (driven by the `call_incoming` WebSocket event) — that half works. What's unchecked: unlike SMS, an incoming call does **not** fire a sovereign/web-push notification, so a closed phone app gives no signal that a call is happening at all, and there is no device-profile-specific behavior (full-screen vs banner) — a gap the Status note at the top of this doc does not currently call out
 
 ### Messages
-- [ ] Conversation thread list
-- [ ] Message compose with contact picker
-- [ ] Image/media attach (MMS)
-- [ ] Search across conversations
-- [ ] Read receipts / delivery status indicators
-- [ ] Group messaging
+- [x] Conversation thread list — `frontend/src/builtin/phone/MessagesTab.tsx`, grouped via `groupThreads()`
+- [x] Message compose with contact picker — `composeTo` prop opens a thread from a selected contact (from the Keypad match or Recents)
+- [ ] Image/media attach (MMS) — not built, no MMS anywhere in the package
+- [ ] Search across conversations — not built
+- [ ] Read receipts / delivery status indicators — not built
+- [ ] Group messaging — not built
 
 ### eSIM Manager
 - [ ] List installed eSIM profiles
@@ -150,15 +156,19 @@ Runs in Chromium (via cage) like all Vulos apps. DNS-mapped: `phone.vulos → lo
 
 ## Remote Access
 
-When accessing Vulos remotely via browser, SMS and calls work seamlessly:
+> **Corrected — the voice-call claim below was false.** As §"Call Audio Streaming" above establishes, there is no WebRTC (or any) audio routing anywhere in `backend/services/telephony/` or the phone app frontend. What actually works remotely is **call control** (dial/answer/hangup/status) over the same HTTP+WebSocket API used locally — nothing about it is remote-specific, it just happens to work over a network connection because it was never local-only in the first place. No call audio reaches a remote browser.
 
-- **SMS** — WebSocket, works identically local or remote, text is tiny
-- **Voice calls** — audio streamed via WebRTC (same pipeline as app streaming), user can take calls from any device with a browser
-- **Notifications** — incoming call/SMS pushed to remote session, respects device profile (TV shows banner, car uses voice announcement)
+When accessing Vulos remotely via browser:
+
+- **SMS** — real. WebSocket + the sovereign notification path, works identically local or remote, text is tiny.
+- **Voice calls** — **control only, no audio.** Dial/answer/hangup/status work identically local or remote (same HTTP+WS API), but the call's audio is not streamed anywhere — see the Call Audio Streaming correction above. A user cannot actually hear or speak on a call from a remote browser today.
+- **Notifications** — SMS is pushed via the sovereign-notification path and respects the owner gate; it does **not** yet vary by device profile (TV/car/watch-specific behavior below is unverified against this package — see the note under Device Profile Behavior). Incoming calls are WebSocket-only (see the Dialer checklist above) and do not reach a closed remote session at all.
 
 ---
 
 ## Device Profile Behavior
+
+> **UNVERIFIED against this package.** `backend/services/telephony/` and `frontend/src/builtin/phone/` contain no reference to car/TV/watch profile branching (no `deviceProfile`/`device_profile` check anywhere in either). The shell has a general device-profile concept elsewhere (`frontend/src/core/useSpatialNav.ts`, `frontend/src/core/useDrivingMode.ts`), but nothing in it is wired to telephony. Treat the table below as a design target, not a status claim — it describes no code found.
 
 | Profile | Incoming Call | Incoming SMS | Dialer |
 |---------|--------------|-------------|--------|
@@ -197,20 +207,22 @@ These won't be installed as apps in Vulos (we're building our own Go webapp), bu
 
 ## TODO Summary
 
-1. [ ] Go backend scaffold — HTTP server, WebSocket, D-Bus connection
-2. [ ] ModemManager SMS integration — send/receive/list
-3. [ ] ModemManager voice call integration — dial/answer/hangup
-4. [ ] SQLite message storage
-5. [ ] React UI — messages view
-6. [ ] React UI — dialer and in-call screen
-7. [ ] PipeWire call audio routing
-8. [ ] WebRTC bidirectional audio for remote calls
-9. [ ] Echo cancellation
-10. [ ] lpac eSIM profile management
-11. [ ] React UI — eSIM manager
-12. [ ] MMS support
-13. [ ] Notification integration with Vulos notification system
-14. [ ] Device profile-aware behavior (car voice, TV banner, etc.)
+Checked against `backend/services/telephony/` and `frontend/src/builtin/phone/` — see the checklists above for citations.
+
+1. [x] Go backend scaffold — HTTP server, WebSocket, `mmcli` (not D-Bus) connection
+2. [x] ModemManager SMS integration — send/receive/list (delete not built)
+3. [x] ModemManager voice call integration — dial/answer/hangup (DTMF, hold not built)
+4. [ ] SQLite message storage — not built, reads live from ModemManager on every call
+5. [x] React UI — messages view
+6. [x] React UI — dialer and in-call screen — dialer complete; in-call screen has hangup/answer/decline only, no mute/speaker/DTMF/hold
+7. [ ] PipeWire call audio routing — not built
+8. [ ] WebRTC bidirectional audio for remote calls — not built (see the Remote Access correction above)
+9. [ ] Echo cancellation — not built
+10. [ ] lpac eSIM profile management — not built
+11. [ ] React UI — eSIM manager — not built
+12. [ ] MMS support — not built
+13. [x] Notification integration with Vulos notification system — SMS only; incoming calls are WebSocket-only, no sovereign notification
+14. [ ] Device profile-aware behavior (car voice, TV banner, etc.) — unverified, no wiring found (see the Device Profile Behavior note above)
 
 ---
 
