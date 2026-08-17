@@ -56,6 +56,13 @@ function defaults() {
   return {
     'GET /api/setup/status': json({ setup_complete: true }),
     'GET /api/auth/status': json({ has_users: true }),
+    // The instance-state endpoint, defaulted so no spec can silently inherit
+    // the catch-all's `{}` for it. That is not a hypothetical: first-boot-setup
+    // .e2e.ts never mocked this route, got `{}`, and passed — while a real box
+    // returned instance_ready and the wizard dismissed itself on the strength
+    // of it. A default table that describes a box nobody could build is the
+    // thing that made "all green" and "broken on the founder's desk" coexist.
+    'GET /api/setup/mode': json({ mode: 'instance_ready' }),
     'GET /api/auth/me': json(PROFILE),
     'POST /api/auth/login': json({ ok: true }),
     'POST /api/auth/register': json({ ok: true }),

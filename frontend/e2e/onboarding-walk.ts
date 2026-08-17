@@ -53,7 +53,19 @@ export const RECOVERY_PHRASE =
  */
 export const FIRST_BOOT: Record<string, unknown> = {
   'GET /api/setup/status': json({ setup_complete: false }),
-  'GET /api/setup/mode': json({ mode: 'setup' }),
+  // What a REAL pristine box answers, which is not what this fixture used to say.
+  //
+  // It said `mode: 'setup'` — a state no running server can report. bootmode's
+  // old "setup" meant db/instance.json is missing, and the server writes that
+  // file at startup (registerIdentityRoutes -> identity.Load) before it accepts
+  // a connection. So this line described a box that does not exist, and it was
+  // load-bearing: Setup.tsx dismissed itself into the login screen on the value
+  // a real box DOES return, and every run of this suite stayed green while the
+  // founder's first boot showed a create-account form.
+  //
+  // backend/services/bootmode/bootmode.go is the authority for this string and
+  // checks itself against frontend/src/lib/bootmode.ts.
+  'GET /api/setup/mode': json({ mode: 'instance_ready' }),
   'GET /api/auth/status': json({ has_users: false }),
   'GET /api/auth/me': json({}, 401),
   // The device step reads the SETUP-time route, not the session-gated one: it

@@ -29,7 +29,33 @@ const FIRST_BOOT = {
   'GET /api/auth/me': json({}, 401),
   'GET /api/auth/status': json({ has_users: false }),
   'GET /api/setup/status': json({ setup_complete: false }),
+  // Pinned explicitly, because leaving it out is how this spec passed while the
+  // box it describes did not work. Unmocked /api routes get `{}` from
+  // mock-backend.js; `{}` has no `mode`, so Setup.tsx's mount effect took
+  // neither branch and the wizard survived. A real box answers instance_ready,
+  // which the effect read as "already set up" and handed back to AuthGate.
+  'GET /api/setup/mode': json({ mode: 'instance_ready' }),
 }
+
+/**
+ * Every value GET /api/setup/mode can return, from
+ * backend/services/bootmode/bootmode.go (mirrored in src/lib/bootmode.ts and
+ * checked across the two by TestModeStringsMatchFrontend), plus the answers a
+ * box gives when something is wrong.
+ *
+ * The wizard's decision to run belongs to /api/setup/status alone, so NONE of
+ * these may change it. Enumerating them is the point: two separate causes of
+ * the same symptom shipped because a single-value fixture happened to miss the
+ * one value a real machine returns.
+ */
+const MODE_ANSWERS: Array<[label: string, spec: unknown]> = [
+  ['instance_ready (what a real first boot reports)', json({ mode: 'instance_ready' })],
+  ['instance_absent', json({ mode: 'instance_absent' })],
+  ['normal (retired name)', json({ mode: 'normal' })],
+  ['setup (retired name, and the old fixture)', json({ mode: 'setup' })],
+  ['{} (an unmocked endpoint)', json({})],
+  ['500', json({ error: 'unavailable' }, 500)],
+]
 
 test('a machine that has not been set up shows the setup wizard, not the login form', async ({ page }) => {
   test.setTimeout(90_000)
@@ -50,6 +76,24 @@ test('a machine that has not been set up shows the setup wizard, not the login f
   // the login form not appearing is the regression.
   await expect(page.getByText('Create your account')).toHaveCount(0)
 })
+
+for (const [label, spec] of MODE_ANSWERS) {
+  test(`the wizard runs whatever /api/setup/mode says — ${label}`, async ({ page }) => {
+    test.setTimeout(90_000)
+    await installBackend(page, { ...FIRST_BOOT, 'GET /api/setup/mode': spec })
+    await page.goto('/')
+
+    await expect(
+      page.locator('.wz-root'),
+      `the setup wizard did not render on a first boot (mode: ${label})`,
+    ).toBeVisible({ timeout: 30_000 })
+
+    await expect(
+      page.getByText('Create your account'),
+      `the login form rendered on a box with no accounts (mode: ${label})`,
+    ).toHaveCount(0)
+  })
+}
 
 test('setup status failing asks the user instead of guessing', async ({ page }) => {
   test.setTimeout(90_000)

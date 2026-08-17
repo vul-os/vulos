@@ -386,7 +386,10 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
       .catch(() => {
         IS09_setModeChecked(true)
       })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    // Genuinely no dependencies now. The exhaustive-deps disable that used to
+    // sit here was covering the `onComplete` this effect called; with that
+    // branch gone the effect closes over nothing but setters.
+  }, [])
 
   // INIT-09: choose active step list based on flow type
   const IS09_baseSteps = baseStepsFor(IS09_flowType)
@@ -556,7 +559,17 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
               <IS09_JoinConnectStorageStep onNext={next} onPrev={prev} />
             )}
             {current === 'IS09_syncing' && (
-              <IS09_SyncingStep onNext={next} onComplete={onComplete} />
+              /* onComplete is `finish`, NOT the raw onComplete prop.
+                 "Continue in Background" used to be wired straight to
+                 onComplete — setSetupDone(true) in App.tsx — so it left the
+                 desktop up having never sent POST /api/setup/complete. The
+                 marker was never written, /api/setup/status still answered
+                 false, and the wizard ran again on the next boot: exactly the
+                 trap routes_setup.go was written to remove. finish() reports a
+                 failure to record completion instead of hiding it, and the
+                 banner above this step offers "Continue to the desktop anyway"
+                 so a join-flow user who has no owner session is not stranded. */
+              <IS09_SyncingStep onNext={next} onComplete={finish} />
             )}
             {/* Shared steps (pin + ready used by both flows) */}
             {current === 'pin' && <PinStep config={config} update={update} onNext={next} onPrev={prev} />}
@@ -1037,7 +1050,7 @@ const IS09_SYNC_PHASES = [
   { key: 'done', label: 'Finalising' },
 ]
 
-function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void }) {
+function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void | Promise<void> }) {
   const [IS09_phase, IS09_setPhase] = useState('init')
   const [IS09_phaseIdx, IS09_setPhaseIdx] = useState(0)
   const [IS09_error, IS09_setError] = useState('')
@@ -3301,14 +3314,41 @@ function ReadyStep({ config, accountCreated, onFinish, onPrev }: {
   // step to download the on-box embedding model before entering the desktop.
   const [showPrivateAI, setShowPrivateAI] = useState(false)
 
-  // finalize runs the post-account steps (PIN) and completes setup.
+  /**
+   * finalize runs the post-account steps (PIN) and completes setup.
+   *
+   * The PIN write is REPORTED. It used to be the last survivor of the pattern
+   * this file's docstring was written about:
+   *
+   *     await fetch('/api/auth/pin/set', { … }).catch(() => {})
+   *
+   * A 401 resolves, so that catch could not see the failure mode it was
+   * standing in front of. /api/auth/pin/set is not in the backend's
+   * publicPaths and the handler re-checks the session, and in the JOIN flow no
+   * account is ever created — so on that path this POST 401s every single time.
+   *
+   * What made it worth stopping the flow for is the other end. ValidatePIN
+   * returns TRUE when no PIN is set (services/auth/profiles.go), and LockScreen
+   * unlocks on `valid`. So a user who chose a lock PIN, confirmed it, saw no
+   * error and finished the wizard ended up with a box whose lock screen opens
+   * for anyone who presses Enter on an empty field — with every reason to
+   * believe it was locked. A silent failure that downgrades a lock to no lock
+   * is not best-effort.
+   */
   const finalize = async () => {
     if (config.pin) {
-      await fetch('/api/auth/pin/set', {
+      const set = await saveToBox('/api/auth/pin/set', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: config.pin }),
-      }).catch(() => {})
+      })
+      if (!set.ok) {
+        setCreating(false)
+        setError(
+          `This box did not save your unlock PIN, so the lock screen will open without one. ${set.message} ` +
+          `You can set a PIN from Settings once you are on the desktop.`,
+        )
+        return
+      }
     }
     await onFinish()
   }
