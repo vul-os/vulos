@@ -17,11 +17,42 @@
  * exactly why the layout was never tested against one.
  */
 
+/**
+ * The BOX's verdict for one app, as services/appnet/arch.go's EvaluateArch
+ * emits it on GET /api/store/registry.
+ *
+ * The App Hub renders these strings VERBATIM and composes no architecture
+ * sentence of its own — that is the whole point of the field, and it is why the
+ * fixture has to carry it: without an `availability` the hub makes no
+ * compatibility claim at all, so a payload lacking it would render every card
+ * as plainly installable and quietly delete the incompatible state these specs
+ * measure.
+ *
+ * The WORDING below is transcribed from arch.go and the Go tests own it
+ * (TestEvaluateArch_NoUnmeasuredClaimReachesTheUser sweeps every rung's copy).
+ * What these specs measure is LAYOUT and CONTRAST — how a long badge and a long
+ * sentence behave in a dragged 390px window — so what matters here is that the
+ * strings are the right SHAPE and the right LENGTH, not that a copy edit on the
+ * box is mirrored the same afternoon.
+ */
+export interface FixtureAvailability {
+  state: 'native' | 'emulated' | 'other-instance' | 'unavailable'
+  installable: boolean
+  requires_emulation: boolean
+  badge: string
+  card_badge: string
+  detail: string
+  box_arch: string
+  undeclared: boolean
+  needs: string[]
+}
+
 export interface FixtureApp {
   id: string
   name: string
   type: string
   arch: string[]
+  availability?: FixtureAvailability
   flatpak_id: string
   description: string
   category: string
@@ -151,8 +182,66 @@ export const EDGE_APPS: FixtureApp[] = [
   },
 ]
 
-/** REAL + EDGE — the default payload for GET /api/store/registry. */
-export const APPS: FixtureApp[] = [...REAL_APPS, ...EDGE_APPS]
+/**
+ * Stamp each entry with the verdict a box of `boxArch` would return.
+ *
+ * A transcription of EvaluateArch's decision order for the inputs a fixture can
+ * express — no emulator installed, no sibling instance, no entry opted in — which
+ * is the state of a plain box and the state every one of these specs is about.
+ * The Debian/Flatpak spelling fold is applied here for the same reason it is
+ * applied on the box: an entry declaring `x86_64` and a box calling itself
+ * `amd64` are the same machine, and a fixture that got that wrong would render
+ * an incompatible state the product does not have.
+ */
+const ALIASES: Record<string, string> = {
+  x86_64: 'amd64', amd64: 'amd64', aarch64: 'arm64', arm64: 'arm64',
+  i686: 'i386', i386: 'i386', armv7l: 'armhf', armhf: 'armhf',
+}
+const fold = (a: string) => ALIASES[a.trim().toLowerCase()] ?? a.trim().toLowerCase()
+
+export function forBox(apps: FixtureApp[], boxArch: string): FixtureApp[] {
+  const box = fold(boxArch)
+  return apps.map((app) => {
+    const needs = [...new Set(app.arch.map(fold))]
+    // An UNDECLARED arch is permitted today — arch.go's migration policy, which
+    // 19 shipped entries still rely on. It is not "runs anywhere"; it is
+    // "nobody checked", and the hub prints "Not stated" for it.
+    const native = needs.length === 0 || needs.includes(box)
+    if (native) {
+      return {
+        ...app,
+        availability: {
+          state: 'native', installable: true, requires_emulation: false,
+          badge: '', card_badge: '', detail: '',
+          box_arch: box, undeclared: needs.length === 0, needs,
+        },
+      }
+    }
+    const needsStr = needs.join(' or ')
+    // Flatpak CAN install a foreign-arch ref — measured — and is declined on
+    // graphics grounds; anything else has no build to fetch at all. Two facts,
+    // two sentences, exactly as the box tells them apart.
+    const detail = app.flatpak_id
+      ? `${app.name} ships for ${needsStr} only. This box is ${box} and could install the ` +
+        `${needsStr} build, but it would bring its own ${needsStr} graphics libraries, which ` +
+        `emulation cannot accelerate — so it is not offered here. It stays available on any ` +
+        `${needsStr} instance you run.`
+      : `${app.name} ships for ${needsStr} only, and this box is ${box}. No build is published ` +
+        `for this box's architecture. It stays available on any ${needsStr} instance you run.`
+    return {
+      ...app,
+      availability: {
+        state: 'unavailable', installable: false, requires_emulation: false,
+        badge: 'Not available on this box',
+        card_badge: `Needs ${needs.join('/')}`,
+        detail, box_arch: box, undeclared: false, needs,
+      },
+    }
+  })
+}
+
+/** REAL + EDGE — the default payload for GET /api/store/registry, on an amd64 box. */
+export const APPS: FixtureApp[] = forBox([...REAL_APPS, ...EDGE_APPS], 'amd64')
 
 /** What GET /api/store/installed returns for the fixture above. */
 export const INSTALLED = APPS.filter((a) => a.installed).map((a) => ({ id: a.id }))
@@ -172,3 +261,29 @@ export function manyApps(n: number): FixtureApp[] {
   }
   return out
 }
+
+/**
+ * The same catalogue as an ARM64 box reports it, plus Lutris.
+ *
+ * Lutris is the honest x86_64-only stand-in: open source, kept by APP-CATALOG
+ * policy 1a's own list of what remains in gaming, and genuinely x86_64-only on
+ * Flathub. The famous x86_64-only names — Steam, Chrome, Spotify, Zoom — are
+ * proprietary and therefore out of the catalogue entirely, which shrinks the
+ * incompatible set without emptying it.
+ *
+ * Every entry is re-stamped for arm64 rather than reusing the amd64 verdicts:
+ * a payload whose cards say "this box is amd64" while the spec calls it an arm64
+ * box is a fixture that disagrees with its own premise, and the first person to
+ * read a failure from it would spend the time on the wrong question.
+ */
+export const ARM_BOX_APPS: FixtureApp[] = forBox([
+  ...REAL_APPS,
+  ...EDGE_APPS,
+  {
+    ...REAL_APPS[0],
+    id: 'lutris', name: 'Lutris', type: 'desktop',
+    flatpak_id: 'net.lutris.Lutris', arch: ['x86_64'],
+    description: 'Open gaming platform — install and manage games from many sources',
+    category: 'games',
+  },
+], 'arm64')

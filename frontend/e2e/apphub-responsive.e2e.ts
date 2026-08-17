@@ -4,33 +4,19 @@ import {
   fontSizes, smallTargets, settle, HUB, hubBackend,
 } from './apphub-harness'
 import { hubModeFor } from '../src/builtin/apphub/hubMode'
-import { manyApps, APPS } from './apphub-fixture'
+import { manyApps, APPS, ARM_BOX_APPS } from './apphub-fixture'
 
 /**
  * An arm64 box browsing a catalogue that contains x86_64-only Flathub apps.
  *
- * Lutris rather than Steam, deliberately. Steam is the obvious example and it
- * is NOT in this catalogue: roadmap/APP-CATALOG.md policy 1a excludes
- * proprietary apps for now, which takes Steam, Chrome, Spotify, Discord, Slack
- * and Zoom with it. Writing a fixture around one of those would model a
- * catalogue this product does not ship and quietly teach the next reader that
- * it does.
- *
- * Lutris is the honest stand-in: open source, kept by policy 1a's own list of
- * what remains in gaming, and genuinely x86_64-only on Flathub. Policy 1a notes
- * that removing proprietary apps shrinks the x86_64-only set — it does not empty
- * it, which is exactly why this comparison still has to work.
+ * Lutris rather than Steam, and every entry re-stamped with the verdict an
+ * arm64 box would return — see ARM_BOX_APPS in apphub-fixture.ts for both
+ * reasons. It used to be assembled here by appending a Lutris entry to the
+ * amd64 payload, which since the hub started rendering the BOX's answer would
+ * have shipped cards saying "this box is amd64" to a spec whose whole subject
+ * is an arm64 one.
  */
-const ARM_BOX_CATALOGUE = [
-  ...APPS,
-  {
-    ...APPS[0],
-    id: 'lutris', name: 'Lutris', type: 'desktop',
-    flatpak_id: 'net.lutris.Lutris', arch: ['x86_64'],
-    description: 'Open gaming platform — install and manage games from many sources',
-    category: 'games',
-  },
-]
+const ARM_BOX_CATALOGUE = ARM_BOX_APPS
 
 /**
  * The App Hub lays out correctly at EVERY width, measured in a real browser.
