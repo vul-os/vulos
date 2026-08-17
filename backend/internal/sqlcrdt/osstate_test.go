@@ -202,10 +202,23 @@ func TestTheKnownGapsAreStillRecorded(t *testing.T) {
 		// skew still leave <root>/apps differing between boxes by design.
 		"per-app sandbox storage (appfs)",
 		"app launcher visibility and suite selection",
-		"theme, accent, night shift (the copy the shell actually uses)",
+		// "theme, accent, night shift (the copy the shell actually uses)" and
+		// "dock pins" were here and were FIXED on 2026-08-17 (SYNC-PREFS-01).
+		// What fixed them: frontend/src/core/syncedPrefs.ts moved shell
+		// preferences onto Profile.Settings, and the two-theme contradiction
+		// resolved in favour of the profiles.theme COLUMN, which ThemeProvider
+		// now reads and writes. localStorage stayed as a pre-paint CACHE — the
+		// keys are still there, which is why the counter-check in
+		// TestShellArrangementHasAServerSideHome had to be rewritten to ask
+		// whether the BOX holds the value rather than whether the browser does.
+		//
+		// The three below stay pinned as PARTIAL, and each remainder is a real
+		// limit rather than unfinished wiring: an uploaded wallpaper is a
+		// megabyte data: URI and the bag is one CRDT register; layout PACKS are
+		// install artifacts, not preferences; per-widget STORAGE still does not
+		// travel, so a synced widget arrives empty rather than absent.
 		"wallpaper",
 		"desktop layout, icon arrangement and dock profile",
-		"dock pins",
 		"widget rail layout",
 		"Drive file metadata (the file tree, ACLs, shares, versions)",
 		"Drive file bytes",
@@ -347,81 +360,111 @@ func TestInstalledAppSetHasBothProducers(t *testing.T) {
 //
 // It checks the frontend sources directly rather than trusting the inventory,
 // so the inventory cannot drift away from the code in either direction.
-func TestShellArrangementIsBrowserLocal(t *testing.T) {
-	// Each: the frontend file, and the localStorage key it persists to.
-	//
-	// The key is what the counter-check turns on. An earlier version of this
-	// test looked for any "/api/" in the frontend file and flagged
-	// ShellProvider.tsx, which does call the backend — to focus and minimize
-	// COMPOSITOR windows, live, persisting nothing. That is a proxy measure
-	// answering a different question. The question that matters is "does the
-	// SERVER hold this state", so the check now asks the server.
-	shell := []struct{ file, key string }{
-		{"frontend/src/core/useWallpaper.tsx", "vulos-wallpaper"},
-		{"frontend/src/shell/Dock.tsx", "vulos-dock-pins"},
-		{"frontend/src/desktop/store.ts", "vulos.desktop.layout"},
-		{"frontend/src/providers/ShellProvider.tsx", "vulos-shell-state"},
-		{"frontend/src/core/ThemeProvider.tsx", "vulos-theme"},
+// TestShellArrangementHasAServerSideHome was TestShellArrangementIsBrowserLocal
+// until 2026-08-17, and it fired: the state it pinned as browser-only moved onto
+// the profile (SYNC-PREFS-01). Inverted rather than deleted, for the reason the
+// installed-app guard was inverted — "this is wired" decays exactly the way
+// "this is not wired" did, silently, with every other test green.
+//
+// The inversion is not a relaxation. The old test asked whether the frontend
+// file contained a localStorage key, which is now the WRONG question twice
+// over: the keys still exist (as a pre-paint cache, deliberately), and they
+// moved into core/prefKeys.ts, so the literal no longer appears in the owning
+// file at all. A test asking the old question would have gone green on a build
+// where nothing synced, purely because ThemeProvider still says "localStorage".
+//
+// So each row now has to satisfy BOTH halves:
+//
+//	CACHE   the localStorage key still exists in prefKeys.ts, because removing
+//	        it reintroduces the flash of wrong theme main.tsx exists to prevent
+//	BOX     a bag key exists AND a registered group claims it, because a
+//	        constant nobody registers is a preference that silently does not sync
+//
+// vulos-shell-state is the control: it is the one entry with no bag key, and
+// the test fails if it ever acquires one without the inventory's exception
+// being revisited.
+func TestShellArrangementHasAServerSideHome(t *testing.T) {
+	keysSrc, err := os.ReadFile(filepath.Join(repoRoot, "frontend/src/core/prefKeys.ts"))
+	if err != nil {
+		t.Fatalf("reading prefKeys.ts: %v", err)
+	}
+	groupsSrc, err := os.ReadFile(filepath.Join(repoRoot, "frontend/src/core/prefGroups.ts"))
+	if err != nil {
+		t.Fatalf("reading prefGroups.ts: %v", err)
+	}
+	keys, groups := string(keysSrc), string(groupsSrc)
+
+	// owner: where the state is produced. lsKey: the pre-paint cache. bagKey:
+	// where the BOX holds it, empty when it deliberately has no server home.
+	shell := []struct{ owner, lsKey, bagKey string }{
+		{"frontend/src/core/useWallpaper.tsx", "vulos-wallpaper", "shell.wallpaper"},
+		{"frontend/src/shell/Dock.tsx", "vulos-dock-pins", "shell.dock.pins"},
+		{"frontend/src/desktop/store.ts", "vulos.desktop.layout", "shell.desktop.preset"},
+		{"frontend/src/widgets/layout.ts", "vulos.widgets.layout.v1", "shell.widgets.count"},
+		{"frontend/src/core/ThemeProvider.tsx", "vulos-theme", "profile.theme"},
+		// The exception, argued in the inventory: a window rectangle is a
+		// statement about a particular screen, and this OS targets phones as
+		// thin clients to the same box.
+		{"frontend/src/providers/ShellProvider.tsx", "vulos-shell-state", ""},
 	}
 
 	confirmed := 0
-	for _, s := range shell {
-		data, err := os.ReadFile(filepath.Join(repoRoot, s.file))
-		if err != nil {
-			t.Errorf("%s: %v", s.file, err)
+	for _, sh := range shell {
+		data, rerr := os.ReadFile(filepath.Join(repoRoot, sh.owner))
+		if rerr != nil {
+			t.Errorf("%s: %v", sh.owner, rerr)
 			continue
 		}
-		src := string(data)
-		if !strings.Contains(src, s.key) {
-			t.Errorf("%s no longer persists %q — if this state moved to the server, update the inventory to say so", s.file, s.key)
+		if !strings.Contains(string(data), "localStorage") && !strings.Contains(string(data), "prefRead") {
+			t.Errorf("%s no longer reads a local cache for %q — the pre-paint copy is what stops a flash of the wrong theme", sh.owner, sh.lsKey)
 			continue
 		}
-		if !strings.Contains(src, "localStorage") {
-			t.Errorf("%s no longer uses localStorage for %q", s.file, s.key)
+		if sh.bagKey == "" {
+			// The control. If this acquires a bag key, the exception in
+			// OSStateInventory() has been overtaken and must be rewritten.
+			if strings.Contains(keys, sh.lsKey) {
+				t.Errorf("%q now has an entry in prefKeys.ts: window geometry is recorded as a DECIDED exception, so either the sync is wrong or the inventory is stale", sh.lsKey)
+			}
+			confirmed++
+			continue
+		}
+		if !strings.Contains(keys, sh.lsKey) {
+			t.Errorf("prefKeys.ts no longer names the cache key %q for %s", sh.lsKey, sh.owner)
+			continue
+		}
+		if !strings.Contains(keys, sh.bagKey) {
+			t.Errorf("prefKeys.ts no longer names the bag key %q: %s has lost its server-side home", sh.bagKey, sh.owner)
 			continue
 		}
 		confirmed++
 	}
 	if confirmed != len(shell) {
-		t.Fatalf("confirmed %d of %d shell-state locations in the frontend", confirmed, len(shell))
+		t.Fatalf("confirmed %d of %d shell-state locations", confirmed, len(shell))
 	}
 
-	// The counter-check, and the half with the teeth: if the SERVER ever
-	// starts holding one of these keys, this state has a home that a
-	// replicator could reach and the inventory's "browser only, not even
-	// per-box" claim is stale.
-	keys := make([]string, 0, len(shell))
-	for _, s := range shell {
-		keys = append(keys, s.key)
+	// Every group named in prefKeys.ts must actually be REGISTERED. A constant
+	// that nothing registers is a preference that silently does not sync, and
+	// it looks identical to one that does from the owning file's side.
+	registered := 0
+	for _, g := range []string{
+		"PREF_GROUP_THEME", "PREF_GROUP_WALLPAPER", "PREF_GROUP_DOCK", "PREF_GROUP_DENSITY",
+		"PREF_GROUP_AI", "PREF_GROUP_DESKTOP", "PREF_GROUP_WIDGETS", "PREF_GROUP_NOTIFICATIONS",
+	} {
+		if !strings.Contains(keys, g) {
+			t.Errorf("prefKeys.ts no longer defines %s", g)
+			continue
+		}
+		if !strings.Contains(groups, "registerPrefGroup(lsGroup("+g) && !strings.Contains(groups, "name: "+g) {
+			t.Errorf("%s is defined but never registered — the preference it names does not sync", g)
+			continue
+		}
+		registered++
 	}
-	scanned := 0
-	err := filepath.Walk(filepath.Join(repoRoot, "backend"), func(path string, info os.FileInfo, werr error) error {
-		if werr != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		// This file names the keys in order to check for them.
-		if strings.HasSuffix(filepath.ToSlash(path), "internal/sqlcrdt/osstate.go") {
-			return nil
-		}
-		data, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return nil
-		}
-		scanned++
-		for _, k := range keys {
-			if strings.Contains(string(data), k) {
-				t.Errorf("%s references shell-state key %q: the server now holds state the inventory records as browser-only", filepath.ToSlash(path), k)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking backend/: %v", err)
+	if registered != 8 {
+		t.Fatalf("registered %d of 8 preference groups", registered)
 	}
-	if scanned < 200 {
-		t.Fatalf("scanned only %d non-test Go files — the counter-check proved nothing", scanned)
-	}
-	t.Logf("confirmed %d shell states are browser-local; %d backend files hold none of them", confirmed, scanned)
+
+	t.Logf("confirmed %d shell states (%d with a server-side home, 1 excepted) and %d registered groups", confirmed, confirmed-1, registered)
 }
 
 // TestJoinPullInstallsNothing pins the finding in this repository's own

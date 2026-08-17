@@ -1005,6 +1005,7 @@ function WallpaperPicker() {
   const wallpaperCtx = useWallpaper()
   const wallpaper = wallpaperCtx?.wallpaper ?? null
   const setWallpaper = wallpaperCtx?.setWallpaper ?? (() => {})
+  const wallpaperLocalOnly = wallpaperCtx?.localOnly ?? false
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
@@ -1040,6 +1041,20 @@ function WallpaperPicker() {
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      {wallpaperLocalOnly && (
+        // Said out loud rather than left to be discovered. Everything else on
+        // this screen now follows the user between their instances; an uploaded
+        // image is the one thing that cannot, because it is stored inline and
+        // the profile row it would ride is a single replicated register. A user
+        // who is told "this one stays here" can decide what to do about it. A
+        // user who is not told simply finds a different wallpaper on their other
+        // box and concludes that syncing is unreliable.
+        <p className="text-xs text-[var(--text-secondary)] mt-2.5 max-w-[32rem]">
+          This image is stored in this browser only — it is too large to travel with your
+          profile, so your other instances keep their own. Choosing a wallpaper by
+          address instead lets it follow you.
+        </p>
+      )}
     </div>
   )
 }

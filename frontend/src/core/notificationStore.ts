@@ -27,7 +27,7 @@
 
 import { nativeBridge } from './nativeBridge'
 import { pushPrefGroup } from './syncedPrefs'
-import { NOTIFY_PREF_KEY, PREF_GROUP_NOTIFICATIONS } from './prefKeys'
+import { NOTIFY_LS_KEY, NOTIFY_PREF_KEY, PREF_GROUP_NOTIFICATIONS } from './prefKeys'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -109,7 +109,7 @@ const MAX_ITEMS = 100
 const MAX_TOASTS = 4
 const RATE_MS = 4000 // per-source min gap between toasts — collapses bursts (quiet)
 const LS_ITEMS = 'vulos.notifications.log.v1'
-const LS_PREFS = 'vulos.notifications.prefs.v1'
+const LS_PREFS = NOTIFY_LS_KEY
 
 // Toast auto-dismiss defaults (seconds). urgent/critical are sticky (0).
 const TTL_DEFAULT: Record<NotificationLevel, number> = { info: 6, warning: 8, urgent: 0, critical: 0 }

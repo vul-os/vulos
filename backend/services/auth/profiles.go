@@ -20,21 +20,34 @@ const (
 
 // Profile extends a User with OS-level settings and role.
 type Profile struct {
-	UserID      string            `json:"user_id"`
-	Role        Role              `json:"role"`
-	DisplayName string            `json:"display_name"`
-	Avatar      string            `json:"avatar,omitempty"`
-	Theme       string            `json:"theme"`       // "dark", "light", "auto"
-	Locale      string            `json:"locale"`      // e.g., "en-ZA"
-	Timezone    string            `json:"timezone"`    // e.g., "Africa/Johannesburg"
-	AIProvider  string            `json:"ai_provider"` // "claude", "openai", "ollama"
-	AIModel     string            `json:"ai_model"`
-	AIAPIKey    string            `json:"ai_api_key,omitempty"`
-	Initiative  string            `json:"initiative"` // "minimal", "balanced", "proactive"
-	PinHash     string            `json:"pin_hash,omitempty"`
-	Settings    map[string]string `json:"settings,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	UserID      string `json:"user_id"`
+	Role        Role   `json:"role"`
+	DisplayName string `json:"display_name"`
+	Avatar      string `json:"avatar,omitempty"`
+	// Theme is "dark", "light", "auto" or "schedule".
+	//
+	// "schedule" is not a widening invented here — it is a mode the shell has
+	// always had (ThemeProvider resolves it against the user's dark/light
+	// times), and this comment listed three of the four cases while the field
+	// was one nothing in the frontend read or wrote. It is read and written now
+	// (roadmap/USER-STATE-INVENTORY.md §9), so the comment has to be true.
+	//
+	// Deliberately NOT validated server-side. An unknown value resolves to the
+	// system theme in resolveTheme(), so a newer shell writing a mode this
+	// build has never heard of degrades to "follow the OS" on the older box
+	// instead of being refused — which is the behaviour a replicated field
+	// shared between two versions of the same OS needs.
+	Theme      string            `json:"theme"`
+	Locale     string            `json:"locale"`      // e.g., "en-ZA"
+	Timezone   string            `json:"timezone"`    // e.g., "Africa/Johannesburg"
+	AIProvider string            `json:"ai_provider"` // "claude", "openai", "ollama"
+	AIModel    string            `json:"ai_model"`
+	AIAPIKey   string            `json:"ai_api_key,omitempty"`
+	Initiative string            `json:"initiative"` // "minimal", "balanced", "proactive"
+	PinHash    string            `json:"pin_hash,omitempty"`
+	Settings   map[string]string `json:"settings,omitempty"`
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
 }
 
 // DefaultProfile creates a default profile for a new user.

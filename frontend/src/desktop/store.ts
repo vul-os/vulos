@@ -55,13 +55,14 @@ import { DEFAULT_PRESET_ID, LAYOUT_PRESETS, getPreset, presetLayout, stockLayout
 import { resolveViewportLayout } from '../shell/viewportRule'
 import { pushPrefGroup } from '../core/syncedPrefs'
 import {
+  DESKTOP_LAYOUT_LS_KEY, DESKTOP_PACKS_LS_KEY,
   DESKTOP_PREF_KEYS, DESKTOP_PREF_KEY_CONTROLS, DESKTOP_PREF_KEY_DOCK_DESKTOP,
   DESKTOP_PREF_KEY_DOCK_MOBILE, DESKTOP_PREF_KEY_PRESET, DESKTOP_PREF_KEY_TOKENS,
   PREF_GROUP_DESKTOP,
 } from '../core/prefKeys'
 
-const KEY_LAYOUT = 'vulos.desktop.layout'
-const KEY_PACKS = 'vulos.desktop.packs'
+const KEY_LAYOUT = DESKTOP_LAYOUT_LS_KEY
+const KEY_PACKS = DESKTOP_PACKS_LS_KEY
 /** Mirrors shell/useViewport.ts MOBILE_BREAKPOINT. Kept in lockstep on purpose. */
 export const MOBILE_BREAKPOINT = 768
 

@@ -16,14 +16,16 @@ import { getWidget } from './registry'
 import { normalizeSettings } from './manifest'
 import { widgetClear } from './storage'
 import { MAX_SYNCED_VALUE, pushPrefGroup } from '../core/syncedPrefs'
-import { PREF_GROUP_WIDGETS, WIDGETS_PREF_KEY_COUNT, WIDGETS_PREF_KEY_PREFIX } from '../core/prefKeys'
+import {
+  PREF_GROUP_WIDGETS, WIDGETS_LAYOUT_LS_KEY, WIDGETS_PREF_KEY_COUNT, WIDGETS_PREF_KEY_PREFIX,
+} from '../core/prefKeys'
 import {
   WIDGET_PERMISSIONS,
   type WidgetInstance, type WidgetLayout, type WidgetPermission,
   type WidgetSettingValue, type WidgetSize,
 } from './types'
 
-const LS_KEY = 'vulos.widgets.layout.v1'
+const LS_KEY = WIDGETS_LAYOUT_LS_KEY
 const MAX_INSTANCES = 24
 
 function isRecord(x: unknown): x is Record<string, unknown> {

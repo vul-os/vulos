@@ -58,6 +58,21 @@ export const AI_FIRSTRUN_PREF_KEY = 'shell.ai.firstrun'
 export const AI_FIRSTRUN_LS_KEY = 'vulos-ai-firstrun-done'
 
 export const NOTIFY_PREF_KEY = 'shell.notifications.prefs'
+export const NOTIFY_LS_KEY = 'vulos.notifications.prefs.v1'
+
+/**
+ * The two composite stores keep their own persistence, but their cache keys are
+ * named HERE with everything else.
+ *
+ * Not tidiness. These are the keys hydration's one-time adoption reads to
+ * migrate a user's existing layout and rail onto their profile, and the guard
+ * in backend/internal/sqlcrdt/osstate_test.go checks that every synced shell
+ * state has both a cache key and a bag key by looking in this one file. A cache
+ * key hidden in its owning module is one that guard cannot see.
+ */
+export const DESKTOP_LAYOUT_LS_KEY = 'vulos.desktop.layout'
+export const DESKTOP_PACKS_LS_KEY = 'vulos.desktop.packs'
+export const WIDGETS_LAYOUT_LS_KEY = 'vulos.widgets.layout.v1'
 
 export const DESKTOP_PREF_KEY_PRESET = 'shell.desktop.preset'
 export const DESKTOP_PREF_KEY_CONTROLS = 'shell.desktop.controls'

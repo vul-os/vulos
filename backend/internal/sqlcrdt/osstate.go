@@ -260,63 +260,90 @@ func OSStateInventory() []StateEntry {
 		},
 		{
 			Name:     "theme, accent, night shift (the copy the shell actually uses)",
-			Where:    "browser localStorage keys vulos-theme, vulos-accent, vulos-nightshift-*",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "profiles.theme (a replicated COLUMN) for the mode; profiles.data Settings for accent, night shift and the schedule times",
+			Engine:   EngineCRDT,
+			Status:   StatusSyncs,
+			Domain:   "sql:profiles",
 			Evidence: "frontend/src/core/ThemeProvider.tsx",
-			Anchor:   "localStorage.setItem(key, val)",
-			Why: "There are TWO themes. profiles.Theme is a replicated column that the shell's ThemeProvider neither reads nor " +
-				"writes; the theme a user actually sees is a localStorage key. So the row that syncs is not the setting that " +
-				"governs, and the setting that governs is per-browser — not even per-box.",
-			Consequence: "Set your theme on one box and the other still opens in the old one. Open the SAME box in a different " +
-				"browser and it is the old one there too.",
+			Anchor:   "THEME_PREF_KEYS.theme",
+			Why: "There WERE two themes, and the one that synced was not the one the shell read. profiles.Theme was a replicated " +
+				"column nothing in frontend/src touched; the theme a user actually saw was a localStorage key. Resolved in favour " +
+				"of the column (roadmap/USER-STATE-INVENTORY.md section 9) — ThemeProvider reads and writes it now, through " +
+				"core/syncedPrefs.ts. vulos-theme is not deleted: main.tsx stamps data-theme onto <html> before React mounts, so a " +
+				"synchronous local copy is what prevents a flash of the wrong theme on every reload. It is a CACHE, and that " +
+				"distinction is the whole point — the box is the source of truth and the browser holds a copy of it.",
+			Note: "LAN only, like every other profile field. Convergence is on next load or profile refetch; there is no push, so " +
+				"two boxes both open do not converge in real time.",
 		},
 		{
 			Name:     "wallpaper",
-			Where:    "browser localStorage key vulos-wallpaper",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "profiles.data Settings key shell.wallpaper, cached in localStorage key vulos-wallpaper",
+			Engine:   EngineCRDT,
+			Status:   StatusPartial,
 			Evidence: "frontend/src/core/useWallpaper.tsx",
-			Anchor:   "const STORAGE_KEY = 'vulos-wallpaper'",
-			Why: "No backend endpoint for wallpaper exists at all — a grep for it across backend/ returns nothing. The state has " +
-				"never left the browser, so there is nothing for a replicator to carry.",
-			Consequence: "Your wallpaper is not a property of your OS. It is a property of the browser profile you last set it in.",
+			Anchor:   "WALLPAPER_PREF_KEY",
+			Why: "PARTIAL, and the remaining half is a real limit rather than unfinished work. A wallpaper that is a REFERENCE — a " +
+				"path, a URL — is a short string and syncs on profiles.data. An UPLOADED image does not: Settings' picker calls " +
+				"FileReader.readAsDataURL, so the stored value is a data: URI of the whole image. The preference bag is ONE CRDT " +
+				"register, so every wallpaper change would rewrite the register carrying the user's entire profile and ship " +
+				"megabytes to every instance. Raising MaxSettingValueLen would hide that, not fix it.",
+			Consequence: "A wallpaper you choose by address follows you. A photo you upload stays in the browser you uploaded it " +
+				"in — and the shell SAYS SO in Settings rather than letting you believe it travelled.",
+			Note: "What it waits on is a replicated byte store the shell can reach. There is none: <root>/data has no HTTP write " +
+				"path from the shell and is gated on S3, appfs is itself a gap, and Drive metadata does not replicate. When the " +
+				"local copy is oversized the shell DELETES the box's copy rather than leaving a stale value that would overwrite " +
+				"the user's choice on the next load.",
 		},
 
 		// ── how you arrange it ──────────────────────────────────────────────
 		{
 			Name:     "desktop layout, icon arrangement and dock profile",
-			Where:    "browser localStorage keys vulos.desktop.layout, vulos.desktop.packs",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "profiles.data Settings keys shell.desktop.* (five of them), cached in localStorage key vulos.desktop.layout",
+			Engine:   EngineCRDT,
+			Status:   StatusPartial,
 			Evidence: "frontend/src/desktop/store.ts",
-			Anchor:   "function writeRaw(key: string, value: unknown): void",
-			Why:      "Same class as wallpaper: persisted in the browser, with no server-side representation to replicate.",
-			Consequence: "Arrange your desktop on one box and the other keeps the stock layout. The directive names 'arrange' " +
-				"explicitly and this is the state it means.",
+			Anchor:   "export function exportLayoutFields()",
+			Why: "The layout itself syncs. It is DECOMPOSED rather than stored as a blob, because a realistic DesktopLayout " +
+				"measures 611 bytes against a 512-byte per-value cap: it splits along the model's own five fields, and reassembly " +
+				"goes straight back through the existing validateLayout(), so a value arriving from a peer degrades to stock " +
+				"exactly as a tampered localStorage value already did — syncing added no new trust boundary. PARTIAL because " +
+				"vulos.desktop.packs, the installed third-party layout packs, does NOT go with it: a pack manifest is an install " +
+				"artifact whose peer is the installed-app set, not a preference.",
+			Consequence: "Arrange your desktop on one box and the other follows. A third-party layout pack you installed still has " +
+				"to be installed again on the second box, and until it is, a layout depending on it falls back to stock there.",
+			Note: "A stock layout exports NOTHING, so a box that has never been customised cannot overwrite the layout its user " +
+				"chose elsewhere merely by being opened.",
 		},
 		{
 			Name:     "dock pins",
-			Where:    "browser localStorage key vulos-dock-pins",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "profiles.data Settings key shell.dock.pins, cached in localStorage key vulos-dock-pins",
+			Engine:   EngineCRDT,
+			Status:   StatusSyncs,
+			Domain:   "sql:profiles",
 			Evidence: "frontend/src/shell/Dock.tsx",
-			Anchor:   "const PIN_KEY = 'vulos-dock-pins'",
-			Why: "Pinning is the single most deliberate arrangement act a user performs, and it is stored where nothing can reach it. " +
-				"Note this is separable from window geometry: a pinned app is a CHOICE, whereas a window position is a fact about a screen.",
-			Consequence: "Pin your six apps on the laptop box and the desktop box shows the preset's defaults.",
+			Anchor:   "DOCK_PINS_PREF_KEY",
+			Why: "Pinning is the single most deliberate arrangement act a user performs, and it was stored where nothing could " +
+				"reach it — not another instance, and not even the same box in a second browser. One short JSON array, so it " +
+				"needed no decomposition. Still separable from window geometry, which remains an exception: a pinned app is a " +
+				"CHOICE, a window position is a fact about a screen.",
+			Note: "LAN only, like every other profile field.",
 		},
 		{
 			Name:     "widget rail layout",
-			Where:    "browser localStorage",
-			Engine:   EngineNone,
-			Status:   StatusGap,
+			Where:    "profiles.data Settings keys shell.widgets.count and shell.widgets.<i>, cached in vulos.widgets.layout.v1",
+			Engine:   EngineCRDT,
+			Status:   StatusPartial,
 			Evidence: "frontend/src/widgets/layout.ts",
-			Anchor:   "export function saveLayout(layout: WidgetLayout): void",
-			Why: "Same class as the desktop layout: a localStorage blob with no server-side representation. Worth listing " +
-				"separately because it is a different subsystem with its own key, and a fix for the desktop layout will not " +
-				"incidentally carry it.",
-			Consequence: "The widgets you chose, and the order you put them in, exist on one box only.",
+			Anchor:   "export function exportRailFields()",
+			Why: "Which widgets are in the rail, in what order, at what size and with which grants now syncs — ONE key per " +
+				"placement, because 24 placements serialise to 3867 bytes against a 512-byte cap. Each arriving placement goes " +
+				"through the existing reconcileInstance(), so a grant cannot outlive the manifest that requested it merely because " +
+				"it came over a wire. PARTIAL because per-widget STORAGE (widgets/storage.ts) does not travel: a widget arrives on " +
+				"the second box EMPTY rather than absent.",
+			Consequence: "The widgets you chose and the order you put them in follow you; what an individual widget saved does not.",
+			Note: "A placement this build cannot render — a widget the other box has and this one does not — is carried through " +
+				"VERBATIM rather than dropped. Without that, reconciliation-on-read would make the box that understands a " +
+				"placement least the one that deletes it for everybody. Found by mutation testing, not by reading.",
 		},
 		{
 			Name:     "window geometry, open windows and virtual desktops",

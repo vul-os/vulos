@@ -48,13 +48,13 @@ preference map that rides the replicated `profiles` row
 
 | # | localStorage key(s) | written by | read by | bag key(s) | migrated |
 |---|---|---|---|---|---|
-| 1 | `vulos-theme` | `core/ThemeProvider.tsx` | `ThemeProvider`, `main.tsx` (pre-paint) | *(none — see §4)* | **yes**, onto `profiles.theme` |
+| 1 | `vulos-theme` | `core/ThemeProvider.tsx` | `ThemeProvider`, `main.tsx` (pre-paint) | `profile.theme` — reserved, see §9 | **yes**, onto the `profiles.theme` COLUMN |
 | 2 | `vulos-accent` | `core/ThemeProvider.tsx` | `ThemeProvider` | `shell.accent` | **yes** |
-| 3 | `vulos-nightshift`, `-from`, `-to`, `-warmth` | `core/ThemeProvider.tsx` | `ThemeProvider` | `shell.nightshift{,.from,.to,.warmth}` | **yes** |
-| 4 | `vulos-schedule-dark`, `vulos-schedule-light` | `core/ThemeProvider.tsx` | `ThemeProvider` | `shell.schedule.{dark,light}` | **yes** |
+| 3 | `vulos-nightshift`, `-from`, `-to`, `-warmth` | `core/ThemeProvider.tsx` | `ThemeProvider` | `shell.nightshift`, `shell.nightshift.from`, `shell.nightshift.to`, `shell.nightshift.warmth` | **yes** |
+| 4 | `vulos-schedule-dark`, `vulos-schedule-light` | `core/ThemeProvider.tsx` | `ThemeProvider` | `shell.schedule.dark`, `shell.schedule.light` | **yes** |
 | 5 | `vulos-wallpaper` | `core/Settings.tsx` → `core/useWallpaper.tsx` | `layouts/DesktopCanvas.tsx`, `Settings.tsx` | `shell.wallpaper` | **partly** — see §5 |
 | 6 | `vulos-dock-pins` | `shell/Dock.tsx` | `shell/Dock.tsx` | `shell.dock.pins` | **yes** |
-| 7 | `vulos.desktop.layout` | `desktop/store.ts` | `desktop/store.ts`, `ThemeProvider` (accent token) | `shell.desktop.{preset,windowControls,dock.desktop,dock.mobile,tokens}` | **yes** — see §6 |
+| 7 | `vulos.desktop.layout` | `desktop/store.ts` | `desktop/store.ts`, `ThemeProvider` (accent token) | `shell.desktop.preset`, `shell.desktop.controls`, `shell.desktop.dock.desktop`, `shell.desktop.dock.mobile`, `shell.desktop.tokens` | **yes** — see §6 |
 | 8 | `vulos.desktop.packs` | `desktop/store.ts` | `desktop/store.ts` | — | **no** — see §7 |
 | 9 | `vulos.widgets.layout.v1` | `widgets/layout.ts` | `widgets/layout.ts`, `core/settings/WidgetsPanel.tsx` | `shell.widgets.count`, `shell.widgets.<i>` | **yes** — see §6 |
 | 10 | `vulos.density` | `core/Settings.tsx` | `main.tsx` (pre-paint), `Settings.tsx` | `shell.density` | **yes** |
@@ -259,6 +259,13 @@ shell reads:
 replicates, already has a wire field and a typed decode. `vulos-theme` is
 **demoted to the pre-paint cache** — still written, still read by `main.tsx`, no
 longer authoritative.
+
+Theme is nonetheless routed through the same engine as everything else, under
+the **reserved key `profile.theme`**. It is not a `Settings` entry and never
+reaches the map — `SyncedPrefsBridge` splits it back out into the PUT's
+top-level `theme` field at the wire. The reason for the indirection is that
+adoption, the offline queue and the retry rule are worth having for theme too,
+and a second mechanism beside them would be a second set of bugs.
 
 **Who lost, and what was checked before demoting it:** `vulos-theme` has exactly
 two readers, `core/ThemeProvider.tsx` and `main.tsx`
