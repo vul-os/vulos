@@ -1,10 +1,14 @@
 # When a distribution is the only party doing the ARM build work
 
-> **Status, 2026-08-17.** Measurement + design. The **measurements are real and
-> reproducible** (`scripts/freeze-debian-closure.sh`,
-> `scripts/arch-emulation-bench.sh dynamic`). The **mechanism is not built**:
-> vehicle C needs installer code in `backend/services/appnet/**`, which is
-> another agent's file. §9 is the handoff. Nothing here claims to be shipped.
+> **Status, 2026-08-17.** Measurement + design.
+> **Blender 4.3.2 was built for arm64 by Debian, installed into a private prefix
+> from a 350-package frozen closure, and rendered a real image — §4.4.** The
+> measurements are reproducible (`scripts/freeze-debian-closure.sh`,
+> `scripts/arch-emulation-bench.sh dynamic`).
+> **The mechanism is NOT built**: vehicle C needs installer code in
+> `backend/services/appnet/**`, which is another agent's file. §9 is the handoff,
+> §10 is what is still unproven, and the staged registry fragment is `_disabled`
+> because no installer can execute it yet.
 
 ## 0. The one-paragraph answer
 
@@ -18,8 +22,9 @@ to install it"* is the branch that applies, and the answer is a **frozen Debian
 closure**: run the solver once, at catalogue time, freeze the exact package set
 with a SHA-256 per package pinned to `snapshot.debian.org`, and have the box
 extract that fixed list into the app's own private prefix with `dpkg-deb -x`.
-The box resolves nothing. And this is **not** a Blender special case: **6 of the
-17** x86_64-only catalogue apps have a Debian arm64 build.
+The box resolves nothing. **This was carried out end to end and Blender rendered
+an image (§4.4)**, and it is **not** a Blender special case: **6 of the 17**
+x86_64-only catalogue apps have a Debian arm64 build.
 
 ---
 
@@ -218,6 +223,90 @@ reasonable and the recommendation is to proceed.**
   therefore records `base_image`, `CLOSURE-03` refuses a manifest without one,
   and **a box whose base differs must not use the manifest.** Leaving this
   implicit is how a closure silently becomes wrong after an OS release.
+
+### 4.4 The end-to-end proof: it actually runs
+
+Resolved, fetched, extracted and executed in a **pristine `debian:trixie-slim`
+arm64 container with nothing installed into it** — the base the manifest
+declares, and nothing else:
+
+```
+base: debian 13.6 / arm64 / aarch64
+packages installed in this container BEFORE: 78
+extracted 350 .deb files into /app/blender/prefix  (size 1001M)
+
+=== unresolved libraries ===
+  count=0
+
+############ 1. blender --version ############
+Blender 4.3.2
+VERSION_EXIT=0
+
+############ 2. blender resolves its own resources from the prefix ############
+RESOURCE_PATH: /app/blender/prefix/usr/share/blender
+SCRIPT_PATHS: ['/app/blender/prefix/usr/share/blender/scripts']
+
+############ 3. REAL WORK: headless Cycles CPU render of the default scene ############
+Fra:1 Mem:10.88M (Peak 10.88M) | Time:00:00.02 | Scene, ViewLayer | Sample 8/8
+Fra:1 Mem:10.88M (Peak 10.88M) | Time:00:00.02 | Scene, ViewLayer | Finished
+Saved: '/out.png'
+RENDER-DONE
+RENDER_EXIT=0
+--- the rendered image ---
+-rw-r--r-- 1 root root 10580 Aug 17 02:03 /out.png
+  PNG magic: 89 50 4e 47 0d 0a 1a 0a
+
+=== the system tree was NEVER written ===
+ls: cannot access '/usr/bin/blender': No such file or directory
+dpkg-query: no packages found matching blender
+packages installed in this container AFTER: 78
+```
+
+**Blender 4.3.2, native aarch64, ran from the app's own private prefix and
+rendered a real image.** Not a version string — a 128×128 Cycles CPU render of
+the default scene, 8 samples, written as a valid 10,580-byte PNG. All 350
+packages verified against the apt index size and then hashed. The container
+finished with the **same 78 packages it started with** and no `/usr/bin/blender`,
+so nothing reached the system tree.
+
+**Getting there took four failed attempts, and every failure is a design
+requirement in disguise.** Each one would have shipped as "installed
+successfully, app will not start":
+
+| Attempt | Failure | What it means for the vehicle |
+|---|---|---|
+| 1 | `libraw_r.so.23: cannot open shared object file` | one `.deb` failed to download and one was **truncated**. The size check caught the truncation — a partial file that would otherwise have been hashed and pinned as a valid artefact. **The downloader must verify size before hashing, and delete partials.** |
+| 2 | `libpulsecommon-17.0.so`, `liblapack.so.3`, `libblas.so.3` not found | these live in **subdirectories** (`pulseaudio/`, `lapack/`, `blas/`) that Debian wires up through `/etc/ld.so.conf.d/` fragments and `update-alternatives` symlinks. **`dpkg-deb -x` creates neither.** The launcher must *derive* `LD_LIBRARY_PATH` from the extracted tree — 11 entries here, not the 3 an assumption would give. |
+| 3 | `libexpat.so.1: cannot open shared object file` | the closure had been resolved in a container that already had `python3`+`curl`, so `libexpat1` was omitted; against a pristine base it is missing. **This is CLOSURE-03 demonstrated rather than argued** — a differential closure used against the wrong base is silently broken. |
+| 4 | `bpy: couldn't find 'scripts/modules'`, then SIGSEGV | the resource path variable is **`BLENDER_SYSTEM_RESOURCES`**, not the `BLENDER_SYSTEM_SCRIPTS`/`_DATAFILES` pair that reading the docs suggests, and Debian flattens the layout (`share/blender/scripts`, not `share/blender/4.3/scripts`). A six-variant matrix found the working combination; four of the six segfaulted. **A rung-2 recipe's env must be measured per app, never guessed.** |
+
+A fifth issue is a *capability* gap rather than a packaging one: Debian's arm64
+Blender is built **without OpenImageDenoise**, so a render with denoising enabled
+fails with `Failed to denoise, build has no OpenImageDenoise support`. Rung 2
+buys a native build, not feature parity with upstream, and a rung-2 entry must
+say so.
+
+### 4.5 snapshot.debian.org serves identical bytes — tested, not assumed
+
+The design's central assumption is that a snapshot URL constructed by string
+substitution serves the same bytes as the live pool URL. Five packages were
+fetched from **both** and hashed:
+
+```
+--- blender-data_4.3.2+dfsg-2_all.deb
+ snapshot: ab95b1d6f75a7e9e38d251e8720c13a5d45be264ca90d0dfb4658374f6a5d137
+ measured: ab95b1d6f75a7e9e38d251e8720c13a5d45be264ca90d0dfb4658374f6a5d137
+  IDENTICAL
+--- libgl1_1.7.0-1+b2_arm64.deb            IDENTICAL (7943f999…)
+--- libpython3.13_3.13.5-2+deb13u4_arm64.deb IDENTICAL (d8f0a0d8…)
+--- blender_4.3.2+dfsg-2_arm64.deb         IDENTICAL (81b13a52…)
+--- adduser_3.152_all.deb                  IDENTICAL (e50984d2…)
+```
+
+**5 of 5 agree, including Blender itself.** `snapshot.debian.org` is a usable
+pin. **345 of the 350 remain unchecked** and §10 records that.
+
+---
 
 ---
 
@@ -679,20 +768,22 @@ simpler and gives up Flathub's amd64 build.
 
 ## 10. What is NOT proven
 
-- **No Blender was installed and launched from a frozen closure.** The
-  end-to-end run (fetch 315 debs → `dpkg-deb -x` into a private prefix →
-  `blender --version` → a headless Cycles CPU render) was **started and did not
-  finish** within this session: the host sat at load 90–145 and one
-  `deb.debian.org` socket hung for five minutes. **Rung 2 for Blender is
-  therefore a designed and costed path, not a demonstrated one**, and the
-  claim that stops short is: the closure resolves, the packages exist, the
-  sizes are measured. *That Blender runs from a private prefix is unproven.*
-- **No frozen manifest has been written for any app.** `--self-test` passes;
-  the tool has not been run to completion against a real package.
-- **`snapshot.debian.org` was confirmed reachable (`HTTP 200` on the archive
-  root) but no package was fetched from it and no snapshot digest was compared
-  against a `deb.debian.org` one.** The claim that the snapshot URL serves
-  identical bytes is *the design's central assumption* and it is **untested**.
+- **No frozen manifest has been written by `freeze-debian-closure.sh` end to
+  end.** `--self-test` passes and every step it performs was executed by hand in
+  §4.4, but the tool itself has not been run to completion against a real
+  package. **The staged registry fragment is therefore hand-assembled from
+  measured values, not tool-emitted**, which is a weaker provenance than the
+  standard §8 of INSTALL-METHODOLOGY sets, and it is why the fragment is marked
+  `_disabled`.
+- **Only 5 of 350 packages were cross-checked against `snapshot.debian.org`.**
+  The five agree byte-for-byte (§4.5). The other 345 are pinned to
+  `deb.debian.org` URLs in the fragment, which is a **moving target** — this is
+  the single largest piece of unfinished work and `CLOSURE-02` exists to refuse
+  exactly that shape.
+- **Nothing was run on a real arm64 Linux box.** Every measurement is from an
+  arm64 container on an Apple-Silicon Mac. That is the right architecture but
+  not the right machine.
+- **The App Hub copy in §1 is not implemented.** No UI change was made.
 - **Hardware GL acceleration under box64 is unproven** — §5.3 proves which
   stack was bound, on a machine with no GPU.
 - **Whether a foreign-arch Flatpak runs** — §6, `untestable-on-arm64-mac`.
