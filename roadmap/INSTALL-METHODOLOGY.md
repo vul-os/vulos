@@ -294,6 +294,9 @@ to that field. Six shipped entries got this wrong.
 
 - **No dependency solver.** 120 curated self-contained apps do not need one, and
   building one is how a manifest becomes a distribution.
+- **No optional integrity check anywhere.** Every artefact in every vehicle
+  carries a mandatory SHA-256, including the unsigned external-catalog path
+  (§6.0, CATALOG-01).
 - **No install shell.** Not narrowed, not allow-listed — absent.
 - **No package manager**, in any field.
 - **No `latest` URLs.** A moving URL with a fixed checksum breaks at the next
@@ -385,6 +388,22 @@ In order:
 | **DOWNLOAD-01** | a non-empty `download_url` refused — use `artifacts` |
 | **EXTRACT-01** | `extract_dir` absolute, traversing, or on a non-archive |
 | **INSTALL-02** | neither `flatpak_id` nor `artifacts` — an unclassified recipe gets no install path |
+
+### 6.0 The sixth way in, which the count of five missed
+
+`POST /api/store/install` does **not** reach `InstallFromRegistry`. It reaches
+`AppStore.Install`, the external-catalog path (`VULOS_APP_CATALOG`, unset by
+default). It takes a `download_url` straight out of a request body, carries **no
+publisher signature**, and verified its archive only `if entry.Checksum != ""` —
+so omitting the field **skipped verification** rather than failing it. The path
+with no signature was the one place a digest was optional.
+
+**CATALOG-01** now refuses an empty checksum there, ordered after the SSRF guard
+so that guard keeps answering for the inputs it was written for. This does not
+make the path equivalent to the registry one — without a signature a checksum
+only proves the bytes match what the *request* asked for — and no shipped caller
+uses it: the App Hub calls `POST /api/store/registry/install`.
+
 
 5. **The dispatch**, which has **no default branch that installs**:
 
@@ -702,6 +721,7 @@ mutation. **14 planted, 14 killed, 0 survivors**, working tree restored.
 | M12 | `rejectSwallowedFailure` refuses any `\|\|` | `TestPostInstallMayNotSwallowFailure` (its control) |
 | M13 | `binary_name` stops seeing `.war` as an archive | `TestWarCountsAsAnArchiveForBinaryName` |
 | M14 | the source guard reads a function that does not exist | `TestInstallFromRegistry_ExecsNoInstallShell` |
+| M15 | CATALOG-01 never fires | `TestAppStore_Install_RequiresChecksum` |
 
 M11, M12 and M14 are **over-broad** mutations on purpose. A rule that refuses
 everything passes every negative test ever written for it; only a control that
@@ -725,6 +745,14 @@ assertion, not in the code.** That is the entire reason for doing this:
   because the containment check still produced the same `EXTRACT-01` message —
   one HTTP fetch too late. An error string describes *what* happened; it cannot
   describe *when*. The test now counts HTTP requests and requires zero.
+
+**One mutation survived and is reported as a survivor rather than dressed up.**
+M16 made the store's `verifySHA256` conditional again
+(`if entry.Checksum != ""`). It is an **equivalent mutant**: CATALOG-01
+guarantees a non-empty checksum before that line is reached, so the guarded and
+unguarded forms cannot be told apart from outside. It is recorded because the
+equivalence is *load-bearing* — relax CATALOG-01 and M16 stops being equivalent
+and becomes the original hole.
 
 **M10 found a real ordering bug in the process.** `extract_dir` was being
 screened only after `staticInstall` had already fetched the payload, so a box
