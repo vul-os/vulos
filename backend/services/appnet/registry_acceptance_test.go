@@ -376,7 +376,7 @@ func TestAcceptance_UnsignedShippedEntriesAreUninstallable(t *testing.T) {
 
 	// The control: a real shipped entry, signature stripped in memory. Always
 	// present, so this test can never pass by examining nothing.
-	control := controlEntryID(t, st)
+	control := controlEntryID(t, st, reg)
 	stripped := *reg.Apps[control]
 	stripped.Signature = ""
 	controlReg := &Registry{Apps: map[string]*RegistryEntry{control: &stripped}}
@@ -396,15 +396,30 @@ func TestAcceptance_UnsignedShippedEntriesAreUninstallable(t *testing.T) {
 
 // controlEntryID picks a deterministic real entry for the stripped-signature
 // control. A VERIFIED entry is preferred, because stripping a signature that
-// demonstrably worked is the sharpest possible control; it falls back to an
-// unsigned one only when the registry has no verified entry at all.
-func controlEntryID(t *testing.T, st signingState) string {
+// demonstrably worked is the sharpest possible control.
+//
+// The fallbacks matter: the control's job is to keep this test non-vacuous on
+// EVERY state registry.json can be in, and "no verified entry" is one of those
+// states — a registry signed entirely by an uncertified key has none. Refusing
+// to pick a control there would turn a red in the other direction (this test
+// failing because it could not find a control) into the report, hiding whether
+// the unsigned-is-uninstallable property still holds. Any real entry works,
+// because the control strips the signature itself.
+func controlEntryID(t *testing.T, st signingState, reg *Registry) string {
 	t.Helper()
 	if len(st.verified) > 0 {
 		return st.verified[0]
 	}
 	if len(st.unsigned) > 0 {
 		return st.unsigned[0]
+	}
+	all := make([]string, 0, len(reg.Apps))
+	for appID := range reg.Apps {
+		all = append(all, appID)
+	}
+	sort.Strings(all)
+	if len(all) > 0 {
+		return all[0]
 	}
 	t.Fatal("shipped registry has no entry to use as a control")
 	return ""
