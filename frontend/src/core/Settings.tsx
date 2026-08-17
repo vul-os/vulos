@@ -23,6 +23,7 @@ import DeveloperPanel from './settings/DeveloperPanel'
 import DomainPanel from './settings/DomainPanel'
 import CDNPanel from './settings/CDNPanel'
 import LANPairingPanel from './settings/LANPairingPanel'
+import LANRootCertPanel from './settings/LANRootCertPanel'
 import LocationPanel from './settings/LocationPanel'
 import DevicePanel from './settings/DevicePanel'
 import WidgetsPanel from './settings/WidgetsPanel'
@@ -201,6 +202,12 @@ const sectionGroups: SettingsSectionGroup[] = [
       { id: 'connmode', label: 'Connection Mode' },
       { id: 'network', label: 'Remote Access' },
       { id: 'lanpairing', label: 'Native Pairing' },
+      // Adjacent to Native Pairing, and deliberately NOT merged with it: the
+      // two answer the same owner question and use OPPOSITE trust models (a
+      // pinned box key with no CA, versus a CA installed on the device). One
+      // panel showing a "fingerprint" that means two different things would
+      // invite an owner to compare the wrong two values. See LANRootCertPanel.
+      { id: 'browsertrust', label: 'Browser Trust' },
       { id: 'domain', label: 'Custom Domain' },
       { id: 'relay', label: 'Relay & Reachability', owner: true },
       { id: 'cdn', label: 'CDN', owner: true },
@@ -506,6 +513,7 @@ export default function Settings({ initialSection }: SettingsProps) {
         {active === 'connmode' && <NET9_ConnectionModeSettings />}
         {active === 'network' && <NetworkSettings />}
         {active === 'lanpairing' && <LANPairingPanel />}
+        {active === 'browsertrust' && <LANRootCertPanel />}
         {active === 'domain' && <DomainPanel />}
         {active === 'relay' && <RelayPanel />}
         {active === 'cdn' && <CDNPanel />}
