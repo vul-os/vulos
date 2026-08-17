@@ -4,7 +4,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -176,5 +178,91 @@ func TestSetHostnameInstallsTrimmedName(t *testing.T) {
 	}
 	if got != "vulos" {
 		t.Fatalf("kernel hostname is %q (% x), want %q — /etc/hostname's trailing newline reached sethostname(2)", got, got, "vulos")
+	}
+}
+
+// TestDHCPSendsTheBoxHostname pins DHCP option 12.
+//
+// The router registering the box's name is the ONLY name-resolution path that
+// reaches a client whose resolver does no mDNS at all, with nothing installed
+// on that client. busybox udhcpc — the FIRST client this code looks for —
+// sends no hostname unless explicitly told to, so before this the router
+// learned nothing and http://<boxname>/ could never work.
+//
+// Every branch is exercised via the dhcpLookPath seam, so nothing is skipped
+// just because a binary is missing from the machine running the test.
+func TestDHCPSendsTheBoxHostname(t *testing.T) {
+	orig := dhcpLookPath
+	t.Cleanup(func() { dhcpLookPath = orig })
+
+	only := func(want string) func(string) (string, error) {
+		return func(name string) (string, error) {
+			if name == want {
+				return "/sbin/" + name, nil
+			}
+			return "", exec.ErrNotFound
+		}
+	}
+
+	t.Run("udhcpc sends option 12", func(t *testing.T) {
+		dhcpLookPath = only("udhcpc")
+		bin, args := initnetDHCPCmdFor("study")
+		if bin != "/sbin/udhcpc" {
+			t.Fatalf("bin = %q", bin)
+		}
+		if !strings.Contains(strings.Join(args, " "), "hostname:study") {
+			t.Fatalf("udhcpc args %v carry no hostname — busybox sends DHCP option 12 only when given -x hostname:<name>, so no router can ever learn this box's name", args)
+		}
+		if args[len(args)-1] != "-i" {
+			t.Fatalf("udhcpc args %v must end in -i: the caller appends the interface name after them", args)
+		}
+	})
+
+	t.Run("dhcpcd states the hostname", func(t *testing.T) {
+		dhcpLookPath = only("dhcpcd")
+		_, args := initnetDHCPCmdFor("study")
+		if !strings.Contains(strings.Join(args, " "), "study") {
+			t.Fatalf("dhcpcd args %v carry no hostname", args)
+		}
+	})
+
+	t.Run("dhclient is left alone on purpose", func(t *testing.T) {
+		dhcpLookPath = only("dhclient")
+		_, args := initnetDHCPCmdFor("study")
+		// Its hostname comes from dhclient.conf; guessing a flag that varies
+		// across versions could break DHCP outright, and a box with no lease is
+		// far worse than a box whose name the router does not know.
+		if strings.Contains(strings.Join(args, " "), "study") {
+			t.Fatalf("dhclient args %v now pass a hostname flag — verify it against the shipped dhclient version before pinning it here", args)
+		}
+	})
+
+	t.Run("udhcpc is preferred over dhcpcd", func(t *testing.T) {
+		dhcpLookPath = func(string) (string, error) { return "/sbin/x", nil }
+		bin, args := initnetDHCPCmdFor("study")
+		if bin != "/sbin/x" || !strings.Contains(strings.Join(args, " "), "hostname:study") {
+			t.Fatalf("with every client present, got %q %v — the first branch (udhcpc) must still send the hostname", bin, args)
+		}
+	})
+}
+
+// TestDHCPHostnameIsTheDerivedName: the name handed to the DHCP server must be
+// the sanitised box name, never the raw /etc/hostname bytes. A DHCP option-12
+// value containing a newline is a malformed packet field.
+func TestDHCPHostnameIsTheDerivedName(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "hostname")
+	if err := os.WriteFile(p, []byte("study\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	orig := etcHostnamePath
+	etcHostnamePath = p
+	t.Cleanup(func() { etcHostnamePath = orig })
+
+	_, args := initnetDHCPCmd()
+	for _, a := range args {
+		if strings.ContainsAny(a, "\n\r\x00") {
+			t.Fatalf("DHCP argument %q carries raw whitespace from /etc/hostname", a)
+		}
 	}
 }

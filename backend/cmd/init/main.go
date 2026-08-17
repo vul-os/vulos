@@ -892,18 +892,55 @@ func initnetEthernetIfaces() []string {
 // initnetDHCPCmd returns the best available DHCP client binary and its
 // arguments (everything except the interface name, which is appended last).
 func initnetDHCPCmd() (string, []string) {
-	// udhcpc (busybox) — lightweight, exits 0 on success
-	if p, err := exec.LookPath("udhcpc"); err == nil {
-		// -i <iface> -n (exit if lease not obtained) -q (quit after lease)
-		return p, []string{"-i"}
+	return initnetDHCPCmdFor(resolveHostname())
+}
+
+// dhcpLookPath is a seam: tests replace it so every DHCP client branch is
+// exercised on any host, rather than skipping whichever binaries happen not to
+// be installed. A guard that skips is not a guard.
+var dhcpLookPath = exec.LookPath
+
+// initnetDHCPCmdFor is initnetDHCPCmd with the box name injected, so the
+// hostname-advertising behaviour is testable without a real /etc/hostname.
+//
+// DHCP OPTION 12 (added 2026-08-17). The box now tells the DHCP server its
+// name. Most home routers register the option-12 hostname in their own
+// resolver, which makes http://<boxname>/ and http://<boxname>.lan/ work for
+// EVERY device on the LAN with no mDNS, no app and no per-device setup — the
+// one path that reaches clients whose resolver does not speak mDNS at all.
+// The LAN certificate already carries those short forms (internal/lan/names.go
+// routerSuffixes), so that path costs one warning, not two.
+//
+// It was NOT happening before. busybox udhcpc sends no hostname unless it is
+// given one explicitly, and udhcpc is the FIRST client this function looks
+// for — so on any image carrying busybox the router learned nothing about the
+// box. dhcpcd does send it by default, but it is looked up last.
+//
+// Which routers actually publish option-12 names, and under which local
+// domain, is vendor-dependent and NOT verified here — see
+// roadmap/LAN-NAME-RESOLUTION.md. Sending the option is free and correct
+// regardless; what a given router does with it is the router's business.
+func initnetDHCPCmdFor(name string) (string, []string) {
+	lookPath := dhcpLookPath
+	// udhcpc (busybox) — lightweight, exits 0 on success.
+	// -x hostname:<name> is how busybox sends DHCP option 12; without it,
+	// udhcpc sends no hostname at all.
+	if p, err := lookPath("udhcpc"); err == nil {
+		// -i <iface> is appended by the caller, so it must come last.
+		return p, []string{"-x", "hostname:" + name, "-i"}
 	}
-	// dhclient (isc-dhcp-client)
-	if p, err := exec.LookPath("dhclient"); err == nil {
+	// dhclient (isc-dhcp-client). Left as-is deliberately: its hostname
+	// behaviour is driven by dhclient.conf's `send host-name`, and guessing a
+	// command-line flag that varies across versions would risk failing DHCP
+	// outright — a box with no lease is far worse than a box the router does
+	// not know the name of.
+	if p, err := lookPath("dhclient"); err == nil {
 		return p, []string{"-v"}
 	}
-	// dhcpcd
-	if p, err := exec.LookPath("dhcpcd"); err == nil {
-		return p, []string{}
+	// dhcpcd sends the system hostname by default; -h states it explicitly so
+	// it does not depend on when the hostname happened to be set.
+	if p, err := lookPath("dhcpcd"); err == nil {
+		return p, []string{"-h", name}
 	}
 	return "", nil
 }
