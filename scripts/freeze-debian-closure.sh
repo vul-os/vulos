@@ -144,42 +144,53 @@ PY
 # and every accept-path gets a control that MUST pass.
 if [ "$SELFTEST" -eq 1 ]; then
   fail=0
-  t() { # t <expect ok|bad> <name> <json>
-    local expect="$1" name="$2" json="$3" rc
-    printf '%s' "$json" > /tmp/fdc-selftest.$$.json
-    validate_manifest /tmp/fdc-selftest.$$.json >/dev/null 2>&1; rc=$?
-    rm -f /tmp/fdc-selftest.$$.json
-    if [ "$expect" = ok ] && [ "$rc" -ne 0 ]; then echo "SELFTEST FAIL (control rejected): $name"; fail=1
-    elif [ "$expect" = bad ] && [ "$rc" -eq 0 ]; then echo "SELFTEST FAIL (defect accepted): $name"; fail=1
-    else echo "ok  $expect  $name"; fi
+  # A refusal fixture asserts WHICH rule answered, not merely that "an error
+  # happened". INSTALL-METHODOLOGY §10's M1 is the precedent: a fixture caught
+  # by a neighbouring rule keeps a disabled guard looking green forever, and a
+  # test that only checks "non-zero exit" cannot tell the two apart.
+  t() { # t <expect ok|RULE-ID> <name> <json>
+    local expect="$1" name="$2" json="$3" rc out
+    printf '%s' "$json" > "/tmp/fdc-selftest.$$.json"
+    out="$(validate_manifest "/tmp/fdc-selftest.$$.json" 2>&1)"; rc=$?
+    rm -f "/tmp/fdc-selftest.$$.json"
+    if [ "$expect" = ok ]; then
+      if [ "$rc" -ne 0 ]; then echo "SELFTEST FAIL (control rejected): $name -- $out"; fail=1
+      else echo "ok  control        $name"; fi
+    elif [ "$rc" -eq 0 ]; then
+      echo "SELFTEST FAIL (defect accepted): $name"; fail=1
+    elif ! printf '%s' "$out" | grep -q "$expect"; then
+      echo "SELFTEST FAIL (wrong rule answered): $name -- expected $expect, got: $(printf '%s' "$out" | head -1)"; fail=1
+    else
+      echo "ok  $expect  $name"
+    fi
   }
   GOOD='{"schema":"vulos.debian-closure/1","app":"x","package":"x","suite":"trixie","base_image":"debian:trixie-slim","snapshot":"20260816T000000Z","arches":{"arm64":{"resolved_version":"1","package_count":1,"download_bytes":4,"packages":[{"name":"a","version":"1","filename":"a.deb","url":"https://snapshot.debian.org/archive/debian/20260816T000000Z/pool/main/a/a/a.deb","size":4,"sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}}}'
   t ok  "CTRL-1 a well-formed one-package manifest is accepted" "$GOOD"
-  t bad "CLOSURE-01 a package with no sha256 is refused" \
+  t CLOSURE-01/09 "CLOSURE-01 a package with no sha256 is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"sha256":"0*"/"sha256":""/')"
-  t bad "CLOSURE-02 a deb.debian.org (moving) URL is refused" \
+  t CLOSURE-02/04 "CLOSURE-02 a deb.debian.org (moving) URL is refused" \
      "$(printf '%s' "$GOOD" | sed 's#https://snapshot.debian.org/archive/debian/20260816T000000Z#http://deb.debian.org/debian#')"
-  t bad "CLOSURE-03 a manifest with no base_image is refused" \
+  t CLOSURE-03 "CLOSURE-03 a manifest with no base_image is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"base_image":"debian:trixie-slim"/"base_image":""/')"
-  t bad "CLOSURE-04 a http:// snapshot URL is refused" \
+  t CLOSURE-02/04 "CLOSURE-04 a http:// snapshot URL is refused" \
      "$(printf '%s' "$GOOD" | sed 's#https://snapshot#http://snapshot#')"
-  t bad "CLOSURE-05 two packages sharing one sha256 are refused" \
+  t CLOSURE-05 "CLOSURE-05 two packages sharing one sha256 are refused" \
      '{"schema":"vulos.debian-closure/1","app":"x","package":"x","suite":"trixie","base_image":"b","snapshot":"20260816T000000Z","arches":{"arm64":{"resolved_version":"1","package_count":2,"download_bytes":8,"packages":[{"name":"a","version":"1","filename":"a.deb","url":"https://snapshot.debian.org/archive/debian/20260816T000000Z/a.deb","size":4,"sha256":"1111111111111111111111111111111111111111111111111111111111111111"},{"name":"b","version":"1","filename":"b.deb","url":"https://snapshot.debian.org/archive/debian/20260816T000000Z/b.deb","size":4,"sha256":"1111111111111111111111111111111111111111111111111111111111111111"}]}}}'
-  t bad "CLOSURE-06 package_count disagreeing with the list is refused" \
+  t CLOSURE-06 "CLOSURE-06 package_count disagreeing with the list is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"package_count":1/"package_count":9/')"
-  t bad "CLOSURE-07 download_bytes disagreeing with the sizes is refused" \
+  t CLOSURE-07 "CLOSURE-07 download_bytes disagreeing with the sizes is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"download_bytes":4/"download_bytes":99/')"
-  t bad "CLOSURE-08 a size of 0 is refused" \
+  t CLOSURE-08 "CLOSURE-08 a size of 0 is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"size":4/"size":0/')"
-  t bad "CLOSURE-09 a non-hex sha256 is refused" \
+  t CLOSURE-01/09 "CLOSURE-09 a non-hex sha256 is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"sha256":"0\{64\}"/"sha256":"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"/')"
-  t bad "CLOSURE-10 an arch key that is not a Vulos arch spelling is refused" \
+  t CLOSURE-10 "CLOSURE-10 an arch key that is not a Vulos arch spelling is refused" \
      "$(printf '%s' "$GOOD" | sed 's/"arm64":{/"aarch64":{/')"
-  t bad "CLOSURE-11 an empty arches map is refused" \
+  t CLOSURE-11 "CLOSURE-11 an empty arches map is refused" \
      '{"schema":"vulos.debian-closure/1","app":"x","package":"x","suite":"trixie","base_image":"b","snapshot":"20260816T000000Z","arches":{}}'
-  t bad "CLOSURE-12 a filename escaping the prefix is refused" \
+  t CLOSURE-12 "CLOSURE-12 a filename escaping the prefix is refused" \
      "$(printf '%s' "$GOOD" | sed 's#"filename":"a.deb"#"filename":"../a.deb"#')"
-  t bad "CLOSURE-13 an unknown schema is refused" \
+  t CLOSURE-13 "CLOSURE-13 an unknown schema is refused" \
      "$(printf '%s' "$GOOD" | sed 's#vulos.debian-closure/1#vulos.something-else/1#')"
   [ "$fail" -eq 0 ] && echo "SELFTEST: all fixtures behaved" || echo "SELFTEST: FAILURES ABOVE"
   exit "$fail"
