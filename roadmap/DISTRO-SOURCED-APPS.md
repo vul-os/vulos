@@ -47,8 +47,8 @@ Three things this ordering is deliberately strict about:
   cheaper to download (§4). Reaching for emulation while a native build exists
   is the "efficient and good choices" half being dropped.
 - **Rung 3 is above rung 5.** §5 measures that box64 runs a dynamically linked
-  x86_64 binary correctly, at 1.4× native, and binds the *host's own* aarch64 GL
-  stack. Declaring an app unavailable when that path exists is the "everything
+  x86_64 binary correctly, at **1.40× native** (against qemu-user's 2.32× on the
+  same binary), and binds the *host's own* aarch64 GL stack. Declaring an app unavailable when that path exists is the "everything
   must work everywhere" half being dropped. But rung 3 is **opt-in and labelled**
   — an app that is present and crawls reads as a Vulos defect rather than a
   hardware limit, which is why it is not rung 2.
@@ -258,42 +258,72 @@ something" — the md5 of 2,061,307 bytes of gzip output matches the aarch64
 reference exactly. That is the correctness gate this document requires before any
 timing is believed.
 
+### 5.1.1 The three-way comparison, all cases byte-identical
+
+One further correction was needed before the numbers meant anything. The first
+fair attempt gave qemu an **incomplete x86_64 sysroot** — box64 sailed past a
+missing `libcap.so.2` because it substitutes the native one, while qemu, which
+needs the real x86_64 library, died. The resulting ratio would have measured the
+sysroot, not the emulator. A second attempt then had qemu fail on a *path*
+lookup. The final harness gives both the same tree and routes **every** case
+through stdin/stdout, so no case opens a path at all:
+
 ```
-=== 5 interleaved reps; a rep is DISCARDED unless exit=0 and bytes==ref ===
-rep=1 native ms=4000 exit=0 bytes=2061307
-rep=1 box64  ms=5367 exit=0 bytes=2061307
-rep=2 native ms=3707 exit=0 bytes=2061307
-rep=2 box64  ms=5370 exit=0 bytes=2061307
-rep=3 native ms=4216 exit=0 bytes=2061307
-rep=3 box64  ms=5951 exit=0 bytes=2061307
-rep=4 native ms=4167 exit=0 bytes=2061307
-rep=4 box64  ms=5736 exit=0 bytes=2061307
-rep=5 native ms=4709 exit=0 bytes=2061307
-rep=5 box64  ms=5967 exit=0 bytes=2061307
+native reference: exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+box64             exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+qemu              exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+
+=== 7 interleaved reps, DISCARDED unless exit=0 and bytes==reference ===
+rep=1 native ms=4719   box64 ms=6768   qemu ms=11467
+rep=2 native ms=4553   box64 ms=6718   qemu ms=11202
+rep=3 native ms=4914   box64 ms=6968   qemu ms=11760
+rep=4 native ms=5120   box64 ms=6923   qemu ms=11401
+rep=5 native ms=4941   box64 ms=6718   qemu ms=11124
+rep=6 native ms=5170   box64 ms=7286   qemu ms=11772
+rep=7 native ms=5134   box64 ms=7022   qemu ms=11655
 ```
 
-**Median 5736 ms vs 4167 ms native = 1.38× slower.** Against qemu-user's measured
-**3.80×** on the static control, that is not a refinement, it is a different
-verdict. **The record must be corrected: box64 was rejected on a test it could
-not pass by construction.**
+| | native | box64 0.3.4 | qemu-x86_64 10.0.11 |
+|---|---:|---:|---:|
+| Throughput, median of 7 | 4941 ms | **6923 ms = 1.40×** | **11467 ms = 2.32×** |
+| Per-exec, 100 execs | 44 ms | 1128 ms = 25.6× | 2697 ms = 61.3× |
+| Peak RSS, one pass | 1816 KB | 27156 KB = 15.0× | 12240 KB = 6.7× |
+| Correct output | ✅ | ✅ byte-identical | ✅ byte-identical |
+| Exited 0 on 100 execs | 100/100 | **98/100** | 100/100 |
+
+**box64 is 1.66× faster than qemu-user on throughput and 2.4× faster per exec.**
+Both produce byte-identical output. This is the comparison ARCH-PLACEMENT §5
+made on evidence that could not support it.
+
+*(qemu's 2.32× here is not comparable with §4.3's 3.80×: that was busybox's gzip,
+statically linked; this is Debian's gzip, dynamically linked. Only the
+within-table ratios are meaningful.)*
 
 ### 5.2 But box64 is not robust, and that is measured too
 
 ```
-=== per-exec cost: 30 execs of `gzip --version`, successes counted ===
-native: 34 ms / 30 execs, 30/30 exited 0
-Illegal instruction  BOX64_LD_LIBRARY_PATH=... box64 /x86/usr/bin/gzip --version
-box64:  526 ms / 30 execs, 29/30 exited 0
-qemu:   881 ms / 30 execs, 30/30 exited 0
+=== ROBUSTNESS: 100 execs of `gzip --version`, successes counted ===
+native: 44 ms / 100 execs, 100/100 exited 0
+box64: 1128 ms / 100 execs, 98/100 exited 0
+qemu:  2697 ms / 100 execs, 100/100 exited 0
 ```
 
-**One SIGILL in thirty identical invocations of the same binary.** Not a
-different binary, not a different argument — the same command, non-deterministic.
-Peak RSS: native 1812 KB, box64 27212 KB (15×).
+and in a separate 30-exec run the failure was visible by name:
+
+```
+Illegal instruction  BOX64_LD_LIBRARY_PATH=... box64 /x86/usr/bin/gzip --version
+box64: 526 ms / 30 execs, 29/30 exited 0
+```
+
+**Two SIGILLs in a hundred identical invocations of the same binary** — same
+command, same arguments, non-deterministic. qemu-user did not fail once in 100.
 
 ARCH-PLACEMENT §4.5 predicted exactly this and it is now measured rather than
-asserted: **qemu-user is robust and slow; box64 is fast and not robust.** A 1-in-30
-crash rate is the reason rung 3 is opt-in and labelled, not a default posture.
+asserted: **qemu-user is robust and slow; box64 is fast and not robust.** A ~2%
+per-exec crash rate is severe for a desktop app, which is a process that spawns
+dozens of short-lived helpers — and it is why rung 3 is opt-in and labelled
+rather than a default posture. It is **not** a reason to keep box64 rejected:
+2% is a defect to be measured per app, not an impossibility.
 
 ### 5.3 GL — the finding that matters most for desktop apps
 

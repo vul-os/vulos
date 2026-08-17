@@ -285,14 +285,120 @@ pervasive sluggishness that a throughput ratio hides entirely.
 
 ### 4.3.1 box64 on a dynamically linked binary — the fair test
 
-<!--BOX64-DYNAMIC-->
+> **Measured 2026-08-17. This section reverses §5's recommendation.** Full
+> working, the harness, and the GL result are in
+> **`roadmap/DISTRO-SOURCED-APPS.md` §5**; reproduce with
+> `scripts/arch-emulation-bench.sh dynamic`.
+
+**box64 runs a dynamically linked x86_64 binary correctly, and faster than
+qemu-user.** The sysroot was assembled with `dpkg-deb -x` from Debian's own
+`amd64` packages; both emulators got the same tree; every case read stdin and
+wrote stdout so no case opened a path; a rep was discarded unless it exited 0
+**and** emitted byte-identical output to the native run.
+
+```
+native reference: exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+box64             exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+qemu              exit=0 bytes=2061295 md5=0089e3b1bbf60c781d6a27b0c99f865a
+```
+
+| median of 7 interleaved reps | native | box64 0.3.4 | qemu-x86_64 10.0.11 |
+|---|---:|---:|---:|
+| Throughput | 4941 ms | **6923 ms = 1.40×** | 11467 ms = 2.32× |
+| Per-exec, 100 execs | 44 ms | 1128 ms = 25.6× | 2697 ms = 61.3× |
+| Peak RSS | 1816 KB | 27156 KB = 15.0× | 12240 KB = 6.7× |
+| Exited 0 on 100 execs | 100/100 | **98/100** | 100/100 |
+
+**Why §4.3's result was not box64's verdict.** The `bench` control is
+`busybox-static`. §4.3 itself explains, in the paragraph immediately after the
+number it discarded, that box64's speed comes from *substituting native aarch64
+libraries rather than emulating them*, which **requires dynamic linking**. A
+static binary is therefore the one shape box64 structurally cannot serve. The
+measurement exercised box64's known non-case, and the conclusion — "box64 failed"
+— was generalised from it. That is the same bad-measurement pattern §4.3 was
+written to guard against, one level up: the harness was fixed, the *control* was
+not.
+
+**GL, which matters more than the ratio for this catalogue.** An x86_64
+`glxinfo` under box64 reported the **host's own aarch64 Mesa 25.0.7 / LLVM
+19.1.7** — the identical `Device:` string, version and `direct rendering: Yes` as
+the native aarch64 control. Under qemu-user the same binary printed
+`Error: couldn't find RGB GLX visual or fbconfig`. box64's native-library
+substitution reaches the GL stack. **This does not prove hardware acceleration**
+— a container has no GPU, so both lines report `llvmpipe` and `Accelerated: no`;
+what is proved is *which stack was bound*.
+
+**Two things this does not overturn.** (1) box64 crashed twice in 100 identical
+execs with `Illegal instruction` — §4.5's "lightweight and not robust" is now
+measured, not asserted. (2) §4.4's Flatpak conclusion stands on its own grounds:
+box64's advantage needs the host's libraries reachable, and bwrap supplies the
+runtime's x86_64 `/usr` instead.
+
+**Consequence for §5 and §6.** The fallback recommendation should be **box64 for
+apps delivered as ELF files into a prefix we control** (a per-arch `artifacts`
+recipe, or the frozen-closure vehicle in `DISTRO-SOURCED-APPS.md`), with
+qemu-user as the robust fallback when box64 crashes on a given app. Exception
+**E3** — GPU-bound apps unavailable even with emulation — is correct as a
+property of **Flatpak delivery** and over-broad as a property of the app.
 
 ### 4.4 The three questions that matter more than the ratio
 
 **Does it work with *Flatpak*?** This is the question, because the whole catalogue is
 Flatpak, and it is where "lightweight robust" breaks down:
 
-<!--FLATPAK-EXPERIMENT-->
+> **Measured 2026-08-17 in a `debian:trixie-slim` arm64 container.** Full output
+> in `roadmap/DISTRO-SOURCED-APPS.md` §6.
+
+**A foreign-architecture Flatpak installs. The "it cannot" claim was wrong on the
+install half.** `flatpak --supported-arches` on an aarch64 box does not list
+`x86_64`, and that is what `arch.go`'s comment reports — but `--arch=x86_64` is an
+**explicit flag** and it is honoured:
+
+```
+$ flatpak remote-info --arch=x86_64 flathub org.blender.Blender
+       Ref: app/org.blender.Blender/x86_64/stable
+  Download: 477.4 MB      Installed: 1.1 GB
+   Runtime: org.freedesktop.Platform/x86_64/25.08
+    Commit: f97247d9e87dca0bc28c6a01e51cd6425cf8b21c636d28514898b7315b21d521
+
+$ flatpak remote-info --arch=aarch64 flathub org.blender.Blender
+error: Error searching remote flathub: Can't find ref org.blender.Blender/aarch64
+
+$ flatpak install -y --arch=x86_64 flathub org.gnome.Calculator
+Installing runtime/org.gnome.Platform/x86_64/50
+Installing app/org.gnome.Calculator/x86_64/stable
+$ flatpak list --columns=application,arch,branch,installation
+org.gnome.Calculator                x86_64  stable  system
+org.gnome.Platform                  x86_64  50      system
+org.freedesktop.Platform.GL.default x86_64  25.08   system
+```
+
+An x86_64 application and its whole x86_64 GNOME platform runtime — 1.4 GB —
+deployed onto an aarch64 installation.
+
+**Whether it RUNS is NOT established, and probably cannot be established here.**
+`flatpak run --arch=x86_64` failed with
+`bwrap: Creating new namespace failed: Operation not permitted`, which is a
+container-privilege limit and would hit a *native* aarch64 app identically.
+Three independent blockers: bwrap cannot create user namespaces under Docker's
+default seccomp; `/proc/sys/fs/binfmt_misc` is not visible in these containers;
+and on this Apple-Silicon host a binfmt handler would be serviced by **Rosetta
+2**, which does not exist on any real arm64 Vulos box (§4.2) — so even a success
+would have been a confidently wrong number. **Recorded as
+`untestable-on-arm64-mac`; needs a real arm64 Linux box.**
+
+**What this changes.** `EmulationCanServe` conflates *can the bits get here* with
+*would the result be worth offering*. The first is now measured as **yes** for
+Flatpak; the second is still **no**, because §4.3.1 shows box64's advantage
+depends on reaching the host's native libraries and bwrap deliberately supplies
+the runtime's x86_64 `/usr` instead. The two answers deserve two functions and
+two different sentences to the user — see `DISTRO-SOURCED-APPS.md` §9.1.
+
+**Also worth recording as a method note:** every failing command in this
+experiment exited **0**. `flatpak remote-info` on a missing ref, `flatpak
+install` after bwrap failed, and `glxinfo` with no GL visual all returned 0 while
+printing an error. Checking exit status is necessary and **not sufficient** —
+the output has to be read too.
 
 **What happens to GPU acceleration?** This is where emulating a *GUI* app diverges
 sharply from emulating a CLI tool, and the honest answer is split:
@@ -348,16 +454,28 @@ an arch check to refuse. The one exception already shipped — ARCH-01's install
 was worth doing on its own because a *user* can still click Install on an entry their
 box cannot handle.
 
-**Fallback for the 17 — qemu-user, not box64, and this reversed on measurement.**
-I expected to recommend box64: it is packaged, and it is the fast one. §4.3 measured it
-failing outright on the test binary, and §4.3.1 tested it again on the binary shape it
-is actually designed for. The recommendation follows the measurement:
+**Fallback for the 17 — box64 where the app is ELF-in-a-prefix, qemu-user as the
+robust fallback. REVISED 2026-08-17 on measurement (§4.3.1).**
+This paragraph previously recommended qemu-user *because* §4.3 measured box64
+failing. That measurement used a **static** binary, which §4.3 itself explains is
+the one shape box64 cannot serve. Re-measured on a dynamically linked binary:
 
-- **qemu-user** is the only option that demonstrably ran an x86_64 binary here, and it
-  is packaged for trixie. It costs ~3.8× throughput, ~11× per-exec, +10 MB RSS.
-- **box64** is faster *when it works*, and what it needs in order to work — substituting
-  the host's native aarch64 libraries for the app's x86_64 ones — is structurally at odds
-  with Flatpak, which exists to give the app its own `/usr`. See §4.3.1 and §4.4.
+- **box64** runs it correctly (byte-identical output) at **1.40× native**, and
+  binds the **host's own aarch64 GL stack** — the property that makes a 3D app
+  worth offering at all. It crashed **2 times in 100** identical execs.
+- **qemu-user** runs it correctly at **2.32× native**, 61× per-exec, and did not
+  fail once in 100 — but cannot obtain a GL visual at all.
+
+So: **box64 first for anything delivered as ELF files into a prefix we control**
+(per-arch `artifacts`, or the frozen-closure vehicle in
+`roadmap/DISTRO-SOURCED-APPS.md`), **qemu-user as the fallback** for apps box64
+crashes on. Neither helps a Flatpak, for the reason in §4.4 — and note that the
+prior recommendation is not merely refined here, it is **reversed**.
+
+**And check rung 2 before either.** `DISTRO-SOURCED-APPS.md` measures that **6 of
+these 17** — Blender, OBS Studio, HandBrake, Thunderbird, OpenSCAD, Cura — have a
+**native Debian arm64 build**. Emulating an app a distribution already compiles
+natively is the worst of the available choices.
 
 Either way this is an **opt-in, per-app, non-GPU** path (exceptions E2/E3), never a
 default posture.
@@ -518,10 +636,18 @@ recommendation, which is a sync change, and only lastly by emulation.
    of 23. Measured against live Flathub, not assumed.
 3. **81% of the catalogue needs no emulation ever** — a Flatpak id is arch-independent
    and each instance pulls its own build.
-4. **qemu-user works and costs ~3.8× throughput / ~11× per-exec / +10 MB.** box64 failed
-   on the test binary; FEX is not packaged for Debian at all.
-5. **GPU-bound apps are not emulatable** in the Flatpak sandbox and should stay
-   unavailable rather than be offered badly.
+4. **REVISED 2026-08-17 — box64 beats qemu-user on a DYNAMIC binary: 1.40× vs
+   2.32×, and it binds the host's native GL stack while qemu cannot get a GL
+   visual.** §4.3's "box64 failed" used a *static* binary, the one shape box64
+   structurally cannot serve. box64 is not robust though: 2 crashes in 100 execs.
+   FEX is still not packaged for Debian at all.
+5. **GPU-bound apps are not emulatable IN THE FLATPAK SANDBOX** — that is a fact
+   about the delivery vehicle, not about the app. Outside bwrap, in a prefix we
+   control, box64 reaches the host's real GL stack (§4.3.1).
+5a. **A foreign-arch Flatpak DOES install** (`--arch=x86_64`, measured, 1.4 GB
+   deployed on an aarch64 box). Whether it runs is `untestable-on-arm64-mac`.
+5b. **6 of the 17 have a native Debian arm64 build** and should never reach the
+   emulation question at all — `roadmap/DISTRO-SOURCED-APPS.md`.
 6. **Ship labels, not silence.** An app that vanishes on the ARM laptop is a bug report;
    an app that says *"installed on studio-box, which is amd64"* is one OS being honest.
 7. **Two catalogue ids are wrong today** and will fail at install: `org.krita.krita` →
