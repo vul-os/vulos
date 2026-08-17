@@ -106,6 +106,10 @@ func applyLegacyRegistry(t *testing.T, db *sql.DB) {
 		`CREATE INDEX IF NOT EXISTS idx_app_desired_state ON app_desired(desired)`,
 		`ALTER TABLE app_registry ADD COLUMN realise_state  TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE app_registry ADD COLUMN realise_detail TEXT NOT NULL DEFAULT ''`,
+		// migrations/0004_rerealise.sql — SYNC-APPS-02 (installed here and lost)
+		`ALTER TABLE app_registry ADD COLUMN rerealise_count  INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE app_registry ADD COLUMN rerealise_at     TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE app_registry ADD COLUMN rerealise_reason TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, s := range postFold {
 		if _, err := db.Exec(s); err != nil {

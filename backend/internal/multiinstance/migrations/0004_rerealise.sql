@@ -1,0 +1,50 @@
+-- SYNC-APPS-02: tell "never installed here" apart from "installed here and the
+-- storage evaporated".
+--
+-- The reconciler compares the fleet DESIRE against a scan of the app directory.
+-- That is the right ground truth for "can this box launch the app right now",
+-- and it is the WRONG input for "has this box ever had it": on the three overlay
+-- boot paths (live-USB, live-ESP, netboot-installed) the app directory is inside
+-- a tmpfs upper layer in RAM, so after every reboot the scan reads empty for
+-- apps the box really did install. The desire survives (it comes back from a
+-- peer), the disk reads empty, and the plan says "install" for every app on
+-- every boot, forever. The only symptom is a slow boot.
+--
+-- The information needed to tell the two apart was already replicating and was
+-- simply never read: this box's OWN app_registry rows, recovered from a peer,
+-- say installed=1 / realise_state='realised'. desire ∧ ¬disk ∧ row-says-realised
+-- is not an install, it is a RE-realisation.
+--
+-- These three columns are what a re-realisation leaves behind. They live on
+-- app_registry — the per-box realisation row — and therefore REPLICATE, which is
+-- not incidental: on the box this defect is about, the local database is in the
+-- same tmpfs as the app directory and dies with it. A counter kept anywhere
+-- local would reset to zero on precisely the boots it is meant to count. The
+-- fleet is the only memory a volatile box has, so the count has to ride the row
+-- that already comes back from the fleet.
+--
+--   rerealise_count   how many times THIS box has re-installed THIS app after
+--                     losing the bits. Merged as a MAX, not last-write-wins: it
+--                     is a grow-only counter, so a peer holding an older copy can
+--                     never talk it back down, and every write path that does not
+--                     know about it (the LWW tie-breaks in mergeEntry construct
+--                     partial rows) passes 0 and is harmless by construction.
+--   rerealise_at      when the last one happened, RFC3339Nano. NOT updated_at:
+--                     updated_at moves for every report about the row (a failure,
+--                     a removal), and the backoff needs the time of the last
+--                     RE-REALISATION specifically.
+--   rerealise_reason  the storage-durability fact this box measured about ITSELF
+--                     at that moment — AppStore.StorageVolatility's detail, e.g.
+--                     "overlay at / whose upper layer /run/vulos/rw/upper is
+--                     tmpfs at /run/vulos/rw (RAM-backed)". Measured from the
+--                     kernel's mount table, not inferred from the boot mode, and
+--                     empty when the box could not measure it. A box that cannot
+--                     say why says nothing rather than guessing, because this
+--                     string is read by a user standing at a DIFFERENT box.
+--
+-- What this is NOT. It is not a failure: the install succeeded and the storage
+-- then evaporated, so realise_state stays 'realised' and the desire is untouched.
+-- Marking either one would make the fleet believe a working box is broken.
+ALTER TABLE app_registry ADD COLUMN rerealise_count  INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE app_registry ADD COLUMN rerealise_at     TEXT NOT NULL DEFAULT '';
+ALTER TABLE app_registry ADD COLUMN rerealise_reason TEXT NOT NULL DEFAULT '';

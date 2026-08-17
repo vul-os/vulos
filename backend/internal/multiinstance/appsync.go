@@ -208,6 +208,30 @@ type AppRegistryEntry struct {
 	// as "requires amd64; this box is arm64" by the same route a failed download
 	// or a bad signature does — see the package doc on why arch has no branch.
 	RealiseDetail string `json:"realise_detail,omitempty"`
+
+	// ── SYNC-APPS-02: re-realisation ─────────────────────────────────────────
+	//
+	// ReRealiseCount is how many times this instance has installed this app
+	// AGAIN after having already realised it and then lost the bits. It is a
+	// GROW-ONLY counter, merged as a max rather than by LWW (see upsertEntry),
+	// so a peer holding an older copy cannot talk it back down and the several
+	// merge paths that construct partial rows pass 0 harmlessly.
+	//
+	// It replicates because it has to. On the box this exists for, the local
+	// database sits in the same tmpfs as the app directory and dies with it on
+	// every reboot, so a count kept locally would read zero on exactly the boots
+	// it is meant to count. The fleet is a volatile box's only memory.
+	ReRealiseCount int `json:"rerealise_count,omitempty"`
+	// ReRealisedAt is when the last re-realisation happened. Deliberately not
+	// UpdatedAt: that moves for every report about the row, and the backoff has
+	// to measure from the last RE-REALISATION specifically.
+	ReRealisedAt time.Time `json:"rerealised_at,omitempty"`
+	// ReRealiseReason is the storage-durability fact this box measured about
+	// ITSELF at that moment (Realiser's optional StorageVolatility detail), or
+	// "" when it could not measure one. It is the answer to "why did this box
+	// have to install it again", and it is empty rather than guessed because a
+	// user reads it standing at a different box.
+	ReRealiseReason string `json:"rerealise_reason,omitempty"`
 }
 
 // Realisation states for AppRegistryEntry.RealiseState.
@@ -538,7 +562,35 @@ func (as *AppSync) fireLocalChange() {
 // This is a REPORT, not an instruction. It says what happened here; it does not
 // and must not touch the fleet desired set (see the package doc, property 2).
 func (as *AppSync) LocalInstall(instanceULID, appID, version string) error {
-	return as.localMutate(instanceULID, appID, version, true, RealiseRealised, "")
+	return as.localMutate(instanceULID, appID, version, true, RealiseRealised, "", nil)
+}
+
+// LocalReRealise records that appID@version is realised here AGAIN — the box had
+// already realised it, the bits were gone when the reconciler looked, and it has
+// just put them back. count is the new cumulative total (the previous count plus
+// one) and reason is the storage-durability fact this box measured about itself,
+// or "" when it could not measure one.
+//
+// The row it writes is a normal realised row: installed=true,
+// realise_state='realised'. That is the whole point. Nothing failed — the box
+// installed the app, the app worked, and then its storage evaporated — so
+// recording a failure would make the fleet show a working box as broken, and
+// clearing the desire would delete what the user asked for. What changes is only
+// that the row now carries how many times this has happened and why.
+func (as *AppSync) LocalReRealise(instanceULID, appID, version string, count int, reason string) error {
+	if count <= 0 {
+		return fmt.Errorf("appsync: LocalReRealise: count must be >= 1 (a re-realisation that counts zero of them is an ordinary install: use LocalInstall)")
+	}
+	return as.localMutate(instanceULID, appID, version, true, RealiseRealised, "", &reRealisation{count: count, reason: reason})
+}
+
+// reRealisation carries the three SYNC-APPS-02 fields through localMutate. The
+// timestamp is taken from the same clock as the row's UpdatedAt at write time
+// rather than passed in, so a re-realisation cannot be back- or post-dated by a
+// caller.
+type reRealisation struct {
+	count  int
+	reason string
 }
 
 // LocalUninstall records that appID is no longer realised on THIS instance
@@ -549,7 +601,7 @@ func (as *AppSync) LocalInstall(instanceULID, appID, version string) error {
 // Also a report about this box only. Removing an app FROM THE FLEET is
 // DesireRemove, which is a different set with a different key.
 func (as *AppSync) LocalUninstall(instanceULID, appID string) error {
-	return as.localMutate(instanceULID, appID, "", false, RealiseRemoved, "")
+	return as.localMutate(instanceULID, appID, "", false, RealiseRemoved, "", nil)
 }
 
 // ReportRealiseFailure records that THIS instance tried to realise a desired app
@@ -573,14 +625,14 @@ func (as *AppSync) ReportRealiseFailure(instanceULID, appID, version, reason str
 		// A failure with no reason is the silence this method exists to remove.
 		return fmt.Errorf("appsync: ReportRealiseFailure: reason must not be empty (a failure with no reason is the silence this reports against)")
 	}
-	return as.localMutate(instanceULID, appID, version, false, RealiseFailed, reason)
+	return as.localMutate(instanceULID, appID, version, false, RealiseFailed, reason, nil)
 }
 
 // localMutate is the shared write path for the REALISATION reports
 // (LocalInstall / LocalUninstall / ReportRealiseFailure). It upserts the row in a
 // single transaction, then — only on commit success — fires the local-change
 // hook so the fabric sync loop pushes the change without waiting the tick.
-func (as *AppSync) localMutate(instanceULID, appID, version string, installed bool, realiseState, realiseDetail string) error {
+func (as *AppSync) localMutate(instanceULID, appID, version string, installed bool, realiseState, realiseDetail string, rr *reRealisation) error {
 	if instanceULID == "" {
 		return fmt.Errorf("appsync: localMutate: instanceULID must not be empty")
 	}
@@ -614,6 +666,11 @@ func (as *AppSync) localMutate(instanceULID, appID, version string, installed bo
 		UpdatedAt:     time.Now().UTC(),
 		RealiseState:  realiseState,
 		RealiseDetail: realiseDetail,
+	}
+	if rr != nil {
+		entry.ReRealiseCount = rr.count
+		entry.ReRealisedAt = entry.UpdatedAt
+		entry.ReRealiseReason = rr.reason
 	}
 	if err := as.upsertEntry(tx, entry); err != nil {
 		return fmt.Errorf("appsync: localMutate: upsert: %w", err)
@@ -1241,6 +1298,19 @@ func (as *AppSync) mergeEntry(tx *sql.Tx, remote AppRegistryEntry, localPeerCoun
 		return as.mergeDesired(tx, desiredFromWire(remote))
 	}
 
+	// SYNC-APPS-02: merge the grow-only re-realisation counter FIRST, on its own,
+	// because most of what follows can decide not to write the row at all. The
+	// LWW switch below discards a strictly-older remote outright and has a tie
+	// branch whose "local already wins" case returns without an upsert; a counter
+	// carried only inside upsertEntry would be silently dropped on both. The
+	// counter is not LWW state — it is monotonic — so it converges independently
+	// of who wins the row, which is the only reason it is safe to merge it before
+	// the quorum rules have had their say. It cannot flip an installed flag, so
+	// it cannot be used to remove anything.
+	if err := as.bumpReRealiseCounter(tx, remote); err != nil {
+		return fmt.Errorf("merge re-realisation counter: %w", err)
+	}
+
 	// An install (re-install) bumps the install GENERATION for this app, which
 	// invalidates any uninstall observations gathered against an earlier
 	// generation (observation-set GC). This is what stops a re-install + later
@@ -1646,18 +1716,70 @@ func (as *AppSync) upsertEntry(tx *sql.Tx, e AppRegistryEntry) error {
 		updatedAt = e.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
 
+	reRealisedAt := ""
+	if !e.ReRealisedAt.IsZero() {
+		reRealisedAt = e.ReRealisedAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	// SYNC-APPS-02: the three re-realisation columns do NOT follow the LWW rule
+	// the rest of the row follows, and that is what makes them safe to add here.
+	//
+	// rerealise_count is a GROW-ONLY counter merged as a max. Two consequences,
+	// both load-bearing. A peer that still holds an older copy of this row cannot
+	// talk the count back down when its write wins LWW on the other fields — a
+	// volatile box's whole memory of how often it has re-realised lives in the
+	// fleet, and an LWW counter would lose it to any stale peer. And every
+	// existing caller — LocalInstall, ReportRealiseFailure, and the three
+	// mergeEntry branches that construct a partial AppRegistryEntry for the
+	// tie-break — passes the zero value and is therefore a no-op against the
+	// stored count, rather than silently erasing it.
+	//
+	// The other two ride WITH the count: they describe the event the count last
+	// counted, so overwriting them from a row carrying an equal or lower count
+	// would attach the wrong time and the wrong reason to it.
 	_, err := tx.Exec(`
 		INSERT INTO app_registry
-			(instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			(instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail,
+			 rerealise_count, rerealise_at, rerealise_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_ulid, app_id) DO UPDATE SET
 			app_version    = excluded.app_version,
 			installed      = excluded.installed,
 			installed_by   = excluded.installed_by,
 			updated_at     = excluded.updated_at,
 			realise_state  = excluded.realise_state,
-			realise_detail = excluded.realise_detail
-	`, e.InstanceULID, e.AppID, e.AppVersion, installed, e.InstalledBy, updatedAt, e.RealiseState, e.RealiseDetail)
+			realise_detail = excluded.realise_detail,
+			rerealise_at     = CASE WHEN excluded.rerealise_count > app_registry.rerealise_count
+			                        THEN excluded.rerealise_at ELSE app_registry.rerealise_at END,
+			rerealise_reason = CASE WHEN excluded.rerealise_count > app_registry.rerealise_count
+			                        THEN excluded.rerealise_reason ELSE app_registry.rerealise_reason END,
+			rerealise_count  = MAX(excluded.rerealise_count, app_registry.rerealise_count)
+	`, e.InstanceULID, e.AppID, e.AppVersion, installed, e.InstalledBy, updatedAt, e.RealiseState, e.RealiseDetail,
+		e.ReRealiseCount, reRealisedAt, e.ReRealiseReason)
+	return err
+}
+
+// bumpReRealiseCounter raises an existing row's grow-only re-realisation counter
+// (and the time and reason describing the event it counts) to the remote's, and
+// never lowers it. It updates nothing when there is no local row yet — that case
+// is the plain insert upsertEntry performs a few lines later, which carries the
+// same three fields.
+//
+// Separate from upsertEntry on purpose: it has to run on the merge paths that
+// deliberately do NOT write the row.
+func (as *AppSync) bumpReRealiseCounter(tx *sql.Tx, e AppRegistryEntry) error {
+	if e.ReRealiseCount <= 0 {
+		return nil
+	}
+	reRealisedAt := ""
+	if !e.ReRealisedAt.IsZero() {
+		reRealisedAt = e.ReRealisedAt.UTC().Format(time.RFC3339Nano)
+	}
+	_, err := tx.Exec(`
+		UPDATE app_registry
+		SET rerealise_count = ?, rerealise_at = ?, rerealise_reason = ?
+		WHERE instance_ulid = ? AND app_id = ? AND rerealise_count < ?
+	`, e.ReRealiseCount, reRealisedAt, e.ReRealiseReason, e.InstanceULID, e.AppID, e.ReRealiseCount)
 	return err
 }
 
@@ -1709,7 +1831,7 @@ func (as *AppSync) PeerInstanceIDs(excludeSelfULID string) []string {
 // to also include uninstalled entries.
 func (as *AppSync) ListAppsForInstance(instanceULID string, includeRemoved bool) ([]AppRegistryEntry, error) {
 	query := `
-		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
+		SELECT ` + appRegistryCols + `
 		FROM app_registry
 		WHERE instance_ulid = ?`
 	if !includeRemoved {
@@ -1729,7 +1851,7 @@ func (as *AppSync) ListAppsForInstance(instanceULID string, includeRemoved bool)
 // ListAllApps returns every row in app_registry across all instances.
 func (as *AppSync) ListAllApps() ([]AppRegistryEntry, error) {
 	rows, err := as.db.Query(`
-		SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
+		SELECT ` + appRegistryCols + `
 		FROM app_registry
 		ORDER BY instance_ulid, app_id
 	`)
@@ -1761,13 +1883,13 @@ func (as *AppSync) ChangesetSince(since time.Time) ([]AppRegistryEntry, error) {
 	var err error
 	if since.IsZero() {
 		rows, err = as.db.Query(`
-			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
+			SELECT ` + appRegistryCols + `
 			FROM app_registry
 			ORDER BY updated_at, instance_ulid, app_id`)
 	} else {
 		cursor := since.UTC().Format(time.RFC3339Nano)
 		rows, err = as.db.Query(`
-			SELECT instance_ulid, app_id, app_version, installed, installed_by, updated_at, realise_state, realise_detail
+			SELECT `+appRegistryCols+`
 			FROM app_registry
 			WHERE updated_at > ?
 			ORDER BY updated_at, instance_ulid, app_id`, cursor)
@@ -1810,25 +1932,41 @@ func (as *AppSync) ChangesetSince(since time.Time) ([]AppRegistryEntry, error) {
 	return out, nil
 }
 
-// scanEntries scans *sql.Rows into a slice of AppRegistryEntry.
+// appRegistryCols is the column list every app_registry read selects, in the
+// order scanEntries scans them. It is one constant rather than four copies
+// because the failure it prevents is silent in the worst way: a SELECT that
+// still lists eight columns while scanEntries expects eleven does not return a
+// wrong row, it returns an error on a path most callers log and move past — and
+// a SELECT that lists them in a different order returns a row whose reason
+// string is in the version field.
+const appRegistryCols = `instance_ulid, app_id, app_version, installed, installed_by, updated_at, ` +
+	`realise_state, realise_detail, rerealise_count, rerealise_at, rerealise_reason`
+
+// scanEntries scans *sql.Rows into a slice of AppRegistryEntry. The query must
+// have selected appRegistryCols.
 func scanEntries(rows *sql.Rows) ([]AppRegistryEntry, error) {
 	var out []AppRegistryEntry
 	for rows.Next() {
 		var (
-			e          AppRegistryEntry
-			installed  int
-			updatedRaw string
+			e               AppRegistryEntry
+			installed       int
+			updatedRaw      string
+			reRealisedAtRaw string
 		)
 		if err := rows.Scan(
 			&e.InstanceULID, &e.AppID, &e.AppVersion,
 			&installed, &e.InstalledBy, &updatedRaw,
 			&e.RealiseState, &e.RealiseDetail,
+			&e.ReRealiseCount, &reRealisedAtRaw, &e.ReRealiseReason,
 		); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		e.Installed = installed == 1
 		if updatedRaw != "" {
 			e.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedRaw)
+		}
+		if reRealisedAtRaw != "" {
+			e.ReRealisedAt, _ = time.Parse(time.RFC3339Nano, reRealisedAtRaw)
 		}
 		out = append(out, e)
 	}
@@ -1860,6 +1998,46 @@ type Realiser interface {
 	Unrealise(ctx context.Context, appID string) error
 }
 
+// DurabilityReporter is the OPTIONAL half of Realiser: a box that can measure
+// whether the storage it installs apps into survives a reboot.
+//
+// It is a second interface rather than a fourth method on Realiser for one
+// reason — every Realiser must be able to install, and not every Realiser can
+// honestly answer this. *appnet.AppStore satisfies it structurally (it reads the
+// kernel's mount table); a Realiser that does not is treated exactly as one that
+// answers "I don't know", which is the same code path, so nothing has to be
+// updated to keep working.
+//
+// The contract is deliberately narrow, and it matches what AppStore measures.
+// The bool is TRUE only when the box has positively established that its app
+// directory is RAM-backed. Durable and UNMEASURABLE both return false — there is
+// no mount table on darwin or in a stripped container, and a box that cannot
+// measure its own storage must not claim to have.
+type DurabilityReporter interface {
+	// StorageVolatility reports whether the app directory is on storage that
+	// does not survive a reboot, plus a human-readable detail naming the mount
+	// it decided on. The detail is "" when the answer is false.
+	StorageVolatility() (bool, string)
+}
+
+// Causes for an install action in a ReconcilePlan.
+const (
+	// CauseNeverRealised: the fleet wants the app, it is not on this box's disk,
+	// and this box has no realisation row saying it ever was. An ordinary first
+	// install.
+	CauseNeverRealised = "never-realised"
+	// CauseReRealise: the fleet wants the app, it is not on this box's disk, and
+	// this box's OWN replicated realisation row says it installed it and it
+	// worked. The bits are gone; nothing failed. This is the case the reconciler
+	// could not previously see, and seeing it is the whole of SYNC-APPS-02: on
+	// an overlay boot every desired app lands here on every boot, and calling it
+	// a first install is what turns a reboot into a full re-download.
+	CauseReRealise = "re-realise"
+	// CauseUndesired: the user removed the app fleet-wide and this box still has
+	// it. The removal half of the plan.
+	CauseUndesired = "undesired"
+)
+
 // ReconcileAction is one thing this box must do to match the fleet desired set.
 type ReconcileAction struct {
 	// AppID is the app to act on.
@@ -1869,6 +2047,32 @@ type ReconcileAction struct {
 	Version string
 	// Install is true to install, false to remove.
 	Install bool
+
+	// ── SYNC-APPS-02 ─────────────────────────────────────────────────────────
+
+	// Cause is why this action is in the plan: one of CauseNeverRealised,
+	// CauseReRealise or CauseUndesired. An install with an empty Cause is a plan
+	// built by a caller that did not name the instance, and is treated as a
+	// first install.
+	Cause string
+	// ReRealiseCount, for CauseReRealise, is how many times this box has ALREADY
+	// re-realised this app before this pass. Zero on the first one.
+	ReRealiseCount int
+	// Reason, for CauseReRealise, is the storage-durability fact this box
+	// measured about itself — e.g. "overlay at / whose upper layer
+	// /run/vulos/rw/upper is tmpfs at /run/vulos/rw (RAM-backed)". It is ""
+	// when the box could not measure one, which is a real and common answer and
+	// is left empty rather than guessed.
+	Reason string
+	// Deferred is true when this action is in the plan but must NOT be performed
+	// on this pass: the same app was re-realised too recently for another
+	// download to be anything but waste. Only a re-realisation is ever deferred.
+	// It stays in the plan, with its cause and its reason, precisely so that a
+	// deferral is a visible decision rather than an install that quietly did not
+	// happen.
+	Deferred bool
+	// NotBefore, when Deferred, is the time at which this action becomes due.
+	NotBefore time.Time
 }
 
 // ReconcilePlan is the full set of differences between what the fleet wants and
@@ -1883,8 +2087,22 @@ type ReconcilePlan struct {
 
 // ReconcileResult records what happened, per app.
 type ReconcileResult struct {
-	// Installed are apps newly realised on this box.
+	// Installed are apps newly realised on this box. A re-realisation appears
+	// here TOO — the app really was installed — and additionally in ReRealised.
 	Installed []string
+	// ReRealised are the apps in Installed that this box had already realised
+	// before and had lost, i.e. the ones that cost a download to get back
+	// something the box already had. On a box with volatile storage this is the
+	// number that matters: it is the per-pass size of the waste.
+	ReRealised []string
+	// ReRealiseReason is the storage-durability fact behind ReRealised, measured
+	// by the Realiser, or "" when it could not be measured. One string rather
+	// than one per app because it is a property of the BOX.
+	ReRealiseReason string
+	// Deferred maps appID → why a re-realisation was not performed on this pass.
+	// These are not failures and not skips: the action is still in the plan with
+	// a NotBefore, and the app is still desired.
+	Deferred map[string]string
 	// Removed are apps unrealised from this box.
 	Removed []string
 	// Failed maps appID → the reason this box could not realise it. These are
@@ -1917,7 +2135,49 @@ type ReconcileResult struct {
 // A version difference is likewise NOT an action here. Upgrades need their own
 // ordering and rollback story and pretending a reconcile loop can do them by
 // reinstalling would make every version skew a download storm.
+// SYNC-APPS-02 addendum — "not on disk" is two different facts.
+//
+// The three cases above are complete only if the box's storage survives a
+// reboot. On the three overlay boot paths it does not: the app directory is in
+// a tmpfs upper layer, so after a reboot the disk scan reads empty for apps the
+// box really did install. The desired set is intact (it replicates back from a
+// peer), so case one fires for every app, on every boot, forever — gigabytes
+// re-downloaded per boot, presenting as a slow boot rather than as a defect.
+//
+// The information needed to tell the two apart was already present and unread.
+// The same sync that brings the desire back brings back this box's OWN
+// app_registry rows, which say installed=1 / realise_state='realised'. So case
+// one splits:
+//
+//	no row, or a row that never said realised   → CauseNeverRealised, install
+//	this box's row says it realised it          → CauseReRealise
+//
+// A re-realisation is not a failure and not a new install. Nothing went wrong:
+// the install worked and the storage evaporated. So the desire is untouched, the
+// row stays 'realised', and what changes is that the plan says WHICH of the two
+// it is, carries the count of how often it has happened, and carries the box's
+// own measurement of WHY (Realiser's optional StorageVolatility — a fact read
+// out of the kernel's mount table, never inferred from the boot mode).
+//
+// A re-realisation may also be DEFERRED — see reRealiseBackoff for exactly when,
+// and for why a deferral can never be the reason a user does not get an app.
 func (as *AppSync) PlanReconcile(r Realiser) (ReconcilePlan, error) {
+	selfULID, _, _ := as.identity()
+	return as.PlanReconcileFor(selfULID, r)
+}
+
+// PlanReconcileFor is PlanReconcile for a named instance: instanceULID is the
+// box whose realisation rows are consulted to tell a first install from a
+// re-realisation. PlanReconcile passes the signing identity, which is this box's
+// stable ULID; the parameter exists because the reconciler's caller
+// (cmd/server) already holds cfg.InstanceID and because a test must be able to
+// plan for a box other than the one it is running as.
+//
+// An empty instanceULID means "no realisation rows to consult". That degrades to
+// exactly the pre-SYNC-APPS-02 behaviour — every absence is a first install —
+// rather than to an error, because a box that has not yet established its
+// identity must still be able to install what the user asked for.
+func (as *AppSync) PlanReconcileFor(instanceULID string, r Realiser) (ReconcilePlan, error) {
 	if r == nil {
 		return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: nil Realiser")
 	}
@@ -1929,18 +2189,192 @@ func (as *AppSync) PlanReconcile(r Realiser) (ReconcilePlan, error) {
 	if err != nil {
 		return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: read desired set: %w", err)
 	}
+
+	// This box's own realisation rows — the fleet's memory of what this box
+	// managed, which on a volatile box outlives the box's own copy of it.
+	realised := map[string]AppRegistryEntry{}
+	if instanceULID != "" {
+		rows, rerr := as.ListAppsForInstance(instanceULID, true)
+		if rerr != nil {
+			return ReconcilePlan{}, fmt.Errorf("appsync: PlanReconcile: read this box's realisation rows: %w", rerr)
+		}
+		for _, row := range rows {
+			realised[row.AppID] = row
+		}
+	}
+
+	// Measured, not inferred, and only when the Realiser can measure it.
+	var volatileReason string
+	if dr, ok := r.(DurabilityReporter); ok {
+		if volatile, detail := dr.StorageVolatility(); volatile {
+			volatileReason = detail
+		}
+	}
+
+	now := time.Now().UTC()
 	var plan ReconcilePlan
 	for _, d := range desired {
 		_, have := onDisk[d.AppID]
 		switch {
 		case d.Desired && !have:
-			plan.Actions = append(plan.Actions, ReconcileAction{AppID: d.AppID, Version: d.Version, Install: true})
+			act := ReconcileAction{AppID: d.AppID, Version: d.Version, Install: true, Cause: CauseNeverRealised}
+			// "This box realised it" is the row's own claim about itself:
+			// installed, and the realisation state it reached was 'realised'. A
+			// row left by a FAILED attempt says installed=0/'failed' and is not a
+			// prior realisation — that app has never been on this disk, and
+			// treating a failure as a lost install would hide a box that cannot
+			// run something behind a reason about its storage.
+			if prior, ok := realised[d.AppID]; ok && prior.Installed && prior.RealiseState == RealiseRealised {
+				act.Cause = CauseReRealise
+				act.ReRealiseCount = prior.ReRealiseCount
+				act.Reason = volatileReason
+				if until, wait := reRealiseDeferredUntil(prior, now); wait {
+					act.Deferred = true
+					act.NotBefore = until
+				}
+			}
+			plan.Actions = append(plan.Actions, act)
 		case !d.Desired && have:
-			plan.Actions = append(plan.Actions, ReconcileAction{AppID: d.AppID, Install: false})
+			plan.Actions = append(plan.Actions, ReconcileAction{AppID: d.AppID, Install: false, Cause: CauseUndesired})
 		}
 	}
 	sort.Slice(plan.Actions, func(i, j int) bool { return plan.Actions[i].AppID < plan.Actions[j].AppID })
 	return plan, nil
+}
+
+// Re-realisation backoff bounds. Independent of any test's expectations: a test
+// that derived its boundary from these would prove only that the code agrees
+// with itself.
+const (
+	// reRealiseBackoffBase is the window after the FIRST re-realisation.
+	reRealiseBackoffBase = time.Minute
+	// reRealiseBackoffCap bounds the window. It is deliberately short — see
+	// reRealiseDeferredUntil for why a long one would be a product defect.
+	reRealiseBackoffCap = 30 * time.Minute
+)
+
+// reRealiseDeferredUntil decides whether a re-realisation must wait, and until
+// when. It returns false for an app this box has never re-realised.
+//
+// The rule is a window since the LAST re-realisation, doubling with the count
+// and capped, and NOT a limit on the count itself. That distinction is the whole
+// design, so it is worth stating what each choice does to a real box.
+//
+// A count limit ("stop re-realising after N") would mean a live-USB user who
+// reboots for the fifth time does not get their browser back. There is no
+// durable storage on that path and nothing to fix; re-downloading IS the correct
+// behaviour there, and the brief for this work says so plainly — an app the user
+// asked for must still end up runnable. A window since the last event does not
+// do that: any two boots more than half an hour apart are BOTH served in full,
+// however high the count has climbed, because the window has always elapsed.
+//
+// What the window does catch is repetition fast enough to be pathological rather
+// than merely unlucky: a box in a reboot loop, or the 2-minute reconcile ticker
+// in cmd/server re-downloading gigabytes because an install lands somewhere that
+// reads back as empty. That is the "forever" in "silently repeated forever", and
+// it is the only case where refusing the download costs the user nothing.
+//
+// The count is never the reason to defer, only the size of the delay, and the
+// delay is capped at half an hour so it can never grow into a count limit by
+// another name.
+func reRealiseDeferredUntil(prior AppRegistryEntry, now time.Time) (time.Time, bool) {
+	if prior.ReRealiseCount <= 0 || prior.ReRealisedAt.IsZero() {
+		// Never re-realised (or a row from a peer that predates the counter):
+		// the first one is always immediate.
+		return time.Time{}, false
+	}
+	window := reRealiseBackoffBase
+	for i := 1; i < prior.ReRealiseCount && window < reRealiseBackoffCap; i++ {
+		window *= 2
+	}
+	if window > reRealiseBackoffCap {
+		window = reRealiseBackoffCap
+	}
+	until := prior.ReRealisedAt.Add(window)
+	if now.Before(until) {
+		return until, true
+	}
+	return time.Time{}, false
+}
+
+// ReRealisation is one box's re-realisation history, as any box in the fleet can
+// read it.
+type ReRealisation struct {
+	// InstanceULID is the box that had to install apps again.
+	InstanceULID string `json:"instance_ulid"`
+	// Apps is how many distinct apps that box has re-realised at least once.
+	Apps int `json:"apps"`
+	// Total is the sum of the per-app counts: how many downloads of something
+	// the box already had.
+	Total int `json:"total"`
+	// Reason is the storage-durability fact that box measured about itself, or
+	// "" if it could not measure one. Taken from the most recent re-realisation.
+	Reason string `json:"reason,omitempty"`
+	// LastAt is when that box last re-realised anything.
+	LastAt time.Time `json:"last_at"`
+}
+
+// ReRealisations reports, per instance, how much of the fleet's downloading is
+// re-downloading — apps a box already had and lost.
+//
+// It exists because a re-realisation is otherwise invisible in exactly the way
+// the original defect was: the box installs the app, the app works, the user
+// sees a slow boot and nothing else. It reads the replicated rows, so the answer
+// for a volatile box is available AT ANOTHER BOX — which matters, because the
+// volatile box is the one whose local database does not survive to be asked.
+//
+// ONE statement, including the reason. The reason belongs to the most recent
+// event rather than to the group, which wants a second lookup per instance — and
+// a second lookup issued WHILE the outer rows are open deadlocks this process
+// outright. The registry opens SQLite with SetMaxOpenConns(1); the open cursor
+// holds that connection, the inner query waits for a connection that only the
+// cursor can release, and the pool waits forever with no error and no timeout.
+// It is a correlated subquery for that reason, not for elegance. (Found by the
+// test below hanging for 240s, not by review.)
+func (as *AppSync) ReRealisations() ([]ReRealisation, error) {
+	rows, err := as.db.Query(`
+		SELECT r.instance_ulid, COUNT(*), SUM(r.rerealise_count), MAX(r.rerealise_at),
+		       (SELECT x.rerealise_reason FROM app_registry x
+		         WHERE x.instance_ulid = r.instance_ulid AND x.rerealise_count > 0
+		         ORDER BY x.rerealise_at DESC LIMIT 1)
+		FROM app_registry r
+		WHERE r.rerealise_count > 0
+		GROUP BY r.instance_ulid
+		ORDER BY r.instance_ulid`)
+	if err != nil {
+		return nil, fmt.Errorf("appsync: ReRealisations: %w", err)
+	}
+	defer rows.Close()
+	var out []ReRealisation
+	for rows.Next() {
+		var (
+			r         ReRealisation
+			lastAtRaw sql.NullString
+			reason    sql.NullString
+		)
+		if err := rows.Scan(&r.InstanceULID, &r.Apps, &r.Total, &lastAtRaw, &reason); err != nil {
+			return nil, fmt.Errorf("appsync: ReRealisations: scan: %w", err)
+		}
+		if lastAtRaw.Valid && lastAtRaw.String != "" {
+			r.LastAt, _ = time.Parse(time.RFC3339Nano, lastAtRaw.String)
+		}
+		r.Reason = reason.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// deferralReason renders why a re-realisation is waiting, in the words a user
+// standing at another box needs: what it is, how often it has happened, when it
+// will be tried again, and — when the box could measure it — the storage fact
+// behind it.
+func deferralReason(a ReconcileAction) string {
+	s := fmt.Sprintf("re-realised %d time(s) already; next attempt not before %s",
+		a.ReRealiseCount, a.NotBefore.UTC().Format(time.RFC3339))
+	if a.Reason != "" {
+		s += "; this box's app storage is volatile: " + a.Reason
+	}
+	return s
 }
 
 // reportFailureIfChanged records a realisation failure ONLY when it differs from
@@ -1993,21 +2427,45 @@ func (as *AppSync) reportFailureIfChanged(instanceULID, appID, version, reason s
 // anything is downloaded — services/appnet/registry.go checks ArchSupported
 // before it touches the filesystem).
 func (as *AppSync) Reconcile(ctx context.Context, instanceULID string, r Realiser) (ReconcileResult, error) {
-	res := ReconcileResult{Failed: map[string]string{}}
+	res := ReconcileResult{Failed: map[string]string{}, Deferred: map[string]string{}}
 	if instanceULID == "" {
 		return res, fmt.Errorf("appsync: Reconcile: instanceULID must not be empty")
 	}
-	plan, err := as.PlanReconcile(r)
+	plan, err := as.PlanReconcileFor(instanceULID, r)
 	if err != nil {
 		return res, err
 	}
 	for _, a := range plan.Actions {
 		if a.Install {
+			// SYNC-APPS-02. A deferred re-realisation is the one action that is
+			// in the plan and not performed. Nothing is written to the row: the
+			// row already carries the count, the time and the reason from the
+			// last one, and re-stamping it every pass would push an unchanging
+			// fact across the LWW cursor to every peer every two minutes — the
+			// same churn reportFailureIfChanged exists to prevent.
+			if a.Deferred {
+				res.Deferred[a.AppID] = deferralReason(a)
+				continue
+			}
 			if rerr := r.Realise(ctx, a.AppID, a.Version); rerr != nil {
 				res.Failed[a.AppID] = rerr.Error()
 				if perr := as.reportFailureIfChanged(instanceULID, a.AppID, a.Version, rerr.Error()); perr != nil {
 					return res, fmt.Errorf("appsync: Reconcile: report failure for %s: %w", a.AppID, perr)
 				}
+				continue
+			}
+			if a.Cause == CauseReRealise {
+				// Recorded as a re-realisation, not as an install: the count is
+				// the only thing that distinguishes a box quietly re-downloading
+				// its whole app set every boot from a box installing software.
+				if perr := as.LocalReRealise(instanceULID, a.AppID, a.Version, a.ReRealiseCount+1, a.Reason); perr != nil {
+					return res, fmt.Errorf("appsync: Reconcile: report re-realisation of %s: %w", a.AppID, perr)
+				}
+				res.ReRealised = append(res.ReRealised, a.AppID)
+				if a.Reason != "" {
+					res.ReRealiseReason = a.Reason
+				}
+				res.Installed = append(res.Installed, a.AppID)
 				continue
 			}
 			if perr := as.LocalInstall(instanceULID, a.AppID, a.Version); perr != nil {
@@ -2087,6 +2545,29 @@ func RegisterAppSyncHandlers(mux *http.ServeMux, as *AppSync) {
 
 		w.Header().Set("Content-Type", "application/json")
 		if encErr := json.NewEncoder(w).Encode(apps); encErr != nil {
+			return
+		}
+	})
+
+	// SYNC-APPS-02: the operator's view of re-downloading.
+	//
+	// It is served from the REPLICATED rows, so asking any box gives the answer
+	// for every box — which is the only way to get it for the box that needs it
+	// most. A box on volatile storage loses its own database on the reboot that
+	// causes the re-realisation; it can be asked about itself only while it is
+	// up, and what it says then is whatever it recovered from its peers anyway.
+	mux.HandleFunc("GET /api/apps/rerealisations", func(w http.ResponseWriter, r *http.Request) {
+		report, err := as.ReRealisations()
+		if err != nil {
+			log.Printf("[appsync] ReRealisations: %v", err)
+			http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+			return
+		}
+		if report == nil {
+			report = []ReRealisation{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if encErr := json.NewEncoder(w).Encode(report); encErr != nil {
 			return
 		}
 	})

@@ -670,9 +670,16 @@ func TestPlanReconcileComputesTheRightDifferences(t *testing.T) {
 		t.Fatalf("PlanReconcile: %v", err)
 	}
 
+	// SYNC-APPS-02: every action now carries WHY it is in the plan. The cause
+	// strings are transcribed literally rather than taken from the constants
+	// under test — a test that builds its expectation out of the symbol it is
+	// checking proves only that the code agrees with itself. "never-realised" is
+	// the one that matters here: this box has no realisation row for
+	// wanted-missing, so it has genuinely never had it, which is a different
+	// action from re-installing something it had and lost.
 	want := []multiinstance.ReconcileAction{
-		{AppID: "removed-present", Install: false},
-		{AppID: "wanted-missing", Version: "1.0.0", Install: true},
+		{AppID: "removed-present", Install: false, Cause: "undesired"},
+		{AppID: "wanted-missing", Version: "1.0.0", Install: true, Cause: "never-realised"},
 	}
 	if len(plan.Actions) != len(want) {
 		t.Fatalf("plan has %d action(s), want %d: %+v", len(plan.Actions), len(want), plan.Actions)
