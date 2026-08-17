@@ -36,7 +36,13 @@ import './mobile.css'
 // a 64px mark plus a two-line label legible at 390px), 6 once there is tablet
 // room. Not user-configurable yet; the mobile dock profile spec in
 // roadmap/MOBILE-SHELL.md §2 is where per-device customisation lands.
-const HOME_GRID = 'grid grid-cols-4 sm:grid-cols-6 gap-x-2 gap-y-5'
+//
+// The breakpoint is a CONTAINER query on the scroller (mobile/mobile.css), not
+// the `sm:` viewport query it replaces: the scroller carries `safe-px-4`, so on
+// a device with a landscape display cutout the grid is narrower than the
+// viewport and a viewport query would promote it to six columns on the strength
+// of width it does not have.
+const HOME_GRID = 'vmob-home-grid'
 
 // Apps that lead. Ordered by what a phone actually gets used for, then the
 // registry's own order fills the rest — so the grid is never just alphabetical,
@@ -109,7 +115,7 @@ export default function MobileHome({ assistant = true }: MobileHomeProps = {}) {
 
   return (
     <div data-mobile-home="apps" className="absolute inset-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] safe-px-4 pt-3 pb-4">
+      <div className="vmob-home-scroll flex-1 min-h-0 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] safe-px-4 pt-3 pb-4">
         <div className={HOME_GRID}>
           {apps.map(app => (
             <button
@@ -123,7 +129,15 @@ export default function MobileHome({ assistant = true }: MobileHomeProps = {}) {
               className="vmob-tile touch-target flex flex-col items-center gap-1.5 select-none"
             >
               <span className="vmob-tile-art"><AppIconTile id={app.id} size={56} /></span>
-              <span className="w-full text-[11px] leading-[1.25] font-medium text-center text-[color:var(--text-secondary)] line-clamp-2">
+              {/* 12px, not 11. The home grid is the OS's first screen and it
+                  drew every app name at 11px on EVERY width — measured 35 sub-
+                  floor text nodes at 320, 360, 390, 430, in both orientations
+                  and on all three tablets, i.e. the type floor was missed
+                  everywhere rather than at one awkward size. The tile is 66px
+                  wide at 320px and `line-clamp-2` already handles a long name,
+                  so the extra pixel costs a slightly earlier wrap and nothing
+                  else. See e2e/shell-responsive.e2e.ts for the gate. */}
+              <span className="w-full text-[12px] leading-[1.25] font-medium text-center text-[color:var(--text-secondary)] line-clamp-2">
                 {app.name}
               </span>
             </button>

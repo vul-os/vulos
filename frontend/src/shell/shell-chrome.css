@@ -1030,3 +1030,106 @@
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The DESKTOP canvas on a COARSE pointer.
+
+   roadmap/MOBILE-SHELL.md §6.5 left this open in as many words: TOUCH_STACK_MAX
+   is 1024, so an iPad-class tablet in PORTRAIT gets the touch shell and the same
+   tablet in LANDSCAPE (1194×834, 1366×1024) gets DesktopCanvas — "including its
+   12 px window controls. That is a deliberate line, but it is a line, and the
+   canvas's own targets should come up regardless."
+
+   This is that. Everything below is inside `@media (pointer: coarse)`, which is
+   the same instrument core/touch-chrome.css uses and for the same reason: how
+   big a target must be is a property of the INPUT, not of the layout. A
+   touchscreen laptop reports `pointer: fine` (its mouse is primary) and keeps
+   the dense chrome untouched, so nothing on a real desktop moves.
+
+   Note what is NOT here: the menu bar's own affordances. `.vshell-btn` is 28px
+   inside a 32px bar, and the bar's height is hard-coded in THREE places that
+   must agree — `h-8` in shell/TopBar.tsx, `pt-8` in layouts/DesktopCanvas.tsx
+   and `MENU_BAR_H = 32` in shell/windowTiling.ts (the last is what keeps a
+   window from opening underneath the bar). Growing the bar here and not there
+   would put every window 12px under the menu bar on exactly the devices this
+   block is for. It is reported rather than half-done.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* An opt-in 44px floor for a control whose CONTAINER can absorb it. Used rather
+   than index.css's unconditional `.touch-target` because these controls live in
+   desktop chrome that must stay dense under a mouse. */
+@media (pointer: coarse) {
+  .vshell-touch {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* Hover-reveal is not a thing on a finger. A control that is `opacity: 0`
+     until hover is, on touch, an INVISIBLE BUT STILL TAPPABLE target — the
+     defect roadmap/MOBILE-SHELL.md §7.2 recorded in builtin/packages, in the
+     shell's own notification rows. */
+  .vshell-reveal {
+    opacity: 1 !important;
+  }
+
+  /* Window traffic lights: 0.75rem = 12×12 px, measured, on a tablet the user
+     is touching. The BOX grows to 44px while the painted dot only grows to
+     20px — `background-clip: content-box` means the padding is hit area and not
+     paint, so three 44px coloured circles do not appear in the title bar. The
+     title bar has no fixed height (it is `py-2` around its content), so it
+     absorbs this without any other file having to agree. */
+  .vwin-light {
+    width: var(--touch-min, 44px);
+    height: var(--touch-min, 44px);
+    padding: 12px;
+    background-clip: content-box;
+    background-origin: content-box;
+  }
+  /* The state colours are declared with plain `background`, which the
+     shorthand-free rules above do not disturb — but the inset ring is drawn on
+     the border box and would ring the whole 44px square. */
+  .vwin-light {
+    box-shadow: none;
+  }
+  /* And the glyphs come ON. `.vwin-light > svg` is `opacity: 0`, revealed only
+     by `.vwin-lights:hover` — so on a finger the three lights are three
+     identical dots and nothing distinguishes CLOSE from MINIMIZE until you have
+     already pressed one. There is no hover to reveal them with, so on a coarse
+     pointer they are simply drawn. */
+  .vwin-light > svg {
+    width: 11px;
+    height: 11px;
+    opacity: 0.75;
+  }
+  /* The cluster's own gap can shrink now that each target carries its own
+     padding, so the row does not get 96px wider than it was. */
+  .vwin-lights {
+    gap: 0;
+    margin-inline-start: -6px;
+  }
+
+  /* Title-bar chrome buttons (pop-to-native, save-AI-app) — 20px. */
+  .vwin-chrome-btn {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* The pips: mission control's remove-desktop, the widget rail's close. These
+     are absolutely positioned over their own card, so growing them costs no
+     layout anywhere. */
+  .vshell-pip {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* A dock tile's hit area. The PLATE stays whatever size the profile chose —
+     it is decoration and the profile is a user setting — while the button
+     around it clears the floor, which is the same split the phone dock uses
+     (`.vmob-dock-slot` + `.touch-target` in mobile/mobile.css). A `small`
+     profile draws a 36px plate; the target under it is now 44px. */
+  .vshell-dock-item,
+  .vshell-dock-glyph {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+}

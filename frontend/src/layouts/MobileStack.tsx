@@ -203,7 +203,13 @@ export default function MobileStack() {
       {/* Status bar — safe-area padded so it clears a notch. Shows the active
           app's identity while an app is fullscreen, else the shell brand. */}
       <div className="vmob-bar safe-pt safe-px shrink-0">
-        <div className="px-3 h-11 flex items-center justify-between gap-2">
+        {/* The row's horizontal padding and gap live in mobile.css, next to the
+            arithmetic that chose them. Measured on the shipping build: at
+            360×800 the trailing status cluster ran 29px past the right edge and
+            at 320×568 by 69px, with `.vmob-root`'s overflow:hidden swallowing
+            the document scroll so nothing in this suite reported it — the clock
+            was simply painted off the screen. */}
+        <div className="vmob-bar-row h-11 flex items-center justify-between">
           {/* flex-1 on the title button: the trailing status cluster is shrink-0, so
               without it the button sizes to content inside justify-between and is the
               first thing squeezed. At 390px that rendered "Assistant" as "Ass…" —
@@ -213,19 +219,33 @@ export default function MobileStack() {
             <button
               onClick={() => setView('home')}
               aria-label="Back to home"
-              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-3 flex flex-1 items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
+              className="focus-primary -ml-1.5 h-9 pl-1.5 pr-2 flex flex-1 items-center gap-2 rounded-[var(--radius-md)] text-[color:var(--text-secondary)] active:bg-[color:var(--bg-hover)] transition-colors min-w-0"
             >
               <svg viewBox="0 0 16 16" className="w-4 h-4 shrink-0 text-[color:var(--text-tertiary)]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5" /></svg>
-              <AppIcon id={activeWin.appId} size={18} color={undefined} style={undefined} />
+              {/* The app's mark, and the first thing to go on a narrow phone —
+                  it is 26px (icon + gap) of pure redundancy next to the app's
+                  own NAME, and 26px is the difference between the status cluster
+                  fitting on a 360px screen and the clock being painted off it.
+                  Hidden in mobile.css, not here, so the rule sits next to the
+                  arithmetic that explains it. */}
+              <span className="vmob-bar-appicon flex shrink-0">
+                <AppIcon id={activeWin.appId} size={18} color={undefined} style={undefined} />
+              </span>
               <span className="text-[13px] font-semibold tracking-[-0.01em] truncate">{activeWin.title}</span>
             </button>
           ) : (
-            <div className="flex items-center gap-2 pl-1">
+            /* Identity, and it MUST be able to give its width back. It was a
+               fixed ~56px block that could not shrink, so at 360px it held 56px
+               that the status cluster then ran out of the viewport looking for.
+               `min-w-0` + `truncate` makes the wordmark the thing that yields —
+               the accent dot survives to the last pixel, which is the correct
+               order: the dot is the "this is Vulos" cue, the word repeats it. */
+            <div className="flex flex-1 min-w-0 items-center gap-2 pl-1">
               <span className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: 'var(--accent)' }} aria-hidden="true" />
-              <span className="text-[13px] font-semibold tracking-[-0.01em] text-[color:var(--text-secondary)]">vulos</span>
+              <span className="text-[13px] font-semibold tracking-[-0.01em] text-[color:var(--text-secondary)] truncate">vulos</span>
             </div>
           )}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="vmob-bar-status flex items-center shrink-0">
             <TrustBadge compact />
             <LifePulse compact />
           </div>

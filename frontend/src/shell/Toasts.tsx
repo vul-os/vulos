@@ -74,7 +74,12 @@ function ToastCard({ notif, onAction, onDismiss }: { notif: ShellNotification; o
         <button
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="w-4 h-4 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-200 text-[10px] shrink-0"
+          // 16×16 with a 10px glyph, and Toasts IS mounted in MobileStack — so
+          // this was a 16px dismiss button and a sub-floor glyph on a phone
+          // (roadmap/MOBILE-SHELL.md §7.2 listed it and left it). `vshell-touch`
+          // puts the 44px floor under it on a COARSE pointer only, so the dense
+          // desktop toast is unchanged; the glyph goes to the 12px floor on both.
+          className="vshell-touch w-6 h-6 flex items-center justify-center rounded text-neutral-500 hover:text-neutral-200 text-[12px] leading-none shrink-0"
         >✕</button>
       </div>
       {notif.body && <p className="text-xs text-neutral-400 mt-1 line-clamp-2 pl-4">{notif.body}</p>}

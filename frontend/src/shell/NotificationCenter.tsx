@@ -82,8 +82,12 @@ function NC13_BellIcon({ unread, muted }: { unread: number; muted: boolean }) {
       {!muted && unread > 0 && (
         <span
           style={{ background: 'var(--status-danger)' }}
-          className="absolute -top-1 -right-1.5 min-w-[14px] h-3.5 px-0.5 flex items-center justify-center
-          rounded-full text-white text-[9px] font-bold leading-none">
+          // 9px was below every legibility floor this suite enforces, and this
+          // badge is drawn in the PHONE status bar (SystemPulse's compact cluster
+          // is what MobileStack renders) where it is the only thing that says how
+          // many notifications are waiting. 12px with the pill grown to match.
+          className="absolute -top-1 -right-1.5 min-w-[17px] h-[17px] px-1 flex items-center justify-center
+          rounded-full text-white text-[12px] font-bold leading-none">
           {unread > 99 ? '99+' : unread}
         </span>
       )}
@@ -183,7 +187,11 @@ function NC13_Panel({ onClose }: { onClose: () => void }) {
                     <button
                       onClick={() => dismiss(n.id)}
                       aria-label="Dismiss notification"
-                      className="vshell-pip focus-primary opacity-0 group-hover/row:opacity-100 focus:opacity-100 w-5 h-5 flex items-center justify-center rounded transition-all text-[10px] shrink-0 mt-0.5"
+                      // `vshell-reveal` is the hover-reveal, and on a COARSE
+                      // pointer it stops being one: there is no hover on touch,
+                      // so this was a 20px invisible-but-tappable control in a
+                      // panel the phone status bar opens. See shell-chrome.css.
+                      className="vshell-pip vshell-reveal vshell-touch focus-primary w-5 h-5 flex items-center justify-center rounded transition-all text-[12px] leading-none shrink-0 mt-0.5"
                     >
                       ✕
                     </button>

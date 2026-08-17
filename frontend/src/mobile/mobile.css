@@ -35,6 +35,88 @@ html.vmob-active {
   text-size-adjust: 100%;
 }
 
+/* ── The status bar row ─────────────────────────────────────────────────────
+ * MEASURED, on the shipping build, with `.vmob-root`'s overflow:hidden hiding
+ * the evidence from every scrollWidth assertion in the suite — the document
+ * never widened, the clock was simply painted past the right edge of the screen:
+ *
+ *   viewport   identity   status cluster   cluster right edge   painted off
+ *   320×568    56px       317px            389px                 69px
+ *   360×800    56px       317px            389px                 29px
+ *   390×844    56px       317px            389px                  0
+ *
+ * The 44px floor core/touch-chrome.css puts under `.vsp-compact button` is
+ * correct and is not the bug. The bug is that the row spent 56px on a wordmark
+ * and 24px on padding that it could not give back: the identity block had no
+ * `min-w-0` and no truncation, so flexbox would not shrink it below its content.
+ * Both are recoverable, which is what clears 360 — the width most Android
+ * phones actually are — and everything above it.
+ *
+ * WHY NO CONTAINER QUERY HERE. It would be the right instrument if the bar
+ * could ever be narrower than the screen, and it cannot: `.vmob-bar` is a
+ * flex child of `.vmob-root`, which is `fixed inset-0`. What a query WOULD cost
+ * is real — `container-type` implies layout containment, which makes the bar a
+ * stacking context, and SystemPulse's dropdowns are `absolute … z-[100]`
+ * children of it. Capping them at the bar's own stacking level would drop every
+ * status dropdown behind the app frame below. So the row simply gives its space
+ * back at every width instead of at a breakpoint, which is the stronger
+ * property anyway.
+ *
+ * IT DOES NOT CLEAR 320. The cluster's own min-content width is 317px against a
+ * 320px viewport: with the identity collapsed to its 17px dot and the padding
+ * at 8px, the row still needs 342px. That is not a layout problem and the shell
+ * cannot fix it — one control has to stop drawing below 360px, the same way the
+ * battery percentage already stops below 640px (core/SystemPulse.tsx:568). The
+ * clock is the candidate: 56px of text, and the widest single control in the
+ * cluster. Reported rather than patched, because it lives in a file this
+ * workstream does not own and the systemic version is "the compact cluster has
+ * no narrow tier", not "the phone status bar is laid out wrong".
+ */
+.vmob-bar-row {
+  padding-inline: 6px;
+  gap: 6px;
+}
+.vmob-bar-status { gap: 6px; }
+
+/* Below 390px the row has to buy space from somewhere, and the app mark next to
+ * the app NAME is the cheapest 26px in it. A VIEWPORT query rather than a
+ * container query, for the reason given above — `.vmob-bar` is the full width
+ * of a `fixed inset-0` root, and making it a query container would cap
+ * SystemPulse's `z-[100]` dropdowns at the bar's own stacking level. It is
+ * placed AFTER the base rule and at equal specificity, because a media query
+ * adds no specificity of its own and source order is the whole mechanism. */
+@media (max-width: 389px) {
+  .vmob-bar-appicon { display: none; }
+}
+
+/* ── Home app grid ──────────────────────────────────────────────────────────
+ * A CONTAINER query on the grid's own scroller, replacing `sm:grid-cols-6` —
+ * a 640px VIEWPORT query — in mobile/MobileHome.tsx.
+ *
+ * The two disagree wherever the surface is narrower than the screen, and on a
+ * phone that is not hypothetical: the scroller carries `safe-px-4`, so on a
+ * landscape device with a display cutout `--safe-left`/`--safe-right` take real
+ * width out of the grid while `sm:` keeps reading the untouched viewport. The
+ * grid would go to six columns on the strength of space it does not have. Every
+ * width in this file's sweep resolves `env(safe-area-inset-*)` to 0, so that
+ * case is REASONED not measured (there is no notched device here) — which is
+ * exactly the kind of thing that should be expressed as a rule about the
+ * element's own box rather than left to a media query to get right by luck.
+ *
+ * The breakpoints are the same numbers `sm:` used, in container terms, so the
+ * rendered column count at every width in the sweep is unchanged.
+ */
+.vmob-home-scroll { container-type: inline-size; }
+.vmob-home-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 0.5rem;
+  row-gap: 1.25rem;
+}
+@container (min-width: 608px) {
+  .vmob-home-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
 /* ── App switcher card ──────────────────────────────────────────────────────
  * Cards drag UPWARD to dismiss (the phone-recents idiom). The drag is driven by
  * pointer events on the card body, well away from every screen edge the Android
