@@ -21,15 +21,21 @@ Read it like this:
 > pure-Go app-registry CRDT) versus the forward plan (a shared DMTAP-substrate
 > Sync spec, relay as WAN rendezvous — not yet built).
 >
-> **New design track (planned, not yet built): image-based OS distribution.**
+> **Design track: image-based OS distribution — status is now mixed, not uniformly planned.**
 > Seven new design docs lock in the shift from flash-and-SSH to a signed,
 > immutable, A/B-updated OS pulled from a public bucket, netbooted and installed,
 > with a leaderless multi-instance data layer: **OS-DISTRIBUTION.md**,
 > **SEED-TRUST.md**, **NETBOOT.md**, **SIGNING.md**, **COORDINATION.md**,
-> **SYNC.md**, **CONCURRENCY.md**, plus the extracted **APP-MANIFEST.md**. Their
-> work is tracked in GitHub Issues. Cloud/control-plane features are developed in a separate (non-public)
-> repository and are out of scope for this roadmap — the OSS side works
-> correctly without any external control plane.
+> **SYNC.md**, **CONCURRENCY.md**, plus the extracted **APP-MANIFEST.md**. **Three
+> of the seven have since shipped real, wired code** — OS-DISTRIBUTION.md (A/B
+> slots + `osdist` service), SIGNING.md (dm-verity + Ed25519 PKI), and SYNC.md (a
+> LAN-only, four-domain CRDT engine, narrower than the doc's own full scope but
+> real). The table below was corrected to match each doc's own Status line
+> instead of restating this paragraph's old blanket "planned." SEED-TRUST.md,
+> NETBOOT.md, COORDINATION.md and CONCURRENCY.md remain design-only. Their open
+> work is tracked in GitHub Issues. Cloud/control-plane features are developed in
+> a separate (non-public) repository and are out of scope for this roadmap — the
+> OSS side works correctly without any external control plane.
 
 ## Areas
 
@@ -54,18 +60,18 @@ Read it like this:
 | Other | [`OTHER.md`](OTHER.md) | Catch-all: theming, i18n, accessibility — small items that don't deserve their own file yet | shipped |
 | Display stack (X11 vs Wayland) | [`DISPLAY-STACK.md`](DISPLAY-STACK.md) | Investigation into consolidating the container image's Xvfb/X11 stack and the bare-metal OS's cage/labwc Wayland stack; measured image-size and CVE evidence, no code changed | investigation complete, decision not yet executed |
 
-### Image-based OS distribution & multi-instance data (planned)
+### Image-based OS distribution & multi-instance data (mixed — three shipped, four design-only)
 
-The OS distribution model is moving from "flash a disk, patch over SSH" to "pull a signed immutable image from a public bucket, verify it, A/B-update it." These docs are designs; open work is tracked in [GitHub Issues](https://github.com/vul-os/vulos/issues).
+The OS distribution model is moving from "flash a disk, patch over SSH" to "pull a signed immutable image from a public bucket, verify it, A/B-update it." **This section previously marked all seven docs "planned" — three had already shipped real code and the table just hadn't been updated to say so.** Status below is copied from each doc's own Status line, not re-derived; open work is tracked in [GitHub Issues](https://github.com/vul-os/vulos/issues).
 
 | Area | File | What it's about | Status |
 |---|---|---|---|
-| OS distribution & updates | [`OS-DISTRIBUTION.md`](OS-DISTRIBUTION.md) | Signed immutable squashfs in a public bucket, `stable.json` manifest, A/B slots, boot-counter auto-rollback | planned |
+| OS distribution & updates | [`OS-DISTRIBUTION.md`](OS-DISTRIBUTION.md) | Signed immutable squashfs in a public bucket, `stable.json` manifest, A/B slots, boot-counter auto-rollback | shipped — A/B slots, `stable.json`, and the `osdist` service (`backend/services/osdist/`) are implemented and wired |
 | Local seed & trust anchor | [`SEED-TRUST.md`](SEED-TRUST.md) | The irreducible flashed seed (bootloader + initramfs + baked key + soft bucket URL); forkability | planned |
-| Netboot & first boot | [`NETBOOT.md`](NETBOOT.md) | UEFI HTTP Boot / ~1 MB iPXE stick → live-RAM "Try Vulos" → netboot-to-install; TLS+signing two-layer safety | planned |
-| Signing, verity & key rotation | [`SIGNING.md`](SIGNING.md) | dm-verity, per-stage boot-chain verification, offline root-signs-intermediate PKI, monotonic min-epoch revocation | planned |
+| Netboot & first boot | [`NETBOOT.md`](NETBOOT.md) | UEFI HTTP Boot / ~1 MB iPXE stick → live-RAM "Try Vulos" → netboot-to-install; TLS+signing two-layer safety | planned — the underlying `--live` squashfs path and installer already exist; HTTP-Boot/iPXE chainloading itself is not built |
+| Signing, verity & key rotation | [`SIGNING.md`](SIGNING.md) | dm-verity, per-stage boot-chain verification, offline root-signs-intermediate PKI, monotonic min-epoch revocation | shipped — Ed25519 PKI, `imgverify`, `scripts/verity/gen-verity.sh`, and the rollback guard are implemented; runtime dm-verity activation is wired but not yet smoke-tested on bare metal (see the doc's own caveat) |
 | Coordination primitives | [`COORDINATION.md`](COORDINATION.md) | Bucket-backed leases with fencing tokens (`If-Match` CAS); run-leases, singleton jobs, snapshot ownership | planned |
-| Multi-instance data sync | [`SYNC.md`](SYNC.md) | Two-tier sync (instance↔instance hot path + durable bucket cold path) + snapshot/compaction | planned |
+| Multi-instance data sync | [`SYNC.md`](SYNC.md) | Two-tier sync (instance↔instance hot path + durable bucket cold path) + snapshot/compaction | partially shipped — a real, wired, pure-Go leaderless CRDT engine exists (`backend/internal/crdtsync/`) for four domains, LAN-only; the bucket cold path and a WAN path are not built. See the doc's own scope line before treating this as done |
 | Concurrency model | [`CONCURRENCY.md`](CONCURRENCY.md) | Per-data-type conflict policy + manifest-declared singleton/replicated/collaborative; live collaboration | planned |
 | App manifest | [`APP-MANIFEST.md`](APP-MANIFEST.md) | The `app.json` contract: identity, command, permissions, `visibility`, the new `concurrency` field | shipped + extending |
 
