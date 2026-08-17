@@ -45,28 +45,90 @@ function walk(dir: string, exts: string[], out: string[] = []): string[] {
 }
 
 /**
+ * routePathConstants maps every Go identifier that is declared equal to a
+ * literal `/api/...` string to that string — `const rootCertDownloadPath =
+ * "/api/lan/rootcert/download"`, `const PeerServePath = "/api/files/peer/serve"`
+ * and friends. Package-qualified uses (`files.PeerServePath`) are resolved on
+ * the bare identifier, which is safe here because these names are unique
+ * across the backend and because a wrong answer can only ADD a route the box
+ * genuinely serves somewhere.
+ *
+ * This exists because the mux is not always handed a literal. Nine routes are
+ * registered as `mux.HandleFunc("GET "+SomePath, …)`, and a literals-only
+ * parser cannot see any of them — which makes this suite report a frontend
+ * call to a route the box DOES serve as a missing route. That is a false
+ * alarm, and a false alarm in a contract test is not harmless: the next person
+ * to hit one reaches for the exemption list.
+ */
+function routePathConstants(files: string[]): Map<string, string> {
+  const consts = new Map<string, string>()
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8')
+    // Covers both `const Name = "/api/…"` and a name inside a `const ( … )`
+    // block, where the `const` keyword is on its own line.
+    for (const m of src.matchAll(/(?:^|\n)\s*(?:const\s+)?([A-Za-z_]\w*)\s*(?::?=)\s*"(\/[^"]*)"/g)) {
+      consts.set(m[1], m[2])
+    }
+  }
+  return consts
+}
+
+/**
  * backendRoutes parses every /api/ pattern the Go server registers on a mux
- * (`mux.HandleFunc("GET /api/instances/{ulid}/status", …)`). Test files are
- * excluded: a route that exists only in a Go test does not serve a browser.
+ * (`mux.HandleFunc("GET /api/instances/{ulid}/status", …)`), including the
+ * ones assembled from a constant (`mux.HandleFunc("GET "+rootCertDownloadPath,
+ * …)`). Test files are excluded: a route that exists only in a Go test does
+ * not serve a browser.
  *
  * The terminal "/api/" fallback is excluded too — it is the 404/405 handler
  * itself, and treating it as a route would match every path and defeat the
  * whole check.
  */
-function backendRoutes(): string[] {
+function backendGoFiles(): string[] {
+  return walk(join(REPO, 'backend'), ['.go']).filter(f => !f.endsWith('_test.go'))
+}
+
+function keepApiPath(path: string, into: Set<string>): void {
+  if (!path.startsWith('/api/') || path === '/api/') return
+  into.add(path)
+}
+
+/** Routes handed to the mux as a string literal. */
+function literalRoutes(files: string[]): string[] {
   const routes = new Set<string>()
-  for (const file of walk(join(REPO, 'backend'), ['.go'])) {
-    if (file.endsWith('_test.go')) continue
+  for (const file of files) {
     const src = readFileSync(file, 'utf8')
-    const re = /(?:HandleFunc|Handle)\(\s*"((?:[A-Z]+ )?\/api\/[^"]*)"/g
-    for (const m of src.matchAll(re)) {
+    for (const m of src.matchAll(/(?:HandleFunc|Handle)\(\s*"((?:[A-Z]+ )?\/api\/[^"]*)"/g)) {
       const pattern = m[1]
-      const path = pattern.includes(' ') ? pattern.split(' ')[1] : pattern
-      if (path === '/api/') continue
-      routes.add(path)
+      keepApiPath(pattern.includes(' ') ? pattern.split(' ')[1] : pattern, routes)
     }
   }
   return [...routes]
+}
+
+/**
+ * Routes handed to the mux via a constant: `"GET "+Ident`, `"GET "+pkg.Ident`,
+ * or a bare `Ident`, optionally with a literal tail (`+"{id}/"`).
+ */
+function constRegisteredRoutes(files: string[]): string[] {
+  const consts = routePathConstants(files)
+  const routes = new Set<string>()
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8')
+    for (const m of src.matchAll(
+      /(?:HandleFunc|Handle)\(\s*(?:"[A-Z]+ "\s*\+\s*)?(?:\w+\.)?([A-Za-z_]\w*)\s*(?:\+\s*"([^"]*)")?\s*,/g,
+    )) {
+      const base = consts.get(m[1])
+      if (base === undefined) continue
+      keepApiPath(base + (m[2] ?? ''), routes)
+    }
+  }
+  return [...routes]
+}
+
+function backendRoutes(): string[] {
+  const files = backendGoFiles()
+  return [...new Set([...literalRoutes(files), ...constRegisteredRoutes(files)])]
 }
 
 /**
@@ -151,6 +213,26 @@ describe('frontend → box API contract', () => {
     // every assertion below vacuously pass.
     expect(backendRoutes().length).toBeGreaterThan(100)
     expect(frontendPaths().size).toBeGreaterThan(50)
+  })
+
+  it('sees routes the mux is handed as a CONSTANT, not only as a literal', () => {
+    // A literals-only parser cannot see `mux.HandleFunc("GET "+rootCertDownloadPath, …)`
+    // and so reports the frontend's link to it as a call the box does not
+    // serve. That was a live false alarm: Settings' LAN root-certificate panel
+    // linked at /api/lan/rootcert/download, which lan_rootcert.go has
+    // registered all along.
+    //
+    // Guard the guard: if routePathConstants stops resolving identifiers this
+    // returns [], the union silently degrades to the old literals-only answer,
+    // and the false alarm comes back. Pinned to a count so it cannot go quiet,
+    // and to the one path that produced the alarm so it cannot go wrong.
+    const constBuilt = constRegisteredRoutes(backendGoFiles())
+    expect(constBuilt.length, 'routes registered via a Go string constant').toBeGreaterThanOrEqual(8)
+    expect(constBuilt).toContain('/api/lan/rootcert/download')
+
+    // And they must reach the answer the contract check actually consults.
+    const routes = new Set(backendRoutes())
+    expect(constBuilt.filter(p => !routes.has(p)), 'const-built routes missing from backendRoutes()').toEqual([])
   })
 
   it('calls no /api/ route the box does not register', () => {

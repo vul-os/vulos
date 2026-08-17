@@ -45,6 +45,20 @@ vi.mock('../core/settings/DataExportPanel.jsx', () => ({ default: () => null }))
 import Settings from '../core/Settings'
 
 /**
+ * The reply GET /api/bluetooth/status actually gives.
+ *
+ * The box serves `bluetooth.Status` (backend/services/bluetooth/bluetooth.go),
+ * a struct whose `powered` field is a plain bool and is therefore ALWAYS on the
+ * wire. `{}` is not a shape this route can produce, and standing one in matters
+ * because the Bluetooth panel now distinguishes "the radio is off" from "the
+ * box has not said" and DISABLES the switch for the second — a radio whose
+ * state is unknown is not a radio you can be asked to toggle. A `{}` fixture
+ * put the panel in that unknown state, so the click under test never reached
+ * the write at all and the reported failure was the fixture's, not the code's.
+ */
+const BT_STATUS_OK = { powered: false, discoverable: false, discovering: false, name: 'box', address: 'AA:BB:CC:DD:EE:FF', devices: [] }
+
+/**
  * A backend where the listed paths fail with a 500 carrying a JSON error body —
  * the exact shape that made these bugs invisible — and everything else is a
  * bland 200. `seen` records the writes so a test can also assert one happened.
@@ -59,6 +73,9 @@ function backend(failing: string[], status = 500) {
         status,
         json: () => Promise.resolve({ error: 'bluetoothd is not running' }),
       })
+    }
+    if (url.includes('/api/bluetooth/status')) {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(BT_STATUS_OK) })
     }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
   })
@@ -128,10 +145,30 @@ describe('WiFi — a failing box is not a router problem', () => {
 
 describe('Bluetooth — six writes that never checked their response', () => {
   it('a failed radio power-on is reported, not swallowed', async () => {
-    backend(['/api/bluetooth/power'])
+    const { seen } = backend(['/api/bluetooth/power'])
     const user = await openSection('Bluetooth')
     await user.click(await screen.findByRole('switch', { name: 'Bluetooth' }))
+    // The write must genuinely have been attempted. Without this, a switch
+    // that is inert for any reason (disabled, unwired) would leave the alert
+    // assertion below to be satisfied by some other failure on the panel.
+    expect(seen).toContain('POST /api/bluetooth/power')
     expect(await screen.findByRole('alert')).toHaveTextContent(/bluetoothd is not running/)
+  })
+
+  // The complement of the fixture note above, and the reason these tests can
+  // no longer be satisfied by a `{}` status: when the box has NOT said whether
+  // the radio is on, the panel must not offer a toggle whose position would be
+  // a guess. Without this, `disabled={powered === undefined}` could be deleted
+  // and every other test here would stay green.
+  it('a radio whose state the box never reported is shown as unknown, not as Off', async () => {
+    backend(['/api/bluetooth/status'])
+    await openSection('Bluetooth')
+    const toggle = await screen.findByRole('switch', { name: 'Bluetooth' })
+    expect(toggle).toBeDisabled()
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    // ...and it must not be drawn as a confident "Off" pill either.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/bluetoothd is not running/)
+    expect(screen.queryByText('Off')).not.toBeInTheDocument()
   })
 
   it('a failed pair is reported, not swallowed', async () => {
@@ -230,6 +267,9 @@ describe('a 200 carrying an error body is a failure, not a success', () => {
       if (url.includes('/api/bluetooth/power')) {
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ error: 'no adapter present' }) })
       }
+      if (url.includes('/api/bluetooth/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(BT_STATUS_OK) })
+      }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))
     const user = await openSection('Bluetooth')
@@ -251,6 +291,9 @@ describe('a 200 carrying an error body is a failure, not a success', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url.includes('/api/bluetooth/power')) {
         return Promise.resolve({ ok: false, status: 502, json: () => Promise.reject(new Error('not JSON')) })
+      }
+      if (url.includes('/api/bluetooth/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(BT_STATUS_OK) })
       }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })
     }))

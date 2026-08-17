@@ -14,8 +14,17 @@ import userEvent from '@testing-library/user-event'
 
 // Desktop layout (static rail, not the mobile drawer).
 vi.mock('../../shell/useViewport', () => ({ useViewport: () => 'desktop' }))
+
+// updateProfile's REAL contract (AuthProvider.tsx) is
+// `Promise<'ok' | 'rejected' | 'unreachable'>` — it never throws, and Account's
+// Save reads that word to decide between "Saved" and an error banner. A bare
+// `vi.fn()` resolves to `undefined`, i.e. a fourth outcome the real provider
+// cannot produce, so it exercised neither branch. `profileOutcome` lets a test
+// choose which of the three real answers the box gives.
+let profileOutcome: 'ok' | 'rejected' | 'unreachable' = 'ok'
+const updateProfile = vi.fn(async () => profileOutcome)
 vi.mock('../../auth/AuthProvider', () => ({
-  useAuth: () => ({ profile: { display_name: 'Ada', role: 'user' }, updateProfile: vi.fn(), logout: vi.fn() }),
+  useAuth: () => ({ profile: { display_name: 'Ada', role: 'user' }, updateProfile, logout: vi.fn() }),
 }))
 vi.mock('../../core/ThemeProvider', () => ({ useTheme: () => ({}), DEFAULT_ACCENT: '#3b82f6' }))
 vi.mock('../../core/useWallpaper.jsx', () => ({ useWallpaper: () => ({ wallpaper: null, setWallpaper: vi.fn() }), DEFAULT_WALLPAPER: '' }))
@@ -26,7 +35,7 @@ vi.mock('../../core/settings/DataExportPanel.jsx', () => ({ default: () => null 
 import Settings from '../../core/Settings'
 import { getPrefs, __resetForTests } from '../../core/notificationStore'
 
-beforeEach(() => { __resetForTests() })
+beforeEach(() => { __resetForTests(); profileOutcome = 'ok'; updateProfile.mockClear() })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('Settings — navigation + notification prefs (integration)', () => {
@@ -70,14 +79,39 @@ describe('Settings — navigation + notification prefs (integration)', () => {
 // Profiles PIN setter had no failure path).
 describe('Settings — save/empty-state feedback (integration)', () => {
   it('Account: Save shows Saving… then Saved', async () => {
+    profileOutcome = 'ok'
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })))
     const user = userEvent.setup()
     render(<Settings />)
     await user.click(screen.getByRole('button', { name: 'Account' }))
     const save = await screen.findByRole('button', { name: /^Save$/ })
     await user.click(save)
+    expect(updateProfile).toHaveBeenCalled()
     expect(await screen.findByRole('button', { name: 'Saved' })).toBeInTheDocument()
   })
+
+  // The other half of the same seam, and the reason the success case must NOT
+  // be satisfied by a mock that resolves to anything at all: `updateProfile`
+  // never throws, so before Account read its return value every one of the
+  // three outcomes flashed "Saved". Asserting only the happy path leaves that
+  // exact defect re-introducible — deleting the `outcome === 'ok'` check would
+  // keep the test above green.
+  it.each(['rejected', 'unreachable'] as const)(
+    'Account: a %s write says so and never says Saved',
+    async (outcome) => {
+      profileOutcome = outcome
+      vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })))
+      const user = userEvent.setup()
+      render(<Settings />)
+      await user.click(screen.getByRole('button', { name: 'Account' }))
+      await user.click(await screen.findByRole('button', { name: /^Save$/ }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        outcome === 'rejected' ? /refused these details/i : /could not be reached/i,
+      )
+      expect(screen.queryByRole('button', { name: 'Saved' })).toBeNull()
+    },
+  )
 
   it('WiFi: scanning to zero results shows an empty state, not silence', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
