@@ -78,6 +78,16 @@ type PullerConfig struct {
 	CertPath string
 	KeyPath  string
 
+	// RootPath is where the CA ROOT certificate is stored when the issuer sends
+	// one (ROOTDIST-01). Defaults to [DefaultRootPath].
+	//
+	// The root is what an OWNER installs on a phone or laptop to get a padlock;
+	// the leaf above is what the box serves. Before this the box held only the
+	// leaf, so the one machine every device on the LAN can reach had no copy of
+	// the one file a human has to move. It is public certificate material — no
+	// key, and lanca.CheckNotOnBox still refuses the CA private key on box paths.
+	RootPath string
+
 	// InitialBackoff is the first sleep between cert-endpoint polls while the
 	// cloud returns 202 (issuance in progress). Defaults to 2s.
 	InitialBackoff time.Duration
@@ -187,6 +197,9 @@ func NewLANCertPuller(cfg PullerConfig) (*LANCertPuller, error) {
 	}
 	if cfg.KeyPath == "" {
 		cfg.KeyPath = DefaultKeyPath
+	}
+	if cfg.RootPath == "" {
+		cfg.RootPath = DefaultRootPath
 	}
 	if cfg.InitialBackoff <= 0 {
 		cfg.InitialBackoff = 2 * time.Second
@@ -344,10 +357,16 @@ func decodeSPKIPins(pins []string) (map[[32]byte]struct{}, error) {
 
 // certResponse mirrors the JSON body returned by GET /api/lancert/cert on 200.
 type certResponse struct {
-	BoxID    string `json:"box_id"`
-	FQDN     string `json:"fqdn"`
-	CertPEM  string `json:"cert_pem"`
-	KeyPEM   string `json:"key_pem"`
+	BoxID   string `json:"box_id"`
+	FQDN    string `json:"fqdn"`
+	CertPEM string `json:"cert_pem"`
+	KeyPEM  string `json:"key_pem"`
+	// RootPEM is the CA ROOT certificate (ROOTDIST-01). Optional on the wire —
+	// an issuer that predates this field simply does not send it, and the box
+	// installs the leaf as before and reports honestly that it has no root to
+	// hand out. It is `root_pem` rather than `ca_pem` to match the file the
+	// operator tool prints (`vulos-lanca root`).
+	RootPEM  string `json:"root_pem"`
 	NotAfter string `json:"not_after"`
 }
 
@@ -474,6 +493,13 @@ func (p *LANCertPuller) fetchOnce(ctx context.Context) error {
 				}
 				log.Printf("[lancert-puller] installed cert for %s (not_after=%s) at %s",
 					cr.FQDN, cr.NotAfter, p.cfg.CertPath)
+				// The root is installed AFTER the leaf and never fails the pull.
+				// Order matters: the leaf is what makes the box serve TLS at all,
+				// the root only makes a browser like it. A rejected root (see
+				// installRoot's vetting) must leave the box exactly as it was —
+				// serving its leaf, or falling back to self-signed — rather than
+				// throwing away a good certificate over a bad CA file.
+				p.installRoot(cr)
 				return nil
 			case http.StatusAccepted:
 				// Issuance still in progress. Drain + backoff.
@@ -494,6 +520,58 @@ func (p *LANCertPuller) fetchOnce(ctx context.Context) error {
 		backoff *= 2
 		if backoff > p.cfg.MaxBackoff {
 			backoff = p.cfg.MaxBackoff
+		}
+	}
+}
+
+// installRoot stores the CA root certificate the issuer sent, if it sent one
+// (ROOTDIST-01).
+//
+// It is best-effort by design and returns nothing: every failure path here
+// leaves the box with a working leaf and an owner who is told, on the Settings
+// surface, that there is no root to install. That is a strictly better outcome
+// than either of the alternatives — refusing the leaf over a bad root, or
+// handing a device a CA the box could not vouch for.
+//
+// The leaf is re-parsed from the response rather than read back off disk so the
+// chain check is against the certificate this pull actually installed, not
+// against whatever a concurrent writer may have left at CertPath.
+func (p *LANCertPuller) installRoot(cr certResponse) {
+	if strings.TrimSpace(cr.RootPEM) == "" {
+		// Not an error. An issuer that predates ROOTDIST-01 sends no root, and
+		// an operator who distributes it by hand does not need the box to.
+		log.Printf("[lancert-puller] the issuer sent no root_pem — this box has no CA root to hand to browsers. "+
+			"Settings will say so. Copy the operator machine's `vulos-lanca root` output to %s to fix it by hand.", p.cfg.RootPath)
+		return
+	}
+
+	leaf, err := firstCertFromPEM([]byte(cr.CertPEM))
+	if err != nil {
+		log.Printf("[lancert-puller] could not parse the issued leaf to check the root against it (%v) — NOT installing the root", err)
+		return
+	}
+
+	info, err := InstallRootPEM(p.cfg.RootPath, []byte(cr.RootPEM), leaf)
+	if err != nil {
+		log.Printf("[lancert-puller] NOT installing the CA root: %v", err)
+		return
+	}
+	log.Printf("[lancert-puller] installed CA root %q at %s (sha256 %s, permitted DNS %v, permitted IP %v) — owners can now download it from Settings",
+		info.Subject, p.cfg.RootPath, info.SHA256Hex, info.PermittedDNS, info.PermittedIP)
+}
+
+// firstCertFromPEM returns the first CERTIFICATE block in a PEM bundle, which
+// for a leaf-plus-chain response is the leaf.
+func firstCertFromPEM(pemBytes []byte) (*x509.Certificate, error) {
+	rest := pemBytes
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, errors.New("no PEM CERTIFICATE block")
+		}
+		if block.Type == "CERTIFICATE" {
+			return x509.ParseCertificate(block.Bytes)
 		}
 	}
 }

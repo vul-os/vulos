@@ -1091,6 +1091,12 @@ func main() {
 	// NOT in auth's publicPaths.
 	registerLANPairingRoutes(mux, cfg, lanPairingCertSource(cfg.InstanceID))
 
+	// ROOTDIST-01: hand the LAN CA root certificate to a browser, so an owner
+	// can install it on a phone/laptop and get a padlock on the box's LAN
+	// address. Session-gated for the same reason as the pairing route above —
+	// see registerLANRootCertRoutes.
+	registerLANRootCertRoutes(mux)
+
 	// TOTP vault routes (/api/auth/totp/*)
 	totpHandler := authvault.NewHandler()
 	totpHandler.RegisterHandlers(mux)
