@@ -19,8 +19,14 @@ Go webapp for SMS and voice calls on Linux, with remote streaming support via th
 > can't hang the box. **Voice is best-effort** (place/hangup/answer
 > via mmcli `--voice-*`, which many data/SMS-only USB modems don't support; the UI
 > degrades gracefully) and there is **no persistent call log** (ModemManager keeps
-> none). **eSIM/lpac is NOT built.** The `phone` app UI is complete and now has a
-> live backend. Outstanding: voice reliability, a self-maintained call log, eSIM,
+> none). That clause is still exact, but the outstanding list below it had gone
+> stale: a **self-maintained call log DOES exist** — `telephony.recordCall` /
+> `CallLog()`, with tests — but it is `clog`, an in-memory slice on the service
+> struct bounded by `maxCallLog`, written to no file and no store. **It is lost on
+> every restart.** So "no persistent call log" stands unchanged, and Recents shows
+> calls since the box last booted and nothing older. **eSIM/lpac is NOT built.**
+> The `phone` app UI is complete and now has a live backend. Outstanding: voice
+> reliability, **persisting** the call log (building one is done), eSIM,
 > responsive shell polish (MOBILE-06).
 
 ---
