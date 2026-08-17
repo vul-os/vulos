@@ -8,12 +8,14 @@ If you use the native client, you do not need any of this. The native client
 pins your box's key at pairing and is unaffected by everything below. This page
 is for browsers.
 
-**Status: partly built.** The certificate authority and the operator tool
-(`vulos-lanca`) are implemented and tested. The box-side pieces — serving the
-CA-issued certificate, and the Settings panel that hands you the root — are
-**not implemented yet**. The install instructions below are written from vendor
-documentation and have **not been performed on a real Android or iOS device**.
-See [decisions.md D101](decisions.md#d101-2026-08-17--a-name-constrained-private-root-for-the-browser-surface-d96-ds-pinning-stands-for-native-clients).
+**Status: built, and unmeasured on phones.** The certificate authority, the
+operator tool (`vulos-lanca`), the box-side certificate selection, and the
+Settings panel that hands you the root are all implemented and tested. What is
+**not** done is a measurement: the install instructions below are transcribed
+from vendor documentation and have **not been performed on a real Android or
+iOS device** by anyone on this project. Chrome, Firefox, Android and iOS are
+also absent from the name-constraint enforcement table further down. See
+[decisions.md D101](decisions.md#d101-2026-08-17--a-name-constrained-private-root-for-the-browser-surface-d96-ds-pinning-stands-for-native-clients).
 
 ---
 
@@ -162,11 +164,32 @@ existing key to `/var/lib/vulos/tls/lan.key` (they must be the same key pair).
 `LoadCertSource` watches those paths and picks up a new certificate on the next
 connection, with no restart.
 
-> **Not implemented yet:** the box does not currently choose between the
-> CA-issued certificate and the self-signed one per connection. Until it does, a
-> device *without* your root installed will see a name-mismatch or unknown-issuer
-> error against the CA-issued certificate rather than the friendlier self-signed
-> one. Track this in [decisions.md D101-E](decisions.md#d101-2026-08-17--a-name-constrained-private-root-for-the-browser-surface-d96-ds-pinning-stands-for-native-clients).
+**Also copy the root itself to the box**, at
+`/var/lib/vulos/tls/lan-root.crt`:
+
+```
+vulos-lanca root > /tmp/vulos-root.crt   # on your computer
+# then get that file to the box at /var/lib/vulos/tls/lan-root.crt
+```
+
+That is the file the box hands out under **Settings → Network → Browser
+Trust**, so every device in the house can fetch it instead of you carrying it
+to each one. It is the certificate only — no key, and the tool refuses to write
+the key to a box path.
+
+The box checks it before offering it to anyone. Two things it will refuse: a
+file that is not a certificate authority (a leaf copied here by mistake — it
+installs cleanly on a device and validates nothing), and a CA that carries **no
+name constraints**, which would give every device you installed it on authority
+over any name on earth. Both refusals appear in the panel with the reason.
+
+The box chooses between the CA-issued certificate and the self-signed one per
+connection: the CA leaf is served when it is currently valid and covers the
+name the browser asked for, and the self-signed one is served otherwise. A
+device *without* your root installed still gets exactly the one click it would
+have had — never a hard failure. The box cannot tell which devices have your
+root, because the TLS handshake carries no such signal, and it does not need
+to.
 
 Some names cannot be covered, and the tool tells you which:
 
@@ -183,10 +206,35 @@ padlock.
 
 ## Installing the root on each device
 
-You will need to get `vulos-root.crt` onto each device. Chicken-and-egg
-warning: if you download it *from the box*, that first connection is the one
-you have not yet secured — so do it on a network you trust, or copy the file
-across by USB/AirDrop/email instead.
+The box will hand you the file: **Settings → Network → Browser Trust**. That
+page shows the root's SHA-256 fingerprint, a download button, and a QR code
+pointing a phone at the same download (by the box's IP address, not
+`vulos.local`, because a phone that cannot resolve `.local` is exactly the case
+this whole thing exists for). It carries the per-OS steps below as well, so you
+do not have to read this file on a phone.
+
+**Chicken-and-egg, stated plainly: that first download is not authenticated.**
+You are fetching the root over a connection your device does not trust yet —
+that is the situation by definition, and the box cannot fix it from its end. A
+network attacker could serve you a different authority.
+
+What makes it acceptable is that the root is a *public* certificate whose
+fingerprint you can check somewhere else. Before you install it, compare the
+SHA-256 the panel shows against the machine that actually holds the CA:
+
+```
+vulos-lanca inspect ~/.vulos-lanca/root.crt
+openssl x509 -in ~/.vulos-lanca/root.crt -noout -fingerprint -sha256
+```
+
+This is the same check `vulos -print-pairing` asks you to make of the box's key
+fingerprint, for the same reason: a first-contact decision that becomes
+permanent is the one worth verifying. If you would rather not rely on it at
+all, copy the file across by USB, AirDrop or email instead — it contains no
+secret and travels fine.
+
+**Everything below is transcribed from vendor documentation.** Nobody on this
+project has performed any of it on a device.
 
 ### Windows
 
