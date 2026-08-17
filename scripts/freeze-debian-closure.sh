@@ -262,32 +262,57 @@ mkdir -p /dl && cd /dl
 python3 - <<'PY'
 # Download from the URL THAT GOES IN THE MANIFEST, and hash those bytes.
 # Never the live URL, never apt's MD5, never a value anybody typed.
-import json,subprocess,hashlib,os,sys
+import json,subprocess,hashlib,os,sys,time
+from concurrent.futures import ThreadPoolExecutor
 plan=json.load(open('/plan.json'))
 res=[];bad=[]
-for i,o in enumerate(plan):
+
+# Fetch in PARALLEL. A sequential loop over a 350-package closure is not merely
+# slow, it is unusable: the same closure took over 40 minutes one file at a time
+# and about 5 minutes at -P 12 (roadmap/DISTRO-SOURCED-APPS.md §4.4). Kept
+# modest because snapshot.debian.org is a single host and hammering it is both
+# rude and counterproductive.
+POOL=int(os.environ.get('FREEZE_PARALLEL','8'))
+
+def fetch(o):
     p='/dl/'+os.path.basename(o['filename'])
     # --connect-timeout / --max-time are NOT optional here. A curl with neither
     # hung for five minutes on one deb.debian.org connection during the
-    # measurement run that produced this tool, and a 300-file sequential loop
-    # with one stalled socket looks exactly like a slow network. --speed-limit
-    # catches the other shape: a connection that stays open and dribbles.
+    # measurement run that produced this tool, and one stalled socket in a
+    # 350-file run looks exactly like a slow network. --speed-limit catches the
+    # other shape: a connection that stays open and dribbles.
     rc=subprocess.call(['curl','-fsSL','--retry','4','--retry-delay','2',
                         '--connect-timeout','20','--max-time','300',
                         '--speed-limit','1024','--speed-time','30',
                         '-o',p,o['url']])
     if rc!=0 or not os.path.exists(p):
-        bad.append((o['filename'],o['url'],'curl rc=%d'%rc)); continue
+        if os.path.exists(p): os.unlink(p)   # never leave a partial behind
+        return (o,'curl rc=%d'%rc)
     b=open(p,'rb').read()
+    os.unlink(p)
+    # SIZE BEFORE HASH. A truncated .deb hashes perfectly happily; one such file
+    # (40960 bytes of an expected 417336) was produced during the measurement
+    # run by a killed curl, and only the size check caught it. Hashing first
+    # would have pinned a valid-looking digest for a broken payload.
     if len(b)!=o['size']:
-        bad.append((o['filename'],o['url'],'size %d != apt index %d'%(len(b),o['size']))); continue
+        return (o,'size %d != apt index %d'%(len(b),o['size']))
     o['sha256']=hashlib.sha256(b).hexdigest()
     o['size']=len(b)
     nv=os.path.basename(o['filename'])[:-4].split('_')
     o['name']=nv[0]; o['version']=nv[1].replace('%3a',':') if len(nv)>1 else ''
     o.pop('live_url',None)
-    res.append(o)
-    os.unlink(p)
+    return (o,None)
+
+t0=time.time(); done=0
+with ThreadPoolExecutor(max_workers=POOL) as ex:
+    for o,err in ex.map(fetch,plan):
+        done+=1
+        if err: bad.append((o['filename'],o['url'],err))
+        else:   res.append(o)
+        if done%50==0:
+            print("PROGRESS %d/%d  %.0fs"%(done,len(plan),time.time()-t0),file=sys.stderr)
+print("FETCH_SECONDS=%.0f POOL=%d"%(time.time()-t0,POOL))
+res.sort(key=lambda x:x['name'])
     if i%25==0: print("PROGRESS %d/%d"%(i,len(plan)),file=sys.stderr)
 json.dump({"packages":res,"unfetchable":bad},open('/frozen.json','w'))
 print("FETCHED=%d UNFETCHABLE=%d"%(len(res),len(bad)))
