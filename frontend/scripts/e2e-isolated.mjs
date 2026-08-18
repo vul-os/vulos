@@ -98,11 +98,46 @@ function unplant() {
 }
 
 let server = null
+
+// cleanup is idempotent: `finish()` calls it when the run ends, and the `exit`
+// handler calls it again on any path that skips that (an uncaught throw, a
+// signal). The second call is a no-op because `server` is nulled below.
 function cleanup() {
   unplant()
   if (server && !server.killed) { try { process.kill(-server.pid, 'SIGKILL') } catch { /* already gone */ } }
+  releaseServer()
   try { rmSync(join(FE, OUT_DIR), { recursive: true, force: true }) } catch { /* best effort */ }
 }
+
+// releaseServer lets THIS process exit.
+//
+// The preview is spawned `detached: true` with piped stdio, and we attach
+// `data` listeners to both pipes to capture startup errors. Between them the
+// child handle and those two readable streams keep the event loop non-empty
+// FOREVER — so when `main()` resolved, node had nothing left to do and still
+// could not exit.
+//
+// Measured 2026-08-18: a run finished at 01:00 and its node process was still
+// sitting there at 02:39. That is not cosmetic. The `exit` handler is where
+// `unplant()` lives, so a harness that cannot exit is a harness that cannot
+// revert its own planted marker — and an agent driving mutations through it
+// leaves the mutation live for as long as the process lingers. It also strands
+// a `vite preview` on its port, which is how orphaned previews accumulated
+// across runs (one was found holding port 4173 for two and a half days) and
+// how a later run can silently be served someone else's build.
+//
+// Destroying the pipes and unref-ing the handle drops all three references, so
+// the loop drains and node exits with the code the run actually produced. We
+// do NOT call process.exit() here: stdout to a pipe is asynchronous in node, so
+// exiting eagerly can truncate the final lines of a log an agent is reading.
+function releaseServer() {
+  if (!server) return
+  try { server.stdout?.destroy() } catch { /* already closed */ }
+  try { server.stderr?.destroy() } catch { /* already closed */ }
+  try { server.unref() } catch { /* already gone */ }
+  server = null
+}
+
 process.on('exit', cleanup)
 process.on('SIGINT', () => { cleanup(); process.exit(130) })
 
@@ -202,4 +237,8 @@ async function main() {
   if (pw.status !== 0) process.exitCode = pw.status ?? 1
 }
 
-main().catch((e) => fail(e.stack || String(e)))
+// Always run cleanup on the way out — see releaseServer(). Without this the
+// process hangs after a perfectly successful run.
+main()
+  .catch((e) => fail(e.stack || String(e)))
+  .finally(() => cleanup())
