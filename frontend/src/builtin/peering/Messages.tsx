@@ -1161,43 +1161,76 @@ const incomingCallbackRef: { current: ((msg: Message) => void) | null } = { curr
 
 type ThreadItem = { type: 'date'; date: string } | { type: 'msg'; msg: Message }
 
+// A stable empty array: `messages` is a useEffect dependency below, and a fresh
+// [] on every render would re-fire the scroll-to-bottom effect forever.
+const EMPTY_MESSAGES: Message[] = []
+
+type LoadedThread = { convId: string, messages: Message[], error: string | null }
+
+// Append a message to the loaded thread, but only if that thread is still the
+// one it belongs to, and only if it is not already there (the WS may have
+// delivered the same message first).
+function appendTo(prev: LoadedThread | null, convId: string | undefined, msg: Message): LoadedThread | null {
+  if (!prev || !convId || prev.convId !== convId) return prev
+  if (prev.messages.some(m => m.id === msg.id)) return prev
+  return { ...prev, messages: [...prev.messages, msg] }
+}
+
 interface ThreadViewProps {
   conversation: Conversation | null
   myVulosId: string | null
   onBack?: () => void
 }
 
-function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps) {
+  // A loaded history belongs to the CONVERSATION IT WAS FETCHED FOR, so the id
+  // is stored with it and the two are compared during render. This used to be a
+  // bare `messages` array cleared only in the `if (!convId)` branch — a branch
+  // that runs when there is no conversation at all, never when switching from
+  // one to another. So the message list kept rendering the previous peer's
+  // history under the new peer's name and avatar (the header reads straight off
+  // the prop, and the list below it is not gated on `loading`), and a slow
+  // response for a conversation the user had already left would overwrite the
+  // one they were reading.
+  //
+  // Stamping it means an unanswered conversation renders as EMPTY-AND-LOADING
+  // rather than as someone else's messages, and a late response can only ever
+  // be read as the answer it actually is.
+  const [loaded, setLoaded] = useState<{ convId: string, messages: Message[], error: string | null } | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const convId = conversation?.id
 
-  // Load history — clearing messages when convId is absent is intentional.
+  const current = loaded && loaded.convId === convId ? loaded : null
+  const messages = current ? current.messages : EMPTY_MESSAGES
+  const error = current ? current.error : null
+  const loading = Boolean(convId) && current === null
+
+  // Load history.
   useEffect(() => {
-    if (!convId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMessages([])
-      return
-    }
-    setLoading(true)
-    setError(null)
-    fetch(`/api/peering/conversations/${convId}/messages`)
+    if (!convId) return
+    // Bound once so the response and the stamp it is filed under cannot
+    // disagree about which conversation this request was for.
+    const forConv = convId
+    let cancelled = false
+    fetch(`/api/peering/conversations/${forConv}/messages`)
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
       })
       .then((data: unknown) => {
+        if (cancelled) return
         const list: unknown[] = Array.isArray(data)
           ? data
           : isRecord(data) && Array.isArray(data.messages)
             ? data.messages
             : []
-        setMessages(list.map(toMessage).filter((m): m is Message => m !== null))
+        setLoaded({ convId: forConv, messages: list.map(toMessage).filter((m): m is Message => m !== null), error: null })
       })
-      .catch((err: unknown) => setError(errMessage(err, 'Failed to load messages')))
-      .finally(() => setLoading(false))
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setLoaded({ convId: forConv, messages: [], error: errMessage(err, 'Failed to load messages') })
+      })
+    return () => { cancelled = true }
   }, [convId])
 
   // Scroll to bottom on new messages
@@ -1205,20 +1238,16 @@ function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Both appenders file into the stamped record, and only when it is still the
+  // record for the conversation they were raised about — a send that resolves
+  // after the user has moved on must not land in the thread they moved to.
   const handleSent = useCallback((msg: Message) => {
-    setMessages(prev => {
-      // Avoid duplicates if WS already delivered it
-      if (prev.some(m => m.id === msg.id)) return prev
-      return [...prev, msg]
-    })
-  }, [])
+    setLoaded(prev => appendTo(prev, convId, msg))
+  }, [convId])
 
   const handleIncoming = useCallback((msg: Message) => {
     if (msg.conversation_id !== convId && msg.conv_id !== convId) return
-    setMessages(prev => {
-      if (prev.some(m => m.id === msg.id)) return prev
-      return [...prev, msg]
-    })
+    setLoaded(prev => appendTo(prev, convId, msg))
   }, [convId])
 
   // Register our callback so the parent WS subscriber can call it
@@ -1326,8 +1355,11 @@ function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Composer */}
-      <Composer convId={convId} onSent={handleSent} disabled={false} />
+      {/* Composer — keyed on the conversation. Without the key its draft text
+          and staged attachments survive a thread switch, leaving a message
+          written for one peer sitting in another peer's box, one Enter from
+          being sent to them. */}
+      <Composer key={convId} convId={convId} onSent={handleSent} disabled={false} />
     </>
   )
 }
