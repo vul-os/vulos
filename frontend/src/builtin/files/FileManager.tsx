@@ -608,8 +608,19 @@ export default function FileManager() {
     setLoading(false)
   }, [hidden, histIdx])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { loadDir('~', true) }, [])
+  // pushHistory is FALSE here, matching goBack/goForward and the load-error
+  // Retry. `history` is already seeded ['~'] at index 0, so pushing '~' again
+  // left history = ['~','~'] with histIdx = 1 before the user had navigated
+  // anywhere: Back (disabled={histIdx <= 0}) was live the moment the app opened
+  // and led to the folder already on screen, and the phantom entry rode along
+  // on every later navigation, so coming home from one folder down took two
+  // presses. This is a listing to SHOW, not a place the user has been.
+  //
+  // The suppression stays: loadDir's synchronous prologue (loading/loadError/
+  // search/selection/preview resets) is right for the dozen user-triggered call
+  // sites it has, and the very first listing has to be kicked off from somewhere.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial listing has to be started on mount, and loadDir's synchronous resets are correct for its user-triggered callers.
+  useEffect(() => { loadDir('~', false) }, [])
 
   const navigate = (name: string) => {
     const target = cwd === '/' ? `/${name}` : `${cwd}/${name}`
