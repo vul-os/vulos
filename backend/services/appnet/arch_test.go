@@ -183,6 +183,10 @@ func TestListEntries_MarksInstallability(t *testing.T) {
 	t.Setenv("VULOS_BOX_ARCH", "arm64")
 	InvalidateArchCache()
 	defer InvalidateArchCache()
+	// The subject is architecture; the fixtures carry no publisher signature, and
+	// without this every one of them would come back "awaiting publisher
+	// signature" and the arch table below would assert nothing. See arm64Box.
+	withInsecureRegistry(t)
 
 	reg := &Registry{Apps: map[string]*RegistryEntry{
 		"steam":  {Name: "Steam", Type: "desktop", Arch: []string{"amd64"}},

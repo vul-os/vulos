@@ -909,6 +909,54 @@ const (
 	ArchStateUnavailable   = "unavailable"    // no path on this box
 )
 
+// ─── The publisher signature, on the same verdict ────────────────────────────
+//
+// 55 of the 74 shipped entries carry no publisher signature. They are staged by
+// a catalogue wave and inert until the founder's offline ceremony, which is the
+// intended state — the key is not on any build machine. InstallFromRegistry
+// refuses every one of them (REGISTRY-SIGN-01, measured 55/55 by
+// TestAcceptance_UnsignedShippedEntriesAreUninstallable) and leaves nothing on
+// disk, so the security property is not in question.
+//
+// What WAS in question is the listing. The App Hub offered all 55 with a live
+// Install button, so the box advertised 55 apps whose install can only fail.
+// registry.d/apt-retired.json calls that "the worse of the two failures", and it
+// is right: a refusal the user only meets by pressing the button is a refusal
+// the product never made.
+//
+// The fix is not to hide them. Hiding silently changes what the catalogue
+// appears to contain, which is the same dishonesty pointed the other way. It is
+// to say so on the card — and an unsigned entry is EXACTLY the kind of fact
+// ArchAvailability already carries: this box cannot install this, here is why,
+// and here is what would change it. So it rides the same verdict, the same
+// badge/card_badge/detail fields, and the same verbatim-render contract. The App
+// Hub needed no new mechanism and composes no sentence about signatures either.
+//
+// FOUR values rather than a bool, because the gate has four outcomes and three
+// of them are different facts the reader would act on differently. Telling
+// someone "awaiting signature" about an entry that was TAMPERED WITH is a
+// false reassurance, and telling them the entry is at fault when the BOX has no
+// trust anchor sends them to the wrong place entirely.
+const (
+	// SignatureSigned: VerifyEntrySignature accepted it against the key this box
+	// trusts — or verification is legitimately skipped (VULOS_REGISTRY_INSECURE=1
+	// outside prod), which is the state a developer sets deliberately in order to
+	// install unsigned entries. The listing must agree with the install either
+	// way; anything else is a hub that refuses what the box would accept.
+	SignatureSigned = "signed"
+	// SignatureUnsigned: the entry carries no signature at all. The 55.
+	SignatureUnsigned = "unsigned"
+	// SignatureUntrusted: a signature is present and did not verify — altered,
+	// signed by a different key, or re-keyed to another app slot (M4).
+	SignatureUntrusted = "untrusted"
+	// SignatureUncheckable: this box could not resolve a trust anchor, so it can
+	// check NOTHING. PreflightTrust calls this Degraded and lets the box keep
+	// serving, which means it is a live runtime state and not a boot failure:
+	// every entry is refused and, before this, every entry was still listed as
+	// installable.
+	SignatureUncheckable = "uncheckable"
+)
+
 // ArchRequest is everything the decision needs. Every field is supplied by the
 // caller rather than probed here, because the probes have different lifetimes:
 // SupportedArches is per-listing, the user's setting is per-request, and
@@ -937,6 +985,18 @@ type ArchRequest struct {
 	// OtherInstance names a synced instance where this app IS installed, or "".
 	// Naming it is what makes a heterogeneous fleet feel like one OS.
 	OtherInstance string
+	// Signature is what the publisher-signature gate says about this entry, as
+	// classified by EntrySignatureState using the SAME key and the SAME
+	// VerifyEntrySignature call InstallFromRegistry runs. One implementation, so
+	// the card cannot describe a gate the install does not have.
+	//
+	// THE ZERO VALUE IS "" AND IT IS READ AS SignatureUnsigned. That is the same
+	// choice EmulatorBindsHostLibraries makes above and for the same reason: a
+	// caller that forgets this field has vouched for nothing, and the verdict
+	// that offers LESS is the one that cannot offer an install that fails. The
+	// opposite default would make every future caller's omission a live Install
+	// button on an entry no key has ever covered.
+	Signature string
 }
 
 // ArchAvailability is the rendered answer, and it is rendered HERE rather than
@@ -969,6 +1029,17 @@ type ArchAvailability struct {
 	// metadata merged with Debian's) renders "amd64, amd64" if each caller folds
 	// the spellings itself, and that is exactly the fold the App Hub used to own.
 	Needs []string `json:"needs"`
+	// Signature is the publisher-signature verdict for this entry, one of the
+	// four Signature* constants. It is always populated — an empty string here
+	// would be a fifth, undeclared state.
+	//
+	// It is on the verdict rather than beside it because the App Hub must not be
+	// the place where "unsigned" and "wrong architecture" are combined into one
+	// answer. Badge, CardBadge and Detail already say which of the two the reader
+	// is being told; this field exists so a card can be STYLED for a signature
+	// hold (which is temporary and nobody's fault) rather than for a refusal, and
+	// so a test can tell the two apart without matching prose.
+	Signature string `json:"signature"`
 }
 
 // EvaluateArch decides what this box does with this app, and says it in one
@@ -997,7 +1068,43 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 		name = "This app"
 	}
 	needs := declaredList(req.Declared)
-	av := ArchAvailability{BoxArch: box, Undeclared: !ArchDeclared(req.Declared), Needs: needs}
+	av := ArchAvailability{BoxArch: box, Undeclared: !ArchDeclared(req.Declared), Needs: needs,
+		Signature: req.Signature}
+	if av.Signature == "" {
+		av.Signature = SignatureUnsigned
+	}
+
+	// ─── The signature is asked FIRST, and returns without composing an arch
+	// sentence at all. ────────────────────────────────────────────────────────
+	//
+	// PRECEDENCE, and why this way round. An entry can be both unsigned AND
+	// wrong-arch — on this arm64 box most of the 55 are — so one of the two facts
+	// has to be the one the reader is told. Three reasons it is the signature:
+	//
+	//  1. IT IS THE GATE THE INSTALL ACTUALLY HITS. InstallFromRegistry runs
+	//     VerifyEntrySignature BEFORE the ArchSupported check (registry.go, right
+	//     after the version resolves). A card that named the architecture would
+	//     be naming the second gate and describing an error message the user
+	//     would never see.
+	//  2. THE ARCH SENTENCE WOULD BE FALSE. Rung 5's copy ends "It stays
+	//     available on any amd64 instance you run" — a claim about the whole
+	//     fleet, and while the entry is unsigned NO instance of any architecture
+	//     can install it. Leading with arch does not just bury the signature; it
+	//     emits a promise the box cannot keep. Leading with the signature emits
+	//     nothing false, because the signature fact is true on every box.
+	//  3. IT IS THE FACT THAT CHANGES. Architecture is a property of this
+	//     hardware; the signature is one ceremony away for the whole fleet.
+	//
+	// Rung 4 (a sibling instance has it) is short-circuited too, and cannot be
+	// wrongly suppressed: an unsigned entry is refused by every box in the fleet,
+	// so no sibling can have installed it from this catalogue in the first place.
+	//
+	// The architecture is NOT lost. Needs, Undeclared and BoxArch are filled in
+	// above and the detail panel's "Architecture" row renders them exactly as it
+	// does for a signed entry.
+	if av.Signature != SignatureSigned {
+		return av.heldForSignature(name)
+	}
 
 	if ArchSupported(req.Declared, req.Supported) {
 		av.State = ArchStateNative
@@ -1084,6 +1191,57 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 	av.Detail = name + " ships for " + needsStr + " only. This box is " + box +
 		" and can run it through emulation — noticeably slower, " + graphicsClause(req) +
 		". Emulated apps are turned off on this box."
+	return av
+}
+
+// heldForSignature finishes an entry the publisher-signature gate stops.
+//
+// Three sentences for three outcomes, on the same reasoning that split the
+// emulation refusals above: they answer different questions about the box and
+// the catalogue, and one wording covering all of them would be false for two.
+//
+// WHAT THE COPY MAY NOT DO, in order of how badly it would mislead:
+//
+//   - It may not say the app is broken. Nothing is wrong with the software; a
+//     step in publishing it has not happened yet.
+//   - It may not imply the reader can fix it. The signing key is deliberately
+//     not on this machine and never will be (docs/KEY-CEREMONY.md), so any
+//     instruction here would point at a control the reader does not have —
+//     the same defect as the retired "turn it on in Settings" clause.
+//   - It may not read as permanent. "Not available" would; "awaiting" does not.
+//   - It may not promise that signing makes THIS box able to install it. Most
+//     of the 55 are also amd64-only, and this box may be arm64. So the closing
+//     clause is a necessary condition ("no box will install it until…"), never
+//     a sufficient one ("it will install here once…").
+func (av ArchAvailability) heldForSignature(name string) ArchAvailability {
+	av.State = ArchStateUnavailable
+	av.Installable = false
+	switch av.Signature {
+	case SignatureUntrusted:
+		av.Badge = "Publisher signature did not verify"
+		av.CardBadge = "Signature rejected"
+		av.Detail = name + " carries a publisher signature that does not verify against the key " +
+			"this box trusts, so the install is refused before anything is downloaded. An entry " +
+			"reaches that state by being altered after it was signed, signed by a key this box " +
+			"does not trust, or moved to a different app slot — the app itself is not the thing " +
+			"in doubt. This box installs it only from a release whose entry its own trust anchor " +
+			"certifies."
+	case SignatureUncheckable:
+		av.Badge = "This box cannot check publisher signatures"
+		av.CardBadge = "No trust anchor"
+		av.Detail = name + " may be perfectly good: this box has no usable trust anchor, so it " +
+			"can check no publisher signature at all and refuses every install rather than " +
+			"guessing. Nothing in this catalogue installs until the box's trust anchor is in " +
+			"place, and the boot log names what is missing."
+	default: // SignatureUnsigned, including the "" a caller forgot to set.
+		av.Badge = "Awaiting publisher signature"
+		av.CardBadge = "Awaiting signature"
+		av.Detail = name + " is in the catalogue, but its entry carries no publisher signature " +
+			"yet, so this box refuses the install before anything is downloaded. Signing happens " +
+			"away from this box, at the publisher's key ceremony, so it is not something to put " +
+			"right here — and until a release carries that signature, no box will install this " +
+			"entry."
+	}
 	return av
 }
 

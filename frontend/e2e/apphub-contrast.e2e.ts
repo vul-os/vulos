@@ -112,9 +112,32 @@ const STATES: HubState[] = [
     drive: async (page) => {
       await page.getByPlaceholder('Search apps').fill('PowerOnly')
       await page.getByRole('button', { name: 'PowerOnly', exact: true }).click()
-      await expect(page.getByText(/Not available for this machine/)).toBeVisible()
+      await expect(page.getByText(/Not available on this box/)).toBeVisible()
     },
-    proof: /Not available for this machine/,
+    // "Not available FOR THIS MACHINE" until 2026-08-18, and the box has never
+    // sent that string. The badge is written in services/appnet/arch.go and it
+    // says "Not available on this box"; the wording changed when the decision
+    // moved off the browser, and this transcription did not follow. Both lines
+    // are stale in the same way, which is why the state simply stopped being
+    // measured rather than reporting a mismatch: the drive step failed first,
+    // so the four runs of this state have been red — and the contrast it exists
+    // to measure unmeasured — since the rewrite.
+    proof: /Not available on this box/,
+    minText: 12,
+  },
+  {
+    // The signature hold. 55 of the 74 shipped entries are in this state, so it
+    // is the single most common refusal a user meets — and it is the only one
+    // rendered in the INFORMATIONAL tone rather than the refusal tone, because
+    // an entry waiting on the publisher's ceremony is not broken. A tone that
+    // exists nowhere else in this sweep is a palette nothing has measured.
+    name: 'an entry awaiting the publisher signature',
+    drive: async (page) => {
+      await page.getByPlaceholder('Search apps').fill('unsigned')
+      await page.getByRole('button', { name: 'Blender (unsigned)', exact: true }).click()
+      await expect(page.getByText(/Awaiting publisher signature/)).toBeVisible()
+    },
+    proof: /Awaiting publisher signature/,
     minText: 12,
   },
 ]

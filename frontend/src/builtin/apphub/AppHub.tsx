@@ -894,10 +894,10 @@ export default function AppHub() {
                 */
                 <div
                   className="hub-notice"
-                  data-tone={availabilityOf(liveSelected)?.state === 'other-instance' ? 'accent' : 'danger'}
+                  data-tone={noticeTone(availabilityOf(liveSelected))}
                   style={{ marginBottom: 0 }}
                 >
-                  <Glyph d={availabilityOf(liveSelected)?.state === 'other-instance' ? I.info : I.block} />
+                  <Glyph d={noticeTone(availabilityOf(liveSelected)) === 'accent' ? I.info : I.block} />
                   <div className="hub-notice-body">
                     <div className="hub-notice-title">{availabilityOf(liveSelected)?.badge}</div>
                     <p className="hub-notice-text">{availabilityOf(liveSelected)?.detail}</p>
@@ -983,6 +983,30 @@ export default function AppHub() {
   )
 }
 
+/**
+ * Which frame a refusal gets. The WORDS are always the box's — this picks
+ * nothing but the tone and the icon around them.
+ *
+ * Two verdicts are informational rather than red:
+ *
+ *   other-instance  the app is not lost; a sibling box runs it.
+ *   unsigned        nothing is wrong with the app or with this box. The entry
+ *                   is waiting on the publisher's signing ceremony, which
+ *                   happens off the box. 55 of the 74 shipped entries are in
+ *                   this state, and rendering all 55 in the red block treatment
+ *                   would say "broken" in the one channel the sentence cannot
+ *                   reach.
+ *
+ * Everything else — including a signature that FAILED to verify, and a box that
+ * cannot check signatures at all — keeps the refusal treatment. Those are not
+ * pending states, and an unrecognised value from a newer box falls here too,
+ * which is the direction that over-warns rather than under-warns.
+ */
+function noticeTone(av: ArchAvailability | null): 'accent' | 'danger' {
+  if (!av) return 'danger'
+  return av.state === 'other-instance' || av.signature === 'unsigned' ? 'accent' : 'danger'
+}
+
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 interface AppCardProps {
@@ -1012,6 +1036,11 @@ function AppCard({ app, selected, installed, installing, removing, availability,
       // translated" and "runs on your other box" are two different things a
       // single boolean cannot hold.
       data-arch-state={availability?.state ?? 'unknown'}
+      // The SIGNATURE half of the same verdict, for the same reason the rung is
+      // an attribute: `unavailable` covers both "this box is the wrong
+      // architecture" and "the publisher has not signed this entry yet", and a
+      // gate that could not tell those apart would have to match prose to do it.
+      data-signature={availability?.signature || 'unknown'}
     >
       <span className="hub-card-icon">
         <AppIconTile id={app.id} size={42} unicode={app.icon} />

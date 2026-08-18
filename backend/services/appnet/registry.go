@@ -1727,7 +1727,7 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 		if recipe := entry.GetRecipe(entry.LatestVersion()); recipe != nil {
 			flatpakID = recipe.FlatpakID
 		}
-		availability := env.evaluate(entry)
+		availability := env.evaluate(id, entry)
 		// InstallableReason's contract is "why NOT", so it stays empty for an
 		// installable app even though Availability.Detail is not: an emulated
 		// app that the box has opted into is installable AND carries a sentence

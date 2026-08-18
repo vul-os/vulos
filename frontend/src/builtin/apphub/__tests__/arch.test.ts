@@ -43,6 +43,7 @@ const FULL = {
   box_arch: 'arm64',
   undeclared: false,
   needs: ['amd64'],
+  signature: 'signed',
 }
 
 describe('toArchAvailability', () => {
@@ -59,6 +60,7 @@ describe('toArchAvailability', () => {
       boxArch: 'arm64',
       undeclared: false,
       needs: ['amd64'],
+      signature: 'signed',
     })
   })
 
@@ -132,7 +134,29 @@ describe('toArchAvailability', () => {
     expect(av).toEqual({
       state: 'native', installable: false, requiresEmulation: false,
       badge: '', cardBadge: '', detail: '', boxArch: '', undeclared: false, needs: [],
+      // A box too old to send a signature verdict is not asserting that its
+      // entries are signed, so '' must NOT narrow to 'signed'. It is the value
+      // the hub then frames with the stricter of the two treatments.
+      signature: '',
     })
+  })
+
+  it('carries the signature verdict, and never invents one', () => {
+    // The hub compares this in exactly one place — whether a refusal is framed
+    // as a hold on the publisher's ceremony or as a refusal this box stands
+    // behind — so a value invented here would restyle a tampered entry as a
+    // pending one.
+    for (const signature of ['signed', 'unsigned', 'untrusted', 'uncheckable']) {
+      expect(toArchAvailability(entry({ ...FULL, signature }))?.signature, signature).toBe(signature)
+    }
+    // Anything that is not a string is '', not a guess. A state string this
+    // build has never heard of is passed straight through, because the ONE
+    // comparison that reads it tests for 'unsigned' and everything else falls to
+    // the stricter framing on its own.
+    for (const signature of [7, null, undefined, {}, true]) {
+      expect(toArchAvailability(entry({ ...FULL, signature }))?.signature, String(signature)).toBe('')
+    }
+    expect(toArchAvailability(entry({ ...FULL, signature: 'rung-9' }))?.signature).toBe('rung-9')
   })
 
   it('drops non-string members of `needs` instead of printing them', () => {

@@ -244,8 +244,8 @@ func TestEvaluateArch_TheTwoRefusalsReadDifferently(t *testing.T) {
 	flat := base
 	flat.Delivery = DeliveryFlatpak
 
-	av1 := EvaluateArch(pkg)
-	av2 := EvaluateArch(flat)
+	av1 := EvaluateArch(signedReq(pkg))
+	av2 := EvaluateArch(signedReq(flat))
 	for _, av := range []ArchAvailability{av1, av2} {
 		if av.State != ArchStateUnavailable || av.Installable {
 			t.Fatalf("expected an unavailable verdict, got %+v", av)
@@ -290,14 +290,14 @@ func TestEvaluateArch_NeedsGPUIsScopedToDelivery(t *testing.T) {
 	}
 
 	qemuOnly := base // BindsHostLibraries false — qemu's answer
-	if av := EvaluateArch(qemuOnly); av.State != ArchStateUnavailable {
+	if av := EvaluateArch(signedReq(qemuOnly)); av.State != ArchStateUnavailable {
 		t.Errorf("a GPU-bound app was offered on a box whose only emulator cannot obtain a GL "+
 			"visual at all: %+v", av)
 	}
 
 	withBox64 := base
 	withBox64.EmulatorBindsHostLibraries = true
-	av := EvaluateArch(withBox64)
+	av := EvaluateArch(signedReq(withBox64))
 	if av.State != ArchStateEmulated || !av.Installable {
 		t.Fatalf("a GPU-bound app was refused on a box where the emulator binds the HOST's own "+
 			"graphics driver — measured: an x86_64 glxinfo under box64 reported this machine's "+
@@ -322,7 +322,7 @@ func TestEvaluateArch_NeedsGPUIsScopedToDelivery(t *testing.T) {
 // box, or a box with no emulator says.
 func TestEvaluateArch_NativeAndPolicyPathsStillHold(t *testing.T) {
 	native := ArchRequest{AppName: "Gitea", Declared: []string{"arm64"}, Supported: []string{"arm64"}}
-	if av := EvaluateArch(native); av.State != ArchStateNative || !av.Installable {
+	if av := EvaluateArch(signedReq(native)); av.State != ArchStateNative || !av.Installable {
 		t.Errorf("a natively supported app is no longer native: %+v", av)
 	}
 
@@ -330,7 +330,7 @@ func TestEvaluateArch_NativeAndPolicyPathsStillHold(t *testing.T) {
 		AppName: "Code", Declared: []string{"amd64"}, Supported: []string{"arm64"},
 		Emulated: []string{"amd64"}, Delivery: DeliveryBinary, Policy: EmulationNever,
 	}
-	if av := EvaluateArch(optedOut); av.State != ArchStateUnavailable {
+	if av := EvaluateArch(signedReq(optedOut)); av.State != ArchStateUnavailable {
 		t.Errorf("an entry whose emulation policy is `never` was offered: %+v", av)
 	}
 
@@ -338,13 +338,13 @@ func TestEvaluateArch_NativeAndPolicyPathsStillHold(t *testing.T) {
 		AppName: "Code", Declared: []string{"amd64"}, Supported: []string{"arm64"},
 		Emulated: nil, Delivery: DeliveryBinary, Policy: EmulationOptIn,
 	}
-	if av := EvaluateArch(noEmulator); av.State != ArchStateUnavailable {
+	if av := EvaluateArch(signedReq(noEmulator)); av.State != ArchStateUnavailable {
 		t.Errorf("an app was marked emulatable on a box with no emulator: %+v", av)
 	}
 
 	// The badge is never the bare word "Unavailable", for every refusal above.
 	for _, req := range []ArchRequest{optedOut, noEmulator} {
-		if EvaluateArch(req).Badge == "Unavailable" {
+		if EvaluateArch(signedReq(req)).Badge == "Unavailable" {
 			t.Error("badge is the bare word \"Unavailable\" — it reads as broken rather than as a " +
 				"fact about this hardware")
 		}
@@ -363,7 +363,7 @@ func TestEvaluateArch_SpellsOneArchitectureScheme(t *testing.T) {
 			Emulated: []string{"amd64"}, Policy: EmulationOptIn, NeedsGPU: true},
 	}
 	for _, req := range reqs {
-		av := EvaluateArch(req)
+		av := EvaluateArch(signedReq(req))
 		for _, foreign := range []string{"x86_64", "aarch64"} {
 			if strings.Contains(av.Detail, foreign) {
 				t.Errorf("%s: the sentence uses the %s spelling: %s", req.AppName, foreign, av.Detail)
@@ -431,14 +431,14 @@ func TestEvaluateArch_RungFourWasAConstantNothingProduced(t *testing.T) {
 		Delivery:  DeliveryFlatpak,
 	}
 
-	alone := EvaluateArch(base)
+	alone := EvaluateArch(signedReq(base))
 	if alone.State != ArchStateUnavailable {
 		t.Fatalf("with no sibling instance the app must be rung 5, got %+v", alone)
 	}
 
 	withSibling := base
 	withSibling.OtherInstance = "studio-box"
-	av := EvaluateArch(withSibling)
+	av := EvaluateArch(signedReq(withSibling))
 	if av.State != ArchStateOtherInstance {
 		t.Fatalf("a sibling instance runs this app and the state is still %q. Rung 4 is a "+
 			"state, not a sentence — a hub switching on `state` renders %q identically to an "+
@@ -459,7 +459,7 @@ func TestEvaluateArch_RungFourWasAConstantNothingProduced(t *testing.T) {
 	emulatable.Delivery = DeliveryBinary
 	emulatable.Emulated = []string{"amd64"}
 	emulatable.Policy = EmulationOptIn
-	if av := EvaluateArch(emulatable); av.State != ArchStateEmulated {
+	if av := EvaluateArch(signedReq(emulatable)); av.State != ArchStateEmulated {
 		t.Errorf("an app this box can emulate was sent to the sibling instead — §1 applies the "+
 			"rungs in order and 3 is above 4: %+v", av)
 	}
@@ -483,7 +483,7 @@ func TestEvaluateArch_NoEmulatorAndNotClearedReadDifferently(t *testing.T) {
 	notCleared.Emulated = []string{"amd64"} // box64 IS here
 	notCleared.Policy = EmulationNever
 
-	a, b := EvaluateArch(noEmulator), EvaluateArch(notCleared)
+	a, b := EvaluateArch(signedReq(noEmulator)), EvaluateArch(signedReq(notCleared))
 	for _, av := range []ArchAvailability{a, b} {
 		if av.State != ArchStateUnavailable {
 			t.Fatalf("expected rung 5, got %+v", av)
@@ -507,10 +507,10 @@ func TestEvaluateArch_NoEmulatorAndNotClearedReadDifferently(t *testing.T) {
 // the panel says the §1 badge — and BOTH come from here, so a card and its own
 // panel cannot disagree.
 func TestEvaluateArch_CardBadgeIsShortAndNamesTheFact(t *testing.T) {
-	unavailable := EvaluateArch(ArchRequest{
+	unavailable := EvaluateArch(signedReq(ArchRequest{
 		AppName: "Lutris", Declared: []string{"x86_64"}, Supported: []string{"arm64"},
 		Delivery: DeliveryFlatpak,
-	})
+	}))
 	if unavailable.CardBadge != "Needs amd64" {
 		t.Errorf("card badge = %q, want \"Needs amd64\" — the chip has to name the fact the "+
 			"user can act on, and %q is the panel heading", unavailable.CardBadge, unavailable.Badge)
@@ -519,10 +519,10 @@ func TestEvaluateArch_CardBadgeIsShortAndNamesTheFact(t *testing.T) {
 		t.Errorf("panel badge = %q, want the §1 wording", unavailable.Badge)
 	}
 
-	twoArches := EvaluateArch(ArchRequest{
+	twoArches := EvaluateArch(signedReq(ArchRequest{
 		AppName: "Lutris", Declared: []string{"x86_64", "amd64", "i686"}, Supported: []string{"arm64"},
 		Delivery: DeliveryFlatpak,
-	})
+	}))
 	if twoArches.CardBadge != "Needs amd64/i386" {
 		t.Errorf("card badge = %q — x86_64 and amd64 are ONE requirement and must not render "+
 			"as two", twoArches.CardBadge)
@@ -532,9 +532,9 @@ func TestEvaluateArch_CardBadgeIsShortAndNamesTheFact(t *testing.T) {
 			"spellings of its own", twoArches.Needs)
 	}
 
-	native := EvaluateArch(ArchRequest{
+	native := EvaluateArch(signedReq(ArchRequest{
 		AppName: "Gitea", Declared: []string{"arm64"}, Supported: []string{"arm64"},
-	})
+	}))
 	if native.CardBadge != "" || native.Badge != "" {
 		t.Errorf("a native app carries badges %q/%q — rung 1 is \"Install button, no badge\", "+
 			"and a badge on every app that simply works is noise on every card in the catalogue",
@@ -609,7 +609,7 @@ func TestEvaluateArch_NoUnmeasuredClaimReachesTheUser(t *testing.T) {
 
 	seenStates := map[string]bool{}
 	for _, c := range cases {
-		av := EvaluateArch(c.req)
+		av := EvaluateArch(signedReq(c.req))
 		seenStates[av.State] = true
 		for _, field := range []struct{ what, s string }{
 			{"badge", av.Badge}, {"card_badge", av.CardBadge}, {"detail", av.Detail},
@@ -673,6 +673,23 @@ func TestEmulationOptedIn_DefaultsOffAndIsTheServersOwn(t *testing.T) {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+// signedReq marks a request's entry as carrying a publisher signature this box
+// verified.
+//
+// EVERY case in this file is about ARCHITECTURE, and EvaluateArch asks the
+// signature FIRST and short-circuits — deliberately, because that is the order
+// InstallFromRegistry's own gates run in. ArchRequest.Signature is fail-closed
+// on its zero value, so a case that did not say this would come back "awaiting
+// publisher signature" and would assert nothing whatever about the rung it is
+// named for. Written as a wrapper rather than a field on each literal so the
+// reason is stated once and cannot be half-applied: a case that forgets it does
+// not quietly pass, it stops producing its rung and the coverage assertion in
+// TestEvaluateArch_NoUnmeasuredClaimReachesTheUser fires.
+func signedReq(r ArchRequest) ArchRequest {
+	r.Signature = SignatureSigned
+	return r
+}
 
 func withBoxArch(t *testing.T, arch string) {
 	t.Helper()

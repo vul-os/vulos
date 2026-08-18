@@ -79,6 +79,30 @@ export interface ArchAvailability {
   /** The architectures the app needs, already folded to one spelling and
    *  de-duplicated by the box. Rendered, never compared. */
   needs: string[]
+  /**
+   * The publisher-signature verdict: `signed`, `unsigned`, `untrusted` or
+   * `uncheckable`.
+   *
+   * 55 of the 74 shipped entries carry no publisher signature — staged by a
+   * catalogue wave, inert until the founder's offline signing ceremony — and the
+   * box refuses to install every one of them. Before this field the hub listed
+   * all 55 with a live Install button, so the box advertised 55 apps whose
+   * install could only fail.
+   *
+   * It arrives on the SAME verdict as the architecture rungs, with the same
+   * badge/cardBadge/detail, because it is the same kind of fact and the hub
+   * already renders that shape verbatim. `state` is deliberately still one of
+   * the four rungs: a fifth state string would fail ARCH_STATES below and
+   * toArchAvailability would return null, which this file folds to "no
+   * compatibility claim — offer it" — a fail-OPEN on exactly the field that must
+   * never open.
+   *
+   * Kept as a raw string, not a union. It is never rendered and never composed
+   * into a sentence; it is COMPARED, in one place, to decide whether a refusal
+   * is framed as a hold or as a refusal. An unrecognised value therefore falls
+   * through to the stricter framing rather than to a crash or a default.
+   */
+  signature: string
 }
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -125,6 +149,10 @@ export function toArchAvailability(x: unknown): ArchAvailability | null {
     boxArch: str(raw.box_arch),
     undeclared: raw.undeclared === true,
     needs: Array.isArray(raw.needs) ? raw.needs.filter((a): a is string => typeof a === 'string') : [],
+    // An absent signature verdict narrows to '', which noticeTone treats as the
+    // stricter framing. A box too old to send it is not asserting that its
+    // entries are signed.
+    signature: str(raw.signature),
   }
 }
 

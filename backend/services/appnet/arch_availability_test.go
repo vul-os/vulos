@@ -29,11 +29,21 @@ import (
 // arm64Box pins the listing to an arm64 box with no emulator and no flatpak
 // answer, which is the machine this repo's CI runs on and the one where an
 // amd64-only entry is interesting.
+//
+// It also switches the publisher-signature gate OFF (withInsecureRegistry —
+// dev-only, and these tests are dev). That is a statement about the SUBJECT of
+// every test using this helper, not a convenience: they are about architecture,
+// their fixtures carry no signature, and without this every one of them would
+// come back "awaiting publisher signature" and stop measuring architecture at
+// all — a whole file of green tests asserting nothing about the thing they are
+// named after. The signature gate has its own file, arch_signature_test.go,
+// which uses real keys and real signatures and never touches this helper.
 func arm64Box(t *testing.T) {
 	t.Helper()
 	withBoxArch(t, "arm64")
 	withNoBinfmt(t)
 	withEmulatorsOnPath(t)
+	withInsecureRegistry(t)
 	SetEmulationOptedIn(false)
 	t.Cleanup(func() { SetEmulationOptedIn(false) })
 }
@@ -108,6 +118,7 @@ func TestListEntries_AnInstallableEmulatedAppCarriesNoRefusal(t *testing.T) {
 	withBoxArch(t, "arm64")
 	withNoBinfmt(t)
 	withEmulatorsOnPath(t, "box64")
+	withInsecureRegistry(t) // see arm64Box: rung 3 is the subject, not the signature
 	SetEmulationOptedIn(true)
 	t.Cleanup(func() { SetEmulationOptedIn(false) })
 
@@ -248,7 +259,7 @@ func TestEntryNeedsGPU_ReadsALaneThatWasDeadData(t *testing.T) {
 		t.Fatalf("fixture: %v", err)
 	}
 	env := archEnvironment{supported: []string{"arm64"}, emulated: []string{"amd64"}, optedIn: true}
-	av := env.evaluate(&gpuEntry)
+	av := env.evaluate("blender", &gpuEntry)
 	if av.State != ArchStateUnavailable {
 		t.Fatalf("a GPU-bound app was offered on a box whose only emulator cannot obtain a GL "+
 			"visual at all: %+v", av)
@@ -264,7 +275,7 @@ func TestEntryNeedsGPU_ReadsALaneThatWasDeadData(t *testing.T) {
 		`{"name":"Blender","arch":["amd64"],"versions":{"1.0":{"artifacts":{"amd64":{}}}}}`), &plain); err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
-	if av := env.evaluate(&plain); av.Detail == "" || strings.Contains(av.Detail, "graphics acceleration") {
+	if av := env.evaluate("blender", &plain); av.Detail == "" || strings.Contains(av.Detail, "graphics acceleration") {
 		t.Errorf("an entry with NO lane got the GPU refusal — the lane is not what decided it: %s",
 			av.Detail)
 	}
@@ -314,10 +325,10 @@ func TestEntryEmulationPolicy_ReachesRungThree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if av := env.evaluate(&closed); av.State != ArchStateUnavailable {
+	if av := env.evaluate("heroic", &closed); av.State != ArchStateUnavailable {
 		t.Errorf("an entry that never opted in was offered emulated: %+v", av)
 	}
-	av := env.evaluate(&open)
+	av := env.evaluate("heroic", &open)
 	if av.State != ArchStateEmulated || !av.Installable {
 		t.Fatalf("an opted-in entry on an opted-in box with a matching emulator did not reach "+
 			"rung 3: %+v", av)

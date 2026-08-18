@@ -34,7 +34,10 @@ package appnet
 // is precisely the per-recipe `arch` shape (APP-RECIPE-STANDARD §1.1) — a field
 // that looks like it does something and does not. It does something now.
 
-import "encoding/json"
+import (
+	"crypto/ed25519"
+	"encoding/json"
+)
 
 // EntryDeliveryKind classifies how an entry's bits would reach this box, by
 // looking at its LATEST recipe.
@@ -124,14 +127,66 @@ type archEnvironment struct {
 	supported []string
 	emulated  []string
 	optedIn   bool
+	// trustKey is the key every entry signature must verify against, resolved
+	// ONCE for the listing. Per entry would re-stat the anchor and the release
+	// cert 74 times per App Hub load, and — the part that is not about speed —
+	// two entries of one response could then disagree about whether this box can
+	// check signatures at all, which is unreadable from the outside.
+	//
+	// nil with trustErr == nil is the legitimate skip: VULOS_REGISTRY_INSECURE=1
+	// outside production. It is NOT "no key found"; that is trustErr.
+	trustKey ed25519.PublicKey
+	trustErr error
 }
 
 func currentArchEnvironment() archEnvironment {
+	key, err := TrustedKey()
 	return archEnvironment{
 		supported: SupportedArches(),
 		emulated:  EmulatedArches(),
 		optedIn:   EmulationOptedIn(),
+		trustKey:  key,
+		trustErr:  err,
 	}
+}
+
+// EntrySignatureState classifies the publisher signature on one entry, using the
+// same verification InstallFromRegistry runs.
+//
+// It calls VerifyEntrySignature rather than re-deriving the answer, because a
+// listing that disagreed with the install gate is the exact defect this whole
+// availability path exists to delete — one policy, one implementation. What it
+// adds is a CLASSIFICATION: VerifyEntrySignature returns one error for four
+// different situations, and the copy the reader gets is different for three of
+// them. The classification is taken from facts already in hand (was a key
+// resolved, is the signature field empty) and never by matching error strings.
+//
+// The order is the gate's own: a box that cannot check anything is answered
+// before the entry is looked at, because on such a box the entry's own state
+// changes nothing about the outcome.
+func EntrySignatureState(appID string, entry *RegistryEntry, key ed25519.PublicKey, trustErr error) string {
+	if trustErr != nil {
+		return SignatureUncheckable
+	}
+	if entry == nil {
+		return SignatureUnsigned
+	}
+	if key == nil {
+		// Verification is legitimately skipped (insecure mode, non-prod).
+		// VerifyEntrySignature re-checks that below and returns an error if the
+		// nil key came from anywhere else, so this is not a shortcut past it.
+		if err := VerifyEntrySignature(entry, appID, nil); err != nil {
+			return SignatureUncheckable
+		}
+		return SignatureSigned
+	}
+	if entry.Signature == "" {
+		return SignatureUnsigned
+	}
+	if err := VerifyEntrySignature(entry, appID, key); err != nil {
+		return SignatureUntrusted
+	}
+	return SignatureSigned
 }
 
 // evaluate answers one entry against this box.
@@ -144,11 +199,16 @@ func currentArchEnvironment() archEnvironment {
 // tests exercise it; nothing in production populates it yet, so on this box a
 // refused app renders rung 5. Wiring it means passing a lookup down from the
 // composition root, which is main.go's to do.
-func (env archEnvironment) evaluate(entry *RegistryEntry) ArchAvailability {
+// appID is passed rather than derived because the publisher signature COVERS
+// it: signablePayload signs {"app_id": …, "entry": …} so an entry cannot be
+// re-keyed into another app's slot (M4). A listing that verified without the ID
+// would accept exactly the substitution the binding exists to prevent.
+func (env archEnvironment) evaluate(appID string, entry *RegistryEntry) ArchAvailability {
 	declared := entry.Arch
 	return EvaluateArch(ArchRequest{
 		AppName:   entry.Name,
 		Declared:  declared,
+		Signature: EntrySignatureState(appID, entry, env.trustKey, env.trustErr),
 		Delivery:  EntryDeliveryKind(entry),
 		Policy:    EntryEmulationPolicy(entry),
 		NeedsGPU:  EntryNeedsGPU(entry),

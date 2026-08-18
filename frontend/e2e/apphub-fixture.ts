@@ -45,6 +45,20 @@ export interface FixtureAvailability {
   box_arch: string
   undeclared: boolean
   needs: string[]
+  /**
+   * The publisher-signature verdict. 55 of the 74 shipped entries carry no
+   * signature — staged by a catalogue wave, inert until the founder's offline
+   * ceremony — and the box refuses to install every one of them. It rides the
+   * SAME verdict as the architecture rungs, with the same badge/card_badge/
+   * detail, because it is the same kind of fact: this box cannot install this,
+   * here is why, here is what would change it.
+   *
+   * `state` stays one of the four rungs on purpose. A fifth state string would
+   * make arch.ts's toArchAvailability return null on any build that had not
+   * heard of it, and a null renders as "offered, no claim attached" — a
+   * fail-OPEN on the one field that must never open.
+   */
+  signature: 'signed' | 'unsigned' | 'untrusted' | 'uncheckable'
 }
 
 export interface FixtureApp {
@@ -214,6 +228,7 @@ export function forBox(apps: FixtureApp[], boxArch: string): FixtureApp[] {
           state: 'native', installable: true, requires_emulation: false,
           badge: '', card_badge: '', detail: '',
           box_arch: box, undeclared: needs.length === 0, needs,
+          signature: 'signed',
         },
       }
     }
@@ -235,13 +250,49 @@ export function forBox(apps: FixtureApp[], boxArch: string): FixtureApp[] {
         badge: 'Not available on this box',
         card_badge: `Needs ${needs.join('/')}`,
         detail, box_arch: box, undeclared: false, needs,
+        signature: 'signed',
       },
     }
   })
 }
 
-/** REAL + EDGE — the default payload for GET /api/store/registry, on an amd64 box. */
-export const APPS: FixtureApp[] = forBox([...REAL_APPS, ...EDGE_APPS], 'amd64')
+/**
+ * An entry the box will not install because it is AWAITING THE PUBLISHER'S
+ * SIGNATURE — the single largest state the shipped catalogue is actually in
+ * (55 of 74 entries), and the one no layout had ever been measured against.
+ *
+ * It belongs with the adversarial half for the reason stated at the top of this
+ * file: it is a real server response that the fixture had no example of. It is
+ * also the LONGEST badge the hub can be handed — "Awaiting publisher signature"
+ * is 28 characters where rung 5's "Not available on this box" is 25 — so it is
+ * the entry that decides whether the detail panel's notice heading wraps.
+ *
+ * The wording is transcribed from services/appnet/arch.go, whose own tests own
+ * it; what these specs measure is the shape and the length.
+ */
+export function heldForSignature(app: FixtureApp, boxArch: string): FixtureApp {
+  const needs = [...new Set(app.arch.map(fold))]
+  return {
+    ...app,
+    availability: {
+      state: 'unavailable', installable: false, requires_emulation: false,
+      signature: 'unsigned',
+      badge: 'Awaiting publisher signature',
+      card_badge: 'Awaiting signature',
+      detail: `${app.name} is in the catalogue, but its entry carries no publisher signature ` +
+        `yet, so this box refuses the install before anything is downloaded. Signing happens ` +
+        `away from this box, at the publisher's key ceremony, so it is not something to put ` +
+        `right here — and until a release carries that signature, no box will install this entry.`,
+      box_arch: fold(boxArch), undeclared: needs.length === 0, needs,
+    },
+  }
+}
+
+/** REAL + EDGE + the signature hold — the default payload for GET /api/store/registry, on an amd64 box. */
+export const APPS: FixtureApp[] = [
+  ...forBox([...REAL_APPS, ...EDGE_APPS], 'amd64'),
+  heldForSignature({ ...REAL_APPS[1], id: 'held-unsigned', name: 'Blender (unsigned)' }, 'amd64'),
+]
 
 /** What GET /api/store/installed returns for the fixture above. */
 export const INSTALLED = APPS.filter((a) => a.installed).map((a) => ({ id: a.id }))

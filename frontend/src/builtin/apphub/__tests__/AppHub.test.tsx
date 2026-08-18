@@ -70,6 +70,17 @@ interface FixtureAvailability {
   box_arch: string
   undeclared: boolean
   needs: string[]
+  /**
+   * The publisher-signature verdict: 'signed' | 'unsigned' | 'untrusted' |
+   * 'uncheckable'. 55 of the 74 shipped entries carry no signature and the box
+   * refuses to install every one of them, so a hub that offered them showed 55
+   * Install buttons that could only fail.
+   *
+   * It rides this verdict rather than a mechanism of its own, and `state` stays
+   * one of the four architecture rungs, so the hub's existing refusal path
+   * renders it with no new branch and composes no sentence about signatures.
+   */
+  signature: string
 }
 
 interface RegistryFixtureApp {
@@ -106,6 +117,7 @@ function availability(over: Partial<FixtureAvailability> = {}): FixtureAvailabil
     box_arch: 'amd64',
     undeclared: false,
     needs: [],
+    signature: 'signed',
     ...over,
   }
 }
@@ -120,6 +132,30 @@ function refusedFor(name: string, needs: string[], boxArch: string): FixtureAvai
     detail: `${name} ships for ${needs.join(' or ')} only, and this box is ${boxArch}. ` +
       `No build is published for this box's architecture. ` +
       `It stays available on any ${needs.join(' or ')} instance you run.`,
+    box_arch: boxArch,
+    needs,
+  })
+}
+
+/**
+ * The signature hold: the box will not install it because the entry has not been
+ * signed yet, which is the state 55 of the 74 shipped entries are in.
+ *
+ * Transcribed from services/appnet/arch.go's heldForSignature — the box owns the
+ * words and its own tests sweep them. What these specs assert is that the hub
+ * shows what it is given and offers no install.
+ */
+function heldForSignature(name: string, needs: string[], boxArch: string): FixtureAvailability {
+  return availability({
+    state: 'unavailable',
+    installable: false,
+    signature: 'unsigned',
+    badge: 'Awaiting publisher signature',
+    card_badge: 'Awaiting signature',
+    detail: `${name} is in the catalogue, but its entry carries no publisher signature yet, ` +
+      `so this box refuses the install before anything is downloaded. Signing happens away ` +
+      `from this box, at the publisher's key ceremony, so it is not something to put right ` +
+      `here — and until a release carries that signature, no box will install this entry.`,
     box_arch: boxArch,
     needs,
   })
@@ -707,6 +743,7 @@ describe('the rungs', () => {
         box_arch: 'arm64', needs: ['amd64'],
       }),
       refusedFor('Conduit', ['amd64'], 'arm64'),
+      heldForSignature('Conduit', ['amd64'], 'arm64'),
     ]
 
     for (const av of rungs) {
@@ -725,7 +762,83 @@ describe('the rungs', () => {
       }
     }
     // COVERAGE: without this the loop passes by iterating over nothing.
-    expect(rungs.length).toBe(4)
+    expect(rungs.length).toBe(5)
+  })
+
+  /**
+   * THE SIGNATURE HOLD.
+   *
+   * 55 of the 74 shipped entries carry no publisher signature: staged by a
+   * catalogue wave, inert until the founder's offline ceremony, and refused by
+   * InstallFromRegistry before anything is downloaded. The hub listed all 55
+   * with a live Install button, so the box advertised 55 apps whose install
+   * could only fail.
+   *
+   * These specs are the hub's half of the fix. They do NOT re-check the box's
+   * policy — services/appnet owns that — they check that a hold arriving on the
+   * verdict removes the button and shows the box's own words.
+   */
+  it('a held entry is not offered for install, however installable its architecture is', async () => {
+    // Native architecture, no `needs`, nothing about this box refuses it. The
+    // ONLY thing standing between this card and an Install button is the
+    // signature — so a wrong-arch fixture would pass this test without the gate.
+    const av = heldForSignature('Conduit', [], 'amd64')
+    serve({ availability: av })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+
+    const card = cardFor('Conduit')
+    expect(screen.queryByRole('button', { name: 'Install Conduit' })).toBeNull()
+    expect(card.getAttribute('data-signature')).toBe('unsigned')
+    expect(within(card).getByText('Awaiting signature')).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Conduit' }))
+    // The box's badge and the box's sentence, verbatim.
+    expect(await screen.findByText(av.badge)).toBeInTheDocument()
+    expect(screen.getByText(av.detail)).toBeInTheDocument()
+    const panel = document.querySelector('.hub-detail') as HTMLElement
+    expect(within(panel).queryByRole('button', { name: /^Install/ })).toBeNull()
+
+    // THE CONTROL. The same app, the same architecture, signature verified: the
+    // button comes back. Without it this passes on a hub that offers nothing.
+    cleanup()
+    serve({ availability: availability() })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+    expect(screen.getByRole('button', { name: 'Install Conduit' })).toBeInTheDocument()
+  })
+
+  it('frames a pending signature as a hold and a FAILED one as a refusal', async () => {
+    // The words come from the box; the frame does not, and it is the one
+    // channel the sentence cannot reach. An entry waiting on a ceremony is not
+    // broken, and 55 red-blocked cards would say it is.
+    const held = heldForSignature('Conduit', [], 'amd64')
+    serve({ availability: held })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+    fireEvent.click(within(cardFor('Conduit')).getByRole('button', { name: 'Conduit' }))
+    await screen.findByText(held.badge)
+    expect(document.querySelector('.hub-detail .hub-notice')?.getAttribute('data-tone'))
+      .toBe('accent')
+
+    // The control, and the reason the check is not just `signature !== 'signed'`:
+    // a signature that FAILED to verify means the entry was altered, re-keyed or
+    // signed by a stranger. Describing that as a pending state would be a false
+    // reassurance about the one case that warrants alarm.
+    cleanup()
+    const failed = availability({
+      state: 'unavailable', installable: false, signature: 'untrusted',
+      badge: 'Publisher signature did not verify',
+      card_badge: 'Signature rejected',
+      detail: 'Conduit carries a publisher signature that does not verify.',
+    })
+    serve({ availability: failed })
+    render(<AppHub />)
+    await screen.findByText('Conduit')
+    fireEvent.click(within(cardFor('Conduit')).getByRole('button', { name: 'Conduit' }))
+    await screen.findByText(failed.badge)
+    expect(document.querySelector('.hub-detail .hub-notice')?.getAttribute('data-tone'))
+      .toBe('danger')
   })
 })
 
