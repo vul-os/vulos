@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent, within, act } from '@testing-library/react'
 
 // Same reason as LANPairingPanel.test.tsx: jsdom in this project has no canvas
 // 2D context, so the real 'qrcode' package can never draw. Mocking it isolates
@@ -7,7 +7,7 @@ import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-li
 const toCanvasMock = vi.fn((..._args: unknown[]) => Promise.resolve())
 vi.mock('qrcode', () => ({ default: { toCanvas: (...args: unknown[]) => toCanvasMock(...args) } }))
 
-import LANRootCertPanel from '../core/settings/LANRootCertPanel'
+import LANRootCertPanel, { DownloadQR } from '../core/settings/LANRootCertPanel'
 
 // The real GET /api/lan/rootcert wire shape (rootCertInfo in
 // backend/cmd/server/lan_rootcert.go).
@@ -94,6 +94,66 @@ describe('LANRootCertPanel — getting the root onto a device', () => {
     expect(screen.getByText('local, lan, home.arpa, lan.vulos.org')).toBeInTheDocument()
     expect(screen.getByText('10.0.0.0/8, 192.168.0.0/16')).toBeInTheDocument()
     expect(screen.getByText(/path length 0/i)).toBeInTheDocument()
+  })
+})
+
+// The QR is the only path onto a phone that does not involve typing an IP by
+// hand, so what it does when it CANNOT draw matters. Two things were wrong and
+// neither was tested:
+//
+//  1. The error text replaced the canvas, so canvasRef.current went null and
+//     the effect's `if (!canvasRef.current) return` guard early-returned for
+//     every later `content`. The first failure was permanent.
+//  2. The error was cleared OPTIMISTICALLY at the top of the effect — before
+//     the render that was supposed to replace it had drawn anything, and (per
+//     1) after the guard that made the clear unreachable anyway.
+//
+// These tests pin the difference between "cleared because a new render
+// succeeded" and "cleared because a new render was attempted".
+describe('DownloadQR — a failed render is cleared by a render that WORKED, not one that started', () => {
+  it('offers the typed address instead of a QR when the render fails', async () => {
+    toCanvasMock.mockImplementationOnce(() => Promise.reject(new Error('no 2d context')))
+    render(<DownloadQR content="https://192.168.1.50:443/api/lan/rootcert/download" />)
+
+    const fallback = await screen.findByText(/Could not render the QR code/i)
+    expect(fallback).toHaveTextContent('no 2d context')
+  })
+
+  it('retries on new content at all — the canvas is not thrown away by the failure', async () => {
+    toCanvasMock.mockImplementationOnce(() => Promise.reject(new Error('no 2d context')))
+    const { rerender } = render(<DownloadQR content="https://192.168.1.50/a" />)
+    await screen.findByText(/Could not render the QR code/i)
+
+    rerender(<DownloadQR content="https://192.168.1.51/b" />)
+    // Unmounting the canvas on error left the ref null and this second attempt
+    // never happened.
+    await waitFor(() => expect(toCanvasMock).toHaveBeenCalledTimes(2))
+    expect(toCanvasMock.mock.calls[1][1]).toBe('https://192.168.1.51/b')
+  })
+
+  it('keeps the failure on screen while the retry is in flight, and clears it only when the retry succeeds', async () => {
+    toCanvasMock.mockImplementationOnce(() => Promise.reject(new Error('no 2d context')))
+    let finishSecondRender: () => void = () => {}
+    toCanvasMock.mockImplementationOnce(
+      () => new Promise<void>(resolve => { finishSecondRender = () => resolve() }),
+    )
+
+    const { rerender } = render(<DownloadQR content="https://192.168.1.50/a" />)
+    await screen.findByText(/Could not render the QR code/i)
+
+    rerender(<DownloadQR content="https://192.168.1.51/b" />)
+    await waitFor(() => expect(toCanvasMock).toHaveBeenCalledTimes(2))
+
+    // THE DISTINCTION. A clear at the top of the effect blanks the message
+    // here, while nothing has yet been drawn — leaving the owner with neither
+    // a QR code nor the address to type. The last thing known to be true is
+    // still the failure, so it stays.
+    expect(screen.getByText(/Could not render the QR code/i)).toBeInTheDocument()
+
+    await act(async () => { finishSecondRender() })
+    await waitFor(() => {
+      expect(screen.queryByText(/Could not render the QR code/i)).toBeNull()
+    })
   })
 })
 

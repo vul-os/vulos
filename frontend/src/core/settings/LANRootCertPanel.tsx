@@ -91,36 +91,57 @@ function toRootCertInfo(x: unknown): RootCertInfo | null {
 // IP, never a .local name) so a phone can reach it by camera instead of by
 // typing an address it may not be able to resolve. Fixed white plate for the
 // same reason LANPairingPanel's does: QR contrast has to be theme-independent.
-function DownloadQR({ content }: { content: string }) {
+//
+// Exported for its own test: the panel fetches the certificate once and never
+// changes `content`, so the failure-then-recovery path below cannot be driven
+// through the panel at all.
+export function DownloadQR({ content }: { content: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [renderError, setRenderError] = useState('')
 
+  // The canvas stays MOUNTED while the error text is showing. It used to be
+  // swapped out for the error, which left canvasRef.current null, so the guard
+  // below early-returned for every subsequent `content` and the first failure
+  // became permanent — and the optimistic clear that used to sit here ran
+  // AFTER that guard, so it could never undo it.
   useEffect(() => {
-    if (!content || !canvasRef.current) return
-    setRenderError('')
-    QRCode.toCanvas(canvasRef.current, content, {
+    const canvas = canvasRef.current
+    if (!content || !canvas) return
+    let cancelled = false
+    QRCode.toCanvas(canvas, content, {
       width: 180,
       margin: 2,
       color: { dark: '#0a0a0a', light: '#ffffff' },
       errorCorrectionLevel: 'M',
-    }).catch((err: unknown) => setRenderError(errorMessage(err, 'QR render failed')))
+    })
+      // Cleared by a render that SUCCEEDED, not by one that was merely started.
+      // While a retry is in flight the previous failure is still the last thing
+      // known to be true, so the typed-address fallback stays on screen until
+      // there is actually a QR code to replace it with.
+      .then(() => { if (!cancelled) setRenderError('') })
+      .catch((err: unknown) => { if (!cancelled) setRenderError(errorMessage(err, 'QR render failed')) })
+    return () => { cancelled = true }
   }, [content])
 
-  if (renderError) {
-    return (
-      <div className="text-xs text-[var(--text-muted)] text-center p-4 rounded-xl border border-[var(--border-default)]">
-        Could not render the QR code ({renderError}). Type the address below instead.
-      </div>
-    )
-  }
   return (
-    <canvas
-      ref={canvasRef}
-      role="img"
-      aria-label="QR code linking to the root certificate download"
-      className="rounded-xl mx-auto block"
-      style={{ imageRendering: 'pixelated', background: '#ffffff', padding: 10 }}
-    />
+    <>
+      {renderError && (
+        <div className="text-xs text-[var(--text-muted)] text-center p-4 rounded-xl border border-[var(--border-default)]">
+          Could not render the QR code ({renderError}). Type the address below instead.
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label="QR code linking to the root certificate download"
+        className="rounded-xl mx-auto block"
+        // Hidden via `display`, NOT the `hidden` attribute: `block` in the
+        // className above out-specifies the UA's [hidden] rule (both are one
+        // selector, author beats UA) and the canvas would stay visible.
+        style={{ imageRendering: 'pixelated', background: '#ffffff', padding: 10, display: renderError ? 'none' : 'block' }}
+        aria-hidden={renderError ? true : undefined}
+      />
+    </>
   )
 }
 
