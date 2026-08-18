@@ -72,6 +72,13 @@ ENV_LOCAL_BAK=/tmp/vulos-smoke-envbak-$$   # backup of existing .env.local
 ENV_LOCAL_ORIG=0     # 1 = .env.local existed before we touched it
 ENV_LOCAL_WRITTEN=0  # 1 = we wrote .env.local
 SRV_PID=""
+# ISOLATED STATE. The server is pointed at a throwaway data dir (datadir.Root
+# honours VULOS_DATA_DIR, defaulting to $HOME/.vulos) for two reasons: this
+# script registers a user below, which must not touch the developer's own box,
+# and registration is only unauthenticated while NO user exists — so the dir
+# has to be empty on every run or the probe silently loses its session.
+DATA_DIR=/tmp/vulos-smoke-datadir-$$
+COOKIES=/tmp/vulos-smoke-cookies-$$
 
 # ── cleanup ────────────────────────────────────────────────────────────────────
 cleanup() {
@@ -81,7 +88,8 @@ cleanup() {
     wait "$SRV_PID" 2>/dev/null || true
   fi
   # Remove temp binary + logs
-  rm -f "$SRV_BIN" "$SRV_LOG" "$BUILD_LOG"
+  rm -f "$SRV_BIN" "$SRV_LOG" "$BUILD_LOG" "$COOKIES"
+  rm -rf "$DATA_DIR"
   # Restore .env.local
   if [ "$ENV_LOCAL_WRITTEN" = "1" ]; then
     if [ "$ENV_LOCAL_ORIG" = "1" ] && [ -f "$ENV_LOCAL_BAK" ]; then
@@ -116,7 +124,8 @@ ENV_LOCAL_WRITTEN=1
 
 # ── 3. Start server ────────────────────────────────────────────────────────────
 say "Starting server on port ${PORT}…"
-VULOS_PREWARM_BROWSER=0 "$SRV_BIN" -env local >"$SRV_LOG" 2>&1 &
+rm -rf "$DATA_DIR"; mkdir -p "$DATA_DIR"
+VULOS_DATA_DIR="$DATA_DIR" VULOS_PREWARM_BROWSER=0 "$SRV_BIN" -env local >"$SRV_LOG" 2>&1 &
 SRV_PID=$!
 
 # ── 4. Wait for readiness + detect TLS ────────────────────────────────────────
@@ -150,6 +159,83 @@ if [ "$READY" != "1" ]; then
 fi
 BASE="${SCHEME}://127.0.0.1:${PORT}"
 ok "server is up at ${BASE}"
+
+# ── 4a. A SESSION, so the probe reaches the ROUTER ────────────────────────────
+#
+# Without this every probe below is answered 401 by auth.Handler.Middleware
+# (backend/services/auth/handlers.go), which wraps the whole mux in
+# backend/cmd/server/main.go, and the ServeMux is never consulted at all. See
+# the negative control immediately below for how that was measured.
+#
+# POST /api/auth/register is in auth's publicPaths and, when the store holds no
+# users, creates the first user AND logs it in, setting the session cookie. The
+# data dir above is fresh on every run, so that precondition always holds.
+#
+# SIDE EFFECT, deliberately noted rather than hidden: registration fires
+# auth.Handler.OnUserCreated -> sysuser.EnsureUser, which shells out to
+# `adduser`. That needs root and this process is not root (nor is a GitHub
+# runner), so it fails and is logged — no system user is created. If this
+# script is ever run AS ROOT it would create a real Linux user called
+# "vulos-smoke". Do not run it as root.
+say "Registering a throwaway first user to obtain a session…"
+REG_STATUS=$(curl -sk -c "$COOKIES" -o /dev/null -w '%{http_code}' --max-time 10 \
+  -X POST -H 'Content-Type: application/json' \
+  --data-raw '{"username":"vulos-smoke","password":"Vulos-Smoke-Passw0rd!","display_name":"vulos smoke"}' \
+  "${BASE}/api/auth/register" 2>/dev/null || echo "000")
+if [ "$REG_STATUS" != "200" ]; then
+  err "could not register the throwaway user (HTTP ${REG_STATUS})."
+  err "Registration is public only while the store has NO users; \$DATA_DIR is"
+  err "created fresh each run, so a non-200 here means the auth surface changed."
+  tail -20 "$SRV_LOG" >&2 || true
+  exit 1
+fi
+ok "session established"
+
+# Every probe from here on carries the session cookie.
+AUTH_ARGS="-b $COOKIES"
+
+# ── 4b. NEGATIVE CONTROL — can this probe see the router at all? ───────────────
+#
+# MEASURED 2026-08-18, and it is why this section exists: 61 of the 65 routes
+# below answered 401, and so did
+#
+#     GET /api/totally/bogus/xyz        ->  401
+#
+# a path that is registered nowhere in the tree. The box wraps its whole mux in
+# auth.Handler.Middleware (backend/cmd/server/main.go, `handler :=
+# secHeadersMiddleware(appsgate.Middleware(routeVerifier.Middleware(
+# authHandler.Middleware(mainHandler))))`), so an unauthenticated request is
+# answered by the MIDDLEWARE and never reaches the ServeMux. A route that had
+# been deleted from the router, or one whose handler returns 501, is therefore
+# indistinguishable from a working one: both are 401.
+#
+# That was verified by mutation — handleICEConfig was replaced with a handler
+# that returns 501 and this script still printed
+#
+#     PASS — all 65 peering routes are wired (none returned 501)
+#
+# So the probe must first establish that it can tell a real route from a
+# missing one. Every route whose status EQUALS the control's is counted as NOT
+# OBSERVED, and the verdict below refuses to call those verified.
+CONTROL_PATH_A="/api/peering/__vulos_smoke_no_such_route__"
+CONTROL_PATH_B="/api/__vulos_smoke_no_such_route__"
+CONTROL_STATUS=$(curl -sk $AUTH_ARGS -o /dev/null -w '%{http_code}' --max-time 5 "${BASE}${CONTROL_PATH_A}" 2>/dev/null || echo "000")
+CONTROL_STATUS_B=$(curl -sk $AUTH_ARGS -o /dev/null -w '%{http_code}' --max-time 5 "${BASE}${CONTROL_PATH_B}" 2>/dev/null || echo "000")
+say "negative control: two paths that exist nowhere answered ${CONTROL_STATUS} and ${CONTROL_STATUS_B}"
+if [ "$CONTROL_STATUS" != "$CONTROL_STATUS_B" ]; then
+  err "the two nonexistent-path controls disagree (${CONTROL_STATUS} vs ${CONTROL_STATUS_B})."
+  err "This script cannot decide what 'not routed' looks like, so it cannot"
+  err "classify anything below. Investigate before trusting this gate."
+  exit 1
+fi
+if [ "$CONTROL_STATUS" != "404" ]; then
+  err "a path registered nowhere answered ${CONTROL_STATUS}, not 404."
+  err "Something in front of the ServeMux is answering for it, so this probe is"
+  err "NOT observing the router and cannot tell a wired route from a missing one."
+  err "That is precisely the state this gate spent weeks in: see 4b above."
+  exit 1
+fi
+ok "control returns 404 — this probe is observing the ROUTER, not a middleware"
 
 # ── 5. Route table ─────────────────────────────────────────────────────────────
 #
@@ -254,6 +340,8 @@ ROUTES
 # ── 6. Probe each route ────────────────────────────────────────────────────────
 FAILURES=0
 TOTAL=0
+OBSERVED=0
+UNOBSERVED=0
 
 say "Probing peering routes (only 501 = failure)…"
 printf "${c_d}  %-8s %-4s  %s${c_n}\n" "METHOD" "STS" "PATH"
@@ -270,7 +358,7 @@ while IFS='	' read -r method path body; do
   TOTAL=$(( TOTAL + 1 ))
 
   # Build curl arguments: -sk = silent + insecure (handles self-signed dev certs)
-  set -- -sk -o /dev/null -w '%{http_code}' --max-time 5
+  set -- -sk $AUTH_ARGS -o /dev/null -w '%{http_code}' --max-time 5
 
   case "$method" in
     GET)    set -- "$@" -X GET ;;
@@ -285,6 +373,15 @@ while IFS='	' read -r method path body; do
   esac
 
   STATUS=$(curl "$@" "${BASE}${path_real}" 2>/dev/null || echo "000")
+
+  # A status identical to the nonexistent-path control tells us nothing about
+  # this route: the same answer is returned for paths that are registered
+  # nowhere. Count it, but do not call it verified.
+  if [ "$STATUS" = "$CONTROL_STATUS" ]; then
+    UNOBSERVED=$(( UNOBSERVED + 1 ))
+  else
+    OBSERVED=$(( OBSERVED + 1 ))
+  fi
 
   if [ "$STATUS" = "501" ]; then
     err "501  $method $path_real  ← NOT WIRED"
@@ -321,7 +418,41 @@ fi
 if [ "$FAILURES" -gt 0 ]; then
   err "FAIL — ${FAILURES} route(s) returned 501 (not implemented / not wired)"
   exit 1
-else
-  ok "PASS — all ${TOTAL} peering routes are wired (none returned 501)"
-  exit 0
 fi
+
+# OBSERVATION ASSERTION — the one that stops this gate reporting a conclusion
+# it has not earned.
+#
+# A route only counts as checked if its response DIFFERED from the response
+# given to a path that is registered nowhere. Otherwise the answer came from a
+# middleware in front of the router and says nothing about whether the route
+# exists. Without this, the line below read "all 65 peering routes are wired"
+# on a run in which 61 of them were never dispatched to a handler at all.
+#
+# The floor is most of the table: this gate's whole purpose is the routing
+# layer, and a run that cannot see the routing layer has not performed it.
+MIN_OBSERVED=40
+say "${OBSERVED} of ${TOTAL} routes were actually observed past the front-door middleware (${UNOBSERVED} were not)."
+if [ "$OBSERVED" -lt "$MIN_OBSERVED" ]; then
+  err "FAIL — only ${OBSERVED} of ${TOTAL} routes were OBSERVED; ${UNOBSERVED} returned ${CONTROL_STATUS},"
+  err "the same status a path registered nowhere returns. For those routes this run"
+  err "did not distinguish 'wired' from 'deleted' or from 'handler returns 501'."
+  err ""
+  err "This is NOT a regression in the peering routes — it is this gate reporting"
+  err "that it cannot see them. The box answers unauthenticated /api/* requests"
+  err "from auth.Handler.Middleware before the ServeMux runs, so the probe needs a"
+  err "session to reach any handler."
+  err ""
+  err "To fix, in order of preference:"
+  err "  1. Give this script a session and probe as an authenticated caller."
+  err "     NOTE: POST /api/auth/register is public only for the FIRST user and"
+  err "     fires auth.Handler.OnUserCreated -> sysuser.EnsureUser, which shells"
+  err "     out to adduser. Decide that side effect deliberately before adding it"
+  err "     to CI, and point the server at a throwaway data dir."
+  err "  2. Assert route registration statically instead (grep the mux registrations)."
+  err "  3. Narrow this gate's claim to the routes it can genuinely reach."
+  exit 1
+fi
+
+ok "PASS — ${OBSERVED} of ${TOTAL} peering routes observed past the middleware, none returned 501"
+exit 0
