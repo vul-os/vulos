@@ -1421,6 +1421,22 @@ export default function Messages() {
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
+  // The WS handler below has to know whether an arriving message belongs to a
+  // conversation the list already has: a known one is patched in place, an
+  // unknown one means the list is stale and needs refetching. That read used to
+  // happen INSIDE the setConversations updater, which is what put a network
+  // call inside a state updater.
+  //
+  // React treats updaters as pure functions it may call more than once for a
+  // single logical update, and StrictMode double-invokes them on purpose to
+  // surface exactly this — so one arriving message for an unknown conversation
+  // fired two GET /api/peering/conversations. The need was real (decide from
+  // the current list) but wrongly expressed; the current list is mirrored here
+  // so the decision can be made in the handler and the updater can go back to
+  // being a pure function of `prev`.
+  const conversationsRef = useRef<Conversation[]>(conversations)
+  useEffect(() => { conversationsRef.current = conversations }, [conversations])
+
   // Realtime: subscribe to the WS `message` channel via usePeering (PEER-05)
   const { connected: wsConnected, subscribe } = usePeering()
 
@@ -1435,26 +1451,27 @@ export default function Messages() {
         incomingCallbackRef.current(msg)
       }
 
-      // Update conversation list: bump preview + unread
-      setConversations(prev => {
-        const convId = msg.conversation_id || msg.conv_id
-        if (!convId) return prev
+      // Update conversation list: bump preview + unread.
+      const convId = msg.conversation_id || msg.conv_id
+      if (!convId) return
 
-        const exists = prev.some(c => c.id === convId)
-        if (exists) {
-          return prev.map(c => {
-            if (c.id !== convId) return c
-            return {
-              ...c,
-              last_message: msg,
-              unread_count: activeConv?.id === convId ? 0 : (c.unread_count || 0) + 1,
-            }
-          })
-        }
-        // Unknown conversation — refresh the list
+      if (!conversationsRef.current.some(c => c.id === convId)) {
+        // Unknown conversation — the list is stale, so refresh it. Once, from
+        // the handler, where a side effect belongs.
         fetchConversations()
-        return prev
-      })
+        return
+      }
+
+      // Known conversation — a pure functional update, so a repeated invocation
+      // lands on the same result.
+      setConversations(prev => prev.map(c => {
+        if (c.id !== convId) return c
+        return {
+          ...c,
+          last_message: msg,
+          unread_count: activeConv?.id === convId ? 0 : (c.unread_count || 0) + 1,
+        }
+      }))
     })
     return unsub
   }, [subscribe, activeConv, fetchConversations])
