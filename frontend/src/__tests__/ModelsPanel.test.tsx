@@ -50,8 +50,56 @@ describe('ModelsPanel — RAG readiness + management', () => {
       chat_models: null, chat_models_error: 'no llmux gateway configured',
     })
     render(<ModelsPanel />)
-    expect(await screen.findByText(/Lexical retrieval/i)).toBeTruthy()
-    expect(screen.getByText(/no llmux gateway configured/i)).toBeTruthy()
+    // The awaited element must be one that CANNOT be on screen before the box
+    // has answered. This assertion pair used to await /Lexical retrieval/ —
+    // which the panel rendered on its very first paint, from a default — so it
+    // resolved against the loading state and the getByText below raced the
+    // fetch. That is the whole of the flake: a `findBy*` that synchronizes on
+    // nothing is a `getBy*` wearing an await.
+    expect(await screen.findByText(/no llmux gateway configured/i)).toBeTruthy()
+    // Exact, not /Lexical retrieval/i: the body copy below the badge also says
+    // "the assistant is using sovereign lexical retrieval", so the regex matches
+    // TWO elements once the listing has rendered and `findByText` throws
+    // "Found multiple elements". The old assertion could therefore only ever
+    // pass against the pre-load badge — it was ambiguous by construction the
+    // moment the data it was supposedly waiting for arrived.
+    expect(screen.getByText('Lexical retrieval')).toBeTruthy()
+  })
+
+  it('claims no retrieval mode before the box has answered', async () => {
+    // A request that never settles: the panel has read nothing, and must say so
+    // rather than name one of the three real modes.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    render(<ModelsPanel />)
+    expect(await screen.findByText(/Loading models/i)).toBeTruthy()
+    expect(screen.getByText(/Retrieval quality not yet known/i)).toBeTruthy()
+    for (const claim of ['Lexical retrieval', 'Degraded fallback', 'Semantic RAG active']) {
+      expect(screen.queryByText(claim)).toBeNull()
+    }
+  })
+
+  it('claims no retrieval mode when the models read fails', async () => {
+    // A 403 tells us nothing about retrieval quality. Naming a mode here draws
+    // a failed read as a designed state — the operator reads "no model is
+    // installed" from what is actually "we could not look".
+    mockModels({ error: 'owner only' }, 403)
+    render(<ModelsPanel />)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByText(/Retrieval quality not yet known/i)).toBeTruthy()
+    expect(screen.queryByText('Lexical retrieval')).toBeNull()
+  })
+
+  it('claims no retrieval mode when the box reports one it does not recognise', async () => {
+    // An unrecognised rag_mode is narrowed away to undefined on the way in. It
+    // must surface as "not known", not silently become the lexical default.
+    mockModels({
+      embeddings: { dir: '/models', models: [], rag_mode: 'quantum', needs_registry: true },
+      chat_models: null, chat_models_error: 'no llmux gateway configured',
+    })
+    render(<ModelsPanel />)
+    expect(await screen.findByText(/no llmux gateway configured/i)).toBeTruthy()
+    expect(screen.getByText(/Retrieval quality not yet known/i)).toBeTruthy()
+    expect(screen.queryByText('Lexical retrieval')).toBeNull()
   })
 
   it('shows the DEGRADED indicator honestly when tokenizer.json is missing', async () => {

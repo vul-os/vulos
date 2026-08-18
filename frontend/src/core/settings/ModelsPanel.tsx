@@ -183,8 +183,17 @@ function toDownloadResponse(x: unknown): DownloadResponse {
   return { embeddings: toModelsListing(x.embeddings) }
 }
 
-// RAG_MODES describes the three honest retrieval states the assistant can be in.
-const RAG_MODES: Record<RagMode, { label: string; tone: string; dot: string; desc: string }> = {
+// RAG_MODES describes the honest retrieval states the assistant can be in:
+// the three the box reports, plus `unknown` for before it has reported one.
+//
+// `unknown` is a state on purpose. The badge used to default to `lexical`
+// whenever there was no listing — which meant the panel asserted a specific,
+// entirely plausible retrieval quality while it had read nothing from the box,
+// and went on asserting it when that read 403'd or failed. An indicator whose
+// only job is to be honest about retrieval quality has to be able to say it
+// does not know yet, otherwise "Lexical retrieval" means both "no model is
+// installed" and "no idea", and the operator cannot tell which.
+const RAG_MODES: Record<RagMode | 'unknown', { label: string; tone: string; dot: string; desc: string }> = {
   semantic: {
     label: 'Semantic RAG active',
     tone: 'text-success bg-[var(--status-success-soft)] border-success-soft',
@@ -203,11 +212,19 @@ const RAG_MODES: Record<RagMode, { label: string; tone: string; dot: string; des
     dot: 'bg-[var(--bg-active)]',
     desc: 'No local embedding model is installed, so the assistant uses on-box lexical (keyword) retrieval. This is fully sovereign and needs no model, but does not find messages by meaning. Import an .onnx embedding model below to enable semantic RAG.',
   },
+  unknown: {
+    label: 'Retrieval quality not yet known',
+    tone: 'text-[var(--text-tertiary)] bg-[var(--bg-elevated)] border-[var(--border-strong)] border-dashed',
+    dot: 'bg-[var(--bg-active)]',
+    desc: 'The box has not reported which retrieval mode is active. Nothing is claimed here until it does — if the read failed, the reason is shown below.',
+  },
 }
 
 // RAGReadinessBadge — the honest indicator of the assistant's retrieval quality.
-function RAGReadinessBadge({ mode }: { mode: RagMode }) {
-  const m = RAG_MODES[mode] || RAG_MODES.lexical
+// `undefined` is not "lexical": it is the box not having said, and it renders
+// as such.
+function RAGReadinessBadge({ mode }: { mode: RagMode | undefined }) {
+  const m = RAG_MODES[mode ?? 'unknown']
   return (
     <div className={`rounded-xl border px-4 py-3 ${m.tone}`}>
       <div className="flex items-center gap-2">
@@ -407,7 +424,9 @@ function ModelsPanelOwner() {
   useEffect(() => { load() }, [load])
 
   const emb = data?.embeddings
-  const ragMode = emb?.rag_mode || 'lexical'
+  // Deliberately NOT defaulted: undefined means the box has not told us, which
+  // includes the moments before the first response and every failed read.
+  const ragMode = emb?.rag_mode
   const chatModels = parseChatModels(data?.chat_models)
 
   return (
