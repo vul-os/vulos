@@ -1521,13 +1521,13 @@ func TestKioskEnvIsOverridable(t *testing.T) {
 // That has now shipped from THREE separate build paths, and the first fix
 // missed the other two because it only looked at lines mentioning $ROOTFS:
 //
-//   1. build.sh created it in the rootfs, unconditionally, 2026-03-31 →
-//      2026-08-15. Every image, live and installed.
-//   2. build.sh --deploy used it as the "system packages installed" sentinel:
-//      `test -f .setup-complete` to decide whether to apt-get, `touch` it when
-//      done. Every remote box provisioned over SSH.
-//   3. The Dockerfile carried `RUN touch /var/lib/vulos/.setup-complete` as a
-//      layer. Every container, including the published one.
+//  1. build.sh created it in the rootfs, unconditionally, 2026-03-31 →
+//     2026-08-15. Every image, live and installed.
+//  2. build.sh --deploy used it as the "system packages installed" sentinel:
+//     `test -f .setup-complete` to decide whether to apt-get, `touch` it when
+//     done. Every remote box provisioned over SSH.
+//  3. The Dockerfile carried `RUN touch /var/lib/vulos/.setup-complete` as a
+//     layer. Every container, including the published one.
 //
 // So the check is now about the ACT, not the location: no build artefact may
 // create this file, anywhere, by any means. Reading it is fine — that is how a
