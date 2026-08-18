@@ -138,7 +138,10 @@ export async function enableWebPush(deps: WebPushDeps = {}): Promise<PushSubscri
 
 // registrationOf recovers the ServiceWorkerRegistration for a subscription so the
 // CP-keyed subscribe can reuse the same PushManager. Falls back to ready.
-async function registrationOf(_subscription: PushSubscription): Promise<ServiceWorkerRegistration | null> { // eslint-disable-line no-unused-vars -- kept for call-site clarity; no browser API derives a registration from a subscription
+// `_subscription` is named for call-site clarity and deliberately unused: no
+// browser API derives a registration from a subscription. The underscore prefix
+// is what the lint config already keys on, so no directive is needed.
+async function registrationOf(_subscription: PushSubscription): Promise<ServiceWorkerRegistration | null> {
   try {
     return await navigator.serviceWorker.ready
   } catch {

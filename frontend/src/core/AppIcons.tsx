@@ -916,7 +916,6 @@ function ArtPlate({ id, size, style }: ArtPlateProps) {
 // .22), so this cannot match all of them at once; matching Terminal is the
 // deliberate choice. AppIcons.test.ts pins it to what terminal.svg actually
 // contains, so editing that file without editing this constant fails.
-// eslint-disable-next-line react-refresh/only-export-components
 export const ART_RADIUS = 0.222
 
 // Below this pixel size the art turns to mush, so small chrome (window

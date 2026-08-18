@@ -6,6 +6,24 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
+  // An `eslint-disable` that no longer suppresses anything is a FAILURE, not a
+  // warning.
+  //
+  // Added 2026-08-18 after a sweep of the 23 `react-hooks/set-state-in-effect`
+  // directives in src/: **11 of them suppressed nothing at all** — the code had
+  // changed underneath them and the directive stayed. They are not harmless.
+  // A stale directive reads exactly like a considered decision, so the next
+  // person to look at that effect sees "someone already thought about this" and
+  // moves on. That is how the six real defects in that same sweep survived,
+  // including a QR panel whose first failure was permanent and a public-app
+  // banner that asserted the previous app's verdict after switching apps.
+  //
+  // `--report-unused-disable-directives` found three of them in one command.
+  // At 'error' the linter cannot accumulate them again, and CI (`npm run lint`
+  // → `eslint .`) enforces it: eslint exits nonzero on any error.
+  {
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
+  },
   // Build artifacts and vendored third-party bundles are not our source — they
   // are minified / generated and should never be linted. `output/` is the
   // build staging dir (gitignored), `dist/` the Vite output, and `vendor/`

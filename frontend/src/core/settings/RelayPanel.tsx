@@ -260,7 +260,6 @@ interface ProviderOption {
 // RelayPanel.test.tsx pins this constant to what relayconfig.go's DefaultConfig
 // actually returns, by reading the Go source — so a future change to the
 // backend default fails here instead of silently making this panel lie again.
-// eslint-disable-next-line react-refresh/only-export-components
 export const DEFAULT_PROVIDER = 'vulos'
 
 const PROVIDERS: ProviderOption[] = [

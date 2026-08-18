@@ -1215,7 +1215,7 @@ export default function Vault() {
     loadEntries()
   }, [loadEntries])
 
-  const handleSaveEntry = useCallback((_savedEntry: VaultEntry) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  const handleSaveEntry = useCallback((_savedEntry: VaultEntry) => {
     loadEntries()
     setView('list')
     setSelected(null)
