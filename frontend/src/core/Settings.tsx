@@ -1862,7 +1862,19 @@ function toNetworkModeResponse(x: unknown): NetworkModeResponse {
 
 function NET9_ConnectionModeSettings() {
   const [current, setCurrent] = useState<string | null>(null) // server-confirmed mode
-  const [pending, setPending] = useState<string | null>(null) // user-selected mode (pre-apply)
+  // The user's UNSAVED choice, or null for "no choice made — follow the box".
+  //
+  // It used to be seeded from the server on every read, which is what made
+  // Refresh destructive: NET9_refresh did setPending(d.mode) unconditionally, so
+  // a radio the user had selected but not applied was silently replaced by the
+  // mode already running, with no warning and nothing to undo it. Refresh is a
+  // READ of the box's state; a read must not throw away what the person typed.
+  //
+  // Null-means-follow is what lets the read stop touching it at all. The
+  // selected radio is `pending ?? current`, so with no pending choice the panel
+  // still tracks the box exactly as before, and Apply clears it back to null on
+  // success rather than restating the answer.
+  const [pending, setPending] = useState<string | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [status, setStatus] = useState<NetworkModeStatusDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1880,7 +1892,7 @@ function NET9_ConnectionModeSettings() {
       .then((raw: unknown) => {
         const d = toNetworkModeResponse(raw)
         setCurrent(d.mode ?? null)
-        setPending(d.mode ?? null)
+        // Deliberately does NOT write `pending`. See its declaration.
         setBlocked(!!d.external_listener_blocked)
         setStatus(d.status || null)
         setError('')
@@ -1914,7 +1926,8 @@ function NET9_ConnectionModeSettings() {
       })
       .then(d => {
         setCurrent(d.mode ?? null)
-        setPending(d.mode ?? null)
+        // Applied — there is no unsaved choice left to keep.
+        setPending(null)
         setBlocked(!!d.external_listener_blocked)
         setStatus(d.status || null)
         setSaved(true)
@@ -1924,7 +1937,10 @@ function NET9_ConnectionModeSettings() {
       .finally(() => setSaving(false))
   }
 
-  const dirty = pending && pending !== current
+  // What the radios show: the unsaved choice if there is one, otherwise whatever
+  // the box last told us it is running.
+  const selectedMode = pending ?? current
+  const dirty = pending !== null && pending !== current
 
   return (
     <Section title="Connection Mode">
@@ -1967,7 +1983,7 @@ function NET9_ConnectionModeSettings() {
 
       <div className="space-y-2 mb-5">
         {NET9_MODES.map(m => {
-          const selected = pending === m.id
+          const selected = selectedMode === m.id
           return (
             <label
               key={m.id}
