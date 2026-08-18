@@ -1,11 +1,14 @@
 # Every control in Settings, and whether the OS keeps its promise
 
-`frontend/src/core/Settings.tsx` is 3,964 lines and had never been audited as a
-whole. This document is the inventory, written **before** the fixes so the
-findings are reviewable separately from the changes that act on them.
+`frontend/src/core/Settings.tsx` was 3,964 lines when this inventory was taken
+and had never been audited as a whole; it is 4,193 lines today, because acting
+on the findings below added guards and the comments explaining them. This
+document is the inventory, written **before** the fixes, so the findings stay
+reviewable separately from the changes that act on them.
 
-Scope: the 22 panels defined *in* `Settings.tsx`. The 16 panels it delegates to
-`core/settings/*.tsx` are audited in §8 and are a separate surface.
+Scope: the 21 panels defined *in* `Settings.tsx` — the section router has 37
+branches, 16 of which delegate. Those 16 `core/settings/*.tsx` panels are a
+separate surface, and §8 says what did and did not happen to them.
 
 Four verdicts, per the brief:
 
@@ -27,6 +30,57 @@ not tell a reply from a refusal. The *writes* are in good shape. What was never
 audited is the other half: **what this screen asserts when it does not know.**
 Eleven of the sixteen defects below are on the reading side, not the writing
 side, and every one of them draws an absent value as a confident fact.
+
+---
+
+## 0. Status — every finding below is closed, re-verified 2026-08-18
+
+§1, §2, §4 and §5 are the inventory **as it stood when it was written**. They are
+kept in the past tense on purpose: they are the record of what was wrong, not a
+description of the code today. Every entry — H1-H4, D1-D4, S1-S5, F1-F12 — was
+re-read against `frontend/src/core/Settings.tsx` on 2026-08-18 and is fixed. The
+fixes were made by earlier passes, not by this verification.
+
+Four of them are additionally held down by an executable gate,
+`frontend/e2e/settings-honesty.e2e.ts`, which drives the box's answers (a 500, a
+body missing a field, a refused write) and asserts the panel does **not** print
+the sentence the finding was about. That gate has been mutation-tested: each
+defect was re-planted in `Settings.tsx`, the specific test was confirmed to go
+red naming the specific lie, and the tree was restored from a byte baseline.
+
+| finding | the lie it used to tell | pinned by |
+|---|---|---|
+| D2 / S1 / S2 / F1 | a `local-fs` box told "Central Tigris (default)" | storage-mode specs |
+| F2 / F3 | "Tier 0 — Software", "Capture: X11 SHM", "OS: Debian Linux" for hardware nobody measured | About spec |
+| D4 / F4 / F5 | "PIN status: Set" and "5 attempts remaining" for a PIN the box never mentioned | Device PIN spec |
+| D1 | "Saved" for a write the box refused with a 403 | Account spec |
+
+One caveat that the mutation run itself turned up, recorded because it changes
+how the gate should be read. F2 is now defended twice: `apiGet` throws on a 5xx
+so `sys` is null, **and** the Graphics card is gated on the box having reported
+some graphics field. Defeating either layer alone leaves the panel silent and
+the test green — only restoring the whole original defect (the pre-`apiGet` raw
+read *and* the ungated card) makes it print "Tier 0 — Software" again. So a
+green run of that spec is evidence about the pair, not about either guard alone.
+
+The gate also carries a control, because every assertion in it is negative and a
+locator that matches nothing satisfies them all. That control used to read a
+value produced by the storage label map — the same map the first spec pins — so
+one mutation could take out the spec and the control together, and a run in that
+state proves nothing in either direction. It now asserts only Settings' own
+static chrome, which no box reply and no honesty mutation can reach, and each
+spec carries its own positive anchor to show its section actually rendered.
+
+**Not in this document's scope, and now fixed on the other side of the wire.**
+H4/F12 was written up as a frontend defect, and the frontend fix (an unknown
+radio state, with the toggle disabled) was only reachable if the box could say
+"I could not ask". It could not: `GET /api/bluetooth/status` served the zero
+`Status` — `powered:false` — as a 200 whenever `bluetoothctl` failed, so the box
+asserted "the radio is off" when it meant "I did not look". That was fixed in
+`backend/cmd/server/main.go` (commit e28a69f8, 2026-08-18 00:50), which now
+answers 503 for `bluetooth.ErrUnavailable`. Recorded here because the same
+finding had a half on each side of the API and only the frontend half was
+audited.
 
 ---
 
@@ -308,7 +362,19 @@ saying so. Three call sites never adopted it.
   three of the four things it lists, but rewording it is a copy decision that
   touches the synced-prefs story another agent owns.
 
-## 8. Delegated panels
+## 8. Delegated panels — NOT audited
 
-The 16 `core/settings/*.tsx` panels (5,653 lines) were scanned separately for the
-same four verdicts. See the notes appended below.
+The 16 delegated panels under `frontend/src/core/settings/` are 5,199 lines.
+(The 5,653 figure this section used to give is the whole directory, which also
+counts the 454-line shared kit `frontend/src/core/settings/ui.tsx` — a kit, not
+a panel.)
+
+**This section pointed at "the notes appended below" and nothing was ever
+appended.** No scan of these 16 panels is recorded here or anywhere else this
+document can name, so the sentence promised a reader evidence that does not
+exist. Rather than restate the promise, the status is now what it actually is:
+these 5,199 lines have not been audited for the four verdicts, and §1-§5 say
+nothing about them. Whoever picks that up starts from zero.
+
+This is the same defect the rest of this document is about, committed by the
+document: an absent value — a scan nobody performed — drawn as a fact.
