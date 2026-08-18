@@ -1369,7 +1369,12 @@ export function ThreadView({ conversation, myVulosId, onBack }: ThreadViewProps)
 export default function Messages() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
-  const [loadingConvs, setLoadingConvs] = useState(false)
+  // Starts TRUE: the list is fetched on mount, so the first thing that is
+  // true about it is that it is loading. Seeding it here is what lets
+  // fetchConversations set nothing synchronously (the pattern PeopleView and
+  // usePhoneData already use), and the RETRY button is what turns the spinner
+  // back on for a second attempt.
+  const [loadingConvs, setLoadingConvs] = useState(true)
   const [convsError, setConvsError] = useState<string | null>(null)
   const [myVulosId, setMyVulosId] = useState<string | null>(null)
 
@@ -1383,10 +1388,11 @@ export default function Messages() {
       .catch(() => {})
   }, [])
 
-  // Fetch conversation list
+  // Fetch conversation list. Nothing is set synchronously here, so this is also
+  // safe to call from the WS handler below as a BACKGROUND refresh — it used to
+  // flip the spinner on and blank the list every time an unknown conversation
+  // arrived.
   const fetchConversations = useCallback(() => {
-    setLoadingConvs(true)
-    setConvsError(null)
     fetch('/api/peering/conversations')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -1399,12 +1405,20 @@ export default function Messages() {
             ? data.conversations
             : []
         setConversations(raw.map(normalizeConversation).filter((c): c is Conversation => c !== null))
+        setConvsError(null)
       })
       .catch((e: unknown) => setConvsError(errMessage(e, 'Could not reach the box')))
       .finally(() => setLoadingConvs(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // What the Retry button calls: an explicit second attempt is the one place a
+  // user has asked to see the spinner again.
+  const retryConversations = useCallback(() => {
+    setLoadingConvs(true)
+    setConvsError(null)
+    fetchConversations()
+  }, [fetchConversations])
+
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
   // Realtime: subscribe to the WS `message` channel via usePeering (PEER-05)
@@ -1481,7 +1495,7 @@ export default function Messages() {
           wsConnected={wsConnected}
           narrow={narrow}
           loadError={convsError}
-          onRetry={fetchConversations}
+          onRetry={retryConversations}
         />
       )}
       {showThread && (

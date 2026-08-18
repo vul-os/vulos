@@ -197,17 +197,18 @@ function ApmPopover({ onClose }: ApmPopoverProps) {
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // The error is cleared by a load that SUCCEEDED, not by one that was merely
+  // started. It used to be cleared up front, which set nothing on mount (error
+  // is already null there) and, on the adopt/revoke refreshes that also call
+  // this, blanked the reason the list was unavailable while it was still
+  // unavailable.
   const load = useCallback(() => {
-    setError(null)
     apmList()
-      .then(data => setItems(data || []))
+      .then(data => { setItems(data || []); setError(null) })
       .catch(() => { setError('Could not load adopted ports.'); setItems([]) })
   }, [])
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }

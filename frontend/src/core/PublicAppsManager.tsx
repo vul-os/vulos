@@ -235,13 +235,17 @@ function PamPopover({ onClose }: PamPopoverProps) {
   const [error, setError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
 
+  // The error is cleared by a load that SUCCEEDED, not by one that was merely
+  // started. It used to be cleared up front, which set nothing on mount (error
+  // is already null there) and, on the per-row onChanged refreshes that also
+  // call this, blanked the reason the list was unavailable while it still was.
   const loadEntries = useCallback(() => {
-    setError(null)
     pamFetchVisibility()
       .then(data => {
         // Only show local/public apps (non-private) — those are the ones that need attention
         const nonPrivate = (data || []).filter(e => e.visibility !== 'private')
         setEntries(nonPrivate)
+        setError(null)
       })
       .catch(() => {
         setError('Could not load app visibility data.')
@@ -249,10 +253,7 @@ function PamPopover({ onClose }: PamPopoverProps) {
       })
   }, [])
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadEntries()
-  }, [loadEntries])
+  useEffect(() => { loadEntries() }, [loadEntries])
 
   // Close on Escape
   useEffect(() => {

@@ -1870,8 +1870,11 @@ function NET9_ConnectionModeSettings() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
+  // `loading` is seeded true above, so the mount fetch does not have to say so —
+  // and saying so synchronously in an effect body is what the suppression here
+  // used to cover. The user-triggered Refresh is the one that turns the spinner
+  // back on (NET9_reload below), the same split PeopleView and usePhoneData use.
   const NET9_refresh = useCallback(() => {
-    setLoading(true)
     fetch('/api/network/mode')
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
       .then((raw: unknown) => {
@@ -1886,7 +1889,11 @@ function NET9_ConnectionModeSettings() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  const NET9_reload = useCallback(() => {
+    setLoading(true)
+    NET9_refresh()
+  }, [NET9_refresh])
+
   useEffect(() => { NET9_refresh() }, [NET9_refresh])
 
   const NET9_apply = () => {
@@ -2005,7 +2012,7 @@ function NET9_ConnectionModeSettings() {
           {saving ? 'Applying…' : saved ? 'Applied' : 'Apply'}
         </button>
         <button
-          onClick={NET9_refresh}
+          onClick={NET9_reload}
           disabled={loading || saving}
           className="btn-ghost text-sm"
         >

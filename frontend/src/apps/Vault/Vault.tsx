@@ -959,19 +959,35 @@ function EntryDetail({ entryMeta, onBack, onEdit, onDelete }: {
   onEdit: (entry: VaultEntry) => void
   onDelete: (id: string | undefined) => void
 }) {
-  const [entry, setEntry] = useState<VaultEntry | null>(null)
-  const [loading, setLoading] = useState(true)
+  // A fetched entry belongs to the ID IT WAS FETCHED FOR, so the id is stored
+  // with it and the two are compared during render. The `setLoading(true)` that
+  // used to open the effect — and the suppression covering it — set nothing on
+  // mount, because `loading` starts true; it was there for the case where
+  // entryMeta.id changes in place. Deriving covers that case without writing
+  // anything synchronously, and covers the one setLoading(true) never did: a
+  // slow answer for the entry the user has left cannot land on the one they are
+  // looking at.
+  const [loaded, setLoaded] = useState<{ id: string | undefined, entry: VaultEntry | null } | null>(null)
   const [showPass, setShowPass] = useState(false)
   const [delConfirm, setDelConfirm] = useState(false)
   const { copied, copy } = useCopy()
 
+  const current = loaded && loaded.id === entryMeta.id ? loaded : null
+  const entry = current ? current.entry : null
+  const loading = current === null
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true)
-    fetch(`/api/auth/vault/entry/${entryMeta.id}`)
+    const forId = entryMeta.id
+    let cancelled = false
+    fetch(`/api/auth/vault/entry/${forId}`)
       .then(r => (r.ok ? r.json() : null))
-      .then((data: unknown) => { setEntry(data ? toVaultEntry(data) : null); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then((data: unknown) => { if (!cancelled) setLoaded({ id: forId, entry: data ? toVaultEntry(data) : null }) })
+      // A failed fetch resolves to "no entry", which renders the designed
+      // "Could not load entry" state with its Back button. It used to only
+      // clear the spinner, leaving `entry` null anyway — the same screen, but
+      // reached by accident rather than on purpose.
+      .catch(() => { if (!cancelled) setLoaded({ id: forId, entry: null }) })
+    return () => { cancelled = true }
   }, [entryMeta.id])
 
   const handleDelete = async () => {
