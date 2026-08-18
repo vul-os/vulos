@@ -44,8 +44,9 @@
 #
 # Requirements: docker (running), go, curl. Pulls alpine:3 and installs
 # iptables inside the box container, so it needs image-registry network access
-# the first time. NOT wired into CI here — .github/workflows/ci.yml is owned
-# elsewhere.
+# the first time. Wired into CI as the REACH-NAT job (.github/workflows/ci.yml);
+# that job carries no `needs:`, so an unrelated backend failure cannot take this
+# gate's coverage down with it.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

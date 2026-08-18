@@ -1303,7 +1303,18 @@ jobs:
     # a minute of arms on top of the image build.
     name: SCREENS-01 — cog + labwc place one browser per output
     runs-on: ubuntu-latest
-    needs: [backend]
+    # NO `needs:` — deliberately. This job shares nothing with the backend
+    # job: it does its own checkout, and this script contains zero Go
+    # references (no `go build`, no `go test`, no `command -v go`). A
+    # `needs: [backend]` here is not a technical dependency, it is a "don't
+    # bother if backend is red" policy — and on 2026-08-18 that policy
+    # silently switched this gate OFF for days, because the backend job was
+    # red for an UNRELATED reason (55 registry entries awaiting the founder's
+    # offline signing ceremony, unfixable in CI). A skipped job reads as "not
+    # applicable" and actually means "unknown". Worse, all four smoke gates
+    # would then have run for the first time in weeks on the day the founder
+    # signs — possibly a release day. One of them turned out to be hollow, and
+    # that was only discovered because it finally ran.
     steps:
       - uses: actions/checkout@v4
 
@@ -1341,7 +1352,18 @@ jobs:
     # a failure should be legible as itself.
     name: LANNAME-01 — the box's own name resolves to the box
     runs-on: ubuntu-latest
-    needs: [backend]
+    # NO `needs:` — deliberately. This job shares nothing with the backend
+    # job: it does its own checkout, and this script contains zero Go
+    # references (no `go build`, no `go test`, no `command -v go`). A
+    # `needs: [backend]` here is not a technical dependency, it is a "don't
+    # bother if backend is red" policy — and on 2026-08-18 that policy
+    # silently switched this gate OFF for days, because the backend job was
+    # red for an UNRELATED reason (55 registry entries awaiting the founder's
+    # offline signing ceremony, unfixable in CI). A skipped job reads as "not
+    # applicable" and actually means "unknown". Worse, all four smoke gates
+    # would then have run for the first time in weeks on the day the founder
+    # signs — possibly a release day. One of them turned out to be hollow, and
+    # that was only discovered because it finally ran.
     steps:
       - uses: actions/checkout@v4
 
@@ -1364,7 +1386,13 @@ jobs:
     # is visible and isolated rather than confused with the backend result.
     name: REACH-NAT — a box behind a DROP firewall stays reachable
     runs-on: ubuntu-latest
-    needs: [backend]
+    # NO `needs:` — deliberately. See the note on smoke-multiscreen. This job
+    # does build Go, so the "meaningless against a broken backend" argument has
+    # some force — but a genuinely broken backend fails THIS job on its own
+    # build step, with an error legible as itself, which is exactly what this
+    # file's own comments repeatedly ask for. Gating it on the backend job
+    # instead means an unrelated backend failure (e.g. an unsigned registry)
+    # takes this property's coverage down with it, silently.
     env:
       GOTOOLCHAIN: auto
     steps:
@@ -1382,7 +1410,13 @@ jobs:
   smoke-peering:
     name: SMOKE-01 — Peering Route Regression
     runs-on: ubuntu-latest
-    needs: [backend]
+    # NO `needs:` — deliberately. See the note on smoke-multiscreen. This job
+    # does build Go, so the "meaningless against a broken backend" argument has
+    # some force — but a genuinely broken backend fails THIS job on its own
+    # build step, with an error legible as itself, which is exactly what this
+    # file's own comments repeatedly ask for. Gating it on the backend job
+    # instead means an unrelated backend failure (e.g. an unsigned registry)
+    # takes this property's coverage down with it, silently.
     env:
       GOTOOLCHAIN: auto
     steps:
@@ -1426,7 +1460,12 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [frontend, backend, gofmt, smoke-peering, registry-signatures]
+    # `push: false` — this job publishes NOTHING; it only proves the image
+    # builds on both platforms. Publishing is gated in release.yml, which is
+    # the right place for it. Gating a non-publishing build on
+    # `registry-signatures` bought no safety and was the transitive path by
+    # which an unsigned registry also killed the image build for days.
+    needs: [frontend, backend, gofmt]
     strategy:
       matrix:
         platform: [linux/amd64, linux/arm64]
