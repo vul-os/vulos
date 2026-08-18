@@ -6,7 +6,7 @@
  *
  * Renders null for private apps, system apps, or when no app is focused.
  */
-import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useShell } from '../providers/ShellProvider'
 
 // System apps that cannot be published (must stay private)
@@ -18,13 +18,29 @@ const PUBWEB_POLL_MS = 15_000
 
 type Visibility = 'public' | 'private' | null
 
-function useFocusedAppVisibility(appId: string | null): [Visibility, Dispatch<SetStateAction<Visibility>>] {
-  const [visibility, setVisibility] = useState<Visibility>(null)
+// An answer from /api/apps/visibility is only ever true OF THE APP IT WAS ASKED
+// ABOUT, so the app id is stored WITH it and the two are compared during
+// render. This used to be a bare Visibility that was reset only in the
+// `if (!appId)` branch — so it survived a switch from one app to another, and
+// the banner (which names no app; it says "this app") went on asserting the
+// PREVIOUS app's verdict about the new one. Normally that self-corrected one
+// round trip later, but the catch below deliberately keeps the last known
+// state on a network error, so with /api/apps/visibility unreachable — which
+// is exactly when someone is poking at network settings — a false "anyone on
+// the internet can view it" was permanent, and its Make private button PATCHed
+// the app the user had switched TO, not the one it was warning about.
+//
+// Deriving it makes an unknown visibility render as no claim rather than as
+// someone else's claim, which is the only honest thing a security banner can
+// say before the box has answered.
+function useFocusedAppVisibility(appId: string | null): [Visibility, (v: Visibility) => void] {
+  const [seen, setSeen] = useState<{ appId: string, visibility: Visibility } | null>(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!appId) { setVisibility(null); return }
-
+    if (!appId) return
+    // Bound once so the async closure below and the stamp it writes cannot
+    // disagree about which app this poll is speaking for.
+    const forApp = appId
     let cancelled = false
 
     async function fetchVis() {
@@ -32,10 +48,11 @@ function useFocusedAppVisibility(appId: string | null): [Visibility, Dispatch<Se
         const res = await fetch('/api/apps/visibility')
         if (!res.ok || cancelled) return
         const list = await res.json()
-        const entry = list.find((a: { app_id: string; visibility?: Visibility }) => a.app_id === appId)
-        if (!cancelled) setVisibility(entry?.visibility ?? 'private')
+        const entry = list.find((a: { app_id: string; visibility?: Visibility }) => a.app_id === forApp)
+        if (!cancelled) setSeen({ appId: forApp, visibility: entry?.visibility ?? 'private' })
       } catch {
-        // network error — keep previous state
+        // Network error — keep the last answer FOR THIS APP. It is stamped with
+        // the app id, so it can never be read as one about a different app.
       }
     }
 
@@ -47,7 +64,15 @@ function useFocusedAppVisibility(appId: string | null): [Visibility, Dispatch<Se
     }
   }, [appId])
 
-  return [visibility, setVisibility]
+  const visibility: Visibility = seen && seen.appId === appId ? seen.visibility : null
+
+  // Used by the Make private action for an optimistic update. Stamped the same
+  // way, so a late poll for the previous app cannot resurrect its banner here.
+  const set = useCallback((v: Visibility) => {
+    if (appId) setSeen({ appId, visibility: v })
+  }, [appId])
+
+  return [visibility, set]
 }
 
 export default function PublicAppBanner() {
