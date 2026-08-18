@@ -265,9 +265,13 @@ export default function LANRootCertPanel() {
   const [os, setOS] = useState<string>('android')
   const [copied, setCopied] = useState(false)
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
+  // One fetch, on mount. There is no retry control on this panel, so the
+  // `setLoading(true)` / `setError(null)` that used to open this — and the
+  // suppression that covered them — were writing values the initial state
+  // already held, on the only pass that could ever run them. Nothing is set
+  // synchronously now; `loading` starts true and only the response moves it.
+  useEffect(() => {
+    let cancelled = false
     fetch('/api/lan/rootcert', { credentials: 'include' })
       .then(async r => {
         const raw: unknown = await r.json().catch(() => null)
@@ -276,14 +280,16 @@ export default function LANRootCertPanel() {
         }
         const parsed = toRootCertInfo(raw)
         if (!parsed) throw new Error('The box did not return a usable answer.')
-        setInfo(parsed)
+        if (!cancelled) setInfo(parsed)
       })
-      .catch((err: unknown) => { setInfo(null); setError(errorMessage(err, 'Could not ask the box about its root certificate.')) })
-      .finally(() => setLoading(false))
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setInfo(null)
+        setError(errorMessage(err, 'Could not ask the box about its root certificate.'))
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [load])
 
   const copyFingerprint = useCallback(() => {
     const value = info?.sha256

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 
 // The 'qrcode' package needs a real <canvas> 2D context to draw into, which
 // jsdom does not provide in this project (no 'canvas' npm dependency — a
@@ -11,7 +11,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
 const toCanvasMock = vi.fn((..._args: unknown[]) => Promise.resolve())
 vi.mock('qrcode', () => ({ default: { toCanvas: (...args: unknown[]) => toCanvasMock(...args) } }))
 
-import LANPairingPanel from '../core/settings/LANPairingPanel'
+import LANPairingPanel, { PairingQR } from '../core/settings/LANPairingPanel'
 
 // The real GET /api/lan/pairing wire shape (backend/cmd/server/lan_pairing.go's
 // pairingInfo struct) — name/addr/spki/spki_hex/payload.
@@ -85,5 +85,49 @@ describe('LANPairingPanel — pairing code display', () => {
     // The fingerprint is still shown as a fallback way to compare the pin,
     // even though the QR itself failed to draw.
     expect(screen.getByText('AB:CD:EF:01:23:45:67:89')).toBeInTheDocument()
+  })
+})
+
+// PairingQR is driven directly here, not through the panel: the panel fetches
+// /api/lan/pairing once, has no retry control, and never changes the `payload`
+// it hands down — so a failed draw followed by a new payload is unreachable
+// from the outside even though the component is written to handle it.
+describe('PairingQR — a failed draw must not be permanent', () => {
+  it('draws again when new content arrives after a failure', async () => {
+    toCanvasMock.mockImplementationOnce(() => Promise.reject(new Error('no 2d context')))
+
+    const { rerender } = render(<PairingQR content="vulos://pair?name=a" />)
+    await screen.findByText(/could not render the qr code/i)
+
+    rerender(<PairingQR content="vulos://pair?name=b" />)
+    // Swapping the canvas out for the error text left canvasRef.current null,
+    // so the effect's own `if (!canvas) return` guard early-returned for every
+    // later payload and this second attempt never happened.
+    await waitFor(() => expect(toCanvasMock).toHaveBeenCalledTimes(2))
+    expect(toCanvasMock.mock.calls[1][1]).toBe('vulos://pair?name=b')
+  })
+
+  it('clears the failure only once a draw has actually succeeded, not when one starts', async () => {
+    toCanvasMock.mockImplementationOnce(() => Promise.reject(new Error('no 2d context')))
+    let finishSecondDraw: () => void = () => {}
+    toCanvasMock.mockImplementationOnce(
+      () => new Promise<void>(resolve => { finishSecondDraw = () => resolve() }),
+    )
+
+    const { rerender } = render(<PairingQR content="vulos://pair?name=a" />)
+    await screen.findByText(/could not render the qr code/i)
+
+    rerender(<PairingQR content="vulos://pair?name=b" />)
+    await waitFor(() => expect(toCanvasMock).toHaveBeenCalledTimes(2))
+
+    // An optimistic clear at the top of the effect blanks the message while
+    // nothing has been drawn yet, leaving the owner with neither a QR code nor
+    // the fingerprint sentence pointing them at the text form of the pin.
+    expect(screen.getByText(/could not render the qr code/i)).toBeInTheDocument()
+
+    await act(async () => { finishSecondDraw() })
+    await waitFor(() => {
+      expect(screen.queryByText(/could not render the qr code/i)).toBeNull()
+    })
   })
 })

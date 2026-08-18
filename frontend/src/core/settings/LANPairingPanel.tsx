@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
 import { Section, Card, InfoList, InfoRow, Banner } from './ui'
 
@@ -49,38 +49,58 @@ function toPairingInfo(x: unknown): PairingInfo | null {
 // QR contrast needs to be theme-independent, not just legible. Calls the
 // same narrow ambient 'qrcode' declaration (qrcode.d.ts) that
 // auth/Setup.tsx's recovery-kit QR canvas uses.
-function PairingQR({ content }: { content: string }) {
+//
+// Exported for its own test: this panel fetches once, has no retry control and
+// never changes the payload it passes down, so the failure-then-recovery path
+// below cannot be driven through the panel at all.
+export function PairingQR({ content }: { content: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [renderError, setRenderError] = useState('')
 
+  // The canvas stays MOUNTED while the error text is showing. It used to be
+  // swapped out for the error, which left canvasRef.current null, so the guard
+  // below early-returned for every subsequent `content` and the first failure
+  // became permanent — and the optimistic clear that used to sit here ran
+  // AFTER that guard, so it could never undo it. (Same fault, same shape, as
+  // LANRootCertPanel's DownloadQR, which this component was written to match.)
   useEffect(() => {
-    if (!content || !canvasRef.current) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clears a stale error from a previous payload before this draw attempt settles.
-    setRenderError('')
-    QRCode.toCanvas(canvasRef.current, content, {
+    const canvas = canvasRef.current
+    if (!content || !canvas) return
+    let cancelled = false
+    QRCode.toCanvas(canvas, content, {
       width: 200,
       margin: 2,
       color: { dark: '#0a0a0a', light: '#ffffff' },
       errorCorrectionLevel: 'M',
-    }).catch((err: unknown) => setRenderError(errorMessage(err, 'QR render failed')))
+    })
+      // Cleared by a draw that SUCCEEDED, not by one that was merely started.
+      // While a retry is in flight the previous failure is still the last thing
+      // known to be true, so the pointer at the printed fingerprint stays on
+      // screen until there is actually a QR code to replace it with.
+      .then(() => { if (!cancelled) setRenderError('') })
+      .catch((err: unknown) => { if (!cancelled) setRenderError(errorMessage(err, 'QR render failed')) })
+    return () => { cancelled = true }
   }, [content])
 
-  if (renderError) {
-    return (
-      <div className="text-xs text-[var(--text-muted)] text-center p-4 rounded-xl border border-[var(--border-default)]">
-        Could not render the QR code ({renderError}). Use the fingerprint below instead.
-      </div>
-    )
-  }
-
   return (
-    <canvas
-      ref={canvasRef}
-      role="img"
-      aria-label="Pairing QR code"
-      className="rounded-xl mx-auto block"
-      style={{ imageRendering: 'pixelated', background: '#ffffff', padding: 12 }}
-    />
+    <>
+      {renderError && (
+        <div className="text-xs text-[var(--text-muted)] text-center p-4 rounded-xl border border-[var(--border-default)]">
+          Could not render the QR code ({renderError}). Use the fingerprint below instead.
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        role="img"
+        aria-label="Pairing QR code"
+        className="rounded-xl mx-auto block"
+        // Hidden via `display`, NOT the `hidden` attribute: `block` in the
+        // className above out-specifies the UA's [hidden] rule (both are one
+        // selector, author beats UA) and the canvas would stay visible.
+        style={{ imageRendering: 'pixelated', background: '#ffffff', padding: 12, display: renderError ? 'none' : 'block' }}
+        aria-hidden={renderError ? true : undefined}
+      />
+    </>
   )
 }
 
@@ -89,9 +109,13 @@ export default function LANPairingPanel() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
+  // One fetch, on mount. There is no retry control on this panel, so the
+  // `setLoading(true)` / `setError(null)` that used to open this — and the
+  // suppression that covered them — were writing values the initial state
+  // already held, on the only pass that could ever run them. Nothing is set
+  // synchronously now; `loading` starts true and only the response moves it.
+  useEffect(() => {
+    let cancelled = false
     fetch('/api/lan/pairing', { credentials: 'include' })
       .then(async r => {
         // Untrusted network JSON — narrowed via toPairingInfo, never cast.
@@ -101,14 +125,16 @@ export default function LANPairingPanel() {
         }
         const parsed = toPairingInfo(raw)
         if (!parsed || !parsed.payload) throw new Error('The box did not return a pairing payload.')
-        setInfo(parsed)
+        if (!cancelled) setInfo(parsed)
       })
-      .catch((err: unknown) => { setInfo(null); setError(errorMessage(err, 'Could not load pairing info.')) })
-      .finally(() => setLoading(false))
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setInfo(null)
+        setError(errorMessage(err, 'Could not load pairing info.'))
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [load])
 
   return (
     <Section
