@@ -2169,8 +2169,12 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
   // claim the name and avahi silently renames the loser to vulos-2 hours later
   // — a name that is in no certificate, so that box then fails TLS with no
   // explanation the owner could connect to anything they did.
-  const [IS05_avail, IS05_setAvail] = useState<'idle' | 'checking' | 'free' | 'taken'>('idle')
-  const [IS05_takenBy, IS05_setTakenBy] = useState('')
+  // Only the PROBE RESULT is state. 'idle' and 'checking' are pure functions of
+  // what has been typed, so they are DERIVED below rather than stored — storing
+  // them is what forced the debounce effect to write state synchronously on
+  // every keystroke. The result carries the name it was measured for, so a
+  // reply that lands after the name moved on cannot be shown against it.
+  const [IS05_probe, IS05_setProbe] = useState<{ name: string; result: 'free' | 'taken' | 'unknown'; takenBy: string } | null>(null)
   // Set when the box SAVED the name but is still answering to its old one.
   // The step refuses to advance until this has been shown once — a rename that
   // reports success and changes nothing is the failure this project keeps
@@ -2223,12 +2227,8 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
   // costs a multicast query and up to ~750ms of waiting on the box.
   useEffect(() => {
     const name = config.IS05_hostname
-    if (!IS05_hostnameEdited || !name) {
-      IS05_setAvail('idle')
-      return
-    }
+    if (!IS05_hostnameEdited || !name) return
     let cancelled = false
-    IS05_setAvail('checking')
     const timer = setTimeout(() => {
       fetch(`/api/identity/hostname/available?name=${encodeURIComponent(name)}`, { credentials: 'include' })
         .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
@@ -2236,21 +2236,36 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
           if (cancelled) return
           const data = isRecord(raw) ? raw : {}
           if (data.available === false) {
-            IS05_setAvail('taken')
-            IS05_setTakenBy(typeof data.taken_by === 'string' ? data.taken_by : '')
+            IS05_setProbe({ name, result: 'taken', takenBy: typeof data.taken_by === 'string' ? data.taken_by : '' })
           } else {
-            IS05_setAvail('free')
-            IS05_setTakenBy('')
+            IS05_setProbe({ name, result: 'free', takenBy: '' })
           }
         })
         .catch(() => {
           // Could not ask. Report NOTHING rather than a green tick: claiming a
           // name is free when we never checked is worse than staying quiet.
-          if (!cancelled) IS05_setAvail('idle')
+          // Recorded AS A RESULT ('unknown') rather than by clearing, so this
+          // stays silent for THIS name instead of falling back to "checking…"
+          // forever — a probe that finished is not a probe still running.
+          if (!cancelled) IS05_setProbe({ name, result: 'unknown', takenBy: '' })
         })
     }, 400)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [config.IS05_hostname, IS05_hostnameEdited])
+
+  // Derived, in the four states the step renders. A result belonging to any
+  // other name is stale and means we are checking again; 'unknown' is a probe
+  // that ran and could not answer, which shows nothing, exactly as before.
+  const IS05_probeForName = IS05_probe && IS05_probe.name === config.IS05_hostname ? IS05_probe : null
+  const IS05_avail: 'idle' | 'checking' | 'free' | 'taken' =
+    !IS05_hostnameEdited || !config.IS05_hostname
+      ? 'idle'
+      : IS05_probeForName === null
+        ? 'checking'
+        : IS05_probeForName.result === 'unknown'
+          ? 'idle'
+          : IS05_probeForName.result
+  const IS05_takenBy = IS05_probeForName?.takenBy ?? ''
 
   const handleNext = async () => {
     IS05_setError('')

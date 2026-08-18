@@ -219,4 +219,72 @@ describe('IS05 identity step', () => {
     // staying quiet: it is a green tick for an unverified fact.
     expect(screen.queryByText(/is free on your network/i)).toBeNull()
   })
+
+  // ── The three availability states the step can be in ────────────────────
+  //
+  // 'idle' and 'checking' are DERIVED from what has been typed; only the probe
+  // result is stored. Nothing asserted these two states before, so the whole
+  // "checking…" branch and the staleness rule were reachable only by hand.
+
+  it('says it is checking from the keystroke, not from the reply', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/identity/hostname/available')) {
+        return jsonResponse({ available: true })
+      }
+      return jsonResponse({ ulid: 'x', hostname: '', default_hostname: 'vulos-k3n7q2' })
+    })
+    vi.stubGlobal('fetch', fetchMock as never)
+
+    render(<Harness onNext={vi.fn()} />)
+    typeHostname('study')
+
+    // Synchronously after the edit — the probe is still 400ms of debounce away,
+    // so no verdict can exist yet, and the step must not sit there blank.
+    expect(screen.getByText(/^Checking whether/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^This name is free/i)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('says the name is free once the box has actually said so', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/identity/hostname/available')) {
+        return jsonResponse({ available: true })
+      }
+      return jsonResponse({ ulid: 'x', hostname: '', default_hostname: 'vulos-k3n7q2' })
+    })
+    vi.stubGlobal('fetch', fetchMock as never)
+
+    render(<Harness onNext={vi.fn()} />)
+    typeHostname('study')
+
+    await waitFor(() => {
+      expect(screen.getByText(/^This name is free/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/^Checking whether/i)).toBeNull()
+  })
+
+  // The verdict belongs to the NAME it was measured for. Carrying "study is
+  // taken" across to "studio" would be the same class of error as #1 in the
+  // header: a certainty about one name displayed against another.
+  it('drops a verdict the moment the name it was measured for changes', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/identity/hostname/available')) {
+        return jsonResponse({ available: false, taken_by: '192.168.1.9' })
+      }
+      return jsonResponse({ ulid: 'x', hostname: '', default_hostname: 'vulos-k3n7q2' })
+    })
+    vi.stubGlobal('fetch', fetchMock as never)
+
+    render(<Harness onNext={vi.fn()} />)
+    typeHostname('study')
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/already answers to that name/i)
+    })
+
+    typeHostname('studio')
+    // Immediately: the 'taken' verdict was about 'study' and says nothing about
+    // 'studio', so it must be gone before the new probe has answered.
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText(/^Checking whether/i)).toBeInTheDocument()
+  })
 })
