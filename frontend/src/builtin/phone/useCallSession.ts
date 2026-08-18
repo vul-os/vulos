@@ -135,7 +135,6 @@ export function useCallSession(): CallSession {
     // body. Deferring the first observation to the first interval tick instead
     // would leave a placed call with no in-call bar — and no Hang up button —
     // for POLL_MS.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh()
     const t = setInterval(refresh, POLL_MS)
     return () => { clearInterval(t) }

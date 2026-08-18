@@ -253,7 +253,6 @@ export default function ActivityMonitor() {
     if (!isRecord(rawStats)) return
     const s = toTelemetryStats(rawStats)
     if (!s) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHistory(prev => {
       const next = [...prev, {
         cpu: s.cpu || 0,

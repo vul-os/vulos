@@ -519,7 +519,8 @@ export default function InstancesPanel() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // loadData is async and every setState in it sits behind an await, so the
+    // first call sets nothing synchronously — the poll below just starts early.
     loadData()
     pollRef.current = setInterval(loadData, IP_POLL_MS)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
