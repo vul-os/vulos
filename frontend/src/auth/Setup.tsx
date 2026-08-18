@@ -1050,20 +1050,97 @@ const IS09_SYNC_PHASES = [
   { key: 'done', label: 'Finalising' },
 ]
 
-function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void | Promise<void> }) {
+// How many consecutive unanswered polls before this screen stops implying that
+// anything is happening. At the 3s interval below that is roughly nine seconds
+// of silence: long enough that one dropped request or a briefly-busy box does
+// not raise an alarm, short enough that nobody sits watching a frozen figure
+// wondering whether it is their network or their box.
+const IS09_LOST_CONTACT_POLLS = 3
+
+export function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void | Promise<void> }) {
   const [IS09_phase, IS09_setPhase] = useState('init')
   const [IS09_phaseIdx, IS09_setPhaseIdx] = useState(0)
   const [IS09_error, IS09_setError] = useState('')
+  // Set once the box has gone quiet for IS09_LOST_CONTACT_POLLS in a row. It is
+  // what stops the screen DRAWING progress it does not have — see the render.
+  // Three-valued rather than boolean because the two silences are not the same
+  // screen: one has a last-reported phase to show, the other has nothing at all.
+  const [IS09_lost, IS09_setLost] = useState<'' | 'never-answered' | 'stopped-answering'>('')
+  const [IS09_retrying, IS09_setRetrying] = useState(false)
   const [IS09_done, IS09_setDone] = useState(false)
   const [IS09_bgMode, IS09_setBgMode] = useState(false)
   const IS09_pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  // Refs, not state, because the interval below captures ONE IS09_poll closure
+  // (the effect re-runs only when IS09_bgMode changes), so anything the poll
+  // reads from state would be frozen at that render. Every setter is stable, so
+  // writes are fine; it is the reads that have to go through a ref.
+  const IS09_failuresRef = useRef(0)
+  const IS09_heardRef = useRef(false)
+  // Setup may be completed exactly ONCE from this step. See IS09_completeOnce.
+  const IS09_completedRef = useRef(false)
+
+  /**
+   * Complete setup, at most once for the life of this step.
+   *
+   * "Continue in Background" called onComplete() on click AND the poll called it
+   * again from its done-branch (the effect re-runs on IS09_bgMode, so the live
+   * closure sees bgMode === true), so a single click completed setup twice.
+   *
+   * The guard is here, at the call site, rather than left to the server:
+   *
+   *   - POST /api/setup/complete IS idempotent — backend/cmd/server/routes_setup.go
+   *     short-circuits an already-complete box to 200 {already_complete:true} —
+   *     so the marker itself survives a double call.
+   *   - onComplete is the wizard's finish(), and finish() is NOT one request. It
+   *     also PUTs /api/device-profile, POSTs a `ln -sf …/localtime` through
+   *     /api/exec (an arbitrary root shell command; the join flow reaches it
+   *     because `timezone` is seeded from Intl, not from a step), and POSTs
+   *     /api/wifi/connect, which re-drives the radio and takes the Wi-Fi mutex.
+   *     None of those are things to run a second time for free.
+   *   - finish() also OWNS UI state: on failure it sets finishError and returns.
+   *     A second run rewrites that banner underneath a user who is reading it,
+   *     and re-fires its side effects while they decide.
+   *
+   * So server idempotence is not enough, and the fix is to not make the call.
+   */
+  const IS09_completeOnce = () => {
+    if (IS09_completedRef.current) return
+    IS09_completedRef.current = true
+    void onComplete()
+  }
+
+  // The box answered. Anything we were saying about not being able to reach it
+  // is now false, so it goes away in the same place the count resets.
+  const IS09_noteAnswer = () => {
+    IS09_failuresRef.current = 0
+    IS09_heardRef.current = true
+    IS09_setLost('')
+    IS09_setError('')
+  }
+
+  // The box did not answer — or answered with something that carries no phase.
+  //
+  // This used to `return` silently and keep polling. With /api/setup/join/status
+  // permanently down that left the step showing "Initialising sync, 17%" with no
+  // message, forever: a percentage that is not progressing is not a neutral
+  // placeholder, it is an active claim that the box is working.
+  const IS09_noteSilence = () => {
+    IS09_failuresRef.current += 1
+    if (IS09_failuresRef.current < IS09_LOST_CONTACT_POLLS) return
+    IS09_setLost(IS09_heardRef.current ? 'stopped-answering' : 'never-answered')
+    IS09_setError(
+      IS09_heardRef.current
+        ? 'This box has stopped reporting sync progress. The phase shown below is the last one it sent — nothing on this screen is moving. Sync may still be running on the box; this screen picks up again the moment it answers.'
+        : 'This box is not answering the sync-status request, so there is no progress to report and nothing here is moving. Check that the box is powered on and reachable, then retry.',
+    )
+  }
 
   const IS09_poll = async () => {
+    // Try /api/setup/join/status first, fall back to /api/setup/mode.
+    // Untrusted network JSON either way — narrowed to a record (and each
+    // field typeof-checked below), never cast to a nicer shape.
+    let data: Record<string, unknown> | null = null
     try {
-      // Try /api/setup/join/status first, fall back to /api/setup/mode.
-      // Untrusted network JSON either way — narrowed to a record (and each
-      // field typeof-checked below), never cast to a nicer shape.
-      let data: Record<string, unknown> | null = null
       const statusRes = await fetch('/api/setup/join/status')
       if (statusRes.ok) {
         const raw: unknown = await statusRes.json()
@@ -1083,23 +1160,37 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
           }
         }
       }
-      if (!data) return
-
-      const currentPhase = (typeof data.phase === 'string' && data.phase) || 'init'
-      const phaseIdx = IS09_SYNC_PHASES.findIndex(p => p.key === currentPhase)
-      IS09_setPhase(currentPhase)
-      IS09_setPhaseIdx(phaseIdx >= 0 ? phaseIdx : 0)
-
-      if (data.done || data.phase === 'done' || data.mode === MODE_INSTANCE_READY) {
-        IS09_setDone(true)
-        clearInterval(IS09_pollRef.current)
-        if (IS09_bgMode) {
-          onComplete()
-        }
-      }
     } catch {
-      // Network error — keep polling silently
+      // Unreachable box, or a body that is not JSON. Either way: no answer.
+      data = null
     }
+    if (!data) {
+      IS09_noteSilence()
+      return
+    }
+    IS09_noteAnswer()
+
+    const currentPhase = (typeof data.phase === 'string' && data.phase) || 'init'
+    const phaseIdx = IS09_SYNC_PHASES.findIndex(p => p.key === currentPhase)
+    IS09_setPhase(currentPhase)
+    IS09_setPhaseIdx(phaseIdx >= 0 ? phaseIdx : 0)
+
+    if (data.done || data.phase === 'done' || data.mode === MODE_INSTANCE_READY) {
+      IS09_setDone(true)
+      clearInterval(IS09_pollRef.current)
+      if (IS09_bgMode) {
+        IS09_completeOnce()
+      }
+    }
+  }
+
+  // Poll once, now, on the user's say-so. Deliberately does NOT pre-clear the
+  // error: clearing it before the request resolves would flash the fake progress
+  // back onto the screen. IS09_noteAnswer clears it if the box actually answers.
+  const IS09_retryNow = async () => {
+    IS09_setRetrying(true)
+    await IS09_poll()
+    IS09_setRetrying(false)
   }
 
   useEffect(() => {
@@ -1112,13 +1203,25 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
   const IS09_progress = IS09_SYNC_PHASES.length > 0
     ? ((IS09_phaseIdx + 1) / IS09_SYNC_PHASES.length) * 100
     : 0
+  // A percentage is a claim about work in flight. Once contact is lost there is
+  // no such claim to make, so the figure is withheld rather than left frozen —
+  // and if the box never answered at all, the bar is empty too, because the
+  // first phase was our assumption and not something it ever reported.
+  const IS09_stale = IS09_lost !== ''
+  const IS09_barWidth = IS09_lost === 'never-answered' ? 0 : IS09_progress
 
   if (IS09_bgMode) {
     return (
       <div className="text-center">
         <div className="text-4xl mb-4">🔄</div>
         <StepHeader title="Syncing in the background" subtitle="You can use Vulos OS while sync continues." />
-        <p className="text-sm wz-dim">Setup will complete automatically when sync finishes.</p>
+        {/* It used to say "Setup will complete automatically when sync finishes."
+            It does not: setup is recorded when this button is pressed, once —
+            see IS09_completeOnce. The only way this screen stays on screen is a
+            finish() that failed, and the wizard's finishError banner above says
+            so and offers the way out. Promising a second, automatic completion
+            here would be promising the very call that was removed. */}
+        <p className="text-sm wz-dim">Sync continues on the box — you do not need to stay on this screen.</p>
       </div>
     )
   }
@@ -1131,6 +1234,15 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
             <svg viewBox="0 0 24 24" className="w-8 h-8 wz-ok" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20 6L9 17l-5-5" />
             </svg>
+          ) : IS09_stale ? (
+            /* A spinner is an animation that says "working". Nothing is known to
+               be working, so it does not spin — it becomes the same warning the
+               message below carries. */
+            <svg viewBox="0 0 24 24" className="w-8 h-8 wz-danger" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 8v5" />
+              <path d="M12 16.5v.5" />
+              <path d="M10.3 3.9 2.6 17.2A1.6 1.6 0 0 0 4 19.6h16a1.6 1.6 0 0 0 1.4-2.4L13.7 3.9a1.6 1.6 0 0 0-2.8 0z" />
+            </svg>
           ) : (
             <svg viewBox="0 0 24 24" className="w-8 h-8 accent-text animate-spin" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ animationDuration: '2s' }}>
               <path d="M21 12a9 9 0 11-6.219-8.56" />
@@ -1138,26 +1250,36 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
           )}
         </div>
         <h2 className="text-2xl font-light wz-strong">
-          {IS09_done ? 'Sync complete' : 'Syncing your data'}
+          {IS09_done ? 'Sync complete' : IS09_stale ? 'No sync progress to show' : 'Syncing your data'}
         </h2>
         <p className="text-sm wz-dim mt-1">
           {IS09_done
             ? 'Everything has been restored. Continue to set your PIN.'
-            : 'Restoring your identity and data from storage...'}
+            : IS09_stale
+              ? 'This box is not reporting what it is doing.'
+              : 'Restoring your identity and data from storage...'}
         </p>
       </div>
 
       {/* Phase progress bar */}
       <div className="mb-4">
         <div className="flex justify-between text-xs wz-dim mb-1.5">
-          <span>{IS09_SYNC_PHASES[IS09_phaseIdx]?.label || 'Initialising'}</span>
-          <span>{Math.round(IS09_progress)}%</span>
+          <span>
+            {IS09_lost === 'never-answered'
+              ? 'No phase reported'
+              : IS09_lost === 'stopped-answering'
+                ? `${IS09_SYNC_PHASES[IS09_phaseIdx]?.label || 'Initialising'} — last reported`
+                : IS09_SYNC_PHASES[IS09_phaseIdx]?.label || 'Initialising'}
+          </span>
+          {/* Not `0%`, and not the last figure left standing: an em dash, because
+              the honest answer to "how far along is it" is that we do not know. */}
+          <span>{IS09_stale ? '—' : `${Math.round(IS09_progress)}%`}</span>
         </div>
         <div className="h-1.5 w-full wz-surface-2 rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-700"
             style={{
-              width: `${IS09_progress}%`,
+              width: `${IS09_barWidth}%`,
               background: 'linear-gradient(to right, color-mix(in srgb, var(--accent) 65%, #7c3aed), var(--accent))',
             }}
           />
@@ -1168,7 +1290,9 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
       <div className="space-y-1.5 mb-6 text-left">
         {IS09_SYNC_PHASES.map((phase, i) => {
           const isDone = i < IS09_phaseIdx || IS09_done
-          const isCurrent = i === IS09_phaseIdx && !IS09_done
+          // With no answer from the box, no phase is "current" — the highlight
+          // and the bouncing dots are the same false claim as the percentage.
+          const isCurrent = i === IS09_phaseIdx && !IS09_done && !IS09_stale
           return (
             <div key={phase.key} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors
               ${isCurrent ? 'accent-bg-soft border accent-border-soft' : ''}
@@ -1193,8 +1317,16 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
       </div>
 
       {IS09_error && (
-        <div className="mb-4 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3">
+        <div role="alert" className="mb-4 flex flex-col gap-2 bg-danger-soft border border-danger-soft rounded-xl px-4 py-3 text-left">
           <p className="text-sm wz-danger">{IS09_error}</p>
+          <button
+            type="button"
+            onClick={() => { void IS09_retryNow() }}
+            disabled={IS09_retrying}
+            className="self-start text-xs wz-danger underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
+          >
+            {IS09_retrying ? 'Checking…' : 'Check again'}
+          </button>
         </div>
       )}
 
@@ -1205,7 +1337,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
           </button>
         ) : (
           <button
-            onClick={() => { IS09_setBgMode(true); onComplete() }}
+            onClick={() => { IS09_setBgMode(true); IS09_completeOnce() }}
             className="text-sm wz-dim hover:wz-body transition-colors underline underline-offset-2"
           >
             Continue in Background
