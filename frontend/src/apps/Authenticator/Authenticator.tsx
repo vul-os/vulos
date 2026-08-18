@@ -84,24 +84,35 @@ function AccountRow({ account, onDelete }: { account: TotpAccount; onDelete: (id
   const secondsLeft = useTotpClock()
   const prevWindowRef = useRef<number | null>(null)
 
+  // setCode(null) on BOTH failure paths. This used to set only the error flag
+  // and leave the last code standing — and `displayCode` below prefers `code`
+  // over `error`, so a box that stopped answering left the PREVIOUS window's
+  // six digits on screen, formatted normally, with no error styling and with
+  // Copy still live. The user pastes an expired one-time code, the login is
+  // rejected, and nothing on screen ever said why. A code we could not refresh
+  // is not a code.
   const fetchCode = useCallback(async () => {
     try {
       const res = await fetch(`/api/auth/totp/code/${account.id}`)
-      if (!res.ok) { setError(true); return }
+      if (!res.ok) { setCode(null); setError(true); return }
       const data: unknown = await res.json()
       setCode(extractTotpCode(data))
       setError(false)
     } catch {
+      setCode(null)
       setError(true)
     }
   }, [account.id])
 
-  // Fetch on mount and whenever the 30-second window rolls over
+  // Fetch on mount and whenever the 30-second window rolls over. This effect
+  // re-runs about twice a second as the clock ticks and fetches only on a
+  // boundary; the window index is written to the ref BEFORE the fetch, so a
+  // failure is retried at the next boundary rather than hammering the box.
   useEffect(() => {
     const currentWindow = Math.floor(Date.now() / 1000 / 30)
     if (prevWindowRef.current === null || prevWindowRef.current !== currentWindow) {
       prevWindowRef.current = currentWindow
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a TOTP code is a fact about wall-clock time, not about props; it cannot be computed during render, and the window boundary is only observable from the ticking clock this effect is subscribed to.
       fetchCode()
     }
   }, [secondsLeft, fetchCode])
@@ -834,7 +845,7 @@ export default function Authenticator() {
     setLoading(false)
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- loadAccounts is async and every write in it sits behind an await, but it is called directly so the rule cannot see that; the initial list has to be asked for on mount and the Retry button re-uses the same loader.
   useEffect(() => { loadAccounts() }, [loadAccounts])
 
   const handleAdded = (account: TotpAccount) => {
