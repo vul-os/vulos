@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
@@ -142,6 +142,41 @@ export default function DiskUsage() {
   const [mountsError, setMountsError] = useState<string | null>(null)
   const [breakdownError, setBreakdownError] = useState<string | null>(null)
 
+  // Only the NEWEST scan may write. `du` on a big tree is slow, so clicking a
+  // large directory and then Up (or a small sibling) used to let the slow first
+  // answer land last: the breadcrumb read one path while the list under it was
+  // another, and clicking a row then scanned a path unrelated to what was on
+  // screen. A stale failure could likewise paint "Could not measure this
+  // directory" over a scan that had just succeeded.
+  const scanSeq = useRef(0)
+
+  const loadBreakdown = useCallback((path: string) => {
+    const seq = ++scanSeq.current
+    setBreakdownPath(path)
+    setBreakdownLoading(true)
+    setBreakdownError(null)
+    // Same shape as the mounts fetch below: a rejected request left `breakdown`
+    // null with `breakdownLoading` false, and all three render branches below
+    // test `breakdown &&` — so the pane rendered as nothing at all. A non-ok
+    // response fared no better: it parsed, failed Array.isArray, and became []
+    // which reads as "Empty or not accessible".
+    fetch('/api/disks/breakdown?path=' + encodeURIComponent(path))
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((d: unknown) => {
+        if (seq !== scanSeq.current) return
+        setBreakdown(Array.isArray(d) ? d.filter(isBreakdownEntry) : [])
+        setBreakdownLoading(false)
+      })
+      .catch((e: unknown) => {
+        if (seq !== scanSeq.current) return
+        setBreakdownError(e instanceof Error ? e.message : String(e))
+        setBreakdownLoading(false)
+      })
+  }, [])
+
   useEffect(() => {
     // BUILTIN-5: neither half of this was safe. A 500 with a JSON body parsed
     // cleanly and produced an empty `mounts` list, so a dead disk service
@@ -157,43 +192,30 @@ export default function DiskUsage() {
       .then((d: unknown) => {
         const list = isRecord(d) && Array.isArray(d.mounts) ? d.mounts.filter(isMount) : []
         setMounts(list)
-        if (list.length) setSelectedMount(list[0])
+        if (list.length) {
+          setSelectedMount(list[0])
+          loadBreakdown(list[0].mount_point)
+        }
         setLoading(false)
       })
       .catch((e: unknown) => {
         setMountsError(e instanceof Error ? e.message : String(e))
         setLoading(false)
       })
-  }, [])
+  }, [loadBreakdown])
 
-  const loadBreakdown = (path: string) => {
-    setBreakdownPath(path)
-    setBreakdownLoading(true)
-    setBreakdownError(null)
-    // Same shape as the mounts fetch above: a rejected request left `breakdown`
-    // null with `breakdownLoading` false, and all three render branches below
-    // test `breakdown &&` — so the pane rendered as nothing at all. A non-ok
-    // response fared no better: it parsed, failed Array.isArray, and became []
-    // which reads as "Empty or not accessible".
-    fetch('/api/disks/breakdown?path=' + encodeURIComponent(path))
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
-      })
-      .then((d: unknown) => {
-        setBreakdown(Array.isArray(d) ? d.filter(isBreakdownEntry) : [])
-        setBreakdownLoading(false)
-      })
-      .catch((e: unknown) => {
-        setBreakdownError(e instanceof Error ? e.message : String(e))
-        setBreakdownLoading(false)
-      })
+  // The scan is asked for by the click, not by an effect watching the selection.
+  // `mounts` is fetched once and never replaced, so a sidebar button hands back
+  // the SAME object every time: re-selecting the volume you are already on is a
+  // no-op write that React bails out of, and an effect keyed on `selectedMount`
+  // never re-ran. That made the sidebar dead after drilling in — having gone
+  // /home -> /home/user -> /home/user/Downloads via the rows, clicking /home to
+  // get back to the volume did nothing at all, and the only way up was one press
+  // of "Up" per level.
+  const selectMount = (m: Mount) => {
+    setSelectedMount(m)
+    loadBreakdown(m.mount_point)
   }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (selectedMount) loadBreakdown(selectedMount.mount_point)
-  }, [selectedMount])
 
   const breakdownSegments: DonutSegment[] = (breakdown || []).map((d, i) => ({
     label: d.name,
@@ -249,7 +271,7 @@ export default function DiskUsage() {
               const { text: pctColor } = usageTone(m.percent)
               return (
                 <button key={m.mount_point}
-                  onClick={() => setSelectedMount(m)}
+                  onClick={() => selectMount(m)}
                   aria-pressed={active}
                   style={active ? { borderColor: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
                   className={`w-full text-left px-3 py-2.5 transition-colors duration-(--motion-fast) border-l-2 ${
