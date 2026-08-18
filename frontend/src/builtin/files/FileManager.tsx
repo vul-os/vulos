@@ -33,7 +33,7 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
 
-/** A parsed `ls -la` row for the current directory. */
+/** A parsed `ls -l` row for the current directory (`-lA` when hidden files are shown). */
 interface FileEntry {
   name: string
   size: number
@@ -559,14 +559,32 @@ export default function FileManager() {
       .catch(() => { /* keep the '~' default; loadDir reports the real failure */ })
   }, [])
 
-  const loadDir = useCallback(async (dir: string, pushHistory = true) => {
+  /**
+   * List `dir` and put it on screen.
+   *
+   * `showHidden` defaults to the `hidden` state but is a PARAMETER, because the
+   * toggle needs to load with the value it is switching TO. loadDir is memoised
+   * on `hidden`, so the reference the toggle's onClick held was always built
+   * from the pre-click value: `setHidden(!hidden); loadDir(cwd, false)` re-read
+   * the directory with the flag the user had just turned off. React state is not
+   * a variable that changes under a closure, and no amount of re-rendering fixes
+   * a call that has already been made — the new value has to be passed.
+   */
+  const loadDir = useCallback(async (dir: string, pushHistory = true, showHidden = hidden) => {
     setLoading(true)
     setLoadError(false)
     setSearchResults(null)
     setSelected(null)
     setPreview(null)
     try {
-      const flag = hidden ? '-la' : '-lA'
+      // `-A` is all-but-`.`-and-`..`; plain `-l` is the one that omits dotfiles.
+      //
+      // This used to be `hidden ? '-la' : '-lA'`, which is not a hidden-files
+      // toggle at all: -a and -A BOTH list dotfiles, and differ only in `.` and
+      // `..` — which the parser below drops by name either way. So the "off"
+      // state listed every dotfile too, the button changed nothing whichever way
+      // it was set, and its default (off) was the state that showed the most.
+      const flag = showHidden ? '-lA' : '-l'
       const out = await exec(`ls ${flag} --color=never "${dir}" 2>/dev/null | tail -n +2`)
       const lines = out.split('\n').filter(l => l.trim())
       const parsed = lines.map((line): FileEntry | null => {
@@ -894,8 +912,13 @@ export default function FileManager() {
         <button
           className={`w-8 h-8 flex items-center justify-center rounded-lg text-[10px] font-bold transition-colors
             ${hidden ? 'accent-bg-soft accent-text' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-300'}`}
-          onClick={() => { setHidden(!hidden); loadDir(cwd, false) }}
-          title="Show hidden files"
+          onClick={() => {
+            const next = !hidden
+            setHidden(next)
+            loadDir(cwd, false, next)
+          }}
+          title={hidden ? 'Hide hidden files' : 'Show hidden files'}
+          aria-pressed={hidden}
           aria-label="Toggle hidden files"
         >
           .*
