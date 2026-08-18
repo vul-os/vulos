@@ -103,6 +103,13 @@ test.describe('Settings does not assert what the box never said', () => {
     expect(await gotoSection(page, 'Device PIN')).toBe(true)
 
     const panel = page.locator('[class*="@container/win"]')
+    // Both assertions below are satisfied by a panel that rendered NOTHING, and
+    // this is the only spec in the file with no positive assertion of its own —
+    // the others each anchor on a string their section owns. `gotoSection`
+    // returning true does not close the gap: it only means a nav button existed
+    // and was clicked. So anchor on the section's own label first; if the
+    // Device PIN panel is not on screen, this fails instead of passing blind.
+    await expect(panel).toContainText('PIN status')
     await expect(panel).not.toContainText('5 attempts remaining')
     // A destructive control for a credential whose existence is unknown.
     await expect(page.getByRole('button', { name: 'Remove PIN' })).toHaveCount(0)
@@ -129,11 +136,45 @@ test.describe('Settings does not assert what the box never said', () => {
   })
 
   /**
+   * The mode map read in the other direction: a box that IS on hosted Tigris
+   * must be told so. Without this, "never say Tigris" would be satisfiable by a
+   * panel that can never say Tigris at all, which is a different lie.
+   */
+  test('a box that IS on hosted Tigris is told so', async ({ page }) => {
+    await openSettings(page, 'dark', {
+      'GET /api/storagemode': json({ mode: 'central-tigris' }),
+    })
+    expect(await gotoSection(page, 'Storage Mode')).toBe(true)
+
+    const panel = page.locator('[class*="@container/win"]')
+    await expect(panel).toContainText('Central Tigris (hosted)')
+  })
+
+  /**
    * The control for this file. Every assertion above is a `not.toContainText`,
    * and a locator that matches nothing satisfies all of them — so a typo in the
    * panel selector, or a Settings that failed to open, would report the whole
    * suite green. This proves the selector resolves and the sweep can see text
    * through it.
+   *
+   * It asserts ONLY on static chrome, and that is the point. This control used
+   * to assert "Central Tigris (hosted)" — a value produced by the same storage
+   * label map that the first spec in this file pins. So a single mutation of
+   * that map took out the spec AND the control together, and the run then
+   * proved nothing in either direction: a red control means "the instrument is
+   * broken", which invalidates every other result in the same run.
+   *
+   * That is not hypothetical. It is exactly what happened on 2026-08-17, and it
+   * cost a later agent a full session to establish that the 5-failure log it
+   * inherited had been a legitimate mutation run rather than a red gate. A
+   * control must be independent of every subject it certifies, so this one
+   * reads one string no box can influence — Settings' own subtitle. Nothing the
+   * box says, and no mutation of any honesty subject in this file, can change
+   * it, so if this test is red the instrument really is broken.
+   *
+   * Verified both ways: it is green on clean HEAD, it stays green while all
+   * five honesty specs fail under re-planted defects, and it goes red when the
+   * subtitle itself is changed.
    */
   test('CONTROL — the panel locator resolves and the assertions can fail', async ({ page }) => {
     await openSettings(page, 'dark', {
@@ -143,8 +184,15 @@ test.describe('Settings does not assert what the box never said', () => {
 
     const panel = page.locator('[class*="@container/win"]')
     await expect(panel).toHaveCount(1)
-    // A box that IS on hosted Tigris is told so — the same locator and the same
-    // kind of assertion that the specs above use negatively.
-    await expect(panel).toContainText('Central Tigris (hosted)')
+    // Settings' own subtitle, and deliberately nothing else. An earlier draft
+    // of this control also asserted a sentence from the Storage Mode section's
+    // prose, to prove the requested SECTION had rendered and not just the shell
+    // around it. That is a real thing to check, but it re-created the coupling
+    // this control was just rewritten to remove: that prose is S1 in the audit,
+    // it has been edited once already for being wrong, and editing it again
+    // would turn this control red for a reason that has nothing to do with the
+    // instrument. Proving its own section rendered is each spec's own job, via
+    // the positive anchor every one of them now carries.
+    await expect(panel).toContainText('Configure your device')
   })
 })
