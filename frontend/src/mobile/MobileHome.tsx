@@ -86,7 +86,12 @@ export default function MobileHome({ assistant = true }: MobileHomeProps = {}) {
   // user cannot otherwise reach would put them on a surface with no entry point.
   const hasConversation = assistant && conversation.length > 0
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Not derived: `asking` must stay user-toggleable after this fires (the Apps
+    // button sets it false), so it cannot be computed from `hasConversation`.
+    // The dependency is a BOOLEAN, so this runs only on the false -> true edge —
+    // once a conversation exists, later messages do not re-open the surface the
+    // user has just dismissed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- opens the assistant surface on the edge where a conversation first appears, which arrives asynchronously from the shell after mount.
     if (hasConversation) setAsking(true)
   }, [hasConversation])
 

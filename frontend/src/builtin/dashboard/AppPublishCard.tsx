@@ -330,7 +330,7 @@ export default function AppPublishCard() {
 
   // Initial load + poll every 5 s
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData awaits two endpoints before writing anything; the first call exists so the card is not blank for a full poll interval, and `apps === null` (not a stored flag) is what renders the spinner.
     loadData()
     timerRef.current = setInterval(loadData, APC_POLL_MS)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }

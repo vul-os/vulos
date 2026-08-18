@@ -1103,7 +1103,7 @@ function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComple
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IS09_poll observes the box's sync progress over the network; every write in it is behind an await, and deferring the first observation to the first 3s interval tick would show a wizard with no phase at all for three seconds.
     IS09_poll()
     IS09_pollRef.current = setInterval(IS09_poll, 3000)
     return () => clearInterval(IS09_pollRef.current)

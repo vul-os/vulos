@@ -119,7 +119,12 @@ function IframeApp({ url, title, appId, sandbox, dragging }: IframeAppProps) {
   const frameRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // A new URL, or a retry, means the frame is loading again — a fact about an
+    // <iframe>'s load events, which never reach React and so cannot be derived
+    // during render. The error state is an overlay ON TOP of the iframe (see the
+    // render below), not a replacement for it, so frameRef stays live and every
+    // retry can genuinely reload.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- iframe load/error is observable only from the DOM, and the timeout below is the only thing that can tell "still loading" from "never going to load".
     setStatus('loading')
     clearTimeout(timerRef.current)
     // If the frame hasn't loaded within the timeout, treat it as unreachable.
