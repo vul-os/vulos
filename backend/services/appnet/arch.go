@@ -1213,6 +1213,34 @@ func EvaluateArch(req ArchRequest) ArchAvailability {
 //     of the 55 are also amd64-only, and this box may be arm64. So the closing
 //     clause is a necessary condition ("no box will install it until…"), never
 //     a sufficient one ("it will install here once…").
+//
+// heldAsWithdrawn is the verdict for an entry Vulos has taken out of service
+// (`_disabled`), and it obeys the same rules the signature hold does.
+//
+//   - It may not blame the box. Nothing about this machine decides it; the
+//     entry is withdrawn on every box and every architecture.
+//   - It may not say the app is broken. The reasons in this catalogue are a
+//     policy exclusion (steam), a missing dependency the image does not carry
+//     (jellyfin needs ffmpeg), an install nobody has verified yet (code-server)
+//     and a vehicle that no longer exists (wine).
+//   - It may not imply the reader can fix it. Re-enabling an entry happens in
+//     the registry, which is signed away from this box.
+//   - It may not read as permanent, because most of these are waiting on work
+//     rather than closed.
+func (av ArchAvailability) heldAsWithdrawn(name string) ArchAvailability {
+	av.State = ArchStateUnavailable
+	av.Installable = false
+	av.RequiresEmulation = false
+	av.Badge = "Not offered yet"
+	av.CardBadge = "Not offered"
+	av.Detail = name + " is listed in the catalogue but is not offered for install: its entry has " +
+		"been withdrawn by Vulos while something about the recipe is settled — a licensing decision, " +
+		"a dependency the image does not carry, or an install nobody has verified yet. This is not " +
+		"about your box, and no box installs it in this state. It returns to the catalogue in a " +
+		"release where the entry is enabled again."
+	return av
+}
+
 func (av ArchAvailability) heldForSignature(name string) ArchAvailability {
 	av.State = ArchStateUnavailable
 	av.Installable = false

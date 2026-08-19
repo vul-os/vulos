@@ -205,7 +205,7 @@ func EntrySignatureState(appID string, entry *RegistryEntry, key ed25519.PublicK
 // would accept exactly the substitution the binding exists to prevent.
 func (env archEnvironment) evaluate(appID string, entry *RegistryEntry) ArchAvailability {
 	declared := entry.Arch
-	return EvaluateArch(ArchRequest{
+	av := EvaluateArch(ArchRequest{
 		AppName:   entry.Name,
 		Declared:  declared,
 		Signature: EntrySignatureState(appID, entry, env.trustKey, env.trustErr),
@@ -221,6 +221,43 @@ func (env archEnvironment) evaluate(appID string, entry *RegistryEntry) ArchAvai
 		EmulationEnabled:           env.optedIn,
 		OtherInstance:              "",
 	})
+	// DISABLED-01. A withdrawn entry is not an architecture question, and it
+	// outranks every rung: `_disabled` refuses the install in
+	// validateRecipeSecurity before a byte is fetched, on every box, for every
+	// architecture.
+	//
+	// The listing said otherwise. `Installable` was the arch verdict alone, so
+	// nineteen shipped entries — steam, wine, jellyfin, code-server, memos,
+	// nginx and the rest — were offered with an Install button that could only
+	// ever return "this version entry is disabled and cannot be installed". The
+	// hub was telling the owner they could install something the installer was
+	// built to refuse.
+	//
+	// Applied HERE, after the arch verdict rather than instead of it, so the
+	// answer stays in one place: the App Hub renders Availability and composes
+	// no sentence of its own, so a withdrawal reaches the card, the panel and
+	// the API through the path the arch refusals already use.
+	if entryWithdrawn(entry) {
+		return av.heldAsWithdrawn(entry.Name)
+	}
+	return av
+}
+
+// entryWithdrawn reports whether this entry is administratively disabled, at
+// the entry level or on the recipe an install would actually use.
+//
+// Both are checked because both refuse: validateRecipeSecurity reads the
+// recipe's flag and InstallFromRegistry reads the entry's, and an entry carrying
+// only one of the two is the common shape in registry.json — `steam` sets both,
+// `excalidraw` sets only the version.
+func entryWithdrawn(entry *RegistryEntry) bool {
+	if entry.Disabled {
+		return true
+	}
+	if r := entry.GetRecipe(entry.LatestVersion()); r != nil && r.Disabled {
+		return true
+	}
+	return false
 }
 
 // bindsHostLibrariesFor reports whether any architecture this app declares has
