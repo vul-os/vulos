@@ -19,10 +19,16 @@ function errorCode(err: unknown): string | undefined {
 
 // ── Wire shapes (backend/cmd/server/routes_relayconfig.go, reachwire.go) ────
 
+// The READ shape. GET /api/relayconfig serves relayconfig.PublicView, whose
+// PublicICEServer carries has_credential — a boolean — and NO credential: the
+// secret is write-only and the box never hands it back (relayconfig.go's
+// Security section). This interface used to declare `credential?: string`,
+// a field the backend cannot send, which is what made blanking the form field
+// on load look like the whole story. It is not: see buildPayload.
 interface IceServer {
   urls: string[]
   username?: string
-  credential?: string
+  has_credential: boolean
 }
 interface TurnConfig {
   ice_servers?: IceServer[]
@@ -45,7 +51,7 @@ function toIceServer(x: unknown): IceServer | null {
   return {
     urls: Array.isArray(x.urls) ? x.urls.filter((u): u is string => typeof u === 'string') : [],
     username: typeof x.username === 'string' ? x.username : undefined,
-    credential: typeof x.credential === 'string' ? x.credential : undefined,
+    has_credential: x.has_credential === true,
   }
 }
 function toRelayConfig(x: unknown): RelayConfig | null {
@@ -277,18 +283,65 @@ const PROVIDERS: ProviderOption[] = [
   },
   { value: 'turn', label: 'Bring your own STUN/TURN', blurb: 'Your own coturn (or any STUN/TURN provider) for call media. Ingress + rendezvous stay on the built-in provider.' },
   { value: 'libp2p', label: 'libp2p Circuit Relay v2', blurb: 'Your own relay peer(s) for box reachability + discovery. Call media (ICE) is unaffected.' },
-  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Reach this box over your own mesh instead of the relay tunnel. Call media (ICE) is unaffected.' },
+  // This blurb used to read "Reach this box over your own mesh instead of the
+  // relay tunnel", which describes something the provider does not do.
+  // wireguardProvider is REPORT-ONLY (backend/services/relayconfig/
+  // providers.go): its Ingress() records where the coordinator is without
+  // re-routing any HTTP, and ResolvePeer returns ("", false) — it does not
+  // claim FacetRendezvous either. The backend says both halves plainly in its
+  // ingress detail; a panel that promises the mesh IS the ingress path sends
+  // the owner off to debug a route that was never taken.
+  { value: 'wireguard', label: 'WireGuard mesh (Tailscale/Headscale/Nebula)', blurb: 'Records where your mesh coordinator is. Report-only today — it does not re-route this box’s ingress or resolve peers. Call media (ICE) is unaffected.' },
   { value: 'none', label: 'None (static IP / port-forward)', blurb: 'No relay tunnel — you manage your own inbound path. Call media (ICE) is unaffected.' },
 ]
 
+// TurnServerDraft is one editable row. The credential box is ALWAYS empty on
+// load — the box never returns the secret — so the row has to carry the
+// difference between "there is a saved credential I am not touching" and
+// "there is no credential", which the empty string alone cannot express.
+//
+// storedCredential   the box has one saved for this row (PublicICEServer
+//                    .has_credential); the empty input means "unchanged".
+// clearCredential    the owner explicitly asked to remove it.
+// savedUrls/savedUsername
+//                    what this row's identity was when it loaded. The box
+//                    matches a stored credential by URL set + username, so
+//                    editing either means the saved credential does not carry
+//                    over — a secret must never follow an edited address onto
+//                    a different host. The row warns instead of losing it
+//                    quietly.
 interface TurnServerDraft {
   urls: string
   username: string
   credential: string
+  storedCredential: boolean
+  clearCredential: boolean
+  savedUrls: string
+  savedUsername: string
 }
 
 function emptyTurnServer(): TurnServerDraft {
-  return { urls: '', username: '', credential: '' }
+  return { urls: '', username: '', credential: '', storedCredential: false, clearCredential: false, savedUrls: '', savedUsername: '' }
+}
+
+// normaliseUrls compares URL LISTS the way the box does: trimmed, and
+// order-insensitive (a server's udp/tcp rows are one server however they are
+// ordered), so merely reordering them does not raise the re-enter warning.
+function normaliseUrls(urls: string): string {
+  return urls.split(',').map(u => u.trim()).filter(Boolean).sort().join(',')
+}
+
+// identityChanged reports whether this row now addresses a DIFFERENT server
+// than the one its stored credential belongs to.
+function identityChanged(s: TurnServerDraft): boolean {
+  return normaliseUrls(s.urls) !== normaliseUrls(s.savedUrls) || s.username.trim() !== s.savedUsername.trim()
+}
+
+// credentialWillBeLost is the case the owner must be told about: a saved
+// credential that this save will NOT carry forward, because the row now points
+// somewhere else and nothing has been typed to replace it.
+function credentialWillBeLost(s: TurnServerDraft): boolean {
+  return s.storedCredential && !s.clearCredential && !s.credential.trim() && identityChanged(s)
 }
 
 export default function RelayPanel() {
@@ -322,8 +375,19 @@ export default function RelayPanel() {
         setEffective(d.effective)
         setProvider(d.config.provider)
         const servers = d.config.turn?.ice_servers || []
+        // The credential box stays empty — the box never returns the secret.
+        // What the row records instead is that one EXISTS, so an untouched
+        // empty box saves as "unchanged" rather than as "no credential".
         setTurnServers(servers.length
-          ? servers.map(s => ({ urls: (s.urls || []).join(', '), username: s.username || '', credential: '' }))
+          ? servers.map(s => ({
+              urls: (s.urls || []).join(', '),
+              username: s.username || '',
+              credential: '',
+              storedCredential: s.has_credential,
+              clearCredential: false,
+              savedUrls: (s.urls || []).join(', '),
+              savedUsername: s.username || '',
+            }))
           : [emptyTurnServer()])
         setLibp2pPeers((d.config.libp2p?.relay_peers || []).join('\n'))
         setWgEndpoint(d.config.wireguard?.endpoint || '')
@@ -338,40 +402,70 @@ export default function RelayPanel() {
 
   const addTurnServer = () => setTurnServers(s => [...s, emptyTurnServer()])
   const removeTurnServer = (i: number) => setTurnServers(s => s.filter((_, idx) => idx !== i))
-  const updateTurnServer = (i: number, field: keyof TurnServerDraft, value: string) =>
+  // Only the three text fields are editable this way — the rest of the draft
+  // is bookkeeping about what the BOX holds, which no keystroke may overwrite.
+  const updateTurnServer = (i: number, field: 'urls' | 'username' | 'credential', value: string) =>
     setTurnServers(s => s.map((row, idx) => idx === i ? { ...row, [field]: value } : row))
+  // The explicit removal request for one row. Nothing happens until Save —
+  // this only decides whether the POST carries clear_credential.
+  const setTurnServerFlag = (i: number, clearCredential: boolean) =>
+    setTurnServers(s => s.map((row, idx) => idx === i ? { ...row, clearCredential } : row))
 
+  // The WRITE shape. POST /api/relayconfig takes a whole relayconfig.Config
+  // and overwrites, so whatever is left out of this object is what the box
+  // ends up without.
+  interface IceServerPayload {
+    urls: string[]
+    username?: string
+    // Present ONLY when the owner typed a replacement. Absent means
+    // "unchanged" — the box keeps what it has stored for this server.
+    credential?: string
+    // The explicit removal, which absence deliberately cannot express.
+    clear_credential?: boolean
+  }
   interface RelayPayload {
     provider: string
     force: boolean
-    turn?: { ice_servers: { urls: string[]; username?: string; credential?: string }[] }
-    libp2p?: { relay_peers: string[] }
-    wireguard?: { endpoint: string; network?: string }
+    turn: { ice_servers: IceServerPayload[] }
+    libp2p: { relay_peers: string[] }
+    wireguard: { endpoint: string; network?: string }
   }
 
-  const buildPayload = (force: boolean): RelayPayload => {
-    const payload: RelayPayload = { provider, force: !!force }
-    if (provider === 'turn') {
-      payload.turn = {
-        ice_servers: turnServers
-          .filter(s => s.urls.trim())
-          .map(s => ({
+  // buildPayload sends EVERY section, not just the one matching the selected
+  // provider. The box keeps all sections so that switching providers back and
+  // forth never loses previously-entered settings — but only if it is sent
+  // them: a POST that omits `libp2p` overwrites the stored relay peers with
+  // nothing. This panel holds all three sections in state (none of them are
+  // secret, so the box returns them in full), so it sends all three back.
+  //
+  // The one thing it CANNOT hold is the TURN credential, which the box never
+  // returns. That gap is what the three-state credential contract below is
+  // for; it is resolved on the box, against what is stored, so the secret
+  // never travels to a browser to make a round trip.
+  const buildPayload = (force: boolean): RelayPayload => ({
+    provider,
+    force: !!force,
+    turn: {
+      ice_servers: turnServers
+        .filter(s => s.urls.trim())
+        .map(s => {
+          const entry: IceServerPayload = {
             urls: s.urls.split(',').map(u => u.trim()).filter(Boolean),
             username: s.username.trim() || undefined,
-            credential: s.credential.trim() || undefined,
-          })),
-      }
-    }
-    if (provider === 'libp2p') {
-      payload.libp2p = {
-        relay_peers: libp2pPeers.split('\n').map(p => p.trim()).filter(Boolean),
-      }
-    }
-    if (provider === 'wireguard') {
-      payload.wireguard = { endpoint: wgEndpoint.trim(), network: wgNetwork.trim() || undefined }
-    }
-    return payload
-  }
+          }
+          const typed = s.credential.trim()
+          if (typed) entry.credential = typed
+          else if (s.clearCredential) entry.clear_credential = true
+          // Neither: the field is omitted entirely and the box leaves the
+          // stored credential alone. Sending `credential: undefined` here
+          // was the bug — it serialises to an absent field that the box used
+          // to read as "no credential" and honour by deleting the secret.
+          return entry
+        }),
+    },
+    libp2p: { relay_peers: libp2pPeers.split('\n').map(p => p.trim()).filter(Boolean) },
+    wireguard: { endpoint: wgEndpoint.trim(), network: wgNetwork.trim() || undefined },
+  })
 
   const save = async (force: boolean) => {
     setSaving(true)
@@ -493,14 +587,49 @@ export default function RelayPanel() {
           <p className="text-xs text-[var(--text-faint)] mb-3">
             One or more STUN/TURN servers (comma-separate multiple URLs per row, e.g.
             <code className="mx-1 text-[12px]">turn:relay.example.org:3478?transport=udp, turn:relay.example.org:3478?transport=tcp</code>).
-            The credential is write-only — it is never shown again once saved.
+            The credential is write-only — it is never shown again once saved, so a saved one shows
+            as a blank box. Leaving it blank keeps it; type to replace it, or use “Remove credential”
+            to delete it.
           </p>
           {turnServers.map((s, i) => (
             <div key={i} className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 mb-3 items-start">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input className="input text-sm" placeholder="turn:host:3478" value={s.urls} onChange={e => updateTurnServer(i, 'urls', e.target.value)} />
                 <input className="input text-sm" placeholder="username (optional)" value={s.username} onChange={e => updateTurnServer(i, 'username', e.target.value)} />
-                <input className="input text-sm" type="password" placeholder="credential (optional)" value={s.credential} onChange={e => updateTurnServer(i, 'credential', e.target.value)} />
+                <div className="min-w-0">
+                  <input
+                    className="input text-sm w-full"
+                    type="password"
+                    aria-label={`credential for server ${i + 1}`}
+                    placeholder={
+                      s.clearCredential ? 'will be removed on save'
+                        : s.storedCredential ? 'saved — leave blank to keep'
+                          : 'credential (optional)'
+                    }
+                    disabled={s.clearCredential}
+                    value={s.credential}
+                    onChange={e => updateTurnServer(i, 'credential', e.target.value)}
+                  />
+                  {s.storedCredential && !s.credential.trim() && (
+                    s.clearCredential ? (
+                      <button
+                        onClick={() => setTurnServerFlag(i, false)}
+                        className="text-[11px] text-[var(--accent)] mt-1 underline"
+                      >Keep the saved credential</button>
+                    ) : (
+                      <button
+                        onClick={() => setTurnServerFlag(i, true)}
+                        className="text-[11px] text-[var(--text-faint)] mt-1 underline"
+                      >Remove credential</button>
+                    )
+                  )}
+                  {credentialWillBeLost(s) && (
+                    <p className="text-[11px] text-warning mt-1 leading-snug">
+                      You changed this server’s address. A saved credential belongs to the host and
+                      account it was issued for, so it will not carry over — re-enter it here.
+                    </p>
+                  )}
+                </div>
               </div>
               {turnServers.length > 1 && (
                 <button onClick={() => removeTurnServer(i)} className="btn-secondary text-xs px-2 h-fit">Remove</button>
@@ -535,8 +664,8 @@ export default function RelayPanel() {
         <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 mb-5">
           <p className="text-xs text-[var(--text-muted)] mb-3">
             Today this selection is reported on the federation status page but not yet actuated —
-            saving it does not re-route real box ingress through your mesh. Only call-media (ICE)
-            provider selection is live end-to-end.
+            saving it does not re-route real box ingress or resolve peers through your mesh.
+            Only call-media (ICE) provider selection is live end-to-end.
           </p>
           <Field label="Coordinator endpoint" hint="Your Tailscale/Headscale/Nebula coordinator — host:port or an https URL. No keys are stored here; the mesh manages its own.">
             <input className="input text-sm" placeholder="headscale.example.org:8080" value={wgEndpoint} onChange={e => setWgEndpoint(e.target.value)} />
