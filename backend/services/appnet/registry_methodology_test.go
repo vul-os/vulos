@@ -60,13 +60,38 @@ func TestInstallFromRegistry_ExecsNoInstallShell(t *testing.T) {
 		}
 	}
 
-	// Exactly one `sh -c` may remain in the whole function: post_install, which
-	// survives narrowed (POSTINSTALL-02/03). Two would mean the install shell
-	// came back next to it.
-	if n := strings.Count(body, `"sh", "-c"`); n != 1 {
-		t.Errorf("InstallFromRegistry runs %d shell commands, want exactly 1 (post_install only)", n)
+	// Exactly one `sh -c` may remain on the whole install PATH: post_install,
+	// which survives narrowed (POSTINSTALL-02/03). Two would mean the install
+	// shell came back next to it.
+	//
+	// WIDENED 2026-08-19, when POSTINSTALL-04 moved that one shell out of
+	// InstallFromRegistry into runPostInstall so its environment, its fatal
+	// failure and its rollback could be exercised by a test. Counting inside
+	// InstallFromRegistry alone would then have read ZERO shells and gone green
+	// over a function that no longer contained the thing it was watching — a
+	// guard passing because its subject moved, which is the exact failure this
+	// file exists to prevent. The count now spans the dispatch AND the function
+	// it delegates to, so the total is unchanged by the move, and the dispatch
+	// is additionally held to zero shells of its own.
+	postBody := functionBody(t, "runPostInstall")
+	for _, banned := range []string{`recipe.Install`, `apt-get`, `packages.CacheReady`, `packages.InstallDeps`} {
+		if strings.Contains(postBody, banned) {
+			t.Errorf("runPostInstall mentions %q — the install shell must not reappear in the "+
+				"function the dispatch delegates to (INSTALL-01)", banned)
+		}
 	}
-	if !strings.Contains(body, "recipe.PostInstall") {
+	if n := strings.Count(body, `"sh", "-c"`); n != 0 {
+		t.Errorf("InstallFromRegistry runs %d shell commands of its own, want 0 — post_install is "+
+			"runPostInstall's, and any other shell here is the install path coming back", n)
+	}
+	if !strings.Contains(body, "runPostInstall(") {
+		t.Error("InstallFromRegistry no longer calls runPostInstall — either post_install stopped " +
+			"running or it moved again; this guard must follow it")
+	}
+	if n := strings.Count(body+postBody, `"sh", "-c"`); n != 1 {
+		t.Errorf("the install path runs %d shell commands, want exactly 1 (post_install only)", n)
+	}
+	if !strings.Contains(postBody, "recipe.PostInstall") {
 		t.Errorf("the one remaining shell is not post_install — read the dispatch before trusting this test")
 	}
 }
@@ -76,19 +101,36 @@ func TestInstallFromRegistry_ExecsNoInstallShell(t *testing.T) {
 // and, more importantly, does not let a real call hide behind one.
 func installFromRegistryBody(t *testing.T) string {
 	t.Helper()
+	return functionBodyChecked(t, "InstallFromRegistry", "FlatpakInstall", "staticInstall")
+}
+
+// functionBody returns the comment-stripped source of a top-level function in
+// registry.go. It exists so a guard can follow code that has been extracted
+// into a helper instead of silently examining an empty function.
+func functionBody(t *testing.T, name string) string {
+	t.Helper()
+	return functionBodyChecked(t, name)
+}
+
+// functionBodyChecked is functionBody plus a sanity assertion: `must` names
+// substrings the extracted body has to contain. Without it, a rename or a bad
+// extraction yields an empty string and every Contains check above passes
+// vacuously — the shape of hollow gate this suite keeps finding.
+func functionBodyChecked(t *testing.T, name string, must ...string) string {
+	t.Helper()
 	src, err := os.ReadFile("registry.go")
 	if err != nil {
 		t.Fatalf("read registry.go: %v", err)
 	}
 	text := string(src)
-	start := strings.Index(text, "func InstallFromRegistry(")
+	start := strings.Index(text, "func "+name+"(")
 	if start < 0 {
-		t.Fatal("InstallFromRegistry not found in registry.go — this guard is reading the wrong file")
+		t.Fatalf("%s not found in registry.go — this guard is reading the wrong file", name)
 	}
 	rest := text[start:]
 	end := strings.Index(rest, "\n}\n")
 	if end < 0 {
-		t.Fatal("could not find the end of InstallFromRegistry")
+		t.Fatalf("could not find the end of %s", name)
 	}
 	body := rest[:end]
 
@@ -102,8 +144,13 @@ func installFromRegistryBody(t *testing.T) string {
 	stripped := strings.Join(out, "\n")
 	// Sanity: the guard must be looking at real code. If comment-stripping ever
 	// eats the function, everything above passes vacuously.
-	if !strings.Contains(stripped, "FlatpakInstall") || !strings.Contains(stripped, "staticInstall") {
-		t.Fatalf("the extracted body does not contain the two install vehicles — the guard is not reading code:\n%s", stripped)
+	for _, m := range must {
+		if !strings.Contains(stripped, m) {
+			t.Fatalf("the extracted body of %s does not contain %q — the guard is not reading code:\n%s", name, m, stripped)
+		}
+	}
+	if strings.TrimSpace(stripped) == "" {
+		t.Fatalf("the extracted body of %s is empty — every check against it would pass vacuously", name)
 	}
 	return stripped
 }

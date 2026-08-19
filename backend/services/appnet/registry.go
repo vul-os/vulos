@@ -593,6 +593,19 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 		return err
 	}
 
+	// ── POSTINSTALL-04: ${PORT} in post_install requires a declared port ─────
+	//
+	// The installer exports PORT from recipe.Port. When no port is declared
+	// there is nothing to export, `sh` expands ${PORT} to the empty string and
+	// exits 0, and the recipe writes a config file with a hole in it while the
+	// install reports success. Refusing the combination is the only way the
+	// author learns; a fallback default would make the config disagree with the
+	// port the launcher substitutes into `command`, which is worse than an
+	// error because it runs.
+	if err := rejectPortWithoutPort(recipe.PostInstall, recipe.Port); err != nil {
+		return err
+	}
+
 	// ARTIFACTS-01: the per-architecture download form carries exactly the same
 	// obligations as the single-URL one, and two more of its own.
 	if recipe.HasArtifacts() {
@@ -783,6 +796,22 @@ func rejectSwallowedFailure(cmd string) error {
 			"(POSTINSTALL-03, roadmap/INSTALL-METHODOLOGY.md): %q", firstLine(cmd))
 	}
 	return nil
+}
+
+// portRefRe matches a ${PORT} / $PORT reference in a shell string. $PORT is
+// included because sh honours it identically; a rule that only knew the braced
+// spelling would be a gate the next recipe walks around by accident.
+var portRefRe = regexp.MustCompile(`\$\{PORT\}|\$PORT\b`)
+
+// rejectPortWithoutPort refuses a post_install that names ${PORT} while the
+// recipe declares no port (POSTINSTALL-04).
+func rejectPortWithoutPort(postInstall string, port int) error {
+	if port != 0 || !portRefRe.MatchString(postInstall) {
+		return nil
+	}
+	return fmt.Errorf("post_install references ${PORT} but the recipe declares no `port` — sh expands "+
+		"an unset ${PORT} to the empty string and exits 0, so the install would report success for a "+
+		"config file with a hole in it (POSTINSTALL-04): %q", firstLine(postInstall))
 }
 
 // validateExtractDir screens a recipe's extract_dir before it becomes a path.
@@ -1560,47 +1589,8 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	}
 
 	// Run post-install command
-	if recipe.PostInstall != "" {
-		log.Printf("[registry] post-install %s: %s", appID, recipe.PostInstall)
-		var stderrBuf bytes.Buffer
-		cmd := exec.CommandContext(ctx, "sh", "-c", recipe.PostInstall)
-		cmd.Dir = appDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = &stderrBuf
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("APP_DIR=%s", appDir),
-			fmt.Sprintf("DATA_DIR=%s", filepath.Join(appDir, "data")),
-		)
-		// POSTINSTALL-01: a failed post_install is FATAL, and the half-built app
-		// directory is removed.
-		//
-		// This used to log a warning and carry on, which meant a successful
-		// install of an UNCONFIGURED app. That is not a theoretical grade of
-		// wrong: it shipped a broken app during this very change. lilmail's
-		// post_install contained `\'` inside a single-quoted sh string, where a
-		// backslash does not escape — it ends the quote. sh exited 2 with
-		// "Syntax error: Unterminated quoted string", config.toml was never
-		// written, and the installer nonetheless reported success, wrote the
-		// manifest, and left an app whose every launch dies with
-		// "Failed to load config". Only an HTTP probe caught it; install-path,
-		// manifest-written and the binary all looked fine.
-		//
-		// For an app that writes its config here — conduit, gitea, navidrome,
-		// diwan, wede, lilmail — post_install IS the install. Refusing loudly
-		// gives the owner an error naming the app; the previous behaviour gave
-		// them an app that starts and immediately dies.
-		if err := cmd.Run(); err != nil {
-			errOutput := lastLines(stderrBuf.String(), 10)
-			// Roll back, so a retry starts clean rather than on top of whatever
-			// the failed command managed to create.
-			if rmErr := os.RemoveAll(appDir); rmErr != nil {
-				log.Printf("[registry] post-install rollback for %s failed: %v", appID, rmErr)
-			}
-			if errOutput != "" {
-				return fmt.Errorf("post-install for %s@%s failed: %w\n%s", appID, version, err, errOutput)
-			}
-			return fmt.Errorf("post-install for %s@%s failed: %w", appID, version, err)
-		}
+	if err := runPostInstall(ctx, appID, version, appDir, recipe); err != nil {
+		return err
 	}
 
 	// Symlink data dir to user data directory
@@ -1764,6 +1754,81 @@ func (r *Registry) ListEntries(appsDir string) []RegistryListEntry {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 	return entries
+}
+
+// runPostInstall executes a recipe's post_install in the installed app
+// directory. It is a named function rather than an inline block so the three
+// rules that govern it — the exported environment, the fatal failure and the
+// rollback — can be exercised by a test without a network install. They were
+// unreachable from any test while they lived inside InstallFromRegistry, which
+// is how ${PORT} came to be missing from the environment for as long as it was.
+func runPostInstall(ctx context.Context, appID, version, appDir string, recipe *VersionRecipe) error {
+	if recipe.PostInstall != "" {
+		log.Printf("[registry] post-install %s: %s", appID, recipe.PostInstall)
+		var stderrBuf bytes.Buffer
+		cmd := exec.CommandContext(ctx, "sh", "-c", recipe.PostInstall)
+		cmd.Dir = appDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = &stderrBuf
+		// POSTINSTALL-04: ${PORT} is EXPORTED here, because post_install is the
+		// only place an app's own config file gets written and several recipes
+		// write the port into it.
+		//
+		// It used to be absent, and the failure was silent in the worst way:
+		// `sh -c` expands an unset ${PORT} to the EMPTY STRING and exits 0, so
+		// `nginx`'s post_install wrote "listen ;" and `transmission`'s wrote
+		// "rpc-port":, and the installer reported success for a config file that
+		// no server can parse. Nothing failed, nothing logged, and the app died
+		// at first launch — the same shape as lilmail's unterminated quote that
+		// POSTINSTALL-01 was written for, one field further in.
+		//
+		// The value is recipe.Port and not some second opinion about it: at
+		// launch, main.go takes appPort from the manifest, which is written from
+		// this same field, and launcher.go substitutes ${PORT} in `command` with
+		// it. Config and command therefore name one number by construction. A
+		// recipe that references ${PORT} with no port declared is refused up
+		// front by validateRecipeSecurity rather than papered over with a
+		// default here, because a default is where the two would diverge.
+		env := append(os.Environ(),
+			fmt.Sprintf("APP_DIR=%s", appDir),
+			fmt.Sprintf("DATA_DIR=%s", filepath.Join(appDir, "data")),
+		)
+		if recipe.Port != 0 {
+			env = append(env, fmt.Sprintf("PORT=%d", recipe.Port))
+		}
+		cmd.Env = env
+		// POSTINSTALL-01: a failed post_install is FATAL, and the half-built app
+		// directory is removed.
+		//
+		// This used to log a warning and carry on, which meant a successful
+		// install of an UNCONFIGURED app. That is not a theoretical grade of
+		// wrong: it shipped a broken app during this very change. lilmail's
+		// post_install contained `\'` inside a single-quoted sh string, where a
+		// backslash does not escape — it ends the quote. sh exited 2 with
+		// "Syntax error: Unterminated quoted string", config.toml was never
+		// written, and the installer nonetheless reported success, wrote the
+		// manifest, and left an app whose every launch dies with
+		// "Failed to load config". Only an HTTP probe caught it; install-path,
+		// manifest-written and the binary all looked fine.
+		//
+		// For an app that writes its config here — conduit, gitea, navidrome,
+		// diwan, wede, lilmail — post_install IS the install. Refusing loudly
+		// gives the owner an error naming the app; the previous behaviour gave
+		// them an app that starts and immediately dies.
+		if err := cmd.Run(); err != nil {
+			errOutput := lastLines(stderrBuf.String(), 10)
+			// Roll back, so a retry starts clean rather than on top of whatever
+			// the failed command managed to create.
+			if rmErr := os.RemoveAll(appDir); rmErr != nil {
+				log.Printf("[registry] post-install rollback for %s failed: %v", appID, rmErr)
+			}
+			if errOutput != "" {
+				return fmt.Errorf("post-install for %s@%s failed: %w\n%s", appID, version, err, errOutput)
+			}
+			return fmt.Errorf("post-install for %s@%s failed: %w", appID, version, err)
+		}
+	}
+	return nil
 }
 
 // lastLines returns the last n non-empty lines from s, trimmed.
