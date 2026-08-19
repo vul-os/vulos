@@ -1,0 +1,1040 @@
+{
+  "_source": "registry.d/wave1-flatpak.json \u2014 APP-CATALOG.md Wave 1 completion (communication, gaming & compatibility, emulation, media playback), staged 2026-08-19 for merge into registry.json under `apps`. Every entry is a Flathub recipe: no download_url, no checksum, nothing mirrored \u2014 policy 1 (filter Flathub, do not mirror).",
+  "_signing": "UNSIGNED BY CONSTRUCTION. Every entry carries \"signature\": \"\". After merging, run `make sign-registry` then `make verify-registry-prod`. scripts/verify-app-recipe.sh REFUSES an unsigned entry (line 684), so no entry here can be install-tested by the harness until the founder's offline ceremony has signed it.",
+  "_verified_by": "Flathub API v2 (summary + appstream + verification/status) fetched 2026-08-19, PLUS scripts/verify-flatpak-candidates.sh --file registry.d/wave1-flatpak.json, which resolves every id through a real `flatpak remote-info flathub --arch=<arch>` in a debian:trixie container for each declared architecture. That proves the id exists, is unambiguous under the argv FlatpakInstall runs, and resolves for exactly the arches declared. It does NOT prove the app launches or renders \u2014 that is scripts/verify-app-recipe.sh's job and it cannot run before signing.",
+  "_permissions_model": "The `permissions` array is what the app NEEDS in Vulos's model, curated per app, NOT a dump of the Flatpak sandbox. Flathub grants devices=[all] to almost everything, which would make \"gpu\" and \"camera\" universal and meaningless. Each entry's _note records the measured Flatpak sandbox verbatim so the two models can be compared.",
+  "_excluded": "From this wave, with the measurement that decided it: com.discordapp.Discord, com.slack.Slack, us.zoom.Zoom, com.spotify.Client, com.valvesoftware.Steam and org.vinegarhq.Sober \u2014 all LicenseRef-proprietary in Flathub AppStream, excluded by APP-CATALOG policy 1a. org.duckstation.DuckStation and com.github.iwalton3.jellyfin-media-player \u2014 Flathub reports is_eol=TRUE for both, so they are dead ids, not policy exclusions.",
+  "apps": {
+    "signal": {
+      "name": "Signal",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "End-to-end encrypted messenger \u2014 private one-to-one and group chats, voice and video calls, linked to your existing Signal account on your phone.",
+      "category": "network",
+      "author": "Signal Foundation",
+      "homepage": "https://signal.org",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "messenger",
+        "chat",
+        "encrypted",
+        "privacy",
+        "signal",
+        "calls",
+        "sms"
+      ],
+      "license": "AGPL-3.0-only",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=False, licence AGPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.signal.Signal manifest, 3381 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. PUBLISHER NOT VERIFIED on Flathub: the package is community-maintained, though the app itself is AGPL-3.0 and auditable at source (the category APP-CATALOG policy 1a leaves as the mildest form of the unverified problem). Signal Desktop must be linked from a phone; it is not a standalone account.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.signal.Signal",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.signal.Signal",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "microphone",
+            "camera"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "telegram": {
+      "name": "Telegram Desktop",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Telegram client \u2014 cloud chats, groups and channels, with optional end-to-end encrypted secret chats on mobile only.",
+      "category": "network",
+      "author": "Telegram FZ-LLC",
+      "homepage": "https://desktop.telegram.org",
+      "icon": "T",
+      "icon_url": "",
+      "keywords": [
+        "messenger",
+        "chat",
+        "telegram",
+        "groups",
+        "channels",
+        "calls"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.telegram.desktop manifest, 13581 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Secret chats (E2E) are a mobile-only Telegram feature; the desktop client sees cloud chats, which are encrypted in transit and at rest on Telegram servers but not end-to-end. Stated here because the description would otherwise imply more privacy than the product gives.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.telegram.desktop",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.telegram.desktop",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "microphone",
+            "camera"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "zapzap": {
+      "name": "ZapZap",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Desktop wrapper for WhatsApp Web \u2014 a native window around a proprietary third-party service, with notifications, tray and spellcheck.",
+      "category": "network",
+      "author": "Rafael Tosta",
+      "homepage": "https://rtosta.com/zapzap-web/",
+      "icon": "Z",
+      "icon_url": "",
+      "keywords": [
+        "whatsapp",
+        "messenger",
+        "chat",
+        "zapzap"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/com.rtosta.zapzap manifest, 1925 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-documents,xdg-pictures,xdg-config/kdeglobals:ro,xdg-download]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. THE APP IS GPL-3.0-or-later AND SHIPS NO VENDOR BINARY, so it is not excluded by policy 1a \u2014 but it is a client for a PROPRIETARY SERVICE (WhatsApp) and stops working the day that service changes. Recorded here rather than discovered later.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.rtosta.zapzap",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.rtosta.zapzap",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "microphone",
+            "camera"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "mumble": {
+      "name": "Mumble",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Low-latency voice chat for groups \u2014 connects to any Mumble server, including one you run yourself, with positional audio and no account service in the middle.",
+      "category": "network",
+      "author": "The Mumble Developers",
+      "homepage": "https://www.mumble.info",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "voice",
+        "voip",
+        "chat",
+        "mumble",
+        "gaming",
+        "server"
+      ],
+      "license": "BSD-3-Clause",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence BSD-3-Clause, is_eol=false. EXTRA-DATA: no (read from flathub/info.mumble.Mumble manifest, 4556 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all,dri,shm] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/pipewire-0:ro,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Fits the sovereign-box model directly: the server is self-hostable and Mumble talks to whichever one you point it at.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "info.mumble.Mumble",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run info.mumble.Mumble",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "thunderbird": {
+      "name": "Thunderbird",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Mail, calendar and newsgroup client from MZLA/Mozilla \u2014 IMAP, POP, CalDAV and CardDAV against any provider, including a mailbox on your own box.",
+      "category": "network",
+      "author": "MZLA Technologies, part of the Mozilla Foundation",
+      "homepage": "https://www.thunderbird.net",
+      "icon": "T",
+      "icon_url": "",
+      "keywords": [
+        "email",
+        "mail",
+        "calendar",
+        "imap",
+        "caldav",
+        "thunderbird",
+        "newsgroups"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method manual), licence MPL-2.0, is_eol=false. EXTRA-DATA: NOT MEASURED - manifest not fetched (read from flathub/org.mozilla.thunderbird manifest, 0 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio,fallback-x11,pcsc,cups] filesystems=[xdg-download,xdg-run/gnupg:ro,/run/.heim_org.h5l.kcm-socket,~/.gnupg,xdg-run/speech-dispatcher:ro]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. ID CORRECTION, MEASURED: APP-CATALOG.md listed org.mozilla.Thunderbird (capital T). Flathub reports that id is_eol=TRUE; the live id is org.mozilla.thunderbird, all lower case. That is the FIFTH case-sensitivity/EOL id defect found in this catalogue and the second of its exact shape after io.lmms.LMMS. EXTRA-DATA NOT MEASURED: no manifest is reachable at flathub/org.mozilla.thunderbird for either branch or extension, so the field is recorded false-by-default and remains UNPROVEN for this entry alone.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.mozilla.thunderbird",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.mozilla.thunderbird",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "heroic": {
+      "name": "Heroic Games Launcher",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Open-source launcher for Epic Games, GOG and Amazon libraries \u2014 installs and runs games you already own through Wine/Proton.",
+      "category": "games",
+      "author": "Heroic Games Launcher",
+      "homepage": "https://heroicgameslauncher.com",
+      "icon": "H",
+      "icon_url": "",
+      "keywords": [
+        "games",
+        "launcher",
+        "epic",
+        "gog",
+        "amazon",
+        "wine",
+        "proton"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.heroicgameslauncher.hgl manifest, 14319 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,wayland,x11] filesystems=[/run/media,~/.local/share/applications,/run/udev:ro,xdg-run/gamescope-0,~/.local/share/lutris,~/.steam/steam,/mnt,~/Games/Heroic:create,xdg-documents,/media,~/.var/app/com.valvesoftware.Steam,xdg-desktop,xdg-config/MangoHud:ro,xdg-run/app/com.discordapp.Discord:create,xdg-data/umu:create,~/.steam]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. The launcher is GPL-3.0 and ships no vendor binary, so policy 1a does not exclude it; the GAMES it fetches are third-party and mostly proprietary, which is the user's own library rather than catalogue content. Same shape as Lutris, already shipped.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.heroicgameslauncher.hgl",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.heroicgameslauncher.hgl",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "bottles": {
+      "name": "Bottles",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Run Windows software on Linux in managed, isolated Wine prefixes \u2014 per-app environments with runners, dependencies and versioned state.",
+      "category": "games",
+      "author": "The Bottles Contributors",
+      "homepage": "https://usebottles.com",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "wine",
+        "windows",
+        "compatibility",
+        "prefix",
+        "games",
+        "proton"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/com.usebottles.bottles manifest, 7655 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,wayland,x11] filesystems=[~/.local/share/umu:create,~/Games/umu:create]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. THIS IS THE ANSWER TO THE OPEN \"wine vs Bottles\" QUESTION IN APP-CATALOG.md, and it is settled by measurement rather than preference: registry entry `wine` is PARKED with _disabled because WineHQ publishes no pinnable artefact and org.winehq.Wine has seven dated branches and no plain `stable`, while com.usebottles.bottles resolves cleanly on a bare id. Bottles is therefore the Windows-compatibility entry that can actually install. It is x86_64-only, exactly like the Wine it wraps.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.usebottles.bottles",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.usebottles.bottles",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "protonup-qt": {
+      "name": "ProtonUp-Qt",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Installs and manages Proton-GE, Wine-GE and other compatibility tools for Steam, Lutris, Heroic and Bottles.",
+      "category": "games",
+      "author": "DavidoTek",
+      "homepage": "https://davidotek.github.io/protonup-qt/",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "proton",
+        "wine",
+        "ge",
+        "compatibility",
+        "steam",
+        "lutris",
+        "heroic"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/net.davidotek.pupgui2 manifest, 3946 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[wayland,x11] filesystems=[~/.var/app/com.heroicgameslauncher.hgl/config/heroic/gog_store,~/.var/app/net.lutris.Lutris/data/lutris/runners,~/.kshrc,~/.local/share/lutris/runners,~/.var/app/net.lutris.Lutris/data/lutris/runtime/dxvk,xdg-config/kdeglobals:ro,~/.var/app/net.lutris.Lutris/data/lutris/pga.db:ro,~/.var/app/com.heroicgameslauncher.hgl/config/heroic/sideload_apps,~/.config/fish/fish_variables,~/snap/steam,~/.var/app/com.usebottles.bottles/data/bottles/runners,~/.var/app/net.lutris.Lutris/config/lutris:ro,~/.var/app/com.valvesoftware.Steam/data/Steam,~/.local/share/lutris/pga.db:ro,~/stl:create,~/.var/app/com.heroicgameslauncher.hgl/config/heroic/GamesConfig,~/.zshrc,~/.config/lutris,~/.var/app/com.heroicgameslauncher.hgl/config/heroic/tools,~/.var/app/com.heroicgameslauncher.hgl/config/legendary,~/.config/heroic,~/.var/app/com.heroicgameslauncher.hgl/config/heroic/store_cache,~/.local/share/lutris/runtime/vkd3d,~/.local/share/Steam,~/.var/app/net.lutris.Lutris/data/lutris/runtime/vkd3d,~/.config/steamtinkerlaunch,~/.bashrc,~/.local/share/lutris/runtime/dxvk,~/.steam]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ARM64 CAVEAT, STATED NOT HIDDEN: Flathub publishes this for aarch64 and the entry therefore declares both, but everything it INSTALLS is an x86_64 compatibility runner, and the launchers it manages (Bottles, Heroic, Lutris) are x86_64-only. On an arm64 box it will install and run and have nothing useful to do.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.davidotek.pupgui2",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.davidotek.pupgui2",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "protontricks": {
+      "name": "Protontricks",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Winetricks wrapper for Proton prefixes \u2014 applies per-game fixes, DLLs and settings to compatibility installs.",
+      "category": "games",
+      "author": "Janne Pulkkinen",
+      "homepage": "https://github.com/Matoking/protontricks",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "proton",
+        "winetricks",
+        "wine",
+        "fixes",
+        "games"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.Matoking.protontricks manifest, 11781 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio] filesystems=[xdg-music,xdg-pictures,~/.var/app/com.valvesoftware.Steam,~/.local/share/Steam,xdg-download,~/snap/steam,xdg-documents,~/.snap/data/steam,xdg-desktop,xdg-videos,~/.steam]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. Operates on Proton prefixes created by a Steam install. Policy 1a keeps Steam out of the catalogue, so on a stock Vulos box this tool has no prefixes of its own to fix unless the user brought them.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.Matoking.protontricks",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.Matoking.protontricks",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "prismlauncher": {
+      "name": "Prism Launcher",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Open-source Minecraft launcher \u2014 manages multiple isolated instances, mod loaders and modpacks, using your own Mojang/Microsoft account.",
+      "category": "games",
+      "author": "Prism Launcher Contributors",
+      "homepage": "https://prismlauncher.org",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "minecraft",
+        "launcher",
+        "mods",
+        "modpack",
+        "instances",
+        "java"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.prismlauncher.PrismLauncher manifest, 4452 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,wayland,x11] filesystems=[xdg-run/app/com.discordapp.Discord:create,xdg-download:ro,xdg-config/kdeglobals:ro,~/.ftba:ro,/sys/kernel/mm/hugepages:ro,/sys/kernel/mm/transparent_hugepage:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. The launcher is GPL-3.0-only and bundles no game content; Minecraft itself is proprietary and is downloaded against the user's own account, so nothing proprietary ships in the catalogue.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.prismlauncher.PrismLauncher",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.prismlauncher.PrismLauncher",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "goverlay": {
+      "name": "GOverlay",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Graphical configuration for MangoHud, vkBasalt and libstrangle \u2014 the in-game performance overlay for Vulkan and OpenGL titles.",
+      "category": "games",
+      "author": "Benjamim Gois",
+      "homepage": "https://github.com/benjamimgois/goverlay",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "mangohud",
+        "overlay",
+        "fps",
+        "vulkan",
+        "opengl",
+        "performance"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/io.github.benjamimgois.goverlay manifest, 5179 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[xdg-config/vkBasalt,xdg-config/MangoHud,/mnt:ro,~/.local/share/Steam:ro,~/.var/app/com.valvesoftware.Steam,xdg-config/vkSumi,/run/media:ro,/media:ro,~/.steam:ro,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL CAVEAT (the class APP-CATALOG.md flags as an open question): the overlay it configures is rendered by the GAME on the BOX. It reports the box's frame timing, not the frame rate the browser is showing you, and those two numbers can differ a great deal over a WebRTC stream.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.benjamimgois.goverlay",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.benjamimgois.goverlay",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "ludusavi": {
+      "name": "Ludusavi",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Backs up and restores PC game save files using a community-maintained manifest of save locations.",
+      "category": "games",
+      "author": "mtkennerly",
+      "homepage": "https://github.com/mtkennerly/ludusavi",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "backup",
+        "saves",
+        "games",
+        "restore",
+        "sync"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.mtkennerly.ludusavi manifest, 2928 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland] filesystems=[home,/media,~/.var/app,~/.var/app/net.lutris.Lutris,/run/media,~/.var/app/com.heroicgameslauncher.hgl,~/.var/app/com.valvesoftware.Steam]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Backs up saves on the BOX's filesystem. Reaches the network only to refresh its save-location manifest.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.mtkennerly.ludusavi",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.mtkennerly.ludusavi",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "retroarch": {
+      "name": "RetroArch",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Front end for the libretro emulator cores \u2014 one interface for many consoles, with per-core settings, shaders and save states. Ships no games or BIOS files.",
+      "category": "games",
+      "author": "libretro",
+      "homepage": "https://www.retroarch.com",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "retro",
+        "libretro",
+        "console",
+        "games",
+        "roms"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method manual), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.libretro.RetroArch manifest, 5828 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/pipewire-0,xdg-run/app/com.discordapp.Discord:create,xdg-config/kdeglobals:ro,/run/udev:ro,xdg-run/gamescope-0:ro,host,xdg-run/discord-ipc-0:create]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. CONTENT: cores are downloaded from libretro; ROMs and BIOS images are the user's own and none ship here. Flathub sandbox grants filesystem=host, so it reads the box's disks wherever the user points it.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.libretro.RetroArch",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.libretro.RetroArch",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "dolphin-emu": {
+      "name": "Dolphin",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "GameCube and Wii emulator with high-resolution rendering, save states and controller mapping. Ships no games.",
+      "category": "games",
+      "author": "Dolphin Emulator Project",
+      "homepage": "https://dolphin-emu.org",
+      "icon": "D",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "gamecube",
+        "wii",
+        "nintendo",
+        "games"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.DolphinEmu.dolphin-emu manifest, 2865 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,x11] filesystems=[xdg-run/app/com.discordapp.Discord:create,xdg-config/kdeglobals:ro,host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+ and auditable at source.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.DolphinEmu.dolphin-emu",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.DolphinEmu.dolphin-emu",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pcsx2": {
+      "name": "PCSX2",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "PlayStation 2 emulator. Requires a PS2 BIOS image that the user must supply themselves; none is shipped.",
+      "category": "games",
+      "author": "PCSX2 Team",
+      "homepage": "https://pcsx2.net",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "playstation",
+        "ps2",
+        "sony",
+        "games"
+      ],
+      "license": "GPL-3.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0+, is_eol=false. EXTRA-DATA: no (read from flathub/net.pcsx2.PCSX2 manifest, 4146 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[xdg-config/kdeglobals:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. BIOS: PCSX2 cannot boot anything without a user-supplied PS2 BIOS dump. An entry that does not say so ships a guaranteed first-run failure.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.pcsx2.PCSX2",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.pcsx2.PCSX2",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "rpcs3": {
+      "name": "RPCS3",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "PlayStation 3 emulator. Requires the official PS3 firmware package, which the user installs themselves; none is shipped.",
+      "category": "games",
+      "author": "RPCS3 Developers",
+      "homepage": "https://rpcs3.net",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "playstation",
+        "ps3",
+        "sony",
+        "games"
+      ],
+      "license": "GPL-2.0-only",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/net.rpcs3.RPCS3 manifest, 3486 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[home:ro,/media,xdg-config/kdeglobals:ro,/run/media]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. FIRMWARE: RPCS3 needs Sony's PS3UPDAT.PUP installed by the user before anything runs. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0-only.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.rpcs3.RPCS3",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.rpcs3.RPCS3",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "ppsspp": {
+      "name": "PPSSPP",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "PSP emulator with upscaled rendering and save states. Ships no games.",
+      "category": "games",
+      "author": "Henrik Rydg\u00e5rd",
+      "homepage": "https://www.ppsspp.org",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "psp",
+        "playstation",
+        "portable",
+        "games"
+      ],
+      "license": "GPL-2.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true,
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.ppsspp.PPSSPP manifest, 2513 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio] filesystems=[host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.ppsspp.PPSSPP",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.ppsspp.PPSSPP",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "mgba": {
+      "name": "mGBA",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Game Boy Advance emulator \u2014 accurate, small and fast, with link-cable support and save states. Ships no games.",
+      "category": "games",
+      "author": "Vicki Pfau (endrift)",
+      "homepage": "https://mgba.io",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "emulator",
+        "gameboy",
+        "gba",
+        "nintendo",
+        "games"
+      ],
+      "license": "MPL-2.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "game": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence MPL-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/io.mgba.mGBA manifest, 1880 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; MPL-2.0 and auditable at source.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.mgba.mGBA",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.mgba.mGBA",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "mpv": {
+      "name": "mpv",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Minimal, scriptable video player \u2014 hardware-accelerated playback of essentially any format, driven by keyboard and config file rather than chrome.",
+      "category": "media",
+      "author": "The mpv player contributors",
+      "homepage": "https://mpv.io",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "player",
+        "media",
+        "mpv",
+        "playback",
+        "subtitles"
+      ],
+      "license": "GPL-2.0+ AND LGPL-2.0-or-later",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+ AND LGPL-2.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/io.mpv.Mpv manifest, 39202 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,wayland,x11] filesystems=[xdg-run/pipewire-0:ro,xdg-pictures,/tmp,xdg-videos,host:ro,~/.var/app/io.mpv.Mpv/config/mpv/scripts:create]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub. Flathub sandbox grants host:ro, so it plays files anywhere on the BOX; on a streamed session the video is re-encoded to WebRTC, so \"hardware accelerated\" describes the box's decode, not the browser's.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.mpv.Mpv",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.mpv.Mpv",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "celluloid": {
+      "name": "Celluloid",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "GTK front end for mpv \u2014 drag-and-drop playback, playlists and a normal window for people who do not want a config file.",
+      "category": "media",
+      "author": "The Celluloid Developers",
+      "homepage": "https://celluloid-player.github.io",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "player",
+        "media",
+        "mpv",
+        "gtk",
+        "playback"
+      ],
+      "license": "GPL-3.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0+, is_eol=false. EXTRA-DATA: no (read from flathub/io.github.celluloid_player.Celluloid manifest, 9818 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/pipewire-0:ro,xdg-pictures,xdg-run/gvfsd,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.celluloid_player.Celluloid",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.celluloid_player.Celluloid",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    }
+  }
+}
