@@ -843,3 +843,93 @@ func TestProviderValid(t *testing.T) {
 		t.Error(`Provider("nonsense").Valid() = true, want false`)
 	}
 }
+
+// TestWireGuardProvider_SaysWhatItDoesNotDo is the anti-false-confidence rule
+// applied to the mesh provider, and it is the sharper case: selecting
+// "WireGuard mesh (Tailscale/Headscale/Nebula)" reads as "my boxes now find
+// each other over my mesh", and it does not do that. It records a coordinator
+// endpoint. Nothing more.
+//
+// Two independent reasons peer resolution is not merely unimplemented but
+// UNREACHABLE, both asserted below so a future edit cannot quietly make the
+// label true in one place and false in another:
+//
+//   - wireguardProvider does not claim FacetRendezvous, so the package-level
+//     ResolvePeer dispatcher never reaches its method at all;
+//   - the method returns not-ok regardless.
+//
+// See wireguardProvider.ResolvePeer for why implementing it was declined
+// rather than deferred: the seam is handed a VulosID and a mesh knows machine
+// names, and the box already has a working key-addressed mesh discovery path.
+func TestWireGuardProvider_SaysWhatItDoesNotDo(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if _, err := Set(Config{
+		Provider:  ProviderWireGuard,
+		WireGuard: WireGuardProviderConfig{Endpoint: "headscale.example.org:8080", Network: "my-tailnet"},
+	}, true); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	ing := IngressInfo()
+	if ing.Mode != "wireguard-mesh" {
+		t.Fatalf("IngressInfo().Mode = %q, want wireguard-mesh", ing.Mode)
+	}
+	if !strings.Contains(ing.Detail, "headscale.example.org:8080") {
+		t.Errorf("IngressInfo().Detail lost the configured endpoint: %q", ing.Detail)
+	}
+	// The disclosure, and each half of it. A reader must be able to tell from
+	// this string alone that neither ingress nor rendezvous is actuated.
+	for _, want := range []string{"report-only", "does not re-route", "does not resolve peers"} {
+		if !strings.Contains(ing.Detail, want) {
+			t.Errorf("IngressInfo().Detail does not disclose %q — a control that appears to do "+
+				"something is exactly the defect this asserts against. Got: %q", want, ing.Detail)
+		}
+	}
+	// And it must point somewhere that says what DOES work.
+	if !strings.Contains(ing.Detail, "REACH.md") {
+		t.Errorf("IngressInfo().Detail says what does not work without saying what does: %q", ing.Detail)
+	}
+
+	// Reason 1: the facet is not claimed, so the dispatcher never gets here.
+	if (wireguardProvider{}).Capabilities().Has(FacetRendezvous) {
+		t.Error("wireguardProvider now claims FacetRendezvous. If that is deliberate, ResolvePeer " +
+			"must actually resolve and this test must be rewritten — do not leave a claimed facet " +
+			"answering not-ok.")
+	}
+	// Reason 2: and the method answers not-ok anyway.
+	if url, ok := (wireguardProvider{}).ResolvePeer(bg, "vulos1abc"); ok {
+		t.Errorf("wireguardProvider.ResolvePeer resolved %q; if peer resolution is now real, "+
+			"claim FacetRendezvous and rewrite this test", url)
+	}
+	if url, ok := ResolvePeer(bg, "vulos1abc"); ok {
+		t.Errorf("relayconfig.ResolvePeer resolved %q under the wireguard provider", url)
+	}
+}
+
+// The same disclosure rule for libp2p, whose Ingress already carried a
+// report-only note. Pinned so a refactor cannot drop it.
+func TestLibp2pProvider_IngressDisclosesReportOnly(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if _, err := Set(Config{
+		Provider: ProviderLibp2p,
+		Libp2p:   Libp2pProviderConfig{RelayPeers: []string{"/dns4/relay.example.org/tcp/4001/p2p/12D3KooWtest"}},
+	}, true); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	ing := IngressInfo()
+	if ing.Mode != "libp2p-circuit-relay" {
+		t.Fatalf("IngressInfo().Mode = %q, want libp2p-circuit-relay", ing.Mode)
+	}
+	if url, ok := ResolvePeer(bg, "vulos1abc"); ok {
+		t.Errorf("relayconfig.ResolvePeer resolved %q under the libp2p provider, which does not "+
+			"implement dial-through-Circuit-Relay-v2 peer resolution", url)
+	}
+}

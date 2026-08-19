@@ -368,9 +368,49 @@ func (wireguardProvider) Name() Provider                                 { retur
 func (wireguardProvider) Capabilities() Facet                            { return FacetIngress }
 func (wireguardProvider) ICEServers(context.Context, string) []ICEServer { return nil }
 
+// Ingress reports the configured coordinator AND says plainly that selecting
+// this provider actuates nothing. A control that appears to do something is
+// the defect this suite keeps finding, and this one had two layers of it: the
+// selection does not re-route real HTTP ingress, and it does not resolve peers
+// either (see ResolvePeer). The endpoint is recorded, not used.
 func (p wireguardProvider) Ingress() IngressDescriptor {
-	return IngressDescriptor{Mode: "wireguard-mesh", Detail: p.cfg.Endpoint}
+	detail := p.cfg.Endpoint
+	if detail == "" {
+		detail = "no coordinator endpoint recorded"
+	}
+	return IngressDescriptor{
+		Mode: "wireguard-mesh",
+		Detail: detail + " (report-only — this selection records where your mesh coordinator is; " +
+			"it does not re-route box ingress and does not resolve peers. Boxes that meet over a " +
+			"mesh do it through the rendezvous role and VULOS_PEER_ALLOW_CIDR — see docs/REACH.md)",
+	}
 }
+
+// ResolvePeer returns not-ok, and DELIBERATELY stays that way.
+//
+// Two things would have to be true before implementing it meant anything, and
+// neither is: this provider does not claim FacetRendezvous (Capabilities above
+// is FacetIngress alone), so the package-level ResolvePeer dispatcher never
+// reaches this method; and nothing in the tree calls relayconfig.ResolvePeer at
+// all — peering's resolvePeerBaseURL consults its own reachability cache and
+// then the contact's stored server, never this seam.
+//
+// The deeper reason is the MAPPING, not the wiring. ResolvePeer is handed a
+// VulosID; a mesh knows machine names. MagicDNS names are chosen at `tailscale
+// up` time and have no relationship to a VulosID, so a DNS lookup of
+// "<vulos-id>.<mesh-suffix>" only works if the operator has already named every
+// machine after its VulosID — which is the hand-entered mapping this seam would
+// exist to remove, moved to a new place. Getting a real dynamic mapping needs a
+// coordinator API and therefore credentials, and WireGuardProviderConfig holds
+// no key material on purpose.
+//
+// The box already has a dynamic, mesh-agnostic, key-addressed answer that does
+// work: the rendezvous role (internal/fabric + `vulos relay serve -rendezvous`),
+// where each box announces under its own Ed25519 key and resolves siblings by
+// key, over whatever network can carry it. With VULOS_PEER_ALLOW_CIDR granting
+// the mesh range, that path now dials. Building a second, weaker, mesh-specific
+// discovery path beside it would duplicate the one seam this package exists to
+// consolidate.
 func (wireguardProvider) ResolvePeer(context.Context, string) (string, bool) { return "", false }
 
 // probeCandidate performs the pre-commit health probe Set() runs unless
