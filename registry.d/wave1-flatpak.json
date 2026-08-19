@@ -2,7 +2,7 @@
   "_source": "registry.d/wave1-flatpak.json \u2014 APP-CATALOG.md Wave 1 completion (communication, gaming & compatibility, emulation, media playback), staged 2026-08-19 for merge into registry.json under `apps`. Every entry is a Flathub recipe: no download_url, no checksum, nothing mirrored \u2014 policy 1 (filter Flathub, do not mirror).",
   "_signing": "UNSIGNED BY CONSTRUCTION. Every entry carries \"signature\": \"\". After merging, run `make sign-registry` then `make verify-registry-prod`. scripts/verify-app-recipe.sh REFUSES an unsigned entry (line 684), so no entry here can be install-tested by the harness until the founder's offline ceremony has signed it.",
   "_verified_by": "Flathub API v2 (summary + appstream + verification/status) fetched 2026-08-19, PLUS scripts/verify-flatpak-candidates.sh --file registry.d/wave1-flatpak.json, which resolves every id through a real `flatpak remote-info flathub --arch=<arch>` in a debian:trixie container for each declared architecture. That proves the id exists, is unambiguous under the argv FlatpakInstall runs, and resolves for exactly the arches declared. It does NOT prove the app launches or renders \u2014 that is scripts/verify-app-recipe.sh's job and it cannot run before signing.",
-  "_permissions_model": "The `permissions` array is what the app NEEDS in Vulos's model, curated per app, NOT a dump of the Flatpak sandbox. Flathub grants devices=[all] to almost everything, which would make \"gpu\" and \"camera\" universal and meaningless. Each entry's _note records the measured Flatpak sandbox verbatim so the two models can be compared.",
+  "_permissions_model": "The `permissions` array is what the app NEEDS in Vulos's model, curated per app, NOT a dump of the Flatpak sandbox. Flathub grants devices=[all] to almost everything, which would make \"gpu\" and \"camera\" universal and meaningless. Each entry's _note records the measured Flatpak sandbox verbatim so the two models can be compared. ENFORCED FROM 2026-08-19: backend/services/appnet/flatpak_permissions.go narrows an installed Flatpak to what its recipe declares \u2014 undeclared network becomes --unshare=network, undeclared filesystem becomes --nofilesystem=host --nofilesystem=home. So these arrays are no longer documentation and every one of them was re-checked against what the app actually needs.",
   "_excluded": "From this wave, with the measurement that decided it: com.discordapp.Discord, com.slack.Slack, us.zoom.Zoom, com.spotify.Client, com.valvesoftware.Steam and org.vinegarhq.Sober \u2014 all LicenseRef-proprietary in Flathub AppStream, excluded by APP-CATALOG policy 1a. org.duckstation.DuckStation and com.github.iwalton3.jellyfin-media-player \u2014 Flathub reports is_eol=TRUE for both, so they are dead ids, not policy exclusions.",
   "apps": {
     "signal": {
@@ -701,7 +701,7 @@
         "game": true,
         "needs_gpu": true
       },
-      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.DolphinEmu.dolphin-emu manifest, 2865 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,x11] filesystems=[xdg-run/app/com.discordapp.Discord:create,xdg-config/kdeglobals:ro,host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+ and auditable at source.",
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.DolphinEmu.dolphin-emu manifest, 2865 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,x11] filesystems=[xdg-run/app/com.discordapp.Discord:create,xdg-config/kdeglobals:ro,host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+ and auditable at source. PERMISSION CORRECTED before merge: added `network` \u2014 Dolphin's netplay is a headline feature of the emulator and its Flathub manifest shares network for it. With the Flatpak permission bridge live, an omitted permission is a revocation, so this array had to be right rather than merely plausible.",
       "versions": {
         "latest": {
           "install": "",
@@ -715,7 +715,8 @@
           "env": null,
           "permissions": [
             "filesystem",
-            "gpu"
+            "gpu",
+            "network"
           ],
           "checksum": "",
           "singleton": true,
@@ -856,7 +857,7 @@
         "game": true,
         "needs_gpu": true
       },
-      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.ppsspp.PPSSPP manifest, 2513 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio] filesystems=[host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.ppsspp.PPSSPP manifest, 2513 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio] filesystems=[host:ro,xdg-run/gamescope-0:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged.  PERMISSION CORRECTED before merge: added `network` \u2014 PPSSPP implements PSP ad-hoc multiplayer over the network, and its manifest shares network for it. With the Flatpak permission bridge live, an omitted permission is a revocation, so this array had to be right rather than merely plausible.",
       "versions": {
         "latest": {
           "install": "",
@@ -870,7 +871,8 @@
           "env": null,
           "permissions": [
             "filesystem",
-            "gpu"
+            "gpu",
+            "network"
           ],
           "checksum": "",
           "singleton": true,

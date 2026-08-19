@@ -242,7 +242,7 @@
     },
     "steam": {
       "_disabled": true,
-      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. Removed from the catalogue by APP-CATALOG policy 1a (proprietary apps excluded, founder call 2026-08-15, explicitly reversible) \u2014 not by this migration. Also amd64-only on every vehicle (Debian's steam-installer and Flathub's com.valvesoftware.Steam alike), and its Flathub package is extra-data: a 35.5 MB download for a 52.5 MB install, i.e. a stub that fetches the real client from Valve. Disabled rather than deleted so reopening policy 1a is one edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit.",
+      "_note": "PARKED BY THE INSTALL-METHODOLOGY MIGRATION, 2026-08-17. Removed from the catalogue by APP-CATALOG policy 1a (proprietary apps excluded, founder call 2026-08-15, explicitly reversible) \u2014 not by this migration. Also amd64-only on every vehicle (Debian's steam-installer and Flathub's com.valvesoftware.Steam alike), and its Flathub package is extra-data: a 35.5 MB download for a 52.5 MB install, i.e. a stub that fetches the real client from Valve. Disabled rather than deleted so reopening policy 1a is one edit. Its `install` shell string is left in place verbatim rather than blanked: the installer refuses it loudly (INSTALL-01) and the string is the record of what the app used to need. `_disabled` is what actually stops it, and it is reversible in one edit. PERMS-01 CORRECTION 2026-08-19: this recipe declared ['display', 'filesystem', 'network', 'gpu', 'audio'], and \"display\" and \"audio\" have never been Vulos permissions (backend/services/appnet/manifest.go). That was inert documentation until the Flatpak permission bridge landed; now an unrecognised string matches no enforced name, so the access it was meant to declare is REVOKED rather than granted. validateRecipeSecurity refuses the recipe outright (PERMS-01), which is why this entry could not be re-enabled even by accident. Corrected to the real strings; display and audio have no Vulos equivalent and are carried by the streaming lane, not by a permission. The entry stays _disabled under APP-CATALOG policy 1a regardless.",
       "arch": [
         "amd64",
         "arm64"
@@ -282,11 +282,9 @@
           "flatpak_id": "",
           "install": "apt-get install -y --no-install-recommends steam-installer",
           "permissions": [
-            "display",
             "filesystem",
             "network",
-            "gpu",
-            "audio"
+            "gpu"
           ],
           "port": 0,
           "post_install": "steam --reset 2>/dev/null || true",

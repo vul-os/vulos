@@ -1,7 +1,7 @@
 {
   "_source": "registry.d/apt-to-flatpak.json \u2014 apt -> Flathub conversion, staged for merge into registry.json | REVISED 2026-08-17 for roadmap/INSTALL-METHODOLOGY.md: blender converts to Flathub after all (amd64 only \u2014 arm64 is LOST, see its _note) and wine is PARKED with _disabled, because with apt gone neither can stay where it was.",
   "_signing": "UNSIGNED BY CONSTRUCTION. Every entry below carries \"signature\": \"\". Nothing verifies registry.d fragments; registry.json is the only signed app artifact. After merging these entries, run `make sign-registry` (re-signs ALL entries in sorted-id order) and then `make verify-registry-prod`. Any byte changed after signing invalidates that entry.",
-  "_verified_by": "scripts/verify-flatpak-candidates.sh (Flathub API + real `flatpak remote-info` in a debian:trixie container). Resolvability and architecture are measured. Launch/render behaviour is NOT proven here \u2014 that is scripts/verify-app-recipe.sh's job.",
+  "_verified_by": "scripts/verify-flatpak-candidates.sh (Flathub API + real `flatpak remote-info` in a debian:trixie container). Resolvability and architecture are measured. Launch/render behaviour is NOT proven here \u2014 that is scripts/verify-app-recipe.sh's job. REVISED 2026-08-19: publisher verification and extra-data are now FIELDS on every entry here, measured from Flathub's own API and manifests, not sentences in a note.",
   "_excluded": "steam \u2014 removed per APP-CATALOG policy 1a (proprietary apps out of scope, reversible). Findings retained in roadmap/FLATPAK-MIGRATION.md.",
   "apps": {
     "ardour": {
@@ -28,7 +28,7 @@
         "studio"
       ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. org.ardour.Ardour publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"] to both \u2014 arm64 boxes gain Ardour. Flathub publisher NOT verified (upstream Ardour sells official builds; the Flathub package is community-maintained). Flatpak command is ardour9; the old apt recipe ran ardour8.",
+      "_note": "apt -> Flathub. org.ardour.Ardour publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"] to both \u2014 arm64 boxes gain Ardour. Flathub publisher NOT verified (upstream Ardour sells official builds; the Flathub package is community-maintained). Flatpak command is ardour9; the old apt recipe ran ardour8. FIELDS ADDED 2026-08-19: `flathub_verified`=false and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -49,7 +49,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false
     },
     "blender": {
       "arch": [
@@ -74,7 +76,7 @@
       },
       "license": "GPL-3.0",
       "name": "Blender",
-      "_note": "REVISED 2026-08-17, and this is a LOSS that must not be quiet. The earlier decision \u2014 'stays on apt, because org.blender.Blender is x86_64-only on Flathub (measured: `flatpak remote-info flathub --arch=aarch64` -> Can't find ref) while Debian trixie ships blender 4.3.2 for amd64 AND arm64' \u2014 was correct while apt was still an install vehicle. It is not any more (roadmap/INSTALL-METHODOLOGY.md). blender.org publishes no official Linux aarch64 build, so no upstream `artifacts` entry can recover arm64 coverage. CORRECTED 2026-08-17: an earlier revision of this note said 'there is nothing to pin'. That is MEASURED FALSE and the distinction matters. Debian builds blender 4.3.2+dfsg-2 for arm64, its 350-package closure was resolved, extracted into a private prefix and RUN on an arm64 box (Blender 4.3.2, exit 0, a 128x128 Cycles render written as a valid PNG), and snapshot.debian.org serves those .debs byte-identically \u2014 so it is pinnable, and at 261.9 MB it is CHEAPER than Flathub's x86_64 build at 477.4 MB. See roadmap/DISTRO-SOURCED-APPS.md. ARM64 BOXES LOSE BLENDER because the founder PARKED the distro-sourced vehicle on 2026-08-17 ('leave Blender out for now'), not because the world offers nothing to pin. They will see the honest 'requires amd64; this box is arm64' rather than an install that fails. Reversing this means building that vehicle \u2014 it does NOT mean restoring an unpinned apt path.",
+      "_note": "REVISED 2026-08-17, and this is a LOSS that must not be quiet. The earlier decision \u2014 'stays on apt, because org.blender.Blender is x86_64-only on Flathub (measured: `flatpak remote-info flathub --arch=aarch64` -> Can't find ref) while Debian trixie ships blender 4.3.2 for amd64 AND arm64' \u2014 was correct while apt was still an install vehicle. It is not any more (roadmap/INSTALL-METHODOLOGY.md). blender.org publishes no official Linux aarch64 build, so no upstream `artifacts` entry can recover arm64 coverage. CORRECTED 2026-08-17: an earlier revision of this note said 'there is nothing to pin'. That is MEASURED FALSE and the distinction matters. Debian builds blender 4.3.2+dfsg-2 for arm64, its 350-package closure was resolved, extracted into a private prefix and RUN on an arm64 box (Blender 4.3.2, exit 0, a 128x128 Cycles render written as a valid PNG), and snapshot.debian.org serves those .debs byte-identically \u2014 so it is pinnable, and at 261.9 MB it is CHEAPER than Flathub's x86_64 build at 477.4 MB. See roadmap/DISTRO-SOURCED-APPS.md. ARM64 BOXES LOSE BLENDER because the founder PARKED the distro-sourced vehicle on 2026-08-17 ('leave Blender out for now'), not because the world offers nothing to pin. They will see the honest 'requires amd64; this box is arm64' rather than an install that fails. Reversing this means building that vehicle \u2014 it does NOT mean restoring an unpinned apt path. FIELDS ADDED 2026-08-19: `flathub_verified`=false and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -97,7 +99,9 @@
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false
     },
     "darktable": {
       "arch": [
@@ -124,7 +128,7 @@
       },
       "license": "GPL-3.0",
       "name": "Darktable",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest grants --device=all (superset of dri), so the needs_gpu lane is satisfied inside the sandbox.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64, so arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest grants --device=all (superset of dri), so the needs_gpu lane is satisfied inside the sandbox. FIELDS ADDED 2026-08-19: `flathub_verified`=false and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -147,7 +151,9 @@
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false
     },
     "gnucash": {
       "name": "GnuCash",
@@ -173,7 +179,7 @@
         "bookkeeping"
       ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED by Flathub via gnucash.org.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED by Flathub via gnucash.org. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -193,7 +199,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "libreoffice": {
       "name": "LibreOffice",
@@ -222,7 +230,7 @@
         "xlsx"
       ],
       "license": "MPL-2.0",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch made explicit (was null). Publisher VERIFIED via libreoffice.org. Version key changed \"26.2\" -> \"latest\": a Flatpak tracks Flathub's stable branch, so pinning a version number in the key would assert a version Vulos does not control.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch made explicit (was null). Publisher VERIFIED via libreoffice.org. Version key changed \"26.2\" -> \"latest\": a Flatpak tracks Flathub's stable branch, so pinning a version number in the key would assert a version Vulos does not control. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -242,7 +250,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "lmms": {
       "name": "LMMS",
@@ -268,7 +278,7 @@
         "sequencer"
       ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. Correct id is io.lmms.LMMS (capitals). APP-CATALOG.md lists io.lmms.lmms, which is a 404 \u2014 flatpak ids are case-sensitive. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest shares ipc only, NOT network \u2014 the recipe never claimed network, so no regression.",
+      "_note": "apt -> Flathub. Correct id is io.lmms.LMMS (capitals). APP-CATALOG.md lists io.lmms.lmms, which is a 404 \u2014 flatpak ids are case-sensitive. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher NOT verified. Flathub manifest shares ipc only, NOT network \u2014 the recipe never claimed network, so no regression. FIELDS ADDED 2026-08-19: `flathub_verified`=false and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -289,7 +299,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false
     },
     "lutris": {
       "arch": [
@@ -315,7 +327,7 @@
       },
       "license": "GPL-3.0",
       "name": "Lutris",
-      "_note": "apt -> Flathub. DEFECT FIX: entry arch was null (= all arches), so arm64 boxes were offered Lutris and the install could not work; net.lutris.Lutris is x86_64-only, and entry-level arch is the only arch field the installer enforces. The per-recipe \"arch\": \"amd64\" that used to sit inside this version is DEAD DATA \u2014 VersionRecipe has no Arch field, it lands in Extra and is never read. Dropped env VULOS_GAMING=1: no code in the tree reads it, and a bare `flatpak run` would not carry it into the sandbox anyway. Description no longer claims Steam (Steam is out of catalogue scope). Publisher VERIFIED via lutris.net.",
+      "_note": "apt -> Flathub. DEFECT FIX: entry arch was null (= all arches), so arm64 boxes were offered Lutris and the install could not work; net.lutris.Lutris is x86_64-only, and entry-level arch is the only arch field the installer enforces. The per-recipe \"arch\": \"amd64\" that used to sit inside this version is DEAD DATA \u2014 VersionRecipe has no Arch field, it lands in Extra and is never read. Dropped env VULOS_GAMING=1: no code in the tree reads it, and a bare `flatpak run` would not carry it into the sandbox anyway. Description no longer claims Steam (Steam is out of catalogue scope). Publisher VERIFIED via lutris.net. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -339,7 +351,9 @@
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "obs-studio": {
       "arch": [
@@ -365,7 +379,7 @@
       },
       "license": "GPL-2.0",
       "name": "OBS Studio",
-      "_note": "apt -> Flathub. com.obsproject.Studio is x86_64-only, which MATCHES the arch [\"amd64\"] this entry already declared \u2014 so unlike Blender, this conversion loses nothing. Publisher VERIFIED via obsproject.com. Flathub manifest grants --device=all and xdg-run/pipewire-0, which is what screen capture needs.",
+      "_note": "apt -> Flathub. com.obsproject.Studio is x86_64-only, which MATCHES the arch [\"amd64\"] this entry already declared \u2014 so unlike Blender, this conversion loses nothing. Publisher VERIFIED via obsproject.com. Flathub manifest grants --device=all and xdg-run/pipewire-0, which is what screen capture needs. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified. PERMISSION CORRECTED: added `network`. Streaming to an RTMP endpoint is what OBS is for, and its Flathub manifest shares network. Inert omission before the Flatpak permission bridge; a silent regression after it.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -379,10 +393,11 @@
           "deps": null,
           "env": null,
           "permissions": [
+            "camera",
             "filesystem",
             "gpu",
             "microphone",
-            "camera"
+            "network"
           ],
           "checksum": "",
           "singleton": true,
@@ -390,7 +405,9 @@
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "octave": {
       "name": "GNU Octave",
@@ -416,7 +433,7 @@
         "engineering"
       ],
       "license": "GPL-3.0",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via octave.org. NOTE: this app's runtime is org.kde.Sdk/6.10, an SDK rather than a Platform \u2014 roughly a gigabyte more on disk than a Platform-based app. Deliberate upstream choice (Octave builds mex files at runtime), not a packaging error.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via octave.org. NOTE: this app's runtime is org.kde.Sdk/6.10, an SDK rather than a Platform \u2014 roughly a gigabyte more on disk than a Platform-based app. Deliberate upstream choice (Octave builds mex files at runtime), not a packaging error. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -436,7 +453,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "qgis": {
       "name": "QGIS",
@@ -462,7 +481,7 @@
         "layers"
       ],
       "license": "GPL-2.0",
-      "_note": "apt -> Flathub. flatpak_id MUST stay branch-qualified as org.qgis.qgis//stable. QGIS publishes TWO branches (stable and lts) and FlatpakInstall runs `flatpak install -y --noninteractive flathub <id>` with no branch, which for a bare id exits 1: \"Multiple branches available for org.qgis.qgis, you must specify one of: .../stable, .../lts\". Verified that the //stable suffix resolves cleanly through that same argv. Flathub's API reports a single \"branch\":\"stable\" for this app, so metadata alone does NOT catch this. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via qgis.org.",
+      "_note": "apt -> Flathub. flatpak_id MUST stay branch-qualified as org.qgis.qgis//stable. QGIS publishes TWO branches (stable and lts) and FlatpakInstall runs `flatpak install -y --noninteractive flathub <id>` with no branch, which for a bare id exits 1: \"Multiple branches available for org.qgis.qgis, you must specify one of: .../stable, .../lts\". Verified that the //stable suffix resolves cleanly through that same argv. Flathub's API reports a single \"branch\":\"stable\" for this app, so metadata alone does NOT catch this. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via qgis.org. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "versions": {
         "latest": {
           "install": "",
@@ -483,7 +502,9 @@
           "auto_start": false
         }
       },
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "shotcut": {
       "arch": [
@@ -510,7 +531,7 @@
       },
       "license": "GPL-3.0",
       "name": "Shotcut",
-      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via shotcut.org. Flathub manifest grants --device=all, satisfying the needs_gpu lane inside the sandbox.",
+      "_note": "apt -> Flathub. Publishes aarch64 AND x86_64; arch WIDENS from [\"amd64\"]. Publisher VERIFIED via shotcut.org. Flathub manifest grants --device=all, satisfying the needs_gpu lane inside the sandbox. FIELDS ADDED 2026-08-19: `flathub_verified`=true and `extra_data`=false, both measured (Flathub verification API; manifest read for extra-data). They existed only as prose in this note while the sibling fragments carried them as fields, so policy 2's first-class `verified` flag was absent from exactly the twelve entries this conversion produced \u2014 nothing could read it, and a UI badge or a filter would have silently treated all twelve as unverified.",
       "type": "desktop",
       "versions": {
         "latest": {
@@ -533,7 +554,9 @@
         }
       },
       "vetted": true,
-      "signature": ""
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false
     },
     "wine": {
       "arch": [
