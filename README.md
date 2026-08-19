@@ -79,7 +79,7 @@ If you'd rather rent a slice of someone else's computer, Vulos isn't for you. If
 
 ## One person, many instances
 
-Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your apps, settings, and workspace follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
+Vulos isn't locked to a single machine. Run it on your always-on home box **and** your laptop, and they sync — your account, your settings and your app set follow you. One instance serves your traffic; the others stay in step. Reach any of them from your phone, whether you're on the couch or across the world.
 
 <div align="center">
 <picture>
@@ -88,7 +88,7 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 </picture>
 </div>
 
-<sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and keep state in sync — the app registry syncs across same-LAN nodes today, with broader structured-data sync on the roadmap (see <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>).</sub>
+<sub>You own every instance and hold the keys. Instances peer over their own Ed25519 identities and reconcile as CRDTs. What replicates today is a deliberate allow-list — your account, your profile settings, your reminders, the security audit log, and the app set — over the LAN, with the signed WAN path built and tested but not yet the everyday route. Your Drive, your saved passwords and per-app data are <b>not</b> in that set. The allow-list, the reasons for each entry and the gaps are in <a href="roadmap/SYNC.md">roadmap/SYNC.md</a>.</sub>
 
 ---
 
@@ -96,7 +96,7 @@ Vulos isn't locked to a single machine. Run it on your always-on home box **and*
 
 **Vulos the project runs no infrastructure.** There is no hosted relay, no rendezvous service, no central box you sign in through. Every reachable endpoint in the picture is one *you* operate. That's the whole point — nothing you depend on answers to us.
 
-**Run several boxes for redundancy.** They sync as peers (CRDT · Ed25519), so if one goes down your data and apps live on the others. And you reach them **however suits you — never locked to one relay:**
+**Run several boxes for redundancy — partial redundancy.** They sync as peers (CRDT · Ed25519), so your account, settings, reminders and app set live on the others. Your files, your saved passwords and per-app data do **not** replicate yet, and joining a replacement box does not reinstall your apps onto it — so treat a second box as continuity of your session, not as a backup of your data. And you reach them **however suits you — never locked to one relay:**
 
 - **Direct — no relay at all.** A box with a public/static IP or your own domain serves **directly** over TLS: no relay, no middleman. Multiple static-IP boxes DNS-load-balance and fail over across each other. This is the simplest path when you have a public IP.
 - **Your own Vulos relay (today's supported default).** Behind NAT, your home box opens *no ports* and dials **out** to a relay — a box with a public IP running `vulos relay serve`, built from this same repository (`backend/cmd/vulos`). You run that relay yourself on a cheap VPS (Hetzner, Fly, DigitalOcean — around €4/month); the VPS is the public endpoint, your home box stays sealed. It's a role in this project, not a separate product or a service we host — though note it is a different binary from the one a box runs, and no release artifact ships it, so you build it for the relay host yourself. A box can hold tunnels to several relays at once; run more than one for redundancy, and for resilient rendezvous discovery point boxes at **≥3 nodes under disjoint operators**. See [docs/REACH.md](docs/REACH.md) and [docs/RELAY-SELF-HOST.md](docs/RELAY-SELF-HOST.md).
@@ -276,7 +276,7 @@ By itself, just try it. The published `.img.gz` boots a live session — the roo
 "Sovereign AI" means your gateway and your keys, not a bundled frontier model. Bring your own provider key (you pay that provider directly) or run local models where your hardware allows, so nothing leaves the box. See [docs/ASSISTANT.md](docs/ASSISTANT.md).
 
 **How do multiple boxes stay in sync?**
-They peer over their own Ed25519 identities and reconcile as CRDTs — no central server in the middle. Today the app registry syncs; broader structured-data sync is on the [roadmap](roadmap/SYNC.md). See [docs/PEERING.md](docs/PEERING.md).
+They peer over their own Ed25519 identities and reconcile as CRDTs — no central server in the middle. Replication is an allow-list, not a default: your account, profile settings, reminders, the security audit log and the app set cross today, over the LAN. Files, the password vault and per-app data do not. The full inventory, including what is still a gap, is in the [roadmap](roadmap/SYNC.md). See [docs/PEERING.md](docs/PEERING.md).
 
 ---
 
