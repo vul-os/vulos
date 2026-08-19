@@ -177,7 +177,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 - **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet; go direct with a static IP or domain, or self-host your own relay. See [docs/NETWORKING.md](docs/NETWORKING.md).
 
 **Distribution**
-- **One binary, immutable image** — a single Go server serves the whole shell. Ship it as a signed, immutable image with dm-verity and A/B slots, or just run the binary. (Signature verification, the epoch rollback floor and staging into the inactive slot all work; the automatic slot *flip* does not yet — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).)
+- **One binary, immutable image** — a single Go server serves the whole shell. Ship it as a signed, immutable image with dm-verity and A/B slots, or just run the binary. (Signature verification, the epoch rollback floor, staging into the inactive slot and the slot flip itself all work — the flip is proven by a reboot. Nothing flips *automatically*: staging leaves the new image ready and applying it stays a deliberate step you take. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).)
 
 **Bundled apps** — the essentials, built in: Files, Notes, a Text Editor, Calculator, Clock, Calendar, Contacts, Terminal, Camera, Gallery, an Image Editor, Music, Voice Recorder, Weather, a Browser, plus an app hub, activity monitor, and settings. Install more from the hub whenever you want — see [docs/APPS.md](docs/APPS.md).
 
