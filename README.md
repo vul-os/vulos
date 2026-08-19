@@ -170,8 +170,8 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 - **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman. See [docs/COMMS.md](docs/COMMS.md).
 
 **Identity & security**
-- **Passwordless sign-in, no third parties** — WebAuthn/FIDO2 passkeys as the primary factor, plus QR/phone-approval login, device PIN, and TOTP fallback. No Google login, no OAuth middleman.
-- **Secure device pairing & removal** — bring a new device in with a one-time `VULOS-XXXX-XXXX-XXXX` join code and approval from an already-trusted device (a self-pair is refused server-side); a lost or compromised device is revoked with a quorum-gated break-glass removal (`BreakGlassRevokePubKey`) that's enforced everywhere at once. See [docs/SECURITY.md](docs/SECURITY.md).
+- **Sign-in with nobody in the middle** — you sign in to your own box, and to nothing else. No Google login, no OAuth middleman, no Vulos account. Today that is a username and password, with a master recovery phrase to get back in and a device PIN that locks a running session. Passkeys (WebAuthn/FIDO2) and QR/phone-approval login are built on the server but have **no sign-in screen yet**, and passkey routes stay off on a freshly flashed box until you set an RP ID and origin — so treat passwordless as unreleased, not shipped.
+- **Cluster join codes** — a second instance joins yours with a one-time `VULOS-XXXX-XXXX-XXXX` code. The separate *device*-pairing service — approval from an already-trusted device, server-side refusal of a self-pair, quorum-gated break-glass revocation — is written and tested as a library but **is not wired into the running server**, so those endpoints do not exist on a 0.3.0 box. See [docs/SECURITY.md](docs/SECURITY.md).
 
 **Reachability**
 - **Reach it from anywhere** — connect to your box even when it's behind NAT, without exposing it to the public internet; go direct with a static IP or domain, or self-host your own relay. See [docs/NETWORKING.md](docs/NETWORKING.md).
