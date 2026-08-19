@@ -637,6 +637,18 @@ export default function FileManager() {
   // The suppression stays: loadDir's synchronous prologue (loading/loadError/
   // search/selection/preview resets) is right for the dozen user-triggered call
   // sites it has, and the very first listing has to be kicked off from somewhere.
+  //
+  // loadDir is deliberately NOT a dependency, and this is the one place in the
+  // file where leaving it out is safe. loadDir is memoised on [hidden, histIdx],
+  // both of which change during ordinary use — so depending on it would re-run
+  // this effect, and "list the home directory" is not something to redo when the
+  // user toggles dotfiles or walks their history. It would drag them back to ~
+  // from wherever they had navigated to.
+  //
+  // Nothing can go stale here either, unlike the Backspace listener further
+  // down: this effect runs once and calls loadDir SYNCHRONOUSLY on that same
+  // mount, so the reference it uses is the one from the render that created it.
+  // There is no window between capture and call for `hidden` to move.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- the initial listing has to be started on mount, and loadDir's synchronous resets are correct for its user-triggered callers.
   useEffect(() => { loadDir('~', false) }, [])
 
@@ -653,11 +665,17 @@ export default function FileManager() {
     if (dir) loadDir(dir)
   }
 
-  const goUp = () => {
+  // Memoised because the Backspace shortcut below installs this function in a
+  // long-lived listener. As a fresh arrow each render it could only be captured
+  // when that effect re-ran, which was on a cwd change — so a `hidden` toggle,
+  // which re-lists the same directory and leaves cwd alone, left the listener
+  // holding a goUp built from the previous `hidden`. Keyed on loadDir, the
+  // listener is now replaced whenever the function it calls changes.
+  const goUp = useCallback(() => {
     if (cwd === '/') return
     const parent = cwd.includes('/') ? cwd.split('/').slice(0, -1).join('/') || '/' : '~'
     loadDir(parent)
-  }
+  }, [cwd, loadDir])
 
   const goBack = () => {
     if (histIdx <= 0) return
@@ -818,7 +836,10 @@ export default function FileManager() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [cwd])
+    // goUp, not cwd: goUp already tracks cwd, and it ALSO tracks loadDir, which
+    // is what carries the current `hidden` flag. Keying this on cwd alone is
+    // what let a toggle change the flag without the listener hearing about it.
+  }, [goUp])
 
   return (
     <div className="flex flex-col h-full bg-neutral-950 text-neutral-300 text-xs overflow-hidden select-none">

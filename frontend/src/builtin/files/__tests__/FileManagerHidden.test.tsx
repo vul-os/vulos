@@ -99,6 +99,50 @@ describe('FileManager — the hidden-files button actually hides and shows files
     expect(screen.getByText('notes.txt')).toBeInTheDocument()
   })
 
+  // The THIRD door to the same bug, and the one still open after the two
+  // above were fixed.
+  //
+  // The Backspace-to-go-up shortcut is registered in an effect keyed on [cwd].
+  // Toggling hidden files re-lists the SAME directory, so cwd does not change,
+  // so that effect does not re-subscribe — and the handler it left installed
+  // still holds the `goUp` from an earlier render, which closes over the
+  // `loadDir` memoised on the PREVIOUS `hidden`. The first Backspace after a
+  // toggle therefore lists its parent with the flag the user just switched
+  // away from, while the toolbar button stays lit: the same "React state is
+  // not a variable that changes under a closure" failure the file's own
+  // docstring warns about, arriving through the keyboard instead of the mouse.
+  //
+  // It is a ONE-SHOT: that listing does change cwd, so the effect re-subscribes
+  // and every later press is correct. A bug that is wrong exactly once, only
+  // after a specific pair of actions, is one no amount of manual clicking finds
+  // reliably.
+  it('keeps showing dotfiles when going up with Backspace after toggling them on', async () => {
+    mockExec()
+    render(<FileManager />)
+    await screen.findByText('notes.txt')
+
+    // Into a folder, so Backspace has a real parent to go back to and the
+    // keydown effect has subscribed against this cwd.
+    fireEvent.doubleClick(screen.getByText('projects'))
+    await waitFor(() => expect(screen.getByText('notes.txt')).toBeInTheDocument())
+
+    // Show hidden files. Same directory, so cwd does not move.
+    fireEvent.click(screen.getByLabelText('Toggle hidden files'))
+    expect(await screen.findByText('.config')).toBeInTheDocument()
+
+    // Up one level, by keyboard.
+    fireEvent.keyDown(window, { key: 'Backspace' })
+
+    // The button still says hidden files are shown, so the listing must show
+    // them. Without the fix this parent arrives with plain -l and the dotfiles
+    // vanish underneath a lit toggle.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Toggle hidden files')).toHaveAttribute('aria-pressed', 'true')
+    })
+    expect(await screen.findByText('.config')).toBeInTheDocument()
+    expect(screen.getByText('.bashrc')).toBeInTheDocument()
+  })
+
   it('sends a flag that a real ls would treat as "no dotfiles" when off', async () => {
     // The cross-check on the mock: the mock above decides what to return from
     // the flag, so a fix that changed the mock's mind rather than the command
