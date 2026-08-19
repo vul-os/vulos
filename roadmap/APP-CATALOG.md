@@ -1,309 +1,310 @@
 # App Hub catalogue — roadmap
 
-> **Status: in progress, 2026-08-15.** The target is a curated catalogue of ~120
+> **Status: measured 2026-08-19.** The target is a curated catalogue of ~120
 > desktop apps reachable in one click from the App Hub. This file is the todo and
 > the policy record. Nothing here is shipped until it appears in `registry.json`
-> **and** has passed `scripts/verify-app-recipe.sh`.
+> **and** its claims are backed by a measurement named beside them.
+>
+> **`registry.json` has one writer.** Everything below is staged in
+> `registry.d/*.json` fragments for that writer to merge. Nothing in this pass
+> edited `registry.json`.
 
 ## Where the store is today, measured
 
-`registry.json` carries **55 apps**: 28 `type: web`, 26 `type: desktop`, 1 `service`.
-Desktop apps are **streamed into the browser** (`backend/services/stream/`), not run
-on the user's own machine — `lane` (`{"web"}`, `{"needs_gpu"}`, `{"game"}`) is set on
-only 16 of the 55, so `type` alone does not tell you how an app reaches a user.
+`registry.json` carries **74 entries**. **55 are unsigned**, awaiting the
+founder's offline ceremony — expected, and the reason no entry added since can be
+install-tested (see *What "verified" means here*). **19 are `_disabled`**: withdrawn
+by Vulos for a licensing decision, a dependency the image does not carry, or an
+install nobody has run.
 
-Of the 26 desktop apps, **13 install via Flatpak** and **13 via `apt-get`**:
+Of the 42 entries that install from Flathub, every id was re-resolved on
+2026-08-19: none is end-of-life, none is ambiguous under the argv `FlatpakInstall`
+runs, and each publishes the architectures its entry declares.
 
-| Flatpak today | apt today — being converted |
+## What is staged for merge
+
+| Fragment | Entries | New apps | What it is |
+|---|---|---|---|
+| `registry.d/wave1-flatpak.json` | 20 | 20 | Wave 1: communication, gaming, emulation, media playback |
+| `registry.d/wave2-creative-office.json` | 21 | 21 | Wave 2: audio, graphics, video capture, office |
+| `registry.d/wave2-dev-net-science.json` | 27 | 27 | Wave 2: reading, development, networking, CAD/science |
+| `registry.d/arch-declarations.json` | 13 | 0 | **Edits.** `arch` for the 13 shipped Flatpak entries that had none |
+| `registry.d/apt-to-flatpak.json` | 12 | 0 | **Edits.** `flathub_verified`/`extra_data` added; obs-studio gains `network` |
+| `registry.d/system-utilities.json` | 18 | 0 | **Edits.** google-chrome and vivaldi withdrawn under policy 1a |
+| `registry.d/apt-retired.json` | 7 | 0 | **Edits.** steam's two invented permission strings corrected |
+| `registry.d/vulos-native.json` | 15 | 0 | Already merged; its `_not_verified` caveat still stands |
+| `registry.d/vulos-first-party.json` | 3 | 0 | Already merged (diwan, wede, lilmail) |
+
+**68 new apps.** After merge `registry.json` holds **142 entries**.
+
+**Merging `arch-declarations.json` fires a ratchet, in the good direction.**
+`undeclaredArchCeiling` in `backend/services/appnet/arch_test.go` is 19. After the
+merge the count is 6, and `TestRegistry_UndeclaredArchOnlyEverFalls` fails with
+*"below the ceiling — lower it to 6"*: the test refusing to let its own bound go
+slack. **Set `undeclaredArchCeiling = 6` in the same commit that merges the
+fragment.** That is the ratchet tightening, not the anti-shrinkage relaxation the
+standing rule forbids, and this pass deliberately did not make the edit itself.
+
+## The catalogue — every listed id accounted for
+
+119 ids are named in the list below. None is now unaccounted for:
+
+| | Count |
 |---|---|
-| audacity · element · filezilla · firefox · geany · gimp · inkscape · jitsi-meet · kdenlive · keepassxc · kicad · qbittorrent · vlc | ardour · blender · darktable · gnucash · libreoffice · lmms · lutris · obs-studio · octave · qgis · shotcut · steam · wine |
+| **Shipped** in `registry.json` | 40 |
+| **Staged** in a fragment | 68 |
+| **Excluded — proprietary** (policy 1a) | 9 |
+| **Excluded — dead id** (Flathub `is_eol`) | 2 |
+| **Missing** | **0** |
 
-The Flatpak machinery is real and shipping: `backend/services/appnet/flatpak.go`
-(`FlatpakInstall`, `FlatpakUninstall`, `InstalledFlatpaks`, `ensureFlatpakUserDirs`),
-the `FlatpakID` recipe field, Flathub pre-registered by `build.sh`, and
-`services/desktop` already scanning `/var/lib/flatpak/exports/share/applications`.
+**Excluded as proprietary**, each confirmed `LicenseRef-proprietary` in Flathub's
+own AppStream data rather than assumed: Chrome, Vivaldi, Discord, Slack, Zoom,
+Spotify, Steam, Obsidian, VS Code, Android Studio, Sober. Chrome and Vivaldi were
+**shipping enabled** while this document recorded them as removed; they are now
+withdrawn in `system-utilities.json`. VSCodium is included as the substitute for
+VS Code, exactly as policy 1a says.
 
-**Two first-party entries install nothing** and are being rewritten against real
-releases: `kerf` swallows a failed `git clone` and writes a placeholder HTML page, so
-the install *succeeds* and the user gets a stub; `wede` runs `/root/.local/bin/wede`
-with no install step at all. `diwan` is absent from the registry entirely. All three
-have published releases (`diwan v0.1.0`, `kerf v0.1.9`, `wede v0.1.3`).
+**Excluded as dead**: `org.duckstation.DuckStation` and
+`com.github.iwalton3.jellyfin-media-player` are both `is_eol` on Flathub. Neither
+has a live replacement id, so they are excluded as dead, not as policy.
+
+## Seven bad ids, four of them found here
+
+`io.lmms.lmms` → `io.lmms.LMMS` was the first, and the rate has not fallen. Three
+more were found in this pass by resolving every id before writing it:
+
+| Listed | Reality | Correct id |
+|---|---|---|
+| `org.mozilla.Thunderbird` | `is_eol: true` | `org.mozilla.thunderbird` (lower case) |
+| `org.krita.krita` | 404 | `org.kde.krita` |
+| `org.kde.labplot2` | `is_eol: true` | `org.kde.labplot` |
+| `com.github.micahflee.torbrowser-launcher` | community namespace, no licence in AppStream | `org.torproject.torbrowser-launcher` |
+
+Together with `org.cryptomator.Crypt`, `fr.romainvigier.MetadataCleaner` and
+`org.raspberrypi.rpi-imager` from the earlier pass, that is **seven bad ids in
+roughly 120**. Assume the same rate on anything added later.
+
+**A multi-branch app needs its branch pinned.** `FlatpakInstall` runs with no
+branch, so an app publishing more than one — QGIS ships `stable` *and* `lts` —
+exits 1 on the bare id. QGIS is pinned `org.qgis.qgis//stable`. Wine publishes
+seven branches and none is named plain `stable`, which is one of the three reasons
+it is parked.
+
+## What "verified" means here, and what it does not
+
+Two different measurements, and they must not be confused.
+
+**Resolvability and architecture: MEASURED, for every entry added or edited.**
+`scripts/verify-flatpak-candidates.sh` resolves each id through a real
+`flatpak remote-info flathub --arch=<arch>` in a `debian:trixie` container, once
+per declared architecture, and compares the entry's `arch` and `flathub_verified`
+against Flathub's API. Wave 1 passed 74 checks with 0 failures; the arch fragment
+passed after one TLS flake was re-run (see below). The script's self-test induces
+nine failures to prove it can go red.
+
+**Launch and render: NOT MEASURED, for anything added since the last signing.**
+`scripts/verify-app-recipe.sh` exits 2 with *"entry has no signature"* before any
+container starts. Every entry staged here is unsigned by construction, so **none
+of them has been install-tested, and `roadmap/app-verification-ledger.json` still
+holds only nine rows.** No entry in this pass claims otherwise.
+
+**`registry.d/vulos-native.json`'s caveat stands unchanged and is repeated here
+because it is easy to lose:** *NO INSTALL WAS RUN* for its 15 entries. Their
+checksums were computed from downloaded bytes by a script, and their archive
+layouts were read out of the archives — but `command`, `port` and `post_install`
+are **unproven**. Nothing in this pass changed that, and nothing upgraded their
+status.
+
+**A flaky check that accuses is worse than one that fails.** The candidate
+verifier reported *"inkscape: DOES NOT RESOLVE"* for an app that plainly exists,
+because a TLS handshake error was not in its transient list and fell through to
+the verdict branch. Re-run alone, inkscape resolved on both architectures. The
+transient list now covers the transport.
+
+### `untestable-on-arm64` — 17 entries
+
+This Mac is arm64, and with CI off the table these cannot be install-tested here
+at all. They are recorded as `untestable-on-arm64`, which is neither `untested`
+nor `passed`, and **no result is inferred for them from metadata**:
+
+`blender` · `bottles` · `cura` · `handbrake` · `heroic` · `insomnia` · `lutris` ·
+`marktext` · `obs-studio` · `openscad` · `pcsx2` · `protontricks` · `signal` ·
+`thunderbird` · `torbrowser-launcher` · `upscayl` · `wine`
+
+Everything else added in this pass publishes **both** architectures, so it follows
+a user onto either instance unchanged — the standing directive that every instance
+is near a clone of the next, satisfied with no emulation at all.
 
 ## Policy decisions
 
 **1 — Filter Flathub. Do not mirror it.**
-Some proprietary apps on Flathub are packaged as **extra-data**: the package is a thin
-manifest that downloads the vendor's real binary at install time, so mirroring it into
-a Vulos-run repo carries no payload — the client still contacts the vendor's servers
-and the vendor's terms still govern. Vulos curates **which apps appear**, not where the
-bytes come from, and Flathub's own signing stays intact.
-
-**Corrected 2026-08-15, by reading the manifests rather than assuming.** Of the apps
-suspected of this, only **Chrome** is genuinely extra-data (`com.google.Chrome.yaml`
-lines 98, 112). **Vivaldi, Brave and Bitwarden are not** — their manifests use
-`type: file` against the vendor's download host per architecture, consumed at Flathub
-*build* time, so Flathub does hold and sign those payloads. Spotify, Discord, Slack,
-Zoom, Steam and Obsidian are **unverified either way** and must not be flagged as
-extra-data until someone reads their manifests. The distinction matters: it decides
-whether an app is redistributable and whether a mirror would ever work for it.
+Measured by reading manifests, not by inference: of everything examined, only
+**Slack, Zoom, Spotify, VS Code and Android Studio** are `extra-data`. All five are
+proprietary and excluded anyway. **Chrome** is extra-data too and was already known.
+**Discord, Obsidian and Steam are NOT extra-data** — their manifests fetch vendor
+payloads at Flathub *build* time — which settles the "unverified either way" list
+this document used to carry. Vivaldi, Brave and Bitwarden are likewise not extra-data.
 
 **1a — Proprietary apps are excluded, for now (founder call, 2026-08-15).**
-No proprietary app ships in the catalogue at this stage. This is scoped as *for now* —
-reversible, not a permanent position — and it resolves several open problems at once
-rather than requiring each to be solved:
+Unchanged, and now actually applied: the two entries that contradicted it are
+withdrawn. It costs the catalogue Steam, Chrome, Vivaldi, Discord, Slack, Zoom,
+Spotify, Obsidian, VS Code and Android Studio. Gaming keeps Heroic, Lutris,
+Bottles, ProtonUp-Qt, Prism Launcher and six emulators; development keeps VSCodium.
 
-- **extra-data becomes moot.** The only confirmed extra-data app was Chrome, which is
-  proprietary and therefore out.
-- **the unverified-publisher problem shrinks to its mildest form.** Policy 2's
-  scrutinise-hardest category was *community-maintained packages of proprietary
-  software*. With proprietary out, what remains unverified is open source — packaged by
-  a third party but auditable at source, e.g. Chromium.
-- **the emulation burden shrinks.** The x86_64-only set is very largely the proprietary
-  set, so most of what could not follow a user onto an arm instance is now out of scope
-  anyway.
+**2 — `verified` is a first-class field, and now something reads it.**
+It was first-class in prose only. The twelve apt→Flatpak entries recorded publisher
+verification in a note and carried no field at all, so a badge or a filter would
+have treated all twelve as unverified. Every Flatpak entry now carries
+`flathub_verified`, measured, and the candidate verifier **fails** when an entry's
+flag disagrees with Flathub or is missing. Of the 68 staged apps, **26 have no
+verified publisher** — all open source, packaged by a third party, and each says so
+in its own `_note`.
 
-**What this removes**, and the second item is a real product cost worth stating rather
-than burying: Chrome and Vivaldi from browsers; Discord, Slack and Zoom from comms;
-Spotify from media; Obsidian from notes; VS Code from development (**VSCodium, the FOSS
-build, stays and is the direct substitute**); and **Steam from gaming** — which takes
-the flagship of that category with it, leaving Heroic, Lutris, Bottles, ProtonUp-Qt and
-the emulators, all open source. If gaming is a priority, Steam is the entry to revisit
-first when this call is reopened.
+**Still open, and it is a UI question, not a data one:** nothing in the frontend
+reads `flathub_verified`. The field reaches the API as unmodelled `Extra` data.
+Badging or filtering on it is unbuilt.
 
-**2 — `verified` is a first-class field.**
-Roughly a third of this catalogue has no verified publisher. Flathub exposes the flag
-in its AppStream metadata and API. Unverified apps are either badged in the UI or held
-out of the default catalogue. **Community-maintained packages of proprietary software
-are the specific category to scrutinise** — that is where a supply-chain problem looks
-most like a convenience.
+**3 — Per-app install strategy, chosen deliberately.** Unchanged.
 
-**3 — Per-app install strategy, chosen deliberately.**
-Because the catalogue is curated, each app gets the vehicle that is actually best —
-Flathub, an official Debian repository, an official vendor package, a web app, or a
-Vulos first-party release — recorded with the reason. Flathub is the default, not the
-rule.
+**4 — Architecture is explicit.** 13 shipped entries still declared `arch: null`,
+which `ArchSupported` reads as an unverified claim to every architecture Vulos
+builds. All 13 are measured and staged; all 13 publish both. The 6 that remain
+undeclared after that merge are all `_disabled` and none is installable.
 
-**4 — Architecture is explicit, and the hub shows what *this* box can install.**
-Vulos publishes **amd64 and arm64** images. Many Flathub apps are `x86_64`-only. An
-entry that appears in the App Hub on an arm64 box and cannot install is a defect, so
-`arch` is set from measurement, never assumption — and the hub compares it against the
-box's own architecture and makes the result visible.
+**5 — Icons are never invented.** Unchanged, and unaddressed: the 68 staged apps
+render as bare letter tiles until `ART`/`appArt.tsx` and `APP_LOGOS`/`AppIcons.tsx`
+gain entries keyed by app id. Flatpak exports each app's official icon to the box
+on install, and `/api/desktop/icon/<id>` is already a tier in the chain, so the
+post-install case resolves itself; the **pre-install listing** is the gap.
 
-The architecture that governs is **the box's, not the browser's**. Desktop apps are
-streamed from the box, so a user on an ARM Mac connected to an amd64 box must be
-offered amd64 apps. Anything derived from `navigator` or a client-controlled header is
-wrong in exactly the way that looks right when tested on one machine.
+**6 — Two sandboxes — and as of 2026-08-19 there is a bridge between them.**
 
-Three naming schemes collide here and a comparison that mixes them matches nothing and
-fails silently: Debian `amd64`/`arm64`, Flatpak `x86_64`/`aarch64`, Go's
-`runtime.GOARCH` `amd64`/`arm64`. The registry uses the Debian spelling; normalisation
-happens in exactly one place.
+`permissions` used to decide nothing for a Flatpak app. `FlatpakInstall` ran
+`flatpak install` and stopped, so an app kept whatever its Flathub manifest asked
+for — commonly `--filesystem=host` **and** `--share=network` — while its recipe
+said `["filesystem"]` and the App Hub displayed that. A declared permission model
+whose declaration has no effect is worse than none, because the manifest reads as
+a sandbox to anyone reviewing it.
 
-Unavailable apps are **shown with a reason rather than hidden**. An app that silently
-vanishes produces "why can't I find Steam?"; an app marked unavailable for a stated
-reason teaches the user something true about their hardware.
+`backend/services/appnet/flatpak_permissions.go` now narrows an installed app to
+what its recipe declares:
 
-**5 — Icons are never invented.**
-Founder directive. Icon resolution is keyed by app **id** into `ART`/`appArt.tsx` and
-`APP_LOGOS`/`AppIcons.tsx`; `registry.json`'s own `icon`/`icon_url` are *not* used for
-resolution, so a new app with no entry there renders a bare letter tile. A Flatpak
-exports its official icon to `/var/lib/flatpak/exports/share/icons/…` on the box and
-`/api/desktop/icon/<id>` is already a tier in the chain; Flathub's AppStream data
-carries the official icon for the pre-install listing. First-party marks come from
-`/brand`, copied and never redrawn.
+| Declared | Undeclared becomes |
+|---|---|
+| `network` | `--unshare=network` |
+| `filesystem` | `--nofilesystem=host --nofilesystem=home` |
+| `bluetooth` | `--disallow=bluetooth` |
 
-**6 — Two sandboxes, and they are not the same thing.**
-A recipe's `permissions` array plus Vulos's per-app network namespace is one model;
-Flatpak's bwrap + portals + `--filesystem=` overrides is another. The mapping between
-them is being established rather than assumed. **Flatseal exists in this catalogue
-because of that gap** — on a non-GNOME OS with no other permission UI, a user has no
-way to repair a broken sandbox without it.
+`host` and `home` are negated specifically rather than wholesale, so an app's own
+`xdg-download` survives — Element's attachments and Firefox's downloads keep
+working.
 
-## Verification standard — nothing lands unverified
+**Measured, not argued.** `io.mpv.Mpv` (manifest: `shared=network;ipc`,
+`filesystems=…;host:ro`) was installed in a container with a canary file in `/opt`.
+Inside the sandbox: before, `/proc/net/dev` listed `eth0` and the canary was
+readable; after the flags, `eth0` was gone and the canary was *"No such file or
+directory"*; after `--reset`, both returned.
 
-Every entry must pass `scripts/verify-app-recipe.sh <app-id>`, which runs the **real
-install path** in a `debian:trixie` container and asserts the app is genuinely present
-and launchable — not that a command exited 0. The harness exercises the product's own
-installer rather than re-implementing it, and ships a self-test proving it goes red on
-a bad Flathub id, a wrong checksum and a missing command.
+**The seven permissions this cannot enforce, with the reason each is refused
+rather than faked** — enumerated in `unenforcedFlatpakPermissions`, with a test
+that fails if any permission is neither enforced nor named there:
 
-**Testing is local and sequential — deliberately not CI.** One app at a time,
-**smallest first** by real measured download size, **deleted immediately after** its
-assertions run so the next app starts from a known disk state. Progress is recorded in
-a durable, resumable ledger — one row per app with the source, the date, the size, the
-result, and what was actually asserted — so a later session skips what is already
-verified instead of starting over.
+- `camera`, `microphone` — not separable in Flatpak's model. Capture and playback
+  ride one `pulseaudio` socket; camera rides `--device=all` alongside `/dev/dri`
+  and `/dev/input`. Enforcing them would silence playback and break controllers.
+- `gpu` — would need `--nodevice=all`, which also removes `shm` (the shared-memory
+  transport every streamed X11 app here uses) and `input`.
+- `usb`, `background`, `notifications`, `storage` — not Flatpak concepts at all.
 
-**The arm64 limit is stated, not worked around.** This Mac is arm64, so x86_64-only
-apps — Steam, Chrome, Spotify, Zoom, VS Code among them — cannot be install-tested
-here, and with CI off the table they stay **untested**. The ledger records that as
-`untestable-on-arm64`, distinct from `untested` and from `passed`. No emulation, no
-pass inferred from metadata: a row saying "not tested, and here is why" is worth more
-than a green tick that means nothing.
+**The bridge only ever removes.** Nothing grants a permission the publisher
+withheld. It is **fail-closed**: an app whose narrowing cannot be applied is
+uninstalled, because leaving it is the original defect in a worse form.
 
-## Ids are case-sensitive, and a typo is a 404
+**Consequence to expect, and it is deliberate.** Several shipped entries declare no
+`network` and now genuinely lose it: GIMP, Inkscape, Audacity, Blender, Kdenlive,
+LibreOffice, KeePassXC, Octave, GnuCash, Meld. Two were corrected instead, because
+the declaration was simply wrong about the app: **VLC** and **KiCad** gained
+`network` (network streams; the Plugin and Content Manager), as did **OBS Studio**
+(streaming is what it is for) and **Dolphin**/**PPSSPP** (netplay). **Flatseal is
+the escape hatch** — it is in this catalogue precisely so an owner can restore
+something the recipe was too strict about.
 
-`io.lmms.lmms` in an earlier revision of this list was wrong — the real id is
-`io.lmms.LMMS`, caught by resolving it rather than reading it. Together with
-`org.cryptomator.Crypt` (404), `fr.romainvigier.MetadataCleaner` (EOL) and
-`org.raspberrypi.rpi-imager` (EOL), that is **four bad ids found in the first
-~40 apps**. Assume the same rate across the remaining 100+ and resolve every id
-before it is written into an entry.
+**A permission string that is not a permission is now refused** (PERMS-01). Under
+the bridge an unrecognised string matches no enforced name, so the access it was
+meant to declare is *revoked*. `steam` declared `"display"` and `"audio"`, neither
+of which Vulos has ever had.
 
-**A multi-branch app needs its branch pinned.** `FlatpakInstall` runs with no
-branch, so an app publishing more than one — QGIS ships `stable` *and* `lts` —
-exits 1 on the bare id, while Flathub's API reports a single `"branch":"stable"`.
-An entry built from API metadata therefore looks correct and fails at first
-click. QGIS is pinned `org.qgis.qgis//stable`. Wine publishes seven branches,
-none named plain `stable`.
+## The apt → Flatpak conversion
 
-## The registry cannot express a per-architecture download
+**Closed in this pass:** the twelve converted entries now carry measured
+`flathub_verified` and `extra_data` fields rather than prose; `obs-studio` declares
+the `network` its purpose depends on; and the permission model those entries were
+written against is now enforced rather than notional.
 
-Measured 2026-08-15, and it is the sharpest limitation found in the format.
+**Closed earlier and still true:** arch widened from `["amd64"]` to both for
+ardour, darktable, gnucash, libreoffice, lmms, octave, qgis and shotcut — eight
+apps that arm64 boxes could not previously install.
 
-`VersionRecipe.DownloadURL` is a single static string with a single `Checksum`,
-and there is no `${ARCH}` substitution anywhere on the static-install path
-(`services/appnet/registry.go:219`, `:1245`). The per-recipe `arch` field inside
-a version block is **dead data** — `VersionRecipe` has no `Arch` field at all, so
-only the entry-level `arch` exists, and it describes the whole entry.
+**Still open, and both are real losses:**
 
-**So every download-based app must pick one architecture**, and the consequence
-landed on Vulos's own products first:
+- **`blender` loses arm64.** Debian built it for arm64; Flathub does not, and
+  blender.org publishes no Linux aarch64 build, so no `artifacts` entry can recover
+  it. With apt gone as a vehicle there is nowhere else to go. An arm64 owner is
+  told Blender is unavailable, and that is now true rather than a defect.
+- **`wine` is parked with `_disabled` and has no expressible vehicle.** WineHQ ships
+  `.deb`s and no portable tarball, and `org.winehq.Wine` publishes seven dated
+  branches with no plain `stable`. **Bottles answers the "wine vs Bottles" question
+  by being installable**: `com.usebottles.bottles` resolves on a bare id and is
+  staged. Both are x86_64-only, as the Wine underneath them is.
 
-| App | Publishes | Staged entry | Result on an arm64 box |
-|---|---|---|---|
-| `diwan` | `linux-amd64` **and** `linux-arm64` | amd64 URL, `arch: ["amd64"]` | unavailable |
-| `wede` | `linux-amd64` **and** `linux-arm64` | amd64 URL, `arch: ["amd64"]` | unavailable |
+## The registry CAN express a per-architecture download
 
-Both arm64 binaries exist and are published. Vulos ships an arm64 image. So a
-user on the arm64 build of this OS is told the OS's own office suite and IDE are
-not available for their machine — while the artefact sits in the release.
+This section previously recorded the opposite, and it is now stale in the good
+direction. `VersionRecipe.Artifacts` is a `{arch: {download_url, checksum}}` map,
+enforced by `ARTIFACTS-01`, and `ResolveArtifact` picks against the box's own arch.
+`diwan` and `wede` ship both Linux binaries and are installable on arm64.
 
-That is also a direct collision with the standing directive that **everything
-syncs and each instance is almost a clone of the next**: a first-party app that
-cannot follow a user onto their arm64 instance forks the app set by
-architecture, which is precisely what emulation was meant to prevent. Here no
-emulation is needed — only the ability to name a second URL.
+## Verification standard
 
-**The fix is a format change, not an emulator**: per-architecture artefacts, each
-with its own checksum, chosen against the box's own arch (which
-`services/appnet/arch.go` already resolves and enforces at install time). The
-recipe-standard work specified a recipe-level `arch []string` for related
-reasons; this needs the URL and checksum to move with it. Until then, `diwan`
-and `wede` must not be merged as amd64-only entries — that ships a false
-"unavailable" to every arm64 owner.
+Every claim needs the measurement that backs it named beside it. In force:
 
-**Genuinely x86_64-only, and unaffected by the proprietary exclusion:** `lutris`,
-`obs-studio` and `wine` publish no aarch64 build on Flathub. These are the real
-population for any emulation question — three FOSS apps, not the proprietary set.
+- **`install` shell strings are refused outright** (INSTALL-01). The fabricated
+  `code-server` checksum piped into `|| true` cannot be expressed any more — not
+  because a pattern list caught it, but because the shape is gone.
+- **`post_install` may not fetch, and may not swallow its own failure**
+  (POSTINSTALL-02/03), and a failure is **fatal with rollback** (POSTINSTALL-01).
+- **`${PORT}` is exported to `post_install`, and a reference without a declared
+  port is refused** (POSTINSTALL-04). It was not exported before, so `sh` expanded
+  it to the empty string and exited 0: `nginx` wrote `listen ;`, `transmission`
+  wrote `"rpc-port":`, and the installer reported success both times.
+- **A `_disabled` entry is no longer offered** (DISABLED-01). It refused at install
+  on every box while the hub showed an Install button for all 19.
+- **Checksums are mandatory and verified** for every downloaded artefact, per
+  architecture. Three entries still carry a `download_url` with an empty checksum —
+  `excalidraw`, `hoppscotch`, `uptime-kuma` — and all three are `_disabled`, so they
+  are refused twice over.
 
-## The catalogue — 120 apps
-
-Legend: **✓** already in the registry as a Flatpak · **↻** in the registry via apt,
-being converted · **+** new. Flags to be filled in by verification, never assumed:
-`P` proprietary · `X` extra-data (vendor download at install time) · `?` publisher
-verification unconfirmed.
-
-### Wave 1 — the first 40
-
-**Flatpak / system management (4)** — ship these or the store is broken
-`com.github.tchx84.Flatseal` + · `io.github.flattool.Warehouse` + ·
-`io.github.giantpinkrobots.flatsweep` + · `net.nokyan.Resources` +
-
-**Browsers (6)**
-`org.mozilla.firefox` ✓ · `com.google.Chrome` + P X · `org.chromium.Chromium` + ·
-`com.brave.Browser` + · `io.gitlab.librewolf-community` + · `com.vivaldi.Vivaldi` + P
-
-**Communication (9)**
-`org.signal.Signal` + · `org.telegram.desktop` + · `im.riot.Riot` ✓ ·
-`com.discordapp.Discord` + P X · `com.slack.Slack` + P X · `us.zoom.Zoom` + P X ·
-`com.rtosta.zapzap` + · `info.mumble.Mumble` + · `org.mozilla.Thunderbird` +
-
-**Gaming & compatibility (10)**
-`com.valvesoftware.Steam` ↻ P X · `com.heroicgameslauncher.hgl` + ·
-`net.lutris.Lutris` ↻ · `com.usebottles.bottles` + · `net.davidotek.pupgui2` + ·
-`com.github.Matoking.protontricks` + · `org.prismlauncher.PrismLauncher` + ·
-`org.vinegarhq.Sober` + · `io.github.benjamimgois.goverlay` + ·
-`com.github.mtkennerly.ludusavi` +
-
-**Emulation (7)**
-`org.libretro.RetroArch` + · `org.DolphinEmu.dolphin-emu` + · `net.pcsx2.PCSX2` + ·
-`net.rpcs3.RPCS3` + · `org.ppsspp.PPSSPP` + · `io.mgba.mGBA` + ·
-`org.duckstation.DuckStation` +
-
-**Media playback (5)**
-`org.videolan.VLC` ✓ · `io.mpv.Mpv` + · `io.github.celluloid_player.Celluloid` + ·
-`com.spotify.Client` + P X · `com.github.iwalton3.jellyfin-media-player` +
-
-### Wave 2 — the remainder
-
-**Audio production (6)**
-`org.audacityteam.Audacity` ✓ · `org.ardour.Ardour` ↻ · `io.lmms.LMMS` ↻ ·
-`org.musescore.MuseScore` + · `com.github.wwmm.easyeffects` + · `org.mixxx.Mixxx` +
-
-**Graphics & photo (11)**
-`org.gimp.GIMP` ✓ · `org.krita.krita` + · `org.inkscape.Inkscape` ✓ ·
-`org.blender.Blender` ↻ · `org.darktable.Darktable` ↻ · `com.rawtherapee.RawTherapee` + ·
-`org.kde.digikam` + · `net.scribus.Scribus` + · `com.github.PintaProject.Pinta` + ·
-`org.upscayl.Upscayl` + · `com.orama_interactive.Pixelorama` +
-
-**Video & screen capture (7)**
-`org.kde.kdenlive` ✓ · `org.shotcut.Shotcut` ↻ · `com.obsproject.Studio` ↻ ·
-`fr.handbrake.ghb` + · `io.github.seadve.Kooha` + · `org.openshot.OpenShot` + ·
-`com.dec05eba.gpu_screen_recorder` +
-
-**Office & documents (9)**
-`org.libreoffice.LibreOffice` ↻ · `org.onlyoffice.desktopeditors` + · `org.kde.okular` + ·
-`com.github.xournalpp.xournalpp` + · `org.gnucash.GnuCash` ↻ · `fr.free.Homebank` + ·
-`com.github.jeromerobert.pdfarranger` + · `org.cvfosammmm.Setzer` + ·
-`com.github.marktext.marktext` +
-
-**Reading & notes (6)**
-`md.obsidian.Obsidian` + P X · `com.logseq.Logseq` + · `org.standardnotes.standardnotes` + ·
-`com.calibre_ebook.calibre` + · `org.zotero.Zotero` + · `com.github.johnfactotum.Foliate` +
-
-**Development (14)**
-`com.visualstudio.code` + P X · `com.vscodium.codium` + · `dev.zed.Zed` + ·
-`com.jetbrains.IntelliJ-IDEA-Community` + · `com.google.AndroidStudio` + P X ·
-`io.dbeaver.DBeaverCommunity` + · `org.gnome.meld` + ·
-`io.podman_desktop.PodmanDesktop` + · `rest.insomnia.Insomnia` + ·
-`org.wireshark.Wireshark` + · `io.github.shiftey.Desktop` + · `io.neovim.nvim` + ·
-`org.godotengine.Godot` + · `io.github.dvlv.boxbuddyrs` +
-
-**System utilities (12)**
-`org.qbittorrent.qBittorrent` ✓ · `de.haeckerfelix.Fragments` + ·
-`com.bitwarden.desktop` + · `org.keepassxc.KeePassXC` ✓ ·
-`org.gnome.World.PikaBackup` + · `com.github.qarmin.czkawka` + ·
-`io.github.peazip.PeaZip` + · `org.cryptomator.Cryptomator` + ·
-`io.gitlab.adhami3310.Impression` + · 
-`io.gitlab.metadatacleaner.metadatacleaner` + · `com.github.tenderowl.frog` +
-
-**Networking & remote (6)**
-`org.remmina.Remmina` + · `com.rustdesk.RustDesk` + ·
-`org.filezillaproject.Filezilla` ✓ · `com.nextcloud.desktopclient.nextcloud` + ·
-`org.localsend.localsend_app` + · `com.github.micahflee.torbrowser-launcher` +
-
-**CAD, science & engineering (8)**
-`org.freecad.FreeCAD` + · `org.kicad.KiCad` ✓ · `org.openscad.OpenSCAD` + ·
-`com.ultimaker.cura` + · `org.qgis.qgis` ↻ · `org.octave.Octave` ↻ ·
-`org.stellarium.Stellarium` + · `org.kde.labplot2` +
-
-### Vulos first-party
-
-`diwan` (absent — releases exist) · `kerf` (recipe installs a stub) ·
-`wede` (recipe runs a binary nothing installs). Other siblings — basin, lilmail,
-openrate, slipscan, patala, evermesh, magnetite, molao, zana, aql, pier, kotva — are
-being assessed for whether they are box-owner apps at all rather than added
-speculatively.
+**Testing is local and sequential**, smallest first, deleted after each, with a
+resumable ledger. **It has not run for anything in this pass** and cannot until the
+signing ceremony.
 
 ## Open questions, not yet decided
 
-- **Which apps the streamed model makes misleading.** A disk utility streamed from a
-  remote box manages *that box's* disks. Some entries in this list need that said out
-  loud in their description, or they do not belong.
-- **`wine` vs Bottles.** Bottles is the Flathub answer; swapping which app ships is a
-  product decision, not a silent substitution.
-- **Whether unverified publishers are badged or excluded** — badge and let the user
-  choose, or hold them out of the default catalogue. Trust is the product's pitch.
-- **The permission bridge.** Whether Vulos maps its recipe `permissions` onto Flatpak
-  overrides itself, or defers entirely to Flatpak plus Flatseal.
+- **Nothing reads `flathub_verified`.** Badge unverified publishers, or hold them
+  out of the default catalogue? 26 of the 68 staged apps are affected.
+- **Icons for 68 new apps.** Bare letter tiles until the frontend art tables gain
+  them; the pre-install listing is the only real gap.
+- **`/api/router/classify` ignores the registry.** `backend/cmd/server/routes_router.go`
+  maps app ids to stream lanes from a **hardcoded table** that has not grown since
+  the original catalogue. Every app added since — chromium, brave, librewolf, and
+  all 68 staged here — falls through to the CPU-stream default, so `lane.needs_gpu`
+  in a registry entry does not reach the router. RetroArch, Godot, FreeCAD, Zed and
+  the emulators are the ones this costs.
+- **Which apps the streamed model makes misleading.** Named per entry now rather
+  than in the abstract: digiKam catalogues *the box's* disks, Kooha records *the
+  box's* screen, GOverlay reports *the box's* frame timing, Wireshark captures *the
+  box's* traffic, Remmina connects *out* from the box, and a USB device plugged into
+  the client machine is invisible to all of them.
+- **Wireshark cannot capture without privileges** the Flatpak sandbox does not grant.
+- **BoxBuddy and Podman Desktop need distrobox/podman on the box.** Whether Vulos
+  ships them is a separate decision from whether these entries exist.

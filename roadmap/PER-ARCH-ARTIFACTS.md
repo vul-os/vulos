@@ -293,10 +293,22 @@ until `sign-registry` refreshes them.
 
 Carried forward from `FIRST-PARTY-REGISTRY-TRUTH.md` §6 and unchanged here:
 
-- **`post_install` failure is only a warning** (`registry.go`) — a failed
-  `post_install` yields a *successful install of an unconfigured app*. All three
-  entries here write their config in `post_install`, so all three are exposed.
-  This is the single highest-value remaining fix in the installer.
+- ~~**`post_install` failure is only a warning**~~ — **CLOSED, and verified
+  against the shipping code 2026-08-19 (POSTINSTALL-01, `registry.go`).** A failed
+  `post_install` is fatal, the half-built app directory is removed so a retry
+  starts clean, and the error names the app and carries the last ten lines of
+  stderr. The behaviour this bullet described is gone; it was still listed as open
+  after being fixed, which is its own small defect and the reason this file is
+  being read rather than trusted.
+
+  Closed alongside it, 2026-08-19: **`${PORT}` was never exported to
+  `post_install`** (POSTINSTALL-04). `sh` expands an unset `${PORT}` to the empty
+  string and exits 0, so `nginx` wrote `listen ;` and `transmission` wrote
+  `"rpc-port":` while the installer reported success. `PORT` now comes from
+  `recipe.Port` — the same field the manifest carries and the launcher substitutes
+  into `command`, so a config file and the command line that reads it cannot name
+  two different ports — and a `${PORT}` reference with no declared port is refused
+  outright rather than given a default.
 - ~~**The installer never chowns the app dir**~~ — **CLOSED 2026-08-17
   (STATE-01, `backend/services/appnet/state_owner.go`).** The installer now hands
   `data/` — and the target of the `data/` symlink — to uid 65534 after

@@ -303,27 +303,48 @@ port is — so `${PORT}` at launch always equals that literal.
 `scripts/verify-firstparty-artifacts.sh` asserts the two agree, and fails any
 recipe that puts `${PORT}` in `post_install`.
 
-### 6.3 `code-server` verifies a checksum and then ignores the result
+### 6.3 `code-server` verifies a checksum and then ignores the result — CLOSED
 
-`registry.json`, `code-server@4.100.2`:
+**Was**, `registry.json`, `code-server@4.100.2`:
 
 ```
 … | sha256sum --status -c - 2>/dev/null || true && dpkg -i /tmp/code-server.deb …
 ```
 
-`|| true` means a **checksum mismatch proceeds to `dpkg -i`**. The check is
-decorative. This is a security defect, not a style one: an entry that appears to
-pin its artefact does not.
-*Suggested fix: drop the `|| true`, or move it to `download_url` + `checksum` and
-let the engine verify.*
+`|| true` meant a checksum mismatch proceeded to `dpkg -i`. The check was
+decorative, and the digest it "verified" was fabricated.
 
-### 6.4 Four entries can never install
+**CLOSED 2026-08-19 — verified against the shipping code, twice over.**
+
+1. The entry no longer contains it. `code-server@4.100.2` now carries `install: ""`
+   and per-architecture `artifacts` with real digests, and stays `_disabled` until
+   someone runs the harness against it.
+2. **The shape cannot be expressed any more.** `validateRecipeSecurity` refuses any
+   recipe carrying a non-empty `install` (INSTALL-01), refuses a `post_install` that
+   fetches (POSTINSTALL-02) or swallows failure with `|| true` (POSTINSTALL-03), and
+   requires a checksum for every download. The engine verifies it itself in
+   `staticInstall`, comparing against the digest `ResolveArtifact` returned for the
+   box's own architecture — deliberately not `recipe.Checksum`, which is empty by
+   construction on a per-arch recipe.
+
+Nothing was left to fix here. The section stays as the record of why the rules
+above exist.
+
+### 6.4 Four entries can never install — PARTLY CLOSED
 
 `download_url` set with an empty `checksum` is refused unconditionally by
-`validateRecipeSecurity` (SECAUDIT2-H1). Four entries are in that state and will
-fail every install attempt: `excalidraw@0.18.0`, `hoppscotch@2026.4.1`,
-`memos@0.22.4`, `uptime-kuma@1.23.16`. They fail *closed*, which is the right
-direction — but they are listed as installable.
+`validateRecipeSecurity` (SECAUDIT2-H1).
+
+**Re-measured 2026-08-19: three, not four.** `memos@0.22.4` was re-expressed with
+per-architecture `artifacts` and real digests. `excalidraw@0.18.0`,
+`hoppscotch@2026.4.1` and `uptime-kuma@1.23.16` remain in that state.
+
+The half that mattered — *"they are listed as installable"* — is **CLOSED
+(DISABLED-01)**. All three are `_disabled`, and a withdrawn entry now returns its
+own availability verdict: not installable, with a sentence saying it is withdrawn
+by Vulos rather than refused by this box. Before that, nineteen entries were shown
+with an Install button that could only ever return "this version entry is disabled
+and cannot be installed".
 
 ### 6.5 Other swallowed failures
 
@@ -332,12 +353,23 @@ success: `code-server@4.100.2` (§6.3), `kerf@latest` (the subject of this
 document), `libretranslate@1.5.3`, `lutris@latest`, `steam@latest`,
 `uptime-kuma@1.23.16`.
 
-### 6.6 46 of 55 entries have `arch: null`
+### 6.6 46 of 55 entries have `arch: null` — RE-MEASURED, AND NEARLY CLOSED
 
-Already recorded as a defect in `APP-RECIPE-STANDARD.md` §1.1, restated here
-because `ArchSupported` *is* enforced at install time (`registry.go:964`), so
-`null` is not harmless: it means "all", and an amd64-only app declared `null` is
-offered on arm64 boxes and fails at install.
+Restated here because `ArchSupported` *is* enforced at install time, so `null` is
+not harmless: it means "all", and an amd64-only app declared `null` is offered on
+arm64 boxes and fails at install.
+
+**Re-measured 2026-08-19: 19 of 74, not 46 of 55.** The catalogue migration
+declared `arch` on 25 entries and the ratchet in
+`backend/services/appnet/arch_test.go` was tightened 44 → 19 to match.
+
+`registry.d/arch-declarations.json` stages the remaining 13 Flatpak entries, each
+measured against Flathub and each publishing **both** architectures. The 6 left
+after that merge — `diagrams-net`, `excalidraw`, `hoppscotch`, `immich`,
+`uptime-kuma`, `vaultwarden` — are all `_disabled` and none is installable, so the
+"unverified claim to every architecture" is unreachable for every one of them.
+Merging the fragment requires `undeclaredArchCeiling` to drop to 6 in the same
+commit; the test demands it in its own failure message.
 
 ### 6.7 Apps run as uid 65534, but the installer never chowns the app dir — CLOSED 2026-08-17
 
