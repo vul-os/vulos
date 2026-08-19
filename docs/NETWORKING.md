@@ -418,7 +418,7 @@ box-side client against the Vulos implementation), so a single
 
 ### Drop (nearby file sharing)
 
-Drop advertises the service `_vulos-drop._tcp.local` over mDNS so nearby Vulos peers discover each other, then transfers files over HTTP on the box's main port (8080). Discoverability is a per-box setting; inbound requests from non-contacts require approval. Cross-box shares that target private/LAN addresses are blocked by the SSRF guard unless you explicitly allow LAN peers with `VULOS_PEER_ALLOW_LAN=1` — legitimate for self-hosted boxes that genuinely live on the same network. See [PEERING.md](PEERING.md) and [FILES.md](FILES.md).
+Drop advertises the service `_vulos-drop._tcp.local` over mDNS so nearby Vulos peers discover each other, then transfers files over HTTP on the box's main port (8080). Discoverability is a per-box setting; inbound requests from non-contacts require approval. Cross-box shares that target private/LAN addresses are blocked by the SSRF guard unless you explicitly open the range. Prefer `VULOS_PEER_ALLOW_CIDR=192.168.0.0/16` (or whichever block your boxes are actually on) — it names the ranges, so opening one does not open the rest; `VULOS_PEER_ALLOW_LAN=1` is the older form that opens RFC1918, CGNAT, ULA, 6to4 and NAT64 all at once. Boxes that meet over a Tailscale/Headscale mesh want `VULOS_PEER_ALLOW_CIDR=100.64.0.0/10` and the recipe in [REACH.md](REACH.md#boxes-on-a-tailnet-tailscale--headscale--nebula). Under every grant, loopback, link-local (`169.254.169.254`), multicast and bogon ranges stay refused, and the effective grant is printed at boot. See [PEERING.md](PEERING.md) and [FILES.md](FILES.md).
 
 ---
 

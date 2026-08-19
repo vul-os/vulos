@@ -19,11 +19,12 @@ with anyone.
 5. [Multiple relays](#multiple-relays)
 6. [Configuration](#configuration)
 7. [Discovery: finding your other boxes](#discovery-finding-your-other-boxes)
-8. [Security model](#security-model)
-9. [What a relay can and cannot do](#what-a-relay-can-and-cannot-do)
-10. [Alternatives, and when to prefer them](#alternatives-and-when-to-prefer-them)
-11. [Status and troubleshooting](#status-and-troubleshooting)
-12. [What is automatically verified](#what-is-automatically-verified)
+8. [Boxes on a tailnet (Tailscale / Headscale / Nebula)](#boxes-on-a-tailnet-tailscale--headscale--nebula)
+9. [Security model](#security-model)
+10. [What a relay can and cannot do](#what-a-relay-can-and-cannot-do)
+11. [Alternatives, and when to prefer them](#alternatives-and-when-to-prefer-them)
+12. [Status and troubleshooting](#status-and-troubleshooting)
+13. [What is automatically verified](#what-is-automatically-verified)
 
 ---
 
@@ -70,6 +71,16 @@ Picking a provider for one facet never silently zeroes another. Choosing a
 WireGuard mesh for ingress leaves call media working; choosing a bring-your-own
 TURN server leaves ingress alone.
 
+> **Only facet A is actuated by the provider selection.** Settings →
+> Reachability provider records what you chose and reports it; choosing
+> **libp2p** or **WireGuard mesh** there does not re-route real HTTP ingress and
+> does not resolve peers. `wireguardProvider.ResolvePeer` returns not-ok, and it
+> is not even reachable: the provider does not claim the rendezvous facet, and
+> nothing in the tree calls `relayconfig.ResolvePeer` at all. The provider panel
+> and the ingress detail string both say so. Meshes are served by the
+> configuration in [Boxes on a tailnet](#boxes-on-a-tailnet-tailscale--headscale--nebula),
+> not by that dropdown.
+
 ---
 
 ## Pick your route
@@ -90,7 +101,9 @@ Does the box have a reachable public IP or hostname?
            │   Same idea, separate project. Supported alternative.
            │
            └─ Generic tunnel (Tailscale/Headscale, wg + Caddy, frp)
-               Covers facet B only. Facets A and C stay on their own paths.
+               Covers facet B for the humans on your mesh.
+               Facet C needs a Vulos relay ON the tailnet — see below.
+               Facet A stays on its own path.
 ```
 
 **Both at once is the best answer** when you can manage it: enable direct mode *and*
@@ -281,6 +294,209 @@ server. You can mix Vulos and Pier rendezvous nodes in one list.
 
 ---
 
+## Boxes on a tailnet (Tailscale / Headscale / Nebula)
+
+**What works: a Vulos relay running *on* the tailnet, serving the discovery role
+to boxes that are also on it. Tailscale alone does not give you facet C** — it
+gives your *humans* a private route to a box's web surface (facet B). Boxes
+finding each other is a Vulos concern, and something has to serve the lookup.
+
+### The one thing that used to block all of this
+
+`backend/internal/safedial` refuses to dial private ranges, and
+`100.64.0.0/10` — the CGNAT block Tailscale hands out — is one of them. The only
+lever used to be `VULOS_PEER_ALLOW_LAN=1`, a single boolean that opens the
+**whole** private tier at once: RFC1918 (`10/8`, `172.16/12`, `192.168/16`),
+CGNAT, ULA, 6to4 and NAT64. Using your tailnet meant also re-opening your home
+LAN to the peering dialer, so a hostile or compromised peer could induce your box
+to dial your router on `192.168.1.1`.
+
+**`VULOS_PEER_ALLOW_CIDR` names the ranges instead.**
+
+```bash
+VULOS_PEER_ALLOW_CIDR=100.64.0.0/10
+```
+
+| | |
+|---|---|
+| **Accepts** | a comma-separated list of canonical CIDR blocks, v4 or v6 — `100.64.0.0/10`, `192.168.100.0/24,fd12:3456::/32`. Empty segments (a trailing comma) are skipped. |
+| **Refuses, loudly** | anything overlapping a range no grant may reach: bogons and TEST-NETs, loopback, link-local (`169.254.0.0/16`, and so `169.254.169.254`), multicast, unspecified. The error names the range you collided with. Also refused: a bare IP with no prefix (`100.64.0.1` → write `/32`), an unparseable block, and a block with host bits set (`100.64.0.5/10` reads as one host and means four million, so it is refused with both readings spelled out). One bad entry refuses the **whole** list — never a partial grant. |
+| **On malformed input** | the box **refuses to start**, naming the entry. And a policy that did not parse denies *every* address, so no path can fall back to a grant nobody wrote. |
+| **Scope** | peer dials only. `webproxy`, the webhook sender, `appnet` and the push senders still mean "public only" — this variable cannot widen them. |
+
+**How it composes with `VULOS_PEER_ALLOW_LAN`: union, and `ALLOW_LAN=1` is the
+broader one.** Neither narrows the other, so an existing deployment keeps exactly
+the reach it had — this change is strictly narrowing or nothing. Because
+`ALLOW_LAN=1` already opens the entire strict tier, setting `ALLOW_CIDR` as well
+grants nothing further, and the boot banner says so rather than letting you read
+the narrow line and believe it is in force.
+
+**The grant prints at every boot**, including when nothing is set:
+
+```
+[safedial] peer dial grant: loopback, link-local (incl. the 169.254.169.254 metadata
+           address), multicast, unspecified and bogon ranges are ALWAYS refused, by every grant
+[safedial] peer dial grant: VULOS_PEER_ALLOW_CIDR opens 100.64.0.0/10
+[safedial] peer dial grant: every OTHER private address stays refused — 10.0.0.0/8, …
+```
+
+> **A name buys no exemption.** safedial resolves the hostname and screens the
+> **IP**, so a MagicDNS name landing on `100.64/10` is blocked exactly as the
+> literal address is. Granting the range is the only thing that changes it.
+
+### Route 1 — no relay at all: address the peer by its MagicDNS name
+
+The smallest configuration that works, and worth knowing because it needs
+nothing running anywhere.
+
+```bash
+# on every box
+VULOS_PEER_ALLOW_CIDR=100.64.0.0/10
+```
+
+Store the peer's MagicDNS name (`box2.your-tailnet.ts.net`) as the contact's
+server address. `resolvePeerBaseURL` consults its reachability cache first, finds
+nothing, and falls through to `https://<contact.Server>` — the bottom rung of the
+ladder, which is exactly what you want here.
+
+Requirements, each of which the code actually enforces:
+
+- **https, with a certificate your box will verify.** The peer client verifies
+  against the system root store; there is no skip. `tailscale cert` (or
+  `tailscale serve`) issues a real publicly-trusted certificate for a `.ts.net`
+  name, which is why the name and not the `100.x` address is what you store — a
+  bare IP has no certificate that names it.
+- **The peer's main HTTP surface must answer on that name**, since
+  `/api/peering/inbound/*` rides the main handler.
+
+**Cost: it is not dynamic.** Every contact carries a hand-entered hostname. If a
+machine is renamed or re-keyed you edit contacts. That is the trade for needing
+no relay.
+
+### Route 2 — dynamic: run the discovery role on a tailnet node
+
+This is the founder's ask — *"relay on the tailnet, so Tailscale people can use
+their services"* — and it is dynamic in the way route 1 is not: boxes announce
+under their own Ed25519 key and resolve siblings by key, so nothing carries a
+hand-entered address. It is mesh-agnostic (Headscale and Nebula work the same
+way) and needs no coordinator credentials.
+
+It discovers **your own** boxes — the fabric is scoped by a shared secret, not by
+contact identity.
+
+**On a tailnet node** (any machine on the tailnet; it needs no public IP, because
+every box reaches it over the mesh):
+
+```bash
+tailscale cert relay.your-tailnet.ts.net        # real cert, no public IP needed
+
+vulos relay grant box1 box2                     # grants are MANDATORY, even
+                                                # for a rendezvous-only relay
+vulos relay serve \
+  -domain relay.your-tailnet.ts.net \
+  -addr 100.x.y.z:8443 \
+  -cert relay.your-tailnet.ts.net.crt \
+  -key  relay.your-tailnet.ts.net.key \
+  -grants-file /etc/vulos/grants.json \
+  -rendezvous
+```
+
+Notes that are not optional:
+
+- **`-domain` is required, and the discovery role is mounted on the apex host
+  only.** Boxes must reach it at exactly `https://<that domain>/rendezvous`; a
+  request arriving under any other `Host` is routed as a tunnel name instead.
+- **`-grants-file` is required even if you only want discovery.** A relay with no
+  grants refuses to start. Mint one throwaway grant if you are not using tunnels.
+- **Binding `-addr` to the tailnet address** keeps the relay off every other
+  interface. `:8443` would bind them all.
+- The relay stores and echoes announced endpoints **verbatim and never dials
+  them**, so it needs no address configuration of its own. The screening is on
+  the box.
+
+**On every box:**
+
+```bash
+VULOS_PEER_ALLOW_CIDR=100.64.0.0/10
+VULOS_RENDEZVOUS_URL=https://relay.your-tailnet.ts.net/rendezvous
+VULOS_FABRIC_SECRET=<identical on every box>
+VULOS_PUBLIC_URL=https://box1.your-tailnet.ts.net    # this box's own MagicDNS name
+```
+
+### Three things you must do by hand, and why
+
+These are real, and skipping any of them leaves you with discovery that finds
+peers it cannot talk to. Each is a consequence of code that predates tailnets, not
+a configuration nicety.
+
+**1. Publish your tailnet name yourself — `VULOS_PUBLIC_URL`.** A box's announced
+endpoints are `VULOS_PUBLIC_URL` plus a LAN address from `lan.DetectLANIP()`, and
+that detector only ever returns an `IsPrivate()` IPv4. `100.64.0.0/10` is *not*
+`IsPrivate()`, so **a box never discovers its own tailnet address**. Without
+`VULOS_PUBLIC_URL` your box announces a `192.168.x` address its tailnet siblings
+cannot reach, and discovery "works" while sync never does.
+
+**2. Make the fabric endpoint reachable over the tailnet.** `/api/fabric/changeset`
+rides the **LAN-only** mux, served by the LAN HTTPS listener, and that listener
+pins a wildcard address to the detected LAN IPv4 — so on a box that also has a
+home LAN it binds `192.168.x` and a tailnet peer cannot connect at all. Two ways
+out, both outside the box's own configuration:
+
+- `VULOS_LAN_HTTPS_ADDR=100.x.y.z:443` — an explicit host is respected verbatim.
+  This moves the listener to the tailnet **instead of** the LAN, not in addition
+  to it.
+- Or put `tailscale serve` in front, proxying the `.ts.net` name to the box's
+  existing LAN listener. This keeps the home LAN working and is the better answer
+  when you have both.
+
+**3. Give that listener a certificate for the `.ts.net` name.** The WAN client
+does real certificate verification and refuses a non-https WAN peer outright, and
+the LAN listener's own certificate (DNS-01-issued or self-signed) does not name
+`*.ts.net`. Point `VULOS_LAN_CERT` / `VULOS_LAN_KEY` at `tailscale cert` output,
+or let `tailscale serve` terminate TLS.
+
+### What this does *not* give you
+
+- **It is not the peering reachability resolve.** `GET <relay>/_vulos-direct/resolve`
+  — the endpoint `resolvePeerBaseURL` consults for the direct/relay rungs of its
+  ladder — **is not served by `vulos relay serve`**. The relay implements
+  `/_vulos-direct/probe` only; its `DirectFor` accessor is documented as "what a
+  peer-reachability resolve answers with" and has no caller. That endpoint is
+  [Pier](https://github.com/vul-os/pier)'s. Against a Vulos relay the resolve
+  404s, which is a definitive negative, and the ladder falls through to route 1's
+  stored address. Everything above is correct; it just means the relay is your
+  *fabric* directory, not your *peering* directory.
+- **It is not the Settings provider dropdown.** Choosing "WireGuard mesh" there
+  records your coordinator's address and actuates nothing — see the note under
+  [the three facets](#the-three-facets).
+
+### What was verified, and what was not
+
+Stated separately because this page is otherwise a list of claims.
+
+**Verified, by tests shown able to fail** (`backend/internal/safedial/policy_test.go`,
+each mutation-tested): the grant's accept/refuse behaviour including every
+always-denied range; that an allowlist entry naming a bogon, loopback, link-local
+or multicast range is refused and says which range it hit; that malformed input
+fails closed and loudly; that `VULOS_PEER_ALLOW_LAN=1` is unchanged; that the two
+compose as a union; that the grant does not leak into public-only callers; and —
+against a **simulated** `100.64.0.0/10` peer with a MagicDNS-shaped name — that
+the address is refused by default, accepted under the grant, and that a name
+resolving to one granted and one ungranted address is still refused.
+`backend/services/peering/grant_test.go` pins every outbound dial in the
+box↔box package to that grant.
+
+**NOT verified — no tailnet was available.** Nothing below has been executed
+against a real Tailscale or Headscale network, and this page is not evidence for
+any of it: an end-to-end box↔box resolve over a mesh; `tailscale cert` /
+`tailscale serve` in the certificate path; the `VULOS_LAN_HTTPS_ADDR` rebinding;
+`VULOS_PUBLIC_URL` announcement round-tripping through a live rendezvous relay;
+and the relay itself running on a tailnet node. The three hand-configuration
+steps above were derived by reading the code that imposes them, not by hitting
+them.
+
+---
+
 ## Security model
 
 ### The header-trust boundary
@@ -409,7 +625,7 @@ operators, and no single one is load-bearing.
 | **Direct mode** | The box has a public IP or a forwardable port | Nothing in the middle at all. Strictly best when available. |
 | **`vulos relay serve`** | Behind NAT/CGNAT and you want all three facets from one binary | You run a small VPS. |
 | **Pier relay** | You already run Pier, or want its other coordinator kinds | A separate project to track. Fully supported; same rendezvous contract. |
-| **Tailscale / Headscale / WireGuard mesh** | You want a private mesh, not a public URL | Covers facet B only. Facets A and C stay on their own paths. Ingress is actuated by the mesh daemon, outside Vulos. |
+| **Tailscale / Headscale / WireGuard mesh** | You want a private mesh, not a public URL | Ingress (facet B) is actuated by the mesh daemon, outside Vulos. Facet A stays on its own path. Facet C needs a Vulos relay running **on** the tailnet plus `VULOS_PEER_ALLOW_CIDR` — the mesh alone does not give boxes a way to find each other. See [Boxes on a tailnet](#boxes-on-a-tailnet-tailscale--headscale--nebula). |
 | **LAN only** | The box never needs to be reached from outside | Nothing to run, nothing to trust. |
 
 ---
@@ -495,6 +711,11 @@ page should not be read as evidence for them:
 - Multiple relays *under NAT*: the NAT harness runs one relay, and the
   multi-relay properties are covered on loopback.
 - The direct-endpoint ownership probe and the rendezvous discovery role.
+- **Any tailnet at all.** The `VULOS_PEER_ALLOW_CIDR` grant is covered by unit
+  tests against a simulated `100.64.0.0/10` peer; a real Tailscale or Headscale
+  network, `tailscale cert`, and an end-to-end box↔box resolve across a mesh are
+  all unexercised. See
+  [what was verified, and what was not](#what-was-verified-and-what-was-not).
 
 ---
 
