@@ -606,6 +606,22 @@ func validateRecipeSecurity(recipe *VersionRecipe) error {
 		return err
 	}
 
+	// ── PERMS-01: a permission string that is not a permission ───────────────
+	//
+	// Harmless while `permissions` decided nothing. Not any more: the Flatpak
+	// bridge (flatpak_permissions.go) narrows an installed app to the
+	// permissions it declares, and an unrecognised string matches no enforced
+	// name — so the access it was MEANT to declare is revoked instead of
+	// granted. registry.json's parked `steam` entry declares "display" and
+	// "audio", neither of which Vulos has ever had.
+	//
+	// Refused here rather than only in a test over today's registry, because
+	// the failure belongs to any recipe that reaches an install, including one
+	// written after that test was passing.
+	if err := rejectUnknownPermissions(recipe.Permissions); err != nil {
+		return err
+	}
+
 	// ARTIFACTS-01: the per-architecture download form carries exactly the same
 	// obligations as the single-URL one, and two more of its own.
 	if recipe.HasArtifacts() {
@@ -812,6 +828,24 @@ func rejectPortWithoutPort(postInstall string, port int) error {
 	return fmt.Errorf("post_install references ${PORT} but the recipe declares no `port` — sh expands "+
 		"an unset ${PORT} to the empty string and exits 0, so the install would report success for a "+
 		"config file with a hole in it (POSTINSTALL-04): %q", firstLine(postInstall))
+}
+
+// rejectUnknownPermissions refuses a recipe declaring a permission Vulos does
+// not define (PERMS-01).
+func rejectUnknownPermissions(permissions []string) error {
+	valid := make(map[string]bool, len(ValidPermissions))
+	for _, p := range ValidPermissions {
+		valid[p] = true
+	}
+	for _, p := range permissions {
+		if !valid[strings.TrimSpace(strings.ToLower(p))] {
+			return fmt.Errorf("recipe declares permission %q, which is not one of %v — under the "+
+				"Flatpak permission bridge an unrecognised string is not documentation, it matches no "+
+				"enforced name and the access it was meant to declare is REVOKED (PERMS-01)",
+				p, ValidPermissions)
+		}
+	}
+	return nil
 }
 
 // validateExtractDir screens a recipe's extract_dir before it becomes a path.
@@ -1526,7 +1560,7 @@ func InstallFromRegistry(ctx context.Context, reg *Registry, appID, version, app
 	// a single mutation cannot re-open a shell.
 	switch {
 	case recipe.FlatpakID != "":
-		if err := FlatpakInstall(ctx, recipe.FlatpakID); err != nil {
+		if err := FlatpakInstall(ctx, recipe.FlatpakID, recipe.Permissions); err != nil {
 			return fmt.Errorf("flatpak install %s: %w", recipe.FlatpakID, err)
 		}
 	case recipe.HasArtifacts():

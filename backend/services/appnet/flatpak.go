@@ -2,6 +2,7 @@ package appnet
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -58,8 +59,18 @@ func InvalidateFlatpakCache() {
 	flatpakCache.mu.Unlock()
 }
 
-// FlatpakInstall installs an app from Flathub.
-func FlatpakInstall(ctx context.Context, flatpakID string) error {
+// FlatpakInstall installs an app from Flathub and narrows its sandbox to the
+// permissions its recipe declares.
+//
+// `permissions` is the recipe's own array. It is a PARAMETER rather than
+// something this function looks up, because the caller already holds the recipe
+// and a second lookup is a second chance to narrow the wrong app.
+//
+// FAIL-CLOSED. If the narrowing cannot be applied, the app is uninstalled and
+// the error is returned. Leaving it installed would be the original defect in a
+// worse form: an app the owner was told is restricted, running with the
+// publisher's full sandbox, with a log line nobody reads as the only trace.
+func FlatpakInstall(ctx context.Context, flatpakID string, permissions []string) error {
 	log.Printf("[flatpak] installing %s", flatpakID)
 	cmd := exec.CommandContext(ctx, "flatpak", "install", "-y", "--noninteractive", "flathub", flatpakID)
 	cmd.Stdout = nil
@@ -67,6 +78,15 @@ func FlatpakInstall(ctx context.Context, flatpakID string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		log.Printf("[flatpak] install %s failed: %s", flatpakID, string(out))
 		return err
+	}
+	if err := FlatpakApplyOverrides(ctx, flatpakID, permissions); err != nil {
+		log.Printf("[flatpak] rolling back %s: its declared permissions could not be applied", flatpakID)
+		if out, uerr := exec.CommandContext(ctx, "flatpak", "uninstall", "-y", "--noninteractive", flatpakID).
+			CombinedOutput(); uerr != nil {
+			log.Printf("[flatpak] rollback of %s failed: %v: %s", flatpakID, uerr, strings.TrimSpace(string(out)))
+		}
+		InvalidateFlatpakCache()
+		return fmt.Errorf("%s was uninstalled because its declared sandbox could not be applied: %w", flatpakID, err)
 	}
 	InvalidateFlatpakCache()
 
@@ -106,6 +126,9 @@ func FlatpakUninstall(ctx context.Context, flatpakID string) error {
 		log.Printf("[flatpak] uninstall %s failed: %s", flatpakID, string(out))
 		return err
 	}
+	// Drop the narrowing with the app. A stale override would silently apply to
+	// whatever is installed under this id next.
+	FlatpakResetOverrides(ctx, flatpakID)
 	// Clean up unused runtimes
 	exec.Command("flatpak", "uninstall", "-y", "--unused").Run()
 	InvalidateFlatpakCache()
