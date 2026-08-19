@@ -92,6 +92,14 @@ func validateICEServers(servers []ICEServer) error {
 		if containsControlChars(s.Username) {
 			return fmt.Errorf("ICE server #%d username contains control characters", i+1)
 		}
+		// "Set this credential" and "delete the stored credential" in one
+		// request is not a preference to resolve silently — either reading
+		// loses data the caller did not mean to lose. Reject it and make the
+		// caller say which they meant. (See ICEServer.ClearCredential and
+		// mergeStoredCredentials for the three-state write contract.)
+		if s.ClearCredential && s.Credential != "" {
+			return fmt.Errorf("ICE server #%d sets both a credential and clear_credential — send one or the other", i+1)
+		}
 	}
 	return nil
 }

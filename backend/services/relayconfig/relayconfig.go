@@ -82,6 +82,14 @@
 //     existing write-only secret handling. Credentials generated for the
 //     built-in provider
 //     are short-lived HMAC (<=1h, see network.TURNConfig.GenerateCredentials).
+//   - Because the credential is write-only, a client re-saving an existing
+//     TURN server has nothing to put in the field, so Set treats an ABSENT
+//     credential as "leave it alone" and requires an explicit
+//     ICEServer.ClearCredential to remove one — see mergeStoredCredentials.
+//     The alternative, handing the stored secret back so the client can
+//     return it, would put a long-lived shared secret in every browser that
+//     opens Settings for no benefit to the person reading the page. Keeping
+//     the secret on the box is the reason the merge exists at all.
 //   - Changing the provider is a reachability + security-relevant action
 //     (see backend/cmd/server/routes_relayconfig.go): gated owner/admin +
 //     step-up at the HTTP layer, not in this package.
@@ -93,6 +101,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,6 +180,21 @@ type ICEServer struct {
 	// time-limited HMAC credential sets this; a static BYO TURN credential
 	// leaves it 0/omitted).
 	TTL int `json:"ttl,omitempty"`
+	// ClearCredential is WRITE-SIDE ONLY: the explicit "remove the stored
+	// credential for this server" signal for POST /api/relayconfig. It is
+	// never persisted and never emitted (see mergeStoredCredentials, which
+	// strips it, and buildPublicView, which has no such field) — a caller
+	// only ever sends it.
+	//
+	// It exists because Get() deliberately never returns a credential, so a
+	// client re-saving an existing server has nothing to put in the field
+	// and MUST be able to mean "leave it alone" — which makes an absent
+	// credential "unchanged", not "none". That would leave no way to remove
+	// a credential at all, so removal gets its own unambiguous flag rather
+	// than overloading emptiness. See mergeStoredCredentials for the full
+	// three-state contract; Validate rejects the contradictory combination
+	// (a credential AND a request to clear it).
+	ClearCredential bool `json:"clear_credential,omitempty"`
 }
 
 // TURNProviderConfig is the BYO STUN/TURN config (ProviderTURN, facet A).
@@ -329,6 +354,102 @@ func CurrentProvider() Provider {
 	return currentConfig().Provider
 }
 
+// iceIdentity is the key an ICE server is matched by when carrying a stored
+// credential forward: its URL set plus its username. Two entries with the
+// same identity address the same TURN server with the same account, so a
+// credential stored under one is the credential for the other.
+//
+// Deliberately NOT the list index. Matching by position is the obvious
+// implementation and it is a credential-disclosure bug: delete row 1 in
+// Settings and every later row shifts up, so the secret stored for
+// turn:a.example.org would be carried onto — and, on the next ICE handout,
+// sent to — turn:b.example.org. A secret must only ever follow the host and
+// account it was issued for.
+//
+// The URL set is order-insensitive (a server's udp/tcp rows are one server
+// however they are ordered) and whitespace-trimmed. %q quoting escapes any
+// delimiter or control character inside a URL, so no crafted input can forge
+// a collision with another entry's identity.
+func iceIdentity(s ICEServer) string {
+	urls := make([]string, 0, len(s.URLs))
+	for _, u := range s.URLs {
+		urls = append(urls, strings.TrimSpace(u))
+	}
+	sort.Strings(urls)
+	return fmt.Sprintf("%q|%q", urls, strings.TrimSpace(s.Username))
+}
+
+// mergeStoredCredentials resolves the three-state credential contract for a
+// write, against the currently-stored config, and returns the config that
+// should actually be validated and persisted.
+//
+// Per incoming ICE server:
+//
+//	credential non-empty                 -> use it (a replacement)
+//	credential empty, clear_credential    -> clear it (an explicit removal)
+//	credential empty, no clear flag       -> KEEP whatever is stored for the
+//	                                         server with the same identity
+//
+// The third case is the whole point. Get() never returns a credential (it is
+// write-only, see the package doc's Security section), so Settings loads an
+// existing TURN server with an EMPTY credential box. Before this merge, saving
+// that form sent "no credential" and Set — which takes a whole Config and
+// overwrites — destroyed the stored secret while the UI reported success. The
+// damage then surfaced far away and much later, as calls that fail to connect
+// for whoever needed the TURN relay path.
+//
+// "Absent means keep" is the safe default of the two: the destructive
+// direction now requires the caller to say so. Removal stays possible and is
+// a first-class, explicitly-signalled operation, not the accident of an
+// untouched form field.
+//
+// A credential is only carried forward when EXACTLY ONE stored server shares
+// the incoming identity. Zero matches (a brand-new server, or one whose URL or
+// username was edited) carry nothing — an edited address is a different server
+// and must not inherit another host's secret. Duplicate stored identities are
+// ambiguous and likewise carry nothing rather than guessing.
+//
+// ClearCredential is stripped from every entry here, so it can never reach
+// the persisted file or any resolver output — it is a request verb, not state.
+func mergeStoredCredentials(newCfg, stored Config) Config {
+	out := newCfg
+	if len(newCfg.TURN.ICEServers) == 0 {
+		out.TURN.ICEServers = nil
+		return out
+	}
+
+	// Index the stored credentials by identity, recording collisions so an
+	// ambiguous match can decline instead of picking one arbitrarily.
+	type storedCred struct {
+		credential string
+		count      int
+	}
+	byIdentity := make(map[string]*storedCred, len(stored.TURN.ICEServers))
+	for _, s := range stored.TURN.ICEServers {
+		id := iceIdentity(s)
+		if prev, ok := byIdentity[id]; ok {
+			prev.count++
+			continue
+		}
+		byIdentity[id] = &storedCred{credential: s.Credential, count: 1}
+	}
+
+	servers := make([]ICEServer, len(newCfg.TURN.ICEServers))
+	copy(servers, newCfg.TURN.ICEServers)
+	for i := range servers {
+		clearing := servers[i].ClearCredential
+		servers[i].ClearCredential = false
+		if servers[i].Credential != "" || clearing {
+			continue
+		}
+		if prev, ok := byIdentity[iceIdentity(servers[i])]; ok && prev.count == 1 {
+			servers[i].Credential = prev.credential
+		}
+	}
+	out.TURN.ICEServers = servers
+	return out
+}
+
 // Set validates newCfg and, only if valid (and, for facet-B-risk providers,
 // only if a best-effort health probe succeeds — see probeCandidate),
 // persists it and swaps it in as the effective config. On any validation,
@@ -340,7 +461,16 @@ func CurrentProvider() Provider {
 // Pass force=true to skip the health probe (e.g. a TURN/WireGuard endpoint
 // that is only reachable from clients, not from the box itself, or one whose
 // DNS has not propagated yet) — structural validation still always applies.
+// A TURN credential the caller left absent is KEPT rather than destroyed —
+// see mergeStoredCredentials for the three-state contract and why absent has
+// to mean "unchanged" when Get() never hands the secret back. Clearing a
+// credential stays possible via ICEServer.ClearCredential.
 func Set(newCfg Config, force bool) (PublicView, error) {
+	// Validate the RAW request first: it still carries the ClearCredential
+	// flags (the merge below strips them), so this is the only place the
+	// contradictory "here is a credential, and also delete the credential"
+	// combination can be caught. Doing it before the probe also means a
+	// malformed request never causes an outbound dial.
 	if err := Validate(newCfg); err != nil {
 		return PublicView{}, err
 	}
@@ -354,7 +484,14 @@ func Set(newCfg Config, force bool) (PublicView, error) {
 	if persistPath == "" {
 		return PublicView{}, errors.New("relayconfig: not initialised")
 	}
-	toPersist := newCfg
+	// Merge under the lock, against the exact state being replaced: the
+	// validate/probe phase above runs unlocked (the probe dials the network),
+	// so `state` can have moved since. Then re-validate — nothing is ever
+	// persisted unvalidated, whatever the merge produced.
+	toPersist := mergeStoredCredentials(newCfg, state)
+	if err := Validate(toPersist); err != nil {
+		return PublicView{}, err
+	}
 	toPersist.UpdatedAt = nowFn().UTC().Format(time.RFC3339)
 	blob, err := json.MarshalIndent(toPersist, "", "  ")
 	if err != nil {

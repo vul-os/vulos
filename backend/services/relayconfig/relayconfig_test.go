@@ -933,3 +933,291 @@ func TestLibp2pProvider_IngressDisclosesReportOnly(t *testing.T) {
 			"implement dial-through-Circuit-Relay-v2 peer resolution", url)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The credential round trip: Get() never returns a credential, so Settings
+// re-renders a saved TURN server with an EMPTY credential box. Saving that
+// form used to send "no credential" into Set — which takes a whole Config and
+// overwrites — so re-saving an unrelated field DESTROYED the stored TURN
+// secret, and the box answered "Relay configuration saved." TURN is the
+// fallback path when a direct connection fails, so the damage surfaced later
+// and elsewhere, as calls that will not connect for some people.
+//
+// Both directions are pinned below. A test for preservation alone would let
+// "always keep" ship, which is the same data bug pointing the other way: the
+// owner could never remove a credential.
+// ---------------------------------------------------------------------------
+
+// storedCredential reads the real (unredacted) persisted credential — the
+// value Get() deliberately will not show. Tests assert on the SECRET itself,
+// not just on HasCredential: a mutation that swapped one non-empty credential
+// for another would satisfy the flag and still have destroyed the config.
+func storedCredential(t *testing.T, i int) string {
+	t.Helper()
+	cfg := currentConfig()
+	if i >= len(cfg.TURN.ICEServers) {
+		t.Fatalf("no stored ICE server #%d (have %d)", i, len(cfg.TURN.ICEServers))
+	}
+	return cfg.TURN.ICEServers[i].Credential
+}
+
+// turnCfgWith builds a one-server TURN config for the round-trip tests.
+func turnCfgWith(urls []string, username, credential string, clear bool) Config {
+	return Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
+		{URLs: urls, Username: username, Credential: credential, ClearCredential: clear},
+	}}}
+}
+
+var turnURLs = []string{"turn:relay.example.org:3478?transport=udp"}
+
+// setUpStoredCredential establishes a saved TURN server with a credential and
+// returns the temp dir it persists to.
+func setUpStoredCredential(t *testing.T) string {
+	t.Helper()
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	if _, err := Set(turnCfgWith(turnURLs, "alice", "s3cr3t", false), true); err != nil {
+		t.Fatalf("initial Set: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("setup: stored credential = %q, want s3cr3t", got)
+	}
+	return dir
+}
+
+// DIRECTION 1 — an omitted credential must PRESERVE the stored one. This is
+// the exact byte-for-byte shape Settings sends when the owner opens the panel
+// and saves without touching the (necessarily empty) credential box.
+func TestSet_OmittedCredential_PreservesStoredCredential(t *testing.T) {
+	dir := setUpStoredCredential(t)
+
+	// The re-save: same server, no credential, no clear flag.
+	view, err := Set(turnCfgWith(turnURLs, "alice", "", false), true)
+	if err != nil {
+		t.Fatalf("re-Set: %v", err)
+	}
+	if !view.TURN.ICEServers[0].HasCredential {
+		t.Error("HasCredential = false after a re-save that omitted the credential — " +
+			"the box reported success while destroying the stored TURN secret")
+	}
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("stored credential = %q after a re-save that omitted it, want s3cr3t preserved", got)
+	}
+
+	// And it must be preserved ON DISK, not just in memory — the in-memory
+	// state is replaced wholesale on the next boot.
+	mu.Lock()
+	state = DefaultConfig()
+	mu.Unlock()
+	if err := Init(dir); err != nil {
+		t.Fatalf("re-Init: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("after reload, stored credential = %q, want s3cr3t", got)
+	}
+}
+
+// DIRECTION 2 — an EXPLICIT clear must actually remove the credential. Without
+// this, "always keep" would pass direction 1 forever and the owner would have
+// no way to remove a credential at all.
+func TestSet_ClearCredential_RemovesStoredCredential(t *testing.T) {
+	dir := setUpStoredCredential(t)
+
+	view, err := Set(turnCfgWith(turnURLs, "alice", "", true), true)
+	if err != nil {
+		t.Fatalf("clearing Set: %v", err)
+	}
+	if view.TURN.ICEServers[0].HasCredential {
+		t.Error("HasCredential = true after an explicit clear_credential — the removal did not happen")
+	}
+	if got := storedCredential(t, 0); got != "" {
+		t.Fatalf("stored credential = %q after an explicit clear, want it removed", got)
+	}
+
+	// Removed on disk too, and the clear flag itself must never be persisted:
+	// it is a request verb, not state. A persisted clear_credential:true would
+	// reload as a config that erases the next credential saved into it.
+	blob, err := os.ReadFile(filepath.Join(dir, "relayconfig.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), "s3cr3t") {
+		t.Errorf("cleared credential is still in the persisted file: %s", blob)
+	}
+	if strings.Contains(string(blob), "clear_credential") {
+		t.Errorf("clear_credential was persisted — it is a write-side verb, not state: %s", blob)
+	}
+
+	mu.Lock()
+	state = DefaultConfig()
+	mu.Unlock()
+	if err := Init(dir); err != nil {
+		t.Fatalf("re-Init: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "" {
+		t.Fatalf("after reload, stored credential = %q, want it stay removed", got)
+	}
+}
+
+// A supplied credential still replaces the stored one — the merge must not
+// have turned "keep" into "always keep".
+func TestSet_SuppliedCredential_ReplacesStoredCredential(t *testing.T) {
+	setUpStoredCredential(t)
+	if _, err := Set(turnCfgWith(turnURLs, "alice", "rotated", false), true); err != nil {
+		t.Fatalf("rotating Set: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "rotated" {
+		t.Fatalf("stored credential = %q, want the newly supplied 'rotated'", got)
+	}
+}
+
+// A credential belongs to the host and account it was issued for. Editing the
+// URL (or the username) makes it a DIFFERENT server, and the secret must not
+// follow — carrying it would hand one operator's credential to another host on
+// the next ICE handout.
+func TestSet_CredentialNeverCarriesToADifferentServer(t *testing.T) {
+	setUpStoredCredential(t)
+
+	other := []string{"turn:someone-elses-relay.example.net:3478?transport=udp"}
+	if _, err := Set(turnCfgWith(other, "alice", "", false), true); err != nil {
+		t.Fatalf("Set with a different host: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "" {
+		t.Fatalf("credential %q was carried onto a DIFFERENT TURN host — a stored secret must "+
+			"never follow an edited address", got)
+	}
+
+	// Same again for the username half of the identity.
+	setUpStoredCredential(t)
+	if _, err := Set(turnCfgWith(turnURLs, "bob", "", false), true); err != nil {
+		t.Fatalf("Set with a different username: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "" {
+		t.Fatalf("credential %q was carried onto a different ACCOUNT on the same host", got)
+	}
+}
+
+// Reordering a server's own URLs is not a different server: udp/tcp rows for
+// one host are one entry however they are ordered, so the credential stays.
+func TestSet_URLOrderDoesNotBreakCredentialPreservation(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	udp := "turn:relay.example.org:3478?transport=udp"
+	tcp := "turn:relay.example.org:3478?transport=tcp"
+	if _, err := Set(turnCfgWith([]string{udp, tcp}, "alice", "s3cr3t", false), true); err != nil {
+		t.Fatalf("initial Set: %v", err)
+	}
+	if _, err := Set(turnCfgWith([]string{tcp, udp}, "alice", "", false), true); err != nil {
+		t.Fatalf("re-Set with reordered URLs: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("stored credential = %q after reordering the same server's URLs, want it preserved", got)
+	}
+}
+
+// Position is NOT identity. Removing the first of two servers must not slide
+// the second one's stored credential onto it: index-based matching is the
+// obvious implementation of this merge and it is a credential-disclosure bug.
+func TestSet_RemovingAServerDoesNotShiftCredentialsOntoAnother(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	first := []string{"turn:first.example.org:3478"}
+	second := []string{"turn:second.example.org:3478"}
+	seed := Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
+		{URLs: first, Username: "u1", Credential: "first-secret"},
+		{URLs: second, Username: "u2", Credential: "second-secret"},
+	}}}
+	if _, err := Set(seed, true); err != nil {
+		t.Fatalf("seed Set: %v", err)
+	}
+	// Delete row 1 in Settings and save: one row left, at index 0, with an
+	// empty credential box.
+	if _, err := Set(turnCfgWith(second, "u2", "", false), true); err != nil {
+		t.Fatalf("Set after removing the first server: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "second-secret" {
+		t.Fatalf("stored credential = %q, want second-secret — the surviving server must keep "+
+			"ITS OWN credential, matched by identity and not by list position", got)
+	}
+}
+
+// Two stored entries with the same identity are ambiguous. Declining to carry
+// anything loses a credential the owner can re-enter; guessing could hand back
+// the wrong secret, which they cannot detect.
+func TestSet_AmbiguousDuplicateStoredServers_CarryNothing(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	dup := Config{Provider: ProviderTURN, TURN: TURNProviderConfig{ICEServers: []ICEServer{
+		{URLs: turnURLs, Username: "alice", Credential: "one"},
+		{URLs: turnURLs, Username: "alice", Credential: "two"},
+	}}}
+	if _, err := Set(dup, true); err != nil {
+		t.Fatalf("seed Set: %v", err)
+	}
+	if _, err := Set(turnCfgWith(turnURLs, "alice", "", false), true); err != nil {
+		t.Fatalf("re-Set: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "" {
+		t.Fatalf("stored credential = %q, want empty — an ambiguous match must not guess", got)
+	}
+}
+
+// Both at once is a contradiction, and resolving it silently loses data
+// whichever way it is read.
+func TestSet_CredentialAndClearTogether_Rejected(t *testing.T) {
+	setUpStoredCredential(t)
+	_, err := Set(turnCfgWith(turnURLs, "alice", "new-one", true), true)
+	if err == nil {
+		t.Fatal("Set accepted both a credential and clear_credential")
+	}
+	if !strings.Contains(err.Error(), "clear_credential") {
+		t.Errorf("error does not name the offending field: %v", err)
+	}
+	// Rejected means untouched, like every other invalid Set.
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("stored credential = %q after a REJECTED Set, want it untouched", got)
+	}
+}
+
+// Reset means reset. The merge must not resurrect a credential into a config
+// that deliberately carries no TURN servers at all.
+func TestResetToDefault_DropsStoredCredential(t *testing.T) {
+	setUpStoredCredential(t)
+	if _, err := ResetToDefault(); err != nil {
+		t.Fatalf("ResetToDefault: %v", err)
+	}
+	cfg := currentConfig()
+	if len(cfg.TURN.ICEServers) != 0 {
+		t.Fatalf("reset left %d ICE servers behind: %+v", len(cfg.TURN.ICEServers), cfg.TURN.ICEServers)
+	}
+}
+
+// The TURN section (credential included) is preserved across a provider
+// switch, exactly as this package's doc promises — a switch to libp2p and back
+// must not be a way to lose the secret through the side door.
+func TestSet_CredentialSurvivesAProviderSwitch(t *testing.T) {
+	setUpStoredCredential(t)
+	withLibp2p := Config{
+		Provider: ProviderLibp2p,
+		TURN:     TURNProviderConfig{ICEServers: []ICEServer{{URLs: turnURLs, Username: "alice"}}},
+		Libp2p:   Libp2pProviderConfig{RelayPeers: []string{"/dns4/relay.example.org/tcp/4001/p2p/12D3KooWtest"}},
+	}
+	if _, err := Set(withLibp2p, true); err != nil {
+		t.Fatalf("Set libp2p: %v", err)
+	}
+	if got := storedCredential(t, 0); got != "s3cr3t" {
+		t.Fatalf("stored credential = %q after switching provider to libp2p, want it preserved", got)
+	}
+}
