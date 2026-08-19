@@ -21,6 +21,325 @@ Versioning: [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-19
+
+The dominant work of this cycle was discovering that 0.2.0 shipped a box whose
+first boot, whose bundled apps, and whose name on the LAN did not work — and
+that every gate in CI was green while it did. Most of what follows is that being
+found and closed, together with the gates that should have caught it.
+
+### Security
+
+- **A PIN you chose during setup was never actually set, and a box with no PIN
+  unlocks for anyone.** The wizard's `POST /api/auth/pin/set` ran before any
+  session existed, 401'd, and the failure was swallowed by a `.catch(() => {})`.
+  The far end is what made it serious: `ValidatePIN` returns true when no PIN is
+  stored, and the lock screen unlocks on `valid` — so a user who chose a PIN,
+  confirmed it, and saw no error had a lock screen that opened on an empty field
+  and the Enter key.
+- **A stranger could mark an unclaimed box "set up".** Completion was a side
+  effect of `POST /api/exec`. It is now `POST /api/setup/complete`: owner-only,
+  audit-logged, never public. On a box with no accounts nobody can mark setup
+  complete.
+- **Two boxes on one LAN both answered to `vulos.local`, and TLS succeeded
+  against the wrong one with no warning.** Both certificates carried the same
+  name, so nothing in the handshake objected; ten lookups split roughly evenly
+  between two boxes. The advertised name and the certificate's SAN list were
+  three separate hard-coded literals and are now one derivation. The default box
+  name is per-instance (`vulos-<6 ULID chars>`), and `vulos.local` is claimed
+  last, after a conflict probe.
+- **The certificate carried no IP addresses at all**, so reaching the box at
+  `https://192.168.1.50` — the fallback for every client that cannot resolve
+  `.local` — raised a name mismatch on top of the unknown-issuer warning.
+- **A revoked instance kept full sync access, and eviction was impossible.** The
+  CRDT authorisation door was `AnyOf(secret, signature)`, which returns on the
+  first passing arm, so the roster check was never reached. Separately, every
+  cloud-sync poll silently un-revoked every evicted box, because `Upsert` wrote
+  `revoked = excluded.revoked` from a record that has no such field. A live
+  un-revoke API with no caller was deleted, as was a path that made identity
+  rotation a one-call self-pardon.
+- **The issuer was shipping the box a private key.** Installing an
+  issuer-generated key moves the public-key identity that native clients pin at
+  pairing, so browsers would get a padlock while every paired client silently
+  stopped connecting. A supplied key that differs from the box's own is now
+  refused; a matching one is accepted; the "no box key yet" case is deferred
+  rather than adopted.
+- **Path traversal was screened only after the download had already happened**,
+  so the box refused an attacker's path having already performed the transfer
+  for them. A separate traversal guard could never fire at all: a textual
+  `'../'` pre-filter ran first and made the real containment check unreachable.
+- **The app-install shell is gone.** `sh -c recipe.Install` was the fallthrough
+  for every recipe, which put `apt-get install`, a `git clone`, and a fabricated
+  `code-server` checksum piped into `|| true` on the same code path. Two vehicles
+  remain: a Flatpak id, or a per-architecture artefact map with a sha256 each.
+- **`POST /api/store/install` verified its download only when a checksum was
+  present**, so omitting the field skipped verification rather than failing it.
+  It is now refused.
+- **One peer's messages could be read under another peer's name.** On a thread
+  switch the header and avatar changed at once while the list kept rendering the
+  previous peer's message content. The composer was bound to the current
+  conversation and was not keyed, so draft text and staged attachments survived
+  the switch — one Enter away from being sent to the wrong person.
+- **The "anyone on the internet can view this app" warning asserted the previous
+  app's verdict**, permanently, whenever `/api/apps/visibility` was unreachable —
+  and its "Make private" button acted on whichever app the user had switched to.
+  The same defect withheld the warning from an app that really was public.
+- **The LAN certificate authority's key may never live on the box**, enforced by
+  path prefix rather than by convention: whoever takes the box would otherwise
+  take the authority to impersonate every name in it. An unconstrained root is
+  refused on write and again on read, because a root with no name constraints
+  vouches for every site on the internet on every device it is installed on, and
+  no operating system's install dialog shows the difference.
+- **Widget permissions are enforced rather than merely declared.** A denied
+  permission yields `null` and the box does not do the work. A stored grant is
+  intersected with what the manifest currently requests, so a widget cannot shed
+  a permission to get installed and regain it in an update. Third-party widgets
+  run in an opaque-origin sandbox that is never granted `allow-same-origin`.
+
+### Added
+
+- **A browser padlock on your own box, offline.** No public certificate
+  authority can sign `vulos.local`, so the root has to be yours. A new
+  `vulos-lanca` operator tool builds a name-constrained root — limited to
+  `.local`, `lan`, `home.arpa` and private address space, marked critical — and
+  issues certificates from a CSR, so the authority never sees the box's key
+  material. The box serves the root at `GET /api/lan/rootcert`, and a new
+  **Settings → Network → Browser Trust** panel walks through installing it.
+- **A widget rail that is a host rather than a hardcoded list.** The three
+  desktop widgets used to be components declared inside the shell, so "add a
+  widget" meant "edit the shell". There is now a user-owned layout, a registry,
+  one scheduler shared by every widget, and a public API. Ships clock, agenda,
+  box health, notifications, notes, world clock and stocks, plus a sandboxed
+  third-party example so the untrusted lane runs on every boot.
+- **A customizable dock and desktop layout**, expressed as data rather than
+  code, with four presets and two independently persisted dock profiles for
+  desktop and phone. There are three independent routes back to the stock
+  layout, one of them bound at module scope, because a bad layout is exactly
+  what could make an in-app revert control unreachable.
+- **Quit and Force Quit in Activity Monitor**, with row selection and an Apps
+  tab. Signal escalation is reported honestly: a process that ignores the polite
+  request and is then killed says so, rather than reporting a clean quit.
+- **Phone is a box feature.** It now models a line — the box's own modem first,
+  then a paired device — and merges with Contacts into one app with people on
+  the front page. The box logs its own call history, since ModemManager keeps
+  none, and a call that never connected is recorded as missed and raises a
+  notification.
+- **Your settings follow you to your other box.** Wallpaper, theme, accent,
+  night shift, dock pins, desktop layout, the widget rail and density move from
+  browser storage onto the replicated profile. The framing correction is the
+  point: this state was never per-box — opening the same box in a second browser
+  already lost all of it.
+- **A recovery panel on the login screen.** The master recovery phrase had been a
+  credential with no way to use it: the endpoint existed, was rate-limited, and
+  had never been called from the interface.
+
+### Fixed
+
+- **First boot runs the setup wizard.** Every image built since March booted
+  claiming setup was already finished, because three separate build paths — the
+  image, `--deploy`, and the Dockerfile — each created the completion marker the
+  status endpoint looks for. A fourth cause sat in the frontend and a fifth in a
+  fail-open probe that read any slow or failed status check as "already set up".
+  Confirmed against a pristine, never-booted 0.2.0 image that answered
+  `{"setup_complete":true}`.
+- **The wizard's last four steps do something.** Identity, storage, SSH key and
+  recovery kit all ran before any session existed and 401'd, and every call site
+  swallowed the result — so users ticked "I have saved this private key" for a
+  key the box never received. The recovery kit contained no secret at all, and
+  asked you to attest that you had stored it one step before showing you the
+  phrase. The generated SSH key was emitted in a format `ssh -i` will not load,
+  with a fingerprint computed over the wrong bytes.
+- **Your account survives a reboot.** On a netboot-installed box the owner
+  account, session-signing key, peering identity, device key and credential
+  vaults all lived in an overlay whose writable layer was a tmpfs in RAM, and
+  were destroyed on every restart — while every unit test passed. Verified end to
+  end on a real ARM64 boot: account created, machine rebooted, account still
+  there. The A/B slot images and boot counter were in RAM the same way, so the
+  box looked healthy and rolled back nothing.
+- **Your box has its own name on the network.** The kernel hostname was
+  literally `"vulos\n"` on every bare-metal boot, newline included, and that
+  value flowed into the pairing payload, cluster metadata and backups. Naming
+  the box reported success and changed nothing, while a hardcoded write put
+  `vulos` back on every boot. Separately, `vulos.local` resolved to one
+  application's virtual interface, because the DHCP client was soliciting leases
+  inside every app's network namespace.
+- **Bundled apps launch.** 0.2.0 answered "app not running" for every one of
+  them, for five independent reasons: the apps directory shipped empty after the
+  web tier moved and the copy loop silently matched nothing; the lookup that
+  starts an app never looked where bundled apps ship, which is why the box could
+  list them all and start none; nothing ever called launch; no app could bind the
+  port its own manifest declares; and a static web app could never pass
+  validation. Both 0.1.0 and 0.2.0 shipped zero apps.
+- **The App Hub tells you the truth about what your box can run.** Architecture
+  was carried on every entry and compared against nothing, so every app looked
+  installable everywhere; the browser's own check was a raw string match across
+  three incompatible naming schemes. That logic is deleted — a browser cannot see
+  which emulator is on the box's PATH and was deciding anyway. Incompatible apps
+  are now shown, labelled "Needs amd64", and sorted below, because hiding them
+  produces "why can't I find Steam?" and gives the user no way to tell "never
+  heard of it" from "your box can't run it". Entries awaiting a signature say so
+  first, ahead of architecture.
+- **Windows open on screen.** Every window opened 12–172px off the right of a
+  768px display, taking the resize grip with it, so at that width not one of six
+  windows could be resized. A window saved at 1920 and restored at 768 landed
+  1032px off screen, unreachable by any gesture.
+- **A dead service is no longer reported as a fact about your hardware.** The
+  bluetooth service swallowed the error from a dead daemon and returned a
+  powered-off radio with no devices — byte-identical to a healthy adapter that is
+  switched off. The Settings panel already knew how to show "I don't know"; that
+  state was simply unreachable from the real backend. The same shape was fixed in
+  roughly a dozen more places: a folder you may not read rendered as "Empty
+  directory"; an unreachable box and a brand-new account both rendered "No
+  conversations yet"; a refused terminal handshake announced the end of a session
+  that never began; a dead Wi-Fi backend advised you to move closer to your
+  router; the default storage configuration reported itself as hosted
+  third-party storage. The root cause is named once: an error body survives a
+  shape check and yields a well-formed record of undefineds that is not null, so
+  every presence gate opens on failure.
+- **Settings writes that failed said "Saved".** Remote Access, Account, Wi-Fi and
+  six Bluetooth writes all reported success for writes the box refused — Wi-Fi
+  posted the network password, closed the dialog and cleared the field whatever
+  came back. Saving an AI API key discarded the result and destroyed the user's
+  only copy on a failed write.
+- **On a phone you could not open a folder.** The file manager's only way in was
+  a double-click and its only route to a context menu was right-click; no
+  long-press handler existed. Rows were 23px tall, so every tap was a coin flip
+  between two files. The app switcher doubled the memory of everything running by
+  rendering a second live instance of every app, at the moment the user opened it
+  because memory was tight. A downward drag near the top of any surface reloaded
+  the entire OS.
+- **Text you could not read.** Status colours could not serve as both a fill and
+  a text colour and were split, across 138 sites in 25 files. Force quit measured
+  1.18:1. A missed call rendered the contact's name in red at 3.97:1; direction is
+  now carried by a shape and by words, never by colour alone.
+- **The built-in browser was never in the image.** It was installed by the
+  Dockerfile and not by the image build, which is why it worked in every
+  container. Three more binaries were missing the same way, including the only
+  input injector on the streaming path — so streamed windows rendered and could
+  not be typed into — and the tool whose absence meant every streamed window was
+  captured at 4K regardless of the size requested.
+- **Two of the four errors at the top of every boot were ours, and were dead
+  code** that had never once worked.
+
+### Changed
+
+- **Every new image, deployment and container now runs the full setup wizard on
+  first boot**, because no build path creates the completion marker any more.
+- **The default hostname is per-instance** rather than the shared `vulos`.
+- **`InstallFromRegistry` refuses an install for the wrong architecture**, where
+  it previously attempted it. Apps that were listed and attemptable on ARM64 are
+  now refused by the box with a stated reason.
+- **The setup mode values on the wire were renamed** from `setup` / `normal` to
+  `instance_absent` / `syncing` / `instance_ready`, deliberately leaving no word
+  that can be read as a claim about the owner.
+- **Recipe format**: shell `install` strings no longer execute; a single
+  `download_url` with a top-level checksum is refused in favour of a per-architecture
+  artefact map; architecture strings are forbidden in command and path fields.
+- **The catalogue is 74 entries, up from 56.** `kerf` was deleted — its install
+  cloned a repository that does not resolve, fell through to a placeholder, and
+  reported success while the user got a stub. Proprietary applications were
+  removed by founder decision. The built-in browser is named Chromium, which is
+  what it is.
+- **Tablets in portrait now use the touch shell.** An iPad-class device
+  previously ran the touch shell while holding the desktop dock, and touch
+  tablets got 12×12px window controls with invisible glyphs.
+- **The image is roughly 411 MB larger on disk** (121 MB compressed) from the 30
+  packages that make the built-in browser and app streaming work on bare metal.
+
+### Known limitations
+
+Everything in this section is a statement about what this release does *not* do.
+
+- **The App Hub ships 74 entries, of which 55 carry no publisher signature and
+  cannot be installed on any box.** This is the intended staged state, not a
+  defect: the signing key is deliberately not on any build machine, and the
+  release cannot be cut until the offline ceremony is performed. Only 19 entries
+  clear the shipped trust anchor. Two Go tests are deliberately red and named so
+  that nobody silences them.
+- **The live USB image cannot keep an owner account, by design.** It boots a
+  read-only squashfs with a RAM-backed overlay, so the account, device keys and
+  recovery material are gone at power-off. Persistence requires an install:
+  `vulos-install --disk` writes a writable root, and a netboot install binds
+  `/root/.vulos` and `/var/lib/vulos` from disk. A disk installed before this
+  release's installer step stays volatile until reinstalled, and says so on the
+  console rather than pretending otherwise.
+- **No app install survives a reboot on any of the three overlay boot paths** —
+  live USB, re-flashed ESP, and netboot-installed. This is true of apt, Flatpak
+  and plain downloads alike, and the app does not linger as a broken entry: it
+  disappears from the App Hub entirely. Keeping the manifest alone was rejected
+  on purpose, because a surviving manifest above a dead payload is an app that
+  lists, cannot launch, and is never reinstalled — worse than losing it.
+- **The password vault does not sync, and `<root>/auth` is in no backup path at
+  all.** Save a password on one box and it is not on the other; lose that box and
+  every stored password is gone permanently. The durable backup covers a single
+  database file and is off unless explicitly enabled.
+- **Joining a cluster installs nothing.** The new box downloads the cluster
+  snapshot, proves that it decrypts, and discards it — the restore path is not on
+  the boot path. The wizard reaches 100% "complete" against an empty machine,
+  because the progress bar is measuring a readability check.
+- **Cellular calls carry no audio through Vulos.** Dial, answer, hang up and call
+  history work through ModemManager, and the modem hardware owns the audio path;
+  Vulos carries no codec or audio routing for it. The call log is in memory and
+  bounded at 200 entries, so Recents shows calls since the last boot and nothing
+  older. None of it has been run against a real modem — this machine has none, so
+  the tests prove the parsing matches ModemManager's documented contract, not
+  that a real modem emits it.
+- **Box-to-box voice and video calling is not usable.** The signalling and mixing
+  exist on the server, but no client surface calls them, and answering an
+  incoming peer call declines it on the wire and says calling is not wired up.
+- **There is no full-disk encryption on any boot path.** Integrity of the OS
+  image is protected; confidentiality of your data is not. Physical possession of
+  the drive yields the session-signing key, the peering identity, the device key,
+  the credential vault, TOTP secrets and the LAN TLS private key — all protected
+  only by directory permissions. Closing this needs a TPM-sealed encrypted data
+  partition and was not attempted.
+- **A box with no accounts can be claimed by whoever reaches it first.**
+  Unauthenticated registration is open exactly while no user exists, which is what
+  makes first-boot setup possible; it closes as soon as an account is created.
+- **Revocation does not propagate to every sync path.** One changeset endpoint is
+  still gated on a shared bearer secret with no roster check, and a check keyed on
+  the claimed origin was deliberately not added there, because the transport is
+  unattributable and such a check would report success while stopping nobody.
+  There is also no group re-key: an evicted instance keeps every byte it already
+  read, and eviction prevents future access only.
+- **That an install on one box results in the app running on another has not been
+  demonstrated on real hardware.** The replication is wired and tested; a two-box
+  run over a real fabric connection is the remaining evidence gap. The desired set
+  also starts empty with no backfill, so an upgraded box does nothing until
+  something is installed or removed.
+- **The browser-trust root has not been installed on a single phone.** All six
+  per-platform instruction sets are written from published documentation and
+  marked as such. Certificate name-constraint enforcement was measured against
+  four verifiers; Chrome, Firefox, Android and iOS are measured by none of them.
+- **The Android APK is parse-checked only.** It has never been compiled or run on
+  a device or emulator — there is no Android SDK in this environment — and the two
+  things most likely to look correct in review and fail on hardware are written
+  down.
+- **Emulation of x86-64 applications on ARM64 is not implemented.** It was
+  measured, not built: 17 of 119 applications are x86-64 only, and one emulator
+  produced 2 illegal-instruction crashes in 100 identical runs.
+- **Streamed applications run as root on bare metal.** The unit that would drop
+  privileges is installed only by a manual self-host path. Whether the container
+  image differs is unverified rather than confirmed safe.
+- **Multi-screen placement is covered for two virtual outputs only** — no real
+  hardware, no mixed geometry, no hotplug, and no box with three screens.
+- **Bare-metal images report their version as `dev`.** `build.sh` does not stamp
+  the version into the binaries it builds, so `vulos --version` inside the `.img.gz`
+  and rootfs tarball does not name the release. The container image is stamped
+  correctly. The release gate that checks this builds its own binary and therefore
+  does not notice.
+
+## [0.2.0] - 2026-08-14
+
+> **This section was written after the fact.** No changelog entry was prepared
+> when `v0.2.0` was tagged, so its GitHub release notes fell back to a raw
+> commit list. What follows is the one change that had been recorded under
+> *Unreleased* at the time; it is not a complete account of the 475 commits in
+> `v0.1.0..v0.2.0`. Two defects that shipped in this release are described in
+> 0.3.0 above: the setup wizard never ran, and the image contained no bundled
+> applications.
+
+
 ### Changed
 
 - **Docs now say plainly that the published USB image is a live session, not

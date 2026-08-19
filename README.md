@@ -238,7 +238,7 @@ Installing onto a bare machine's **own disk** from inside the live session, via 
 **Try it live from a flash drive — for testing, demos, or a disposable machine.** The published `.img.gz` boots a full Vulos desktop straight off a USB stick:
 
 ```bash
-gunzip -c vulos-v0.1.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
+gunzip -c vulos-v0.3.0-x86_64.img.gz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
 This is a live session, not an install. The root filesystem is a read-only image and the writable layer lives in RAM, so **nothing you do persists** — accounts, files, and settings are gone the moment you reboot or pull the drive. That's by design: it's the fastest way to try Vulos on real hardware, or to carry a desktop that's always clean on boot, without ever touching the machine's own disk. It's also the environment you install to disk from — see above.
