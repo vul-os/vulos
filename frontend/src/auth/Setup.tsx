@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import FullscreenHint from './FullscreenHint'
 import ThemeToggle from '../core/ThemeToggle'
 import { useTheme } from '../core/ThemeProvider'
@@ -396,7 +396,14 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
 
 
   const current = IS09_baseSteps[step]
-  const update: SetupUpdate = (key, val) => setConfig(c => ({ ...c, [key]: val }))
+  // Stable for the life of the wizard. `update` is a prop on all twelve step
+  // components, and it writes through a FUNCTIONAL updater, so it closes over
+  // nothing but `setConfig` — there has never been a reason for it to change
+  // identity between renders. It used to be a fresh arrow every render anyway,
+  // which meant no step could put it in a dependency array without turning a
+  // mount-only effect into a per-render one; IS05_IdentityStep's identity fetch
+  // is the effect that hit this.
+  const update: SetupUpdate = useCallback((key, val) => setConfig(c => ({ ...c, [key]: val })), [])
 
   const goTo = (idx: number) => {
     setTransitioning(true)
@@ -2292,6 +2299,15 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
   const [IS05_saving, IS05_setSaving] = useState(false)
   const [IS05_error, IS05_setError] = useState('')
   const [IS05_hostnameEdited, IS05_setHostnameEdited] = useState(false)
+  // Same fact, readable from an async callback that outlived its render.
+  // The identity fetch below resolves at an unpredictable time and guards its
+  // prefill on "has the owner typed yet?"; reading the STATE there always read
+  // the value captured when the effect ran, which on a mount-only effect is
+  // the initial `false`, for ever. The guard could therefore never be true at
+  // the moment it mattered, and a name typed while /api/identity was still in
+  // flight was silently overwritten by the box's default. Written together
+  // with the state, never separately.
+  const IS05_hostnameEditedRef = useRef(false)
   // Did GET /api/identity actually answer? Distinguishes "this box has no ID
   // yet" from "we could not ask" — the wizard used to render both as the
   // literal string "auto-generated" in the Instance ID field.
@@ -2334,7 +2350,9 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
         // certificates carried that name. default_hostname is the box's
         // per-instance name (vulos-<6 ULID chars>), so an owner who just clicks
         // Next cannot collide with a sibling box.
-        if (!IS05_hostnameEdited) {
+        // Ref, not state — see IS05_hostnameEditedRef. By the time this runs
+        // the owner may already be several characters into the field.
+        if (!IS05_hostnameEditedRef.current) {
           const chosen = typeof data.hostname === 'string' ? data.hostname : ''
           const fallback = typeof data.default_hostname === 'string' ? data.default_hostname : ''
           update('IS05_hostname', chosen || fallback)
@@ -2352,7 +2370,10 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
         update('IS05_ulid', '')
       })
       .finally(() => IS05_setLoading(false))
-  }, [])
+    // Mount-only, and now honestly so: the one render-scoped value this effect
+    // used to read is a ref above, and `update` is referentially stable (see
+    // its definition in the wizard root).
+  }, [update])
 
   // Ask the box whether the typed name is already claimed on this LAN. Runs on
   // a debounce so a fast typist does not emit a probe per keystroke; each probe
@@ -2472,6 +2493,7 @@ export function IS05_IdentityStep({ config, update, onNext, onPrev }: StepProps)
             value={config.IS05_hostname}
             onChange={e => {
               IS05_setHostnameEdited(true)
+              IS05_hostnameEditedRef.current = true
               update('IS05_hostname', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
             }}
             placeholder="my-vulos-node"
@@ -3246,7 +3268,10 @@ async function IK06_buildDownloadPayload(config: SetupConfig, masterPhrase = '')
 // generated one. src/core/settings/LANPairingPanel.tsx still generates QR
 // codes, and there the code is a pairing token something actually consumes.
 
-function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
+// Exported for tests: the kit's FRESHNESS (does the built payload track the
+// config it claims to describe?) is only observable by rendering the step, and
+// IK06_buildKitObject on its own cannot show it.
+export function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
   config: SetupConfig
   masterPhrase: string
   onNext: () => void
@@ -3262,14 +3287,42 @@ function IS05_RecoveryKitStep({ config, masterPhrase, onNext, onPrev }: {
 
   const t = (s: string) => s
 
-  // INIT-06: build the payload on mount / whenever config changes
+  // INIT-06: build the payload on mount / whenever config changes.
+  //
+  // Depends on `config` ITSELF, not on a hand-listed set of its fields. The
+  // list that used to be here named four (ulid, hostname, storageEnabled,
+  // sshFingerprint) while IK06_buildKitObject reads SIX — it also reads
+  // IS05_storageSizeGb and IS05_s3AccessKey. A dependency list that enumerates
+  // the fields a builder reads has to be re-derived every time the builder
+  // changes, and nothing makes that happen; the two it missed had already
+  // drifted out.
+  //
+  // That drift is not currently reachable, and it is worth writing down why,
+  // because both reasons are accidents of unrelated code rather than anything
+  // this effect arranges:
+  //   1. Every step is rendered under `<div key={current}>` in the wizard root,
+  //      so moving between steps UNMOUNTS this component. The effect therefore
+  //      re-runs on arrival with whatever the config holds at that moment, and
+  //      a value edited on an earlier step is already final by then.
+  //   2. Neither missing field can change while this step is on screen anyway.
+  //      This is the one step that is not handed `update`, so it cannot write
+  //      config; IS05_storageSizeGb is a slider on the storage step, which is
+  //      unmounted; and IS05_s3AccessKey has no writer ANYWHERE in the wizard
+  //      (the join flow's S3 credentials live in IS09_* local state and are
+  //      POSTed directly, never merged into config).
+  //
+  // So this change fixes no live defect. It removes the standing hazard that
+  // the next field added to the kit is stale in the owner's downloaded copy
+  // while its checksum — computed over the same stale object — still verifies.
+  // The cost is zero: `config` only changes identity when `update` is called,
+  // and by (2) that cannot happen here, so this runs exactly once, as before.
   useEffect(() => {
     IK06_setBuildingPayload(true)
     IK06_buildDownloadPayload(config, masterPhrase)
       .then(IK06_setPayload)
       .catch(() => IK06_setPayload(null))
       .finally(() => IK06_setBuildingPayload(false))
-  }, [config.IS05_ulid, config.IS05_hostname, config.IS05_storageEnabled, config.IS05_sshFingerprint, masterPhrase])
+  }, [config, masterPhrase])
 
   // INIT-05 + INIT-06: confirm gate applies regardless of storage variant.
   // The gate is only honest once the file exists — see the download button.

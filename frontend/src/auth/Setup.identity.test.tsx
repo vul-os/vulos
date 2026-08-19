@@ -287,4 +287,51 @@ describe('IS05 identity step', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByText(/^Checking whether/i)).toBeInTheDocument()
   })
+
+  // #4, and the reason the prefill has a guard at all.
+  //
+  // The identity fetch prefills the hostname field ONLY IF the owner has not
+  // typed into it yet. That guard used to read a useState value from inside a
+  // mount-only effect's promise callback, so it read the value captured at
+  // mount — `false` — no matter how long the request took or what happened
+  // meanwhile. The guard could not fire, and a name typed while /api/identity
+  // was still in flight was replaced by the box's default with no warning: the
+  // owner watched the field they had just filled in rewrite itself.
+  //
+  // The window is not theoretical. This request is issued during first boot,
+  // against a box that is simultaneously starting services, and the field is
+  // rendered and focusable the whole time it is open — nothing gates the input
+  // on IS05_loading.
+  it('keeps a name typed while /api/identity was still in flight', async () => {
+    // The identity reply is held open until the test releases it, which is
+    // exactly the race: the user types into a field whose prefill has not
+    // arrived yet.
+    let releaseIdentity: () => void = () => {}
+    const identityHeld = new Promise<void>(res => { releaseIdentity = res })
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).startsWith('/api/identity/hostname/available')) {
+        return jsonResponse({ available: true })
+      }
+      await identityHeld
+      return jsonResponse({ ulid: '', hostname: '', default_hostname: 'vulos-k3n7q2' })
+    }) as never)
+
+    render(<Harness onNext={vi.fn()} />)
+
+    typeHostname('study')
+    expect(screen.getByLabelText(/hostname/i)).toHaveValue('study')
+
+    // Now the box answers. Its default_hostname must NOT win.
+    releaseIdentity()
+    await waitFor(() => {
+      // The step has finished loading — the ULID panel has replaced its
+      // skeleton with real copy, so the prefill branch has run and had its
+      // chance to clobber the field.
+      expect(screen.getByText(/Not assigned yet/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getByLabelText(/hostname/i)).toHaveValue('study')
+    expect(screen.getByLabelText(/hostname/i)).not.toHaveValue('vulos-k3n7q2')
+  })
 })
