@@ -260,22 +260,12 @@ func (l *Launcher) launchWithConcurrency(ctx context.Context, appID, userID, pro
 	// setpriv is provided by util-linux (Priority: required on Debian/Ubuntu).
 	// Flags: --reuid/--regid set real+effective uid/gid; --clear-groups drops
 	// supplementary groups; --no-new-privs blocks setuid/setgid escalation.
-	cmd := exec.Command("ip", "netns", "exec", ns.Name,
-		"setpriv",
-		fmt.Sprintf("--reuid=%d", appUID),
-		fmt.Sprintf("--regid=%d", appGID),
-		"--clear-groups",
-		"--no-new-privs",
-		"sh", "-c", expandedCmd)
+	argv := appCommandArgv(ns.Name, expandedCmd)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = workDir
 	// Minimal scrubbed environment — never inherit os.Environ() to avoid
 	// leaking server secrets (API keys, tokens, etc.) into untrusted app processes.
-	cmd.Env = append([]string{
-		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
-		"HOME=/tmp", // not /root: process apps run as nobody (uid 65534) which cannot write to /root
-		"TMPDIR=/tmp",
-	}, env...)
-	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", appPort))
+	cmd.Env = appProcessEnv(env, appPort)
 	// Route stdout and stderr to a per-app log file under ~/.vulos/logs/<app-id>.log.
 	// The file is rotated at appLogMaxBytes (10 MiB). Falls back to server stdout
 	// when the log file cannot be opened (e.g. read-only fs, missing home dir).
