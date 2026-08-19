@@ -240,7 +240,16 @@ Four defects in one session share a single cause, and they are worth naming as a
 
 Nos. 3 and 4 also cover `xvfb`, `xdotool` and `matchbox-window-manager`, all Dockerfile-only and all on the streamed-app execution path (`pool.go` uses cage **only** when the GPU tier is not software; every other box takes the Xvfb path).
 
-**Row 2 correction — `scripts/vulos.service` was the wrong citation, and the Docker side of the comparison it supported doesn't check out either.** The unit that file describes (`User=vulos`, `ExecStart=/usr/local/bin/vulos serve --config /etc/vulos/vulos.yaml`) is installed by `scripts/install-vulos.sh` for a third deployment path — a manually-installed self-host bundle — and is loaded by **neither** Docker **nor** the OS image `build.sh` produces. It is not dead code (do not delete it; that is a founder call, not this workstream's), but it was cited here as if it described one of the two environments actually being compared, and it describes neither.
+**Row 2 correction — `scripts/vulos.service` was the wrong citation, and the file has since been deleted.** The unit it described (`User=vulos`, `Group=vulos`, `CapabilityBoundingSet=`, `AmbientCapabilities=`) was loaded by **nothing**, in any deployment.
+
+An earlier revision of this correction said the file "is installed by `scripts/install-vulos.sh` for a third deployment path" and therefore "is not dead code". That was checked and is wrong. `install-vulos.sh` writes the bundle's unit from an **inline heredoc** (`UNIT_OS`, `scripts/install-vulos.sh:1204-1236`) with `${VULOS_USER}` and `${BIN_VULOS}` expanded at install time; the only occurrences of `vulos.service` in that script are the destination path variable and `After=`/`Wants=` ordering directives. It never read `scripts/vulos.service`. The repo copy was a static, unparameterised snapshot of a generated file — a thing that can only drift — and its five siblings (`vulos-fabric`, `vulos-diwan`, `vulos-lilmail`, `vulos-minio`, `vulos-bundle.target`) have the identical property.
+
+Two further facts settled the decision to delete rather than keep it:
+
+- It is the only one of the six whose content is a **security posture claim**, and it was cited here as evidence that a shipped deployment dropped privilege. Neither shipped deployment does.
+- The bundle path it described cannot start anyway. The unit runs `${BIN_VULOS} serve --config`, and `serve` is not a subcommand of either binary in this repo: `backend/cmd/vulos` accepts `web` and `relay` only (`main.go:77-95`, `default:` prints "unknown command" and exits 1), and `backend/cmd/server` is flag-parsed with no subcommands at all (`flag.Parse()`, `main.go:168`). The installer downloads `vulos_linux_<arch>` from GitHub releases (`install-vulos.sh:1028-1033`) and nothing in this repo builds an artefact by that name.
+
+`backend/internal/docsref/orphanunits_test.go` now fails on any unit file under `scripts/` that no `.sh`, `Makefile` or `Dockerfile` installs, unless it is registered there with the reason it is kept. The five siblings are registered; a new one is a test failure.
 
 What the two real paths do:
 - **Docker:** `ENTRYPOINT ["tini", "--"]` / `CMD ["/usr/local/bin/vulos-server", "-env", "local"]` (`Dockerfile:286-287`). No `USER` directive anywhere in `Dockerfile`, no `useradd`/`adduser` for a `vulos` account, base image is `debian:trixie-slim` (root by default). The container runs `vulos-server`, and everything it execs, as root.
@@ -249,7 +258,43 @@ What the two real paths do:
 
 None of the three paths that actually run in this product creates or drops to a `vulos` user for the **streamed-app** process. Checked directly for a privilege-drop mechanism in `backend/services/stream/pool.go` and `stream.go` (the package that owns Xvfb/cage/GStreamer streamed sessions): every `SysProcAttr` set on a spawned process is `{Setpgid: true}` only — no `Setuid`, `Setgid`, or `Credential`. For contrast, the codebase does have a real privilege-drop mechanism, just for a different app category: `backend/services/appnet/launcher.go` (`ISOLATION-PRIV-01`) wraps **installed native apps** (the apt/Flatpak registry path, not streamed ones) with `setpriv` to drop to `nobody`/`nogroup` inside a mount namespace. Streamed apps don't go through that launcher.
 
-So the original framing — Docker gets a credential drop that bare metal is missing — is not supported by anything found in the source. What's directly verifiable is that **streamed apps run as root on bare metal** (unchanged from the original finding); whether they also run as root in Docker could not be checked further than "no mechanism exists that would prevent it" without an actual container run, so treat the Docker column as UNVERIFIED-but-not-demonstrated-safe rather than confirmed root. Either way, the check this section credits with catching Nos. 1/3/4 (`imagebins_test.go`, a rootfs-package-vs-source-binary comparison) does not and cannot catch a credential-drop gap — that would need a different assertion entirely, and none currently exists for this.
+So the original framing — Docker gets a credential drop that bare metal is missing — is not supported by anything found in the source. The Docker column is no longer UNVERIFIED: `docker run --rm debian:trixie-slim id` returns `uid=0(root) gid=0(root)`, a `bash -c 'id -u'` child of it returns `0`, and `Dockerfile` has no `USER` directive, so the container runs `vulos-server` and everything it execs as root. **Container and bare metal are the same privilege model, not different ones.** Either way, the check this section credits with catching Nos. 1/3/4 (`imagebins_test.go`, a rootfs-package-vs-source-binary comparison) does not and cannot catch a credential-drop gap — that would need a different assertion entirely, and none currently exists for this.
+
+### The privilege matrix, as measured
+
+Every way this product runs code, and what uid it lands on. Verified against source and, where marked, measured.
+
+**Deployments — all three run the server as root.**
+
+| Deployment | How it starts | Server uid |
+|---|---|---|
+| Container | `ENTRYPOINT ["tini","--"]` / `CMD ["/usr/local/bin/vulos-server","-env","local"]` (`Dockerfile:286-287`), no `USER` directive, base `debian:trixie-slim` (`Dockerfile:91`) | **root** — measured: `docker run --rm debian:trixie-slim id` → `uid=0(root)` |
+| OS image, installed | `build.sh:1322` bakes `vulos.service`; no `User=`/`Group=` line | **root** |
+| OS image, live/netboot | `cmd/init` is PID 1 and execs `vulos-server` directly; no systemd, no drop | **root** |
+| Self-host bundle (`install-vulos.sh`) | generated unit sets `User=vulos` | **n/a — cannot start**; `vulos serve` is not a subcommand of any binary this repo builds |
+
+Root is not gratuitous. Three subsystems need uid 0 on the host and would break under a naive `User=vulos`:
+
+- `services/appnet` creates a network namespace per app instance — `ip netns add`, veth pairs, host `iptables -t nat` DNAT/INPUT rules, `sysctl -w net.ipv4.ip_forward=1` (`namespace.go:85-272`).
+- `services/sysuser` runs `adduser`/`chpasswd` and chowns home trees, because each Vulos profile maps to a real Linux user (`sysuser.go:27-93`).
+- `services/pty` **fails closed** at `os.Getuid() != 0` (`pty.go:239`) rather than silently running every profile's shell as one shared account.
+
+**Execution paths — the drop is per-process, and three paths do not drop.**
+
+| Path | Mechanism | Runs as |
+|---|---|---|
+| Installed process app (appnet) | `ip netns exec <ns> setpriv --reuid=65534 --regid=65534 --clear-groups --no-new-privs sh -c` (`appnet/launcher_privilege.go`), plus `CLONE_NEWNS` (`launcher_proc_linux.go:15-20`) | **65534 (nobody)** |
+| Terminal (`/api/terminal`) | `SysProcAttr.Credential` to the profile's own Linux user (`sysuser.go:107-123`, `pty.go:243`) | **the profile's uid** |
+| Streamed desktop app (`services/stream`) | every `SysProcAttr` on the path is `{Setpgid: true}` only — no `Credential` anywhere in `pool.go` or `stream.go` | **root** |
+| Native Wayland/X11 app (`appnet.LaunchNative`) | `exec.Command(bin, args...)` with a scrubbed env and **no `SysProcAttr` at all** (`native.go:62`) — not even `Setpgid` | **root** |
+| `POST /api/exec` | admin-gated `bash -c`; own process group since EXEC-PGID-01 | **root** |
+
+Two notes on the appnet drop, because both are counter-intuitive:
+
+- The drop cannot be `SysProcAttr.Credential`. The direct child is `ip`, not the app, and `ip netns exec` needs `CAP_SYS_ADMIN` to `setns()`; stripping it makes namespace entry fail. `setpriv` runs one hop later — inside the namespace, before the app.
+- Dropping uid clears the capability set, so the app holds no `CAP_NET_BIND_SERVICE`, and a fresh netns resets `net.ipv4.ip_unprivileged_port_start` to 1024 regardless of the host value. That is PORTBIND-01 (`namespace.go:243-269`). Docker sets the host value to `0`, which is why no container ever reproduced it.
+
+The uid is also **flat**: every app of every user runs as 65534 (`launcher.go:51-54`; `userID` scopes the namespace, never the uid). Two users' process apps are separated by network namespace and, filesystem-wise, not at all.
 
 **The gate:** `backend/internal/docsref/imagebins_test.go` reads the *source* against the *rootfs package list*, so the container it happens to run in is irrelevant. It scans `services/{webbrowser,stream,desktop}` for every literal binary handed to `exec.Command` / `lookPath` / `findBin`, and requires each to be either mapped to the package that provides it or exempted **with a reason**. An unclassified binary is a hard failure naming the binary and the file that execs it.
 

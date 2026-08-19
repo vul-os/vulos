@@ -282,6 +282,51 @@ ENV SHELL=/bin/bash
 ENV DISPLAY=:99
 ENV HOSTNAME=vulos
 
+# ── Privilege posture: this container runs as root, deliberately ─────────────
+#
+# There is no USER directive above and that is not an oversight. debian:trixie-slim
+# defaults to uid 0 (verified: `docker run --rm debian:trixie-slim id` →
+# uid=0(root)), so vulos-server and everything it execs run as root here.
+#
+# A `USER vulos` line would not harden this image, it would disable the product.
+# Three subsystems require uid 0 on the host, not merely a capability:
+#
+#   - services/appnet creates a network namespace per app instance: `ip netns
+#     add`, veth pairs, host `iptables -t nat` DNAT/INPUT rules, and
+#     `sysctl -w net.ipv4.ip_forward=1` (namespace.go). Without them no
+#     installed app can be launched or reached.
+#   - services/sysuser runs `adduser` and `chpasswd` and chowns home trees to
+#     arbitrary uids, because each Vulos profile maps to a real Linux user.
+#   - services/pty refuses to open a terminal at all when `os.Getuid() != 0`
+#     (pty.go:239) — a deliberate fail-closed: it cannot setuid to the
+#     profile's uid, and running every profile's shell as one shared account
+#     would silently merge identities that are supposed to be isolated.
+#
+# What actually limits blast radius is that privilege is dropped PER PROCESS,
+# after the work that needs root is done:
+#
+#   - Installed process apps: `ip netns exec <ns> setpriv --reuid=65534
+#     --regid=65534 --clear-groups --no-new-privs sh -c <cmd>` — uid 65534
+#     (nobody), no supplementary groups, no-new-privs, private mount namespace
+#     (backend/services/appnet/launcher_privilege.go, ISOLATION-PRIV-01).
+#   - Terminals: setuid/setgid to the profile's own Linux user via
+#     SysProcAttr.Credential (services/sysuser, services/pty).
+#
+# Three paths do NOT drop and run as root — recorded here because an undocumented
+# gap is the thing that turns into a surprise:
+#
+#   - services/stream (Xvfb/cage/GStreamer streamed desktop apps): every
+#     SysProcAttr on that path is {Setpgid: true} only, no Credential.
+#   - appnet.LaunchNative (native Wayland/X11 binaries, native.go): no namespace,
+#     no setpriv, no SysProcAttr at all.
+#   - POST /api/exec: admin-gated, runs `bash -c` as root. It does now get its
+#     own process group (EXEC-PGID-01) so a group-directed signal cannot reach
+#     the server, but it is not a privilege drop.
+#
+# The same posture holds on bare metal: build.sh bakes a vulos.service with no
+# User=/Group= line, and on the live/netboot path cmd/init is PID 1. Container
+# and bare metal are the SAME privilege model, not different ones.
+#
 EXPOSE 8080 22
 ENTRYPOINT ["tini", "--"]
 CMD ["/usr/local/bin/vulos-server", "-env", "local"]
