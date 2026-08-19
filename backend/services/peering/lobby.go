@@ -154,7 +154,7 @@ func NewLobbyService(meter *BandwidthMeter) *LobbyService {
 					if peeringSSRFBypass {
 						return (&net.Dialer{}).DialContext(ctx, network, addr)
 					}
-					return safedial.New(false).DialContext(ctx, network, addr)
+					return safedial.NewPeer().DialContext(ctx, network, addr)
 				},
 				TLSHandshakeTimeout: 5 * time.Second,
 			},
@@ -321,7 +321,7 @@ func (s *LobbyService) fetchBandwidth(ctx context.Context, p LobbyParticipant) L
 			host = h
 		}
 		if !peeringSSRFBypass {
-			if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+			if _, ssrfErr := safedial.ValidateHostPeer(host); ssrfErr != nil {
 				report.Error = fmt.Sprintf("peer address rejected (SSRF guard): %v", ssrfErr)
 				report.Source = "unavailable"
 				return report

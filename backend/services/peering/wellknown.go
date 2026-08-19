@@ -545,7 +545,7 @@ func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdenti
 		} else if h, _, splitErr := net.SplitHostPort(serverAddr); splitErr == nil {
 			host = h
 		}
-		if _, ssrfErr := safedial.ValidateHost(host, false); ssrfErr != nil {
+		if _, ssrfErr := safedial.ValidateHostPeer(host); ssrfErr != nil {
 			return zero, fmt.Errorf("peering: FetchPeerProfile SSRF guard rejected server %q: %w", serverAddr, ssrfErr)
 		}
 	}
@@ -561,7 +561,7 @@ func wkFetchAndVerify(ctx context.Context, vulosID, serverAddr string) (WKIdenti
 		if peeringSSRFBypass {
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		}
-		return safedial.New(false).DialContext(ctx, network, addr)
+		return safedial.NewPeer().DialContext(ctx, network, addr)
 	}
 	client := &http.Client{
 		Timeout: 10 * time.Second,

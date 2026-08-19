@@ -91,7 +91,8 @@ type BandwidthMeter struct {
 }
 
 // NewBandwidthMeter creates a meter using cfg. Call Start to begin measuring.
-// M1 fix: the measurement client uses safedial.New(false) instead of the
+// M1 fix: the measurement client uses safedial (under the operator's peer
+// dial grant, safedial.NewPeer) instead of the
 // removed checkSSRF / ssrfBlockedCIDRs hand-rolled implementation.
 func NewBandwidthMeter(cfg BandwidthConfig) *BandwidthMeter {
 	cfg.applyDefaults()
@@ -104,7 +105,7 @@ func NewBandwidthMeter(cfg BandwidthConfig) *BandwidthMeter {
 					if peeringSSRFBypass {
 						return (&net.Dialer{}).DialContext(ctx, network, addr)
 					}
-					return safedial.New(false).DialContext(ctx, network, addr)
+					return safedial.NewPeer().DialContext(ctx, network, addr)
 				},
 			},
 		},
@@ -375,7 +376,7 @@ func (m *BandwidthMeter) handleOwnBandwidth() http.HandlerFunc {
 }
 
 // M1 fix: ssrfBlockedCIDRs, isPrivateIP, and checkSSRF have been removed.
-// SSRF protection is now provided by safedial.New(false) in the transport
+// SSRF protection is now provided by safedial.NewPeer() in the transport
 // and safedial.ValidateHost pre-dial checks. See transport.go and the
 // handlePeerBandwidth function below.
 
@@ -385,7 +386,7 @@ func (m *BandwidthMeter) handleOwnBandwidth() http.HandlerFunc {
 //	server — required — peer's base URL, e.g. "https://bob.vulos.org:8080"
 //
 // SSRF mitigations (M1 fix — canonical safedial):
-//   - Transport uses safedial.New(false) for IP validation at connect(2) time.
+//   - Transport uses safedial.NewPeer() for IP validation at connect(2) time.
 //   - Pre-dial ValidateHost rejects obviously bad hostnames fast.
 //   - Redirect following disabled.
 //   - Response body capped at 10 KB.
@@ -403,7 +404,7 @@ func (m *BandwidthMeter) handlePeerBandwidth() http.HandlerFunc {
 				if peeringSSRFBypass {
 					return (&net.Dialer{}).DialContext(ctx, network, addr)
 				}
-				return safedial.New(false).DialContext(ctx, network, addr)
+				return safedial.NewPeer().DialContext(ctx, network, addr)
 			},
 		},
 	}
@@ -426,7 +427,7 @@ func (m *BandwidthMeter) handlePeerBandwidth() http.HandlerFunc {
 				http.Error(w, `{"error":"invalid peer URL"}`, http.StatusBadRequest)
 				return
 			}
-			if _, ssrfErr := safedial.ValidateHost(u.Hostname(), false); ssrfErr != nil {
+			if _, ssrfErr := safedial.ValidateHostPeer(u.Hostname()); ssrfErr != nil {
 				log.Printf("[peering/bandwidth] SSRF guard rejected %q: %v", target, ssrfErr)
 				http.Error(w, `{"error":"invalid peer URL"}`, http.StatusBadRequest)
 				return

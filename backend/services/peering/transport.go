@@ -8,10 +8,20 @@
 // # SSRF guard
 //
 // M1 fix: the hand-rolled ssrfGuardTransport / isPrivateHost implementation
-// has been removed and replaced with safedial.New(false), the canonical
-// SSRF-safe dialer used throughout the OS. safedial validates IP addresses at
-// the kernel connect(2) call (after DNS resolution), closing the DNS-rebinding
-// window that the old RoundTripper-level check left open.
+// has been removed and replaced with safedial, the canonical SSRF-safe dialer
+// used throughout the OS. safedial validates IP addresses at the kernel
+// connect(2) call (after DNS resolution), closing the DNS-rebinding window that
+// the old RoundTripper-level check left open.
+//
+// The grant is safedial.NewPeer — the operator's PEER dial grant — not a
+// hardcoded "public only". A box whose correspondents live on a Tailscale /
+// Headscale / Nebula mesh reaches them at a private address by definition, and
+// this client is the one seam every envelope goes through, so hardcoding
+// public-only here made VULOS_PEER_ALLOW_LAN=1 look like it enabled box-to-box
+// delivery over a mesh when it never did. With nothing configured the behaviour
+// is byte-identical to the old safedial.New(false); the operator has to name
+// the range (VULOS_PEER_ALLOW_CIDR) before anything private is dialable, and
+// loopback, link-local and bogons stay refused under every grant.
 //
 // # Signed requests
 //
@@ -54,14 +64,15 @@ type PeerClient struct {
 
 // NewPeerClient creates a PeerClient with a pre-configured http.Client that
 // enforces TLS, a 15-second total timeout, and safedial SSRF protection.
-// M1 fix: uses safedial.New(false) instead of the removed ssrfGuardTransport.
+// M1 fix: uses safedial instead of the removed ssrfGuardTransport.
 func NewPeerClient() *PeerClient {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		},
-		// safedial.New(false) validates the resolved IP at kernel connect(2)
-		// time, preventing DNS-rebinding attacks and SSRF via private IPs.
+		// safedial validates the resolved IP at kernel connect(2) time,
+		// preventing DNS-rebinding attacks and SSRF via private IPs, under the
+		// operator's peer grant (see the package note above).
 		// The peeringSSRFBypass closure allows httptest.Server in package tests.
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			if peeringSSRFBypass {
@@ -70,7 +81,7 @@ func NewPeerClient() *PeerClient {
 					KeepAlive: 30 * time.Second,
 				}).DialContext(ctx, network, addr)
 			}
-			return safedial.New(false).DialContext(ctx, network, addr)
+			return safedial.NewPeer().DialContext(ctx, network, addr)
 		},
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
