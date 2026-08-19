@@ -167,7 +167,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 - **One unified address book** — the box merges your Vulos/CardDAV contacts, your phone's device + SIM contacts (pushed up by the Android app), and any SIM plugged into the box itself into a single de-duplicated list, with a source badge on each entry so you can see where it came from (`GET /api/contacts/unified`). Every source is optional and the whole surface is owner-gated.
 
 **Comms & notifications**
-- **Sovereign notifications** — a real notification center plus opt-in Web Push where *your box* sends directly to your device, end-to-end encrypted (RFC 8291), working behind NAT with no central middleman. See [docs/COMMS.md](docs/COMMS.md).
+- **Sovereign notifications** — a real notification center plus opt-in Web Push. Your box holds its own VAPID keys and sends outbound, so it works behind NAT with nothing inbound to open, and the payload is encrypted to your device (RFC 8291) — but it is delivered *through* your browser vendor's push service (FCM, Apple, Mozilla), which **routes it and cannot read it**. That is the honest claim; a vendor-free path exists (self-hosted UnifiedPush/ntfy) and is off by default. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 **Identity & security**
 - **Sign-in with nobody in the middle** — you sign in to your own box, and to nothing else. No Google login, no OAuth middleman, no Vulos account. Today that is a username and password, with a master recovery phrase to get back in and a device PIN that locks a running session. Passkeys (WebAuthn/FIDO2) and QR/phone-approval login are built on the server but have **no sign-in screen yet**, and passkey routes stay off on a freshly flashed box until you set an RP ID and origin — so treat passwordless as unreleased, not shipped.
@@ -187,7 +187,7 @@ Full setup, first-boot walkthrough, and hardware requirements: **[docs/GETTING-S
 
 Vulos has a **native Android app** that acts as a thin client to your box — your box stays the authority, the phone renders it. It can also serve as your **home-screen launcher**, making Vulos the front door of your phone.
 
-An installable PWA is the everyday path (offline support and Web Push already work); the native app adds locally bundled assets, box-attached SMS and calling, and a set of **opt-in** native bridges — contacts, camera, push, files, biometric unlock, and the home-screen launcher — each one off until you turn it on. See **[clients/android/README.md](clients/android/README.md)** for the model and build path.
+An installable PWA is the everyday path (offline support and Web Push already work there — the WebView app has no Push API yet); the native app adds locally bundled assets, *handset*-attached SMS and calling through the phone's own SIM and dialler, and a set of **opt-in** native bridges — contacts, camera, push, files, biometric unlock, and the home-screen launcher — each one off until you turn it on. See **[clients/android/README.md](clients/android/README.md)** for the model and build path.
 
 <table>
   <tr>
@@ -258,7 +258,7 @@ Read the full component map and design decisions in **[docs/ARCHITECTURE.md](doc
 ## FAQ
 
 **Is my data really mine?**
-Yes — it lives on hardware you control, in local-first SQLite plus your own storage, and you hold the keys. Backups are opt-in and encrypted. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FILES.md](docs/FILES.md).
+Yes — it lives on hardware you control, in local-first SQLite plus your own storage, and you hold the keys. Backups are opt-in, and off unless you configure them. Be precise about what "encrypted" means for each: the Restic path encrypts on *your* box before anything leaves it; the S3 snapshot path uses SSE-C, so the provider does the encrypting and your key reaches it with every request. Restic is not bundled — install it yourself or that path is skipped. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FILES.md](docs/FILES.md).
 
 **Do I need the cloud?**
 No — and there's no Vulos-run cloud to depend on. A box runs standalone. To reach it behind NAT you point it at a relay you operate yourself (a cheap VPS running `vulos relay serve`), or you drop the relay entirely with a static IP or your own domain. Nothing routes through infrastructure we run. See [docs/NETWORKING.md](docs/NETWORKING.md).
