@@ -93,14 +93,44 @@ keys/root.pub.json       ceremony ROOT public key   (committed)
 keys/release.pub.json    ceremony RELEASE public key (committed)
 ```
 
-`registry.json` is signed by the release key that cert authorises — key-id
-`release-2026-08`, expiring `2027-08-03`. `make verify-registry-prod`, the gate
-that refuses a dev-signed registry, **passes today**.
+The cert authorises release key `dbc913bf…` under key-id **`release-2026-08`**,
+expiring **`2027-08-03`** (`keys/release-cert.json`).
+
+### ⚠️ The registry is NOT signed — this is the step blocking the release
+
+`registry.json` today holds **142 entries, of which 6 carry a signature and 136
+do not.** The catalogue merge in commit `8cb788c8` took it from 74 entries to
+142 and, in doing so, invalidated thirteen previously-good signatures — an
+edited entry's old signature cannot verify, and `registry.d/arch-declarations.json`
+edited them. So, on this tree, today:
+
+```
+make verify-registry                        FAILS — entry "ardour": has no publisher
+                                                    signature (REGISTRY-SIGN-01), exit 2
+make verify-registry-prod                   FAILS — same reason, so a `v*` tag
+                                                    cannot ship an image
+cd backend && go test ./services/appnet/    FAILS — 8 tests, all "missing signature"
+```
+
+That is the gate working, not a bug. It is exactly the **Degraded — App Hub
+disabled** state described in §7, and clearing it is what §4 is for. Everything
+above about the *anchor* and the *cert* still holds: those are production
+ceremony material, and they are not what is missing. Signing the registry (§4.5,
+or `make ceremony` in §4.0) is the single outstanding operation.
+
+> **What signing these entries means, stated plainly.** Per the merge commit
+> `8cb788c8`, **none of the 68 newly-added entries has been install- or
+> launch-tested.** What was proven for them is resolvability, per-arch
+> publication, branch unambiguity and the upstream `verified` flag — *not* that
+> any of them runs. Signing makes 68 never-run apps installable. That is a
+> decision to take at the ceremony; the signing command does not take it for you.
 
 A fresh clone still runs `make dev` and `make test-local` (the Go module root is
 `backend/`, so the raw form is `cd backend && go test ./...`) with real signature
-verification and no flags — not because the shipped keys are dev keys, but
-because all four files are *public* halves and are committed.
+verification and **no flags** — not because the shipped keys are dev keys, but
+because all four files are *public* halves and are committed. Note what that
+does *not* mean: until the registry is signed, `./services/appnet/` is **red**
+on a fresh clone too, for the reason above. No flag fixes that, and none should.
 `TestAcceptance_ShippedAnchorIsProductionAndAcceptedInProd` pins this from the
 other side: it fails if a dev key is ever committed as the shipped anchor again.
 
@@ -132,16 +162,41 @@ is production. The typed-out override is `VULOS_DEV_KEYS_OVERWRITE=1`, which
 also prints a warning.
 
 That guard matters because of how `make sign-registry` behaves: with no
-`RELEASE_PRIV=` argument it defaults to `keys/release.priv.json`, and that file
-is gitignored — so it is absent on every fresh clone, and the target used to
-regenerate the dev keys before signing. A bare `make sign-registry` on a clean
-clone would therefore have clobbered the shipped production anchor and re-signed
-all 55 entries with the dev key. It now stops instead. **Still pass the real
-key:**
+`RELEASE_PRIV=` argument it defaults to `keys/release.priv.json`
+(`Makefile:21`), and that path is gitignored (`.gitignore:47`). Two kinds of
+machine, two different hazards:
+
+- **A fresh clone** does not have that file. `sign-registry` used to regenerate
+  the dev keys and carry on — clobbering the shipped production anchor and
+  re-signing all 142 entries with the dev key. The `dev-keys.sh` guard above
+  now stops that.
+- **Any machine where `make dev-keys` has ever run** — including the
+  maintainer's — *does* have the file, and it holds the **dev** key. Nothing
+  about the filename says so, no regeneration step fires, and nothing looks
+  unusual. This is the more dangerous case, and the guard above does not cover
+  it.
+
+A second, independent guard covers it: **`make check-release-key`**
+(`Makefile:123-161`), which both `sign-registry` and `publish-feed` run before
+signing anything. It compares the `public_key` recorded inside `RELEASE_PRIV`
+against the `release_pubkey` the **shipped certificate** authorises and refuses
+on mismatch, naming both halves and the cert's `key_id`. Nothing about "dev" or
+"prod" is hardcoded in it, so it cannot drift away from the cert the image
+actually ships.
+
+**On this tree that refusal is live and correct.** `keys/release.priv.json`
+here has public half `ba8b1e8b…` — the dev release key — while the shipped cert
+authorises `dbc913bf…` (`release-2026-08`). A bare `make sign-registry`
+therefore **exits 2 and writes nothing.** Pass the real key:
 
 ```bash
 make sign-registry RELEASE_PRIV=/path/to/release.priv.json
 ```
+
+The typed-out override is `VULOS_SIGN_ALLOW_KEY_MISMATCH=1`. **Do not reach for
+it to make a ceremony proceed.** If that check fires during a ceremony, the key
+on the table is not the key the shipped cert authorises, and signing anyway
+produces a `registry.json` that no released image can verify.
 
 If you have already run one of these by accident, `git checkout -- keys/` and
 `git checkout -- registry.json` restore the committed ceremony material.
@@ -150,9 +205,70 @@ If you have already run one of these by accident, `git checkout -- keys/` and
 
 ## 4. The ceremony
 
-Everything below runs on an **air-gapped machine**. It never touches a network.
-Build `vulos-sign` on your workstation, copy the binary across on removable
-media, and copy only *public* artifacts back.
+> **Read §4.0 before running anything.** These steps are **not idempotent**, and
+> the wrong one *replaces the shipped trust anchor*, which orphans every fielded
+> box. Pick the path first.
+
+### 4.0 Which path do you need?
+
+The root key already exists and **its anchor already ships**. `v0.1.0` (tagged
+2026-08-07) and `v0.2.0` (tagged 2026-08-14) were both cut *after* commit
+`1d9b8cb9` installed `keys/trust-anchor.pub`, and `build.sh:1060` bakes whatever
+is in `keys/` into every image via `scripts/seed/embed-anchor.sh`. Both released
+images are therefore pinned to anchor `8c092221…`.
+
+| Situation | Run | Anchor changes? |
+|---|---|---|
+| You hold the release key the shipped cert authorises (`dbc913bf…`, `release-2026-08`) — **the expected case for 0.3.0** | §4.5 alone: `make sign-registry RELEASE_PRIV=<vault>/release.priv.json` | No |
+| You hold the ROOT key, but the release key is lost, expired or compromised | `scripts/signing/ceremony.sh --vault DIR --rotate` (§6) | No |
+| Genuinely the first ceremony — no root key exists anywhere | §4.1 → §4.6, or `make ceremony` | Yes, once |
+
+> #### ⚠️ Do **not** run a full `make ceremony` for this release
+>
+> A full (non-`--rotate`) run **generates a new ROOT key**
+> (`scripts/signing/ceremony.sh:128-131`) and **overwrites
+> `keys/trust-anchor.pub`** (`ceremony.sh:150-154`). Every box already running
+> v0.1.0 or v0.2.0 would then reject every OS update and every app install, and
+> could be recovered only by reflashing.
+>
+> There is a guard, and it is narrower than it looks: the script refuses only
+> when `root.priv.json` is **already present in the vault you passed**
+> (`ceremony.sh:110-113`). Point `--vault` at a fresh folder — or run on a
+> machine the vault was never copied to — and nothing stops it. **The guard is
+> the vault, not the repo.** Bring the existing vault to the ceremony.
+
+### 4.0.1 The scripted path — `make ceremony`
+
+`scripts/signing/ceremony.sh` is the scripted form of §4.1–§4.5, and it is what
+was exercised against the current 142-entry registry (in a throwaway worktree
+with a throwaway vault: 142/142 signed, `verify-registry` OK, coverage 142/142,
+0 skipped). It generates both keypairs, issues the cert, installs the four
+public files into `keys/`, signs `registry.json`, re-runs `verify-registry
+-require-prod-keys`, then writes the private keys, a `README.txt` and a
+`MANIFEST.sha256` into `--vault` and `chmod 600`s them.
+
+```bash
+make ceremony VAULT=/Volumes/VULOS-VAULT          # or: scripts/signing/ceremony.sh --vault DIR
+```
+
+It prints the key-id, expiry, min-epoch and mode, and **prompts for
+confirmation** before doing anything (`ceremony.sh:122-125`; `--yes` skips the
+prompt). Private keys are written **only** into `--vault`, never into `keys/`.
+It refuses a vault inside this repo — *"the vault must NOT live inside the vulos
+OS repo (it is public)"* (`ceremony.sh:83-86`) — and refuses a vault that sits
+inside any git work tree which does not gitignore it (`ceremony.sh:88-95`).
+
+**Its one deliberate weakening, stated in the script itself
+(`ceremony.sh:16-22`): it collapses the air-gap to a single machine.** Whoever
+can read that machine during the run can read the root key. For a first
+ceremony, prefer the manual steps below on a clean offline box; `--rotate`,
+which never touches the root key beyond reading it, is the safer thing to script.
+
+### 4.0.2 The manual path
+
+Everything from §4.1 on runs on an **air-gapped machine**. It never touches a
+network. Build `vulos-sign` on your workstation, copy the binary across on
+removable media, and copy only *public* artifacts back.
 
 ```bash
 cd backend && go build -o vulos-sign ./cmd/sign     # on the workstation
@@ -273,14 +389,25 @@ to the repo dev key.
 Adding an app to the registry, or cutting an OS image, uses the **release key
 only**. The root key stays in its drawer.
 
-```bash
-# new app added to registry.json
-make sign-registry RELEASE_PRIV=/path/to/release.priv.json
-git commit -am "registry: add <app>"
+**Order matters, and the two signings sit on opposite sides of the tag** — see
+`docs/RELEASING.md` §"Signed Artifacts", which this must agree with:
 
-# OS image
-./vulos-sign sign-image    -release-priv release.priv.json -key-id release-2026-07 ...
-./vulos-sign sign-manifest -release-priv release.priv.json -key-id release-2026-07 ...
+1. **Registry signing happens *before* the tag.** It rewrites `registry.json`, a
+   tracked file, which must be committed and pushed before tagging — CI then
+   enforces it with `make verify-registry-prod`.
+2. CI builds the images, unsigned.
+3. **Image-manifest signing happens *after* the tag**, offline, against the root
+   hash CI published.
+
+```bash
+# 1 — before the tag: new app added to registry.json
+make sign-registry RELEASE_PRIV=/path/to/release.priv.json
+git commit -m "registry: add <app>" -- registry.json
+
+# 3 — after the tag: OS image. -key-id must be the key-id of the cert that
+#     ships in the image, which today is release-2026-08.
+./vulos-sign sign-image    -release-priv release.priv.json -key-id release-2026-08 ...
+./vulos-sign sign-manifest -release-priv release.priv.json -key-id release-2026-08 ...
 ```
 
 If you add an app and forget to sign it, CI fails with the app's name. It cannot
@@ -339,6 +466,11 @@ cross-check.
    matching coverage line, and `cd backend && go test ./services/appnet/` must
    pass. The gate is what promotes the entry; this list is only how you get
    there.
+
+   > Both of those are **red today** and will stay red until the registry is
+   > signed (§3) — 136 of 142 entries carry no signature. Before the ceremony,
+   > the honest form of step 5 is "no *new* failure": compare against the eight
+   > `missing signature` failures already present, rather than expecting green.
 
 Demoting is the same in reverse: move the entry out, delete its signature, and
 re-run `make verify-registry`.
@@ -476,8 +608,12 @@ exactly that reason.
 `backend/services/appnet/registry_acceptance_test.go` stages a temp directory as
 the box's `/etc/vulos` and asserts, with **no insecure flag anywhere**:
 
-- a box holding only the **shipped anchor** verifies every committed entry (55
-  today);
+- a box holding only the **shipped anchor** verifies every committed entry that
+  carries a signature, and reports the split rather than a bare total — 142
+  entries, 6 verified, 136 unsigned today. (The count that matters is how many
+  *verified*, not how many were *read*: reporting the latter is what once let a
+  registry with 55 unsigned entries print "verified 74" —
+  `services/appnet/registry_acceptance_test.go:30-38`.)
 - a box holding a **ceremony anchor** installs a signed app end-to-end **under
   `VULOS_ENV=prod`**;
 - a **tampered** entry, an **unsigned** entry, an entry signed by a **foreign
@@ -501,15 +637,20 @@ make verify-registry-prod                  # the release gate — fails on the d
 cd backend && go test ./services/appnet/   # the acceptance suite
 ```
 
-### The release gate — green
+### The release gate — RED, and this is what blocks 0.3.0
 
-`make verify-registry-prod` (run by `.github/workflows/release.yml` on every
-`v*` tag) **refuses to build a release** whose registry is signed by the dev
-key — the same contract as netboot's `os-core.roothash.sig`: no founder
-signature, no image.
+`make verify-registry-prod` (run by `.github/workflows/release.yml:87` on every
+`v*` tag) **refuses to build a release** whose registry is not fully signed by a
+production release key — the same contract as netboot's `os-core.roothash.sig`:
+no founder signature, no image.
 
-It passes today. The ceremony in §4 has been run, and the gate reports all 55
-entries signed by `release-2026-08` under a cert valid to `2027-08-03`. It goes
-red again if the cert expires, if an entry is added without re-signing, or if
-anything restores the dev keys over `keys/` — see the warning in §3 about
-`make dev-keys` and a bare `make sign-registry`.
+**It fails today**, on `entry "ardour": … has no publisher signature
+(REGISTRY-SIGN-01)`, exit status 2. The root/release ceremony *has* been run —
+the anchor and cert in `keys/` are production, key-id `release-2026-08` valid to
+`2027-08-03` — but the 142-entry registry is 136 signatures short (§3). One
+signing run with the release key the cert authorises clears it; the coordinator
+measured 142/142 signed and `verify-registry` OK against a throwaway vault.
+
+It stays red, or goes red again, if the cert expires, if an entry is added
+without re-signing, or if anything restores the dev keys over `keys/` — see §3
+on `make dev-keys`, `check-release-key`, and a bare `make sign-registry`.
