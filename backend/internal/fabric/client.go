@@ -184,10 +184,24 @@ type WANClient struct{ *http.Client }
 // loopback, and link-local targets are always blocked regardless — see
 // internal/safedial.IsDeniedIP.
 func NewWANClient(timeout time.Duration, allowLAN bool) *WANClient {
+	return NewWANClientPolicy(timeout, safedial.Policy{AllowLAN: allowLAN})
+}
+
+// NewWANClientPolicy is NewWANClient under an explicit safedial.Policy, so the
+// caller can pass the operator's peer dial grant (safedial.PeerPolicy: the
+// VULOS_PEER_ALLOW_CIDR list, or the older coarse VULOS_PEER_ALLOW_LAN) instead
+// of only the boolean.
+//
+// This is what lets sibling boxes find each other over a Tailscale/Headscale
+// tailnet: the rendezvous relay and the peers it names both live on
+// 100.64.0.0/10, and granting exactly that range no longer requires re-opening
+// the whole home LAN to this client. Cloud-metadata, loopback, link-local and
+// bogon targets are refused under every grant — see internal/safedial.
+func NewWANClientPolicy(timeout time.Duration, policy safedial.Policy) *WANClient {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	dialer := safedial.New(allowLAN)
+	dialer := safedial.NewWithPolicy(policy)
 	dialer.Timeout = timeout
 	return &WANClient{&http.Client{
 		Timeout: timeout,

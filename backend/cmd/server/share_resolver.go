@@ -115,12 +115,33 @@ func getDeliverAllowLAN() bool {
 	return deliverAllowLAN
 }
 
+// getDeliverPolicy is the grant this delivery client dials under: the UNION of
+// the coarse VULOS_PEER_ALLOW_LAN opt-in above and the narrow
+// VULOS_PEER_ALLOW_CIDR list (safedial.PeerPolicy).
+//
+// The union, not a replacement, for two reasons. An existing box that set
+// VULOS_PEER_ALLOW_LAN=1 must keep exactly the reach it had — this change is
+// strictly narrowing, never a break. And the once-read boolean above stays the
+// single reading of the legacy variable, so the SSRF regression tests that
+// force it keep forcing the real thing rather than a copy.
+//
+// An unparseable VULOS_PEER_ALLOW_CIDR yields a policy that denies EVERY
+// address; that fail-closed state survives this merge because it is carried on
+// an unexported field of safedial.Policy.
+func getDeliverPolicy() safedial.Policy {
+	p := safedial.PeerPolicy()
+	if getDeliverAllowLAN() {
+		p.AllowLAN = true
+	}
+	return p
+}
+
 // newHTTPCapabilityDeliverer builds a deliverer whose client is hardened against
 // SSRF at dial time (re-validate resolved IP on every connect) and refuses to
 // follow redirects. Use this instead of constructing httpCapabilityDeliverer
 // with a bare http.Client.
 func newHTTPCapabilityDeliverer() *httpCapabilityDeliverer {
-	dialer := safedial.New(getDeliverAllowLAN())
+	dialer := safedial.NewWithPolicy(getDeliverPolicy())
 	dialer.Timeout = 10 * time.Second
 	return &httpCapabilityDeliverer{
 		client: &http.Client{
@@ -152,7 +173,7 @@ func validateDeliveryServer(host string) error {
 	if strings.TrimSpace(host) == "" {
 		return fmt.Errorf("empty host")
 	}
-	_, err := safedial.ValidateHost(host, getDeliverAllowLAN())
+	_, err := safedial.ValidateHostPolicy(host, getDeliverPolicy())
 	return err
 }
 

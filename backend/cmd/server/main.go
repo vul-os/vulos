@@ -43,6 +43,7 @@ import (
 	"vulos/backend/internal/multiinstance"
 	"vulos/backend/internal/osroute"
 	"vulos/backend/internal/proctl"
+	"vulos/backend/internal/safedial"
 	"vulos/backend/internal/storage"
 	"vulos/backend/internal/wsutil"
 	"vulos/backend/services/accountsecurity"
@@ -189,6 +190,19 @@ func main() {
 
 	log.Printf("[env] starting in %q mode (bind=%q skip_hw=%v debug_endpoints=%v)",
 		activeEnv, envDefaults.BindHost, envDefaults.SkipHardwareChecks, envDefaults.DebugEndpoints)
+
+	// Resolve and PRINT the peer dial grant before anything can dial a peer.
+	// A grant nobody can see is a grant nobody audits, so the effective ranges
+	// are stated at every boot — including when nothing is set, because "no
+	// private address is dialable" is itself the decision worth showing.
+	//
+	// A malformed VULOS_PEER_ALLOW_CIDR is FATAL rather than a fallback: the
+	// two wrong answers are widening to something the operator did not write
+	// and narrowing to something they did not ask for, and both are silent.
+	if err := safedial.EnsurePeerPolicy(log.Printf); err != nil {
+		log.Fatalf("[safedial] REFUSING TO START: %v\n"+
+			"  Fix the value, or unset it to keep every private address refused.", err)
+	}
 
 	// Safety guard: abort if an obviously non-production shortcut has been
 	// forced on while the runtime environment claims to be production.
@@ -4899,9 +4913,13 @@ func main() {
 			// VULOS_PEER_ALLOW_LAN mirrors the same opt-in services/files
 			// already uses, for boxes that legitimately reach each other over
 			// a private mesh (Tailscale/CGNAT) rather than the open internet.
-			peerAllowLANEnv := os.Getenv("VULOS_PEER_ALLOW_LAN")
-			peerAllowLAN := peerAllowLANEnv == "1" || strings.EqualFold(peerAllowLANEnv, "true") || strings.EqualFold(peerAllowLANEnv, "yes")
-			fabricWANClient := fabric.NewWANClient(10*time.Second, peerAllowLAN)
+			// VULOS_PEER_ALLOW_CIDR narrows that opt-in to named ranges, so a
+			// box whose siblings live on a 100.64.0.0/10 tailnet does not also
+			// have to re-open 192.168.0.0/16 and 10.0.0.0/8 to this client.
+			// safedial.PeerPolicy is the union of the two; it was already
+			// resolved, printed and validated at startup (EnsurePeerPolicy),
+			// so there is exactly one reading of the grant in this process.
+			fabricWANClient := fabric.NewWANClientPolicy(10*time.Second, safedial.PeerPolicy())
 
 			if rdvURLs := reach.SplitList(os.Getenv("VULOS_RENDEZVOUS_URL")); len(rdvURLs) > 0 {
 				if fabricSigner == nil {

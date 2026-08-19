@@ -213,6 +213,30 @@ func runRelayServe(args []string) error {
 
 	if rdvSvc != nil {
 		log.Printf("[relay] discovery role enabled at https://%s%s (apex host only)", *domain, rdvSvc.Prefix())
+		log.Printf("[relay] the discovery role stores and echoes announced endpoints VERBATIM and never " +
+			"dials them, so it serves boxes on a private mesh (Tailscale/Headscale/Nebula) with no " +
+			"extra configuration here. The address screening is on the BOX, which must grant the " +
+			"mesh range with VULOS_PEER_ALLOW_CIDR before it will dial a peer the relay named.")
+	}
+
+	// The relay makes exactly ONE outbound request on an agent's behalf — the
+	// direct-endpoint ownership probe — so that is the whole of its dial grant,
+	// and it says so rather than leaving an operator to infer it. A grant
+	// nobody can see is a grant nobody audits.
+	switch {
+	case !*directProbe:
+		log.Printf("[relay] dial grant: NONE — the direct-endpoint probe is off (-direct-probe), " +
+			"so this relay makes no outbound request on any agent's behalf")
+	case *allowPrivDirect:
+		log.Printf("[relay] dial grant: -direct-allow-private is ON — the ownership probe may dial " +
+			"PRIVATE and CGNAT addresses (10/8, 172.16/12, 192.168/16, 100.64/10, ULA). Correct for a " +
+			"relay whose agents are reachable only on a private mesh; on a public relay it lets any " +
+			"granted agent aim one probe at this host's own network. Loopback, link-local " +
+			"(169.254.169.254) and bogons stay refused.")
+	default:
+		log.Printf("[relay] dial grant: the ownership probe may dial PUBLIC addresses only; private, " +
+			"CGNAT, loopback, link-local and bogon endpoints are refused. A relay serving agents on a " +
+			"private mesh needs -direct-allow-private, which is a coarse grant — read its startup note.")
 	}
 
 	adminSrv, err := startRelayAdmin(*adminAddr, *adminToken, srv)

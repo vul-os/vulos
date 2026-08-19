@@ -188,7 +188,16 @@ func fetchPeerReachability(ctx context.Context, relayBaseURL, vulosID string) (r
 		// attacker-supplied data, but SSRF-guard the dial anyway for defense in
 		// depth and consistency with the rest of this package's outbound calls
 		// (wellknown.go's wkFetchAndVerify does the same for peer profile fetch).
-		client.Transport = &http.Transport{DialContext: safedial.New(false).DialContext}
+		//
+		// safedial.NewPeer, not safedial.New(false): a relay may legitimately
+		// live on the operator's own tailnet or private mesh, which is an
+		// address range only the operator can know. NewPeer honours the grant
+		// they wrote (VULOS_PEER_ALLOW_CIDR, or the older coarse
+		// VULOS_PEER_ALLOW_LAN) and nothing wider — a relay on 100.64.0.0/10 is
+		// reachable when that range is granted, while loopback, link-local
+		// (169.254.169.254) and bogons stay refused under every grant, and an
+		// UNCONFIGURED box is byte-identical to safedial.New(false).
+		client.Transport = &http.Transport{DialContext: safedial.NewPeer().DialContext}
 	}
 
 	httpResp, err := client.Do(req)

@@ -76,6 +76,23 @@ func getPeerAllowLAN() bool {
 	return peerAllowLAN
 }
 
+// getPeerPolicy is the grant this transport dials under: the UNION of the
+// coarse VULOS_PEER_ALLOW_LAN opt-in above and the narrow VULOS_PEER_ALLOW_CIDR
+// list (safedial.PeerPolicy), so a box whose peers live on a tailnet can name
+// 100.64.0.0/10 without also re-opening 192.168.0.0/16 and 10.0.0.0/8.
+//
+// The union, not a replacement: a box already setting VULOS_PEER_ALLOW_LAN=1
+// keeps exactly the reach it had, and the once-read boolean above stays the
+// single reading of the legacy variable so the SSRF regression tests that force
+// it keep forcing the real thing.
+func getPeerPolicy() safedial.Policy {
+	p := safedial.PeerPolicy()
+	if getPeerAllowLAN() {
+		p.AllowLAN = true
+	}
+	return p
+}
+
 // HTTPPeerTransport is the default PeerTransport over plain HTTP(S).
 type HTTPPeerTransport struct {
 	http          *http.Client
@@ -101,7 +118,7 @@ type HTTPPeerTransport struct {
 //     never legitimately redirects), so a malicious owner cannot bounce the
 //     fetch to an address the guard never inspected.
 func NewHTTPPeerTransport() *HTTPPeerTransport {
-	dialer := safedial.New(getPeerAllowLAN())
+	dialer := safedial.NewWithPolicy(getPeerPolicy())
 	dialer.Timeout = 15 * time.Second
 	return &HTTPPeerTransport{http: &http.Client{
 		Transport: &http.Transport{
@@ -185,7 +202,7 @@ func validateOwnerAddr(addr string) error {
 	if host == "" {
 		return fmt.Errorf("ownerAddr has no host")
 	}
-	_, err = safedial.ValidateHost(host, getPeerAllowLAN())
+	_, err = safedial.ValidateHostPolicy(host, getPeerPolicy())
 	return err
 }
 
