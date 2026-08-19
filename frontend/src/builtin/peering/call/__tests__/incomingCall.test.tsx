@@ -53,7 +53,10 @@ const incoming = (callId: string, fromId: string): Frame => ({
   payload: { channel: 'signal', type: 'incoming-call', call_id: callId, from_id: fromId },
 })
 
-let posted: { url: string; body: string }[] = []
+/** This box's own Vulos ID, as GET /api/peering/identity reports it. */
+const BOX_ID = 'vulos:ed25519:thisbox'
+
+let posted: { url: string; body: string; headers: Record<string, string> }[] = []
 /** Constructed AudioContexts — the ringtone's only possible footprint. */
 let audioContexts = 0
 
@@ -66,8 +69,10 @@ beforeEach(() => {
   // plain assignment throws where `global.fetch = …` on the next line is fine.
   vi.stubGlobal('WebSocket', FakeWS)
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    posted.push({ url: String(input), body: String(init?.body ?? '') })
-    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const url = String(input)
+    posted.push({ url, body: String(init?.body ?? ''), headers: (init?.headers ?? {}) as Record<string, string> })
+    const body = url === '/api/peering/identity' ? { vulos_id: BOX_ID } : {}
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }) as unknown as typeof fetch
 
   class CountingAudioContext {
@@ -120,6 +125,34 @@ describe('an incoming peer call, with no client to answer it', () => {
     const rejects = posted.filter((p) => p.url === '/api/peering/call/reject')
     expect(rejects).toHaveLength(1)
     expect(JSON.parse(rejects[0].body)).toEqual({ call_id: 'call-abc' })
+  })
+
+  it('identifies this box on the decline, or the relay 401s and the caller rings on', async () => {
+    await ring('call-abc', 'priya')
+
+    // handleCallReject compares the session's callee against X-Vulos-ID and
+    // answers 401 without it. The old Answer button never sent it, swallowed
+    // the 401, and left the caller ringing — a decline that did not decline.
+    const reject = posted.find((p) => p.url === '/api/peering/call/reject')
+    expect(reject).toBeDefined()
+    expect(reject?.headers['X-Vulos-ID']).toBe(BOX_ID)
+    expect(posted.some((p) => p.url === '/api/peering/identity')).toBe(true)
+  })
+
+  it('still declines when the identity probe fails, rather than not declining at all', async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      posted.push({ url, body: String(init?.body ?? ''), headers: (init?.headers ?? {}) as Record<string, string> })
+      if (url === '/api/peering/identity') return new Response('nope', { status: 500 })
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof fetch
+
+    await ring('call-abc', 'priya')
+    const reject = posted.find((p) => p.url === '/api/peering/call/reject')
+    expect(reject).toBeDefined()
+    // No header is sent rather than a guessed one — an invented identity would
+    // be worse than an honest 401.
+    expect(reject?.headers['X-Vulos-ID']).toBeUndefined()
   })
 
   it('tells the user a call happened — an auto-decline nobody hears about is worse', async () => {

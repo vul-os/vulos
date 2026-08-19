@@ -151,15 +151,46 @@ export default function IncomingCall() {
 }
 
 /**
+ * This box's own Vulos ID, which the relay REQUIRES on a decline.
+ *
+ * handleCallReject checks `sess.calleeID != r.Header.Get("X-Vulos-ID")` and
+ * answers 401 when the header is absent (call.go:329). Nothing in frontend/
+ * has ever sent it — so the old Answer button's fallback decline 401'd, the
+ * error was swallowed by its empty catch, and the caller was left ringing
+ * anyway. The one action that surface claimed to perform did not happen.
+ *
+ * The header is not authentication and is not treated as such: these routes are
+ * OS-session gated (services/auth's TestPeeringClientRoutesStaySessionGated
+ * asserts /api/peering/call/* 401s without a session), so this is an identity
+ * assertion by an already-authenticated local user. Same endpoint and same
+ * shape peering/Messages.tsx uses to learn the box's own ID.
+ */
+async function myVulosId(): Promise<string> {
+  try {
+    const r = await fetch('/api/peering/identity')
+    if (!r.ok) return ''
+    const data: unknown = await r.json()
+    return isRecord(data) && typeof data.vulos_id === 'string' ? data.vulos_id : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
  * Decline on the wire. The caller's box shows a real decline and stops ringing;
  * this box's relay records the outcome, which is what puts the call in Recents.
  */
 async function declineOnTheWire(callId: string): Promise<void> {
   if (!callId) return
+  const selfId = await myVulosId()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // Sent only when known. An empty header would be no better than none, and
+  // guessing an identity here would be worse than both.
+  if (selfId) headers['X-Vulos-ID'] = selfId
   try {
     await fetch('/api/peering/call/reject', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ call_id: callId }),
     })
   } catch {

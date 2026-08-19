@@ -12,11 +12,17 @@
 // Vulos identity and no number at all. Redialling is therefore only offered on
 // rows that can actually be redialled.
 //
-// Why peer calls are shown but not OFFERED: peer calling does not work
-// end-to-end in this codebase — nothing initiates a call, and the incoming-call
-// banner's Answer button is wired to reject with an "unavailable" notice. A
-// "Call over Vulos" button would be a button that cannot work. Showing the
-// history costs nothing and is honest; offering the action would not be.
+// Why peer calls are shown but not OFFERED: the peer call CLIENT was retired on
+// purpose (ef3e3175) — nothing initiates a call, and an inbound one is declined
+// by the shell with a notification rather than rung. A "Call over Vulos" button
+// would be a button that cannot work. Showing the history costs nothing and is
+// honest; offering the action would not be.
+//
+// The history is real, and only recently so. GET /api/peering/call/history
+// answered [] in production forever because CallHistRecord had no callers at
+// all; the relay now logs every call it finishes (backend/services/peering/
+// call.go), so a declined inbound call arrives here as a missed Vulos call
+// instead of this list quietly reading an endpoint nothing writes.
 
 import { useState, useMemo } from 'react'
 import { Avatar, CallButton, ErrorNotice, EmptyNote, NoLineState } from './PhoneChrome'

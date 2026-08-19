@@ -71,6 +71,13 @@ type callWSHub interface {
 	Push(userID string, frame Frame)
 }
 
+// callHistRecorder is the subset of *CallHistStore that CallRelay needs.
+// *CallHistStore satisfies this interface.
+type callHistRecorder interface {
+	// CallHistRecord appends one entry to the call log.
+	CallHistRecord(entry *CallHistEntry) error
+}
+
 // ─── Call session state ───────────────────────────────────────────────────────
 
 // callState is the lifecycle state of a call session.
@@ -89,6 +96,13 @@ type callSession struct {
 	calleeID  string // Vulos ID of the receiving party
 	state     callState
 	createdAt time.Time
+	// answeredAt is when the call was actually picked up, zero if it never was.
+	//
+	// It exists so a logged DURATION means "how long they talked" rather than
+	// "how long it rang". createdAt is when the phone started ringing; using it
+	// would credit every rejected call with a duration and put a bogus
+	// "· 0:24" beside calls that were never answered.
+	answeredAt time.Time
 }
 
 // ─── SignalingPayload kinds ───────────────────────────────────────────────────
@@ -156,6 +170,82 @@ type CallRelay struct {
 	client   *PeerClient        // outbound S2S transport (PEER-04)
 	priv     ed25519.PrivateKey // signing key for outbound envelopes (PEER-03)
 	selfID   string             // Vulos ID of this node
+
+	// history is where finished calls are logged. Optional: nil records
+	// nothing, which is what the tests that do not care about the log get.
+	history callHistRecorder
+}
+
+// SetCallHistory gives the relay somewhere to log finished calls.
+//
+// Until this existed, CallHistRecord had ZERO non-test callers: the store was
+// constructed, its two routes were registered, and nothing on the box ever
+// wrote to it. GET /api/peering/call/history therefore answered [] in
+// production forever — while the Phone app's Recents tab faithfully fetched it,
+// merged it with the GSM log and rendered the empty result. A surface reading
+// an endpoint nothing writes is a state that can never happen, dressed up as a
+// feature.
+//
+// It IS reachable now. An inbound peer call is declined by the shell
+// (frontend/src/builtin/peering/call/IncomingCall.tsx) and that decline lands
+// in handleCallReject, which records it — so "Priya · over Vulos · Missed"
+// becomes a real row in Recents rather than a shape the code could produce but
+// the system never would.
+//
+// Call before serving; not safe to change concurrently with live requests.
+func (cr *CallRelay) SetCallHistory(rec callHistRecorder) {
+	cr.history = rec
+}
+
+// recordCallOutcome writes exactly ONE log entry for a session that has just
+// ended. Called at every terminal transition, after the session is removed from
+// the map, so a call cannot be logged twice — and a second decline for the same
+// call (two browser tabs, say) finds no session and records nothing.
+//
+// Direction is derived from who the callee was rather than from which handler
+// ran: an inbound session is built with calleeID == selfID, which is the only
+// thing that stays true whether the local user hung up, the remote did, or the
+// call was never answered at all.
+func (cr *CallRelay) recordCallOutcome(sess *callSession, status callhistCallStatus, endedAt time.Time) {
+	if cr.history == nil || sess == nil {
+		return
+	}
+
+	dir := CallHistDirOutbound
+	peerID := sess.calleeID
+	if sess.calleeID == cr.selfID {
+		dir = CallHistDirInbound
+		peerID = sess.callerID
+	}
+
+	display := ""
+	if peerID != "" {
+		if c, ok := cr.contacts.Get(peerID); ok && c != nil {
+			display = c.DisplayName
+		}
+	}
+
+	// Zero for anything that was never picked up. See callSession.answeredAt.
+	dur := 0
+	if !sess.answeredAt.IsZero() && endedAt.After(sess.answeredAt) {
+		dur = int(endedAt.Sub(sess.answeredAt).Seconds())
+	}
+
+	ended := endedAt
+	if err := cr.history.CallHistRecord(&CallHistEntry{
+		ID:          sess.id,
+		PeerID:      peerID,
+		PeerDisplay: display,
+		Direction:   dir,
+		Status:      status,
+		StartedAt:   sess.createdAt,
+		EndedAt:     &ended,
+		DurationSec: dur,
+	}); err != nil {
+		// A call log that cannot be written must not break the call being
+		// logged — the signalling has already happened by this point.
+		log.Printf("[call] history: record %s: %v", sess.id, err)
+	}
 }
 
 // NewCallRelay constructs a CallRelay.
@@ -304,6 +394,7 @@ func (cr *CallRelay) handleCallAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.state = callStateActive
+	sess.answeredAt = time.Now()
 	callerID := sess.callerID
 	cr.mu.Unlock()
 
@@ -355,6 +446,11 @@ func (cr *CallRelay) handleCallReject(w http.ResponseWriter, r *http.Request) {
 	delete(cr.sessions, req.CallID)
 	cr.mu.Unlock()
 
+	// The local user turned this call down. That is the outcome the shell's
+	// auto-decline produces on every inbound peer call, and it is what puts a
+	// missed Vulos call in the Phone app's Recents.
+	cr.recordCallOutcome(sess, CallHistStatusRejected, time.Now())
+
 	if caller, ok := cr.contacts.Get(callerID); ok {
 		if err := cr.sendSignal(r.Context(), caller, sigKindReject, req.CallID, nil); err != nil {
 			log.Printf("[call] reject: relay to caller %s failed: %v", caller.Server, err)
@@ -401,6 +497,8 @@ func (cr *CallRelay) handleCallHangup(w http.ResponseWriter, r *http.Request) {
 	sess.state = callStateEnded
 	delete(cr.sessions, req.CallID)
 	cr.mu.Unlock()
+
+	cr.recordCallOutcome(sess, hangupOutcome(sess, cr.selfID), time.Now())
 
 	if other, ok := cr.contacts.Get(otherID); ok {
 		if err := cr.sendSignal(r.Context(), other, sigKindHangup, req.CallID, nil); err != nil {
@@ -529,16 +627,27 @@ func (cr *CallRelay) HandleInboundCallSignal(w http.ResponseWriter, r *http.Requ
 		cr.mu.Lock()
 		if sess, exists := cr.sessions[sp.CallID]; exists {
 			sess.state = callStateActive
+			sess.answeredAt = time.Now()
 		}
 		cr.mu.Unlock()
 
 	case sigKindReject, sigKindHangup:
 		cr.mu.Lock()
-		if sess, exists := cr.sessions[sp.CallID]; exists {
-			sess.state = callStateEnded
+		ended := cr.sessions[sp.CallID]
+		if ended != nil {
+			ended.state = callStateEnded
 			delete(cr.sessions, sp.CallID)
 		}
 		cr.mu.Unlock()
+
+		// The REMOTE side ended it. A reject is a reject whichever way it
+		// travelled; a hangup before anyone answered is a missed call on the
+		// receiving end and an unanswered call on the placing end.
+		status := hangupOutcome(ended, cr.selfID)
+		if sp.Kind == sigKindReject {
+			status = CallHistStatusRejected
+		}
+		cr.recordCallOutcome(ended, status, time.Now())
 	}
 
 	// Push a ChannelSignal frame to the local user's browser tabs.
@@ -563,6 +672,27 @@ func (cr *CallRelay) HandleInboundCallSignal(w http.ResponseWriter, r *http.Requ
 
 	log.Printf("[call] inbound %s call=%s from=%s pushed to hub", sp.Kind, sp.CallID, senderID)
 	writeCallOK(w, map[string]string{"status": "delivered"})
+}
+
+// hangupOutcome names what a hung-up session actually was.
+//
+// A call that was answered and then ended is completed, however it ended. One
+// that was never answered is not: for the side that was being rung it is a
+// MISSED call, and for the side that was doing the ringing it is an outgoing
+// call that came to nothing. Logging both as "completed" would put calls in the
+// log that never happened, which is the same class of lie as an empty log
+// pretending to be a feature.
+func hangupOutcome(sess *callSession, selfID string) callhistCallStatus {
+	if sess == nil {
+		return CallHistStatusCompleted
+	}
+	if !sess.answeredAt.IsZero() {
+		return CallHistStatusCompleted
+	}
+	if sess.calleeID == selfID {
+		return CallHistStatusMissed
+	}
+	return CallHistStatusOutgoing
 }
 
 // ─── S2S relay helper ─────────────────────────────────────────────────────────

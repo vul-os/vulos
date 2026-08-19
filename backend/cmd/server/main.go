@@ -3032,17 +3032,22 @@ func main() {
 			mediaStore.RegisterMediaHandlers(peeringMux)
 		}
 
+		// Call history (list + record). Constructed BEFORE the call relay so the
+		// relay can be given somewhere to log finished calls. It used to be
+		// created here with nothing wired to it: CallHistRecord had zero
+		// non-test callers, so GET /api/peering/call/history answered [] in
+		// production forever while the Phone app's Recents tab kept fetching it.
+		callHist := peering.RegisterCallHistoryHandlers(peeringMux, pRoot)
+
 		// Calls (initiate/answer/reject/signal/hangup + inbound/signal).
 		if contactStore != nil {
 			callRelay := peering.NewCallRelay(pVulosID, contactStore, peeringHub, peerClient, pPriv)
+			callRelay.SetCallHistory(callHist)
 			peering.RegisterCallHandlers(peeringMux, callRelay)
 		}
 
 		// Mesh group call signaling (PEER-26): WebSocket room for 3–4 peer full-mesh.
 		peering.RegisterMeshCallHandlers(peeringMux, peering.NewMeshSignalingHub())
-
-		// Call history (list + record).
-		peering.RegisterCallHistoryHandlers(peeringMux, pRoot)
 
 		// Pre-call lobby: bandwidth table, SFU host selection, capacity estimate (PEER-25).
 		lobbySvc := peering.NewLobbyService(bwMeter)
