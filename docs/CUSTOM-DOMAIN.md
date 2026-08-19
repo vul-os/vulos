@@ -67,8 +67,9 @@ cannot forge it):
 
 3. **Verify.** `POST /api/apps/{id}/domain/verify` performs a live DNS TXT lookup
    for `_vulos-verify.<your-domain>`. If it finds your token the domain flips to
-   `verified` and is activated; otherwise it stays pending and tells you what it
-   found.
+   `verified`; otherwise it stays pending and tells you what it found.
+   **`verified` means the DNS challenge passed — it does not mean the domain
+   serves your app.** See the next section.
 4. **Check status** any time with `GET /api/apps/{id}/domain`, and **remove** the
    domain with `DELETE /api/apps/{id}/domain` (which reverts the app to its
    default subdomain).
@@ -76,17 +77,58 @@ cannot forge it):
 The panel shows a **Pending / Verified** badge so you can see where a domain is
 in the process.
 
-> **Production guard:** the box only registers these routes when DNS/proxy
-> provisioning is actually configured (`VULOS_DNS_API`, `VULOS_CADDY_DIR`). In a
-> dev/CI setup without them, the domain is recorded but no real DNS or proxy work
-> happens — this is intentional so you are never falsely told a domain is live.
+> **`VULOS_CADDY_DIR` in dev/CI** is set to `noop`, and both the snippet write
+> and its removal no-op on that value
+> (`backend/services/appnet/customdomain.go:222,255`), so nothing touches a
+> Caddyfile in a dev or CI setup.
+
+### ⚠️ What "verified" does *not* do — you must wire the proxy yourself
+
+On success the box writes a Caddy virtual-host snippet to
+`$VULOS_CADDY_DIR/<appID>--custom.caddy`, defaulting to
+`/etc/caddy/vulos-apps/` (`customdomain_api.go:60-66,201-202`). That is the
+whole of the "activation". Three things it does not do, none of which the
+status badge knows about:
+
+- **Nothing reloads Caddy.** No Go path in the repo runs `caddy reload` or
+  `systemctl reload caddy` after writing the snippet — a freshly-written vhost
+  is not live until the operator reloads Caddy themselves.
+- **Nothing imports the snippet directory.** `build.sh:486-499` is the only
+  Caddyfile generator in the repo, and the `/etc/caddy/Caddyfile` it writes
+  contains **no `import` of `/etc/caddy/vulos-apps/`**. The snippets are written
+  *for a self-hoster to include from their own Caddyfile*
+  (`subdomain_provision.go:292`) — nothing includes them automatically.
+- **Most deployments have no Caddy at all.** Caddy is installed only by
+  `build.sh --deploy`, the SSH-to-a-Linux-server path (`build.sh:459-529`).
+  It is not in the Dockerfile and not in the bare-metal image's package list, so
+  on Docker, live USB, netboot and disk installs the snippet is written into a
+  directory nothing reads.
+
+So treat `verified` as "the DNS challenge passed and a vhost file has been
+generated for you", and finish the job in your own reverse proxy. A future
+change may close this; today it is on you.
 
 ### Published static websites
 
 Static sites you deploy through the web host (`/api/web/*`) attach custom domains
 the same way, via `POST /api/web/sites/{site}/domains`. Every management route
 there is scoped to the owner (`X-User-ID`) and fails closed with `401` on an empty
-session; the domain stays `pending` until real DNS is published and verified.
+session.
+
+> **On this path a custom domain never reaches `active` at all — by
+> construction.** `DomainStatus` promotes a domain only when the installed
+> `CertProvider` confirms it holds a certificate
+> (`backend/services/webhost/domain.go:147-150`), and the provider installed is
+> always `NoopCertProvider{}` (`webhost/webhost.go:196`), whose `HasCert` is a
+> hard `false` (`webhost/cert.go:74`). The seam to swap in a real one,
+> `WithCertProvider` (`webhost/webhost.go:156`), has **zero call sites anywhere
+> in the repo** — nothing installs a TLS backend. certmagic and every ACME
+> dependency are deliberately absent from `go.mod` (`webhost/cert.go:35-38`).
+>
+> The code is honest about this where it can be — the domain stays `pending`
+> rather than pretending — so the correct expectation is: attach a domain to get
+> its DNS instructions, then terminate TLS for it in your own reverse proxy.
+> Vulos will not issue a certificate for it.
 
 ---
 
