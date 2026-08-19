@@ -148,9 +148,12 @@ against Flathub's API. Tallies, all with zero failures:
 | `wave1-flatpak.json` | 74 |
 | `wave2-creative-office.json` | 102 |
 | `wave2-dev-net-science.json` | 131 |
-| `arch-declarations.json` | 55, after one TLS flake was re-run (below) |
+| `arch-declarations.json` | 65 |
 
-The script's own self-test induces nine failures to prove it can go red.
+Every entry in all four also had its recorded `flathub_verified` compared against
+Flathub's verification API — 81 comparisons, all in agreement. The script's own
+self-test induces nine failures to prove it can go red, and one TLS flake during
+the arch run was re-run rather than recorded as a verdict (see below).
 
 **Launch and render: NOT MEASURED, for anything added since the last signing.**
 `scripts/verify-app-recipe.sh` exits 2 with *"entry has no signature"* before any
