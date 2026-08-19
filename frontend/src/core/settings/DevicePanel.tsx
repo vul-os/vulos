@@ -72,13 +72,25 @@ export default function DevicePanel() {
         >
           <SettingRow
             label="Home screen"
-            control={<Pill tone={launcherStatus?.isDefault ? 'success' : 'neutral'}>{launcherStatus?.isDefault ? 'Active' : 'Not set'}</Pill>}
+            // `launcherStatus` is null until the native bridge answers, and
+            // stays null for ever if that call rejects — refreshLauncher
+            // swallows the error. `null?.isDefault` is undefined, which is
+            // falsy, so the Pill printed the definite "Not set" for a question
+            // nobody had answered yet. The Background connection row directly
+            // above gets this right with an explicit `== null` check, so the
+            // pattern was already in the file.
+            control={<Pill tone={launcherStatus?.isDefault ? 'success' : 'neutral'}>{launcherStatus == null ? 'Checking…' : launcherStatus.isDefault ? 'Active' : 'Not set'}</Pill>}
           />
           <div className="mt-3 flex gap-2">
             {!launcherStatus?.isDefault ? (
               <button
                 onClick={() => nativeBridge.launcher.setDefault().then(refreshLauncher).catch(() => {})}
-                disabled={launcherStatus != null && !launcherStatus.canRequest}
+                // Unknown is not permission. This read `!= null &&`, so while
+                // the status was still unknown the guard evaluated false and
+                // the button was live — offering an action we did not yet know
+                // this device would accept, next to a Pill that was already
+                // claiming to know the answer.
+                disabled={launcherStatus == null || !launcherStatus.canRequest}
                 className="btn-primary text-sm disabled:opacity-40"
               >
                 Set as home screen
