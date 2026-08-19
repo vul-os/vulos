@@ -51,6 +51,22 @@ import (
 // named there. A permission added later cannot quietly become a tenth inert
 // string.
 //
+// MEASURED, NOT ASSUMED — 2026-08-19, real flatpak, real sandbox. io.mpv.Mpv was
+// installed in a debian:trixie container (its Flathub manifest carries
+// shared=network;ipc and filesystems=…;host:ro, i.e. exactly the grant this
+// bridge claims to remove) and a canary file was written to /opt on the host.
+// Inside `flatpak run --command=sh io.mpv.Mpv`:
+//
+//	BEFORE      /proc/net/dev listed lo … eth0      /opt canary readable
+//	AFTER       /proc/net/dev listed lo (no eth0)   "No such file or directory"
+//	AFTER reset /proc/net/dev listed lo … eth0      /opt canary readable
+//
+// The flags were recorded by flatpak as shared=!network; features=!bluetooth;
+// filesystems=!home;!host;. So the negation reaches a running app, and dropping
+// the override gives the app its publisher's sandbox back. This paragraph is
+// the only reason to believe the file does anything: the Go unit tests below
+// prove which flags are DERIVED, and nothing in Go can prove bwrap honoured them.
+//
 // THE BRIDGE ONLY EVER REMOVES. There is no path here that grants a permission
 // the Flathub manifest did not request. Vulos narrowing a publisher's sandbox
 // on the owner's behalf is a defensible thing to do; Vulos WIDENING it, because
