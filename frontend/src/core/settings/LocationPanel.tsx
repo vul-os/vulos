@@ -92,9 +92,29 @@ export default function LocationPanel() {
               <span className="text-warning">
                 {isLocationErrorCode(status.lastError) ? ERROR_LABEL[status.lastError] : `Reporting issue: ${status.lastError}`}
               </span>
-            ) : status.active ? (
+            ) : status.active && status.lastSentTs ? (
               <span className="text-success">
-                Reporting your location to your box{status.lastSentTs ? ' — last update just now.' : '…'}
+                Reporting your location to your box — last update just now.
+              </span>
+            ) : status.active ? (
+              // ARMED IS NOT REPORTING. startLocationReporting() sets active
+              // BEFORE it calls watchPosition, so `active` becomes true while
+              // the browser's permission prompt is still on screen — nothing
+              // has been read and nothing has been sent. This branch used to
+              // share the green "Reporting your location to your box…" with the
+              // one above, distinguished only by a trailing ellipsis, so the
+              // panel claimed in success green that the user's position was
+              // going to their box while the user was still deciding whether to
+              // allow it. If they said no, the claim stood until handleError
+              // fired and the 2s poll caught up.
+              //
+              // It is not only a brief window. Indoors, or with no fix, a
+              // watch can legitimately never call back — and then this was the
+              // permanent state of the panel. lastSentTs is the only evidence a
+              // report was actually delivered, and the line above was already
+              // reading it, so the panel had what it needed to tell the truth.
+              <span className="text-[var(--text-tertiary)]">
+                Waiting for this device to report a position…
               </span>
             ) : (
               <span className="text-[var(--text-tertiary)]">Starting…</span>
