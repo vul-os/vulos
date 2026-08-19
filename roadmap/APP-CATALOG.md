@@ -52,7 +52,7 @@ standing rule forbids, and this pass deliberately did not make the edit itself.
 
 ## The catalogue — every listed id accounted for
 
-119 ids are named in the list below. None is now unaccounted for:
+119 ids are named in the catalogue list further down. None is now unaccounted for:
 
 | | Count |
 |---|---|
@@ -72,6 +72,44 @@ VS Code, exactly as policy 1a says.
 **Excluded as dead**: `org.duckstation.DuckStation` and
 `com.github.iwalton3.jellyfin-media-player` are both `is_eol` on Flathub. Neither
 has a live replacement id, so they are excluded as dead, not as policy.
+
+## The catalogue — every listed id, with its state
+
+Legend: **✓** in `registry.json` · **▲** staged in a fragment · **P** excluded, proprietary (policy 1a) · **P⊘** proprietary AND still holding a withdrawn entry in `registry.json` · **X** excluded, dead id (Flathub `is_eol` or 404) · **⚑** id corrected from the one previously listed · **†** x86_64-only, so `untestable-on-arm64` and unavailable on an arm64 box.
+
+### Wave 1 — the first 40
+
+**Flatpak / system management** — `com.github.tchx84.Flatseal` ✓ · `io.github.flattool.Warehouse` ✓ · `io.github.giantpinkrobots.flatsweep` ✓ · `net.nokyan.Resources` ✓
+
+**Browsers** — `org.mozilla.firefox` ✓ · `com.google.Chrome` P⊘ · `org.chromium.Chromium` ✓ · `com.brave.Browser` ✓ · `io.gitlab.librewolf-community` ✓ · `com.vivaldi.Vivaldi` P⊘
+
+**Communication** — `org.signal.Signal` ▲ † · `org.telegram.desktop` ▲ · `im.riot.Riot` ✓ · `com.discordapp.Discord` P · `com.slack.Slack` P · `us.zoom.Zoom` P · `com.rtosta.zapzap` ▲ · `info.mumble.Mumble` ▲ · `org.mozilla.thunderbird` ▲ ⚑ †
+
+**Gaming & compatibility** — `com.valvesoftware.Steam` P⊘ · `com.heroicgameslauncher.hgl` ▲ † · `net.lutris.Lutris` ✓ † · `com.usebottles.bottles` ▲ † · `net.davidotek.pupgui2` ▲ · `com.github.Matoking.protontricks` ▲ † · `org.prismlauncher.PrismLauncher` ▲ · `org.vinegarhq.Sober` P · `io.github.benjamimgois.goverlay` ▲ · `com.github.mtkennerly.ludusavi` ▲
+
+**Emulation** — `org.libretro.RetroArch` ▲ · `org.DolphinEmu.dolphin-emu` ▲ · `net.pcsx2.PCSX2` ▲ † · `net.rpcs3.RPCS3` ▲ · `org.ppsspp.PPSSPP` ▲ · `io.mgba.mGBA` ▲ · `org.duckstation.DuckStation` X
+
+**Media playback** — `org.videolan.VLC` ✓ · `io.mpv.Mpv` ▲ · `io.github.celluloid_player.Celluloid` ▲ · `com.spotify.Client` P · `com.github.iwalton3.jellyfin-media-player` X
+
+### Wave 2 — the remainder
+
+**Audio production** — `org.audacityteam.Audacity` ✓ · `org.ardour.Ardour` ✓ · `io.lmms.LMMS` ✓ · `org.musescore.MuseScore` ▲ · `com.github.wwmm.easyeffects` ▲ · `org.mixxx.Mixxx` ▲
+
+**Graphics & photo** — `org.gimp.GIMP` ✓ · `org.kde.krita` ▲ ⚑ · `org.inkscape.Inkscape` ✓ · `org.blender.Blender` ✓ † · `org.darktable.Darktable` ✓ · `com.rawtherapee.RawTherapee` ▲ · `org.kde.digikam` ▲ · `net.scribus.Scribus` ▲ · `com.github.PintaProject.Pinta` ▲ · `org.upscayl.Upscayl` ▲ † · `com.orama_interactive.Pixelorama` ▲
+
+**Video & screen capture** — `org.kde.kdenlive` ✓ · `org.shotcut.Shotcut` ✓ · `com.obsproject.Studio` ✓ † · `fr.handbrake.ghb` ▲ † · `io.github.seadve.Kooha` ▲ · `org.openshot.OpenShot` ▲ · `com.dec05eba.gpu_screen_recorder` ▲
+
+**Office & documents** — `org.libreoffice.LibreOffice` ✓ · `org.onlyoffice.desktopeditors` ▲ · `org.kde.okular` ▲ · `com.github.xournalpp.xournalpp` ▲ · `org.gnucash.GnuCash` ✓ · `fr.free.Homebank` ▲ · `com.github.jeromerobert.pdfarranger` ▲ · `org.cvfosammmm.Setzer` ▲ · `com.github.marktext.marktext` ▲ †
+
+**Reading & notes** — `md.obsidian.Obsidian` P · `com.logseq.Logseq` ▲ · `org.standardnotes.standardnotes` ▲ · `com.calibre_ebook.calibre` ▲ · `org.zotero.Zotero` ▲ · `com.github.johnfactotum.Foliate` ▲
+
+**Development** — `com.visualstudio.code` P · `com.vscodium.codium` ▲ · `dev.zed.Zed` ▲ · `com.jetbrains.IntelliJ-IDEA-Community` ▲ · `com.google.AndroidStudio` P · `io.dbeaver.DBeaverCommunity` ▲ · `org.gnome.meld` ▲ · `io.podman_desktop.PodmanDesktop` ▲ · `rest.insomnia.Insomnia` ▲ † · `org.wireshark.Wireshark` ▲ · `io.github.shiftey.Desktop` ▲ · `io.neovim.nvim` ▲ · `org.godotengine.Godot` ▲ · `io.github.dvlv.boxbuddyrs` ▲
+
+**System utilities** — `org.qbittorrent.qBittorrent` ✓ · `de.haeckerfelix.Fragments` ✓ · `com.bitwarden.desktop` ✓ · `org.keepassxc.KeePassXC` ✓ · `org.gnome.World.PikaBackup` ✓ · `com.github.qarmin.czkawka` ✓ · `io.github.peazip.PeaZip` ✓ · `org.cryptomator.Cryptomator` ✓ · `io.gitlab.adhami3310.Impression` ✓ · `io.gitlab.metadatacleaner.metadatacleaner` ✓ · `com.github.tenderowl.frog` ✓
+
+**Networking & remote** — `org.remmina.Remmina` ▲ · `com.rustdesk.RustDesk` ▲ · `org.filezillaproject.Filezilla` ✓ · `com.nextcloud.desktopclient.nextcloud` ▲ · `org.localsend.localsend_app` ▲ · `org.torproject.torbrowser-launcher` ▲ ⚑ †
+
+**CAD, science & engineering** — `org.freecad.FreeCAD` ▲ · `org.kicad.KiCad` ✓ · `org.openscad.OpenSCAD` ▲ † · `com.ultimaker.cura` ▲ † · `org.qgis.qgis` ✓ · `org.octave.Octave` ✓ · `org.stellarium.Stellarium` ▲ · `org.kde.labplot` ▲ ⚑
 
 ## Seven bad ids, four of them found here
 
