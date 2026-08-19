@@ -99,7 +99,12 @@ func TestEvaluate_WithdrawalOutranksTheArchVerdict(t *testing.T) {
 // A unit test over a fixture proves the branch works; this proves it reaches
 // the entries that actually have the flag, which is the half that was missing.
 func TestListEntries_WithdrawnEntriesCarryTheirReason(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "registry.json"))
+	// testdata/registry.json is a symlink to the real file. The path matters:
+	// `go test` only tracks files INSIDE the module when deciding whether a
+	// cached result is stale, so a gate reading ../../../registry.json prints
+	// "ok (cached)" over a registry it never opened. Measured 2026-08-19; see
+	// registry_fragments_test.go.
+	raw, err := os.ReadFile(filepath.Join("testdata", "registry.json"))
 	if err != nil {
 		t.Fatalf("cannot read registry.json: %v", err)
 	}

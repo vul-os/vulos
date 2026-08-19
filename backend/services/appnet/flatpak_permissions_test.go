@@ -200,7 +200,12 @@ func TestValidateRecipe_RefusesAPermissionThatIsNotOne(t *testing.T) {
 // re-enables it, and the corrected entry is staged in
 // registry.d/apt-retired.json for the registry's single writer to merge.
 func TestShippedRegistry_DeclaresOnlyRealPermissions(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "registry.json"))
+	// testdata/registry.json is a symlink to the real file. The path matters:
+	// `go test` only tracks files INSIDE the module when deciding whether a
+	// cached result is stale, so a gate reading ../../../registry.json prints
+	// "ok (cached)" over a registry it never opened. Measured 2026-08-19; see
+	// registry_fragments_test.go.
+	raw, err := os.ReadFile(filepath.Join("testdata", "registry.json"))
 	if err != nil {
 		t.Fatalf("cannot read registry.json: %v", err)
 	}
