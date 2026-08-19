@@ -141,9 +141,16 @@ Two different measurements, and they must not be confused.
 `scripts/verify-flatpak-candidates.sh` resolves each id through a real
 `flatpak remote-info flathub --arch=<arch>` in a `debian:trixie` container, once
 per declared architecture, and compares the entry's `arch` and `flathub_verified`
-against Flathub's API. Wave 1 passed 74 checks with 0 failures; the arch fragment
-passed after one TLS flake was re-run (see below). The script's self-test induces
-nine failures to prove it can go red.
+against Flathub's API. Tallies, all with zero failures:
+
+| Fragment | Checks |
+|---|---|
+| `wave1-flatpak.json` | 74 |
+| `wave2-creative-office.json` | 102 |
+| `wave2-dev-net-science.json` | 131 |
+| `arch-declarations.json` | 55, after one TLS flake was re-run (below) |
+
+The script's own self-test induces nine failures to prove it can go red.
 
 **Launch and render: NOT MEASURED, for anything added since the last signing.**
 `scripts/verify-app-recipe.sh` exits 2 with *"entry has no signature"* before any
