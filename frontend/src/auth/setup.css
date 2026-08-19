@@ -199,6 +199,9 @@
 
 .wz-header {
   position: relative;
+  /* Above .wz-body, which is a later positioned sibling and would otherwise
+     paint over the go-back menu that hangs out of this row. */
+  z-index: 10;
   padding: max(0.875rem, env(safe-area-inset-top)) 1rem 0.5rem;
 }
 .wz-header-inner {
@@ -251,10 +254,27 @@
 .wz-footer-spacer { flex: 1; }
 
 /* ── Progress ────────────────────────────────────────────────────────────
-   A segmented rail. Completed segments are reachable (you can go back); future
-   ones are inert and are NOT buttons, because a disabled button in a row of
-   fifteen is fifteen tab stops that do nothing. */
+   A segmented rail plus a step counter.
+
+   The rail is DECORATION. The segments used to be <button>s — see
+   WizardProgress in Setup.tsx for the 0.92 × 4 px they measured at 390×844 and
+   for where "go back to an earlier step" lives now. Nothing here is focusable,
+   so nothing here needs to clear a touch floor.
+
+   Two classes, not one: .wz-rail is the ROW (track + counter + the menu that
+   hangs off it) and .wz-track is the segments. They used to be the same class
+   nested inside itself, which made `flex: 1` mean two different things one
+   level apart and left the counter competing with the segments for the row. */
 .wz-rail {
+  /* the go-back menu is absolutely positioned against this */
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.wz-track {
   flex: 1;
   display: flex;
   align-items: center;
@@ -269,8 +289,6 @@
   transition: background var(--motion-base) var(--ease-standard);
 }
 .wz-seg--done { background: color-mix(in srgb, var(--accent) 55%, var(--border-strong)); }
-.wz-seg--done:hover { background: var(--accent); }
-button.wz-seg { cursor: pointer; padding: 0; border: 0; }
 .wz-seg--now {
   background: var(--accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -286,6 +304,88 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
   color: var(--text-muted);
 }
 .wz-count b { font-weight: 600; color: var(--text-secondary); }
+
+/* The counter, when there is somewhere behind you to go. It carries the
+   capability the segments used to carry, so unlike them it is a real control:
+   labelled, one tab stop, and taken to 44px on a coarse pointer by the header
+   rule at the bottom of this file. */
+.wz-count-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.375rem;
+  /* pulled back so the text still sits where the plain counter sat */
+  margin-inline-end: -0.375rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  font: inherit;
+  font-size: 0.78125rem;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+.wz-count-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.wz-count-chev {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.wz-count-btn[aria-expanded="true"] .wz-count-chev { transform: rotate(180deg); }
+
+/* The go-back menu. Anchored to the counter, right-aligned so it cannot run off
+   the right edge of a 390px viewport, and capped in height because fourteen
+   completed steps at a 44px row is 616px on an 844px phone. */
+.wz-jump {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  min-width: 12rem;
+  max-width: min(20rem, calc(100vw - 1.5rem));
+  max-height: min(60vh, 24rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+}
+.wz-jump-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  /* 44px at every width and every pointer. This is a menu row, not existing
+     desktop density: there is no denser version of it to preserve. */
+  min-height: 2.75rem;
+  padding: 0.375rem 0.625rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
+}
+.wz-jump-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.wz-jump-n {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-surface));
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.wz-jump-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Panels ──────────────────────────────────────────────────────────────
    The wizard's one surface. Replaces bg-neutral-900/50 + border-neutral-800/50
@@ -805,4 +905,115 @@ button.wz-seg { cursor: pointer; padding: 0; border: 0; }
    viewport is shorter than the content, so above the fold wins over centred. */
 @media (max-height: 44rem) {
   .wz-body-inner { justify-content: flex-start; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUCH FLOOR — 44px, on a coarse pointer only
+   ═══════════════════════════════════════════════════════════════════════════
+   The shell has enforced this since the mobile workstream (src/index.css
+   `--touch-min`, shell/shell-chrome.css `.vshell-*`, core/touch-chrome.css).
+   The wizard never had: onboarding-contrast.e2e.ts runs at 1280 and
+   mobile-touch-targets.e2e.ts covers the shell chrome, so first boot — the
+   founder's stated acceptance path, and a phone is a plausible first client
+   because the box has no screen of its own — had never been measured at phone
+   width at all.
+
+   What that cost, measured on the shipping build at 390×844, walking all
+   fifteen steps:
+
+     progress segments (15, buttons)   0.92 × 4   → 0.39 × 4 from step 10
+     "Enter Fullscreen"                 160 × 38
+     theme toggle                        28 × 28
+     text inputs (7 of them)            354 × 39 / 320 × 39
+     storage's S3 endpoint field        320 × 37
+     .wz-switch (Night Shift, Sync)      44 × 24
+     "Scan for WiFi Networks"           354 × 39
+     "Generate an Ed25519 keypair"      354 × 39
+
+   The footer's Back/Continue were already compliant (.wz-quiet and
+   .wz-root .btn-primary both carry min-height: 2.75rem), and no step overflowed
+   horizontally in either theme. The segments are not in this block because they
+   are no longer controls — see the Progress section above.
+
+   Everything here is inside `@media (pointer: coarse)`, for the reason
+   core/touch-chrome.css states: how big a target must be is a property of the
+   INPUT DEVICE, not of the app. A mouse-driven desktop sees exactly what it saw
+   before, which onboarding-touch-targets.e2e.ts asserts at 1280 rather than
+   assuming.
+
+   Rules are placed on the CONTAINER (.wz-header-inner, .wz-body), not on each
+   control, for the argument shell-chrome.css makes for `.vshell-bar button`:
+   the theme toggle is core/ThemeToggle.tsx and the fullscreen affordance is
+   auth/FullscreenHint.tsx, neither of which is this workstream's to edit, and a
+   floor with a hole in it shaped like whoever owns which control is not a
+   floor. Anything added to the wizard later inherits it for free. */
+@media (pointer: coarse) {
+  /* The header cluster: the step counter, the fullscreen affordance, the theme
+     toggle. The row is `align-items: center` with no fixed height, so it
+     absorbs this without any other file having to agree. */
+  .wz-header-inner button,
+  .wz-header-inner [role='button'] {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* Every control in the step body. `.wz-linkish` is excluded and is the one
+     exemption in this file: it is an inline action inside a sentence (the
+     "Continue to the desktop anyway" escape hatch in the finish-failure
+     banner), which WCAG 2.5.8 exempts by name — a target "in a sentence or
+     otherwise constrained by the line-height of non-target text". Giving it a
+     44px box would not enlarge it either, since its height is the line box it
+     sits in. onboarding-touch-targets.e2e.ts applies the SAME exemption from an
+     explicit allowlist, so a control that quietly becomes inline to slip under
+     the floor fails the gate instead of joining the exemption. */
+  .wz-body button:not(.wz-linkish),
+  .wz-body [role='button'],
+  .wz-body a[href] {
+    min-width: var(--touch-min, 44px);
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* Text entry. Not checkbox/radio (their label is the target, below) and not
+     range (.wz-range is already 2.75rem, deliberately). */
+  .wz-body input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .wz-body select,
+  .wz-body textarea {
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* A checkbox's target is its LABEL — the native box stays a checkbox-sized
+     checkbox and the whole sentence is tappable, which is what .wz-checkbox's
+     own comment already claimed. Stated as a rule rather than left to whatever
+     padding the label happened to have, because the gate measures the label for
+     these and a rule is what makes that measurement true. */
+  .wz-body label:has(input[type='checkbox']),
+  .wz-body label:has(input[type='radio']) {
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* The switch GROWS. It measured 44 × 24 — the comment above it has claimed "a
+     real switch: 44px hit target" since it was written, and 44 was the width.
+
+     It grows for real rather than gaining a transparent padded hit area,
+     because the hit area a gate can measure is the border box: an `::before`
+     inset extension is invisible to every rect-based check, and this repository
+     has shipped a touch-floor gate that passed with a half-done fix planted.
+     `background-clip: content-box` (the .vwin-light idiom) is not available
+     here either — the unchecked pill is DEFINED by its 1px border, and a border
+     is painted on the border box, so clipping the fill would leave the ring
+     drawn around the full 44px square.
+
+     68 × 44 with a 30px knob keeps the 44:24 pill's proportions close enough to
+     read as the same control, and 24px of knob travel keeps the state obvious. */
+  .wz-switch {
+    width: 4.25rem;
+    height: var(--touch-min, 44px);
+  }
+  .wz-switch::after {
+    width: 1.875rem;
+    height: 1.875rem;
+    left: 7px;
+    margin-top: -0.9375rem;
+  }
+  .wz-switch[aria-checked="true"]::after { transform: translateX(1.5rem); }
 }

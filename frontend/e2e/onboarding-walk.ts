@@ -110,9 +110,18 @@ export async function bootWizard(
     try {
       localStorage.setItem('vulos-theme', t)
     } catch {
-      /* storage blocked — the attribute below is what actually decides */
+      /* storage blocked — the attribute below is the fallback */
     }
-    document.documentElement.setAttribute('data-theme', t)
+    // An init script runs BEFORE the document is parsed, so document.documentElement
+    // is null at this point. The bare `document.documentElement.setAttribute(...)`
+    // that used to be here therefore threw on every single boot of every spec that
+    // uses this helper, and never stamped anything — the "fallback" the comment
+    // above describes has never once run, and the theme has always come from
+    // localStorage alone. Nothing caught it because no onboarding spec listened for
+    // page errors; onboarding-touch-targets.e2e.ts does, which is how it surfaced.
+    const stamp = () => document.documentElement?.setAttribute('data-theme', t)
+    stamp()
+    document.addEventListener('DOMContentLoaded', stamp)
   }, theme)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await installBackend(page, { ...FIRST_BOOT, ...overrides })
@@ -138,6 +147,36 @@ export async function settle(page: Page): Promise<void> {
 }
 
 /**
+ * Tick a step's confirmation checkbox.
+ *
+ * Both call sites used `check({ force: true })`, and force was hiding a real
+ * interaction: `.wz-nav` is `position: sticky; bottom: -1.25rem`, so the action
+ * bar floats OVER the last of the step's content until the scroll reaches the
+ * end — and these checkboxes are the last of the step's content. Playwright's
+ * own scroll-into-view is minimal, so it parks the checkbox exactly under the
+ * bar; `force` then skipped the "receives pointer events" check and clicked the
+ * bar instead, which reports as the baffling "clicking the checkbox did not
+ * change its state". It happened to miss at 1280×720 and to land at 1280×800,
+ * i.e. it was a coin toss on viewport height.
+ *
+ * Centring the control in the scroll container first is what a person does, and
+ * it lets the click run WITH actionability checks — so if the box is ever
+ * genuinely unreachable, the failure says so.
+ */
+async function checkConfirmation(page: Page): Promise<void> {
+  const box = page.locator('input[type=checkbox]').first()
+  await box.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  // The LABEL is what a person hits, and clicking it is the only honest way in:
+  // the SSH step's checkbox is `sr-only` (its label intercepts every pointer
+  // event aimed at it, correctly) and the reveal's is a 22px box beside a
+  // sentence. Checking the input directly is either impossible or a click nobody
+  // makes — which is exactly why the previous version needed `force`.
+  const label = page.locator('label:has(input[type=checkbox])').first()
+  if (!(await box.isChecked())) await label.click()
+  await expect(box, 'the confirmation checkbox did not tick when its label was clicked').toBeChecked()
+}
+
+/**
  * The recovery-phrase reveal, which the ACCOUNT step now shows inline after it
  * registers. Registration used to happen on the last step, which is what made
  * the four steps in between post into a 401 — see AccountStep's docstring.
@@ -146,7 +185,7 @@ export async function passMasterKeyReveal(page: Page): Promise<void> {
   await expect(page.getByText(/save your recovery phrase/i)).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: /tap to reveal/i }).click()
   await settle(page)
-  await page.locator('input[type=checkbox]').first().check({ force: true })
+  await checkConfirmation(page)
   await settle(page)
   await page.getByRole('button', { name: /continue/i }).first().click()
 }
@@ -216,7 +255,7 @@ export async function advance(page: Page, step: StepId): Promise<void> {
     case 'ssh':
       await next(/generate an ed25519 keypair/i)
       await expect(page.getByText(/^SHA256:/)).toBeVisible({ timeout: 20_000 })
-      await page.locator('input[type=checkbox]').first().check({ force: true })
+      await checkConfirmation(page)
       await settle(page)
       await next(/continue/i)
       break

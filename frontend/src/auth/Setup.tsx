@@ -591,55 +591,164 @@ export default function Setup({ onComplete }: { onComplete: () => void }) {
 }
 
 // ═══════════════════════════════════
-// Wizard progress — a slim segmented bar that scales to any step count and
-// stays legible on a phone (18 dots would overflow). Completed segments are
-// clickable to jump back; the future is dimmed and inert.
+// Wizard progress
+//
+// The rail is a PROGRESS INDICATOR and nothing else.
+//
+// It used to be fifteen individually-focusable <button>s, one per step, each
+// labelled "Go back to step N of 15" — a control on paper, decoration in fact.
+// Measured on the shipping build at 390×844: the rail gets 69.95px of a 390px
+// header (61.86px from step 10, where the two-digit counter takes more of the
+// row) and spends 14 × 4px of that on gaps, so a segment renders 0.92 × 4 px,
+// and 0.39 × 4 px past step 9. That is under four square pixels of target for a
+// control the shell enforces a 44 × 44 floor on everywhere else — and fifteen
+// of them are fifteen tab stops and fifteen screen-reader announcements on the
+// first screen anyone ever meets.
+//
+// A segment cannot be fixed where it stands: fifteen 44px targets need 660px of
+// rail and a phone header offers seventy.
+//
+// So the segments are `aria-hidden` spans inside the role="progressbar" that
+// already announces "Setup step 4 of 15" — one announcement instead of sixteen,
+// no tab stops — and the capability they carried moves to the counter beside
+// them, which becomes a real, labelled control that lists the steps already
+// completed. Going back is not dropped; it stops being a secret, and it works
+// the same way with a mouse, a finger, a keyboard and a screen reader.
+//
+// Rejected — leave only the footer's Back button. Nothing becomes unreachable
+// (Back reaches any earlier step one tap at a time) but the recovery-kit step
+// is ten taps from the language step, each through a 200ms transition, and no
+// gate would have noticed the capability leaving.
+//
+// Rejected — keep tappable segments only where they meet 44px. They meet it on
+// a desktop and on no phone, so the floor would hold at 1280 and fail at 390:
+// precisely the shape of the bug being fixed.
+//
+// e2e/onboarding-touch-targets.e2e.ts asserts both halves — the floor, and that
+// the jump still lands on the step it names.
 // ═══════════════════════════════════
+
+/**
+ * Human names for the step ids, for the go-back menu.
+ *
+ * Deliberately NOT exported. STEPS is the list tests assert against and the one
+ * the wizard walks; a second exported list of the same thing is exactly the
+ * drift STEPS' own comment warns about. Missing ids fall back to the raw id
+ * rather than to an empty row, so a step added without a label is visible in
+ * the UI instead of silently unreachable.
+ */
+const STEP_LABELS: Record<string, string> = {
+  welcome: 'Welcome',
+  IS09_chooser: 'New or join',
+  device: 'Device',
+  language: 'Language',
+  timezone: 'Time zone',
+  network: 'Network',
+  account: 'Your account',
+  pin: 'PIN',
+  apps: 'Your apps',
+  appearance: 'Appearance',
+  identity: 'Box identity',
+  storage: 'Storage',
+  ssh: 'SSH access',
+  recoverykit: 'Recovery kit',
+  ready: 'Ready',
+  IS09_join_storage: 'Connect storage',
+  IS09_syncing: 'Syncing',
+}
+
 function WizardProgress({ steps, step, onJump }: { steps: string[]; step: number; onJump: (idx: number) => void }) {
   const total = steps.length
+  // WHICH step the menu was opened on, not merely whether it is open.
+  //
+  // `open` is derived from it, so a step change — Back, Continue, a jump from
+  // this very menu, the join flow's programmatic jump at mount — closes the menu
+  // by construction. The first version cleared a boolean in an effect keyed on
+  // `step`; deriving it removes the effect, and with it the window in which the
+  // menu is open while listing a position the wizard has already left.
+  const [openAt, setOpenAt] = useState<number | null>(null)
+  const open = openAt === step
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  // Escape closes, and so does a press anywhere outside. A document listener
+  // rather than a full-screen scrim: an invisible element covering the wizard is
+  // itself a target, and this workstream is about not shipping those.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenAt(null) }
+    const onDown = (e: Event) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpenAt(null)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [open])
+
+  // Exactly the old rule: the steps BEHIND you are reachable, the ones ahead
+  // are not. Changing which steps you may jump to is a separate decision from
+  // how you tap one, and this change makes only the second.
+  const done = steps.slice(0, step)
+  const counter = <>Step <b>{step + 1}</b> of {total}</>
+
   return (
-    <div className="wz-rail">
+    <div className="wz-rail" ref={rootRef}>
       <div
-        className="wz-rail"
+        className="wz-track"
         role="progressbar"
         aria-valuenow={step + 1}
         aria-valuemin={1}
         aria-valuemax={total}
         aria-label={`Setup step ${step + 1} of ${total}`}
       >
-        {steps.map((_, i) => {
-          const done = i < step
-          const active = i === step
-          // Only completed segments are buttons. Rendering the future as
-          // fifteen disabled buttons put fifteen inert stops in the tab order
-          // of the first screen anyone meets — and a wizard is exactly the
-          // place someone is driving with a TV remote or a keyboard.
-          if (!done) {
-            return (
-              <span
-                key={i}
-                className={`wz-seg${active ? ' wz-seg--now' : ''}`}
-                aria-current={active ? 'step' : undefined}
-              />
-            )
-          }
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onJump(i)}
-              aria-label={`Go back to step ${i + 1} of ${total}`}
-              className="wz-seg wz-seg--done"
-            />
-          )
-        })}
+        {steps.map((_, i) => (
+          <span
+            key={i}
+            aria-hidden="true"
+            className={`wz-seg${i < step ? ' wz-seg--done' : ''}${i === step ? ' wz-seg--now' : ''}`}
+          />
+        ))}
       </div>
-      {/* Was `01 / 15` in --text-ghost: 2.11:1 dark, 2.18:1 light. It sits in
-          the header, so that single pair was a WCAG failure on all 15 steps in
-          both themes — the most-repeated contrast defect in the wizard. */}
-      <span className="wz-count">
-        Step <b>{step + 1}</b> of {total}
-      </span>
+
+      {/* On the first step there is nothing behind you, so there is no control —
+          a disabled button here would be a dead 44px target in the header of the
+          very first screen. */}
+      {done.length === 0 ? (
+        <span className="wz-count">{counter}</span>
+      ) : (
+        <button
+          type="button"
+          className="wz-count wz-count-btn"
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-label={`Step ${step + 1} of ${total}. Go back to an earlier step.`}
+          onClick={() => setOpenAt(open ? null : step)}
+        >
+          <span>{counter}</span>
+          <svg viewBox="0 0 12 12" className="wz-count-chev" aria-hidden="true">
+            <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </svg>
+        </button>
+      )}
+
+      {open && (
+        <div className="wz-jump" role="menu" aria-label="Go back to an earlier step">
+          {done.map((id, i) => (
+            <button
+              key={`${id}-${i}`}
+              type="button"
+              role="menuitem"
+              className="wz-jump-item"
+              onClick={() => { setOpenAt(null); onJump(i) }}
+            >
+              <span className="wz-jump-n" aria-hidden="true">{i + 1}</span>
+              <span className="wz-jump-label">{STEP_LABELS[id] ?? id}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
