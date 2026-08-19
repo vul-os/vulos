@@ -41,6 +41,12 @@ export interface CallSession {
   canCall: boolean
   /** Why not, when canCall is false. Empty when it is true. */
   blockedReason: string
+  /**
+   * Where this call's audio will actually be, when that is not where the user
+   * would assume. Empty when there is nothing to say — see the note on
+   * AUDIO_ON_MODEM for why this is PER-PLATFORM and must stay that way.
+   */
+  audioPath: string
   /** Still working out what hardware is here. */
   probing: boolean
   /** The number currently being dialled, or ''. Ours, not the modem's. */
@@ -71,6 +77,37 @@ export const NO_MODEM_REASON =
 
 export const DATA_ONLY_REASON =
   'The modem in this box is data/SMS only — it reports no voice support, so it cannot place calls.'
+
+/**
+ * WHERE THE AUDIO IS, on a box calling over its own modem.
+ *
+ * Vulos telephony is call CONTROL, not a voice path. The box shells out to
+ * `mmcli` to dial, answer and hang up (backend/services/telephony/calls.go),
+ * and that file says it plainly: "The modem owns the audio path; this just
+ * initiates the call." There is no WebRTC, no PipeWire/PulseAudio/ALSA bridge,
+ * no Opus, no RTP anywhere in the telephony package — and no getUserMedia
+ * anywhere in this repo, so no software voice path is even possible.
+ *
+ * Everything about the UI up to here was disciplined about it: capability is
+ * resolved before a button is drawn, the in-call bar is drawn from the modem's
+ * own answer, and there is no mute, speaker or DTMF control pretending to sit
+ * on a media stream. The one remaining gap was that NOTHING SAID SO. A user
+ * pressed Call, got a working in-call bar and a live call, and then discovered
+ * by silence that they could neither hear nor be heard.
+ *
+ * That is worth saying before the call, not after — so this rides with every
+ * dialling surface. It is not an error and not a blocked reason: the call is
+ * real and useful. A phone you operate from your desk while you talk on the
+ * handset is the thing being built, and it only reads as broken if nobody
+ * mentions the handset.
+ */
+export const AUDIO_ON_MODEM =
+  'Audio doesn’t come through this browser. Vulos dials, answers and hangs up; the modem ' +
+  'carries the call itself, so you speak and listen on the modem’s own audio path — a ' +
+  'handset, headset or speaker attached to it.'
+
+/** The same fact, at in-call-bar length. */
+export const AUDIO_ON_MODEM_SHORT = 'Audio is on the modem, not in this browser'
 
 export function useCallSession(): CallSession {
   const [voice, setVoice] = useState(false)
@@ -196,8 +233,23 @@ export function useCallSession(): CallSession {
   // "we don't know yet" and "there is no modem" must not be the same state.
   const reason = probing ? 'Checking this box for a modem…' : blockedReason
 
+  // Said ONLY for a call that will run on this box's own modem.
+  //
+  // On the Android bridge the shell hands the number to the system dialer
+  // (nativeBridge.telephony.dial → TelephonyBridge.kt's Intent.ACTION_CALL) and
+  // the handset takes the call over its own earpiece, exactly as it would for
+  // any other call. There is nothing surprising to warn about there, and a
+  // warning would be simply FALSE — which is why this keys on the same
+  // `pollable` predicate that decides whose line is carrying the call, rather
+  // than on "can we call at all".
+  //
+  // It is also silent while probing and on a box that cannot call: an audio
+  // caveat about a call that is not going to happen is noise on top of a
+  // blockedReason that already explains the real problem.
+  const audioPath = pollable ? AUDIO_ON_MODEM : ''
+
   return {
-    canCall: voice, blockedReason: reason, probing, dialling, error, active: activeCall,
+    canCall: voice, blockedReason: reason, audioPath, probing, dialling, error, active: activeCall,
     call, hangup, answer, decline, clearError: () => setError(''),
   }
 }

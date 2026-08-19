@@ -7,6 +7,11 @@
 // When the active line cannot place calls — no modem at all, or a data/SMS-only
 // USB stick — the pad does not pretend. The call button is disabled and says
 // why, rather than dialling into a 200 response that carries an error.
+//
+// And when it CAN call, it says where the audio will be BEFORE the number is
+// dialled. A box's modem carries the call itself; the browser is a dialler, not
+// a handset. Finding that out by silence after pressing Call is the difference
+// between a phone you operate from your desk and a phone that looks broken.
 
 import { useState, useMemo } from 'react'
 import { CallButton } from './PhoneChrome'
@@ -29,9 +34,11 @@ interface KeypadProps {
   onMessage: (number: string) => void
   /** Set when a dial attempt failed — shown under the pad. */
   dialError: string
+  /** Where the audio will be, when that is worth saying. '' on Android. */
+  audioPath: string
 }
 
-export default function Keypad({ contacts, canCall, callBlockedReason, canSms, onCall, onMessage, dialError }: KeypadProps) {
+export default function Keypad({ contacts, canCall, callBlockedReason, canSms, onCall, onMessage, dialError, audioPath }: KeypadProps) {
   const [value, setValue] = useState('')
 
   // Live match: as soon as enough digits are typed to be a real suffix, show who
@@ -101,6 +108,15 @@ export default function Keypad({ contacts, canCall, callBlockedReason, canSms, o
         {!canCall && (
           <p className="text-[12.5px] text-center max-w-[21rem] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
             {callBlockedReason}
+          </p>
+        )}
+        {canCall && audioPath && (
+          // Not role="alert" and not danger-coloured: nothing is wrong. This is
+          // how the box's telephony works, said before it matters rather than
+          // after.
+          <p data-audio-path className="text-[12.5px] text-center max-w-[21rem] leading-relaxed"
+            style={{ color: 'var(--text-tertiary)' }}>
+            {audioPath}
           </p>
         )}
         {dialError && (

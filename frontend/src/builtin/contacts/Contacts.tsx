@@ -34,7 +34,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { LineBar, TopTabs, BottomTabs } from '../phone/PhoneChrome'
 import { useSize, visibleTabs, DEFAULT_TAB, type TabId } from '../phone/phoneLayout'
 import { useLines, useContacts, useCalls } from '../phone/usePhoneData'
-import { useCallSession } from '../phone/useCallSession'
+import { useCallSession, AUDIO_ON_MODEM_SHORT } from '../phone/useCallSession'
 import { digitKey } from '../phone/telephonyApi'
 import InCallBar from '../phone/InCallBar'
 import RecentsTab from '../phone/RecentsTab'
@@ -94,7 +94,7 @@ export default function Contacts() {
     ) : current === 'keypad' ? (
       <Keypad
         contacts={book.contacts} canCall={session.canCall} callBlockedReason={session.blockedReason} canSms={canSms}
-        onCall={onCall} onMessage={onMessage} dialError={session.error} />
+        onCall={onCall} onMessage={onMessage} dialError={session.error} audioPath={session.audioPath} />
     ) : (
       <MessagesTab
         lineId={active?.id ?? null} size={size} names={book.names} canSms={canSms}
@@ -109,7 +109,7 @@ export default function Contacts() {
       className="h-full flex flex-col min-h-0"
       style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
       {session.active && (
-        <InCallBar call={session.active} name={activeName}
+        <InCallBar call={session.active} name={activeName} audioNote={session.audioPath && AUDIO_ON_MODEM_SHORT}
           onHangUp={() => { void session.hangup() }}
           onAnswer={() => { void session.answer() }}
           onDecline={() => { void session.decline() }} />

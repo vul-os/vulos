@@ -11,6 +11,13 @@
 // leaves the modem idle and a request-driven bar would sit there claiming a
 // call and offering to hang up nothing.
 //
+// WHERE THE AUDIO IS. The bar carries a third line saying the audio is on the
+// modem rather than in the browser, because this is the moment the user finds
+// out either way: they press Call, the bar appears, and then either they were
+// told or they discover it by silence. `audioNote` is passed rather than
+// decided here — it is empty on the Android bridge, where the system dialer
+// takes the call over the handset's own earpiece and the caveat would be FALSE.
+//
 // WHAT IT DELIBERATELY DOES NOT CLAIM. There is no call TIMER. The box records
 // no start time for a call in progress — the call log's duration is computed
 // when a call ENDS (calls.go) — so a timer here could only count from the
@@ -50,12 +57,17 @@ interface InCallBarProps {
   call: ActiveCall
   /** Display name for the far end, resolved from the address book, if known. */
   name?: string
+  /**
+   * Where the audio actually is, when that is not where the user would assume.
+   * Empty on platforms where there is nothing to say (see useCallSession).
+   */
+  audioNote?: string
   onHangUp: () => void
   onAnswer: () => void
   onDecline: () => void
 }
 
-export default function InCallBar({ call, name, onHangUp, onAnswer, onDecline }: InCallBarProps) {
+export default function InCallBar({ call, name, audioNote, onHangUp, onAnswer, onDecline }: InCallBarProps) {
   const ringing = isRinging(call)
   // A withheld number is normal on a real network — say so rather than render
   // an empty space where a person should be.
@@ -81,6 +93,15 @@ export default function InCallBar({ call, name, onHangUp, onAnswer, onDecline }:
         <span className="block text-[12px] truncate" style={{ color: 'rgba(255,255,255,0.85)' }}>
           {stateWords(call)}
         </span>
+        {audioNote && (
+          // Its own line, not appended to the state with a separator: on a
+          // narrow window `truncate` would eat the end of a joined string, and
+          // the half that would disappear is this one.
+          <span data-call-audio-note className="block text-[11.5px] truncate"
+            style={{ color: 'rgba(255,255,255,0.78)' }}>
+            {audioNote}
+          </span>
+        )}
       </span>
 
       {ringing ? (

@@ -736,6 +736,13 @@ function ContactDetail({ contact, session, onEdit, onDelete, saving }: ContactDe
                 {!dialler.canCall && dialler.blockedReason && (
                   <div className="text-[12px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{dialler.blockedReason}</div>
                 )}
+                {dialler.canCall && dialler.audioPath && (
+                  // Said HERE, next to the Call button, rather than only once the
+                  // call is up. This is the surface a call is most often placed
+                  // from — a person, not a keypad — and "you will not hear this
+                  // call in your browser" is not a thing to learn from silence.
+                  <div data-audio-path className="text-[12px] mt-1" style={{ color: 'var(--text-tertiary)' }}>{dialler.audioPath}</div>
+                )}
               </Field>
             )}
             {addresses.length > 0 && (
