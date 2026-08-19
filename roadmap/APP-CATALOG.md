@@ -220,14 +220,31 @@ that fails if any permission is neither enforced nor named there:
 withheld. It is **fail-closed**: an app whose narrowing cannot be applied is
 uninstalled, because leaving it is the original defect in a worse form.
 
-**Consequence to expect, and it is deliberate.** Several shipped entries declare no
-`network` and now genuinely lose it: GIMP, Inkscape, Audacity, Blender, Kdenlive,
-LibreOffice, KeePassXC, Octave, GnuCash, Meld. Two were corrected instead, because
-the declaration was simply wrong about the app: **VLC** and **KiCad** gained
-`network` (network streams; the Plugin and Content Manager), as did **OBS Studio**
-(streaming is what it is for) and **Dolphin**/**PPSSPP** (netplay). **Flatseal is
-the escape hatch** — it is in this catalogue precisely so an owner can restore
-something the recipe was too strict about.
+**Consequence to expect, and the blast radius is not small.** Counted across the
+merged catalogue: of **108 enabled Flatpak entries, 48 lose network** and **9 lose
+host/home filesystem**. That is the model finally doing something, and it is
+deliberate — GIMP, Inkscape, Audacity, Blender, Kdenlive, LibreOffice, KeePassXC,
+Octave, GnuCash, Meld, Krita, Okular and the rest work on local files. The nine
+that lose host/home are Element, Firefox, LibreWolf, Jitsi Meet, Impression,
+Mumble, Signal, Telegram and ZapZap — none of which requests `host` in its Flathub
+manifest anyway, so for them the negation removes nothing that was there.
+
+Five entries were **corrected instead**, because the declaration was wrong about
+the app rather than strict: **VLC** and **KiCad** gained `network` (network
+streams; the Plugin and Content Manager), **OBS Studio** (streaming is what it is
+for), and **Dolphin** and **PPSSPP** (netplay). Each correction is recorded in the
+entry's own `_note` with the reason.
+
+**Flatseal is the escape hatch**, and it is in this catalogue precisely so an owner
+can restore something a recipe was too strict about. Anything discovered to be
+genuinely broken should be fixed in the entry, not in the bridge.
+
+**Two limits of the bridge, stated because neither is obvious.** It applies at
+*install* time, so an app installed before this change keeps its old, wider
+sandbox until it is reinstalled — there is no sweep over what is already on a
+box. And it applies only to Flatpak apps: for a `type: web` or native entry the
+`permissions` array still decides nothing, because Vulos's own per-app namespace
+does not read it either.
 
 **A permission string that is not a permission is now refused** (PERMS-01). Under
 the bridge an unrecognised string matches no enforced name, so the access it was
@@ -256,6 +273,19 @@ apps that arm64 boxes could not previously install.
   branches with no plain `stable`. **Bottles answers the "wine vs Bottles" question
   by being installable**: `com.usebottles.bottles` resolves on a bare id and is
   staged. Both are x86_64-only, as the Wine underneath them is.
+
+## Vulos first-party
+
+| App | State |
+|---|---|
+| `diwan` | Shipped. Both Linux binaries pinned per architecture with digests that agree with the release's own `checksums.txt` *and* GitHub's published digest. Installed and booted on both arches. |
+| `wede` | Shipped, per-architecture, port 9090. |
+| `lilmail` | Shipped, per-architecture, port 8090. |
+| `kerf` | **Absent by decision, and it should stay absent.** Its recipe cloned `kerf-cad/kerf`, which does not exist, and swallowed the failure into a placeholder HTML page — so the install "succeeded" and the owner got a stub. Worse, `vul-os/kerf` v0.1.9 publishes `linux-x64`, `macos-arm64` and `macos-x64` archives with the **identical sha256**, so the Linux asset is not a Linux build. There is nothing here to pin until upstream publishes distinct artefacts. |
+
+Other siblings — basin, openrate, slipscan, patala, evermesh, magnetite, molao,
+zana, aql, pier, kotva — are still unassessed as box-owner apps, and none was
+added speculatively in this pass.
 
 ## The registry CAN express a per-architecture download
 
