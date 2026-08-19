@@ -271,6 +271,21 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, [])
 
+  // `tick` is in both lists on purpose, and the rule calling it "unnecessary"
+  // is reading the argument lists rather than the functions.
+  //
+  // Both resolvers read the WALL CLOCK, which is not a value React can see.
+  // resolveTheme('schedule', …) ends in isInTimeRange(), which compares against
+  // currentMinutes(); resolveNightShift does the same, and in 'auto' mode also
+  // calls getSunTimes(). Their answers therefore change with no change to any
+  // argument — that is the entire point of a schedule.
+  //
+  // `tick` is the clock's stand-in: the interval above increments it once a
+  // minute, but only while a time-based mode is actually selected. Remove it
+  // and these memos recompute only when a SETTING changes, so a box left alone
+  // in Schedule mode would sit in light theme straight through 20:00 and flip
+  // hours later, whenever the user happened to touch an unrelated preference.
+  // That is the bug the minute interval exists to prevent.
   const resolved = useMemo(
     () => resolveTheme(theme, scheduleDark, scheduleLight, systemTheme),
     [theme, scheduleDark, scheduleLight, systemTheme, tick]

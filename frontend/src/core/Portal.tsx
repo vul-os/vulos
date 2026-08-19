@@ -415,6 +415,28 @@ Only output the viewport block — no explanations outside it.`
         break
       }
     }
+  // processAIResponse is called above but deliberately absent here, for the
+  // same reason it is absent from aiEdit_runEditWithAI's list a hundred lines
+  // up: it is declared BELOW this callback, and React evaluates dependency
+  // arrays synchronously during render, so naming it here is a temporal-dead-
+  // zone crash on mount — "Cannot access processAIResponse before
+  // initialization", which presents as a black kiosk, not a warning.
+  //
+  // What makes the omission safe rather than merely unavoidable: this callback
+  // can never hold a stale processAIResponse, because processAIResponse is
+  // useCallback'd on [addMessage, openWindow] and BOTH of those are already in
+  // this list. Any render that gives processAIResponse a new identity gives
+  // handleIntent one too, so the pair are rebuilt together and cannot drift.
+  //
+  // That is a fact about two dependency lists rather than something the linter
+  // checks, so it has to be re-verified if either list changes. Declaring
+  // processAIResponse above its callers would let the rule enforce it instead,
+  // and was tried: it makes react-hooks/immutability fail the file on the
+  // handleIntent that useVoice's callback reads at the top of the component,
+  // which is its own (harmless — useVoice rebuilds the recogniser from the
+  // current closure on each start()) TDZ report. Two restructurings to remove
+  // one provably-inert warning was the wrong trade; this note is the cheaper
+  // half of it.
   }, [addMessage, openWindow, setThinking, conversation, aiEdit_runEditWithAI])
 
   // Listen for chat messages from launchpad

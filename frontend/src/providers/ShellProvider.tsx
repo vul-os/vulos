@@ -1003,6 +1003,20 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       session.publish(serializableShellState(state))
     }, 500)
     return () => clearTimeout(timer)
+    // `state` itself is not a dependency, and the two fields named here are not
+    // an abbreviation of it — they are the whole of what this effect writes.
+    // saveShellState persists exactly { desktops, activeDesktop }, and
+    // serializableShellState reads exactly those two off the state it is given.
+    // The other seven fields on ShellState (conversation, thinking, popout,
+    // nativeWindows, launchpadOpen, chatOpen, missionControlOpen) are
+    // deliberately not persisted — a reload is not supposed to restore a
+    // half-finished chat or a menu someone left open.
+    //
+    // So depending on the whole object would re-arm this 500ms debounce on
+    // every assistant message and every panel toggle without changing one
+    // persisted byte, and each re-arm postpones the write. The effect saves the
+    // live `state` it closed over, so what lands on disk is always current;
+    // this list decides WHEN a save happens, not WHAT is in it.
   }, [state.desktops, state.activeDesktop, session.role, session.publish, session])
 
   // A follower mirrors whatever the writer publishes, so both tabs show the
