@@ -294,6 +294,33 @@ Two notes on the appnet drop, because both are counter-intuitive:
 - The drop cannot be `SysProcAttr.Credential`. The direct child is `ip`, not the app, and `ip netns exec` needs `CAP_SYS_ADMIN` to `setns()`; stripping it makes namespace entry fail. `setpriv` runs one hop later — inside the namespace, before the app.
 - Dropping uid clears the capability set, so the app holds no `CAP_NET_BIND_SERVICE`, and a fresh netns resets `net.ipv4.ip_unprivileged_port_start` to 1024 regardless of the host value. That is PORTBIND-01 (`namespace.go:243-269`). Docker sets the host value to `0`, which is why no container ever reproduced it.
 
+### Why the streamed-app path was not dropped in this pass
+
+A drop here is architecturally available — `sysuser.Credential` already returns a
+`SysProcAttr.Credential` for a profile's Linux user, and `services/pty` uses it —
+but it is not a one-line change, and each of these is load-bearing:
+
+- `LaunchOpts` carries `UserID` and `UserHome`, not a Linux username, and `Pool`
+  holds no `sysuser.Service` at all. The credential cannot currently be resolved
+  at the launch site.
+- The session tree `/tmp/stream-<id>` is created 0700 owned by root
+  (`pool.go:297-302`), as is the per-session `XDG_RUNTIME_DIR` for the cage path
+  (`pool.go:310`). A dropped app cannot write to either until they are chowned.
+- `HOME` is the requesting user's real home (`pool.go:315`, resolved per-request
+  at `pool.go:923`). Dropping to `nobody` rather than to that profile's own uid
+  would break every file operation the app exists to perform — the streamed-app
+  case is not the appnet case, where `HOME=/tmp` is sufficient.
+- The stale-process cleanup at `pool.go:667` is `pkill -9 -x -u $(os.Getuid())`.
+  It is scoped to the SERVER's uid on purpose (the anchored-pkill fix). If the
+  app runs as a different uid, that cleanup silently stops matching it.
+
+So the correct target is the profile's own Linux user, not `nobody`, and it
+requires threading a username into `LaunchOpts`, chowning the session tree, and
+re-scoping the pkill. None of it is verifiable on a developer Mac — Xvfb, cage
+and the uid semantics are all Linux — and shipping an unverified privilege
+change into the boot-critical streaming path is the trade this pass declined.
+Recorded here as the work, not as a wish.
+
 The uid is also **flat**: every app of every user runs as 65534 (`launcher.go:51-54`; `userID` scopes the namespace, never the uid). Two users' process apps are separated by network namespace and, filesystem-wise, not at all.
 
 **The gate:** `backend/internal/docsref/imagebins_test.go` reads the *source* against the *rootfs package list*, so the container it happens to run in is irrelevant. It scans `services/{webbrowser,stream,desktop}` for every literal binary handed to `exec.Command` / `lookPath` / `findBin`, and requires each to be either mapped to the package that provides it or exempted **with a reason**. An unclassified binary is a hard failure naming the binary and the file that execs it.
