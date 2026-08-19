@@ -85,8 +85,15 @@ export const DATA_ONLY_REASON =
  * `mmcli` to dial, answer and hang up (backend/services/telephony/calls.go),
  * and that file says it plainly: "The modem owns the audio path; this just
  * initiates the call." There is no WebRTC, no PipeWire/PulseAudio/ALSA bridge,
- * no Opus, no RTP anywhere in the telephony package — and no getUserMedia
- * anywhere in this repo, so no software voice path is even possible.
+ * no Opus, no RTP anywhere in the telephony package — and no getUserMedia in
+ * any calling path, so no software voice path is even possible.
+ *
+ * Precisely: the repo DOES contain two getUserMedia call sites, in the bundled
+ * Camera and Voice Recorder web apps (frontend/apps/camera/index.html and
+ * apps/voice-recorder/index.html). Neither is reachable from calling. An
+ * earlier version of this comment said "no getUserMedia anywhere in this repo",
+ * which is false; the conclusion held but the reason did not, and a claim that
+ * is right by luck is the thing this file exists to argue against.
  *
  * Everything about the UI up to here was disciplined about it: capability is
  * resolved before a button is drawn, the in-call bar is drawn from the modem's

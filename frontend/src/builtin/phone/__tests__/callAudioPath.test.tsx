@@ -4,7 +4,10 @@
 // The defect this pins shut: Vulos telephony is call CONTROL only. The box
 // shells out to `mmcli` to dial, answer and hang up, and the modem owns the
 // audio path (backend/services/telephony/calls.go). There is no getUserMedia
-// anywhere in this repo, so no software voice path is possible. Yet a user
+// in any calling path, so no software voice path is possible. (The repo does
+// contain two call sites — the bundled Camera and Voice Recorder apps — and
+// neither is reachable from calling. An earlier wording said "anywhere in this
+// repo", which was false.) Yet a user
 // could press Call on a contact, get a working in-call bar and a live call,
 // and discover only by silence that they could neither hear nor be heard.
 //
