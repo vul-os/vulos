@@ -124,10 +124,24 @@ interface BarProps {
 }
 
 // Bar — a labelled utilization meter that turns amber/red as it fills.
+//
+// An ABSENT measurement is not a measurement of zero. `pct` used to be run
+// through `pct || 0`, so a metric the box had not reported — which is every
+// metric whenever the telemetry socket is down — was drawn as a real reading of
+// 0%: an empty bar, and the literal text "0%". A CPU genuinely idling at 0%
+// looked identical to no CPU reading at all, three rows under a pill that
+// already said "offline".
+//
+// `undefined` now means unknown and is rendered as unknown: no fill, an em
+// dash, and no aria-valuenow — an indeterminate progressbar, which is what ARIA
+// has the omission for. The Memory row was already passing an explicit '—'
+// through `right`, so the correct behaviour was sitting one line away from the
+// two rows that lacked it.
 function Bar({ label, pct, right }: BarProps) {
-  const p = Math.max(0, Math.min(100, pct || 0))
+  const known = typeof pct === 'number' && Number.isFinite(pct)
+  const p = known ? Math.max(0, Math.min(100, pct)) : 0
   const tone = p > 85 ? 'bg-[var(--status-danger)]' : p > 65 ? 'bg-[var(--status-warning)]' : 'bg-[var(--accent)]'
-  const readout = right ?? `${Math.round(p)}%`
+  const readout = right ?? (known ? `${Math.round(p)}%` : '—')
   return (
     <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)]">
       <span className="text-xs text-[var(--text-muted)]">{label}</span>
@@ -136,12 +150,12 @@ function Bar({ label, pct, right }: BarProps) {
           className="w-32 h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden"
           role="progressbar"
           aria-label={`${label} utilization`}
-          aria-valuenow={Math.round(p)}
+          aria-valuenow={known ? Math.round(p) : undefined}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuetext={typeof readout === 'string' ? readout : undefined}
+          aria-valuetext={known ? (typeof readout === 'string' ? readout : undefined) : 'unknown'}
         >
-          <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${p}%` }} />
+          {known && <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${p}%` }} />}
         </div>
         <span className="text-xs text-[var(--text-tertiary)] w-16 text-right">{readout}</span>
       </div>
@@ -178,9 +192,25 @@ export default function BoxHealthPanel() {
 
   const loadHealth = useCallback(() => {
     // /api/health returns 200 (ok) or 503 (degraded) — both carry a JSON body.
+    //
+    // Every OTHER status is not a health report, and this used to parse them
+    // all the same way. A 401 before the session is up, or a 500 from a
+    // handler that fell over, answers with a JSON body that has no `status`
+    // field; toHealthStatus dutifully returned `{ status: undefined }`, which
+    // is falsy, which the banner read as "not degraded" and drew in green. The
+    // box saying "I cannot tell you" was displayed as "all systems healthy".
     fetch('/api/health', { credentials: 'include' })
-      .then(async r => { setHealth(toHealthStatus(await r.json())); setHealthErr(false) })
-      .catch(() => setHealthErr(true))
+      .then(async r => {
+        if (r.status !== 200 && r.status !== 503) throw new Error(`HTTP ${r.status}`)
+        const parsed = toHealthStatus(await r.json())
+        // A body with no usable status is the same non-answer as a bad code.
+        if (!parsed || typeof parsed.status !== 'string') throw new Error('no status field')
+        setHealth(parsed)
+        setHealthErr(false)
+      })
+      // Clear the old reading too. A refresh that failed leaves us not knowing
+      // the CURRENT state, and the previous one is no longer evidence of it.
+      .catch(() => { setHealth(null); setHealthErr(true) })
   }, [])
 
   useEffect(() => {
@@ -190,8 +220,24 @@ export default function BoxHealthPanel() {
     return () => clearInterval(id)
   }, [loadHealth])
 
-  const degraded = health?.status && health.status !== 'ok'
-  const storagePct = sys?.storage_total_mb ? ((sys.storage_used_mb ?? 0) / sys.storage_total_mb) * 100 : 0
+  // Three states, because there are three. `health` is null until the first
+  // reply lands, and the banner used to have no branch for that: `degraded`
+  // was falsy, `healthErr` was false, so the very first paint — before anything
+  // had been asked, let alone answered — was a green tick reading "All systems
+  // healthy". On a box that never answers at all, that is the permanent state
+  // of this panel. A health page is the one screen whose entire job is to not
+  // do that.
+  const verdict: 'unknown' | 'ok' | 'degraded' =
+    healthErr || !health || typeof health.status !== 'string'
+      ? 'unknown'
+      : health.status === 'ok'
+        ? 'ok'
+        : 'degraded'
+  // "Not asked yet" and "asked, and could not be told" are both unknown, but
+  // they are not the same sentence to a person waiting at the screen.
+  const unknownLabel = healthErr ? 'Health status unavailable' : 'Checking the health of this box…'
+  // undefined, not 0: an unmeasured disk is not an empty one. See Bar.
+  const storagePct = sys?.storage_total_mb ? ((sys.storage_used_mb ?? 0) / sys.storage_total_mb) * 100 : undefined
 
   return (
     <Section title="Box Health">
@@ -206,19 +252,19 @@ export default function BoxHealthPanel() {
         role="status"
         aria-live="polite"
         className={`rounded-xl border px-4 py-3 mb-5 ${
-        healthErr ? 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
-          : degraded ? 'border-danger-soft bg-[var(--status-danger-soft)] text-danger'
+        verdict === 'unknown' ? 'border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+          : verdict === 'degraded' ? 'border-danger-soft bg-[var(--status-danger-soft)] text-danger'
           : 'border-success-soft bg-[var(--status-success-soft)] text-success'
       }`}>
         <div className="flex items-center gap-2">
           <span className={`inline-block w-2 h-2 rounded-full ${
-            healthErr ? 'bg-[var(--bg-active)]' : degraded ? 'bg-[var(--status-danger)]' : 'bg-[var(--status-success)]'
+            verdict === 'unknown' ? 'bg-[var(--bg-active)]' : verdict === 'degraded' ? 'bg-[var(--status-danger)]' : 'bg-[var(--status-success)]'
           }`} aria-hidden="true" />
           <span className="text-sm font-medium">
-            {healthErr ? 'Health status unavailable' : degraded ? 'Attention needed' : 'All systems healthy'}
+            {verdict === 'unknown' ? unknownLabel : verdict === 'degraded' ? 'Attention needed' : 'All systems healthy'}
           </span>
         </div>
-        {health?.timestamp && !healthErr && (
+        {health?.timestamp && verdict !== 'unknown' && (
           <p className="text-[12px] mt-1 opacity-80">Checked {new Date(health.timestamp).toLocaleTimeString()}</p>
         )}
       </div>
