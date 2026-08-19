@@ -286,7 +286,7 @@ Root is not gratuitous. Three subsystems need uid 0 on the host and would break 
 | Installed process app (appnet) | `ip netns exec <ns> setpriv --reuid=65534 --regid=65534 --clear-groups --no-new-privs sh -c` (`appnet/launcher_privilege.go`), plus `CLONE_NEWNS` (`launcher_proc_linux.go:15-20`) | **65534 (nobody)** |
 | Terminal (`/api/terminal`) | `SysProcAttr.Credential` to the profile's own Linux user (`sysuser.go:107-123`, `pty.go:243`) | **the profile's uid** |
 | Streamed desktop app (`services/stream`) | every `SysProcAttr` on the path is `{Setpgid: true}` only — no `Credential` anywhere in `pool.go` or `stream.go` | **root** |
-| Native Wayland/X11 app (`appnet.LaunchNative`) | `exec.Command(bin, args...)` with a scrubbed env and **no `SysProcAttr` at all** (`native.go:62`) — not even `Setpgid` | **root** |
+| Native Wayland/X11 app (`appnet.LaunchNative`) | `exec.Command(bin, args...)` with a scrubbed env; no namespace, no `setpriv`. Own process group since this pass — it had **no `SysProcAttr` at all**, so it inherited the server's, and since LaunchNative returns a pid and never stops the process, `proctl` refused every native app as `self_group` and the End-process button could not work | **root** |
 | `POST /api/exec` | admin-gated `bash -c`; own process group since EXEC-PGID-01 | **root** |
 
 Two notes on the appnet drop, because both are counter-intuitive:

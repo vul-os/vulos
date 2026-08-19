@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // NativeLaunchSpec describes a native Wayland/X11 process to spawn.
@@ -63,6 +64,25 @@ func LaunchNative(spec NativeLaunchSpec) (pid int, err error) {
 	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// Own process group. This path used to set no SysProcAttr at all, so a
+	// native app inherited the SERVER's process group, and that mattered more
+	// here than anywhere else: LaunchNative returns a pid to the caller and
+	// never stops the process itself, so proctl — the Activity Monitor "End
+	// process" path — is the ONLY way to stop a native app. proctl.Protect
+	// refuses any pid sharing the server's group with the denial "self_group",
+	// so every app launched this way was unkillable from the UI, and the one
+	// control the product offers for it could not work.
+	//
+	// The reverse hazard is the same one EXEC-PGID-01 describes: a
+	// group-directed signal aimed at the app reached the server.
+	//
+	// Setpgid only, deliberately NOT newAppSysProcAttr(): that adds
+	// CLONE_NEWNS, which needs CAP_SYS_ADMIN, and would turn a working launch
+	// into a failing one on any box where the server is not root. Process apps
+	// take that namespace because they are already root-gated by `ip netns`;
+	// this path is not, and hardening it must not be what stops it running.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
 		return 0, fmt.Errorf("start %q: %w", spec.Binary, err)

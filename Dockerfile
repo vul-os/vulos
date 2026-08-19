@@ -317,8 +317,9 @@ ENV HOSTNAME=vulos
 #
 #   - services/stream (Xvfb/cage/GStreamer streamed desktop apps): every
 #     SysProcAttr on that path is {Setpgid: true} only, no Credential.
-#   - appnet.LaunchNative (native Wayland/X11 binaries, native.go): no namespace,
-#     no setpriv, no SysProcAttr at all.
+#   - appnet.LaunchNative (native Wayland/X11 binaries, native.go): no namespace
+#     and no setpriv. It does get its own process group, but that is isolation
+#     of signals, not of privilege.
 #   - POST /api/exec: admin-gated, runs `bash -c` as root. It does now get its
 #     own process group (EXEC-PGID-01) so a group-directed signal cannot reach
 #     the server, but it is not a privilege drop.
