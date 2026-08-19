@@ -6,7 +6,13 @@
 # This verifies the *resolvability and shape* of a Flatpak recipe: that the app id
 # exists on Flathub, that it resolves for exactly the architectures the entry
 # declares, that the id is unambiguous under the argv FlatpakInstall actually runs,
-# and that the recorded publisher-verification / licence facts match Flathub's API.
+# and that the entry's recorded `flathub_verified` matches Flathub's verification API.
+#
+# It does NOT check the recorded licence, and it does NOT check `extra_data`:
+# extra-data is only visible by reading the app's manifest in the flathub/ GitHub
+# organisation, which this script does not fetch. Those two are measured when an
+# entry is written and are not re-checked here. Said plainly because an earlier
+# revision of this comment claimed a licence check that did not exist.
 #
 # It does NOT prove the app launches or renders. Desktop apps are gigabytes and the
 # GPU/portal behaviour only shows up on a real box. Full install-and-launch proof is
@@ -79,8 +85,20 @@ fp_remote_info() {
 }
 
 # A network/DNS failure is NOT evidence about the app. Detect and retry.
+# WIDENED 2026-08-19. The list below used to stop at DNS and connection errors,
+# so a TLS failure fell through to the final `else` and was reported as
+# "DOES NOT RESOLVE" — a network flake wearing the words of a verdict about the
+# app. It fired on org.inkscape.Inkscape, an app that plainly exists, in the
+# middle of an otherwise clean run:
+#
+#   FAIL inkscape: DOES NOT RESOLVE on amd64 — error: Unable to load summary
+#   from remote flathub: While fetching …/summary.idx: [35] SSL connect error
+#
+# That is the worse half of a flaky check: not that it fails, but that it
+# accuses. Anything naming the transport, a curl exit code, or the repo summary
+# is now treated as "ask again", never as evidence.
 is_transient() {
-  grep -qiE 'could not resolve|could not connect|timed out|temporary failure|connection reset|no route to host' <<<"$1"
+  grep -qiE 'could not resolve|could not connect|timed out|timeout|temporary failure|connection reset|no route to host|ssl|tls|handshake|unable to load summary|while fetching|network is unreachable|server returned status 5|early eof|transfer closed' <<<"$1"
 }
 
 fp_remote_info_retry() {
@@ -100,7 +118,7 @@ api() { curl -fsS --retry 3 --retry-delay 2 "https://flathub.org/api/v2/$1" 2>/d
 # check_app <vulos_id> <flatpak_ref> <declared_arch_csv>
 #   declared_arch_csv uses Debian spelling (amd64,arm64); empty means "all".
 check_app() {
-  local vid="$1" ref="$2" declared="$3"
+  local vid="$1" ref="$2" declared="$3" declared_verified="${4:-}"
   local bare="${ref%%//*}"          # id without //branch
   local has_branch=0; [ "$ref" != "$bare" ] && has_branch=1
 
@@ -166,7 +184,14 @@ print(",".join(sorted(x for x in sys.argv[1].split(",") if x)))' "$declared")"
     info "id is branch-qualified (${ref#*//}) — required because the bare id is ambiguous"
   fi
 
-  # 6. publisher verification, recorded not assumed
+  # 6. publisher verification: RECORDED AND COMPARED.
+  #
+  # This step used to print the API's answer and move on, while the header of
+  # this script claimed it checked that "the recorded publisher-verification
+  # facts match Flathub's API". They were never compared, so an entry could
+  # carry flathub_verified:true for an unverified publisher and every run stayed
+  # green. APP-CATALOG policy 2 calls `verified` first-class; a first-class
+  # field that nothing checks is the shape this suite keeps finding.
   local ver
   ver="$(api "verification/${bare}/status" || echo '{}')"
   local isver
@@ -174,7 +199,16 @@ print(",".join(sorted(x for x in sys.argv[1].split(",") if x)))' "$declared")"
 import json,sys
 try: print(str(json.load(sys.stdin).get("verified", False)).lower())
 except Exception: print("unknown")' <<<"$ver")"
-  info "publisher verified: ${isver}"
+  info "publisher verified (Flathub): ${isver}"
+  if [ -z "$declared_verified" ]; then
+    bad "${vid}: VERIFIED FLAG MISSING — the entry declares no flathub_verified, so policy 2's first-class field is absent and a UI badge or filter has nothing to read (Flathub says ${isver})"
+  elif [ "$isver" = "unknown" ]; then
+    bad "${vid}: VERIFIED unknown — Flathub's verification API gave no answer; NOT a verdict on the entry, re-run"
+  elif [ "$declared_verified" = "$isver" ]; then
+    ok "${vid}: VERIFIED flag matches Flathub (${isver})"
+  else
+    bad "${vid}: VERIFIED flag says ${declared_verified} but Flathub says ${isver} — an entry claiming a verification the publisher does not have is worse than one claiming none"
+  fi
 }
 
 # ------------------------------------------------------------------ self-test
@@ -193,7 +227,16 @@ self_test() {
 
   echo
   echo "--- 3. ambiguous branch: bare org.qgis.qgis (expect AMBIGUOUS to fail)"
-  check_app "selftest-branch" "org.qgis.qgis" "amd64"
+  check_app "selftest-branch" "org.qgis.qgis" "amd64" "false"
+
+  echo
+  echo "--- 4. a lie about publisher verification (expect VERIFIED to fail)"
+  # org.blender.Blender is not a verified publisher on Flathub; claim it is.
+  check_app "selftest-verified" "org.blender.Blender" "amd64" "true"
+
+  echo
+  echo "--- 5. no verified flag at all (expect VERIFIED FLAG MISSING to fail)"
+  check_app "selftest-noflag" "org.blender.Blender" "amd64" ""
 
   echo
   if [ "$FAIL" -gt "$before_fail" ]; then
@@ -238,18 +281,22 @@ for aid,entry in sorted(apps.items()):
     for _,rec in sorted((entry.get("versions") or {}).items()):
         if rec.get("flatpak_id"):
             fid=rec["flatpak_id"]; break
-    print(f"{aid}\x1f{fid}\x1f{arch}")
+    # "" when the key is absent, so a MISSING flag stays distinguishable from a
+    # declared false. They are different defects and must not read alike.
+    v=entry.get("flathub_verified")
+    vs="" if v is None else str(bool(v)).lower()
+    print(f"{aid}\x1f{fid}\x1f{arch}\x1f{vs}")
 PY
 )
 
 for row in "${ROWS[@]}"; do
-  IFS=$'\x1f' read -r vid fid arch <<<"$row"
+  IFS=$'\x1f' read -r vid fid arch declared_verified <<<"$row"
   if [ -z "$fid" ]; then
     echo "== ${vid}  ->  (no flatpak_id: stays on apt by decision)"
     info "skipped — not a Flatpak conversion"
     continue
   fi
-  check_app "$vid" "$fid" "$arch"
+  check_app "$vid" "$fid" "$arch" "$declared_verified"
   echo
 done
 

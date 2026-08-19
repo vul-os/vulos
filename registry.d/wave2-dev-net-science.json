@@ -1,0 +1,1355 @@
+{
+  "_source": "registry.d/wave2-dev-net-science.json \u2014 APP-CATALOG.md Wave 2, the reading/notes, development, networking/remote and CAD/science categories, staged 2026-08-19. Flathub recipes only.",
+  "_signing": "UNSIGNED BY CONSTRUCTION (\"signature\": \"\"). Run `make sign-registry` after merging; scripts/verify-app-recipe.sh refuses an unsigned entry, so none of these can be install-tested until then.",
+  "_verified_by": "Flathub API v2 (summary + appstream + verification) 2026-08-19, plus scripts/verify-flatpak-candidates.sh --file registry.d/wave2-dev-net-science.json \u2014 a real `flatpak remote-info` per declared architecture. Resolvability, branch unambiguity and architecture are MEASURED; launch and render are NOT.",
+  "_permissions_model": "ENFORCED as of 2026-08-19 by backend/services/appnet/flatpak_permissions.go. An undeclared `network` becomes --unshare=network on the installed app and an undeclared `filesystem` becomes --nofilesystem=host --nofilesystem=home, so every array here was chosen against what the app needs.",
+  "_excluded": "md.obsidian.Obsidian, com.visualstudio.code and com.google.AndroidStudio are LicenseRef-proprietary in Flathub AppStream and stay out under policy 1a; VSCodium is included as the substitute policy 1a names for VS Code. com.visualstudio.code and com.google.AndroidStudio are additionally CONFIRMED extra-data by reading their manifests. com.github.micahflee.torbrowser-launcher is replaced by the project-namespace id.",
+  "apps": {
+    "logseq": {
+      "name": "Logseq",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Outliner and knowledge base over plain Markdown files on your own storage \u2014 bidirectional links, daily notes and a local graph.",
+      "category": "productivity",
+      "author": "Logseq, Inc.",
+      "homepage": "https://logseq.com",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "notes",
+        "outliner",
+        "markdown",
+        "knowledge",
+        "graph",
+        "zettelkasten"
+      ],
+      "license": "AGPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence AGPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/com.logseq.Logseq manifest, 5662 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,ssh-auth] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. AGPL-3.0-or-later and it stores everything as plain files on the box, which is why it is here and Obsidian (proprietary, policy 1a) is not.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.logseq.Logseq",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.logseq.Logseq",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "standardnotes": {
+      "name": "Standard Notes",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "End-to-end encrypted notes, syncing against the vendor's service or a self-hosted Standard Notes server of your own.",
+      "category": "productivity",
+      "author": "Standard Notes Ltd.",
+      "homepage": "https://standardnotes.com",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "notes",
+        "encrypted",
+        "sync",
+        "privacy",
+        "markdown"
+      ],
+      "license": "AGPL-3.0-only",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence AGPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.standardnotes.standardnotes manifest, 4321 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,wayland] filesystems=[]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; AGPL-3.0-only. Points at the vendor's sync service by default; a self-hosted server is configured in the app, which is the configuration that fits this OS.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.standardnotes.standardnotes",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.standardnotes.standardnotes",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "calibre": {
+      "name": "calibre",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "E-book library manager and converter \u2014 catalogues a collection on the box, converts between formats and talks to e-readers over USB.",
+      "category": "productivity",
+      "author": "Kovid Goyal",
+      "homepage": "https://calibre-ebook.com",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "ebook",
+        "library",
+        "epub",
+        "convert",
+        "kindle",
+        "reader",
+        "books"
+      ],
+      "license": "GPL-3.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.calibre_ebook.calibre manifest, 5868 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-config/kdeglobals:ro,xdg-run/speech-dispatcher:ro,host,xdg-data/Trash]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-3.0. USB is declared for e-reader transfer and the Flatpak bridge cannot enforce it; note also that a reader plugged into the CLIENT machine is not visible to the box.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.calibre_ebook.calibre",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.calibre_ebook.calibre",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "zotero": {
+      "name": "Zotero",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Reference manager \u2014 collects citations and PDFs, organises a library and generates bibliographies in any style.",
+      "category": "productivity",
+      "author": "Corporation for Digital Scholarship",
+      "homepage": "https://www.zotero.org",
+      "icon": "Z",
+      "icon_url": "",
+      "keywords": [
+        "references",
+        "citations",
+        "bibliography",
+        "research",
+        "pdf",
+        "academic"
+      ],
+      "license": "AGPL-3.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence AGPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.zotero.Zotero manifest, 5467 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[home,xdg-run/speech-dispatcher:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; AGPL-3.0.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.zotero.Zotero",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.zotero.Zotero",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "foliate": {
+      "name": "Foliate",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "E-book reader for EPUB, Mobi, FB2 and comics, with annotations, dictionary lookup and reading-progress sync across your own library.",
+      "category": "productivity",
+      "author": "John Factotum",
+      "homepage": "https://johnfactotum.github.io/foliate/",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "ebook",
+        "reader",
+        "epub",
+        "mobi",
+        "books",
+        "annotations"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.johnfactotum.Foliate manifest, 822 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[xdg-run/speech-dispatcher:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.johnfactotum.Foliate",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.johnfactotum.Foliate",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "vscodium": {
+      "name": "VSCodium",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Freely-licensed build of VS Code without Microsoft branding or telemetry \u2014 the same editor, extensions from the Open VSX registry.",
+      "category": "developer",
+      "author": "The VSCodium team",
+      "homepage": "https://vscodium.com",
+      "icon": "V",
+      "icon_url": "",
+      "keywords": [
+        "editor",
+        "ide",
+        "code",
+        "vscode",
+        "codium",
+        "development",
+        "extensions"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/com.vscodium.codium manifest, 6509 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,ssh-auth,wayland] filesystems=[xdg-run/gnupg:ro,xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. THE DIRECT SUBSTITUTE APP-CATALOG POLICY 1a NAMES for com.visualstudio.code, which is proprietary AND confirmed extra-data (its manifest fetches Microsoft's binary at install). VSCodium is MIT, Flathub-verified, and publishes both architectures.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.vscodium.codium",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.vscodium.codium",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "zed": {
+      "name": "Zed",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "High-performance editor written in Rust \u2014 GPU-rendered UI, tree-sitter syntax handling and built-in multiplayer editing.",
+      "category": "developer",
+      "author": "Zed Industries, Inc.",
+      "homepage": "https://zed.dev",
+      "icon": "Z",
+      "icon_url": "",
+      "keywords": [
+        "editor",
+        "ide",
+        "rust",
+        "fast",
+        "gpu",
+        "code"
+      ],
+      "license": "AGPL-3.0-or-later and Apache-2.0 and GPL-3.0-or-later",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence AGPL-3.0-or-later and Apache-2.0 and GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/dev.zed.Zed manifest, 9653 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,gpg-agent,pulseaudio,ssh-auth,wayland] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; AGPL-3.0-or-later and Apache-2.0. Renders its UI on the GPU, so it is one of the entries where the streamed lane matters most.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "dev.zed.Zed",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run dev.zed.Zed",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "intellij-idea-community": {
+      "name": "IntelliJ IDEA Community",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Java and Kotlin IDE \u2014 the Apache-2.0 Community Edition, with refactoring, debugging and build-tool integration.",
+      "category": "developer",
+      "author": "JetBrains s.r.o.",
+      "homepage": "https://www.jetbrains.com/idea/",
+      "icon": "I",
+      "icon_url": "",
+      "keywords": [
+        "java",
+        "kotlin",
+        "ide",
+        "jetbrains",
+        "intellij",
+        "development"
+      ],
+      "license": "Apache-2.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence Apache-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.jetbrains.IntelliJ-IDEA-Community manifest, 5618 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,gpg-agent,pulseaudio,ssh-auth,wayland] filesystems=[home,xdg-run/docker,xdg-run/keyring,xdg-run/podman]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. COMMUNITY EDITION ONLY, and the distinction is what keeps it inside policy 1a: this build is Apache-2.0 (Flathub AppStream), while JetBrains' Ultimate editions are proprietary and are NOT in this catalogue. Publisher not verified on Flathub.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.jetbrains.IntelliJ-IDEA-Community",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.jetbrains.IntelliJ-IDEA-Community",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "dbeaver": {
+      "name": "DBeaver Community",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Universal database client \u2014 browse and query PostgreSQL, MySQL, SQLite and anything else with a JDBC driver, including databases on this box.",
+      "category": "database",
+      "author": "DBeaver Corporation",
+      "homepage": "https://dbeaver.io",
+      "icon": "D",
+      "icon_url": "",
+      "keywords": [
+        "database",
+        "sql",
+        "postgres",
+        "mysql",
+        "sqlite",
+        "jdbc",
+        "client"
+      ],
+      "license": "Apache-2.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence Apache-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/io.dbeaver.DBeaverCommunity manifest, 5631 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,pulseaudio,ssh-auth,wayland] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; Apache-2.0. Category `database`, which the App Hub already has a label and an icon for.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.dbeaver.DBeaverCommunity",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.dbeaver.DBeaverCommunity",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "meld": {
+      "name": "Meld",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Visual diff and merge \u2014 compares two or three files or directories side by side and resolves conflicts, with git integration.",
+      "category": "developer",
+      "author": "Kai Willadsen",
+      "homepage": "https://meldmerge.org",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "diff",
+        "merge",
+        "compare",
+        "version",
+        "git",
+        "conflict"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.gnome.meld manifest, 2534 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+. No network declared, so the bridge revokes it \u2014 Meld works on files already on the box, and its git support runs against a local checkout.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.gnome.meld",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.gnome.meld",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "podman-desktop": {
+      "name": "Podman Desktop",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Graphical manager for containers and pods \u2014 build, run and inspect images through Podman on the box, with Kubernetes and Compose support.",
+      "category": "developer",
+      "author": "Red Hat, Inc.",
+      "homepage": "https://podman-desktop.io",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "containers",
+        "podman",
+        "docker",
+        "kubernetes",
+        "pods",
+        "devops"
+      ],
+      "license": "Apache-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence Apache-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/io.podman_desktop.PodmanDesktop manifest, 7111 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[x11] filesystems=[home,host-os:ro,xdg-run/podman:create,/run/docker.sock,xdg-run/containers:create]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. REQUIRES PODMAN ON THE BOX; the Flatpak is a front end and ships no engine. It manages THIS box's containers, which is the correct reading for a personal server and worth saying in the UI.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.podman_desktop.PodmanDesktop",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.podman_desktop.PodmanDesktop",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "insomnia": {
+      "name": "Insomnia",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "API client for REST, GraphQL, gRPC and WebSockets \u2014 request collections, environments and response inspection.",
+      "category": "developer",
+      "author": "Kong",
+      "homepage": "https://insomnia.rest",
+      "icon": "I",
+      "icon_url": "",
+      "keywords": [
+        "api",
+        "rest",
+        "graphql",
+        "grpc",
+        "http",
+        "client",
+        "testing"
+      ],
+      "license": "MIT",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=False, licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/rest.insomnia.Insomnia manifest, 2819 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. PUBLISHER NOT VERIFIED on Flathub; MIT per AppStream. Recent upstream versions push a vendor account for sync and some features; local-only use does not require one. Recorded because it is the kind of thing a user discovers after installing.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "rest.insomnia.Insomnia",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run rest.insomnia.Insomnia",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "wireshark": {
+      "name": "Wireshark",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Network protocol analyser \u2014 captures and dissects traffic on the box's own interfaces, with filters for hundreds of protocols.",
+      "category": "network",
+      "author": "The Wireshark developer community",
+      "homepage": "https://www.wireshark.org",
+      "icon": "W",
+      "icon_url": "",
+      "keywords": [
+        "network",
+        "packets",
+        "capture",
+        "analysis",
+        "pcap",
+        "protocol"
+      ],
+      "license": "GPL-2.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.wireshark.Wireshark manifest, 10589 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[xdg-public-share,home:ro,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL CAVEAT, and a security one: it captures THE BOX'S traffic, not the client's. Live capture also needs privileges the Flatpak sandbox does not grant by default (CAP_NET_RAW / dumpcap setuid on the box), so out of the box this may open pcap files and not capture. Stated rather than discovered. Publisher not verified on Flathub.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.wireshark.Wireshark",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.wireshark.Wireshark",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "github-desktop": {
+      "name": "GitHub Desktop",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Git client with a graphical history, branch and pull-request workflow \u2014 the community Linux build of GitHub Desktop.",
+      "category": "developer",
+      "author": "shiftkey",
+      "homepage": "https://github.com/shiftkey/desktop",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "git",
+        "github",
+        "version",
+        "commit",
+        "branch",
+        "pull-request"
+      ],
+      "license": "MIT",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/io.github.shiftey.Desktop manifest, 4781 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,fallback-x11,ssh-auth,gpg-agent] filesystems=[xdg-run/keyring,host,/opt:ro,/var/lib/flatpak/app:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. COMMUNITY FORK, NOT GITHUB: io.github.shiftey.Desktop is @shiftkey's Linux build; GitHub publishes no official Linux client. Publisher not verified on Flathub, MIT, and its last release is 2025-02-24 \u2014 the second-oldest in this wave. That combination is precisely APP-CATALOG policy 2's \"scrutinise hardest\" shape minus the proprietary part, so it is recorded in full rather than badged quietly.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.shiftey.Desktop",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.shiftey.Desktop",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "neovim": {
+      "name": "Neovim",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Vim-compatible modal editor with built-in LSP, Lua scripting and tree-sitter \u2014 runs in the terminal on the box.",
+      "category": "developer",
+      "author": "Neovim contributors",
+      "homepage": "https://neovim.io",
+      "icon": "N",
+      "icon_url": "",
+      "keywords": [
+        "editor",
+        "vim",
+        "neovim",
+        "terminal",
+        "lsp",
+        "lua"
+      ],
+      "license": "Apache-2.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence Apache-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/io.neovim.nvim manifest, 12385 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[] sockets=[fallback-x11,wayland] filesystems=[/var/tmp,/tmp,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; Apache-2.0. A terminal application shipped as a Flatpak: it launches through `flatpak run`, which on a streamed desktop means a terminal window on the box.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.neovim.nvim",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.neovim.nvim",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "godot": {
+      "name": "Godot Engine",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Game engine and editor \u2014 2D and 3D scenes, GDScript and C#, exporting to desktop, mobile and web.",
+      "category": "developer",
+      "author": "The Godot Engine Community",
+      "homepage": "https://godotengine.org",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "game",
+        "engine",
+        "godot",
+        "3d",
+        "2d",
+        "gdscript",
+        "development"
+      ],
+      "license": "MIT",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/org.godotengine.Godot manifest, 6481 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,x11] filesystems=[xdg-run/speech-dispatcher,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; MIT. The editor is a real-time 3D application, so it belongs in the GPU lane; on a box with no GPU it falls back to software rendering and is slow.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.godotengine.Godot",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.godotengine.Godot",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "boxbuddy": {
+      "name": "BoxBuddy",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Graphical manager for Distrobox containers \u2014 create, enter and manage other distributions running on this box.",
+      "category": "system",
+      "author": "Dvlv",
+      "homepage": "https://github.com/Dvlv/BoxBuddyRS",
+      "icon": "B",
+      "icon_url": "",
+      "keywords": [
+        "distrobox",
+        "containers",
+        "podman",
+        "distribution",
+        "terminal"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/io.github.dvlv.boxbuddyrs manifest, 1983 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. REQUIRES DISTROBOX AND PODMAN ON THE BOX. It drives them through host command execution; without them installed it starts and can do nothing. Whether Vulos ships distrobox is a separate decision from whether this entry exists, and this note is the only place the dependency is written down.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.dvlv.boxbuddyrs",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.dvlv.boxbuddyrs",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "remmina": {
+      "name": "Remmina",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Remote desktop client \u2014 RDP, VNC, SPICE and SSH connections made FROM this box to other machines, with saved profiles.",
+      "category": "network",
+      "author": "Hiroyuki_Tanaka",
+      "homepage": "https://remmina.org",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "remote",
+        "rdp",
+        "vnc",
+        "ssh",
+        "spice",
+        "desktop",
+        "connection"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.remmina.Remmina manifest, 24472 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland,pulseaudio,fallback-x11,ssh-auth,pcsc,cups] filesystems=[xdg-run/pipewire-0,home,xdg-run/gvfsd,xdg-download]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. DIRECTION MATTERS AND SHOULD BE SAID IN THE UI: Remmina connects OUT from the box. It is not how a user reaches their Vulos desktop \u2014 that is the streamed session they are already in.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.remmina.Remmina",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.remmina.Remmina",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "rustdesk": {
+      "name": "RustDesk",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Open-source remote desktop, usable with your own relay and ID server rather than a vendor's \u2014 screen sharing, file transfer and unattended access.",
+      "category": "network",
+      "author": "RustDesk",
+      "homepage": "https://rustdesk.com",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "remote",
+        "desktop",
+        "screen",
+        "sharing",
+        "rustdesk",
+        "relay"
+      ],
+      "license": "AGPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence AGPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/com.rustdesk.RustDesk manifest, 3640 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[pulseaudio,x11] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. AGPL-3.0-only, Flathub-verified, and self-hostable end to end (hbbs/hbbr), which is why it fits this OS where a vendor-brokered remote-desktop tool would not.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.rustdesk.RustDesk",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.rustdesk.RustDesk",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "nextcloud-client": {
+      "name": "Nextcloud Desktop",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Sync client for a Nextcloud server \u2014 keeps folders on this box in step with an instance you run or one you have an account on.",
+      "category": "network",
+      "author": "Nextcloud GmbH",
+      "homepage": "https://nextcloud.com",
+      "icon": "N",
+      "icon_url": "",
+      "keywords": [
+        "nextcloud",
+        "sync",
+        "files",
+        "cloud",
+        "webdav",
+        "backup"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/com.nextcloud.desktopclient.nextcloud manifest, 4314 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[xdg-run/Nextcloud:create,xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.nextcloud.desktopclient.nextcloud",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.nextcloud.desktopclient.nextcloud",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "localsend": {
+      "name": "LocalSend",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Sends files between devices on the same network with no account, no relay and no internet \u2014 an AirDrop-shaped tool that speaks only to the LAN.",
+      "category": "network",
+      "author": "Tien Do Nam",
+      "homepage": "https://localsend.org",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "files",
+        "transfer",
+        "lan",
+        "share",
+        "airdrop",
+        "local"
+      ],
+      "license": "Apache-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence Apache-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.localsend.localsend_app manifest, 5072 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[xdg-download]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Fits the sovereign-box model exactly: peer discovery is local (mDNS/UDP) and nothing is brokered. Note it exchanges files with the BOX; the browser session is not one of the peers.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.localsend.localsend_app",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.localsend.localsend_app",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "torbrowser-launcher": {
+      "name": "Tor Browser Launcher",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Downloads, verifies and launches Tor Browser, keeping it up to date \u2014 browsing over the Tor network from this box.",
+      "category": "internet",
+      "author": "Tor Project",
+      "homepage": "https://torproject.org",
+      "icon": "T",
+      "icon_url": "",
+      "keywords": [
+        "tor",
+        "browser",
+        "privacy",
+        "anonymity",
+        "onion"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/org.torproject.torbrowser-launcher manifest, 7727 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. ID CORRECTION: APP-CATALOG.md listed com.github.micahflee.torbrowser-launcher; org.torproject.torbrowser-launcher is the project-namespace id, MIT, Flathub-verified by website, and alive. FETCHES AT RUNTIME BY DESIGN \u2014 this app downloads Tor Browser itself on first run rather than shipping it, which is the one place in this catalogue where a vendor binary arrives outside the registry's checksum discipline. It is acceptable HERE and only here because the launcher verifies Tor Project's own GPG signature on what it fetches, which is a stronger check than a sha256 in a registry entry \u2014 but the exception is stated, not hidden.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.torproject.torbrowser-launcher",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.torproject.torbrowser-launcher",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "freecad": {
+      "name": "FreeCAD",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Parametric 3D CAD modeller \u2014 sketch-based design, assemblies, FEM and CAM workbenches, with a full Python API.",
+      "category": "productivity",
+      "author": "The FreeCAD Team",
+      "homepage": "https://www.freecad.org",
+      "icon": "F",
+      "icon_url": "",
+      "keywords": [
+        "cad",
+        "3d",
+        "parametric",
+        "modelling",
+        "engineering",
+        "fem",
+        "stl"
+      ],
+      "license": "LGPL-2.1",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence LGPL-2.1, is_eol=false. EXTRA-DATA: no (read from flathub/org.freecad.FreeCAD manifest, 22567 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[x11] filesystems=[/run/spnav.sock:ro,xdg-config/kdeglobals:ro,host,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Network is declared for the addon manager, which is how FreeCAD workbenches are installed.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.freecad.FreeCAD",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.freecad.FreeCAD",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "openscad": {
+      "name": "OpenSCAD",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Programmer's solid modeller \u2014 3D geometry described in a script rather than drawn, rendered to STL for printing.",
+      "category": "productivity",
+      "author": "The OpenSCAD Developers",
+      "homepage": "https://openscad.org",
+      "icon": "O",
+      "icon_url": "",
+      "keywords": [
+        "cad",
+        "3d",
+        "script",
+        "solid",
+        "modelling",
+        "stl",
+        "parametric"
+      ],
+      "license": "GPL-3.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.openscad.OpenSCAD manifest, 5798 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[home,/run/spnav.sock:ro,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.openscad.OpenSCAD",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.openscad.OpenSCAD",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "cura": {
+      "name": "UltiMaker Cura",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "FDM slicer \u2014 turns STL models into printer instructions, with profiles for a wide range of 3D printers.",
+      "category": "productivity",
+      "author": "UltiMaker",
+      "homepage": "https://ultimaker.com/software/ultimaker-cura",
+      "icon": "C",
+      "icon_url": "",
+      "keywords": [
+        "3d",
+        "printing",
+        "slicer",
+        "stl",
+        "gcode",
+        "fdm",
+        "cura"
+      ],
+      "license": "LGPL-3.0 and CC-BY-SA-4.0",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=False, licence LGPL-3.0 and CC-BY-SA-4.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.ultimaker.cura manifest, 2457 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[all] sockets=[x11,wayland] filesystems=[home,/media,/run/media]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. PUBLISHER NOT VERIFIED on Flathub; LGPL-3.0 and CC-BY-SA-4.0. Network is declared for the marketplace and for network-connected printers, which are on the BOX's network, not the browser's.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.ultimaker.cura",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.ultimaker.cura",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "stellarium": {
+      "name": "Stellarium",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Planetarium \u2014 renders the sky as seen from any point on Earth at any time, with catalogues down to faint magnitudes and telescope control.",
+      "category": "productivity",
+      "author": "Stellarium team",
+      "homepage": "https://stellarium.org",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "astronomy",
+        "sky",
+        "planetarium",
+        "stars",
+        "telescope",
+        "science"
+      ],
+      "license": "GPL-2.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.stellarium.Stellarium manifest, 7041 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[home,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.stellarium.Stellarium",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.stellarium.Stellarium",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "labplot": {
+      "name": "LabPlot",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Scientific plotting and data analysis \u2014 imports datasets, fits curves and produces publication-quality figures.",
+      "category": "productivity",
+      "author": "KDE",
+      "homepage": "https://labplot.kde.org",
+      "icon": "L",
+      "icon_url": "",
+      "keywords": [
+        "plot",
+        "data",
+        "analysis",
+        "science",
+        "statistics",
+        "charts",
+        "fitting"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.kde.labplot manifest, 18256 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[x11] filesystems=[home,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ID CORRECTION, MEASURED: APP-CATALOG.md listed org.kde.labplot2, which Flathub reports is_eol=TRUE. The live id is org.kde.labplot. Seventh bad id in this catalogue, third found in this pass.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.labplot",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.labplot",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    }
+  }
+}

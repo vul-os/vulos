@@ -1,0 +1,644 @@
+{
+  "_source": "registry.d/arch-declarations.json \u2014 declares `arch` on the thirteen shipped Flatpak entries that carried `arch: null`, staged 2026-08-19 for merge into registry.json under `apps`. These are EDITS to entries that already exist, not new apps: merge replaces them.",
+  "_why": "An entry with no `arch` is an UNVERIFIED CLAIM TO EVERY ARCHITECTURE. ArchSupported permits it, the box offers it, and on the wrong architecture the install fails after the download. All thirteen turn out to publish both arches, so nothing is lost by saying so and the App Hub stops guessing.",
+  "_ratchet": "MERGING THIS FIRES backend/services/appnet/arch_test.go's ratchet, BY DESIGN AND IN THE GOOD DIRECTION. undeclaredArchCeiling is 19, transcribed from a measurement. After this merge the count is 6 (diagrams-net, excalidraw, hoppscotch, immich, uptime-kuma, vaultwarden \u2014 all `_disabled`, none installable), and TestRegistry_UndeclaredArchOnlyEverFalls FAILS with 'below the ceiling \u2014 lower it to 6', which is the test refusing to let its own bound go slack. Set undeclaredArchCeiling = 6 in the SAME commit that merges this. That is the ratchet TIGHTENING; it is not the anti-shrinkage relaxation the standing rule forbids, and this agent deliberately did not make the edit itself.",
+  "_signing": "UNSIGNED BY CONSTRUCTION: every entry carries \"signature\": \"\". Run `make sign-registry` then `make verify-registry-prod` after merging.",
+  "_verified_by": "Flathub API v2 (summary + appstream + verification) 2026-08-19, plus scripts/verify-flatpak-candidates.sh --file registry.d/arch-declarations.json, which resolves each id through a real `flatpak remote-info` per declared architecture.",
+  "apps": {
+    "audacity": {
+      "name": "Audacity",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Audio editor and recorder \u2014 multi-track editing, effects, noise reduction, and format conversion",
+      "category": "media",
+      "author": "Audacity Team",
+      "homepage": "https://www.audacityteam.org",
+      "icon": "audacity",
+      "icon_url": "",
+      "keywords": [
+        "audio",
+        "editor",
+        "recording",
+        "music",
+        "sound",
+        "podcast"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.audacityteam.Audacity",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.audacityteam.Audacity",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.audacityteam.Audacity for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['dri'] sockets=['pulseaudio', 'x11'] filesystems=['xdg-run/pipewire-0:ro', '/tmp', 'host']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "element": {
+      "name": "Element",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Secure, decentralized messaging and collaboration client for the Matrix protocol \u2014 chat, voice, and video calls across any Matrix homeserver (works with a local Conduit instance or any public server)",
+      "category": "network",
+      "author": "Element (New Vector Ltd / Matrix.org Foundation)",
+      "homepage": "https://element.io",
+      "icon": "E",
+      "icon_url": "",
+      "keywords": [
+        "matrix",
+        "chat",
+        "messaging",
+        "client",
+        "collaboration",
+        "voice",
+        "video",
+        "cinny-alternative"
+      ],
+      "license": "AGPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "im.riot.Riot",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run im.riot.Riot",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "camera",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes im.riot.Riot for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['all'] sockets=['pulseaudio', 'wayland', 'x11'] filesystems=['xdg-run/pipewire-0', 'xdg-run/keyring']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "filezilla": {
+      "name": "FileZilla",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "FTP/SFTP/FTPS client \u2014 fast file transfers, site manager, directory comparison",
+      "category": "network",
+      "author": "FileZilla Project",
+      "homepage": "https://filezilla-project.org",
+      "icon": "filezilla",
+      "icon_url": "",
+      "keywords": [
+        "ftp",
+        "sftp",
+        "transfer",
+        "upload",
+        "download",
+        "files"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.filezillaproject.Filezilla",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.filezillaproject.Filezilla",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.filezillaproject.Filezilla for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['dri'] sockets=['fallback-x11', 'ssh-auth', 'wayland'] filesystems=['host']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "firefox": {
+      "name": "Firefox",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Privacy-focused web browser by Mozilla \u2014 built-in DRM support for Netflix/Spotify, containers, and strong extension ecosystem",
+      "category": "internet",
+      "author": "Mozilla Foundation",
+      "homepage": "https://www.mozilla.org/firefox",
+      "icon": "firefox",
+      "icon_url": "",
+      "keywords": [
+        "browser",
+        "web",
+        "internet",
+        "firefox",
+        "mozilla",
+        "privacy",
+        "drm",
+        "streaming"
+      ],
+      "license": "MPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.mozilla.firefox",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.mozilla.firefox",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.mozilla.firefox for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method manual). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['network', 'ipc'] devices=['all'] sockets=['x11', 'wayland', 'pulseaudio', 'fallback-x11', 'pcsc', 'cups'] filesystems=['xdg-config/gtk-3.0:ro', 'xdg-download', '/run/.heim_org.h5l.kcm-socket', 'xdg-run/speech-dispatcher:ro']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "geany": {
+      "name": "Geany",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Lightweight IDE and code editor \u2014 syntax highlighting, code folding, auto-completion, and build system",
+      "category": "developer",
+      "author": "Geany Project",
+      "homepage": "https://www.geany.org",
+      "icon": "geany",
+      "icon_url": "",
+      "keywords": [
+        "code",
+        "editor",
+        "ide",
+        "development",
+        "programming",
+        "extensions"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.geany.Geany",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.geany.Geany",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.geany.Geany for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['network', 'ipc'] devices=['dri'] sockets=['x11', 'wayland', 'fallback-x11'] filesystems=['xdg-run/geany:create', 'host']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "gimp": {
+      "name": "GIMP",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Professional image editor \u2014 layers, filters, brushes, and advanced photo manipulation tools",
+      "category": "media",
+      "author": "GIMP Team",
+      "homepage": "https://www.gimp.org",
+      "icon": "gimp",
+      "icon_url": "",
+      "keywords": [
+        "image",
+        "editor",
+        "photo",
+        "graphics",
+        "design",
+        "painting"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.gimp.GIMP",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.gimp.GIMP",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.gimp.GIMP for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method website). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['all'] sockets=['fallback-x11', 'wayland'] filesystems=['xdg-config/GIMP:create', 'xdg-config/gtk-3.0:ro', '/tmp', 'xdg-run/gvfsd', 'host', 'xdg-run/gvfs']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "inkscape": {
+      "name": "Inkscape",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Vector graphics editor \u2014 SVG editing, illustration, diagrams, and logo design",
+      "category": "media",
+      "author": "Inkscape Project",
+      "homepage": "https://inkscape.org",
+      "icon": "inkscape",
+      "icon_url": "",
+      "keywords": [
+        "vector",
+        "svg",
+        "graphics",
+        "illustration",
+        "design",
+        "drawing"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.inkscape.Inkscape",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.inkscape.Inkscape",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.inkscape.Inkscape for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method website). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['network', 'ipc'] devices=['dri'] sockets=['x11', 'wayland'] filesystems=['xdg-config/gtk-3.0', 'xdg-run/gvfsd', 'host', 'xdg-run/gvfs']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "jitsi-meet": {
+      "name": "Jitsi Meet",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Free, open-source video conferencing \u2014 join any Jitsi deployment (including the public meet.jit.si) with no account required; screen sharing, chat, and end-to-end encrypted calls",
+      "category": "network",
+      "author": "8x8, Inc. (Jitsi)",
+      "homepage": "https://jitsi.org",
+      "icon": "J",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "conferencing",
+        "calls",
+        "meet",
+        "webrtc",
+        "jitsi",
+        "meet-alternative"
+      ],
+      "license": "Apache-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.jitsi.jitsi-meet",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.jitsi.jitsi-meet",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "camera",
+            "microphone",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.jitsi.jitsi-meet for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['all'] sockets=['fallback-x11', 'pulseaudio', 'wayland'] filesystems=None. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "kdenlive": {
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "author": "KDE Community",
+      "category": "media",
+      "description": "Non-linear video editor \u2014 multi-track timeline, effects, transitions, and proxy editing",
+      "homepage": "https://kdenlive.org",
+      "icon": "kdenlive",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "effects",
+        "rendering",
+        "film"
+      ],
+      "lane": {
+        "needs_gpu": true
+      },
+      "license": "GPL-3.0",
+      "name": "Kdenlive",
+      "signature": "",
+      "type": "desktop",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.kdenlive",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.kdenlive",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "vetted": true,
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.kde.kdenlive for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method login_provider). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['all'] sockets=['fallback-x11', 'pulseaudio', 'wayland'] filesystems=['xdg-run/pipewire-0', 'xdg-config/kdeglobals:ro', 'host']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "keepassxc": {
+      "name": "KeePassXC",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Offline password manager \u2014 AES-256 encrypted vault, TOTP, browser integration, auto-type",
+      "category": "system",
+      "author": "KeePassXC Team",
+      "homepage": "https://keepassxc.org",
+      "icon": "keepassxc",
+      "icon_url": "",
+      "keywords": [
+        "password",
+        "security",
+        "vault",
+        "encryption",
+        "totp",
+        "manager"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.keepassxc.KeePassXC",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.keepassxc.KeePassXC",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.keepassxc.KeePassXC for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method website). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['network', 'ipc'] devices=['all'] sockets=['x11', 'wayland', 'ssh-auth', 'pcsc'] filesystems=['/tmp', 'xdg-config/kdeglobals:ro', 'host', 'xdg-run/gvfs']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "kicad": {
+      "name": "KiCad",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Electronic design automation \u2014 schematic capture, PCB layout, 3D viewer, and Gerber export",
+      "category": "developer",
+      "author": "KiCad Developers",
+      "homepage": "https://www.kicad.org",
+      "icon": "kicad",
+      "icon_url": "",
+      "keywords": [
+        "eda",
+        "pcb",
+        "schematic",
+        "electronics",
+        "circuit",
+        "hardware",
+        "cad"
+      ],
+      "license": "GPL-3.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kicad.KiCad",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kicad.KiCad",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.kicad.KiCad for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method website). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['dri'] sockets=['x11'] filesystems=['home', '/media', '/run/media']. PERMISSION CORRECTED: added `network`. KiCad's Plugin and Content Manager fetches libraries and plugins over the network and is the documented way to install them. Same reason as VLC: the omission was inert until the bridge made the declaration binding. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "qbittorrent": {
+      "name": "qBittorrent",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Feature-rich BitTorrent client \u2014 search, RSS, sequential download, IP filtering, and torrent creation",
+      "category": "network",
+      "author": "qBittorrent Project",
+      "homepage": "https://www.qbittorrent.org",
+      "icon": "qbittorrent",
+      "icon_url": "",
+      "keywords": [
+        "torrent",
+        "bittorrent",
+        "download",
+        "p2p",
+        "transfer"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.qbittorrent.qBittorrent",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.qbittorrent.qBittorrent",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "network",
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": true,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.qbittorrent.qBittorrent for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: True (method website). EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['dri'] sockets=['fallback-x11', 'wayland'] filesystems=['xdg-config/kdeglobals:ro', 'host']. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    },
+    "vlc": {
+      "name": "VLC",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Universal media player \u2014 plays virtually any video and audio format, streams, DVDs, and network sources",
+      "category": "media",
+      "author": "VideoLAN",
+      "homepage": "https://www.videolan.org",
+      "icon": "vlc",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "audio",
+        "player",
+        "media",
+        "streaming",
+        "codec"
+      ],
+      "license": "GPL-2.0",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.videolan.VLC",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.videolan.VLC",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": "",
+      "flathub_verified": false,
+      "extra_data": false,
+      "_note": "ARCH DECLARED 2026-08-19, measured not guessed. This entry shipped with `arch: null`, which ArchSupported reads as an unverified claim to EVERY architecture Vulos builds. Flathub publishes org.videolan.VLC for ['amd64', 'arm64'] (API v2 summary, confirmed by `flatpak remote-info flathub --arch=` for each). Both arches, so the app follows a user onto either instance unchanged \u2014 the standing directive that every instance is near a clone of the next, satisfied with no emulation. PUBLISHER VERIFIED ON FLATHUB: False \u2014 packaged by a third party; the app itself is open source and auditable at source. EXTRA-DATA: no, read from the manifest. FLATHUB SANDBOX: shared=['ipc', 'network'] devices=['all'] sockets=['pulseaudio', 'x11'] filesystems=['xdg-config/kdeglobals:ro', 'host', 'xdg-run/gvfs']. PERMISSION CORRECTED: added `network`. VLC's network-stream playback (`Open Network Stream`, http/rtsp/mms URLs) is a first-class feature of the app and its Flathub manifest shares network for it. The old declaration omitted it, which was harmless while `permissions` decided nothing and becomes a REGRESSION the moment the Flatpak permission bridge enforces it \u2014 VLC would install and silently fail on every URL. SIGNATURE CLEARED: any byte changed after signing invalidates that entry's signature, so leaving the old one would produce a verdict of `Publisher signature did not verify` \u2014 strictly worse than unsigned. It re-signs with the rest at the ceremony."
+    }
+  }
+}

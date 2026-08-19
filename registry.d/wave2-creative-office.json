@@ -1,0 +1,1047 @@
+{
+  "_source": "registry.d/wave2-creative-office.json \u2014 APP-CATALOG.md Wave 2, the audio-production, graphics/photo, video-capture and office/documents categories, staged 2026-08-19. Flathub recipes only: no download_url, no checksum, nothing mirrored.",
+  "_signing": "UNSIGNED BY CONSTRUCTION (\"signature\": \"\"). scripts/verify-app-recipe.sh refuses an unsigned entry, so nothing here can be install-tested by the harness until the founder's ceremony.",
+  "_verified_by": "Flathub API v2 (summary + appstream + verification) 2026-08-19, plus scripts/verify-flatpak-candidates.sh --file registry.d/wave2-creative-office.json \u2014 a real `flatpak remote-info flathub --arch=<arch>` per declared architecture in a debian:trixie container. Resolvability, branch unambiguity and architecture are MEASURED. Launch and render behaviour are NOT proven.",
+  "_permissions_model": "These arrays are ENFORCED as of 2026-08-19 by backend/services/appnet/flatpak_permissions.go: an undeclared `network` becomes --unshare=network and an undeclared `filesystem` becomes --nofilesystem=host --nofilesystem=home on the installed app. Each array here was chosen against what the app actually needs, not copied from the Flathub manifest, and each entry's _note records the measured Flathub sandbox so the two can be compared.",
+  "apps": {
+    "musescore": {
+      "name": "MuseScore Studio",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Music notation \u2014 write, edit and play back scores, with parts, tablature and MusicXML/MIDI import and export.",
+      "category": "media",
+      "author": "MuseScore Limited",
+      "homepage": "https://musescore.org",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "music",
+        "notation",
+        "score",
+        "sheet",
+        "midi",
+        "composition"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.musescore.MuseScore manifest, 4199 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[cups,pulseaudio,x11] filesystems=[home,xdg-run/pipewire-0,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-3.0-only and auditable at source. No network declared: the app works entirely on local files, so the bridge revokes network and MuseScore.com sync is not available. Deliberate.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.musescore.MuseScore",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.musescore.MuseScore",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "easyeffects": {
+      "name": "EasyEffects",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Real-time audio effects for PipeWire \u2014 equaliser, compressor, limiter and noise reduction applied to the box's own output and input streams.",
+      "category": "media",
+      "author": "Wellington Wallace",
+      "homepage": "https://github.com/wwmm/easyeffects",
+      "icon": "E",
+      "icon_url": "",
+      "keywords": [
+        "audio",
+        "equalizer",
+        "effects",
+        "pipewire",
+        "compressor",
+        "noise"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.wwmm.easyeffects manifest, 3717 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[xdg-run/pipewire-0:ro,xdg-config/kdeglobals:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL CAVEAT: it processes audio on the BOX. Over a WebRTC stream the browser receives the already-processed mix, so the effects are real but the latency the user hears is the stream's, not the effect chain's. Requires PipeWire on the box.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.wwmm.easyeffects",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.wwmm.easyeffects",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "mixxx": {
+      "name": "Mixxx",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "DJ software \u2014 two or four decks, beat detection, effects and MIDI/HID controller support, playing from your own library.",
+      "category": "media",
+      "author": "The Mixxx Development Team",
+      "homepage": "https://mixxx.org",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "dj",
+        "mixing",
+        "decks",
+        "music",
+        "midi",
+        "turntable"
+      ],
+      "license": "GPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.mixxx.Mixxx manifest, 10179 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/pipewire-0,/media,xdg-music,xdg-config/kdeglobals:ro,/run/media]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. USB is declared for DJ controllers and it is one of the seven permissions the Flatpak bridge cannot enforce (it is not a Flatpak context key), so it documents intent only. A USB controller plugged into the CLIENT machine does not reach the box; only hardware on the box itself is visible.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.mixxx.Mixxx",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.mixxx.Mixxx",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "microphone",
+            "usb"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "krita": {
+      "name": "Krita",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Digital painting \u2014 brush engines, layers, masks, animation and colour management, built for illustrators rather than photo retouching.",
+      "category": "media",
+      "author": "Krita Foundation",
+      "homepage": "https://krita.org",
+      "icon": "K",
+      "icon_url": "",
+      "keywords": [
+        "painting",
+        "drawing",
+        "art",
+        "digital",
+        "illustration",
+        "animation",
+        "krita"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.kde.krita manifest, 31650 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[pulseaudio,x11] filesystems=[host,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ID CORRECTION, MEASURED: APP-CATALOG.md listed org.krita.krita, which returns 404 from Flathub. The published id is org.kde.krita. That is the sixth bad id found in this catalogue and the second found in this pass.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.krita",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.krita",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "rawtherapee": {
+      "name": "RawTherapee",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Raw photo developer \u2014 non-destructive tone, colour and detail processing with per-image sidecar profiles.",
+      "category": "media",
+      "author": "The RawTherapee Team",
+      "homepage": "https://rawtherapee.com",
+      "icon": "R",
+      "icon_url": "",
+      "keywords": [
+        "raw",
+        "photo",
+        "develop",
+        "camera",
+        "editing",
+        "hdr"
+      ],
+      "license": "GPL-3.0+",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-3.0+, is_eol=false. EXTRA-DATA: no (read from flathub/com.rawtherapee.RawTherapee manifest, 7620 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[home,/tmp,xdg-run/gvfsd,xdg-run/gvfs:ro]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-3.0+ and auditable at source.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.rawtherapee.RawTherapee",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.rawtherapee.RawTherapee",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "digikam": {
+      "name": "digiKam",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Photo library manager \u2014 catalogues large collections on the box's own storage, with raw handling, tagging, face and duplicate detection.",
+      "category": "media",
+      "author": "digiKam Team",
+      "homepage": "https://www.digikam.org",
+      "icon": "D",
+      "icon_url": "",
+      "keywords": [
+        "photo",
+        "library",
+        "catalog",
+        "raw",
+        "tags",
+        "digikam",
+        "album"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/org.kde.digikam manifest, 56803 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[cups,fallback-x11,pulseaudio,wayland] filesystems=[home,/media,xdg-pictures,xdg-config/kdeglobals:ro,/run/media]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL NOTE worth stating in the UI: it catalogues the BOX's disks. That is the right answer for a sovereign server and the wrong assumption for a user expecting their laptop's photos.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.digikam",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.digikam",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "scribus": {
+      "name": "Scribus",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Desktop publishing \u2014 page layout for print with CMYK, spot colours, colour management and PDF/X export.",
+      "category": "productivity",
+      "author": "Scribus developers",
+      "homepage": "https://www.scribus.net",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "dtp",
+        "layout",
+        "publishing",
+        "print",
+        "pdf",
+        "cmyk"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/net.scribus.Scribus manifest, 11543 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,pulseaudio,cups] filesystems=[xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "net.scribus.Scribus",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run net.scribus.Scribus",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pinta": {
+      "name": "Pinta",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Simple bitmap editor \u2014 layers, adjustments and effects for quick edits, without GIMP's learning curve.",
+      "category": "media",
+      "author": "Jonathan Pobst",
+      "homepage": "https://www.pinta-project.com",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "image",
+        "editor",
+        "paint",
+        "bitmap",
+        "layers",
+        "simple"
+      ],
+      "license": "MIT",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.PintaProject.Pinta manifest, 2064 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland,fallback-x11] filesystems=[xdg-templates,xdg-pictures,xdg-public-share,xdg-run/gvfs,/run/media,xdg-download,xdg-run/gvfsd,xdg-documents,xdg-desktop]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.PintaProject.Pinta",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.PintaProject.Pinta",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "upscayl": {
+      "name": "Upscayl",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "AI image upscaler \u2014 enlarges photos and art locally on the box using bundled models, with no service call.",
+      "category": "media",
+      "author": "Upscayl",
+      "homepage": "https://upscayl.org",
+      "icon": "U",
+      "icon_url": "",
+      "keywords": [
+        "upscale",
+        "ai",
+        "image",
+        "enlarge",
+        "super-resolution",
+        "esrgan"
+      ],
+      "license": "AGPL-3.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence AGPL-3.0, is_eol=false. EXTRA-DATA: no (read from flathub/org.upscayl.Upscayl manifest, 3063 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. RUNS ON THE BOX'S GPU via Vulkan (ncnn). On a box without a usable GPU it falls back to CPU and is very slow \u2014 that is a hardware fact about the box, not a defect in the entry. Its last upstream release is 2024-12-25, the oldest in this wave; recorded rather than hidden.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.upscayl.Upscayl",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.upscayl.Upscayl",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pixelorama": {
+      "name": "Pixelorama",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Pixel-art editor and sprite animator \u2014 tile mode, onion skinning and spritesheet export.",
+      "category": "media",
+      "author": "Orama Interactive",
+      "homepage": "https://orama-interactive.itch.io/pixelorama",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "pixel",
+        "art",
+        "sprite",
+        "animation",
+        "2d",
+        "game"
+      ],
+      "license": "MIT",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/com.orama_interactive.Pixelorama manifest, 2416 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[pulseaudio,x11] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; MIT.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.orama_interactive.Pixelorama",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.orama_interactive.Pixelorama",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "handbrake": {
+      "name": "HandBrake",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Video transcoder \u2014 converts almost any source into modern MP4/MKV with hardware or software encoders and a queue.",
+      "category": "media",
+      "author": "HandBrake Team",
+      "homepage": "https://handbrake.fr",
+      "icon": "H",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "transcode",
+        "convert",
+        "encode",
+        "mp4",
+        "mkv",
+        "h264"
+      ],
+      "license": "GPL-2.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=True (method website), licence GPL-2.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/fr.handbrake.ghb manifest, 9632 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[all] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/gvfsd,host,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "fr.handbrake.ghb",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run fr.handbrake.ghb",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "kooha": {
+      "name": "Kooha",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Screen recorder \u2014 captures the box's screen or a window to WebM/MP4/GIF through the desktop portal, with optional audio.",
+      "category": "media",
+      "author": "Dave Patrick Caberto",
+      "homepage": "https://github.com/SeaDve/Kooha",
+      "icon": "K",
+      "icon_url": "",
+      "keywords": [
+        "screen",
+        "record",
+        "capture",
+        "video",
+        "screencast",
+        "gif"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/io.github.seadve.Kooha manifest, 951 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[xdg-videos]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL CAVEAT, and this one is sharp: Kooha records the BOX's screen through xdg-desktop-portal, not the browser window the user is looking at. It also depends on the portal and PipeWire actually running in the streamed session \u2014 the same open question APP-CATALOG.md records for Flatseal.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "io.github.seadve.Kooha",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run io.github.seadve.Kooha",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "openshot": {
+      "name": "OpenShot",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Video editor \u2014 timeline editing, transitions, titles and keyframes, aimed at simple projects.",
+      "category": "media",
+      "author": "OpenShot Studios, LLC",
+      "homepage": "https://www.openshot.org",
+      "icon": "O",
+      "icon_url": "",
+      "keywords": [
+        "video",
+        "editor",
+        "timeline",
+        "movie",
+        "transitions"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.openshot.OpenShot manifest, 6898 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-3.0-or-later.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.openshot.OpenShot",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.openshot.OpenShot",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "gpu-screen-recorder": {
+      "name": "GPU Screen Recorder",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Low-overhead screen recorder that encodes on the GPU \u2014 replay buffer, per-window capture and near-zero CPU cost while recording.",
+      "category": "media",
+      "author": "dec05eba",
+      "homepage": "https://git.dec05eba.com/gpu-screen-recorder/about/",
+      "icon": "G",
+      "icon_url": "",
+      "keywords": [
+        "screen",
+        "record",
+        "gpu",
+        "replay",
+        "capture",
+        "nvenc",
+        "vaapi"
+      ],
+      "license": "GPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "lane": {
+        "needs_gpu": true
+      },
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/com.dec05eba.gpu_screen_recorder manifest, 10899 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[all] sockets=[pulseaudio,wayland,x11] filesystems=[xdg-run/pipewire-0,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Its whole reason to exist is GPU encode (NVENC/VAAPI) on the machine doing the capture \u2014 which is the BOX. On a box with no hardware encoder it has no advantage over Kooha.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.dec05eba.gpu_screen_recorder",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.dec05eba.gpu_screen_recorder",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "gpu",
+            "microphone"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "onlyoffice": {
+      "name": "ONLYOFFICE Desktop Editors",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Office suite with high-fidelity DOCX/XLSX/PPTX handling \u2014 the closest match to Microsoft Office formats among open-source editors.",
+      "category": "productivity",
+      "author": "ONLYOFFICE",
+      "homepage": "https://www.onlyoffice.com",
+      "icon": "O",
+      "icon_url": "",
+      "keywords": [
+        "office",
+        "documents",
+        "spreadsheet",
+        "presentation",
+        "docx",
+        "xlsx",
+        "pptx"
+      ],
+      "license": "AGPL-3.0-only",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence AGPL-3.0-only, is_eol=false. EXTRA-DATA: no (read from flathub/org.onlyoffice.desktopeditors manifest, 3591 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland,pulseaudio] filesystems=[/tmp,xdg-run/gvfsd,~/.local/share/gtk-3.0,host,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. AGPL-3.0-only, and Flathub-verified by the vendor. Network is declared because the editors offer connections to document servers; the app is fully usable offline.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.onlyoffice.desktopeditors",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.onlyoffice.desktopeditors",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem",
+            "network"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "okular": {
+      "name": "Okular",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Document viewer \u2014 PDF, EPUB, DjVu, comics and more, with annotations, forms and digital-signature checking.",
+      "category": "productivity",
+      "author": "KDE",
+      "homepage": "https://okular.kde.org",
+      "icon": "O",
+      "icon_url": "",
+      "keywords": [
+        "pdf",
+        "viewer",
+        "document",
+        "epub",
+        "annotate",
+        "djvu",
+        "reader"
+      ],
+      "license": "GPL-2.0+ and GFDL-1.3",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-2.0+ and GFDL-1.3, is_eol=false. EXTRA-DATA: no (read from flathub/org.kde.okular manifest, 19850 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[cups,fallback-x11,pulseaudio,wayland] filesystems=[xdg-config/kdeglobals:ro,host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.kde.okular",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.kde.okular",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "xournalpp": {
+      "name": "Xournal++",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Handwritten note-taking and PDF annotation \u2014 pressure-sensitive ink, shape recognition and audio-synced notes.",
+      "category": "productivity",
+      "author": "Xournalpp Developers",
+      "homepage": "https://xournalpp.github.io",
+      "icon": "X",
+      "icon_url": "",
+      "keywords": [
+        "notes",
+        "handwriting",
+        "pdf",
+        "annotate",
+        "stylus",
+        "tablet"
+      ],
+      "license": "GPL-2.0",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-2.0, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.xournalpp.xournalpp manifest, 7418 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[] sockets=[fallback-x11,pulseaudio,wayland] filesystems=[xdg-run/pipewire-0,xdg-run/gvfsd,host,xdg-run/gvfs]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. STREAMED-MODEL CAVEAT: pressure-sensitive stylus input belongs to hardware attached to the BOX. Over a browser stream a tablet on the client machine is not visible to it.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.xournalpp.xournalpp",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.xournalpp.xournalpp",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "homebank": {
+      "name": "HomeBank",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Personal accounts \u2014 imports OFX/QIF/CSV from a bank, categorises transactions and reports on budgets and trends, entirely offline.",
+      "category": "productivity",
+      "author": "Maxime Doyen",
+      "homepage": "http://homebank.free.fr",
+      "icon": "H",
+      "icon_url": "",
+      "keywords": [
+        "finance",
+        "budget",
+        "accounts",
+        "money",
+        "ofx",
+        "qif"
+      ],
+      "license": "GPL-2.0+",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=False, licence GPL-2.0+, is_eol=false. EXTRA-DATA: no (read from flathub/fr.free.Homebank manifest, 3081 bytes). FLATHUB SANDBOX: shared=[ipc,network] devices=[dri] sockets=[fallback-x11,wayland] filesystems=[home]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. PUBLISHER NOT VERIFIED on Flathub; GPL-2.0+. No network at all, which for a personal-finance app on a sovereign box is the point rather than a limitation.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "fr.free.Homebank",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run fr.free.Homebank",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "pdfarranger": {
+      "name": "PDF Arranger",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "Rearranges PDFs \u2014 merge, split, rotate, crop and reorder pages by dragging them.",
+      "category": "productivity",
+      "author": "The PDF Arranger team",
+      "homepage": "https://github.com/pdfarranger/pdfarranger",
+      "icon": "P",
+      "icon_url": "",
+      "keywords": [
+        "pdf",
+        "merge",
+        "split",
+        "pages",
+        "rotate",
+        "arrange"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method login_provider), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.jeromerobert.pdfarranger manifest, 2353 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[] sockets=[fallback-x11,wayland] filesystems=[host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. ",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.jeromerobert.pdfarranger",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.jeromerobert.pdfarranger",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "setzer": {
+      "name": "Setzer",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64",
+        "arm64"
+      ],
+      "description": "LaTeX editor with a live PDF preview, document templates and a symbol browser.",
+      "category": "productivity",
+      "author": "Cvfosammmm",
+      "homepage": "https://www.cvfosammmm.org/setzer/",
+      "icon": "S",
+      "icon_url": "",
+      "keywords": [
+        "latex",
+        "tex",
+        "editor",
+        "pdf",
+        "document",
+        "academic"
+      ],
+      "license": "GPL-3.0-or-later",
+      "flathub_verified": true,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64', 'arm64'], branches ['stable'], publisher verified=True (method website), licence GPL-3.0-or-later, is_eol=false. EXTRA-DATA: no (read from flathub/org.cvfosammmm.Setzer manifest, 8767 bytes). FLATHUB SANDBOX: shared=[ipc] devices=[dri] sockets=[x11,wayland,pulseaudio,fallback-x11] filesystems=[host]. ARCH: entry declares exactly what Flathub publishes; both arches, so this app follows a user onto either instance unchanged. Carries its own TeX distribution inside the Flatpak, so no separate texlive install on the box is needed.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "org.cvfosammmm.Setzer",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run org.cvfosammmm.Setzer",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    },
+    "marktext": {
+      "name": "MarkText",
+      "vetted": true,
+      "type": "desktop",
+      "arch": [
+        "amd64"
+      ],
+      "description": "Markdown editor with live preview in the document itself, maths, diagrams and export to HTML or PDF.",
+      "category": "productivity",
+      "author": "MarkText",
+      "homepage": "https://github.com/marktext/marktext",
+      "icon": "M",
+      "icon_url": "",
+      "keywords": [
+        "markdown",
+        "editor",
+        "notes",
+        "preview",
+        "writing"
+      ],
+      "license": "MIT",
+      "flathub_verified": false,
+      "extra_data": false,
+      "proprietary": false,
+      "_note": "SOURCE flathub, staged 2026-08-19. MEASURED from Flathub API v2 (summary+appstream+verification) on 2026-08-19: id resolves, arches ['amd64'], branches ['stable'], publisher verified=False, licence MIT, is_eol=false. EXTRA-DATA: no (read from flathub/com.github.marktext.marktext manifest, 2615 bytes). FLATHUB SANDBOX: shared=[network,ipc] devices=[dri] sockets=[x11,wayland] filesystems=[/tmp,xdg-run/keyring,host]. ARCH: entry declares exactly what Flathub publishes; amd64 ONLY - on the other architecture the hub must show it unavailable with a reason, and it is UNTESTABLE on this arm64 box. PUBLISHER NOT VERIFIED on Flathub; MIT.",
+      "versions": {
+        "latest": {
+          "install": "",
+          "flatpak_id": "com.github.marktext.marktext",
+          "download_url": "",
+          "archive_strip": 0,
+          "command": "flatpak run com.github.marktext.marktext",
+          "port": 0,
+          "post_install": "",
+          "deps": null,
+          "env": null,
+          "permissions": [
+            "filesystem"
+          ],
+          "checksum": "",
+          "singleton": true,
+          "auto_start": false
+        }
+      },
+      "signature": ""
+    }
+  }
+}
