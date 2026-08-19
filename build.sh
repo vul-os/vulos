@@ -177,9 +177,28 @@ echo ""
 # ═══════════════════════════════════
 # 1. Build Go binaries
 # ═══════════════════════════════════
-echo "${BLUE}▸ Building Go binaries ($GOARCH)...${NC}"
+# VULOS_VERSION stamps the binary the IMAGE ships.
+#
+# This was missing, and the way it was missing is worth recording. The
+# Dockerfile stamps `-X main.Version=${VERSION}` (Dockerfile:78), so the
+# CONTAINER reported the tag correctly — but every `go build` here used a bare
+# `-ldflags="-s -w"`, so the binary inside the .img.gz and the rootfs tarball
+# reported `dev`, which is `main.Version`'s default (cmd/server/main.go:111).
+# The two shipping artifacts disagreed about what version they were.
+#
+# It survived because the release gate could not see it. `.github/workflows/
+# release.yml` "verifies the binary version" by compiling its OWN throwaway
+# copy with its own ldflags and checking that — it never inspects a shipped
+# artifact, so it passed while the shipped one said `dev`. A gate that builds
+# its own subject cannot fail for the subject it is meant to guard.
+#
+# Only cmd/server declares a `Version` var, so only it is stamped; adding -X
+# for a symbol that does not exist is silently ignored by the linker, which
+# would be another check that looks like it does something.
+VULOS_VERSION="${VULOS_VERSION:-$(cat "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)}"
+echo "${BLUE}▸ Building Go binaries ($GOARCH, version $VULOS_VERSION)...${NC}"
 cd "$ROOT_DIR/backend"
-GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-server" ./cmd/server
+GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VULOS_VERSION" -o "$OUTDIR/vulos-server" ./cmd/server
 GOOS=linux GOARCH="$GOARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$OUTDIR/vulos-init" ./cmd/init
 # vulos-verify-sig is the initramfs's roothash-authenticity gate (VERITY-04).
 # It existed as SOURCE ONLY: this script compiled vulos-server and vulos-init and
