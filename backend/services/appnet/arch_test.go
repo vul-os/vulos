@@ -262,7 +262,7 @@ func TestInstall_RefusesWrongArch(t *testing.T) {
 // that derives its own bound from its subject proves only that the file agrees
 // with itself — the self-consistency trap that already let a size-limit test
 // pass while its constant was raised a thousandfold.
-const undeclaredArchCeiling = 19
+const undeclaredArchCeiling = 6
 
 // registryTotalFloor guards the guard. If registry.json moves, shrinks, or
 // fails to parse, a count of zero undeclared entries would read as PERFECT

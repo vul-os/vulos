@@ -494,33 +494,79 @@ func TestListEntries_UnsignedShippedEntriesAreNotOffered(t *testing.T) {
 			"them before anything is downloaded", len(offered), offered)
 	}
 
-	// COVERAGE 1: the unsigned loop above must have had something to walk.
-	if len(st.unsigned) == 0 {
-		t.Fatal("registry.json holds no unsigned entry, so the loop above examined nothing. " +
-			"If the ceremony has run, this test needs a signature-stripped control the way " +
-			"TestAcceptance_UnsignedShippedEntriesAreUninstallable has one")
+	// COVERAGE 1: the unsigned path must ALWAYS be exercised, in every state
+	// registry.json can be in.
+	//
+	// This used to `t.Fatal` when the registry held no unsigned entry, which
+	// made the test fail on the one state the project is working towards: a
+	// fully-signed catalogue. Measured 2026-08-19 by running the real ceremony
+	// against a 142-entry registry in a throwaway worktree — 142/142 signed,
+	// and this was the ONLY test still red. A gate that goes red the moment the
+	// founder signs is a gate that would be discovered mid-ceremony, with the
+	// offline key on the table, which is the worst possible time.
+	//
+	// So it now carries its own signature-stripped control, exactly as the note
+	// it used to print told the next reader to do, and exactly as
+	// TestAcceptance_UnsignedShippedEntriesAreUninstallable already did.
+	// `controlEntryID` picks a real entry (preferring a verified one, because
+	// stripping a signature that demonstrably worked is the sharpest control)
+	// and works whether or not any unsigned entry remains.
+	control := controlEntryID(t, st, &reg)
+	// Copy the struct before stripping. reg.Apps holds POINTERS, so mutating
+	// the entry in place would blank a signature in the registry every other
+	// assertion in this test is still reading — the control would corrupt its
+	// own subject. Only Signature (a string) is touched, so the shallow copy
+	// is sufficient and the shared slices stay untouched.
+	orig := reg.Apps[control]
+	stripped := *orig
+	stripped.Signature = ""
+	controlReg := Registry{Apps: map[string]*RegistryEntry{control: &stripped}}
+	controlList := controlReg.ListEntries(t.TempDir())
+	if len(controlList) != 1 {
+		t.Fatalf("control: listing a one-entry registry produced %d entries", len(controlList))
 	}
-	// COVERAGE 2: and the signed half must still reach the architecture rungs.
+	cav := controlList[0].Availability
+	if cav.Signature != SignatureUnsigned {
+		t.Errorf("control %q: signature stripped, but listed as %q — the listing is not "+
+			"reading the signature it claims to read", control, cav.Signature)
+	}
+	if cav.Installable || controlList[0].Installable {
+		t.Errorf("control %q: signature stripped and still offered as installable. "+
+			"That Install button can only fail.", control)
+	}
+
+	// COVERAGE 2: the signed half must still reach the architecture rungs.
 	// Without this, a gate that refused the WHOLE catalogue would pass every
-	// assertion above while hiding 74 apps behind one wrong verdict.
-	native := 0
+	// assertion above while hiding the entire listing behind one wrong verdict.
+	//
+	// It fires only when there IS a verified entry this box could run. Before
+	// the ceremony the verified set is small and may be entirely foreign-arch —
+	// that is a fact about the data, not a fault in the gate, and failing on it
+	// would report the wrong thing. `archEligible` is what makes the difference
+	// between "the gate is refusing everything" and "there is nothing here for
+	// this box yet".
+	native, archEligible := 0, 0
 	for _, appID := range st.verified {
 		av := byID[appID].Availability
 		if av.Signature != SignatureSigned {
 			t.Errorf("%s: verified against the shipped anchor and listed as %q", appID, av.Signature)
 		}
-		if av.State == ArchStateNative && av.Installable {
-			native++
+		if av.State == ArchStateNative {
+			archEligible++
+			if av.Installable {
+				native++
+			}
 		}
 	}
-	if len(st.verified) > 0 && native == 0 {
-		t.Errorf("%d entries verify against the shipped anchor and NOT ONE is offered on this "+
-			"arm64 box — the signature gate is refusing the whole catalogue", len(st.verified))
+	if archEligible > 0 && native == 0 {
+		t.Errorf("%d verified entries are native to this arm64 box and NOT ONE is offered — "+
+			"the signature gate is refusing the whole catalogue", archEligible)
 	}
 
-	t.Logf("shipped registry on a prod arm64 box: %d entries — %d verified (%d offered natively), "+
-		"%d unsigned and held, %d invalid", st.total, len(st.verified), native,
-		len(st.unsigned), len(st.invalid))
+	t.Logf("shipped registry on a prod arm64 box: %d entries — %d verified (%d of %d arch-native "+
+		"offered), %d unsigned and held, %d invalid; plus the signature-stripped control %q",
+		st.total, len(st.verified), native, archEligible,
+		len(st.unsigned), len(st.invalid), control)
 }
 
 // ── the wire ─────────────────────────────────────────────────────────────────
