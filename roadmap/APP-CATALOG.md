@@ -17,9 +17,14 @@ install-tested (see *What "verified" means here*). **19 are `_disabled`**: withd
 by Vulos for a licensing decision, a dependency the image does not carry, or an
 install nobody has run.
 
-Of the 42 entries that install from Flathub, every id was re-resolved on
-2026-08-19: none is end-of-life, none is ambiguous under the argv `FlatpakInstall`
-runs, and each publishes the architectures its entry declares.
+Of the 42 shipped entries that install from Flathub, **all 42 were checked against
+Flathub's AppStream API** on 2026-08-19 — every id still exists and **none is
+end-of-life**. That is the weaker of the two checks: 13 of them were additionally
+resolved through a real `flatpak remote-info` per architecture, as part of the arch
+fragment. The other 29 were not re-resolved through flatpak itself in this pass,
+and the distinction is kept because "the API answered" and "flatpak resolved it
+under the argv the installer runs" are not the same statement — QGIS is the
+standing proof that the second can fail while the first succeeds.
 
 ## What is staged for merge
 
