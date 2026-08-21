@@ -230,26 +230,14 @@ func TestAptGetRecipeNoChecksumAllowed(t *testing.T) {
 // TestRegistryJSONValid verifies that registry.json is valid JSON and all non-disabled
 // versioned entries that download binaries directly have non-empty checksums.
 func TestRegistryJSONValid(t *testing.T) {
-	// Walk up from the package directory to the repo root to find registry.json.
-	candidates := []string{
-		"../../../../registry.json",
-		"../../../registry.json",
-		"../../registry.json",
-		"../registry.json",
-	}
-
-	var reg *Registry
-	var found string
-	for _, path := range candidates {
-		r, err := LoadRegistry(path)
-		if err == nil {
-			reg = r
-			found = path
-			break
-		}
-	}
-	if reg == nil {
-		t.Skip("registry.json not found relative to test directory; skipping registry validation")
+	// Read through testdata/ (see registry_cachepath_test.go): the guess-a-path
+	// loop that used to live here reached OUTSIDE the module, so go's test cache
+	// recorded no dependency on the registry and re-served this gate's verdict
+	// over an unread file — and, failing that, SKIPPED, which reads as green.
+	found := shippedRegistryPath(t)
+	reg, err := LoadRegistry(found)
+	if err != nil {
+		t.Fatalf("cannot load the registry this gate exists to validate (%s): %v", found, err)
 	}
 	t.Logf("loaded registry from %s", found)
 

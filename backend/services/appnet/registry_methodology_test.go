@@ -402,21 +402,14 @@ func TestWarCountsAsAnArchiveForBinaryName(t *testing.T) {
 // entries, it has exactly one writer, and a test that went green only after
 // somebody else's merge would be a test about the future.
 func TestStagedRegistryFragmentsUseOnlyTheTwoVehicles(t *testing.T) {
-	// NOTE for whoever runs this by hand: `go test` caches a result keyed on the
-	// FILES a test opened, and a directory walk is not a file open. Adding a
-	// fragment to registry.d/ therefore does NOT invalidate the cache, and this
-	// test will happily re-report a stale count. Measured while writing it: a
-	// run reported 45 recipes after 8 more had been staged. Use -count=1.
-	dir := ""
-	for _, c := range []string{"../../../registry.d", "../../../../registry.d"} {
-		if st, err := os.Stat(c); err == nil && st.IsDir() {
-			dir = c
-			break
-		}
-	}
-	if dir == "" {
-		t.Skip("registry.d not found relative to the test directory")
-	}
+	// The stale-count hazard noted here on 2026-08-19 — a run that reported 45
+	// recipes after 8 more had been staged — was the out-of-module read path,
+	// not the directory walk. go DOES hash a directory's entry list on ReadDir
+	// and each fragment's stat on open; it just discards both when the path
+	// escapes the module. Reached through testdata/registry.d, an added
+	// fragment and an edited fragment each invalidate this result (measured).
+	// The skip is gone too: a gate that cannot find its subject must fail.
+	dir := shippedFragmentDir(t)
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read registry.d: %v", err)

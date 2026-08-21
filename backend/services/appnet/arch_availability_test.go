@@ -21,7 +21,6 @@ package appnet
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -371,7 +370,7 @@ func TestArchEnvironment_ResolvedOncePerListing(t *testing.T) {
 func TestShippedRegistry_EveryEntryGetsAnAnswer(t *testing.T) {
 	arm64Box(t)
 
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "registry.json"))
+	raw, err := os.ReadFile(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("cannot read the registry this gate exists to walk: %v", err)
 	}

@@ -60,7 +60,7 @@ func TestAppVerificationLedgerRowsAreHonest(t *testing.T) {
 		t.Fatalf("ledger is not valid JSON (%s): %v", ledgerPath, err)
 	}
 
-	regData, err := os.ReadFile(filepath.Join(repoRoot, "registry.json"))
+	regData, err := os.ReadFile(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("read registry.json: %v", err)
 	}

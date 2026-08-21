@@ -231,11 +231,10 @@ func TestInstallFromRegistry_StaticPath(t *testing.T) {
 // TestRegistryJSON_NavidromeEntry validates that the navidrome static entry in
 // registry.json parses correctly and has all required fields.
 func TestRegistryJSON_NavidromeEntry(t *testing.T) {
-	// Test file lives at backend/services/appnet/, registry.json is 3 dirs up.
-	regPath := filepath.Join("..", "..", "..", "registry.json")
-	if _, err := os.Stat(regPath); err != nil {
-		t.Skipf("registry.json not found at %s: %v", regPath, err)
-	}
+	// Read through testdata/ so go's test cache sees the dependency, and
+	// FAIL rather than skip if it is not there: a skip on a missing registry
+	// is this gate reporting success over an examination it never made.
+	regPath := shippedRegistryPath(t)
 
 	reg, err := LoadRegistry(regPath)
 	if err != nil {
@@ -292,10 +291,7 @@ func TestRegistryJSON_NavidromeEntry(t *testing.T) {
 // TestRegistryJSON_AptFlatpakUnchanged confirms that existing apt and Flatpak entries
 // still parse and have their expected fields after our changes.
 func TestRegistryJSON_AptFlatpakUnchanged(t *testing.T) {
-	regPath := filepath.Join("..", "..", "..", "registry.json")
-	if _, err := os.Stat(regPath); err != nil {
-		t.Skipf("registry.json not found: %v", err)
-	}
+	regPath := shippedRegistryPath(t)
 
 	reg, err := LoadRegistry(regPath)
 	if err != nil {

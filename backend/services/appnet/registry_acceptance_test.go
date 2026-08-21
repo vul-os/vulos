@@ -115,7 +115,7 @@ func shippedTrust(t *testing.T) (ed25519.PublicKey, signing.ReleaseCert) {
 // shippedRegistry loads the registry.json this repo actually ships.
 func shippedRegistry(t *testing.T) *Registry {
 	t.Helper()
-	reg, err := LoadRegistry(filepath.Join(repoRoot, "registry.json"))
+	reg, err := LoadRegistry(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("load shipped registry.json: %v", err)
 	}

@@ -51,7 +51,7 @@ func TestNoStrayRegistryBesideTheSigner(t *testing.T) {
 	// exact shape it exists to catch. Prove the root is real by requiring the
 	// canonical registry to be found at it.
 	canonical := filepath.Join(repoRoot, "registry.json")
-	canonicalBytes, err := os.ReadFile(canonical)
+	canonicalBytes, err := os.ReadFile(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("cannot read the canonical registry at %s: %v\n"+
 			"Without it this test cannot tell 'no stray copy exists' from "+

@@ -24,7 +24,11 @@ import (
 // JSON this repo ships rather than a hand-built fixture.
 func commsAppStore(t *testing.T) *AppStore {
 	t.Helper()
-	t.Setenv("VULOS_REGISTRY", filepath.Join(repoRoot, "registry.json"))
+	regPath, err := filepath.Abs(shippedRegistryPath(t))
+	if err != nil {
+		t.Fatalf("resolve %s: %v", shippedRegistryPath(t), err)
+	}
+	t.Setenv("VULOS_REGISTRY", regPath)
 	appsDir := t.TempDir()
 	store := NewAppStore(appsDir)
 	if store.Registry() == nil || len(store.Registry().Apps) == 0 {

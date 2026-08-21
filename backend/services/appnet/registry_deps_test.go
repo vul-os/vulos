@@ -180,7 +180,7 @@ func TestInstall_NoDepsStillInstalls(t *testing.T) {
 // dep that is in one but not another is an app that installs on one target and
 // refuses on the next.
 func TestShippedDepsAreImagePackages(t *testing.T) {
-	reg, err := LoadRegistry(filepath.Join("..", "..", "..", "registry.json"))
+	reg, err := LoadRegistry(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("cannot read the registry this gate exists to bound: %v", err)
 	}

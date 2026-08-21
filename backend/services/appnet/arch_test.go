@@ -15,7 +15,6 @@ package appnet
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -272,7 +271,7 @@ const undeclaredArchCeiling = 6
 const registryTotalFloor = 56
 
 func TestRegistry_UndeclaredArchOnlyEverFalls(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "registry.json")
+	path := shippedRegistryPath(t)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("cannot read the registry this gate exists to bound: %v", err)

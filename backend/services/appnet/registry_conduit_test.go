@@ -13,7 +13,6 @@ package appnet
 // surfacing at click-to-install time on a box.
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -132,7 +131,7 @@ func TestAppStore_ConduitEntry_VerifiesAgainstShippedAnchor(t *testing.T) {
 // registry_static_test.go — a direct LoadRegistry check independent of
 // AppStore wiring.
 func TestRegistryJSON_ConduitEntry(t *testing.T) {
-	regPath := filepath.Join("..", "..", "..", "registry.json")
+	regPath := shippedRegistryPath(t)
 	reg, err := LoadRegistry(regPath)
 	if err != nil {
 		t.Fatalf("LoadRegistry: %v", err)

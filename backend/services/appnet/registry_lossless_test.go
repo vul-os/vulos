@@ -12,7 +12,6 @@ package appnet
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -141,7 +140,7 @@ func tamperValue(needle string) string {
 // registry must not drop a key. If it did, `make sign-registry` would quietly
 // delete data from the file it rewrites.
 func TestShippedRegistry_RoundTripsLosslessly(t *testing.T) {
-	path := filepath.Join(repoRoot, "registry.json")
+	path := shippedRegistryPath(t)
 
 	reg, err := LoadRegistry(path)
 	if err != nil {

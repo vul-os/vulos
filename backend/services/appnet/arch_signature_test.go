@@ -31,7 +31,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -438,7 +437,7 @@ func TestListEntries_UnsignedShippedEntriesAreNotOffered(t *testing.T) {
 		t.Fatalf("prod box could not resolve the shipped trust chain: %v", err)
 	}
 
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "registry.json"))
+	raw, err := os.ReadFile(shippedRegistryPath(t))
 	if err != nil {
 		t.Fatalf("cannot read the registry this gate exists to walk: %v", err)
 	}
