@@ -1379,7 +1379,30 @@ const SHOTS = [
       // all three apps. An empty overlay would otherwise capture silently — the
       // same failure that once shipped two "Loading..." windows in a hero shot.
       await expectVisibleText(page, 'Running apps')
-      await expectVisibleText(page, '3 open')
+      // NOT '3 open'. AppSwitcher.tsx renders the count ONLY in the `else` of
+      // `windows.length > 1` — with more than one app running it shows a "Close
+      // all" button instead, so with the three this shot launches, "3 open" can
+      // never be on screen. The assertion was written 2026-08-10; "Close all"
+      // arrived 2026-08-15 (6e99e508) and silently made it unsatisfiable. No
+      // successful regeneration has run since, which is why it surfaced only now.
+      //
+      // Assert what three running apps actually produce, which is also strictly
+      // stronger than a count: the control that only appears above one window,
+      // and each app by name in the deck.
+      await expectVisibleText(page, 'Close all')
+      // Count the cards rather than matching their titles. expectVisibleText is
+      // getByText(exact:false).first(), and these app names also appear in the
+      // closed ⌘K palette earlier in the DOM — `.first()` resolved to that
+      // hidden node and waited for it to become visible, so asserting the names
+      // failed on a deck that had rendered all three correctly.
+      //
+      // data-switcher-card is the card root (AppSwitcher.tsx SwitcherCard) and
+      // exists once per running window, so this counts the thing the shot is
+      // actually about.
+      const cards = await page.locator('[data-switcher-card]').count()
+      if (cards !== 3) {
+        throw new Error(`the recents deck holds ${cards} card(s), expected 3 — the deck opened but not every app launched`)
+      }
     },
   },
   {
@@ -1387,12 +1410,26 @@ const SHOTS = [
     light: true,
     dsf: 2,
     desc: 'Tablet — two floating windows stacked, the focused one in front',
-    // 1024x768 (landscape tablet). App.jsx picks its layout purely on window
-    // width (<768px → MobileStack), so a tablet gets the FULL DesktopCanvas —
-    // real windows, real tiling — rather than the phone stack. That is the
-    // whole point of the shot: the same windowing works on a tablet, which is
-    // not obvious from a phone screenshot where windows become fullscreen
-    // cards.
+    // 1180x820 — an iPad-class tablet in LANDSCAPE. The point of the shot is
+    // that the same windowing works on a tablet, which is not obvious from a
+    // phone screenshot where windows become fullscreen cards.
+    //
+    // This was 1024x768 and the comment said layout is chosen "purely on window
+    // width (<768px → MobileStack)". Both were true once; MOBILE-07 replaced
+    // that rule with shell/viewportRule.ts:
+    //
+    //   (max-width: 1024px) and (pointer: coarse) and (hover: none) → mobile
+    //
+    // This context is created with hasTouch, so it reports a coarse pointer and
+    // no hover, and 1024 is `TOUCH_STACK_MAX` INCLUSIVE — the old viewport sat
+    // exactly on the boundary and resolved to MobileStack. There is no TopBar
+    // there, so the shell-ready wait for getByTitle('Applications') timed out
+    // after 20s and the shot failed in both themes.
+    //
+    // 1180 is the width viewportRule's own note names for landscape ("the same
+    // tablet in landscape (1180/1366) has the room to run the canvas"), so this
+    // now captures the posture the rule intends to run the canvas, rather than
+    // the one it deliberately sends to the touch shell.
     //
     // Stacked, not side-by-side. Two half-screen tiles filled the frame edge to
     // edge and read as a split-screen dashboard; two overlapping windows on
@@ -1404,7 +1441,7 @@ const SHOTS = [
     // (fixed right-3 w-60). The column is ~294px tall, so at 768px of height it
     // sits fully in frame beside the stack rather than being sliced down the
     // middle by a window edge.
-    viewport: { width: 1024, height: 768 },
+    viewport: { width: 1180, height: 820 },
     async drive(page) {
       // File Explorer behind, Activity Monitor in front. Activity Monitor is the
       // one that fills its frame at this size — four coloured stat cards, then a
