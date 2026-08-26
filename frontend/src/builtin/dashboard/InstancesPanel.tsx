@@ -9,7 +9,6 @@ import { Pill, EmptyState, Banner } from '../../core/settings/ui'
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const IP_POLL_MS = 10_000
-const IP_RESOURCE_POLL_MS = 15_000
 
 // ── wire narrowing ───────────────────────────────────────────────────────────
 // Wire replies are untrusted network JSON — narrow field-by-field rather than

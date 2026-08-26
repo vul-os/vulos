@@ -693,23 +693,3 @@ function StatusButton({ children, onClick, active, wide, label }: StatusButtonPr
   )
 }
 
-interface PulseCardProps {
-  label: ReactNode
-  value: ReactNode
-  sub?: ReactNode
-  dot?: 'green' | 'yellow' | 'red'
-}
-function PulseCard({ label, value, sub, dot }: PulseCardProps) {
-  return (
-    <div className="bg-neutral-900/60 backdrop-blur-sm rounded-lg border border-neutral-800/50 px-3 py-2.5">
-      <div className="flex items-center gap-1.5">
-        {dot && <span className={`w-1.5 h-1.5 rounded-full ${
-          dot === 'green' ? 'bg-green-500' : dot === 'yellow' ? 'bg-yellow-500' : 'bg-red-500'
-        }`} />}
-        <span className="text-[12px] text-neutral-500 uppercase tracking-wider">{label}</span>
-      </div>
-      <div className="text-sm text-neutral-300 mt-0.5 truncate">{value}</div>
-      {sub && <div className="text-[12px] text-neutral-600 truncate">{sub}</div>}
-    </div>
-  )
-}

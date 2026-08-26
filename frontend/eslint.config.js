@@ -62,7 +62,7 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
     },
   },
   // Test files — Vitest runs with `globals: true`, so the describe/it/expect
@@ -100,7 +100,7 @@ export default defineConfig([
       // an eslint-disable comment naming the base `no-unused-vars` rule, which
       // silently stops matching once the file is .ts and the TS-aware rule
       // takes over.
-      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
   {

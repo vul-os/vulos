@@ -22,7 +22,7 @@
  * for even if the stored layout is edited by hand.
  */
 import { useCallback, useState } from 'react'
-import { Section, Card, EmptyState, Banner, Pill, SettingRow, Toggle } from './ui'
+import { Section, Card, EmptyState, Pill, SettingRow, Toggle } from './ui'
 import { loadLayout, saveLayout, setGrants } from '../../widgets/layout'
 import { getWidget } from '../../widgets/registry'
 import { PERMISSION_INFO, type WidgetLayout, type WidgetPermission } from '../../widgets/types'
@@ -84,14 +84,15 @@ export default function WidgetsPanel() {
               </Pill>
             }
           >
-            {/* A widget whose code is not registered cannot be reasoned about,
-                and saying nothing would imply it holds nothing. */}
-            {!manifest && (
-              <Banner tone="warning" title="This widget is not installed">
-                It is still placed on the rail and still holds the grants below.
-                Remove it from the rail if you did not expect it.
-              </Banner>
-            )}
+            {/* There is deliberately no "this widget is not installed" branch.
+                One used to live here and said the placement "is still placed on
+                the rail and still holds the grants below" — the opposite of what
+                happens. reconcileInstance() drops a placement whose widget id is
+                not registered (`if (!def) return null`, widgets/layout.ts), and
+                the registry is a Map that only ever grows, so anything that
+                survived loadLayout() still resolves here. The branch could not
+                render, and its text would have misled whoever read it next. The
+                `manifest?.` fallbacks below stay as cheap defence. */}
 
             {requested.length === 0 && manifest && (
               <p className="text-sm text-[var(--text-muted)]">

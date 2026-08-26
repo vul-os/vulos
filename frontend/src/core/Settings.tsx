@@ -36,8 +36,8 @@ import {
   applyPreset, isStock, resetToStock, setWindowControls, updateDock, useDesktopLayout,
 } from '../desktop'
 import {
-  Section, Field, Toggle, Card, SettingRow, Divider, Pill, Meter,
-  StatTile, InfoList, InfoRow, EmptyState, Banner, Actions, Narrow,
+  Section, Field, Toggle, Card, SettingRow, Pill, Meter,
+  InfoList, InfoRow, EmptyState, Banner, Actions, Narrow,
 } from './settings/ui'
 
 // isRecord narrows an `unknown` value (typically parsed JSON from a fetch

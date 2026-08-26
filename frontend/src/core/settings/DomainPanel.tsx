@@ -158,7 +158,13 @@ async function dpFetchVisibility(): Promise<DpAppEntry[]> {
   const r = await fetch('/api/apps/visibility')
   if (!r.ok) throw new Error('could not load app list')
   const data: unknown = await r.json()
-  return Array.isArray(data) ? data.map(toDpAppEntry).filter((a): a is DpAppEntry => a !== null) : []
+  // A 200 that is not a list is not an empty app list. Returning [] here reached
+  // the empty state — "No published apps yet." plus instructions to go publish
+  // one — which is a false statement to someone who has published several. The
+  // caller's catch sets appsError, and the empty state is already gated on
+  // !appsError, so throwing is all that is needed.
+  if (!Array.isArray(data)) throw new Error('the box did not return an app list')
+  return data.map(toDpAppEntry).filter((a): a is DpAppEntry => a !== null)
 }
 
 async function dpFetchDomain(appId: string): Promise<DpDomainRecord | null> {

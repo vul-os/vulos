@@ -1174,7 +1174,9 @@ const IS09_SYNC_PHASES = [
 const IS09_LOST_CONTACT_POLLS = 3
 
 export function IS09_SyncingStep({ onNext, onComplete }: { onNext: () => void; onComplete: () => void | Promise<void> }) {
-  const [IS09_phase, IS09_setPhase] = useState('init')
+  // The value is never read — IS09_phaseIdx drives the UI. Keeping only the
+  // setter preserves the re-render this triggers without an unused binding.
+  const [, IS09_setPhase] = useState('init')
   const [IS09_phaseIdx, IS09_setPhaseIdx] = useState(0)
   const [IS09_error, IS09_setError] = useState('')
   // Set once the box has gone quiet for IS09_LOST_CONTACT_POLLS in a row. It is

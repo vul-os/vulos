@@ -4,7 +4,7 @@ import {
   fontSizes, smallTargets, settle, HUB, hubBackend,
 } from './apphub-harness'
 import { hubModeFor } from '../src/builtin/apphub/hubMode'
-import { manyApps, APPS, ARM_BOX_APPS } from './apphub-fixture'
+import { manyApps, ARM_BOX_APPS } from './apphub-fixture'
 
 /**
  * An arm64 box browsing a catalogue that contains x86_64-only Flathub apps.

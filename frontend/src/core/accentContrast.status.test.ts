@@ -47,7 +47,6 @@ const INDEX_CSS = join(SRC, 'index.css')
 const css = readFileSync(INDEX_CSS, 'utf8')
 
 const TONES = ['success', 'warning', 'danger'] as const
-type Tone = (typeof TONES)[number]
 
 /**
  * The three theme states index.css supports. The third is the one that is
