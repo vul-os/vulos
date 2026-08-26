@@ -2790,9 +2790,23 @@ function FingerprintSettings() {
       </div>
 
       {/* Info note */}
+      {/* This note used to say "After 3 failed scans THE LOCK SCREEN falls back
+          to PIN or password", which describes a lock screen that does not offer
+          fingerprint. Nothing in frontend/src calls POST
+          /api/auth/fingerprint/verify — LockScreen.tsx is PIN and password only
+          — and no client in this repo calls it either. Enrolment below is real
+          (fprintd owns the biometric data and the box records only a flag); what
+          is not real is anything consuming it yet. Saying so is the difference
+          between a feature that is coming and a control that appears broken. */}
       <p className="text-xs text-[var(--text-faint)] mb-5 leading-relaxed">
-        Fingerprint unlock releases the same device-local credential as your PIN.
-        After 3 failed scans the lock screen falls back to PIN or password.
+        Enrolling stores nothing here — fprintd holds the print, and this box records
+        only that one exists. The 3-failure fallback and the device-local credential
+        are implemented on the box.
+        <strong className="block mt-1.5 text-[var(--text-tertiary)] font-medium">
+          No Vulos client uses this to unlock yet.
+        </strong>
+        The browser lock screen asks for your PIN or password, so enrolling a
+        fingerprint now prepares the box without changing how you sign in.
         Disabling fingerprint unlock requires a full-auth (password) session.
       </p>
 
