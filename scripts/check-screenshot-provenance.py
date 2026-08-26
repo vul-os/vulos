@@ -355,7 +355,94 @@ def main() -> int:
     # directory as a set, and the set is the artefact. Requiring each of the 15
     # to be embedded somewhere would push the docs to embed images to satisfy a
     # linter, which is how a gate starts generating the thing it measures.
-    UNREFERENCED_OK: dict[str, str] = {}
+    # Kept, unreferenced HERE, and consumed by a repo this scan cannot see.
+    #
+    # 869be719 deleted 23 of these as "referenced by nothing". That was true of
+    # this repository and is still true — the scan below reads `git ls-files` for
+    # THIS repo, and nothing in it embeds a bare-name (dark) shot. It was never
+    # true of the suite: vulos-cloud renders the bare name as the PRIMARY source
+    # of every <ThemeImg src={dark} srcLight={light}> pair, so deleting them took
+    # 19 images on vulos.org from 200 to 404 with every gate green. They are back,
+    # regenerated in both themes, and declared here so the next person who reads
+    # "referenced by nothing" gets the other half of the sentence.
+    #
+    # Each entry is verified live against vulos-cloud/scripts/screenshot-map.mjs.
+    # This dict goes stale in BOTH directions: an entry for a shot that stops
+    # shipping fails, and so does one for a shot that becomes referenced here.
+    UNREFERENCED_OK: dict[str, str] = {
+        "apphub-installed.png":
+            "vulos-cloud ships this as os-apphub-installed.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "assistant.png":
+            "vulos-cloud ships this as os-assistant.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "calendar.png":
+            "vulos-cloud ships this as os-calendar.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "contacts.png":
+            "vulos-cloud ships this as os-contacts.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "dashboard.png":
+            "vulos-cloud ships this as os-dashboard.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "files.png":
+            "vulos-cloud ships this as os-files.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "hero.png":
+            "vulos-cloud ships this as os-hero.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "instances.png":
+            "vulos-cloud ships this as os-instances.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "launchpad.png":
+            "vulos-cloud ships this as os-launchpad.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "mobile-apps.png":
+            "vulos-cloud ships this as os-mobile-apps.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "mobile-assistant.png":
+            "vulos-cloud ships this as os-mobile-assistant.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "mobile-windows.png":
+            "vulos-cloud ships this as os-mobile-windows.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "mobile.png":
+            "vulos-cloud ships this as os-mobile.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-appearance.png":
+            "vulos-cloud ships this as os-settings-appearance.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-domain.png":
+            "vulos-cloud ships this as os-settings-domain.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-relay-nodes.png":
+            "vulos-cloud ships this as os-settings-relay-nodes.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-relay-providers.png":
+            "vulos-cloud ships this as os-settings-relay-providers.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-relay.png":
+            "vulos-cloud ships this as os-settings-relay.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings.png":
+            "vulos-cloud ships this as os-settings.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "stacked.png":
+            "vulos-cloud ships this as os-stacked.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "tablet-windows.png":
+            "vulos-cloud ships this as os-tablet-windows.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "terminal.png":
+            "vulos-cloud ships this as os-terminal.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "tiled.png":
+            "vulos-cloud ships this as os-tiled.png — the DARK half of a <ThemeImg> "
+            "pair whose -light sibling is embedded here (screenshot-map.mjs).",
+        "settings-relay-light.png":
+            "vulos-cloud ships this as os-settings-relay-light.png — copyLightSibling "
+            "auto-pulls it beside the mapped settings-relay.png entry.",
+    }
 
     refs, examined = referenced_shots()
 
