@@ -79,8 +79,12 @@ function toWebhookSub(x: unknown): WebhookSub | null {
     created_at: typeof x.created_at === 'string' ? x.created_at : undefined,
   }
 }
-function toWebhookSubs(x: unknown): WebhookSub[] {
-  if (!isRecord(x) || !Array.isArray(x.subscriptions)) return []
+// null means THE BOX DID NOT SEND A LIST — kept distinct from an empty list all
+// the way to the render. `return []` here printed "No webhooks configured yet."
+// over a 200 whose body carried no `subscriptions` key, which is a claim about
+// what is wired to leave this box.
+function toWebhookSubs(x: unknown): WebhookSub[] | null {
+  if (!isRecord(x) || !Array.isArray(x.subscriptions)) return null
   return x.subscriptions.map(toWebhookSub).filter((s): s is WebhookSub => s !== null)
 }
 
@@ -112,8 +116,11 @@ function toDelivery(x: unknown): WebhookDelivery | null {
     created_at: typeof x.created_at === 'string' ? x.created_at : undefined,
   }
 }
-function toDeliveries(x: unknown): WebhookDelivery[] {
-  if (!isRecord(x) || !Array.isArray(x.deliveries)) return []
+// null = the box sent no `deliveries` list. `error` is what the caller shows;
+// `deliveries === null` already means "still loading" in DeliveryLog, so an
+// unusable answer must NOT reuse it or it renders as a permanent spinner.
+function toDeliveries(x: unknown): WebhookDelivery[] | null {
+  if (!isRecord(x) || !Array.isArray(x.deliveries)) return null
   return x.deliveries.map(toDelivery).filter((d): d is WebhookDelivery => d !== null)
 }
 
@@ -197,7 +204,11 @@ function DeliveryLog({ subId }: { subId: string }) {
 
   const load = useCallback(() => {
     jsonFetch(`/api/webhooks/${encodeURIComponent(subId)}/deliveries?limit=25`)
-      .then(d => setDeliveries(toDeliveries(d)))
+      .then(d => {
+        const parsed = toDeliveries(d)
+        if (!parsed) throw new Error('The box did not return a delivery list — this is not the same as no deliveries.')
+        setDeliveries(parsed)
+      })
       .catch((e: unknown) => setError(errorMessage(e)))
   }, [subId])
 
@@ -424,7 +435,9 @@ export default function WebhooksPanel() {
       jsonFetch('/api/webhooks/topics'),
     ])
       .then(([subsRes, topicsRes]) => {
-        setSubs(toWebhookSubs(subsRes))
+        const parsedSubs = toWebhookSubs(subsRes)
+        if (!parsedSubs) throw new Error('The box did not return a webhook list — this is not the same as none being configured.')
+        setSubs(parsedSubs)
         setAllTopics(toTopics(topicsRes).sort())
       })
       .catch((e: unknown) => setLoadError(errorMessage(e) || 'Could not load webhooks.'))

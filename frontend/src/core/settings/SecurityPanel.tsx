@@ -54,6 +54,14 @@ function toSecurityAction(x: unknown): SecurityAction | null {
   }
 }
 
+// `undefined` here means THE BOX DID NOT SAY, and it is kept distinct from an
+// empty array all the way to the render. Collapsing the two with `|| []` is what
+// let this panel print "Nothing recorded yet" — a clean bill of health — over a
+// reply that carried no `actions` key at all. A non-2xx is caught before this
+// (load() rejects on !r.ok), so the live shape of that failure is a 200 whose
+// body is missing the field: the "answered, but told you nothing" case
+// settings-honesty.e2e.ts exists for. On a security page that is the one
+// sentence that must never be guessed.
 function toSecurityFeed(x: unknown): SecurityFeed {
   if (!isRecord(x)) return {}
   return {
@@ -156,9 +164,16 @@ export default function SecurityPanel() {
     }
   }, [load])
 
+  const alertsKnown = feed?.alerts !== undefined
+  const actionsKnown = feed?.actions !== undefined
   const alerts = feed?.alerts || []
   const pending = alerts.filter(a => a.status === 'pending')
-  const resolved = alerts.filter(a => a.status !== 'pending')
+  // 'dismissed' and 'locked' are the only resolutions the backend records. An
+  // alert whose status the box omitted is NOT resolved — it used to land here
+  // and render as "Dismissed", telling you someone had cleared an alert nobody
+  // had even seen.
+  const resolved = alerts.filter(a => a.status === 'dismissed' || a.status === 'locked')
+  const unknownState = alerts.filter(a => a.status !== 'pending' && a.status !== 'dismissed' && a.status !== 'locked')
   const actions = feed?.actions || []
 
   return (
@@ -183,6 +198,13 @@ export default function SecurityPanel() {
         <p className="text-sm text-[var(--text-tertiary)]">Loading…</p>
       ) : (
         <>
+          {!alertsKnown && (
+            <div className="mb-4 rounded-lg border border-warning-soft bg-warning-soft px-3 py-2 text-xs text-warning">
+              The box did not report an alerts list. Absence of alerts here is not
+              evidence that none were raised.
+            </div>
+          )}
+
           {pending.length > 0 && (
             <div className="mb-6 space-y-3">
               {pending.map(a => (
@@ -256,7 +278,14 @@ export default function SecurityPanel() {
                 Recent sensitive activity
               </p>
             </div>
-            {actions.length === 0 ? (
+            {!actionsKnown ? (
+              <div className="px-4 py-4">
+                <p className="text-xs text-warning">
+                  The box did not report any activity list. This is not the same as
+                  &ldquo;nothing happened&rdquo; — reload, and if it persists check the box is healthy.
+                </p>
+              </div>
+            ) : actions.length === 0 ? (
               <div className="px-4 py-4">
                 <p className="text-xs text-[var(--text-faint)]">
                   Nothing recorded yet. Sensitive changes to this account will appear here.
@@ -273,6 +302,27 @@ export default function SecurityPanel() {
               ))
             )}
           </div>
+
+          {unknownState.length > 0 && (
+            <div className="mt-4 rounded-xl border border-warning-soft bg-[var(--bg-surface)] divide-y divide-[var(--border-default)]">
+              <div className="px-4 py-2.5">
+                <p className="text-xs font-medium text-warning uppercase tracking-wide">
+                  Alerts in an unrecognised state
+                </p>
+              </div>
+              {unknownState.slice(0, 10).map(a => (
+                <div key={a.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
+                  <div className="min-w-0">
+                    <span className="text-sm text-[var(--text-secondary)]">{actionLabel(a.action)}</span>
+                    <span className="ml-2 text-[12px] text-warning">
+                      {a.status ? `reported as “${a.status}”` : 'no status reported'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-[var(--text-faint)]">{formatTs(a.ts)}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {resolved.length > 0 && (
             <div className="mt-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] divide-y divide-[var(--border-default)]">

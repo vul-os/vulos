@@ -100,7 +100,14 @@ export default function DeveloperPanel() {
     setError('')
     fetch('/api/developer/keys')
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
-      .then((d: unknown) => setKeys(Array.isArray(d) ? d.map(toDeveloperKey).filter((k): k is DeveloperKey => k !== null) : []))
+      // A 200 that is not a list is NOT "you have no keys". Collapsing it to []
+      // printed "No API keys yet." over a reply the box never made — on the one
+      // screen where believing you hold no credentials is the expensive mistake.
+      // `keys` stays null (its not-yet-known state) and the error surfaces.
+      .then((d: unknown) => {
+        if (!Array.isArray(d)) throw new Error('The box did not return a list of keys.')
+        setKeys(d.map(toDeveloperKey).filter((k): k is DeveloperKey => k !== null))
+      })
       .catch(e => setError(errorMessage(e, 'failed to load keys')))
       .finally(() => setLoading(false))
   }, [])
